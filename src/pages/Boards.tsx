@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { BoardDetail } from '@/components/BoardDetail';
+import { NewBoardDialog } from '@/components/NewBoardDialog';
 
 const boards = [
   {
@@ -56,8 +57,36 @@ const boards = [
 
 const Boards = () => {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
+  const [isNewBoardDialogOpen, setIsNewBoardDialogOpen] = useState(false);
+  const [boardsList, setBoardsList] = useState(boards);
   
-  const selectedBoardData = boards.find(board => board.id === selectedBoard);
+  const selectedBoardData = boardsList.find(board => board.id === selectedBoard);
+
+  const handleCreateBoard = (boardData: {
+    title: string;
+    description: string;
+    collaborators: string[];
+    cover?: string;
+  }) => {
+    const newBoard = {
+      id: Date.now().toString(),
+      title: boardData.title,
+      description: boardData.description,
+      tripCount: 0,
+      collaborators: boardData.collaborators.map((username, index) => ({
+        id: `collab-${Date.now()}-${index}`,
+        name: username,
+        avatar: '',
+        initials: username.charAt(0).toUpperCase()
+      })),
+      autoLinked: [],
+      lastActivity: 'Just created',
+      comments: 0,
+      votes: 0,
+      cover: boardData.cover || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4'
+    };
+    setBoardsList(prev => [newBoard, ...prev]);
+  };
 
   if (selectedBoard && selectedBoardData) {
     return (
@@ -74,7 +103,11 @@ const Boards = () => {
       <div className="px-6 pt-12 pb-6">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-bold">Boards</h1>
-          <Button size="sm" className="bg-gradient-primary">
+          <Button 
+            size="sm" 
+            className="bg-gradient-primary"
+            onClick={() => setIsNewBoardDialogOpen(true)}
+          >
             <Plus className="h-4 w-4 mr-1" />
             New Board
           </Button>
@@ -86,7 +119,7 @@ const Boards = () => {
 
       {/* Boards List */}
       <div className="px-6 space-y-4">
-        {boards.map((board) => (
+        {boardsList.map((board) => (
           <Card 
             key={board.id} 
             className="overflow-hidden cursor-pointer hover:shadow-elevated transition-all"
@@ -191,8 +224,15 @@ const Boards = () => {
         </Card>
       </div>
 
+      {/* New Board Dialog */}
+      <NewBoardDialog
+        isOpen={isNewBoardDialogOpen}
+        onClose={() => setIsNewBoardDialogOpen(false)}
+        onCreateBoard={handleCreateBoard}
+      />
+
       {/* Empty State */}
-      {boards.length === 0 && (
+      {boardsList.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
           <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
             <Users className="h-8 w-8 text-muted-foreground" />
@@ -201,7 +241,10 @@ const Boards = () => {
           <p className="text-muted-foreground mb-4">
             Create boards to organize and collaborate on experiences
           </p>
-          <Button className="bg-gradient-primary">
+          <Button 
+            className="bg-gradient-primary"
+            onClick={() => setIsNewBoardDialogOpen(true)}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Create Your First Board
           </Button>

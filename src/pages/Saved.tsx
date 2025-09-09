@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Plus, MoreVertical, Calendar, MapPin, Check, X, CalendarDays } from 'lucide-react';
+import { Plus, MoreVertical, Calendar, MapPin, Check, X, CalendarDays, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TripCardExpanded } from '@/components/TripCardExpanded';
+import { BoardSelectionDialog } from '@/components/BoardSelectionDialog';
+import { NewBoardDialog } from '@/components/NewBoardDialog';
 
 const savedTrips = [
   {
@@ -58,10 +60,73 @@ const Saved = () => {
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [trips, setTrips] = useState(savedTrips);
+  const [isBoardSelectionOpen, setIsBoardSelectionOpen] = useState(false);
+  const [isNewBoardDialogOpen, setIsNewBoardDialogOpen] = useState(false);
+  const [selectedTripForBoard, setSelectedTripForBoard] = useState<string | null>(null);
+  const [boards, setBoards] = useState([
+    {
+      id: '1',
+      title: 'Weekend Adventures',
+      description: 'Fun activities for Saturday & Sunday',
+      tripCount: 5,
+      collaborators: [
+        { id: '1', name: 'Sarah', avatar: 'https://images.unsplash.com/photo-1494790108755-2616b79444d7', initials: 'S' },
+        { id: '2', name: 'Mike', avatar: '', initials: 'M' },
+      ],
+      cover: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4'
+    },
+    {
+      id: '2',
+      title: 'Date Night Ideas',
+      description: 'Romantic spots around the city',
+      tripCount: 3,
+      collaborators: [
+        { id: '3', name: 'Alex', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d', initials: 'A' },
+      ],
+      cover: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0'
+    }
+  ]);
 
   const handleAddToBoard = (tripId: string) => {
-    // This would open board selection modal
-    console.log('Add to board:', tripId);
+    setSelectedTripForBoard(tripId);
+    setIsBoardSelectionOpen(true);
+  };
+
+  const handleCreateNewBoard = (boardData: {
+    title: string;
+    description: string;
+    collaborators: string[];
+    cover?: string;
+  }) => {
+    const newBoard = {
+      id: Date.now().toString(),
+      title: boardData.title,
+      description: boardData.description,
+      tripCount: selectedTripForBoard ? 1 : 0,
+      collaborators: boardData.collaborators.map((username, index) => ({
+        id: `collab-${Date.now()}-${index}`,
+        name: username,
+        avatar: '',
+        initials: username.charAt(0).toUpperCase()
+      })),
+      cover: boardData.cover || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4'
+    };
+    setBoards(prev => [newBoard, ...prev]);
+    
+    if (selectedTripForBoard) {
+      console.log(`Added trip ${selectedTripForBoard} to new board ${newBoard.title}`);
+    }
+  };
+
+  const handleSelectBoard = (boardId: string) => {
+    if (selectedTripForBoard) {
+      console.log(`Added trip ${selectedTripForBoard} to board ${boardId}`);
+      setBoards(prev => prev.map(board => 
+        board.id === boardId 
+          ? { ...board, tripCount: board.tripCount + 1 }
+          : board
+      ));
+    }
   };
 
   const toggleSelection = (tripId: string) => {
@@ -80,7 +145,7 @@ const Saved = () => {
     ));
   };
 
-  const handleUnsaveTrip = (tripId: string) => {
+  const handleRemoveTrip = (tripId: string) => {
     setTrips(prev => prev.filter(trip => trip.id !== tripId));
   };
 
@@ -211,48 +276,45 @@ const Saved = () => {
                       Saved {new Date(trip.savedDate).toLocaleDateString()}
                     </span>
                     <div className="flex gap-1">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="text-xs h-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAddToBoard(trip.id);
+                        }}
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Board
+                      </Button>
+                      
                       {trip.status === 'saved' && (
-                        <>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="text-xs h-7 bg-primary/10 text-primary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Finalize trip - accepting and finalizing are the same
-                              handleAcceptTrip(trip.id);
-                            }}
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            Finalize
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="text-xs h-7"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleUnsaveTrip(trip.id);
-                            }}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
-                      {trip.status === 'accepted' && (
                         <Button 
                           variant="outline" 
                           size="sm" 
-                          className="text-xs h-7"
+                          className="text-xs h-7 bg-primary/10 text-primary"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleAddToBoard(trip.id);
+                            handleAcceptTrip(trip.id);
                           }}
                         >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Add to Board
+                          <Check className="h-3 w-3 mr-1" />
+                          Finalize
                         </Button>
                       )}
+                      
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="text-xs h-7 hover:bg-destructive/10 hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveTrip(trip.id);
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -279,6 +341,32 @@ const Saved = () => {
           showAcceptButton={expandedTripData.status === 'saved'}
         />
       )}
+
+      {/* Board Selection Dialog */}
+      <BoardSelectionDialog
+        isOpen={isBoardSelectionOpen}
+        onClose={() => {
+          setIsBoardSelectionOpen(false);
+          setSelectedTripForBoard(null);
+        }}
+        onSelectBoard={handleSelectBoard}
+        onCreateNewBoard={() => {
+          setIsBoardSelectionOpen(false);
+          setIsNewBoardDialogOpen(true);
+        }}
+        boards={boards}
+        tripTitle={trips.find(t => t.id === selectedTripForBoard)?.title || ''}
+      />
+
+      {/* New Board Dialog */}
+      <NewBoardDialog
+        isOpen={isNewBoardDialogOpen}
+        onClose={() => {
+          setIsNewBoardDialogOpen(false);
+          setSelectedTripForBoard(null);
+        }}
+        onCreateBoard={handleCreateNewBoard}
+      />
 
       {/* Empty State */}
       {trips.length === 0 && (
