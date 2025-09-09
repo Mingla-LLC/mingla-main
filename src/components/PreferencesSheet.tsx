@@ -51,6 +51,7 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
   const [customDate, setCustomDate] = useState('');
   const [locationInput, setLocationInput] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('current');
+  const [groupSize, setGroupSize] = useState(2);
   const [collaborators, setCollaborators] = useState([
     { id: '1', username: 'sarah_k', name: 'Sarah', isActive: true },
     { id: '2', username: 'mike_dev', name: 'Mike', isActive: false },
@@ -90,9 +91,38 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
             <p className="text-sm text-muted-foreground mb-3">
               {isCollabMode 
                 ? 'Share preferences with friends to find perfect group activities'
-                : 'Find activities just for you'
+                : 'Plan activities on your own - you can still specify group size'
               }
             </p>
+
+            {/* Group Size for Solo Mode */}
+            {!isCollabMode && (
+              <div className="space-y-2 mb-3">
+                <Label className="text-sm font-medium">Number of People</Label>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setGroupSize(Math.max(1, groupSize - 1))}
+                    className="h-8 w-8 p-0"
+                  >
+                    -
+                  </Button>
+                  <span className="text-sm font-medium min-w-[2rem] text-center">{groupSize}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setGroupSize(groupSize + 1)}
+                    className="h-8 w-8 p-0"
+                  >
+                    +
+                  </Button>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {groupSize === 1 ? 'person' : 'people'}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Collaborators Section */}
             {isCollabMode && (

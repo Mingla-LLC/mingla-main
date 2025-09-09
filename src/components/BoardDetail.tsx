@@ -34,7 +34,11 @@ const mockTrips = [
     badges: ['Budget-Fit', 'Weather-OK', 'Verified'],
     whyItFits: 'Perfect timing for golden hour, cozy café with outdoor seating, within your budget',
     location: 'Pike Place Market',
-    category: 'Coffee & Walk'
+    category: 'Coffee & Walk',
+    votes: { for: 2, against: 0 },
+    userVote: null, // null, 'for', 'against'
+    finalized: false,
+    finalizedBy: []
   },
   {
     id: '2',
@@ -46,7 +50,11 @@ const mockTrips = [
     badges: ['Creative', 'Weather-OK'],
     whyItFits: 'Hands-on pottery class perfect for creative dates, includes materials and refreshments',
     location: 'Capitol Hill',
-    category: 'Creative Date'
+    category: 'Creative Date',
+    votes: { for: 1, against: 1 },
+    userVote: 'for',
+    finalized: false,
+    finalizedBy: []
   }
 ];
 
@@ -81,8 +89,10 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
   const [selectedTrip, setSelectedTrip] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [discussionList, setDiscussionList] = useState(discussions);
+  const [trips, setTrips] = useState(mockTrips);
+  const [userFinalized, setUserFinalized] = useState<string[]>([]);
 
-  const selectedTripData = mockTrips.find(trip => trip.id === selectedTrip);
+  const selectedTripData = trips.find(trip => trip.id === selectedTrip);
 
   const handleSendMessage = () => {
     if (newMessage.trim()) {
@@ -109,6 +119,54 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
           }
         : discussion
     ));
+  };
+
+  const handleTripVote = (tripId: string, voteType: 'for' | 'against') => {
+    setTrips(prev => prev.map(trip => {
+      if (trip.id === tripId && !trip.finalized) {
+        const currentVote = trip.userVote;
+        let newVotes = { ...trip.votes };
+        
+        // Remove previous vote
+        if (currentVote === 'for') newVotes.for--;
+        if (currentVote === 'against') newVotes.against--;
+        
+        // Add new vote if different from current
+        const newUserVote = currentVote === voteType ? null : voteType;
+        if (newUserVote === 'for') newVotes.for++;
+        if (newUserVote === 'against') newVotes.against++;
+        
+        return {
+          ...trip,
+          votes: newVotes,
+          userVote: newUserVote
+        };
+      }
+      return trip;
+    }));
+  };
+
+  const handleFinalize = (tripId: string) => {
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return;
+
+    setUserFinalized(prev => [...prev, tripId]);
+    
+    // Simulate all collaborators finalizing (in real app, this would be tracked per user)
+    setTrips(prev => prev.map(trip => 
+      trip.id === tripId 
+        ? { 
+            ...trip, 
+            finalized: true,
+            finalizedBy: [...trip.finalizedBy, 'You']
+          }
+        : trip
+    ));
+  };
+
+  const canChangeVote = (tripId: string) => {
+    const trip = trips.find(t => t.id === tripId);
+    return trip && !trip.finalized && !userFinalized.includes(tripId);
   };
 
   return (
@@ -143,19 +201,78 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
         </div>
       </div>
 
-      {/* Trip Cards */}
+      {/* Trip Cards with Polling */}
       <div className="px-6 py-6">
-        <h2 className="text-lg font-semibold mb-4">Trip Options</h2>
+        <h2 className="text-lg font-semibold mb-4">Trip Options - Vote to Finalize</h2>
         <div className="space-y-4">
-          {mockTrips.map((trip) => (
+          {trips.map((trip) => (
             <div key={trip.id} className="relative">
-              <TripCard
-                trip={trip}
-                onSwipeRight={() => {}}
-                onSwipeLeft={() => {}}
-                onExpand={() => setSelectedTrip(trip.id)}
-                className="cursor-pointer hover:shadow-elevated transition-all"
-              />
+              <Card className="p-0 overflow-hidden">
+                <TripCard
+                  trip={trip}
+                  onSwipeRight={() => {}}
+                  onSwipeLeft={() => {}}
+                  onExpand={() => setSelectedTrip(trip.id)}
+                  className="cursor-pointer hover:shadow-elevated transition-all border-0"
+                />
+                
+                {/* Voting Section */}
+                <div className="p-4 border-t border-border bg-muted/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-4">
+                      <Badge 
+                        variant={trip.votes.for > trip.votes.against ? "default" : "secondary"}
+                        className="text-xs"
+                      >
+                        {trip.votes.for} 👍 {trip.votes.against} 👎
+                      </Badge>
+                      {trip.finalized && (
+                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
+                          ✅ Finalized
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    {!trip.finalized && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant={trip.userVote === 'for' ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleTripVote(trip.id, 'for')}
+                          disabled={!canChangeVote(trip.id)}
+                          className="h-7 px-2"
+                        >
+                          👍
+                        </Button>
+                        <Button
+                          variant={trip.userVote === 'against' ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleTripVote(trip.id, 'against')}
+                          disabled={!canChangeVote(trip.id)}
+                          className="h-7 px-2"
+                        >
+                          👎
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleFinalize(trip.id)}
+                          disabled={userFinalized.includes(trip.id)}
+                          className="h-7 text-xs"
+                        >
+                          {userFinalized.includes(trip.id) ? 'Finalized' : 'Finalize'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {trip.finalized && (
+                    <p className="text-xs text-muted-foreground">
+                      This experience has been added to everyone's calendar
+                    </p>
+                  )}
+                </div>
+              </Card>
             </div>
           ))}
         </div>

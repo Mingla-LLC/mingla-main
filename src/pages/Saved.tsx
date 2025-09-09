@@ -228,6 +228,22 @@ const Saved = () => {
                           <Button 
                             variant="outline" 
                             size="sm" 
+                            className="text-xs h-7 bg-primary/10 text-primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Finalize trip - add to calendar and collaborators' calendars
+                              setTrips(prev => prev.map(t => 
+                                t.id === trip.id 
+                                  ? { ...t, status: 'finalized', scheduledDate: new Date().toISOString().split('T')[0] }
+                                  : t
+                              ));
+                            }}
+                          >
+                            ✅ Finalize
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
                             className="text-xs h-7"
                             onClick={(e) => {
                               e.stopPropagation();
