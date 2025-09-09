@@ -117,13 +117,35 @@ const Home = () => {
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-6">
-          <span>💰 Under $50</span>
-          <span>•</span>
-          <span>☀️ Weather OK</span>
-          <span>•</span>
-          <span>🚶‍♀️ Walking distance</span>
+        {/* User Preferences Display */}
+        <div className="space-y-2 mb-6">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-medium text-foreground">Alex Chen</span>
+            <span className="text-muted-foreground">•</span>
+            <span className="text-xs text-muted-foreground">Solo mode</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+            <button 
+              className="flex items-center gap-1 hover:text-foreground transition-colors"
+              onClick={() => setShowPreferences(true)}
+            >
+              💰 Under $50
+            </button>
+            <span>•</span>
+            <button 
+              className="flex items-center gap-1 hover:text-foreground transition-colors"
+              onClick={() => setShowPreferences(true)}
+            >
+              ☀️ Weather OK
+            </button>
+            <span>•</span>
+            <button 
+              className="flex items-center gap-1 hover:text-foreground transition-colors"
+              onClick={() => setShowPreferences(true)}
+            >
+              🚶‍♀️ Walking distance
+            </button>
+          </div>
         </div>
       </div>
 

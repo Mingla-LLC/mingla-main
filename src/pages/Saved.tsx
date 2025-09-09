@@ -92,26 +92,25 @@ const Saved = () => {
       {/* Header */}
       <div className="px-6 pt-12 pb-6">
         <div className="flex items-center justify-between mb-2">
-          <h1 className="text-2xl font-bold">Saved</h1>
-          <div className="flex items-center gap-2">
-            {selectedTrips.length > 0 && (
-              <Button 
-                size="sm" 
-                className="bg-gradient-primary"
-                onClick={() => console.log('Create board from selected')}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Create Board ({selectedTrips.length})
-              </Button>
-            )}
-            <Button
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Saved</h1>
+            <Button 
               variant="outline"
-              size="sm"
-              onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
+              size="sm" 
+              onClick={() => console.log('Create board')}
             >
-              {viewMode === 'list' ? <CalendarDays className="h-4 w-4" /> : <MoreVertical className="h-4 w-4" />}
+              <Plus className="h-4 w-4 mr-1" />
+              Create Board
+              {selectedTrips.length > 0 && ` (${selectedTrips.length})`}
             </Button>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
+          >
+            {viewMode === 'list' ? <CalendarDays className="h-4 w-4" /> : <MoreVertical className="h-4 w-4" />}
+          </Button>
         </div>
         <p className="text-muted-foreground">
           {trips.length} experiences saved • {acceptedTrips.length} accepted
@@ -296,20 +295,6 @@ const Saved = () => {
         </div>
       )}
 
-      {/* Quick Actions */}
-      <div className="px-6 py-8">
-        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 gap-3">
-          <Button variant="outline" className="h-12 flex-col gap-1">
-            <Plus className="h-4 w-4" />
-            <span className="text-xs">Create Board</span>
-          </Button>
-          <Button variant="outline" className="h-12 flex-col gap-1">
-            <Calendar className="h-4 w-4" />
-            <span className="text-xs">Plan Date</span>
-          </Button>
-        </div>
-      </div>
     </div>
   );
 };
