@@ -47,10 +47,20 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
   const [sharedCategories, setSharedCategories] = useState(false);
   const [sharedTime, setSharedTime] = useState(true);
   const [newUsername, setNewUsername] = useState('');
+  const [specificTime, setSpecificTime] = useState('');
+  const [customDate, setCustomDate] = useState('');
+  const [locationInput, setLocationInput] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('current');
   const [collaborators, setCollaborators] = useState([
     { id: '1', username: 'sarah_k', name: 'Sarah', isActive: true },
     { id: '2', username: 'mike_dev', name: 'Mike', isActive: false },
   ]);
+
+  const savedLocations = [
+    'Downtown Office',
+    'Home (Capitol Hill)', 
+    'Gym (Fremont)'
+  ];
 
   if (!isOpen) return null;
 
@@ -167,15 +177,15 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
               <Slider
                 value={budget}
                 onValueChange={setBudget}
-                max={1000}
+                max={10000}
                 min={10}
-                step={5}
+                step={10}
                 className="w-full"
               />
               <div className="flex justify-between text-sm text-muted-foreground mt-2">
                 <span>$10</span>
                 <span className="font-semibold text-primary">${budget[0]}</span>
-                <span>{budget[0] >= 1000 ? '∞' : '$1000+'}</span>
+                <span>{budget[0] >= 10000 ? '∞' : '$10000+'}</span>
               </div>
             </div>
           </div>
@@ -240,11 +250,42 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
                 </Button>
               ))}
             </div>
+            
+            {/* Time Selector for non-Now options */}
+            {selectedTime !== 'Now' && (
+              <Card className="p-3 bg-muted/50 space-y-3">
+                <Label className="text-sm font-medium">Select Time</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {['Morning', 'Afternoon', 'Evening'].map((timeSlot) => (
+                    <Button
+                      key={timeSlot}
+                      variant={specificTime === timeSlot ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSpecificTime(timeSlot)}
+                      className="text-xs"
+                    >
+                      {timeSlot}
+                    </Button>
+                  ))}
+                </div>
+                <Input
+                  type="time"
+                  placeholder="Or set specific time"
+                  className="h-8"
+                  onChange={(e) => setSpecificTime(e.target.value)}
+                />
+              </Card>
+            )}
+            
             {selectedTime === 'Custom' && (
-              <Card className="p-3 bg-muted/50">
-                <p className="text-sm text-muted-foreground">
-                  Custom date picker would appear here
-                </p>
+              <Card className="p-3 bg-muted/50 space-y-3">
+                <Label className="text-sm font-medium">Select Custom Date</Label>
+                <Input
+                  type="date"
+                  value={customDate}
+                  onChange={(e) => setCustomDate(e.target.value)}
+                  className="h-8"
+                />
               </Card>
             )}
           </div>
@@ -275,9 +316,49 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
           {/* Location */}
           <div className="space-y-3">
             <Label className="font-semibold">Location</Label>
-            <Button variant="outline" className="w-full justify-start">
+            
+            {/* Current Location */}
+            <Button 
+              variant={selectedLocation === 'current' ? "default" : "outline"} 
+              className="w-full justify-start"
+              onClick={() => setSelectedLocation('current')}
+            >
               📍 Use Current Location
             </Button>
+            
+            {/* Manual Input */}
+            <div className="space-y-2">
+              <Button
+                variant={selectedLocation === 'manual' ? "default" : "outline"}
+                className="w-full justify-start"
+                onClick={() => setSelectedLocation('manual')}
+              >
+                🔍 Enter Location Manually
+              </Button>
+              {selectedLocation === 'manual' && (
+                <Input
+                  placeholder="Enter address or location"
+                  value={locationInput}
+                  onChange={(e) => setLocationInput(e.target.value)}
+                  className="h-8"
+                />
+              )}
+            </div>
+            
+            {/* Saved Locations */}
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Saved Locations</Label>
+              {savedLocations.map((location) => (
+                <Button
+                  key={location}
+                  variant={selectedLocation === location ? "default" : "outline"}
+                  className="w-full justify-start text-sm"
+                  onClick={() => setSelectedLocation(location)}
+                >
+                  📌 {location}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
 

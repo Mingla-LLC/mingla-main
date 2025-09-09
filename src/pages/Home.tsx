@@ -98,54 +98,60 @@ const Home = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-accent/10">
       {/* Header */}
       <div className="px-6 pt-12 pb-6">
+        {/* User Preferences Display */}
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
-              Hey there! 👋
-            </h1>
-            <p className="text-muted-foreground">
-              Ready for your next adventure?
-            </p>
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium text-foreground">Alex Chen</span>
+              <span className="text-muted-foreground">•</span>
+              <span className="text-xs text-muted-foreground">Solo mode</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+              <button 
+                className="flex items-center gap-1 hover:text-foreground hover:line-through transition-colors"
+                onClick={() => {
+                  toast({
+                    title: "Preference updated",
+                    description: "Budget filter removed",
+                  });
+                }}
+              >
+                💰 Under $50
+              </button>
+              <span>•</span>
+              <button 
+                className="flex items-center gap-1 hover:text-foreground hover:line-through transition-colors"
+                onClick={() => {
+                  toast({
+                    title: "Preference updated", 
+                    description: "Weather filter removed",
+                  });
+                }}
+              >
+                ☀️ Weather OK
+              </button>
+              <span>•</span>
+              <button 
+                className="flex items-center gap-1 hover:text-foreground hover:line-through transition-colors"
+                onClick={() => {
+                  toast({
+                    title: "Preference updated",
+                    description: "Travel filter removed", 
+                  });
+                }}
+              >
+                🚶‍♀️ Walking distance
+              </button>
+            </div>
           </div>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowPreferences(true)}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 ml-4"
           >
             <Sliders className="h-4 w-4" />
           </Button>
-        </div>
-
-        {/* User Preferences Display */}
-        <div className="space-y-2 mb-6">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="font-medium text-foreground">Alex Chen</span>
-            <span className="text-muted-foreground">•</span>
-            <span className="text-xs text-muted-foreground">Solo mode</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
-            <button 
-              className="flex items-center gap-1 hover:text-foreground transition-colors"
-              onClick={() => setShowPreferences(true)}
-            >
-              💰 Under $50
-            </button>
-            <span>•</span>
-            <button 
-              className="flex items-center gap-1 hover:text-foreground transition-colors"
-              onClick={() => setShowPreferences(true)}
-            >
-              ☀️ Weather OK
-            </button>
-            <span>•</span>
-            <button 
-              className="flex items-center gap-1 hover:text-foreground transition-colors"
-              onClick={() => setShowPreferences(true)}
-            >
-              🚶‍♀️ Walking distance
-            </button>
-          </div>
         </div>
       </div>
 
