@@ -28,35 +28,74 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className 
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [isAnimating, setIsAnimating] = useState(false);
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (isAnimating) return;
     setIsDragging(true);
     const touch = e.touches[0];
     setStartPos({ x: touch.clientX, y: touch.clientY });
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging) return;
+    if (!isDragging || isAnimating) return;
+    e.preventDefault();
     const touch = e.touches[0];
     const deltaX = touch.clientX - startPos.x;
     const deltaY = touch.clientY - startPos.y;
-    setDragOffset({ x: deltaX, y: deltaY });
+    
+    // Add some resistance for vertical movement
+    const resistanceY = Math.abs(deltaY) > 50 ? deltaY * 0.3 : deltaY;
+    
+    setDragOffset({ x: deltaX, y: resistanceY });
   };
 
   const handleTouchEnd = () => {
-    if (!isDragging) return;
+    if (!isDragging || isAnimating) return;
     setIsDragging(false);
     
-    const threshold = 100;
-    if (Math.abs(dragOffset.x) > threshold) {
-      if (dragOffset.x > 0) {
-        onSwipeRight();
-      } else {
-        onSwipeLeft();
-      }
-    }
+    const threshold = 80;
+    const velocity = Math.abs(dragOffset.x);
     
-    setDragOffset({ x: 0, y: 0 });
+    if (Math.abs(dragOffset.x) > threshold || velocity > 50) {
+      setIsAnimating(true);
+      if (dragOffset.x > 0) {
+        // Trigger swipe right animation
+        setTimeout(() => {
+          onSwipeRight();
+          setIsAnimating(false);
+        }, 300);
+      } else {
+        // Trigger swipe left animation  
+        setTimeout(() => {
+          onSwipeLeft();
+          setIsAnimating(false);
+        }, 300);
+      }
+    } else {
+      // Snap back smoothly
+      setDragOffset({ x: 0, y: 0 });
+    }
+  };
+
+  // Mouse events for desktop
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (isAnimating) return;
+    setIsDragging(true);
+    setStartPos({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || isAnimating) return;
+    const deltaX = e.clientX - startPos.x;
+    const deltaY = e.clientY - startPos.y;
+    const resistanceY = Math.abs(deltaY) > 50 ? deltaY * 0.3 : deltaY;
+    setDragOffset({ x: deltaX, y: resistanceY });
+  };
+
+  const handleMouseUp = () => {
+    if (!isDragging || isAnimating) return;
+    handleTouchEnd();
   };
 
   const getBadgeIcon = (badge: string) => {
@@ -88,18 +127,29 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className 
   return (
     <Card
       className={cn(
-        "relative overflow-hidden cursor-pointer transition-all duration-300 shadow-card hover:shadow-elevated",
+        "relative overflow-hidden cursor-pointer shadow-card hover:shadow-elevated",
         "touch-none select-none",
+        isDragging ? "card-swipe" : "card-swipe-smooth",
+        isAnimating && dragOffset.x > 0 && "animate-swipe-right",
+        isAnimating && dragOffset.x < 0 && "animate-swipe-left",
         className
       )}
       style={{
-        transform: `translate(${dragOffset.x}px, ${dragOffset.y}px) rotate(${dragOffset.x * 0.1}deg)`,
-        opacity: Math.max(0.3, 1 - Math.abs(dragOffset.x) / 300),
+        transform: !isAnimating ? `translate(${dragOffset.x}px, ${dragOffset.y}px) rotate(${dragOffset.x * 0.05}deg)` : undefined,
+        opacity: !isAnimating ? Math.max(0.4, 1 - Math.abs(dragOffset.x) / 400) : undefined,
       }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      onClick={onExpand}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onClick={(e) => {
+        if (!isDragging && Math.abs(dragOffset.x) < 10) {
+          onExpand();
+        }
+      }}
     >
       {/* Image Header */}
       <div className="relative h-48 bg-gradient-warm">
@@ -174,16 +224,16 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className 
       </div>
 
       {/* Swipe Indicators */}
-      {isDragging && (
+      {isDragging && !isAnimating && (
         <>
-          {dragOffset.x > 50 && (
-            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-              <div className="text-primary text-2xl font-bold">SAVE</div>
+          {dragOffset.x > 60 && (
+            <div className="absolute inset-0 bg-primary/20 backdrop-blur-sm flex items-center justify-center transition-all duration-200">
+              <div className="text-primary text-3xl font-bold animate-pulse">SAVE</div>
             </div>
           )}
-          {dragOffset.x < -50 && (
-            <div className="absolute inset-0 bg-destructive/20 flex items-center justify-center">
-              <div className="text-destructive text-2xl font-bold">DISMISS</div>
+          {dragOffset.x < -60 && (
+            <div className="absolute inset-0 bg-destructive/20 backdrop-blur-sm flex items-center justify-center transition-all duration-200">
+              <div className="text-destructive text-3xl font-bold animate-pulse">DISMISS</div>
             </div>
           )}
         </>

@@ -255,22 +255,9 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
             {selectedTime !== 'Now' && (
               <Card className="p-3 bg-muted/50 space-y-3">
                 <Label className="text-sm font-medium">Select Time</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {['Morning', 'Afternoon', 'Evening'].map((timeSlot) => (
-                    <Button
-                      key={timeSlot}
-                      variant={specificTime === timeSlot ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSpecificTime(timeSlot)}
-                      className="text-xs"
-                    >
-                      {timeSlot}
-                    </Button>
-                  ))}
-                </div>
                 <Input
                   type="time"
-                  placeholder="Or set specific time"
+                  placeholder="Set specific time"
                   className="h-8"
                   onChange={(e) => setSpecificTime(e.target.value)}
                 />
