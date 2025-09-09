@@ -145,12 +145,21 @@ const Saved = () => {
     ));
   };
 
+  const handleRevokeTrip = (tripId: string) => {
+    setTrips(prev => prev.map(trip => 
+      trip.id === tripId 
+        ? { ...trip, status: 'saved', scheduledDate: null }
+        : trip
+    ));
+  };
+
   const handleRemoveTrip = (tripId: string) => {
     setTrips(prev => prev.filter(trip => trip.id !== tripId));
   };
 
   const expandedTripData = trips.find(trip => trip.id === expandedTrip);
   const acceptedTrips = trips.filter(trip => trip.status === 'accepted');
+  const activeSavedTrips = trips.filter(trip => trip.status === 'saved');
 
   return (
     <div className="min-h-screen bg-background">
@@ -178,7 +187,7 @@ const Saved = () => {
           </Button>
         </div>
         <p className="text-muted-foreground">
-          {trips.length} experiences saved • {acceptedTrips.length} accepted
+          {activeSavedTrips.length} experiences saved • {acceptedTrips.length} accepted
         </p>
       </div>
 
@@ -198,9 +207,24 @@ const Saved = () => {
                     {trip.scheduledDate && new Date(trip.scheduledDate).toLocaleDateString()}
                   </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setExpandedTrip(trip.id)}>
-                  View
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setExpandedTrip(trip.id)}
+                  >
+                    View
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => handleRevokeTrip(trip.id)}
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Revoke
+                  </Button>
+                </div>
               </div>
             </Card>
           ))}
@@ -210,7 +234,7 @@ const Saved = () => {
       {/* List View */}
       {viewMode === 'list' && (
         <div className="px-6 space-y-4">
-          {trips.map((trip) => (
+          {activeSavedTrips.map((trip) => (
             <Card 
               key={trip.id} 
               className="overflow-hidden cursor-pointer hover:shadow-elevated transition-all"
@@ -369,7 +393,7 @@ const Saved = () => {
       />
 
       {/* Empty State */}
-      {trips.length === 0 && (
+      {activeSavedTrips.length === 0 && acceptedTrips.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
           <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
             <Calendar className="h-8 w-8 text-muted-foreground" />
