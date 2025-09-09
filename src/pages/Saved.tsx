@@ -1,0 +1,191 @@
+import React, { useState } from 'react';
+import { Plus, MoreVertical, Calendar, MapPin } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+
+const savedTrips = [
+  {
+    id: '1',
+    title: 'Sunset Coffee at Waterfront',
+    image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
+    cost: 25,
+    duration: '1.5 hours',
+    savedDate: '2024-01-15',
+    location: 'Pike Place Market',
+    category: 'Coffee & Walk'
+  },
+  {
+    id: '2',
+    title: 'Interactive Art Experience', 
+    image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96',
+    cost: 45,
+    duration: '2 hours',
+    savedDate: '2024-01-14',
+    location: 'Capitol Hill',
+    category: 'Creative Date'
+  },
+  {
+    id: '3',
+    title: 'Rooftop Brunch & Views',
+    image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0',
+    cost: 65,
+    duration: '2.5 hours',
+    savedDate: '2024-01-13', 
+    location: 'Belltown',
+    category: 'Brunch'
+  }
+];
+
+const Saved = () => {
+  const [selectedTrips, setSelectedTrips] = useState<string[]>([]);
+
+  const handleAddToBoard = (tripId: string) => {
+    // This would open board selection modal
+    console.log('Add to board:', tripId);
+  };
+
+  const toggleSelection = (tripId: string) => {
+    setSelectedTrips(prev => 
+      prev.includes(tripId) 
+        ? prev.filter(id => id !== tripId)
+        : [...prev, tripId]
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="px-6 pt-12 pb-6">
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-2xl font-bold">Saved</h1>
+          {selectedTrips.length > 0 && (
+            <Button 
+              size="sm" 
+              className="bg-gradient-primary"
+              onClick={() => console.log('Create board from selected')}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Create Board ({selectedTrips.length})
+            </Button>
+          )}
+        </div>
+        <p className="text-muted-foreground">
+          {savedTrips.length} experiences saved
+        </p>
+      </div>
+
+      {/* Saved Trips */}
+      <div className="px-6 space-y-4">
+        {savedTrips.map((trip) => (
+          <Card 
+            key={trip.id} 
+            className="overflow-hidden cursor-pointer hover:shadow-elevated transition-all"
+            onClick={() => toggleSelection(trip.id)}
+          >
+            <div className="flex">
+              {/* Image */}
+              <div className="relative w-24 h-24 flex-shrink-0">
+                <img
+                  src={trip.image}
+                  alt={trip.title}
+                  className="w-full h-full object-cover"
+                />
+                {selectedTrips.includes(trip.id) && (
+                  <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                    <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+                      <span className="text-primary-foreground text-sm">✓</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="font-semibold text-sm line-clamp-1">{trip.title}</h3>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddToBoard(trip.id);
+                    }}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-4 text-xs text-muted-foreground mb-2">
+                  <span>${trip.cost} per person</span>
+                  <span>{trip.duration}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <MapPin className="h-3 w-3" />
+                    <span>{trip.location}</span>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    {trip.category}
+                  </Badge>
+                </div>
+
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-xs text-muted-foreground">
+                    Saved {new Date(trip.savedDate).toLocaleDateString()}
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-xs h-7"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddToBoard(trip.id);
+                    }}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add to Board
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Empty State */}
+      {savedTrips.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+            <Calendar className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-semibold mb-2">No saved experiences yet</h3>
+          <p className="text-muted-foreground mb-4">
+            Start swiping right on experiences you love!
+          </p>
+          <Button className="bg-gradient-primary">
+            Discover Experiences
+          </Button>
+        </div>
+      )}
+
+      {/* Quick Actions */}
+      <div className="px-6 py-8">
+        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <Button variant="outline" className="h-12 flex-col gap-1">
+            <Plus className="h-4 w-4" />
+            <span className="text-xs">Create Board</span>
+          </Button>
+          <Button variant="outline" className="h-12 flex-col gap-1">
+            <Calendar className="h-4 w-4" />
+            <span className="text-xs">Plan Date</span>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Saved;
