@@ -67,16 +67,16 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-      <div className="bg-card w-full max-w-md mx-auto rounded-t-3xl animate-slide-up">
+      <div className="bg-card w-full max-w-md mx-auto rounded-t-3xl animate-slide-up max-h-[95vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border">
+        <div className="flex items-center justify-between p-6 border-b border-border flex-shrink-0">
           <h2 className="text-xl font-bold">Preferences</h2>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="h-5 w-5" />
           </Button>
         </div>
 
-        <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+        <div className="p-6 space-y-6 flex-1 overflow-y-auto">
           {/* Collaboration Mode */}
           <Card className="p-4 bg-gradient-warm/10">
             <div className="flex items-center justify-between mb-3">
@@ -380,10 +380,11 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
         </div>
 
         {/* Apply Button */}
-        <div className="p-6 border-t border-border">
+        <div className="p-6 border-t border-border flex-shrink-0">
           <Button 
-            className="w-full bg-gradient-primary hover:opacity-90" 
+            className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold" 
             onClick={onClose}
+            size="lg"
           >
             Apply Preferences
           </Button>
