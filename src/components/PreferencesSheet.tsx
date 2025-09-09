@@ -76,6 +76,17 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
           </Button>
         </div>
 
+        {/* Apply Button */}
+        <div className="p-6 pb-4 border-b border-border flex-shrink-0">
+          <Button 
+            className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold" 
+            onClick={onClose}
+            size="lg"
+          >
+            Apply Preferences
+          </Button>
+        </div>
+
         <div className="p-6 space-y-6 flex-1 overflow-y-auto">
           {/* Collaboration Mode */}
           <Card className="p-4 bg-gradient-warm/10">
@@ -377,17 +388,6 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
               ))}
             </div>
           </div>
-        </div>
-
-        {/* Apply Button */}
-        <div className="p-6 border-t border-border flex-shrink-0">
-          <Button 
-            className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold" 
-            onClick={onClose}
-            size="lg"
-          >
-            Apply Preferences
-          </Button>
         </div>
       </div>
     </div>
