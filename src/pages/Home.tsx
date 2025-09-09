@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Sliders, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TripCard } from '@/components/TripCard';
+import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
 import { toast } from '@/hooks/use-toast';
 
@@ -49,6 +50,7 @@ const Home = () => {
   const [currentTripIndex, setCurrentTripIndex] = useState(0);
   const [showPreferences, setShowPreferences] = useState(false);
   const [trips, setTrips] = useState(mockTrips);
+  const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
 
   const currentTrip = trips[currentTripIndex];
 
@@ -78,11 +80,7 @@ const Home = () => {
   };
 
   const handleExpand = () => {
-    // This would open the expanded card view
-    toast({
-      title: "Trip Details",
-      description: "Expanded view would open here",
-    });
+    setExpandedTrip(currentTrip.id);
   };
 
   const refreshTrips = () => {
@@ -208,6 +206,22 @@ const Home = () => {
         isOpen={showPreferences}
         onClose={() => setShowPreferences(false)}
       />
+
+      {/* Expanded Trip Card */}
+      {currentTrip && (
+        <TripCardExpanded
+          trip={currentTrip}
+          isOpen={expandedTrip === currentTrip.id}
+          onClose={() => setExpandedTrip(null)}
+          onAddToBoard={() => {
+            setExpandedTrip(null);
+            toast({
+              title: "Added to Board",
+              description: `${currentTrip.title} added to your board`,
+            });
+          }}
+        />
+      )}
     </div>
   );
 };

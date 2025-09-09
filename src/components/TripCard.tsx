@@ -110,23 +110,9 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className 
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
         
-        {/* Badges */}
-        <div className="absolute top-4 left-4 flex flex-wrap gap-2">
-          {trip.badges.map((badge) => (
-            <Badge 
-              key={badge} 
-              variant={getBadgeVariant(badge)}
-              className="flex items-center gap-1 bg-card/90 backdrop-blur-sm"
-            >
-              {getBadgeIcon(badge)}
-              <span className="text-xs">{badge}</span>
-            </Badge>
-          ))}
-        </div>
-
-        {/* Category */}
-        <div className="absolute top-4 right-4">
-          <Badge variant="outline" className="bg-card/90 backdrop-blur-sm">
+        {/* Category - moved to bottom corner for better readability */}
+        <div className="absolute bottom-4 right-4">
+          <Badge variant="outline" className="bg-card/90 backdrop-blur-sm text-xs">
             {trip.category}
           </Badge>
         </div>
@@ -139,6 +125,20 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className 
         <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
           {trip.whyItFits}
         </p>
+
+        {/* Badges - moved here for better readability */}
+        <div className="flex flex-wrap gap-1 mb-3">
+          {trip.badges.map((badge) => (
+            <Badge 
+              key={badge} 
+              variant={getBadgeVariant(badge)}
+              className="flex items-center gap-1 text-xs"
+            >
+              {getBadgeIcon(badge)}
+              <span>{badge}</span>
+            </Badge>
+          ))}
+        </div>
 
         {/* Stats */}
         <div className="flex items-center justify-between mb-4">

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { X, Users, User } from 'lucide-react';
+import { X, Users, User, Plus, Send, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 
 interface PreferencesSheetProps {
@@ -44,6 +46,11 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
   const [sharedBudget, setSharedBudget] = useState(true);
   const [sharedCategories, setSharedCategories] = useState(false);
   const [sharedTime, setSharedTime] = useState(true);
+  const [newUsername, setNewUsername] = useState('');
+  const [collaborators, setCollaborators] = useState([
+    { id: '1', username: 'sarah_k', name: 'Sarah', isActive: true },
+    { id: '2', username: 'mike_dev', name: 'Mike', isActive: false },
+  ]);
 
   if (!isOpen) return null;
 
@@ -70,12 +77,79 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
               </div>
               <Switch checked={isCollabMode} onCheckedChange={setIsCollabMode} />
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground mb-3">
               {isCollabMode 
                 ? 'Share preferences with friends to find perfect group activities'
                 : 'Find activities just for you'
               }
             </p>
+
+            {/* Collaborators Section */}
+            {isCollabMode && (
+              <div className="space-y-3">
+                {/* Add Collaborator */}
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter username"
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value)}
+                    className="flex-1 h-8 text-sm"
+                  />
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => {
+                      if (newUsername.trim()) {
+                        setCollaborators(prev => [...prev, {
+                          id: Date.now().toString(),
+                          username: newUsername.trim(),
+                          name: newUsername.trim(),
+                          isActive: false
+                        }]);
+                        setNewUsername('');
+                      }
+                    }}
+                  >
+                    <UserPlus className="h-3 w-3" />
+                  </Button>
+                  <Button size="sm" variant="outline">
+                    <Send className="h-3 w-3" />
+                  </Button>
+                </div>
+
+                {/* Collaborator List */}
+                {collaborators.length > 0 && (
+                  <div className="space-y-2">
+                    {collaborators.map((collaborator) => (
+                      <div key={collaborator.id} className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg">
+                        <Avatar className="w-6 h-6">
+                          <AvatarFallback className="text-xs">
+                            {collaborator.name.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              "text-xs font-medium",
+                              collaborator.isActive ? "text-foreground" : "text-muted-foreground"
+                            )}>
+                              @{collaborator.username}
+                            </span>
+                            <div className={cn(
+                              "w-2 h-2 rounded-full",
+                              collaborator.isActive ? "bg-primary" : "bg-muted-foreground"
+                            )} />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {collaborator.isActive ? 'Active' : 'Invited'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </Card>
 
           {/* Budget */}
@@ -93,7 +167,7 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
               <Slider
                 value={budget}
                 onValueChange={setBudget}
-                max={200}
+                max={1000}
                 min={10}
                 step={5}
                 className="w-full"
@@ -101,7 +175,7 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
               <div className="flex justify-between text-sm text-muted-foreground mt-2">
                 <span>$10</span>
                 <span className="font-semibold text-primary">${budget[0]}</span>
-                <span>$200+</span>
+                <span>{budget[0] >= 1000 ? '∞' : '$1000+'}</span>
               </div>
             </div>
           </div>

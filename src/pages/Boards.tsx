@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { BoardDetail } from '@/components/BoardDetail';
 
 const boards = [
   {
@@ -55,6 +56,17 @@ const boards = [
 
 const Boards = () => {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
+  
+  const selectedBoardData = boards.find(board => board.id === selectedBoard);
+
+  if (selectedBoard && selectedBoardData) {
+    return (
+      <BoardDetail 
+        board={selectedBoardData}
+        onBack={() => setSelectedBoard(null)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

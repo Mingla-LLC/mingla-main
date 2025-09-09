@@ -1,0 +1,235 @@
+import React, { useState } from 'react';
+import { ArrowLeft, MessageCircle, ThumbsUp, Send, MoreVertical } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
+import { TripCard } from '@/components/TripCard';
+import { TripCardExpanded } from '@/components/TripCardExpanded';
+
+interface BoardDetailProps {
+  board: {
+    id: string;
+    title: string;
+    description: string;
+    collaborators: Array<{
+      id: string;
+      name: string;
+      avatar: string;
+      initials: string;
+    }>;
+  };
+  onBack: () => void;
+}
+
+const mockTrips = [
+  {
+    id: '1',
+    title: 'Sunset Coffee at Waterfront',
+    image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
+    cost: 25,
+    duration: '1.5 hours',
+    travelTime: '8 min walk',
+    badges: ['Budget-Fit', 'Weather-OK', 'Verified'],
+    whyItFits: 'Perfect timing for golden hour, cozy café with outdoor seating, within your budget',
+    location: 'Pike Place Market',
+    category: 'Coffee & Walk'
+  },
+  {
+    id: '2',
+    title: 'Interactive Art Experience',
+    image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96',
+    cost: 45,
+    duration: '2 hours',
+    travelTime: '12 min drive',
+    badges: ['Creative', 'Weather-OK'],
+    whyItFits: 'Hands-on pottery class perfect for creative dates, includes materials and refreshments',
+    location: 'Capitol Hill',
+    category: 'Creative Date'
+  }
+];
+
+const discussions = [
+  {
+    id: '1',
+    user: { name: 'Sarah', avatar: 'https://images.unsplash.com/photo-1494790108755-2616b79444d7', initials: 'S' },
+    message: 'Love the coffee spot! Perfect for our group size.',
+    timestamp: '2 hours ago',
+    votes: 5,
+    hasVoted: false
+  },
+  {
+    id: '2',
+    user: { name: 'Mike', avatar: '', initials: 'M' },
+    message: 'The art experience looks amazing but might be over budget for some?',
+    timestamp: '1 hour ago',
+    votes: 2,
+    hasVoted: true
+  },
+  {
+    id: '3',
+    user: { name: 'You', avatar: '', initials: 'Y' },
+    message: 'What about Saturday around 3 PM for the coffee date?',
+    timestamp: '30 min ago',
+    votes: 3,
+    hasVoted: false
+  }
+];
+
+export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
+  const [selectedTrip, setSelectedTrip] = useState<string | null>(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [discussionList, setDiscussionList] = useState(discussions);
+
+  const selectedTripData = mockTrips.find(trip => trip.id === selectedTrip);
+
+  const handleSendMessage = () => {
+    if (newMessage.trim()) {
+      const newDiscussion = {
+        id: Date.now().toString(),
+        user: { name: 'You', avatar: '', initials: 'Y' },
+        message: newMessage,
+        timestamp: 'Just now',
+        votes: 0,
+        hasVoted: false
+      };
+      setDiscussionList(prev => [...prev, newDiscussion]);
+      setNewMessage('');
+    }
+  };
+
+  const handleVote = (discussionId: string) => {
+    setDiscussionList(prev => prev.map(discussion => 
+      discussion.id === discussionId 
+        ? { 
+            ...discussion, 
+            votes: discussion.hasVoted ? discussion.votes - 1 : discussion.votes + 1,
+            hasVoted: !discussion.hasVoted 
+          }
+        : discussion
+    ));
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="px-6 pt-12 pb-6 border-b border-border">
+        <div className="flex items-center gap-4 mb-4">
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex-1">
+            <h1 className="text-xl font-bold">{board.title}</h1>
+            <p className="text-sm text-muted-foreground">{board.description}</p>
+          </div>
+        </div>
+
+        {/* Collaborators */}
+        <div className="flex items-center gap-3">
+          <div className="flex -space-x-2">
+            {board.collaborators.map((collaborator) => (
+              <Avatar key={collaborator.id} className="w-8 h-8 border-2 border-background">
+                <AvatarImage src={collaborator.avatar} />
+                <AvatarFallback className="text-xs">
+                  {collaborator.initials}
+                </AvatarFallback>
+              </Avatar>
+            ))}
+          </div>
+          <span className="text-sm text-muted-foreground">
+            {board.collaborators.length} collaborators
+          </span>
+        </div>
+      </div>
+
+      {/* Trip Cards */}
+      <div className="px-6 py-6">
+        <h2 className="text-lg font-semibold mb-4">Trip Options</h2>
+        <div className="space-y-4">
+          {mockTrips.map((trip) => (
+            <div key={trip.id} className="relative">
+              <TripCard
+                trip={trip}
+                onSwipeRight={() => {}}
+                onSwipeLeft={() => {}}
+                onExpand={() => setSelectedTrip(trip.id)}
+                className="cursor-pointer hover:shadow-elevated transition-all"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Discussion Thread */}
+      <div className="px-6 pb-6">
+        <h2 className="text-lg font-semibold mb-4">Discussion</h2>
+        
+        <div className="space-y-4 mb-6">
+          {discussionList.map((discussion) => (
+            <Card key={discussion.id} className="p-4">
+              <div className="flex items-start gap-3">
+                <Avatar className="w-8 h-8">
+                  <AvatarImage src={discussion.user.avatar} />
+                  <AvatarFallback className="text-xs">
+                    {discussion.user.initials}
+                  </AvatarFallback>
+                </Avatar>
+                
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium">{discussion.user.name}</span>
+                    <span className="text-xs text-muted-foreground">{discussion.timestamp}</span>
+                  </div>
+                  <p className="text-sm text-foreground mb-3">{discussion.message}</p>
+                  
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleVote(discussion.id)}
+                      className={`h-7 gap-1 ${discussion.hasVoted ? 'text-primary' : 'text-muted-foreground'}`}
+                    >
+                      <ThumbsUp className="h-3 w-3" />
+                      <span className="text-xs">{discussion.votes}</span>
+                    </Button>
+                    <Button variant="ghost" size="sm">
+                      <MoreVertical className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        {/* Message Input */}
+        <div className="flex gap-2">
+          <Input
+            placeholder="Add to discussion..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+            className="flex-1"
+          />
+          <Button onClick={handleSendMessage} disabled={!newMessage.trim()}>
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Expanded Trip Card */}
+      {selectedTripData && (
+        <TripCardExpanded
+          trip={selectedTripData}
+          isOpen={!!selectedTrip}
+          onClose={() => setSelectedTrip(null)}
+          onAddToBoard={() => {
+            setSelectedTrip(null);
+            // Handle add to board logic
+          }}
+        />
+      )}
+    </div>
+  );
+};
