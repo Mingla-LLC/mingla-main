@@ -216,30 +216,15 @@ const Saved = () => {
                           <Button 
                             variant="outline" 
                             size="sm" 
-                            className="text-xs h-7"
+                            className="text-xs h-7 bg-primary/10 text-primary"
                             onClick={(e) => {
                               e.stopPropagation();
+                              // Finalize trip - accepting and finalizing are the same
                               handleAcceptTrip(trip.id);
                             }}
                           >
                             <Check className="h-3 w-3 mr-1" />
-                            Accept
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="text-xs h-7 bg-primary/10 text-primary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Finalize trip - add to calendar and collaborators' calendars
-                              setTrips(prev => prev.map(t => 
-                                t.id === trip.id 
-                                  ? { ...t, status: 'finalized', scheduledDate: new Date().toISOString().split('T')[0] }
-                                  : t
-                              ));
-                            }}
-                          >
-                            ✅ Finalize
+                            Finalize
                           </Button>
                           <Button 
                             variant="outline" 

@@ -38,7 +38,9 @@ const mockTrips = [
     votes: { for: 2, against: 0 },
     userVote: null, // null, 'for', 'against'
     finalized: false,
-    finalizedBy: []
+    finalizedBy: [], // user IDs who have clicked finalize
+    revokeRequests: [], // user IDs who requested to revoke
+    revokeRequestedBy: null
   },
   {
     id: '2',
@@ -53,8 +55,10 @@ const mockTrips = [
     category: 'Creative Date',
     votes: { for: 1, against: 1 },
     userVote: 'for',
-    finalized: false,
-    finalizedBy: []
+    finalized: true,
+    finalizedBy: ['user1', 'user2', 'user3'], // All collaborators have finalized
+    revokeRequests: [],
+    revokeRequestedBy: null
   }
 ];
 
@@ -150,23 +154,75 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
     const trip = trips.find(t => t.id === tripId);
     if (!trip) return;
 
-    setUserFinalized(prev => [...prev, tripId]);
-    
-    // Simulate all collaborators finalizing (in real app, this would be tracked per user)
-    setTrips(prev => prev.map(trip => 
-      trip.id === tripId 
-        ? { 
-            ...trip, 
-            finalized: true,
-            finalizedBy: [...trip.finalizedBy, 'You']
-          }
-        : trip
-    ));
+    const currentUserId = 'currentUser'; // In real app, get from auth
+    const totalCollaborators = board.collaborators.length + 1; // +1 for board creator
+
+    setTrips(prev => prev.map(t => {
+      if (t.id === tripId) {
+        const newFinalizedBy = t.finalizedBy.includes(currentUserId) 
+          ? t.finalizedBy 
+          : [...t.finalizedBy, currentUserId];
+        
+        // Check if all collaborators have finalized
+        const allFinalized = newFinalizedBy.length >= totalCollaborators;
+        
+        return {
+          ...t,
+          finalizedBy: newFinalizedBy,
+          finalized: allFinalized
+        };
+      }
+      return t;
+    }));
+  };
+
+  const handleRevokeRequest = (tripId: string) => {
+    const currentUserId = 'currentUser';
+    const totalCollaborators = board.collaborators.length + 1;
+
+    setTrips(prev => prev.map(t => {
+      if (t.id === tripId && t.finalized) {
+        const hasRequested = t.revokeRequests.includes(currentUserId);
+        const newRevokeRequests = hasRequested 
+          ? t.revokeRequests.filter(id => id !== currentUserId)
+          : [...t.revokeRequests, currentUserId];
+        
+        // If all collaborators agree to revoke, reset to voting
+        const allAgreeToRevoke = newRevokeRequests.length >= totalCollaborators;
+        
+        if (allAgreeToRevoke) {
+          return {
+            ...t,
+            finalized: false,
+            finalizedBy: [],
+            revokeRequests: [],
+            revokeRequestedBy: null
+          };
+        }
+        
+        return {
+          ...t,
+          revokeRequests: newRevokeRequests,
+          revokeRequestedBy: newRevokeRequests.length > 0 ? newRevokeRequests[0] : null
+        };
+      }
+      return t;
+    }));
   };
 
   const canChangeVote = (tripId: string) => {
     const trip = trips.find(t => t.id === tripId);
-    return trip && !trip.finalized && !userFinalized.includes(tripId);
+    return trip && !trip.finalized;
+  };
+
+  const getUserFinalizedStatus = (tripId: string) => {
+    const trip = trips.find(t => t.id === tripId);
+    return trip?.finalizedBy.includes('currentUser') || false;
+  };
+
+  const getUserRevokeStatus = (tripId: string) => {
+    const trip = trips.find(t => t.id === tripId);
+    return trip?.revokeRequests.includes('currentUser') || false;
   };
 
   return (
@@ -228,47 +284,75 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                       </Badge>
                       {trip.finalized && (
                         <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
-                          ✅ Finalized
+                          ✅ Finalized & Added to Calendars
+                        </Badge>
+                      )}
+                      {trip.revokeRequestedBy && (
+                        <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700">
+                          🔄 Revoke Requested ({trip.revokeRequests.length}/{board.collaborators.length + 1})
+                        </Badge>
+                      )}
+                      {!trip.finalized && trip.finalizedBy.length > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          Finalizing... ({trip.finalizedBy.length}/{board.collaborators.length + 1})
                         </Badge>
                       )}
                     </div>
                     
-                    {!trip.finalized && (
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      {!trip.finalized && (
+                        <>
+                          <Button
+                            variant={trip.userVote === 'for' ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handleTripVote(trip.id, 'for')}
+                            disabled={!canChangeVote(trip.id)}
+                            className="h-7 px-2"
+                          >
+                            👍
+                          </Button>
+                          <Button
+                            variant={trip.userVote === 'against' ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handleTripVote(trip.id, 'against')}
+                            disabled={!canChangeVote(trip.id)}
+                            className="h-7 px-2"
+                          >
+                            👎
+                          </Button>
+                          <Button
+                            variant={getUserFinalizedStatus(trip.id) ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handleFinalize(trip.id)}
+                            className="h-7 text-xs"
+                          >
+                            {getUserFinalizedStatus(trip.id) ? '✅ Finalized' : 'Finalize'}
+                          </Button>
+                        </>
+                      )}
+                      
+                      {trip.finalized && (
                         <Button
-                          variant={trip.userVote === 'for' ? "default" : "outline"}
+                          variant={getUserRevokeStatus(trip.id) ? "default" : "outline"}
                           size="sm"
-                          onClick={() => handleTripVote(trip.id, 'for')}
-                          disabled={!canChangeVote(trip.id)}
-                          className="h-7 px-2"
-                        >
-                          👍
-                        </Button>
-                        <Button
-                          variant={trip.userVote === 'against' ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleTripVote(trip.id, 'against')}
-                          disabled={!canChangeVote(trip.id)}
-                          className="h-7 px-2"
-                        >
-                          👎
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleFinalize(trip.id)}
-                          disabled={userFinalized.includes(trip.id)}
+                          onClick={() => handleRevokeRequest(trip.id)}
                           className="h-7 text-xs"
                         >
-                          {userFinalized.includes(trip.id) ? 'Finalized' : 'Finalize'}
+                          {getUserRevokeStatus(trip.id) ? '🔄 Revoke Requested' : '🔄 Request Revoke'}
                         </Button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                   
-                  {trip.finalized && (
+                  {trip.finalized && !trip.revokeRequestedBy && (
                     <p className="text-xs text-muted-foreground">
                       This experience has been added to everyone's calendar
+                    </p>
+                  )}
+                  
+                  {trip.revokeRequestedBy && (
+                    <p className="text-xs text-orange-600">
+                      Revoke requested - {trip.revokeRequests.length} of {board.collaborators.length + 1} collaborators agree
                     </p>
                   )}
                 </div>
