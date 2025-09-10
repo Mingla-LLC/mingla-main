@@ -215,35 +215,6 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* Username Settings */}
-      <div className="px-6 mb-6">
-        <Card className="p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <UserCog className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold">Profile Settings</h2>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="username" className="text-sm font-medium">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
-                className="mt-2"
-              />
-            </div>
-            <Button 
-              onClick={handleSaveProfile} 
-              disabled={saving || !username.trim()}
-              className="w-full"
-            >
-              {saving ? 'Saving...' : 'Save Profile'}
-            </Button>
-          </div>
-        </Card>
-      </div>
 
       {/* Currency Settings */}
       <div className="px-6 mb-6">

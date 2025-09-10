@@ -1,37 +1,53 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, User } from 'lucide-react';
+import { ArrowLeft, Edit2, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useNavigate } from 'react-router-dom';
 import type { Database } from '@/integrations/supabase/types';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type ProfileInsert = Database['public']['Tables']['profiles']['Insert'];
 type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
 
 const Profiles = () => {
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const navigate = useNavigate();
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
-  const [formData, setFormData] = useState({ username: '' });
+  const [formData, setFormData] = useState({ 
+    username: '', 
+    firstName: '', 
+    lastName: '' 
+  });
 
   useEffect(() => {
-    fetchProfiles();
+    fetchUserAndProfile();
   }, []);
 
-  const fetchProfiles = async () => {
+  const fetchUserAndProfile = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        navigate('/auth');
+        return;
+      }
+      
+      setUser(user);
+      
+      const { data: profileData, error } = await supabase
         .from('profiles')
         .select('*')
-        .order('created_at', { ascending: false });
+        .eq('id', user.id)
+        .maybeSingle();
 
       if (error) {
         toast({
@@ -42,11 +58,18 @@ const Profiles = () => {
         return;
       }
 
-      setProfiles(data || []);
+      setProfile(profileData);
+      if (profileData) {
+        setFormData({
+          username: profileData.username || '',
+          firstName: profileData.first_name || '',
+          lastName: profileData.last_name || ''
+        });
+      }
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to fetch profiles",
+        description: "Failed to fetch profile",
         variant: "destructive"
       });
     } finally {
@@ -54,10 +77,40 @@ const Profiles = () => {
     }
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleUpdateEmail = async (newEmail: string) => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase.auth.updateUser({
+        email: newEmail
+      });
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Email Update",
+        description: "Check your new email for confirmation",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update email",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.username.trim()) {
+    if (!user || !formData.username.trim()) {
       toast({
         title: "Error",
         description: "Username is required",
@@ -67,66 +120,18 @@ const Profiles = () => {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        toast({
-          title: "Error",
-          description: "You must be logged in to create a profile",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      const profileData: ProfileInsert = {
+      const updateData = {
         id: user.id,
         username: formData.username.trim(),
+        first_name: formData.firstName.trim() || null,
+        last_name: formData.lastName.trim() || null,
       };
 
       const { error } = await supabase
         .from('profiles')
-        .insert([profileData]);
-
-      if (error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive"
+        .upsert(updateData, {
+          onConflict: 'id'
         });
-        return;
-      }
-
-      toast({
-        title: "Success",
-        description: "Profile created successfully!",
-      });
-
-      setFormData({ username: '' });
-      setIsCreateOpen(false);
-      fetchProfiles();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create profile",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!editingProfile || !formData.username.trim()) return;
-
-    try {
-      const updateData: ProfileUpdate = {
-        username: formData.username.trim(),
-      };
-
-      const { error } = await supabase
-        .from('profiles')
-        .update(updateData)
-        .eq('id', editingProfile.id);
 
       if (error) {
         toast({
@@ -142,10 +147,8 @@ const Profiles = () => {
         description: "Profile updated successfully!",
       });
 
-      setFormData({ username: '' });
       setIsEditOpen(false);
-      setEditingProfile(null);
-      fetchProfiles();
+      fetchUserAndProfile();
     } catch (error) {
       toast({
         title: "Error",
@@ -155,42 +158,7 @@ const Profiles = () => {
     }
   };
 
-  const handleDelete = async (profile: Profile) => {
-    if (!confirm(`Are you sure you want to delete ${profile.username}?`)) return;
-
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', profile.id);
-
-      if (error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive"
-        });
-        return;
-      }
-
-      toast({
-        title: "Success",
-        description: "Profile deleted successfully!",
-      });
-
-      fetchProfiles();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete profile",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const openEditDialog = (profile: Profile) => {
-    setEditingProfile(profile);
-    setFormData({ username: profile.username });
+  const openEditDialog = () => {
     setIsEditOpen(true);
   };
 
@@ -210,135 +178,127 @@ const Profiles = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-accent/10 p-6">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        {/* Header with Back Navigation */}
+        <div className="flex items-center gap-4 mb-8">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => navigate('/profile')}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground mb-2">User Profiles</h1>
-            <p className="text-muted-foreground">Manage user profiles</p>
+            <h1 className="text-2xl font-bold text-foreground">Manage Profile</h1>
+            <p className="text-muted-foreground">Update your profile information</p>
           </div>
-          
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Create Profile
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Profile</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4">
-                <div>
-                  <Label htmlFor="create-username">Username</Label>
-                  <Input
-                    id="create-username"
-                    type="text"
-                    value={formData.username}
-                    onChange={(e) => setFormData({ username: e.target.value })}
-                    placeholder="Enter username"
-                    required
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => setIsCreateOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit">Create Profile</Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
         </div>
 
-        {/* Profiles Grid */}
-        <div className="grid gap-4">
-          {profiles.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <User className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-foreground mb-2">No profiles yet</h3>
-                <p className="text-muted-foreground mb-4">Create your first profile to get started</p>
-                <Button onClick={() => setIsCreateOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Profile
+        {/* User Profile Management */}
+        {user && (
+          <Card className="mb-6">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <User className="h-6 w-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <CardTitle className="text-xl">
+                    {profile?.first_name && profile?.last_name 
+                      ? `${profile.first_name} ${profile.last_name}` 
+                      : profile?.username || 'User'}
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">{user.email}</p>
+                  {profile?.created_at && (
+                    <p className="text-xs text-muted-foreground">
+                      Member since {new Date(profile.created_at).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openEditDialog}
+                >
+                  <Edit2 className="h-4 w-4 mr-2" />
+                  Edit Profile
                 </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            profiles.map((profile) => (
-              <Card key={profile.id} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <User className="h-5 w-5 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-lg">{profile.username}</CardTitle>
-                        <p className="text-sm text-muted-foreground">
-                          Created {new Date(profile.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditDialog(profile)}
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(profile)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="text-xs text-muted-foreground font-mono">
-                    ID: {profile.id}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+              </div>
+            </CardHeader>
+          </Card>
+        )}
 
-        {/* Edit Dialog */}
+        {/* Edit Profile Dialog */}
         <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Edit Profile</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleUpdate} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="first-name">First Name</Label>
+                  <Input
+                    id="first-name"
+                    type="text"
+                    value={formData.firstName}
+                    onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                    placeholder="Enter first name"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="last-name">Last Name</Label>
+                  <Input
+                    id="last-name"
+                    type="text"
+                    value={formData.lastName}
+                    onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                    placeholder="Enter last name"
+                  />
+                </div>
+              </div>
               <div>
-                <Label htmlFor="edit-username">Username</Label>
+                <Label htmlFor="username">Username</Label>
                 <Input
-                  id="edit-username"
+                  id="username"
                   type="text"
                   value={formData.username}
-                  onChange={(e) => setFormData({ username: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
                   placeholder="Enter username"
                   required
                 />
               </div>
-              <div className="flex justify-end gap-2">
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="email"
+                    type="email"
+                    defaultValue={user?.email || ''}
+                    placeholder="Enter new email"
+                    onChange={(e) => {
+                      if (e.target.value !== user?.email) {
+                        handleUpdateEmail(e.target.value);
+                      }
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Changing email requires verification
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 pt-4">
                 <Button 
                   type="button" 
                   variant="outline" 
                   onClick={() => {
                     setIsEditOpen(false);
-                    setEditingProfile(null);
-                    setFormData({ username: '' });
+                    setFormData({
+                      username: profile?.username || '',
+                      firstName: profile?.first_name || '',
+                      lastName: profile?.last_name || ''
+                    });
                   }}
                 >
                   Cancel
