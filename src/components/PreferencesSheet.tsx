@@ -14,12 +14,35 @@ interface PreferencesSheetProps {
   isOpen: boolean;
   onClose: () => void;
   activePreferences?: {
-    budget: number;
+    budgetRange: [number, number];
     categories: string[];
     time: string;
     travel: string;
+    isCollaborating?: boolean;
+    activeCollaborators?: number;
+    activeCollaboratorsList?: Array<{
+      id: string;
+      username: string;
+      name: string;
+      avatar: string;
+      initials: string;
+    }>;
   };
-  onPreferencesUpdate?: (preferences: any) => void;
+  onPreferencesUpdate?: (preferences: {
+    budgetRange: [number, number];
+    categories: string[];
+    time: string;
+    travel: string;
+    isCollaborating: boolean;
+    activeCollaborators: number;
+    activeCollaboratorsList: Array<{
+      id: string;
+      username: string;
+      name: string;
+      avatar: string;
+      initials: string;
+    }>;
+  }) => void;
 }
 
 const categories = [
@@ -45,7 +68,7 @@ const travelModes = [
 ];
 
 export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPreferencesUpdate }: PreferencesSheetProps) => {
-  const [budget, setBudget] = useState([activePreferences?.budget || 50]);
+  const [budget, setBudget] = useState<[number, number]>(activePreferences?.budgetRange || [10, 50]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(activePreferences?.categories || ['Coffee & Walk']);
   const [selectedTime, setSelectedTime] = useState(activePreferences?.time || 'Now');
   const [selectedTravel, setSelectedTravel] = useState(activePreferences?.travel || 'Walk');
@@ -99,13 +122,19 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
             onClick={() => {
               const activeUsers = allUsers.filter(u => u.isActive);
               onPreferencesUpdate?.({
-                budget: budget[0],
+                budgetRange: budget,
                 categories: selectedCategories,
                 time: selectedTime,
                 travel: selectedTravel,
                 isCollaborating: isCollabMode,
                 activeCollaborators: isCollabMode ? activeUsers.length : 0,
-                activeCollaboratorsList: isCollabMode ? activeUsers : []
+                activeCollaboratorsList: isCollabMode ? activeUsers.map(u => ({
+                  id: u.id,
+                  username: u.username,
+                  name: u.name,
+                  avatar: u.avatar,
+                  initials: u.name.split(' ').map(n => n[0]).join('')
+                })) : []
               });
               onClose();
             }}
@@ -131,13 +160,19 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                   setIsCollabMode(enabled);
                   const activeUsers = allUsers.filter(u => u.isActive);
                   onPreferencesUpdate?.({
-                    budget: budget[0],
+                    budgetRange: budget,
                     categories: selectedCategories,
                     time: selectedTime,
                     travel: selectedTravel,
                     isCollaborating: enabled,
                     activeCollaborators: enabled ? activeUsers.length : 0,
-                    activeCollaboratorsList: enabled ? activeUsers : []
+                    activeCollaboratorsList: enabled ? activeUsers.map(u => ({
+                      id: u.id,
+                      username: u.username,
+                      name: u.name,
+                      avatar: u.avatar,
+                      initials: u.name.split(' ').map(n => n[0]).join('')
+                    })) : []
                   });
                 }} 
               />
@@ -214,13 +249,19 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                               // Update preferences
                               const activeUsers = updatedUsers.filter(u => u.isActive);
                               onPreferencesUpdate?.({
-                                budget: budget[0],
+                                budgetRange: budget,
                                 categories: selectedCategories,
                                 time: selectedTime,
                                 travel: selectedTravel,
                                 isCollaborating: activeUsers.length > 0,
                                 activeCollaborators: activeUsers.length,
-                                activeCollaboratorsList: activeUsers
+                activeCollaboratorsList: activeUsers.map(u => ({
+                  id: u.id,
+                  username: u.username,
+                  name: u.name,
+                  avatar: u.avatar,
+                  initials: u.name.split(' ').map(n => n[0]).join('')
+                }))
                               });
                             }}
                             className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
@@ -309,13 +350,19 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                             );
                             const activeUsers = updatedUsers.filter(u => u.isActive);
                             onPreferencesUpdate?.({
-                              budget: budget[0],
+                              budgetRange: budget,
                               categories: selectedCategories,
                               time: selectedTime,
                               travel: selectedTravel,
                               isCollaborating: activeUsers.length > 0,
                               activeCollaborators: activeUsers.length,
-                              activeCollaboratorsList: activeUsers
+                    activeCollaboratorsList: activeUsers.map(u => ({
+                      id: u.id,
+                      username: u.username,
+                      name: u.name,
+                      avatar: u.avatar,
+                      initials: u.name.split(' ').map(n => n[0]).join('')
+                    }))
                             });
                           }, 2000);
                         } else {
@@ -376,13 +423,19 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                           // Update preferences with new active collaborators
                           const activeUsers = updatedUsers.filter(u => u.isActive);
                           onPreferencesUpdate?.({
-                            budget: budget[0],
+                            budgetRange: budget,
                             categories: selectedCategories,
                             time: selectedTime,
                             travel: selectedTravel,
                             isCollaborating: activeUsers.length > 0,
                             activeCollaborators: activeUsers.length,
-                            activeCollaboratorsList: activeUsers
+                                activeCollaboratorsList: activeUsers.map(u => ({
+                                  id: u.id,
+                                  username: u.username,
+                                  name: u.name,
+                                  avatar: u.avatar,
+                                  initials: u.name.split(' ').map(n => n[0]).join('')
+                                }))
                           });
                           
                           // Also add to input if not already there
@@ -440,7 +493,7 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
             <div className="px-2">
               <Slider
                 value={budget}
-                onValueChange={setBudget}
+                onValueChange={(value) => setBudget(value as [number, number])}
                 max={10000}
                 min={10}
                 step={10}
@@ -448,8 +501,8 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
               />
               <div className="flex justify-between text-sm text-muted-foreground mt-2">
                 <span>$10</span>
-                <span className="font-semibold text-primary">${budget[0]}</span>
-                <span>{budget[0] >= 10000 ? '∞' : '$10000+'}</span>
+                <span className="font-semibold text-primary">${budget[0]} - ${budget[1]}</span>
+                <span>{budget[1] >= 10000 ? '∞' : '$10000+'}</span>
               </div>
             </div>
           </div>

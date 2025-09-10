@@ -47,6 +47,22 @@ const mockTrips = [
   }
 ];
 
+interface ActivePreferences {
+  budgetRange: [number, number];
+  categories: string[];
+  time: string;
+  travel: string;
+  isCollaborating: boolean;
+  activeCollaborators: number;
+  activeCollaboratorsList: Array<{
+    id: string;
+    username: string;
+    name: string;
+    avatar: string;
+    initials: string;
+  }>;
+}
+
 const Home = () => {
   const [currentTripIndex, setCurrentTripIndex] = useState(0);
   const [showPreferences, setShowPreferences] = useState(false);
@@ -80,8 +96,8 @@ const Home = () => {
   ]);
   
   // Preference states
-  const [activePreferences, setActivePreferences] = useState({
-    budget: 50,
+  const [activePreferences, setActivePreferences] = useState<ActivePreferences>({
+    budgetRange: [10, 50] as [number, number],
     categories: ['Coffee & Walk'],
     time: 'Now',
     travel: 'Walking',
@@ -219,11 +235,11 @@ const Home = () => {
                 <div className="w-4 h-4 rounded-full bg-gradient-to-r from-green-400 to-green-600 flex items-center justify-center">
                   <span className="text-xs">💰</span>
                 </div>
-                <span className="text-xs text-muted-foreground">Under ${activePreferences.budget}</span>
+                <span className="text-xs text-muted-foreground">${activePreferences.budgetRange[0]} - ${activePreferences.budgetRange[1]}</span>
                 <button 
                   className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
                   onClick={() => {
-                    setActivePreferences(prev => ({ ...prev, budget: 10000 }));
+                    setActivePreferences(prev => ({ ...prev, budgetRange: [10, 10000] as [number, number] }));
                     toast({
                       title: "Preference updated",
                       description: "Budget filter removed",
