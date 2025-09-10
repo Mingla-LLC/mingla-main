@@ -639,18 +639,24 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
               </div>
               
               {travelConstraint === 'time' ? (
-                  <div className="space-y-2">
+                <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Maximum travel time</Label>
                   <div className="flex items-center gap-3">
                     <Slider
                       value={[travelTime]}
                       onValueChange={(value) => setTravelTime(value[0])}
                       max={20000}
-                      min={5}
-                      step={5}
+                      min={0.001}
+                      step={travelTime < 1 ? 0.001 : travelTime < 60 ? 1 : 60}
                       className="flex-1"
                     />
-                    <span className="text-sm font-medium min-w-[3rem]">{travelTime} min</span>
+                    <span className="text-sm font-medium min-w-[4rem]">
+                      {travelTime >= 1440 
+                        ? `${Math.round(travelTime / 1440)} ${Math.round(travelTime / 1440) === 1 ? 'day' : 'days'}`
+                        : travelTime >= 60 
+                        ? `${Math.round(travelTime / 60)} ${Math.round(travelTime / 60) === 1 ? 'hr' : 'hrs'}`
+                        : `${travelTime} min`}
+                    </span>
                   </div>
                 </div>
               ) : (
@@ -663,11 +669,11 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                       value={[travelDistance]}
                       onValueChange={(value) => setTravelDistance(value[0])}
                       max={20000}
-                      min={measurementSystem === 'metric' ? 1 : 0.5}
-                      step={measurementSystem === 'metric' ? 1 : 0.5}
+                      min={0.001}
+                      step={travelDistance < 1 ? 0.001 : measurementSystem === 'metric' ? 1 : 0.5}
                       className="flex-1"
                     />
-                    <span className="text-sm font-medium min-w-[3rem]">
+                    <span className="text-sm font-medium min-w-[4rem]">
                       {travelDistance} {measurementSystem === 'metric' ? 'km' : 'mi'}
                     </span>
                   </div>
