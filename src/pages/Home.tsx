@@ -7,6 +7,8 @@ import { PreferencesSheet } from '@/components/PreferencesSheet';
 import { CollaborationRequestDialog } from '@/components/CollaborationRequestDialog';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { formatCurrency } from '@/utils/currency';
 import type { User } from '@supabase/supabase-js';
 
 // Mock data for demo
@@ -74,6 +76,7 @@ const Home = () => {
   const [showCollaborationRequests, setShowCollaborationRequests] = useState(false);
   const [measurementSystem, setMeasurementSystem] = useState('metric');
   const [user, setUser] = useState<User | null>(null);
+  const { profile } = useUserProfile();
   const [collaborationRequests, setCollaborationRequests] = useState<Array<{
     id: string;
     from: {
@@ -323,7 +326,7 @@ const Home = () => {
                 <div className="w-4 h-4 rounded-full bg-gradient-to-r from-green-400 to-green-600 flex items-center justify-center">
                   <span className="text-xs">💰</span>
                 </div>
-                <span className="text-xs text-muted-foreground">${activePreferences.budgetRange[0]} - ${activePreferences.budgetRange[1]}</span>
+                <span className="text-xs text-muted-foreground">{formatCurrency(activePreferences.budgetRange[0], profile?.currency)} - {formatCurrency(activePreferences.budgetRange[1], profile?.currency)}</span>
                 <button 
                   className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
                   onClick={() => {

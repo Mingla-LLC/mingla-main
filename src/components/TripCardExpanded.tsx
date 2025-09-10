@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { formatCurrency } from '@/utils/currency';
 
 interface TripCardExpandedProps {
   trip: {
@@ -41,6 +43,8 @@ export const TripCardExpanded = ({
   onAddToBoard,
   showAcceptButton = false 
 }: TripCardExpandedProps) => {
+  const { profile } = useUserProfile();
+  
   if (!isOpen) return null;
 
   return (
@@ -78,7 +82,7 @@ export const TripCardExpanded = ({
             <div className="flex items-center gap-4 text-sm text-white/90">
               <div className="flex items-center gap-1">
                 <DollarSign className="h-4 w-4" />
-                <span>${trip.cost} per person</span>
+                <span>{formatCurrency(trip.cost, profile?.currency)} per person</span>
               </div>
               <div className="flex items-center gap-1">
                 <Clock className="h-4 w-4" />

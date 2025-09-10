@@ -9,6 +9,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { formatCurrency } from '@/utils/currency';
 
 interface PreferencesSheetProps {
   isOpen: boolean;
@@ -91,6 +93,8 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
     { id: '1', username: 'sarah_k', name: 'Sarah', isActive: true, avatar: 'https://images.unsplash.com/photo-1494790108755-2616b79444d7' },
     { id: '2', username: 'mike_dev', name: 'Mike', isActive: false, avatar: '' },
   ]);
+  
+  const { profile } = useUserProfile();
   
   // Add dummy users for tagging demo (same as BoardDetail)
   const allUsers = [
@@ -504,9 +508,9 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                 className="w-full"
               />
               <div className="flex justify-between text-sm text-muted-foreground mt-2">
-                <span>$10</span>
-                <span className="font-semibold text-primary">${budget[0]} - ${budget[1]}</span>
-                <span>{budget[1] >= 10000 ? '∞' : '$10000+'}</span>
+                <span>{formatCurrency(10, profile?.currency)}</span>
+                <span className="font-semibold text-primary">{formatCurrency(budget[0], profile?.currency)} - {formatCurrency(budget[1], profile?.currency)}</span>
+                <span>{budget[1] >= 10000 ? '∞' : `${formatCurrency(10000, profile?.currency)}+`}</span>
               </div>
             </div>
           </div>

@@ -210,25 +210,41 @@ const AccountSettings = () => {
     setSettingsLoading(true);
     
     try {
-      const { error } = await supabase
+      // First, upsert the profile to ensure it exists
+      const { error: upsertError } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: user.id,
+          username: user.email?.split('@')[0] || 'user',
           currency,
           measurement_system: measurementSystem
-        })
-        .eq('id', user.id);
-      
-      if (error) {
-        toast({
-          title: "Error saving settings",
-          description: error.message,
-          variant: "destructive"
         });
-      } else {
-        toast({
-          title: "Settings saved successfully"
-        });
+        
+      if (upsertError) {
+        console.error('Upsert error:', upsertError);
+        // If upsert fails, try update
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
+            currency,
+            measurement_system: measurementSystem
+          })
+          .eq('id', user.id);
+          
+        if (updateError) {
+          toast({
+            title: "Error saving settings",
+            description: updateError.message,
+            variant: "destructive"
+          });
+          return;
+        }
       }
+      
+      toast({
+        title: "Settings saved successfully",
+        description: "Your preferences will now be used throughout the app"
+      });
     } catch (error) {
       toast({
         title: "Error saving settings",
@@ -454,12 +470,20 @@ const AccountSettings = () => {
                   <SelectItem value="PEN">S/ PEN - Peruvian Sol</SelectItem>
                   <SelectItem value="UYU">$ UYU - Uruguayan Peso</SelectItem>
                   <SelectItem value="ARS">$ ARS - Argentine Peso</SelectItem>
+                  <SelectItem value="NGN">₦ NGN - Nigerian Naira</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <p className="text-xs text-muted-foreground">
               All prices shown as "per person" in your selected currency
             </p>
+            <Button 
+              onClick={handleSaveSettings}
+              disabled={settingsLoading}
+              className="w-full mt-3"
+            >
+              {settingsLoading ? 'Saving...' : 'Save Preferences'}
+            </Button>
           </div>
         </Card>
       </div>
@@ -557,6 +581,13 @@ const AccountSettings = () => {
           <p className="text-xs text-muted-foreground mt-3">
             These settings apply when you join collaborative planning sessions
           </p>
+          <Button 
+            onClick={handleSaveSettings}
+            disabled={settingsLoading}
+            className="w-full mt-3"
+          >
+            {settingsLoading ? 'Saving...' : 'Save Preferences'}
+          </Button>
         </Card>
       </div>
 

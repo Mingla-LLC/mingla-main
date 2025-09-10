@@ -4,6 +4,8 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { formatCurrency } from '@/utils/currency';
 
 interface TripCardProps {
   trip: {
@@ -30,6 +32,7 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [isAnimating, setIsAnimating] = useState(false);
+  const { profile } = useUserProfile();
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (isAnimating || disableSwipe) return;
@@ -196,7 +199,7 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-1">
               <DollarSign className="h-4 w-4" />
-              <span>{trip.cost} per person</span>
+              <span>{formatCurrency(trip.cost, profile?.currency)} per person</span>
             </div>
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
