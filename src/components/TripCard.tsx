@@ -199,7 +199,7 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-1">
               <DollarSign className="h-4 w-4" />
-              <span>{formatCurrency(trip.cost, profile?.currency)} per person</span>
+              <span>{formatCurrency(trip.cost, profile?.currency || 'USD')} per person</span>
             </div>
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4" />

@@ -326,7 +326,7 @@ const Home = () => {
                 <div className="w-4 h-4 rounded-full bg-gradient-to-r from-green-400 to-green-600 flex items-center justify-center">
                   <span className="text-xs">💰</span>
                 </div>
-                <span className="text-xs text-muted-foreground">{formatCurrency(activePreferences.budgetRange[0], profile?.currency)} - {formatCurrency(activePreferences.budgetRange[1], profile?.currency)}</span>
+                <span className="text-xs text-muted-foreground">{formatCurrency(activePreferences.budgetRange[0], profile?.currency || 'USD')} - {formatCurrency(activePreferences.budgetRange[1], profile?.currency || 'USD')}</span>
                 <button 
                   className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
                   onClick={() => {

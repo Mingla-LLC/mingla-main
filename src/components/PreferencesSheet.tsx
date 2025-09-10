@@ -508,9 +508,9 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                 className="w-full"
               />
               <div className="flex justify-between text-sm text-muted-foreground mt-2">
-                <span>{formatCurrency(10, profile?.currency)}</span>
-                <span className="font-semibold text-primary">{formatCurrency(budget[0], profile?.currency)} - {formatCurrency(budget[1], profile?.currency)}</span>
-                <span>{budget[1] >= 10000 ? '∞' : `${formatCurrency(10000, profile?.currency)}+`}</span>
+                <span>{formatCurrency(10, profile?.currency || 'USD')}</span>
+                <span className="font-semibold text-primary">{formatCurrency(budget[0], profile?.currency || 'USD')} - {formatCurrency(budget[1], profile?.currency || 'USD')}</span>
+                <span>{budget[1] >= 10000 ? '∞' : `${formatCurrency(10000, profile?.currency || 'USD')}+`}</span>
               </div>
             </div>
           </div>
