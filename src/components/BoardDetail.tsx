@@ -294,20 +294,12 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                       >
                         {trip.votes.for} 👍 {trip.votes.against} 👎
                       </Badge>
-                      {trip.finalized && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-primary/20 to-primary/10 rounded-full border border-primary/20">
-                          <span className="text-xs font-medium text-primary">Confirmed</span>
-                        </div>
-                      )}
-                      {!trip.finalized && trip.finalizeRequests && trip.finalizeRequests.length > 0 && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-500/10 to-green-500/10 rounded-full border border-blue-300/30">
-                          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-                          <span className="text-xs font-medium text-blue-700">
-                            {trip.finalizeRequests.length}/{board.collaborators.length + 1} requesting finalization
-                          </span>
-                        </div>
-                      )}
-                    </div>
+                       {trip.finalized && (
+                         <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-primary/20 to-primary/10 rounded-full border border-primary/20">
+                           <span className="text-xs font-medium text-primary">Confirmed</span>
+                         </div>
+                       )}
+                     </div>
                     
                     <div className="flex items-center gap-2">
                       {!trip.finalized && (
