@@ -424,18 +424,21 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
               className="pr-8"
             />
             {newMessage.includes('@') && (
-              <div className="absolute top-full left-0 right-0 bg-card border border-border rounded-md mt-1 z-[60] shadow-lg">
-                {allCollaborators.filter(c => 
-                  newMessage.toLowerCase().includes('@' + c.name.toLowerCase().substring(0, newMessage.split('@').pop()?.length || 0))
-                ).slice(0, 3).map((collaborator) => (
+              <div className="absolute bottom-full left-0 right-0 bg-card border border-border rounded-md mb-1 z-[60] shadow-lg max-h-40 overflow-y-auto">
+                {allCollaborators.filter(c => {
+                  const searchTerm = newMessage.split('@').pop()?.toLowerCase() || '';
+                  return c.name.toLowerCase().includes(searchTerm) && searchTerm.length > 0;
+                }).slice(0, 5).map((collaborator) => (
                   <button
                     key={collaborator.id}
-                    className="w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2 text-sm"
-                    onClick={() => {
-                      const lastAtIndex = newMessage.lastIndexOf('@');
-                      const beforeAt = newMessage.substring(0, lastAtIndex);
-                      const afterAt = newMessage.substring(newMessage.indexOf(' ', lastAtIndex) !== -1 ? newMessage.indexOf(' ', lastAtIndex) : newMessage.length);
-                      setNewMessage(`${beforeAt}@${collaborator.name} ${afterAt}`);
+                    className="w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2 text-sm first:rounded-t-md last:rounded-b-md transition-colors"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const parts = newMessage.split('@');
+                      const beforeAt = parts.slice(0, -1).join('@');
+                      const afterCurrentTag = parts[parts.length - 1].split(' ').slice(1).join(' ');
+                      const newText = `${beforeAt}@${collaborator.name} ${afterCurrentTag}`.trim() + ' ';
+                      setNewMessage(newText);
                     }}
                   >
                     <Avatar className="w-6 h-6">
@@ -447,6 +450,14 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                     <span>{collaborator.name}</span>
                   </button>
                 ))}
+                {allCollaborators.filter(c => {
+                  const searchTerm = newMessage.split('@').pop()?.toLowerCase() || '';
+                  return c.name.toLowerCase().includes(searchTerm) && searchTerm.length > 0;
+                }).length === 0 && newMessage.split('@').pop()?.length > 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    No users found
+                  </div>
+                )}
               </div>
             )}
           </div>
