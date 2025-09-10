@@ -98,21 +98,6 @@ const Profile = () => {
     }
   };
 
-  const handleSignIn = async () => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: 'user@example.com', // Demo email - in real app, use input form
-      password: 'password123'
-    });
-    
-    if (error) {
-      toast({
-        title: "Sign in failed",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  };
-
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     
@@ -189,13 +174,13 @@ const Profile = () => {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Card className="p-6 max-w-md w-full mx-4">
           <div className="text-center space-y-4">
-            <h1 className="text-2xl font-bold">Sign In Required</h1>
+            <h1 className="text-2xl font-bold">Authentication Error</h1>
             <p className="text-muted-foreground">
-              Please sign in to view your profile
+              Please sign in again
             </p>
-            <Button onClick={handleSignIn} className="w-full">
+            <Button onClick={() => navigate('/auth')} className="w-full">
               <LogIn className="h-4 w-4 mr-2" />
-              Sign In (Demo)
+              Go to Sign In
             </Button>
           </div>
         </Card>
