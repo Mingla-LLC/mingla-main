@@ -35,6 +35,7 @@ const AccountSettings = () => {
   const [shareBudget, setShareBudget] = useState(false);
   const [shareCategories, setShareCategories] = useState(true);
   const [shareDateTime, setShareDateTime] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(false);
 
   // Auth and data fetching effects
   useEffect(() => {
