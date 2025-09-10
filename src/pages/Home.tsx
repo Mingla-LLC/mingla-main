@@ -59,7 +59,11 @@ const Home = () => {
     time: 'Now',
     travel: 'Walking',
     isCollaborating: true,
-    activeCollaborators: 2
+    activeCollaborators: 2,
+    activeCollaboratorsList: [
+      { id: 'dummy1', username: 'emmawilson', name: 'Emma Wilson', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80', initials: 'EW' },
+      { id: 'dummy2', username: 'jamesrodriguez', name: 'James Rodriguez', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e', initials: 'JR' }
+    ]
   });
 
   const currentTrip = trips[currentTripIndex];
@@ -121,14 +125,30 @@ const Home = () => {
                 }
               </span>
               {/* Active Collaborator Profile Pictures */}
-              {activePreferences.isCollaborating && (
+              {activePreferences.isCollaborating && activePreferences.activeCollaboratorsList && activePreferences.activeCollaboratorsList.length > 0 && (
                 <div className="flex items-center gap-1 ml-2">
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-r from-primary to-primary/80 border-2 border-background flex items-center justify-center text-xs font-medium text-primary-foreground -ml-1">
-                    E
-                  </div>
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 border-2 border-background flex items-center justify-center text-xs font-medium text-white -ml-2">
-                    J
-                  </div>
+                  {activePreferences.activeCollaboratorsList.slice(0, 3).map((collaborator, index) => (
+                    <div 
+                      key={collaborator.id}
+                      className="w-6 h-6 rounded-full bg-gradient-to-r from-primary to-primary/80 border-2 border-background flex items-center justify-center text-xs font-medium text-primary-foreground overflow-hidden"
+                      style={{ marginLeft: index > 0 ? '-8px' : '0px', zIndex: 10 - index }}
+                    >
+                      {collaborator.avatar ? (
+                        <img 
+                          src={collaborator.avatar} 
+                          alt={collaborator.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        collaborator.initials
+                      )}
+                    </div>
+                  ))}
+                  {activePreferences.activeCollaboratorsList.length > 3 && (
+                    <div className="w-6 h-6 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-medium text-muted-foreground -ml-2">
+                      +{activePreferences.activeCollaboratorsList.length - 3}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

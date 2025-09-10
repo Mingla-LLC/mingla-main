@@ -54,6 +54,7 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
   const [sharedCategories, setSharedCategories] = useState(false);
   const [sharedTime, setSharedTime] = useState(true);
   const [newUsername, setNewUsername] = useState('');
+  const [newCollaborator, setNewCollaborator] = useState('');
   const [specificTime, setSpecificTime] = useState('');
   const [customDate, setCustomDate] = useState('');
   const [locationInput, setLocationInput] = useState('');
@@ -96,11 +97,15 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
           <Button 
             className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold" 
             onClick={() => {
+              const activeUsers = allUsers.filter(u => u.isActive);
               onPreferencesUpdate?.({
                 budget: budget[0],
                 categories: selectedCategories,
                 time: selectedTime,
-                travel: selectedTravel
+                travel: selectedTravel,
+                isCollaborating: isCollabMode,
+                activeCollaborators: isCollabMode ? activeUsers.length : 0,
+                activeCollaboratorsList: isCollabMode ? activeUsers : []
               });
               onClose();
             }}
@@ -120,7 +125,22 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                   {isCollabMode ? 'Collaboration Mode' : 'Solo Mode'}
                 </Label>
               </div>
-              <Switch checked={isCollabMode} onCheckedChange={setIsCollabMode} />
+              <Switch 
+                checked={isCollabMode} 
+                onCheckedChange={(enabled) => {
+                  setIsCollabMode(enabled);
+                  const activeUsers = allUsers.filter(u => u.isActive);
+                  onPreferencesUpdate?.({
+                    budget: budget[0],
+                    categories: selectedCategories,
+                    time: selectedTime,
+                    travel: selectedTravel,
+                    isCollaborating: enabled,
+                    activeCollaborators: enabled ? activeUsers.length : 0,
+                    activeCollaboratorsList: enabled ? activeUsers : []
+                  });
+                }} 
+              />
             </div>
             <p className="text-sm text-muted-foreground mb-3">
               {isCollabMode 
@@ -263,8 +283,38 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                       <button
                         key={user.id}
                         onClick={() => {
-                          const tagText = `@${user.username} `;
-                          setNewUsername(prev => prev + tagText);
+                          // Toggle user's active status
+                          const updatedUsers = allUsers.map(u => 
+                            u.id === user.id ? { ...u, isActive: !u.isActive } : u
+                          );
+                          
+                          // Update collaborators state
+                          const collaboratorUser = collaborators.find(c => c.id === user.id);
+                          if (collaboratorUser) {
+                            setCollaborators(prev => prev.map(c => 
+                              c.id === user.id ? { ...c, isActive: !c.isActive } : c
+                            ));
+                          }
+                          
+                          // Update preferences with new active collaborators
+                          const activeUsers = updatedUsers.filter(u => u.isActive);
+                          onPreferencesUpdate?.({
+                            budget: budget[0],
+                            categories: selectedCategories,
+                            time: selectedTime,
+                            travel: selectedTravel,
+                            isCollaborating: activeUsers.length > 0,
+                            activeCollaborators: activeUsers.length,
+                            activeCollaboratorsList: activeUsers
+                          });
+                          
+                          // Also add to input if not already there
+                          if (!user.isActive && !newCollaborator.includes(`@${user.username}`)) {
+                            setNewCollaborator(prev => prev + (prev ? ' ' : '') + `@${user.username}`);
+                          } else if (user.isActive) {
+                            // Remove from input  
+                            setNewCollaborator(prev => prev.replace(new RegExp(`@${user.username}\\s*`, 'g'), '').trim());
+                          }
                         }}
                         className="w-full flex items-center gap-2 p-2 bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer"
                       >
