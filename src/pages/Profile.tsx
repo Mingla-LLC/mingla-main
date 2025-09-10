@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Settings, Bell, MapPin, DollarSign, Users, Share2, Eye, EyeOff } from 'lucide-react';
+import { Settings, Bell, MapPin, DollarSign, Users, Share2, Eye, EyeOff, UserCog } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const Profile = () => {
+  const navigate = useNavigate();
   const [currency, setCurrency] = useState('USD');
   const [shareLocation, setShareLocation] = useState(true);
   const [shareBudget, setShareBudget] = useState(false);
@@ -185,6 +187,10 @@ const Profile = () => {
       {/* Account Actions */}
       <div className="px-6 pb-8">
         <div className="space-y-3">
+          <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/profiles')}>
+            <UserCog className="h-4 w-4 mr-2" />
+            Manage Profiles
+          </Button>
           <Button variant="outline" className="w-full justify-start">
             <Settings className="h-4 w-4 mr-2" />
             Account Settings
