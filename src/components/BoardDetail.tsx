@@ -39,6 +39,7 @@ const mockTrips = [
     userVote: null, // null, 'for', 'against'
     finalized: false,
     finalizedBy: [], // user IDs who have clicked finalize
+    finalizeRequests: [], // user IDs who requested to finalize
     revokeRequests: [], // user IDs who requested to revoke
     revokeRequestedBy: null
   },
@@ -57,6 +58,7 @@ const mockTrips = [
     userVote: 'for',
     finalized: true,
     finalizedBy: ['user1', 'user2', 'user3'], // All collaborators have finalized
+    finalizeRequests: ['user1', 'user2', 'user3'],
     revokeRequests: [],
     revokeRequestedBy: null
   }
@@ -167,18 +169,19 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
 
     setTrips(prev => prev.map(t => {
       if (t.id === tripId && !t.finalized) {
-        // Toggle user's finalization status
-        const newFinalizedBy = t.finalizedBy.includes(currentUserId) 
-          ? t.finalizedBy.filter(id => id !== currentUserId) // Remove if already finalized
-          : [...t.finalizedBy, currentUserId]; // Add if not finalized
+        // Toggle user's finalization request status
+        const newFinalizeRequests = t.finalizeRequests?.includes(currentUserId) 
+          ? t.finalizeRequests.filter(id => id !== currentUserId) // Remove if already requested
+          : [...(t.finalizeRequests || []), currentUserId]; // Add if not requested
         
-        // Check if all collaborators have finalized
-        const allFinalized = newFinalizedBy.length >= totalCollaborators;
+        // Check if all collaborators have requested finalization
+        const allRequested = newFinalizeRequests.length >= totalCollaborators;
         
         return {
           ...t,
-          finalizedBy: newFinalizedBy,
-          finalized: allFinalized
+          finalizeRequests: newFinalizeRequests,
+          finalizedBy: allRequested ? newFinalizeRequests : t.finalizedBy,
+          finalized: allRequested
         };
       }
       return t;
@@ -226,7 +229,7 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
 
   const getUserFinalizedStatus = (tripId: string) => {
     const trip = trips.find(t => t.id === tripId);
-    return trip?.finalizedBy.includes('currentUser') || false;
+    return trip?.finalizeRequests?.includes('currentUser') || false;
   };
 
   const getUserRevokeStatus = (tripId: string) => {
@@ -296,10 +299,13 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                           <span className="text-xs font-medium text-primary">Confirmed</span>
                         </div>
                       )}
-                      {!trip.finalized && trip.finalizedBy.length > 0 && (
-                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
-                          Finalizing... ({trip.finalizedBy.length}/{board.collaborators.length + 1})
-                        </Badge>
+                      {!trip.finalized && trip.finalizeRequests && trip.finalizeRequests.length > 0 && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-500/10 to-green-500/10 rounded-full border border-blue-300/30">
+                          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                          <span className="text-xs font-medium text-blue-700">
+                            {trip.finalizeRequests.length}/{board.collaborators.length + 1} requesting finalization
+                          </span>
+                        </div>
                       )}
                     </div>
                     

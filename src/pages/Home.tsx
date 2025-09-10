@@ -120,6 +120,17 @@ const Home = () => {
                   : 'Solo mode'
                 }
               </span>
+              {/* Active Collaborator Profile Pictures */}
+              {activePreferences.isCollaborating && (
+                <div className="flex items-center gap-1 ml-2">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-r from-primary to-primary/80 border-2 border-background flex items-center justify-center text-xs font-medium text-primary-foreground -ml-1">
+                    E
+                  </div>
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 border-2 border-background flex items-center justify-center text-xs font-medium text-white -ml-2">
+                    J
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {/* Budget Preference */}
