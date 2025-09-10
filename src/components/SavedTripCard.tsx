@@ -78,7 +78,7 @@ export const SavedTripCard = ({
               variant="outline"
               size="sm"
               onClick={() => onAddToBoard(trip.id)}
-              className="h-7 text-xs px-3 bg-secondary/10 hover:bg-secondary/20 text-secondary-foreground border-secondary/20"
+              className="h-7 text-xs px-3 bg-primary/5 hover:bg-primary/10 text-foreground border-border hover:border-primary/30 hover:text-primary"
             >
               <Plus className="h-3 w-3 mr-1" />
               Add to Board
