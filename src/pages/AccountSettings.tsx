@@ -215,6 +215,22 @@ const AccountSettings = () => {
         </div>
       </div>
 
+      {/* Security Information */}
+      <div className="px-6 mb-6">
+        <Card className="p-4">
+          <div className="flex items-center gap-3 mb-4">
+            <Shield className="h-5 w-5 text-primary" />
+            <h2 className="font-semibold">Security Information</h2>
+          </div>
+          <div className="space-y-3 text-sm text-muted-foreground">
+            <p>• Your password is encrypted and securely stored</p>
+            <p>• Email changes require confirmation from your new email address</p>
+            <p>• You'll be signed out from other devices after password changes</p>
+            <p>• Contact support if you have trouble accessing your account</p>
+          </div>
+        </Card>
+      </div>
+
       {/* Email Settings */}
       <div className="px-6 mb-6">
         <Card className="p-4">
@@ -417,21 +433,6 @@ const AccountSettings = () => {
         </Card>
       </div>
 
-      {/* Security Information */}
-      <div className="px-6 pb-8">
-        <Card className="p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <Shield className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold">Security Information</h2>
-          </div>
-          <div className="space-y-3 text-sm text-muted-foreground">
-            <p>• Your password is encrypted and securely stored</p>
-            <p>• Email changes require confirmation from your new email address</p>
-            <p>• You'll be signed out from other devices after password changes</p>
-            <p>• Contact support if you have trouble accessing your account</p>
-          </div>
-        </Card>
-      </div>
     </div>
   );
 };

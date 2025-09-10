@@ -639,13 +639,13 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
               </div>
               
               {travelConstraint === 'time' ? (
-                <div className="space-y-2">
+                  <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Maximum travel time</Label>
                   <div className="flex items-center gap-3">
                     <Slider
                       value={[travelTime]}
                       onValueChange={(value) => setTravelTime(value[0])}
-                      max={120}
+                      max={20000}
                       min={5}
                       step={5}
                       className="flex-1"
@@ -662,7 +662,7 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                     <Slider
                       value={[travelDistance]}
                       onValueChange={(value) => setTravelDistance(value[0])}
-                      max={measurementSystem === 'metric' ? 50 : 30}
+                      max={20000}
                       min={measurementSystem === 'metric' ? 1 : 0.5}
                       step={measurementSystem === 'metric' ? 1 : 0.5}
                       className="flex-1"
