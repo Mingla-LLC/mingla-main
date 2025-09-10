@@ -166,10 +166,11 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
     const totalCollaborators = board.collaborators.length + 1; // +1 for board creator
 
     setTrips(prev => prev.map(t => {
-      if (t.id === tripId) {
+      if (t.id === tripId && !t.finalized) {
+        // Toggle user's finalization status
         const newFinalizedBy = t.finalizedBy.includes(currentUserId) 
-          ? t.finalizedBy 
-          : [...t.finalizedBy, currentUserId];
+          ? t.finalizedBy.filter(id => id !== currentUserId) // Remove if already finalized
+          : [...t.finalizedBy, currentUserId]; // Add if not finalized
         
         // Check if all collaborators have finalized
         const allFinalized = newFinalizedBy.length >= totalCollaborators;
@@ -292,17 +293,16 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                       </Badge>
                       {trip.finalized && (
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-primary/20 to-primary/10 rounded-full border border-primary/20">
-                          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                          <span className="text-xs font-medium text-primary">Confirmed & Calendared</span>
+                          <span className="text-xs font-medium text-primary">Confirmed</span>
                         </div>
                       )}
                       {trip.revokeRequestedBy && (
-                        <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700">
-                          🔄 Revoke Requested ({trip.revokeRequests.length}/{board.collaborators.length + 1})
+                        <Badge variant="outline" className="text-xs bg-orange-50 text-orange-600 border-orange-200">
+                          Revoke Requested ({trip.revokeRequests.length}/{board.collaborators.length + 1})
                         </Badge>
                       )}
                       {!trip.finalized && trip.finalizedBy.length > 0 && (
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
                           Finalizing... ({trip.finalizedBy.length}/{board.collaborators.length + 1})
                         </Badge>
                       )}
@@ -316,7 +316,7 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                             size="sm"
                             onClick={() => handleTripVote(trip.id, 'for')}
                             disabled={!canChangeVote(trip.id)}
-                            className="h-7 px-2"
+                            className="h-7 px-3 bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                           >
                             👍
                           </Button>
@@ -325,7 +325,7 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                             size="sm"
                             onClick={() => handleTripVote(trip.id, 'against')}
                             disabled={!canChangeVote(trip.id)}
-                            className="h-7 px-2"
+                            className="h-7 px-3 bg-destructive/10 hover:bg-destructive/20 text-destructive border-destructive/20 data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground"
                           >
                             👎
                           </Button>
@@ -333,9 +333,9 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                             variant={getUserFinalizedStatus(trip.id) ? "default" : "outline"}
                             size="sm"
                             onClick={() => handleFinalize(trip.id)}
-                            className="h-7 text-xs"
+                            className="h-7 text-xs px-3 bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                           >
-                            {getUserFinalizedStatus(trip.id) ? '✅ Finalized' : 'Finalize'}
+                            {getUserFinalizedStatus(trip.id) ? 'Finalized' : 'Finalize'}
                           </Button>
                         </>
                       )}
@@ -345,9 +345,9 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                           variant={getUserRevokeStatus(trip.id) ? "default" : "outline"}
                           size="sm"
                           onClick={() => handleRevokeRequest(trip.id)}
-                          className="h-7 text-xs"
+                          className="h-7 text-xs px-3 bg-orange-50 hover:bg-orange-100 text-orange-600 border-orange-200 data-[state=active]:bg-orange-500 data-[state=active]:text-white"
                         >
-                          {getUserRevokeStatus(trip.id) ? '🔄 Revoke Requested' : '🔄 Request Revoke'}
+                          {getUserRevokeStatus(trip.id) ? 'Revoke Requested' : 'Revoke'}
                         </Button>
                       )}
                     </div>
