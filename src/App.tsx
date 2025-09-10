@@ -12,6 +12,7 @@ import Boards from "./pages/Boards";
 import Saved from "./pages/Saved";
 import Profile from "./pages/Profile";
 import Profiles from "./pages/Profiles";
+import AccountSettings from "./pages/AccountSettings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -63,6 +64,13 @@ const App = () => (
           <AuthGuard>
             <Layout>
               <Profiles />
+            </Layout>
+          </AuthGuard>
+        } />
+        <Route path="/account-settings" element={
+          <AuthGuard>
+            <Layout>
+              <AccountSettings />
             </Layout>
           </AuthGuard>
         } />

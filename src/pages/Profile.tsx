@@ -349,7 +349,7 @@ const Profile = () => {
             <UserCog className="h-4 w-4 mr-2" />
             Manage Profiles
           </Button>
-          <Button variant="outline" className="w-full justify-start">
+          <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/account-settings')}>
             <Settings className="h-4 w-4 mr-2" />
             Account Settings
           </Button>
