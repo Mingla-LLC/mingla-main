@@ -28,11 +28,6 @@ const Profile = () => {
   const [saving, setSaving] = useState(false);
   
   // Settings state
-  const [currency, setCurrency] = useState('USD');
-  const [shareLocation, setShareLocation] = useState(true);
-  const [shareBudget, setShareBudget] = useState(false);
-  const [shareCategories, setShareCategories] = useState(true);
-  const [shareDateTime, setShareDateTime] = useState(true);
   const [notifications, setNotifications] = useState(true);
 
   const stats = [
@@ -216,94 +211,6 @@ const Profile = () => {
       </div>
 
 
-      {/* Currency Settings */}
-      <div className="px-6 mb-6">
-        <Card className="p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <DollarSign className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold">Currency Preference</h2>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <Label className="text-sm text-muted-foreground">
-                Auto-set based on your region (App Store/Play Store)
-              </Label>
-              <Select value={currency} onValueChange={setCurrency}>
-                <SelectTrigger className="mt-2">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="USD">$ USD (United States Dollar)</SelectItem>
-                  <SelectItem value="EUR">€ EUR (Euro)</SelectItem>
-                  <SelectItem value="GBP">£ GBP (British Pound)</SelectItem>
-                  <SelectItem value="CAD">$ CAD (Canadian Dollar)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              All prices shown as "per person" in your selected currency
-            </p>
-          </div>
-        </Card>
-      </div>
-
-      {/* Collaboration Defaults */}
-      <div className="px-6 mb-6">
-        <Card className="p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <Users className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold">Collaboration Defaults</h2>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                <Label>Share Location</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                {shareLocation ? <Eye className="h-4 w-4 text-muted-foreground" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
-                <Switch checked={shareLocation} onCheckedChange={setShareLocation} />
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-                <Label>Share Budget</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                {shareBudget ? <Eye className="h-4 w-4 text-muted-foreground" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
-                <Switch checked={shareBudget} onCheckedChange={setShareBudget} />
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Share2 className="h-4 w-4 text-muted-foreground" />
-                <Label>Share Categories</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                {shareCategories ? <Eye className="h-4 w-4 text-muted-foreground" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
-                <Switch checked={shareCategories} onCheckedChange={setShareCategories} />
-              </div>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Settings className="h-4 w-4 text-muted-foreground" />
-                <Label>Share Date & Time</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                {shareDateTime ? <Eye className="h-4 w-4 text-muted-foreground" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
-                <Switch checked={shareDateTime} onCheckedChange={setShareDateTime} />
-              </div>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-3">
-            These settings apply when you join collaborative planning sessions
-          </p>
-        </Card>
-      </div>
 
       {/* Saved Locations */}
       <div className="px-6 mb-6">

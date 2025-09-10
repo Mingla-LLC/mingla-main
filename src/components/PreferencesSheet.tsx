@@ -83,6 +83,10 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
   const [locationInput, setLocationInput] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('current');
   const [groupSize, setGroupSize] = useState(2);
+  const [travelConstraint, setTravelConstraint] = useState<'time' | 'distance'>('time');
+  const [travelTime, setTravelTime] = useState(15);
+  const [travelDistance, setTravelDistance] = useState(5);
+  const [measurementSystem, setMeasurementSystem] = useState('metric'); // This would come from account settings
   const [collaborators, setCollaborators] = useState([
     { id: '1', username: 'sarah_k', name: 'Sarah', isActive: true, avatar: 'https://images.unsplash.com/photo-1494790108755-2616b79444d7' },
     { id: '2', username: 'mike_dev', name: 'Mike', isActive: false, avatar: '' },
@@ -615,6 +619,61 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                 </Button>
               ))}
             </div>
+            
+            {/* Travel Constraints */}
+            <Card className="p-3 bg-muted/50 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Travel Constraint</Label>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className={`${travelConstraint === 'time' ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                    Time
+                  </span>
+                  <Switch 
+                    checked={travelConstraint === 'distance'} 
+                    onCheckedChange={(checked) => setTravelConstraint(checked ? 'distance' : 'time')} 
+                  />
+                  <span className={`${travelConstraint === 'distance' ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                    Distance
+                  </span>
+                </div>
+              </div>
+              
+              {travelConstraint === 'time' ? (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Maximum travel time</Label>
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      value={[travelTime]}
+                      onValueChange={(value) => setTravelTime(value[0])}
+                      max={120}
+                      min={5}
+                      step={5}
+                      className="flex-1"
+                    />
+                    <span className="text-sm font-medium min-w-[3rem]">{travelTime} min</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">
+                    Maximum distance ({measurementSystem === 'metric' ? 'km' : 'miles'})
+                  </Label>
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      value={[travelDistance]}
+                      onValueChange={(value) => setTravelDistance(value[0])}
+                      max={measurementSystem === 'metric' ? 50 : 30}
+                      min={measurementSystem === 'metric' ? 1 : 0.5}
+                      step={measurementSystem === 'metric' ? 1 : 0.5}
+                      className="flex-1"
+                    />
+                    <span className="text-sm font-medium min-w-[3rem]">
+                      {travelDistance} {measurementSystem === 'metric' ? 'km' : 'mi'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </Card>
           </div>
 
           {/* Location */}
