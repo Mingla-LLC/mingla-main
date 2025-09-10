@@ -196,6 +196,37 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                           </Avatar>
                           <span className="text-xs font-medium text-primary">@{user.username}</span>
                           <div className="w-1.5 h-1.5 bg-primary rounded-full" />
+                          <button
+                            onClick={() => {
+                              // Remove user from active collaborators
+                              const updatedUsers = allUsers.map(u => 
+                                u.id === user.id ? { ...u, isActive: false } : u
+                              );
+                              
+                              // Update collaborators state
+                              const collaboratorUser = collaborators.find(c => c.id === user.id);
+                              if (collaboratorUser) {
+                                setCollaborators(prev => prev.map(c => 
+                                  c.id === user.id ? { ...c, isActive: false } : c
+                                ));
+                              }
+                              
+                              // Update preferences
+                              const activeUsers = updatedUsers.filter(u => u.isActive);
+                              onPreferencesUpdate?.({
+                                budget: budget[0],
+                                categories: selectedCategories,
+                                time: selectedTime,
+                                travel: selectedTravel,
+                                isCollaborating: activeUsers.length > 0,
+                                activeCollaborators: activeUsers.length,
+                                activeCollaboratorsList: activeUsers
+                              });
+                            }}
+                            className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
+                          >
+                            <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -257,20 +288,66 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                     variant="outline"
                     onClick={() => {
                       if (newUsername.trim()) {
-                        setCollaborators(prev => [...prev, {
-                          id: Date.now().toString(),
-                          username: newUsername.trim(),
-                          name: newUsername.trim(),
-                          isActive: false,
-                          avatar: ''
-                        }]);
+                        // Send collaboration request instead of directly adding
+                        const username = newUsername.trim().replace('@', '');
+                        const existingUser = allUsers.find(u => u.username === username);
+                        
+                        if (existingUser) {
+                          // Mock sending collaboration request
+                          console.log(`Sending collaboration request to ${username}`);
+                          // In real app, this would send a request to the backend
+                          
+                          // For demo, simulate immediate acceptance after 2 seconds
+                          setTimeout(() => {
+                            setCollaborators(prev => prev.map(c => 
+                              c.username === username ? { ...c, isActive: true } : c
+                            ));
+                            
+                            // Update preferences with new active collaborators
+                            const updatedUsers = allUsers.map(u => 
+                              u.username === username ? { ...u, isActive: true } : u
+                            );
+                            const activeUsers = updatedUsers.filter(u => u.isActive);
+                            onPreferencesUpdate?.({
+                              budget: budget[0],
+                              categories: selectedCategories,
+                              time: selectedTime,
+                              travel: selectedTravel,
+                              isCollaborating: activeUsers.length > 0,
+                              activeCollaborators: activeUsers.length,
+                              activeCollaboratorsList: activeUsers
+                            });
+                          }, 2000);
+                        } else {
+                          // Create new user and send request
+                          const newUser = {
+                            id: Date.now().toString(),
+                            username: username,
+                            name: username,
+                            isActive: false,
+                            avatar: ''
+                          };
+                          setCollaborators(prev => [...prev, newUser]);
+                        }
                         setNewUsername('');
                       }
                     }}
+                    className="bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-200"
                   >
                     <UserPlus className="h-3 w-3" />
                   </Button>
-                  <Button size="sm" variant="outline">
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => {
+                      // Mock sending collaboration request
+                      if (newUsername.trim()) {
+                        console.log('Sending collaboration invitation...');
+                        setNewUsername('');
+                      }
+                    }}
+                    className="bg-green-50 hover:bg-green-100 text-green-600 border-green-200"
+                  >
                     <Send className="h-3 w-3" />
                   </Button>
                 </div>

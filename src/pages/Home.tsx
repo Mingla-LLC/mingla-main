@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { TripCard } from '@/components/TripCard';
 import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
+import { CollaborationRequestDialog } from '@/components/CollaborationRequestDialog';
 import { toast } from '@/hooks/use-toast';
 
 // Mock data for demo
@@ -51,6 +52,32 @@ const Home = () => {
   const [showPreferences, setShowPreferences] = useState(false);
   const [trips, setTrips] = useState(mockTrips);
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
+  const [showCollaborationRequests, setShowCollaborationRequests] = useState(false);
+  const [collaborationRequests, setCollaborationRequests] = useState<Array<{
+    id: string;
+    from: {
+      id: string;
+      name: string;
+      avatar: string;
+      username: string;
+    };
+    tripTitle: string;
+    timestamp: string;
+    status: 'pending' | 'accepted' | 'declined';
+  }>>([
+    {
+      id: '1',
+      from: {
+        id: 'user1',
+        name: 'Emma Wilson',
+        avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80',
+        username: 'emmawilson'
+      },
+      tripTitle: 'Sunset Coffee at Waterfront',
+      timestamp: '2 minutes ago',
+      status: 'pending'
+    }
+  ]);
   
   // Preference states
   const [activePreferences, setActivePreferences] = useState({
@@ -69,11 +96,48 @@ const Home = () => {
   const currentTrip = trips[currentTripIndex];
 
   const handleSwipeRight = () => {
-    toast({
-      title: "Saved!",
-      description: `${currentTrip.title} added to your saved list`,
-    });
+    // Check if there are pending collaboration requests for this trip
+    const hasPendingRequests = collaborationRequests.some(
+      req => req.status === 'pending' && req.tripTitle === currentTrip.title
+    );
+    
+    if (hasPendingRequests) {
+      setShowCollaborationRequests(true);
+      toast({
+        title: "Collaboration Request",
+        description: "You have pending collaboration requests for this trip",
+      });
+    } else {
+      toast({
+        title: "Saved!",
+        description: `${currentTrip.title} added to your saved list`,
+      });
+    }
     nextTrip();
+  };
+
+  const handleAcceptCollaborationRequest = (requestId: string) => {
+    setCollaborationRequests(prev => 
+      prev.map(req => 
+        req.id === requestId ? { ...req, status: 'accepted' as const } : req
+      )
+    );
+    toast({
+      title: "Request Accepted",
+      description: "You are now collaborating on this trip!",
+    });
+  };
+
+  const handleDeclineCollaborationRequest = (requestId: string) => {
+    setCollaborationRequests(prev => 
+      prev.map(req => 
+        req.id === requestId ? { ...req, status: 'declined' as const } : req
+      )
+    );
+    toast({
+      title: "Request Declined",
+      description: "Collaboration request declined",
+    });
   };
 
   const handleSwipeLeft = () => {
@@ -337,6 +401,15 @@ const Home = () => {
         onClose={() => setShowPreferences(false)}
         activePreferences={activePreferences}
         onPreferencesUpdate={setActivePreferences}
+      />
+
+      {/* Collaboration Requests Dialog */}
+      <CollaborationRequestDialog
+        isOpen={showCollaborationRequests}
+        onClose={() => setShowCollaborationRequests(false)}
+        requests={collaborationRequests}
+        onAcceptRequest={handleAcceptCollaborationRequest}
+        onDeclineRequest={handleDeclineCollaborationRequest}
       />
 
       {/* Expanded Trip Card */}
