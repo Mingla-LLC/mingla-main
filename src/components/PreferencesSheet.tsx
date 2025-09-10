@@ -235,33 +235,42 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                 </div>
 
                 {/* Collaborator List */}
-                {collaborators.length > 0 && (
+                {allUsers.length > 0 && (
                   <div className="space-y-2">
-                    {collaborators.map((collaborator) => (
-                      <div key={collaborator.id} className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg">
+                    <Label className="text-xs text-muted-foreground">Available Users</Label>
+                    {allUsers.map((user) => (
+                      <button
+                        key={user.id}
+                        onClick={() => {
+                          const tagText = `@${user.username} `;
+                          setNewUsername(prev => prev + tagText);
+                        }}
+                        className="w-full flex items-center gap-2 p-2 bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer"
+                      >
                         <Avatar className="w-6 h-6">
+                          <AvatarImage src={user.avatar} />
                           <AvatarFallback className="text-xs">
-                            {collaborator.name.charAt(0).toUpperCase()}
+                            {user.name.charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1">
+                        <div className="flex-1 text-left">
                           <div className="flex items-center gap-2">
                             <span className={cn(
                               "text-xs font-medium",
-                              collaborator.isActive ? "text-foreground" : "text-muted-foreground"
+                              user.isActive ? "text-foreground" : "text-muted-foreground"
                             )}>
-                              @{collaborator.username}
+                              @{user.username}
                             </span>
                             <div className={cn(
                               "w-2 h-2 rounded-full",
-                              collaborator.isActive ? "bg-primary" : "bg-muted-foreground"
+                              user.isActive ? "bg-primary" : "bg-muted-foreground"
                             )} />
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {collaborator.isActive ? 'Active' : 'Invited'}
+                            {user.isActive ? 'Active' : 'Available'}
                           </p>
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
