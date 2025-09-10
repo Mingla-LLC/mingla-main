@@ -85,12 +85,9 @@ const Home = () => {
     categories: ['Coffee & Walk'],
     time: 'Now',
     travel: 'Walking',
-    isCollaborating: true,
-    activeCollaborators: 2,
-    activeCollaboratorsList: [
-      { id: 'dummy1', username: 'emmawilson', name: 'Emma Wilson', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80', initials: 'EW' },
-      { id: 'dummy2', username: 'jamesrodriguez', name: 'James Rodriguez', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e', initials: 'JR' }
-    ]
+    isCollaborating: false,
+    activeCollaborators: 0,
+    activeCollaboratorsList: []
   });
 
   const currentTrip = trips[currentTripIndex];
