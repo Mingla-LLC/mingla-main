@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 interface PreferencesSheetProps {
   isOpen: boolean;
   onClose: () => void;
+  measurementSystem?: string; // Add prop for measurement system
   activePreferences?: {
     budgetRange: [number, number];
     categories: string[];
@@ -67,7 +68,7 @@ const travelModes = [
   'Public Transport'
 ];
 
-export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPreferencesUpdate }: PreferencesSheetProps) => {
+export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric', activePreferences, onPreferencesUpdate }: PreferencesSheetProps) => {
   const [budget, setBudget] = useState<[number, number]>(activePreferences?.budgetRange || [10, 50]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(activePreferences?.categories || ['Coffee & Walk']);
   const [selectedTime, setSelectedTime] = useState(activePreferences?.time || 'Now');
@@ -86,7 +87,6 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
   const [travelConstraint, setTravelConstraint] = useState<'time' | 'distance'>('time');
   const [travelTime, setTravelTime] = useState(15);
   const [travelDistance, setTravelDistance] = useState(5);
-  const [measurementSystem, setMeasurementSystem] = useState('metric'); // This would come from account settings
   const [collaborators, setCollaborators] = useState([
     { id: '1', username: 'sarah_k', name: 'Sarah', isActive: true, avatar: 'https://images.unsplash.com/photo-1494790108755-2616b79444d7' },
     { id: '2', username: 'mike_dev', name: 'Mike', isActive: false, avatar: '' },
@@ -645,13 +645,15 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                     <Slider
                       value={[travelTime]}
                       onValueChange={(value) => setTravelTime(value[0])}
-                      max={20000}
+                      max={300} // 5 hours max
                       min={0.001}
-                      step={travelTime < 1 ? 0.001 : travelTime < 60 ? 1 : 60}
+                      step={travelTime < 1 ? 0.001 : travelTime < 60 ? 1 : 5}
                       className="flex-1"
                     />
                     <span className="text-sm font-medium min-w-[4rem]">
-                      {travelTime >= 1440 
+                      {travelTime >= 300 
+                        ? 'Infinity'
+                        : travelTime >= 1440 
                         ? `${Math.round(travelTime / 1440)} ${Math.round(travelTime / 1440) === 1 ? 'day' : 'days'}`
                         : travelTime >= 60 
                         ? `${Math.round(travelTime / 60)} ${Math.round(travelTime / 60) === 1 ? 'hr' : 'hrs'}`
@@ -668,13 +670,15 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                     <Slider
                       value={[travelDistance]}
                       onValueChange={(value) => setTravelDistance(value[0])}
-                      max={20000}
+                      max={500} // 500 km/miles max
                       min={0.001}
                       step={travelDistance < 1 ? 0.001 : measurementSystem === 'metric' ? 1 : 0.5}
                       className="flex-1"
                     />
                     <span className="text-sm font-medium min-w-[4rem]">
-                      {travelDistance} {measurementSystem === 'metric' ? 'km' : 'mi'}
+                      {travelDistance >= 500 
+                        ? 'Infinity'
+                        : `${travelDistance} ${measurementSystem === 'metric' ? 'km' : 'mi'}`}
                     </span>
                   </div>
                 </div>

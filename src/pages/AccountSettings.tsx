@@ -173,6 +173,73 @@ const AccountSettings = () => {
     }
   };
 
+  // Fetch profile data when user changes
+  useEffect(() => {
+    if (user) {
+      fetchProfileData();
+    }
+  }, [user]);
+
+  const fetchProfileData = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('Error fetching profile:', error);
+        return;
+      }
+      
+      if (data) {
+        setCurrency(data.currency || 'USD');
+        setMeasurementSystem(data.measurement_system || 'metric');
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!user) return;
+    
+    setSettingsLoading(true);
+    
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          currency,
+          measurement_system: measurementSystem
+        })
+        .eq('id', user.id);
+      
+      if (error) {
+        toast({
+          title: "Error saving settings",
+          description: error.message,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Settings saved successfully"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error saving settings",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -372,6 +439,13 @@ const AccountSettings = () => {
             <p className="text-xs text-muted-foreground">
               This affects distance calculations and temperature units throughout the app
             </p>
+            <Button 
+              onClick={handleSaveSettings}
+              disabled={settingsLoading}
+              className="w-full mt-3"
+            >
+              {settingsLoading ? 'Saving...' : 'Save Preferences'}
+            </Button>
           </div>
         </Card>
       </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sliders, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TripCard } from '@/components/TripCard';
@@ -6,6 +6,8 @@ import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
 import { CollaborationRequestDialog } from '@/components/CollaborationRequestDialog';
 import { toast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import type { User } from '@supabase/supabase-js';
 
 // Mock data for demo
 const mockTrips = [
@@ -70,6 +72,8 @@ const Home = () => {
   const [trips, setTrips] = useState<typeof mockTrips>([]);
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   const [showCollaborationRequests, setShowCollaborationRequests] = useState(false);
+  const [measurementSystem, setMeasurementSystem] = useState('metric');
+  const [user, setUser] = useState<User | null>(null);
   const [collaborationRequests, setCollaborationRequests] = useState<Array<{
     id: string;
     from: {
@@ -106,6 +110,29 @@ const Home = () => {
     activeCollaborators: 0,
     activeCollaboratorsList: []
   });
+
+  // Fetch user and measurement system
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      
+      if (user) {
+        // Fetch measurement system from profile
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('measurement_system')
+          .eq('id', user.id)
+          .maybeSingle();
+        
+        if (data && !error) {
+          setMeasurementSystem(data.measurement_system || 'metric');
+        }
+      }
+    };
+    
+    getUser();
+  }, []);
 
   // Filter trips based on preferences
   const filterTrips = (preferences: ActivePreferences) => {
@@ -506,6 +533,7 @@ const Home = () => {
       <PreferencesSheet 
         isOpen={showPreferences}
         onClose={() => setShowPreferences(false)}
+        measurementSystem={measurementSystem}
         activePreferences={activePreferences}
         onPreferencesUpdate={setActivePreferences}
       />
