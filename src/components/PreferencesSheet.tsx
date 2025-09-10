@@ -13,6 +13,13 @@ import { cn } from '@/lib/utils';
 interface PreferencesSheetProps {
   isOpen: boolean;
   onClose: () => void;
+  activePreferences?: {
+    budget: number;
+    categories: string[];
+    time: string;
+    travel: string;
+  };
+  onPreferencesUpdate?: (preferences: any) => void;
 }
 
 const categories = [
@@ -37,11 +44,11 @@ const travelModes = [
   'Public Transport'
 ];
 
-export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => {
-  const [budget, setBudget] = useState([50]);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(['Coffee & Walk']);
-  const [selectedTime, setSelectedTime] = useState('Now');
-  const [selectedTravel, setSelectedTravel] = useState('Walk');
+export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPreferencesUpdate }: PreferencesSheetProps) => {
+  const [budget, setBudget] = useState([activePreferences?.budget || 50]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(activePreferences?.categories || ['Coffee & Walk']);
+  const [selectedTime, setSelectedTime] = useState(activePreferences?.time || 'Now');
+  const [selectedTravel, setSelectedTravel] = useState(activePreferences?.travel || 'Walk');
   const [isCollabMode, setIsCollabMode] = useState(false);
   const [sharedBudget, setSharedBudget] = useState(true);
   const [sharedCategories, setSharedCategories] = useState(false);
@@ -80,7 +87,15 @@ export const PreferencesSheet = ({ isOpen, onClose }: PreferencesSheetProps) => 
         <div className="p-6 pb-4 border-b border-border flex-shrink-0">
           <Button 
             className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold" 
-            onClick={onClose}
+            onClick={() => {
+              onPreferencesUpdate?.({
+                budget: budget[0],
+                categories: selectedCategories,
+                time: selectedTime,
+                travel: selectedTravel
+              });
+              onClose();
+            }}
             size="lg"
           >
             Apply Preferences

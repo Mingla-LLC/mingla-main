@@ -51,6 +51,14 @@ const Home = () => {
   const [showPreferences, setShowPreferences] = useState(false);
   const [trips, setTrips] = useState(mockTrips);
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
+  
+  // Preference states
+  const [activePreferences, setActivePreferences] = useState({
+    budget: 50,
+    categories: ['Coffee & Walk'],
+    time: 'Now',
+    travel: 'Walking'
+  });
 
   const currentTrip = trips[currentTripIndex];
 
@@ -107,14 +115,16 @@ const Home = () => {
               <span className="text-xs text-muted-foreground">Solo mode</span>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Budget Preference */}
               <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
                 <div className="w-4 h-4 rounded-full bg-gradient-to-r from-green-400 to-green-600 flex items-center justify-center">
                   <span className="text-xs">💰</span>
                 </div>
-                <span className="text-xs text-muted-foreground">Under $50</span>
+                <span className="text-xs text-muted-foreground">Under ${activePreferences.budget}</span>
                 <button 
                   className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
                   onClick={() => {
+                    setActivePreferences(prev => ({ ...prev, budget: 10000 }));
                     toast({
                       title: "Preference updated",
                       description: "Budget filter removed",
@@ -125,17 +135,44 @@ const Home = () => {
                 </button>
               </div>
               
+              {/* Categories Preferences */}
+              {activePreferences.categories.slice(0, 6).map((category, index) => (
+                <div key={category} className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
+                  <div className="w-4 h-4 rounded-full bg-gradient-to-r from-purple-400 to-pink-500 flex items-center justify-center">
+                    <span className="text-xs">✨</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{category}</span>
+                  <button 
+                    className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
+                    onClick={() => {
+                      setActivePreferences(prev => ({
+                        ...prev,
+                        categories: prev.categories.filter(c => c !== category)
+                      }));
+                      toast({
+                        title: "Preference updated",
+                        description: `${category} removed`,
+                      });
+                    }}
+                  >
+                    <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                  </button>
+                </div>
+              ))}
+              
+              {/* Time Preference */}
               <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
                 <div className="w-4 h-4 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center">
-                  <span className="text-xs">☀️</span>
+                  <span className="text-xs">⏰</span>
                 </div>
-                <span className="text-xs text-muted-foreground">Weather OK</span>
+                <span className="text-xs text-muted-foreground">{activePreferences.time}</span>
                 <button 
                   className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
                   onClick={() => {
+                    setActivePreferences(prev => ({ ...prev, time: 'Anytime' }));
                     toast({
                       title: "Preference updated", 
-                      description: "Weather filter removed",
+                      description: "Time filter removed",
                     });
                   }}
                 >
@@ -143,14 +180,16 @@ const Home = () => {
                 </button>
               </div>
               
+              {/* Travel Preference */}
               <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
                 <div className="w-4 h-4 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center">
                   <span className="text-xs">🚶‍♀️</span>
                 </div>
-                <span className="text-xs text-muted-foreground">Walking</span>
+                <span className="text-xs text-muted-foreground">{activePreferences.travel}</span>
                 <button 
                   className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
                   onClick={() => {
+                    setActivePreferences(prev => ({ ...prev, travel: 'Any mode' }));
                     toast({
                       title: "Preference updated",
                       description: "Travel filter removed", 
@@ -160,6 +199,13 @@ const Home = () => {
                   <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
                 </button>
               </div>
+              
+              {/* Show "..." if more than 6 categories */}
+              {activePreferences.categories.length > 6 && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
+                  <span className="text-xs text-muted-foreground">+{activePreferences.categories.length - 6} more</span>
+                </div>
+              )}
             </div>
           </div>
           <Button
@@ -251,6 +297,8 @@ const Home = () => {
       <PreferencesSheet 
         isOpen={showPreferences}
         onClose={() => setShowPreferences(false)}
+        activePreferences={activePreferences}
+        onPreferencesUpdate={setActivePreferences}
       />
 
       {/* Expanded Trip Card */}

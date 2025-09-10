@@ -95,6 +95,14 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
   const [discussionList, setDiscussionList] = useState(discussions);
   const [trips, setTrips] = useState(mockTrips);
   const [userFinalized, setUserFinalized] = useState<string[]>([]);
+  
+  // Add dummy users for tagging demo
+  const allCollaborators = [
+    ...board.collaborators,
+    { id: 'dummy1', name: 'Emma Wilson', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80', initials: 'EW' },
+    { id: 'dummy2', name: 'James Rodriguez', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e', initials: 'JR' },
+    { id: 'dummy3', name: 'Priya Patel', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04', initials: 'PP' }
+  ];
 
   const selectedTripData = trips.find(trip => trip.id === selectedTrip);
 
@@ -283,9 +291,10 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                         {trip.votes.for} 👍 {trip.votes.against} 👎
                       </Badge>
                       {trip.finalized && (
-                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
-                          ✅ Finalized & Added to Calendars
-                        </Badge>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-primary/20 to-primary/10 rounded-full border border-primary/20">
+                          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                          <span className="text-xs font-medium text-primary">Confirmed & Calendared</span>
+                        </div>
                       )}
                       {trip.revokeRequestedBy && (
                         <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700">
@@ -415,8 +424,8 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
               className="pr-8"
             />
             {newMessage.includes('@') && (
-              <div className="absolute top-full left-0 right-0 bg-card border border-border rounded-md mt-1 z-10 shadow-lg">
-                {board.collaborators.filter(c => 
+              <div className="absolute top-full left-0 right-0 bg-card border border-border rounded-md mt-1 z-[60] shadow-lg">
+                {allCollaborators.filter(c => 
                   newMessage.toLowerCase().includes('@' + c.name.toLowerCase().substring(0, newMessage.split('@').pop()?.length || 0))
                 ).slice(0, 3).map((collaborator) => (
                   <button
