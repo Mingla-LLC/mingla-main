@@ -22,16 +22,17 @@ interface TripCardProps {
   onSwipeLeft: () => void;
   onExpand: () => void;
   className?: string;
+  disableSwipe?: boolean;
 }
 
-export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className }: TripCardProps) => {
+export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className, disableSwipe = false }: TripCardProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [isAnimating, setIsAnimating] = useState(false);
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (isAnimating) return;
+    if (isAnimating || disableSwipe) return;
     setIsDragging(true);
     const touch = e.touches[0];
     setStartPos({ x: touch.clientX, y: touch.clientY });
@@ -80,7 +81,7 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className 
 
   // Mouse events for desktop
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (isAnimating) return;
+    if (isAnimating || disableSwipe) return;
     setIsDragging(true);
     setStartPos({ x: e.clientX, y: e.clientY });
   };
@@ -138,13 +139,13 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className 
         transform: !isAnimating ? `translate(${dragOffset.x}px, ${dragOffset.y}px) rotate(${dragOffset.x * 0.05}deg)` : undefined,
         opacity: !isAnimating ? Math.max(0.4, 1 - Math.abs(dragOffset.x) / 400) : undefined,
       }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      onTouchStart={disableSwipe ? undefined : handleTouchStart}
+      onTouchMove={disableSwipe ? undefined : handleTouchMove}
+      onTouchEnd={disableSwipe ? undefined : handleTouchEnd}
+      onMouseDown={disableSwipe ? undefined : handleMouseDown}
+      onMouseMove={disableSwipe ? undefined : handleMouseMove}
+      onMouseUp={disableSwipe ? undefined : handleMouseUp}
+      onMouseLeave={disableSwipe ? undefined : handleMouseUp}
       onClick={(e) => {
         if (!isDragging && Math.abs(dragOffset.x) < 10) {
           onExpand();
@@ -214,13 +215,22 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className 
         </div>
 
         {/* Swipe Hint */}
-        <div className="mt-4 pt-4 border-t border-border">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>← Swipe left to dismiss</span>
-            <span>Tap to expand</span>
-            <span>Swipe right to save →</span>
+        {!disableSwipe && (
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>← Swipe left to dismiss</span>
+              <span>Tap to expand</span>
+              <span>Swipe right to save →</span>
+            </div>
           </div>
-        </div>
+        )}
+        {disableSwipe && (
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="text-center text-xs text-muted-foreground">
+              <span>Tap to expand</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Swipe Indicators */}

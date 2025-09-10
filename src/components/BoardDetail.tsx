@@ -282,6 +282,7 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                   onSwipeLeft={() => {}}
                   onExpand={() => setSelectedTrip(trip.id)}
                   className="cursor-pointer hover:shadow-elevated transition-all border-0"
+                  disableSwipe={true}
                 />
                 
                 {/* Voting Section */}
