@@ -57,7 +57,9 @@ const Home = () => {
     budget: 50,
     categories: ['Coffee & Walk'],
     time: 'Now',
-    travel: 'Walking'
+    travel: 'Walking',
+    isCollaborating: true,
+    activeCollaborators: 2
   });
 
   const currentTrip = trips[currentTripIndex];
@@ -112,7 +114,12 @@ const Home = () => {
             <div className="flex items-center gap-2 text-sm">
               <span className="font-medium text-foreground">Alex Chen</span>
               <span className="text-muted-foreground">•</span>
-              <span className="text-xs text-muted-foreground">Solo mode</span>
+              <span className="text-xs text-muted-foreground">
+                {activePreferences.isCollaborating 
+                  ? `Collaborating with ${activePreferences.activeCollaborators} friends`
+                  : 'Solo mode'
+                }
+              </span>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {/* Budget Preference */}

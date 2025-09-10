@@ -67,8 +67,8 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
   // Add dummy users for tagging demo (same as BoardDetail)
   const allUsers = [
     ...collaborators,
-    { id: 'dummy1', username: 'emmawilson', name: 'Emma Wilson', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80', isActive: false },
-    { id: 'dummy2', username: 'jamesrodriguez', name: 'James Rodriguez', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e', isActive: false },
+    { id: 'dummy1', username: 'emmawilson', name: 'Emma Wilson', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80', isActive: true },
+    { id: 'dummy2', username: 'jamesrodriguez', name: 'James Rodriguez', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e', isActive: true },
     { id: 'dummy3', username: 'priyapatel', name: 'Priya Patel', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04', isActive: false }
   ];
 
@@ -161,6 +161,27 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
             {/* Collaborators Section */}
             {isCollabMode && (
               <div className="space-y-3">
+                {/* Active Collaborators */}
+                {allUsers.filter(u => u.isActive).length > 0 && (
+                  <div className="mb-4">
+                    <Label className="text-sm font-medium text-primary mb-2 block">Active Collaborators</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {allUsers.filter(u => u.isActive).map((user) => (
+                        <div key={user.id} className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-full">
+                          <Avatar className="w-5 h-5">
+                            <AvatarImage src={user.avatar} />
+                            <AvatarFallback className="text-xs">
+                              {user.name.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-xs font-medium text-primary">@{user.username}</span>
+                          <div className="w-1.5 h-1.5 bg-primary rounded-full" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Add Collaborator */}
                 <div className="flex gap-2 relative">
                   <div className="flex-1 relative">
