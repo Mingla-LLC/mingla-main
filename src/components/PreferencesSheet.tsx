@@ -60,9 +60,17 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
   const [selectedLocation, setSelectedLocation] = useState('current');
   const [groupSize, setGroupSize] = useState(2);
   const [collaborators, setCollaborators] = useState([
-    { id: '1', username: 'sarah_k', name: 'Sarah', isActive: true },
-    { id: '2', username: 'mike_dev', name: 'Mike', isActive: false },
+    { id: '1', username: 'sarah_k', name: 'Sarah', isActive: true, avatar: 'https://images.unsplash.com/photo-1494790108755-2616b79444d7' },
+    { id: '2', username: 'mike_dev', name: 'Mike', isActive: false, avatar: '' },
   ]);
+  
+  // Add dummy users for tagging demo (same as BoardDetail)
+  const allUsers = [
+    ...collaborators,
+    { id: 'dummy1', username: 'emmawilson', name: 'Emma Wilson', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80', isActive: false },
+    { id: 'dummy2', username: 'jamesrodriguez', name: 'James Rodriguez', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e', isActive: false },
+    { id: 'dummy3', username: 'priyapatel', name: 'Priya Patel', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04', isActive: false }
+  ];
 
   const savedLocations = [
     'Downtown Office',
@@ -154,13 +162,55 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
             {isCollabMode && (
               <div className="space-y-3">
                 {/* Add Collaborator */}
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter username"
-                    value={newUsername}
-                    onChange={(e) => setNewUsername(e.target.value)}
-                    className="flex-1 h-8 text-sm"
-                  />
+                <div className="flex gap-2 relative">
+                  <div className="flex-1 relative">
+                    <Input
+                      placeholder="Enter username"
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(e.target.value)}
+                      className="h-8 text-sm pr-8"
+                    />
+                    {newUsername.includes('@') && (
+                      <div className="absolute bottom-full left-0 right-0 bg-card border border-border rounded-md mb-1 z-[70] shadow-lg max-h-32 overflow-y-auto">
+                        {allUsers.filter(u => {
+                          const searchTerm = newUsername.split('@').pop()?.toLowerCase() || '';
+                          return u.username.toLowerCase().includes(searchTerm) && searchTerm.length > 0;
+                        }).slice(0, 5).map((user) => (
+                          <button
+                            key={user.id}
+                            className="w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2 text-sm first:rounded-t-md last:rounded-b-md transition-colors"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const parts = newUsername.split('@');
+                              const beforeAt = parts.slice(0, -1).join('@');
+                              const afterCurrentTag = parts[parts.length - 1].split(' ').slice(1).join(' ');
+                              const newText = `${beforeAt}@${user.username} ${afterCurrentTag}`.trim() + ' ';
+                              setNewUsername(newText);
+                            }}
+                          >
+                            <Avatar className="w-5 h-5">
+                              <AvatarImage src={user.avatar} />
+                              <AvatarFallback className="text-xs">
+                                {user.name.charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <span className="font-medium">{user.name}</span>
+                              <p className="text-xs text-muted-foreground">@{user.username}</p>
+                            </div>
+                          </button>
+                        ))}
+                        {allUsers.filter(u => {
+                          const searchTerm = newUsername.split('@').pop()?.toLowerCase() || '';
+                          return u.username.toLowerCase().includes(searchTerm) && searchTerm.length > 0;
+                        }).length === 0 && newUsername.split('@').pop()?.length > 0 && (
+                          <div className="px-3 py-2 text-xs text-muted-foreground">
+                            No users found
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <Button 
                     size="sm" 
                     variant="outline"
@@ -170,7 +220,8 @@ export const PreferencesSheet = ({ isOpen, onClose, activePreferences, onPrefere
                           id: Date.now().toString(),
                           username: newUsername.trim(),
                           name: newUsername.trim(),
-                          isActive: false
+                          isActive: false,
+                          avatar: ''
                         }]);
                         setNewUsername('');
                       }

@@ -297,9 +297,12 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                         </div>
                       )}
                       {trip.revokeRequestedBy && (
-                        <Badge variant="outline" className="text-xs bg-orange-50 text-orange-600 border-orange-200">
-                          Revoke Requested ({trip.revokeRequests.length}/{board.collaborators.length + 1})
-                        </Badge>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-orange-500/10 to-red-500/10 rounded-full border border-orange-300/30">
+                          <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
+                          <span className="text-xs font-medium text-orange-700">
+                            {trip.revokeRequests.length}/{board.collaborators.length + 1} requesting revoke
+                          </span>
+                        </div>
                       )}
                       {!trip.finalized && trip.finalizedBy.length > 0 && (
                         <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
