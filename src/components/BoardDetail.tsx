@@ -406,13 +406,41 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
 
         {/* Message Input */}
         <div className="flex gap-2">
-          <Input
-            placeholder="Add to discussion..."
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-            className="flex-1"
-          />
+          <div className="flex-1 relative">
+            <Input
+              placeholder="Add to discussion... Use @ to tag people"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              className="pr-8"
+            />
+            {newMessage.includes('@') && (
+              <div className="absolute top-full left-0 right-0 bg-card border border-border rounded-md mt-1 z-10 shadow-lg">
+                {board.collaborators.filter(c => 
+                  newMessage.toLowerCase().includes('@' + c.name.toLowerCase().substring(0, newMessage.split('@').pop()?.length || 0))
+                ).slice(0, 3).map((collaborator) => (
+                  <button
+                    key={collaborator.id}
+                    className="w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2 text-sm"
+                    onClick={() => {
+                      const lastAtIndex = newMessage.lastIndexOf('@');
+                      const beforeAt = newMessage.substring(0, lastAtIndex);
+                      const afterAt = newMessage.substring(newMessage.indexOf(' ', lastAtIndex) !== -1 ? newMessage.indexOf(' ', lastAtIndex) : newMessage.length);
+                      setNewMessage(`${beforeAt}@${collaborator.name} ${afterAt}`);
+                    }}
+                  >
+                    <Avatar className="w-6 h-6">
+                      <AvatarImage src={collaborator.avatar} />
+                      <AvatarFallback className="text-xs">
+                        {collaborator.initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span>{collaborator.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <Button onClick={handleSendMessage} disabled={!newMessage.trim()}>
             <Send className="h-4 w-4" />
           </Button>

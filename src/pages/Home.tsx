@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sliders, RefreshCw } from 'lucide-react';
+import { Sliders, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TripCard } from '@/components/TripCard';
 import { TripCardExpanded } from '@/components/TripCardExpanded';
@@ -106,42 +106,60 @@ const Home = () => {
               <span className="text-muted-foreground">•</span>
               <span className="text-xs text-muted-foreground">Solo mode</span>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
-              <button 
-                className="flex items-center gap-1 hover:text-foreground hover:line-through transition-colors"
-                onClick={() => {
-                  toast({
-                    title: "Preference updated",
-                    description: "Budget filter removed",
-                  });
-                }}
-              >
-                💰 Under $50
-              </button>
-              <span>•</span>
-              <button 
-                className="flex items-center gap-1 hover:text-foreground hover:line-through transition-colors"
-                onClick={() => {
-                  toast({
-                    title: "Preference updated", 
-                    description: "Weather filter removed",
-                  });
-                }}
-              >
-                ☀️ Weather OK
-              </button>
-              <span>•</span>
-              <button 
-                className="flex items-center gap-1 hover:text-foreground hover:line-through transition-colors"
-                onClick={() => {
-                  toast({
-                    title: "Preference updated",
-                    description: "Travel filter removed", 
-                  });
-                }}
-              >
-                🚶‍♀️ Walking distance
-              </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-green-400 to-green-600 flex items-center justify-center">
+                  <span className="text-xs">💰</span>
+                </div>
+                <span className="text-xs text-muted-foreground">Under $50</span>
+                <button 
+                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
+                  onClick={() => {
+                    toast({
+                      title: "Preference updated",
+                      description: "Budget filter removed",
+                    });
+                  }}
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                </button>
+              </div>
+              
+              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center">
+                  <span className="text-xs">☀️</span>
+                </div>
+                <span className="text-xs text-muted-foreground">Weather OK</span>
+                <button 
+                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
+                  onClick={() => {
+                    toast({
+                      title: "Preference updated", 
+                      description: "Weather filter removed",
+                    });
+                  }}
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                </button>
+              </div>
+              
+              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center">
+                  <span className="text-xs">🚶‍♀️</span>
+                </div>
+                <span className="text-xs text-muted-foreground">Walking</span>
+                <button 
+                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
+                  onClick={() => {
+                    toast({
+                      title: "Preference updated",
+                      description: "Travel filter removed", 
+                    });
+                  }}
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                </button>
+              </div>
             </div>
           </div>
           <Button

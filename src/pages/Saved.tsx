@@ -166,18 +166,7 @@ const Saved = () => {
       {/* Header */}
       <div className="px-6 pt-12 pb-6">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Saved</h1>
-            <Button 
-              variant="outline"
-              size="sm" 
-              onClick={() => console.log('Create board')}
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Create Board
-              {selectedTrips.length > 0 && ` (${selectedTrips.length})`}
-            </Button>
-          </div>
+          <h1 className="text-2xl font-bold">Saved</h1>
           <Button
             variant="outline"
             size="sm"
@@ -237,101 +226,101 @@ const Saved = () => {
           {activeSavedTrips.map((trip) => (
             <Card 
               key={trip.id} 
-              className="overflow-hidden cursor-pointer hover:shadow-elevated transition-all"
+              className="overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-200 border border-border/50"
               onClick={() => setExpandedTrip(trip.id)}
             >
               <div className="flex">
                 {/* Image */}
-                <div className="relative w-24 h-24 flex-shrink-0">
+                <div className="relative w-20 h-20 flex-shrink-0">
                   <img
                     src={trip.image}
                     alt={trip.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover rounded-l-lg"
                   />
                   {trip.status === 'accepted' && (
-                    <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                      <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
-                        <Check className="h-4 w-4 text-primary-foreground" />
+                    <div className="absolute inset-0 bg-primary/20 flex items-center justify-center rounded-l-lg">
+                      <div className="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                        <Check className="h-3 w-3 text-primary-foreground" />
                       </div>
                     </div>
                   )}
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold text-sm line-clamp-1">{trip.title}</h3>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAddToBoard(trip.id);
-                      }}
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
+                <div className="flex-1 p-3">
+                  <div className="flex items-start justify-between mb-1">
+                    <h3 className="font-semibold text-sm leading-tight line-clamp-1">{trip.title}</h3>
                   </div>
 
                   {trip.status === 'accepted' && (
-                    <Badge variant="default" className="text-xs mb-2 bg-primary/10 text-primary">
-                      Scheduled for {trip.scheduledDate && new Date(trip.scheduledDate).toLocaleDateString()}
+                    <Badge variant="default" className="text-xs mb-2 bg-primary/10 text-primary border-0">
+                      Finalized
                     </Badge>
                   )}
 
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground mb-2">
-                    <span>${trip.cost} per person</span>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
+                    <span className="font-medium">${trip.cost}</span>
                     <span>{trip.duration}</span>
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <MapPin className="h-3 w-3" />
-                      <span>{trip.location}</span>
+                      <span className="truncate">{trip.location}</span>
                     </div>
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="outline" className="text-xs border-border/50">
                       {trip.category}
                     </Badge>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex items-center justify-between mt-2">
+                  <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">
-                      Saved {new Date(trip.savedDate).toLocaleDateString()}
+                      {new Date(trip.savedDate).toLocaleDateString()}
                     </span>
                     <div className="flex gap-1">
                       <Button 
-                        variant="outline" 
+                        variant="ghost" 
                         size="sm" 
-                        className="text-xs h-7"
+                        className="text-xs h-6 px-2 hover:bg-muted"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleAddToBoard(trip.id);
                         }}
                       >
-                        <Plus className="h-3 w-3 mr-1" />
-                        Board
+                        <Plus className="h-3 w-3" />
                       </Button>
                       
-                      {trip.status === 'saved' && (
+                      {trip.status === 'saved' ? (
                         <Button 
-                          variant="outline" 
+                          variant="ghost" 
                           size="sm" 
-                          className="text-xs h-7 bg-primary/10 text-primary"
+                          className="text-xs h-6 px-2 hover:bg-primary/10 hover:text-primary"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleAcceptTrip(trip.id);
                           }}
                         >
-                          <Check className="h-3 w-3 mr-1" />
-                          Finalize
+                          <Check className="h-3 w-3" />
+                        </Button>
+                      ) : (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-xs h-6 px-2 hover:bg-destructive/10 hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRevokeTrip(trip.id);
+                          }}
+                        >
+                          <X className="h-3 w-3" />
                         </Button>
                       )}
                       
                       <Button 
-                        variant="outline" 
+                        variant="ghost" 
                         size="sm" 
-                        className="text-xs h-7 hover:bg-destructive/10 hover:text-destructive"
+                        className="text-xs h-6 px-2 hover:bg-destructive/10 hover:text-destructive"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleRemoveTrip(trip.id);
