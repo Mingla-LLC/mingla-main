@@ -646,8 +646,8 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                       value={[travelTime]}
                       onValueChange={(value) => setTravelTime(value[0])}
                       max={300} // 5 hours max
-                      min={0.001}
-                      step={travelTime < 1 ? 0.001 : travelTime < 60 ? 1 : 5}
+                      min={1}
+                      step={travelTime < 60 ? 1 : 5}
                       className="flex-1"
                     />
                     <span className="text-sm font-medium min-w-[4rem]">
@@ -671,8 +671,8 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                       value={[travelDistance]}
                       onValueChange={(value) => setTravelDistance(value[0])}
                       max={500} // 500 km/miles max
-                      min={0.001}
-                      step={travelDistance < 1 ? 0.001 : measurementSystem === 'metric' ? 1 : 0.5}
+                      min={1}
+                      step={measurementSystem === 'metric' ? 1 : 0.5}
                       className="flex-1"
                     />
                     <span className="text-sm font-medium min-w-[4rem]">

@@ -404,11 +404,56 @@ const AccountSettings = () => {
                 <SelectTrigger className="mt-2">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="USD">$ USD (United States Dollar)</SelectItem>
-                  <SelectItem value="EUR">€ EUR (Euro)</SelectItem>
-                  <SelectItem value="GBP">£ GBP (British Pound)</SelectItem>
-                  <SelectItem value="CAD">$ CAD (Canadian Dollar)</SelectItem>
+                <SelectContent className="max-h-60">
+                  <SelectItem value="USD">$ USD - United States Dollar</SelectItem>
+                  <SelectItem value="EUR">€ EUR - Euro</SelectItem>
+                  <SelectItem value="GBP">£ GBP - British Pound</SelectItem>
+                  <SelectItem value="JPY">¥ JPY - Japanese Yen</SelectItem>
+                  <SelectItem value="AUD">$ AUD - Australian Dollar</SelectItem>
+                  <SelectItem value="CAD">$ CAD - Canadian Dollar</SelectItem>
+                  <SelectItem value="CHF">₣ CHF - Swiss Franc</SelectItem>
+                  <SelectItem value="CNY">¥ CNY - Chinese Yuan</SelectItem>
+                  <SelectItem value="SEK">kr SEK - Swedish Krona</SelectItem>
+                  <SelectItem value="NZD">$ NZD - New Zealand Dollar</SelectItem>
+                  <SelectItem value="MXN">$ MXN - Mexican Peso</SelectItem>
+                  <SelectItem value="SGD">$ SGD - Singapore Dollar</SelectItem>
+                  <SelectItem value="HKD">$ HKD - Hong Kong Dollar</SelectItem>
+                  <SelectItem value="NOK">kr NOK - Norwegian Krone</SelectItem>
+                  <SelectItem value="KRW">₩ KRW - South Korean Won</SelectItem>
+                  <SelectItem value="TRY">₺ TRY - Turkish Lira</SelectItem>
+                  <SelectItem value="RUB">₽ RUB - Russian Ruble</SelectItem>
+                  <SelectItem value="INR">₹ INR - Indian Rupee</SelectItem>
+                  <SelectItem value="BRL">R$ BRL - Brazilian Real</SelectItem>
+                  <SelectItem value="ZAR">R ZAR - South African Rand</SelectItem>
+                  <SelectItem value="DKK">kr DKK - Danish Krone</SelectItem>
+                  <SelectItem value="PLN">zł PLN - Polish Zloty</SelectItem>
+                  <SelectItem value="TWD">$ TWD - Taiwan Dollar</SelectItem>
+                  <SelectItem value="THB">฿ THB - Thai Baht</SelectItem>
+                  <SelectItem value="MYR">RM MYR - Malaysian Ringgit</SelectItem>
+                  <SelectItem value="CZK">Kč CZK - Czech Koruna</SelectItem>
+                  <SelectItem value="HUF">Ft HUF - Hungarian Forint</SelectItem>
+                  <SelectItem value="ILS">₪ ILS - Israeli Shekel</SelectItem>
+                  <SelectItem value="CLP">$ CLP - Chilean Peso</SelectItem>
+                  <SelectItem value="PHP">₱ PHP - Philippine Peso</SelectItem>
+                  <SelectItem value="AED">د.إ AED - UAE Dirham</SelectItem>
+                  <SelectItem value="COP">$ COP - Colombian Peso</SelectItem>
+                  <SelectItem value="SAR">﷼ SAR - Saudi Riyal</SelectItem>
+                  <SelectItem value="RON">lei RON - Romanian Leu</SelectItem>
+                  <SelectItem value="BGN">лв BGN - Bulgarian Lev</SelectItem>
+                  <SelectItem value="HRK">kn HRK - Croatian Kuna</SelectItem>
+                  <SelectItem value="ISK">kr ISK - Icelandic Krona</SelectItem>
+                  <SelectItem value="IDR">Rp IDR - Indonesian Rupiah</SelectItem>
+                  <SelectItem value="VND">₫ VND - Vietnamese Dong</SelectItem>
+                  <SelectItem value="EGP">£ EGP - Egyptian Pound</SelectItem>
+                  <SelectItem value="QAR">﷼ QAR - Qatari Riyal</SelectItem>
+                  <SelectItem value="KWD">د.ك KWD - Kuwaiti Dinar</SelectItem>
+                  <SelectItem value="BHD">د.ب BHD - Bahraini Dinar</SelectItem>
+                  <SelectItem value="OMR">﷼ OMR - Omani Rial</SelectItem>
+                  <SelectItem value="JOD">د.ا JOD - Jordanian Dinar</SelectItem>
+                  <SelectItem value="LBP">£ LBP - Lebanese Pound</SelectItem>
+                  <SelectItem value="PEN">S/ PEN - Peruvian Sol</SelectItem>
+                  <SelectItem value="UYU">$ UYU - Uruguayan Peso</SelectItem>
+                  <SelectItem value="ARS">$ ARS - Argentine Peso</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -439,15 +484,22 @@ const AccountSettings = () => {
             <p className="text-xs text-muted-foreground">
               This affects distance calculations and temperature units throughout the app
             </p>
-            <Button 
-              onClick={handleSaveSettings}
-              disabled={settingsLoading}
-              className="w-full mt-3"
-            >
-              {settingsLoading ? 'Saving...' : 'Save Preferences'}
-            </Button>
           </div>
         </Card>
+      </div>
+
+      {/* Save Preferences Button */}
+      <div className="px-6 pb-6">
+        <Button 
+          onClick={handleSaveSettings}
+          disabled={settingsLoading}
+          className="w-full"
+        >
+          {settingsLoading ? 'Saving Preferences...' : 'Save Preferences'}
+        </Button>
+        <p className="text-xs text-muted-foreground text-center mt-2">
+          Preferences will persist across all sessions and devices
+        </p>
       </div>
 
       {/* Collaboration Defaults */}
