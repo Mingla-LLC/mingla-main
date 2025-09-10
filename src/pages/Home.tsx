@@ -66,7 +66,8 @@ interface ActivePreferences {
 const Home = () => {
   const [currentTripIndex, setCurrentTripIndex] = useState(0);
   const [showPreferences, setShowPreferences] = useState(false);
-  const [trips, setTrips] = useState(mockTrips);
+  const [allTrips] = useState(mockTrips);
+  const [trips, setTrips] = useState<typeof mockTrips>([]);
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   const [showCollaborationRequests, setShowCollaborationRequests] = useState(false);
   const [collaborationRequests, setCollaborationRequests] = useState<Array<{
@@ -105,6 +106,65 @@ const Home = () => {
     activeCollaborators: 0,
     activeCollaboratorsList: []
   });
+
+  // Filter trips based on preferences
+  const filterTrips = (preferences: ActivePreferences) => {
+    const filtered = allTrips.filter(trip => {
+      if (!preferences.isCollaborating) {
+        // Solo mode: filter by user's preferences only
+        const withinBudget = trip.cost >= preferences.budgetRange[0] && 
+                            trip.cost <= preferences.budgetRange[1];
+        
+        const matchesCategory = preferences.categories.length === 0 || 
+                               preferences.categories.includes(trip.category);
+        
+        const matchesTime = preferences.time === 'Anytime' || 
+                           preferences.time === 'Now';
+        
+        const matchesTravel = preferences.travel === 'Any mode' ||
+                             (preferences.travel === 'Walking' && trip.travelTime.includes('walk')) ||
+                             (preferences.travel === 'Drive' && trip.travelTime.includes('drive')) ||
+                             (preferences.travel === 'Public Transport' && trip.travelTime.includes('transit'));
+        
+        return withinBudget && matchesCategory && matchesTime && matchesTravel;
+      } else {
+        // Collaborative mode: show trips that match user's OR any collaborator's preferences
+        // For demo purposes, we'll be more permissive in collaborative mode
+        
+        // Expand budget range in collaborative mode (wider range to accommodate all)
+        const minBudget = Math.max(0, preferences.budgetRange[0] - 20);
+        const maxBudget = preferences.budgetRange[1] + 30;
+        const withinCollabBudget = trip.cost >= minBudget && trip.cost <= maxBudget;
+        
+        // Include more categories in collaborative mode
+        const allCollabCategories = [
+          ...preferences.categories,
+          'Creative Date', 
+          'Brunch', 
+          'Outdoor Activity',
+          'Cultural Experience'
+        ];
+        const matchesCollabCategory = allCollabCategories.includes(trip.category);
+        
+        // More flexible time matching in collaborative mode
+        const matchesCollabTime = true; // Show all times in collaborative mode
+        
+        // More flexible travel options in collaborative mode
+        const matchesCollabTravel = true; // Show all travel modes in collaborative mode
+        
+        return withinCollabBudget && matchesCollabCategory && matchesCollabTime && matchesCollabTravel;
+      }
+    });
+
+    return filtered;
+  };
+
+  // Apply filtering whenever preferences change
+  React.useEffect(() => {
+    const filteredTrips = filterTrips(activePreferences);
+    setTrips(filteredTrips);
+    setCurrentTripIndex(0); // Reset to first card
+  }, [activePreferences, allTrips]);
 
   const currentTrip = trips[currentTripIndex];
 
@@ -175,13 +235,14 @@ const Home = () => {
   };
 
   const refreshTrips = () => {
-    // Shuffle trips for demo
-    const shuffled = [...trips].sort(() => Math.random() - 0.5);
+    // Re-filter and shuffle trips for demo
+    const filtered = filterTrips(activePreferences);
+    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
     setTrips(shuffled);
     setCurrentTripIndex(0);
     toast({
       title: "Fresh recommendations!",
-      description: "Found new activities based on your preferences",
+      description: `Found ${shuffled.length} activities based on your preferences`,
     });
   };
 
@@ -359,7 +420,7 @@ const Home = () => {
           ))}
 
           {/* Current active card */}
-          {currentTrip && (
+          {currentTrip ? (
             <div className="absolute inset-0 z-20">
               <TripCard
                 trip={currentTrip}
@@ -368,6 +429,23 @@ const Home = () => {
                 onExpand={handleExpand}
                 className="animate-bounce-in"
               />
+            </div>
+          ) : (
+            <div className="absolute inset-0 z-20 flex items-center justify-center">
+              <div className="text-center p-8 bg-card rounded-lg shadow-sm border">
+                <div className="text-6xl mb-4">🎯</div>
+                <h3 className="text-lg font-semibold mb-2">No matching activities</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Try adjusting your preferences to see more options
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPreferences(true)}
+                  className="text-sm"
+                >
+                  Update Preferences
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -400,11 +478,27 @@ const Home = () => {
           </Button>
         </div>
 
-        {/* Trip Counter */}
+        {/* Trip Counter and No Results */}
         <div className="text-center mt-6">
-          <p className="text-sm text-muted-foreground">
-            Trip {currentTripIndex + 1} of {trips.length}
-          </p>
+          {trips.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Trip {currentTripIndex + 1} of {trips.length}
+            </p>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-sm text-muted-foreground mb-2">
+                No activities match your current preferences
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowPreferences(true)}
+                className="text-xs"
+              >
+                Adjust Preferences
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
