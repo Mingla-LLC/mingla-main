@@ -81,7 +81,6 @@ export const TripCardExpanded = ({
             <h2 className="text-xl font-bold text-white mb-2">{trip.title}</h2>
             <div className="flex items-center gap-4 text-sm text-white/90">
               <div className="flex items-center gap-1">
-                <DollarSign className="h-4 w-4" />
                 <span>{formatCurrency(trip.cost, profile?.currency || 'USD')} per person</span>
               </div>
               <div className="flex items-center gap-1">
