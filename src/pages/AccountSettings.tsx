@@ -184,7 +184,7 @@ const AccountSettings = () => {
     if (!user) return;
     
     try {
-      const { data, error } = await supabase
+        const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
@@ -198,6 +198,10 @@ const AccountSettings = () => {
       if (data) {
         setCurrency(data.currency || 'USD');
         setMeasurementSystem(data.measurement_system || 'metric');
+        setShareLocation(data.share_location ?? true);
+        setShareBudget(data.share_budget ?? false);
+        setShareCategories(data.share_categories ?? true);
+        setShareDateTime(data.share_date_time ?? true);
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -211,23 +215,31 @@ const AccountSettings = () => {
     
     try {
       // First, upsert the profile to ensure it exists
-      const { error: upsertError } = await supabase
+        const { error: upsertError } = await supabase
         .from('profiles')
         .upsert({
           id: user.id,
           username: user.email?.split('@')[0] || 'user',
           currency,
-          measurement_system: measurementSystem
+          measurement_system: measurementSystem,
+          share_location: shareLocation,
+          share_budget: shareBudget,
+          share_categories: shareCategories,
+          share_date_time: shareDateTime
         });
         
       if (upsertError) {
         console.error('Upsert error:', upsertError);
         // If upsert fails, try update
-        const { error: updateError } = await supabase
+          const { error: updateError } = await supabase
           .from('profiles')
           .update({
             currency,
-            measurement_system: measurementSystem
+            measurement_system: measurementSystem,
+            share_location: shareLocation,
+            share_budget: shareBudget,
+            share_categories: shareCategories,
+            share_date_time: shareDateTime
           })
           .eq('id', user.id);
           

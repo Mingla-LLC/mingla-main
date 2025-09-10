@@ -9,6 +9,10 @@ interface UserProfile {
   first_name?: string;
   last_name?: string;
   username: string;
+  share_location?: boolean;
+  share_budget?: boolean;
+  share_categories?: boolean;
+  share_date_time?: boolean;
 }
 
 export const useUserProfile = () => {
@@ -60,7 +64,11 @@ export const useUserProfile = () => {
           id: userId,
           username: user?.email?.split('@')[0] || 'user',
           currency: 'USD',
-          measurement_system: 'metric'
+          measurement_system: 'metric',
+          share_location: true,
+          share_budget: false,
+          share_categories: true,
+          share_date_time: true
         };
         setProfile(defaultProfile);
       }

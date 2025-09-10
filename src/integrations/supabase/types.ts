@@ -22,6 +22,10 @@ export type Database = {
           id: string
           last_name: string | null
           measurement_system: string | null
+          share_budget: boolean | null
+          share_categories: boolean | null
+          share_date_time: boolean | null
+          share_location: boolean | null
           username: string
         }
         Insert: {
@@ -31,6 +35,10 @@ export type Database = {
           id?: string
           last_name?: string | null
           measurement_system?: string | null
+          share_budget?: boolean | null
+          share_categories?: boolean | null
+          share_date_time?: boolean | null
+          share_location?: boolean | null
           username: string
         }
         Update: {
@@ -40,6 +48,10 @@ export type Database = {
           id?: string
           last_name?: string | null
           measurement_system?: string | null
+          share_budget?: boolean | null
+          share_categories?: boolean | null
+          share_date_time?: boolean | null
+          share_location?: boolean | null
           username?: string
         }
         Relationships: []
