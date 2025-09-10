@@ -302,7 +302,7 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                      </div>
                     
                     <div className="flex items-center gap-2">
-                      {!trip.finalized && (
+                      {!trip.finalized && !getUserFinalizedStatus(trip.id) && (
                         <>
                           <Button
                             variant={trip.userVote === 'for' ? "default" : "outline"}
@@ -314,24 +314,27 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                             👍
                           </Button>
                           <Button
-                             variant={trip.userVote === 'against' ? "default" : "outline"}
-                             size="sm"
-                             onClick={() => handleTripVote(trip.id, 'against')}
-                             disabled={!canChangeVote(trip.id)}
-                             className="h-7 px-3 bg-destructive/10 hover:bg-destructive/20 text-destructive border-destructive/20 data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground"
-                           >
-                             👎
-                           </Button>
-                           <Button
-                             variant={getUserFinalizedStatus(trip.id) ? "default" : "outline"}
-                             size="sm"
-                             onClick={() => handleFinalize(trip.id)}
-                             className="h-7 text-xs px-3 bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                           >
-                             {getUserFinalizedStatus(trip.id) ? 'Finalized' : 'Finalize'}
-                           </Button>
-                         </>
-                       )}
+                            variant={trip.userVote === 'against' ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handleTripVote(trip.id, 'against')}
+                            disabled={!canChangeVote(trip.id)}
+                            className="h-7 px-3 bg-destructive/10 hover:bg-destructive/20 text-destructive border-destructive/20 data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground"
+                          >
+                            👎
+                          </Button>
+                        </>
+                      )}
+                      
+                      {!trip.finalized && (
+                        <Button
+                          variant={getUserFinalizedStatus(trip.id) ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleFinalize(trip.id)}
+                          className="h-7 text-xs px-3 bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                        >
+                          {getUserFinalizedStatus(trip.id) ? 'Finalized' : 'Finalize'}
+                        </Button>
+                      )}
                       
                       {trip.finalized && (
                         <Button
