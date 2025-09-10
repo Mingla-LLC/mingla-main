@@ -198,28 +198,34 @@ const Profiles = () => {
         {/* User Profile Management */}
         {user && (
           <Card className="mb-6">
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <User className="h-6 w-6 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <CardTitle className="text-xl">
-                    {profile?.first_name && profile?.last_name 
-                      ? `${profile.first_name} ${profile.last_name}` 
-                      : profile?.username || 'User'}
-                  </CardTitle>
-                  <p className="text-sm text-muted-foreground">{user.email}</p>
-                  {profile?.created_at && (
-                    <p className="text-xs text-muted-foreground">
-                      Member since {new Date(profile.created_at).toLocaleDateString()}
-                    </p>
-                  )}
+            <CardHeader className="pb-6">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex items-center gap-4 flex-1">
+                  <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <User className="h-8 w-8 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-xl font-semibold mb-1 truncate">
+                      {profile?.first_name && profile?.last_name 
+                        ? `${profile.first_name} ${profile.last_name}` 
+                        : profile?.username || 'User'}
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground mb-1 truncate">{user.email}</p>
+                    {profile?.created_at && (
+                      <p className="text-xs text-muted-foreground">
+                        Member since {new Date(profile.created_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <Button
                   variant="outline"
-                  size="sm"
                   onClick={openEditDialog}
+                  className="w-full sm:w-auto"
                 >
                   <Edit2 className="h-4 w-4 mr-2" />
                   Edit Profile
@@ -231,64 +237,73 @@ const Profiles = () => {
 
         {/* Edit Profile Dialog */}
         <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Edit Profile</DialogTitle>
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="pb-4">
+              <DialogTitle className="text-xl font-semibold">Edit Profile</DialogTitle>
+              <p className="text-sm text-muted-foreground">Update your profile information</p>
             </DialogHeader>
-            <form onSubmit={handleUpdate} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="first-name">First Name</Label>
-                  <Input
-                    id="first-name"
-                    type="text"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
-                    placeholder="Enter first name"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="last-name">Last Name</Label>
-                  <Input
-                    id="last-name"
-                    type="text"
-                    value={formData.lastName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
-                    placeholder="Enter last name"
-                  />
+            <form onSubmit={handleUpdate} className="space-y-6">
+              {/* Name Fields */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="first-name" className="text-sm font-medium">
+                      First Name
+                    </Label>
+                    <Input
+                      id="first-name"
+                      type="text"
+                      value={formData.firstName}
+                      onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                      placeholder="Enter first name"
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="last-name" className="text-sm font-medium">
+                      Last Name
+                    </Label>
+                    <Input
+                      id="last-name"
+                      type="text"
+                      value={formData.lastName}
+                      onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                      placeholder="Enter last name"
+                      className="h-10"
+                    />
+                  </div>
                 </div>
               </div>
-              <div>
-                <Label htmlFor="username">Username</Label>
+
+              {/* Username Field */}
+              <div className="space-y-2">
+                <Label htmlFor="username" className="text-sm font-medium">
+                  Username <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="username"
                   type="text"
                   value={formData.username}
                   onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
                   placeholder="Enter username"
+                  className="h-10"
                   required
                 />
               </div>
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="email"
-                    type="email"
-                    defaultValue={user?.email || ''}
-                    placeholder="Enter new email"
-                    onChange={(e) => {
-                      if (e.target.value !== user?.email) {
-                        handleUpdateEmail(e.target.value);
-                      }
-                    }}
-                  />
+
+              {/* Email Section - Read Only Display */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Current Email</Label>
+                <div className="p-3 bg-muted/50 rounded-md border">
+                  <p className="text-sm">{user?.email}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Email changes must be done through account settings
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Changing email requires verification
-                </p>
               </div>
-              <div className="flex justify-end gap-2 pt-4">
+
+              {/* Action Buttons */}
+              <div className="flex flex-col-reverse sm:flex-row gap-3 pt-4 border-t">
                 <Button 
                   type="button" 
                   variant="outline" 
@@ -300,10 +315,17 @@ const Profiles = () => {
                       lastName: profile?.last_name || ''
                     });
                   }}
+                  className="w-full sm:w-auto"
                 >
                   Cancel
                 </Button>
-                <Button type="submit">Update Profile</Button>
+                <Button 
+                  type="submit" 
+                  className="w-full sm:w-auto"
+                  disabled={!formData.username.trim()}
+                >
+                  Update Profile
+                </Button>
               </div>
             </form>
           </DialogContent>
