@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapPin, Clock, DollarSign, CheckCircle, Cloud, Zap } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { formatCurrency } from '@/utils/currency';
+import { getWeather, getWeatherBadge } from "@/utils/weather";
+import { reasonCardNotes } from "@/utils/ai/reason";
 
 interface TripCardProps {
   trip: {
@@ -19,6 +21,8 @@ interface TripCardProps {
     whyItFits: string;
     location: string;
     category: string;
+    latitude?: number;
+    longitude?: number;
   };
   onSwipeRight: () => void;
   onSwipeLeft: () => void;
@@ -32,7 +36,40 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [isAnimating, setIsAnimating] = useState(false);
+  const [weatherBadge, setWeatherBadge] = useState<string>('');
+  const [adjustedDuration, setAdjustedDuration] = useState<string>(trip.duration);
+  const [safetyNotes, setSafetyNotes] = useState<string[]>([]);
   const { profile } = useUserProfile();
+
+  useEffect(() => {
+    const loadWeatherAndReasoning = async () => {
+      if (trip.latitude && trip.longitude) {
+        const weather = await getWeather(trip.latitude, trip.longitude);
+        const badge = getWeatherBadge(weather);
+        setWeatherBadge(badge);
+
+        // Get AI reasoning for weather-aware adjustments
+        const reasoning = await reasonCardNotes({
+          weather,
+          preferences: profile,
+          venue: {
+            title: trip.title,
+            category: trip.category,
+            duration_min: parseInt(trip.duration.split(' ')[0]) || 60,
+            lat: trip.latitude,
+            lng: trip.longitude
+          }
+        });
+
+        if (reasoning.adjusted_duration !== parseInt(trip.duration.split(' ')[0])) {
+          setAdjustedDuration(`${reasoning.adjusted_duration} min`);
+        }
+        setSafetyNotes(reasoning.safety_notes);
+      }
+    };
+
+    loadWeatherAndReasoning();
+  }, [trip.latitude, trip.longitude, trip.duration, trip.title, trip.category, profile]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (isAnimating || disableSwipe) return;
@@ -180,6 +217,13 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
           {trip.whyItFits}
         </p>
 
+        {/* Safety Notes */}
+        {safetyNotes.length > 0 && (
+          <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded mb-3">
+            💡 {safetyNotes[0]}
+          </div>
+        )}
+
         {/* Badges - moved here for better readability */}
         <div className="flex flex-wrap gap-1 mb-3">
           {trip.badges.map((badge) => (
@@ -202,7 +246,8 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
             </div>
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
-              <span>{trip.duration}</span>
+              <span>{adjustedDuration}</span>
+              {weatherBadge && <span className="text-lg">{weatherBadge}</span>}
             </div>
           </div>
         </div>

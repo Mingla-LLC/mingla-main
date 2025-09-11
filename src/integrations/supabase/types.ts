@@ -14,6 +14,110 @@ export type Database = {
   }
   public: {
     Tables: {
+      experiences: {
+        Row: {
+          category: string
+          created_at: string | null
+          duration_min: number | null
+          id: string
+          image_url: string | null
+          lat: number | null
+          lng: number | null
+          meta: Json | null
+          opening_hours: Json | null
+          place_id: string | null
+          price_max: number | null
+          price_min: number | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          duration_min?: number | null
+          id?: string
+          image_url?: string | null
+          lat?: number | null
+          lng?: number | null
+          meta?: Json | null
+          opening_hours?: Json | null
+          place_id?: string | null
+          price_max?: number | null
+          price_min?: number | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          duration_min?: number | null
+          id?: string
+          image_url?: string | null
+          lat?: number | null
+          lng?: number | null
+          meta?: Json | null
+          opening_hours?: Json | null
+          place_id?: string | null
+          price_max?: number | null
+          price_min?: number | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      preferences: {
+        Row: {
+          budget_max: number | null
+          budget_min: number | null
+          categories: string[] | null
+          created_at: string | null
+          datetime_pref: string | null
+          mode: string | null
+          people_count: number | null
+          profile_id: string
+          travel_constraint_type: string | null
+          travel_constraint_value: number | null
+          travel_mode: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          budget_max?: number | null
+          budget_min?: number | null
+          categories?: string[] | null
+          created_at?: string | null
+          datetime_pref?: string | null
+          mode?: string | null
+          people_count?: number | null
+          profile_id: string
+          travel_constraint_type?: string | null
+          travel_constraint_value?: number | null
+          travel_mode?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          budget_max?: number | null
+          budget_min?: number | null
+          categories?: string[] | null
+          created_at?: string | null
+          datetime_pref?: string | null
+          mode?: string | null
+          people_count?: number | null
+          profile_id?: string
+          travel_constraint_type?: string | null
+          travel_constraint_value?: number | null
+          travel_mode?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "preferences_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -55,6 +159,45 @@ export type Database = {
           username?: string
         }
         Relationships: []
+      }
+      saves: {
+        Row: {
+          created_at: string | null
+          experience_id: string
+          profile_id: string
+          scheduled_at: string | null
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          experience_id: string
+          profile_id: string
+          scheduled_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          experience_id?: string
+          profile_id?: string
+          scheduled_at?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saves_experience_id_fkey"
+            columns: ["experience_id"]
+            isOneToOne: false
+            referencedRelation: "experiences"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "saves_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

@@ -1,1 +1,10 @@
 project_id = "gqnoajqerqhnvulmnyvv"
+
+[functions.weather]
+verify_jwt = false
+
+[functions.places]
+verify_jwt = false
+
+[functions.ai-reason]
+verify_jwt = false
