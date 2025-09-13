@@ -38,6 +38,7 @@ export const Friends = () => {
     acceptFriendRequest,
     declineFriendRequest,
     removeFriend,
+    cancelFriendRequest,
   } = useFriends();
 
   const { createConversation } = useMessages();
@@ -110,7 +111,7 @@ export const Friends = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5" />
-              Friend Requests
+              Friend Requests ({friendRequests.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -129,24 +130,37 @@ export const Friends = () => {
                     <p className="font-medium">{getDisplayName(request.sender)}</p>
                     <p className="text-sm text-muted-foreground">@{request.sender.username}</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(request.created_at).toLocaleDateString()}
+                      {request.type === 'incoming' ? 'Wants to be friends' : 'Request sent'} • {new Date(request.created_at).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button 
-                    size="sm" 
-                    onClick={() => acceptFriendRequest(request.id)}
-                  >
-                    <Check className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => declineFriendRequest(request.id)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                  {request.type === 'incoming' ? (
+                    <>
+                      <Button 
+                        size="sm" 
+                        onClick={() => acceptFriendRequest(request.id)}
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => declineFriendRequest(request.id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => cancelFriendRequest(request.id)}
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Cancel
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

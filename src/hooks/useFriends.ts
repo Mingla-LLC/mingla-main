@@ -26,6 +26,7 @@ export interface FriendRequest {
   };
   status: 'pending' | 'accepted' | 'declined' | 'cancelled';
   created_at: string;
+  type?: 'incoming' | 'outgoing';
 }
 
 export const useFriends = () => {
@@ -83,31 +84,44 @@ export const useFriends = () => {
     }
   }, []);
 
-  // Load friend requests
+  // Load friend requests (both incoming and outgoing)
   const loadFriendRequests = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // Get incoming friend requests
-      const { data: requestsData, error } = await supabase
+      const { data: incomingRequests, error: incomingError } = await supabase
         .from('friend_requests')
         .select('*')
         .eq('receiver_id', user.id)
         .eq('status', 'pending');
 
-      if (error) {
-        console.error('Error loading friend requests:', error);
+      // Get outgoing friend requests  
+      const { data: outgoingRequests, error: outgoingError } = await supabase
+        .from('friend_requests')
+        .select('*')
+        .eq('sender_id', user.id)
+        .eq('status', 'pending');
+
+      if (incomingError) {
+        console.error('Error loading incoming friend requests:', incomingError);
+        return;
+      }
+
+      if (outgoingError) {
+        console.error('Error loading outgoing friend requests:', outgoingError);
         return;
       }
 
       const formattedRequests: FriendRequest[] = [];
       
-      for (const r of requestsData || []) {
+      // Process incoming requests
+      for (const r of incomingRequests || []) {
         // Get sender's profile
         const { data: profile } = await supabase
           .from('profiles')
-          .select('username, first_name, last_name')
+          .select('username, first_name, last_name, avatar_url')
           .eq('id', r.sender_id)
           .single();
 
@@ -119,10 +133,36 @@ export const useFriends = () => {
             username: profile?.username || 'Unknown',
             first_name: profile?.first_name,
             last_name: profile?.last_name,
-            avatar_url: undefined,
+            avatar_url: profile?.avatar_url,
           },
           status: r.status as 'pending' | 'accepted' | 'declined' | 'cancelled',
           created_at: r.created_at,
+          type: 'incoming'
+        });
+      }
+
+      // Process outgoing requests
+      for (const r of outgoingRequests || []) {
+        // Get receiver's profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username, first_name, last_name, avatar_url')
+          .eq('id', r.receiver_id)
+          .single();
+
+        formattedRequests.push({
+          id: r.id,
+          sender_id: r.sender_id,
+          receiver_id: r.receiver_id,
+          sender: {
+            username: profile?.username || 'Unknown',
+            first_name: profile?.first_name,
+            last_name: profile?.last_name,
+            avatar_url: profile?.avatar_url,
+          },
+          status: r.status as 'pending' | 'accepted' | 'declined' | 'cancelled',
+          created_at: r.created_at,
+          type: 'outgoing'
         });
       }
 
