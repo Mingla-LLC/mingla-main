@@ -290,7 +290,7 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
             </div>
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
-              <span>{adjustedDuration}</span>
+              <span>{adjustedDuration} total</span>
               {weatherBadge && <span className="text-lg">{weatherBadge}</span>}
             </div>
           </div>
@@ -302,7 +302,9 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
             <MapPin className="h-4 w-4" />
             <span>{trip.location}</span>
           </div>
-          <span className="text-sm font-medium text-primary">{trip.travelTime}</span>
+          <div className="text-sm font-medium text-primary">
+            <span>{trip.travelTime}</span>
+          </div>
         </div>
 
         {/* Swipe Hint */}

@@ -44,6 +44,47 @@ const Home = () => {
   const [user, setUser] = useState<User | null>(null);
   const { profile } = useUserProfile();
   
+  // Helper function to calculate travel time in minutes
+  const calculateTravelTime = (fromLocation: string, toLat: number | null, toLng: number | null, travelMode: string): number => {
+    // Simplified calculation - in real app, this would use actual routing API
+    if (!toLat || !toLng) return 15; // Default
+    
+    // Mock distance calculation based on travel mode
+    const baseTime = Math.random() * 20 + 5; // 5-25 minutes
+    
+    switch (travelMode) {
+      case 'walk':
+        return Math.round(baseTime * 1.5);
+      case 'drive':
+        return Math.round(baseTime * 0.7);
+      case 'public':
+        return Math.round(baseTime * 1.2);
+      default:
+        return Math.round(baseTime);
+    }
+  };
+  
+  // Helper function to calculate travel info based on constraint type
+  const calculateTravelInfo = (fromLocation: string, toLat: number | null, toLng: number | null, travelMode: string, constraint: 'time' | 'distance'): string => {
+    if (!toLat || !toLng) return constraint === 'time' ? '15 min' : '1.2 km';
+    
+    const travelTime = calculateTravelTime(fromLocation, toLat, toLng, travelMode);
+    
+    if (constraint === 'time') {
+      const modeIcon = travelMode === 'walk' ? '🚶‍♀️' : travelMode === 'drive' ? '🚗' : '🚌';
+      return `${travelTime} min ${modeIcon}`;
+    } else {
+      // Calculate distance based on time (rough approximation)
+      const distance = travelMode === 'walk' ? travelTime * 0.08 : // ~5 km/h walking speed
+                      travelMode === 'drive' ? travelTime * 0.5 : // ~30 km/h average city speed
+                      travelTime * 0.3; // ~18 km/h public transport
+      
+      return measurementSystem === 'metric' ? 
+        `${distance.toFixed(1)} km` : 
+        `${(distance * 0.621371).toFixed(1)} mi`;
+    }
+  };
+  
   // Session management
   const {
     sessionState,
@@ -126,20 +167,51 @@ const Home = () => {
 
   // Convert experiences to trip format for cards
   const trips = useMemo(() => 
-    experiences.map(exp => ({
-      id: exp.id,
-      title: exp.title,
-      image: exp.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
-      cost: exp.price_min || 25,
-      duration: `${exp.duration_min || 90} min`,
-      travelTime: '8 min walk', // Default for now
-      badges: ['Budget-Fit', 'Weather-OK'],
-      whyItFits: 'Perfect match for your preferences based on location and category',
-      location: 'Local Area',
-      category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
-      latitude: exp.lat || 47.6062,
-      longitude: exp.lng || -122.3321
-    })), [experiences]);
+    experiences.map(exp => {
+      // Calculate total date duration (experience + travel time)
+      const experienceDuration = exp.duration_min || 90;
+      const estimatedTravelTime = calculateTravelTime(
+        activePreferences.location,
+        exp.lat,
+        exp.lng,
+        activePreferences.travel
+      );
+      const totalDuration = experienceDuration + (estimatedTravelTime * 2); // Round trip
+      
+      // Format duration
+      const formatDuration = (minutes: number) => {
+        if (minutes >= 60) {
+          const hours = Math.floor(minutes / 60);
+          const remainingMinutes = minutes % 60;
+          return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+        }
+        return `${minutes}m`;
+      };
+      
+      // Calculate distance or time based on travel constraint
+      const travelInfo = calculateTravelInfo(
+        activePreferences.location,
+        exp.lat,
+        exp.lng,
+        activePreferences.travel,
+        activePreferences.travelConstraint
+      );
+      
+      return {
+        id: exp.id,
+        title: exp.title,
+        image: exp.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
+        cost: exp.price_min || 25,
+        duration: formatDuration(totalDuration),
+        travelTime: travelInfo,
+        badges: ['Budget-Fit', 'Weather-OK'],
+        whyItFits: 'Perfect match for your preferences based on location and category',
+        location: 'Local Area',
+        category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
+        latitude: exp.lat || 47.6062,
+        longitude: exp.lng || -122.3321
+      };
+    }), [experiences, activePreferences.location, activePreferences.travel, activePreferences.travelConstraint]);
 
   const [collaborationRequests, setCollaborationRequests] = useState<Array<{
     id: string;
