@@ -13,126 +13,33 @@ import {
   Paperclip
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-interface Message {
-  id: string;
-  senderId: string;
-  content: string;
-  timestamp: string;
-  read: boolean;
-  type: 'text' | 'image' | 'file';
-}
-
-interface Conversation {
-  id: string;
-  participant: {
-    id: string;
-    name: string;
-    username: string;
-    avatar: string;
-    isOnline: boolean;
-  };
-  lastMessage: Message;
-  unreadCount: number;
-  messages: Message[];
-}
+import { useMessages } from '@/hooks/useMessages';
 
 export const Inbox = () => {
-  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Mock data
-  const [conversations] = useState<Conversation[]>([
-    {
-      id: '1',
-      participant: {
-        id: '1',
-        name: 'Emma Wilson',
-        username: 'emmawilson',
-        avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80',
-        isOnline: true
-      },
-      lastMessage: {
-        id: '1',
-        senderId: '1',
-        content: 'Hey! Are you free for that pottery workshop tomorrow?',
-        timestamp: '2 min ago',
-        read: false,
-        type: 'text'
-      },
-      unreadCount: 2,
-      messages: [
-        {
-          id: '1',
-          senderId: '1',
-          content: 'Hi! How are you doing?',
-          timestamp: '10:30 AM',
-          read: true,
-          type: 'text'
-        },
-        {
-          id: '2',
-          senderId: 'current',
-          content: 'Hey Emma! I\'m doing great, thanks for asking!',
-          timestamp: '10:35 AM',
-          read: true,
-          type: 'text'
-        },
-        {
-          id: '3',
-          senderId: '1',
-          content: 'Hey! Are you free for that pottery workshop tomorrow?',
-          timestamp: '2 min ago',
-          read: false,
-          type: 'text'
-        }
-      ]
-    },
-    {
-      id: '2',
-      participant: {
-        id: '2',
-        name: 'James Rodriguez',
-        username: 'jamesrodriguez',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e',
-        isOnline: false
-      },
-      lastMessage: {
-        id: '2',
-        senderId: 'current',
-        content: 'Sounds like a plan! See you there.',
-        timestamp: '1 hour ago',
-        read: true,
-        type: 'text'
-      },
-      unreadCount: 0,
-      messages: [
-        {
-          id: '1',
-          senderId: '2',
-          content: 'Want to check out that new art gallery opening?',
-          timestamp: '2:15 PM',
-          read: true,
-          type: 'text'
-        },
-        {
-          id: '2',
-          senderId: 'current',
-          content: 'Sounds like a plan! See you there.',
-          timestamp: '1 hour ago',
-          read: true,
-          type: 'text'
-        }
-      ]
-    }
-  ]);
+  const {
+    conversations,
+    currentConversation,
+    loading,
+    sending,
+    loadConversations,
+    loadMessages,
+    sendMessage,
+    setCurrentConversation,
+  } = useMessages();
 
-  const currentConversation = conversations.find(conv => conv.id === selectedConversation);
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
   const filteredConversations = conversations.filter(conv =>
-    conv.participant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.participant.username.toLowerCase().includes(searchQuery.toLowerCase())
+    conv.participants.some(p => 
+      `${p.first_name} ${p.last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.username.toLowerCase().includes(searchQuery.toLowerCase())
+    )
   );
 
   const scrollToBottom = () => {
@@ -143,20 +50,31 @@ export const Inbox = () => {
     scrollToBottom();
   }, [currentConversation?.messages]);
 
-  const sendMessage = () => {
-    if (!newMessage.trim() || !selectedConversation) return;
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !currentConversation || sending) return;
     
-    // Mock sending message
-    console.log(`Sending message: ${newMessage}`);
-    setNewMessage('');
+    const success = await sendMessage(currentConversation.id, newMessage);
+    if (success) {
+      setNewMessage('');
+    }
   };
 
-  const formatTime = (timestamp: string) => {
-    // This would normally parse the actual timestamp
-    return timestamp;
+  const handleSelectConversation = (conversationId: string) => {
+    loadMessages(conversationId);
   };
 
-  if (selectedConversation && currentConversation) {
+  const getDisplayName = (participant: { username: string; first_name?: string; last_name?: string }) => {
+    if (participant.first_name && participant.last_name) {
+      return `${participant.first_name} ${participant.last_name}`;
+    } else if (participant.first_name) {
+      return participant.first_name;
+    } else if (participant.last_name) {
+      return participant.last_name;
+    }
+    return participant.username;
+  };
+
+  if (currentConversation) {
     return (
       <div className="flex flex-col h-[calc(100vh-200px)]">
         {/* Chat Header */}
@@ -166,7 +84,7 @@ export const Inbox = () => {
               <Button 
                 variant="ghost" 
                 size="sm" 
-                onClick={() => setSelectedConversation(null)}
+                onClick={() => setCurrentConversation(null)}
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
@@ -177,9 +95,9 @@ export const Inbox = () => {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
-                <p className="font-medium">{currentConversation.participant.name}</p>
+                <p className="font-medium">{getDisplayName(currentConversation.participants[0])}</p>
                 <p className="text-sm text-muted-foreground">
-                  {currentConversation.participant.isOnline ? 'Online' : 'Last seen recently'}
+                  {currentConversation.participants[0]?.is_online ? 'Online' : 'Last seen recently'}
                 </p>
               </div>
               <Button variant="ghost" size="sm">
@@ -197,10 +115,10 @@ export const Inbox = () => {
                 key={message.id}
                 className={cn(
                   "flex gap-2 max-w-[70%]",
-                  message.senderId === 'current' ? "ml-auto flex-row-reverse" : ""
+                  message.sender_id === currentConversation.participants[0]?.id ? "" : "ml-auto flex-row-reverse"
                 )}
               >
-                {message.senderId !== 'current' && (
+                {message.sender_id !== currentConversation.participants[0]?.id && (
                   <Avatar className="w-8 h-8">
                     <AvatarImage src={currentConversation.participant.avatar} />
                     <AvatarFallback className="text-xs">
@@ -242,10 +160,10 @@ export const Inbox = () => {
                 placeholder="Type a message..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                 className="flex-1"
               />
-              <Button onClick={sendMessage}>
+              <Button onClick={handleSendMessage}>
                 <Send className="h-4 w-4" />
               </Button>
             </div>

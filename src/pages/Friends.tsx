@@ -19,134 +19,90 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { useUsers } from '@/hooks/useUsers';
+import { useFriends } from '@/hooks/useFriends';
+import { useMessages } from '@/hooks/useMessages';
 import { toast } from '@/hooks/use-toast';
-
-interface Friend {
-  id: string;
-  username: string;
-  name: string;
-  avatar: string;
-  status: 'online' | 'offline' | 'away';
-  isOnline?: boolean;
-}
-
-interface FriendRequest {
-  id: string;
-  from: Friend;
-  timestamp: string;
-  status: 'pending' | 'accepted' | 'declined';
-}
 
 export const Friends = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [newFriendUsername, setNewFriendUsername] = useState('');
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const { getAllUsers, getUserByUsername, getDisplayName, getUserInitials } = useUsers();
+  const {
+    friends,
+    friendRequests,
+    loading,
+    loadFriends,
+    loadFriendRequests,
+    sendFriendRequest,
+    acceptFriendRequest,
+    declineFriendRequest,
+    removeFriend,
+  } = useFriends();
 
-  // Load friends on component mount
+  const { createConversation } = useMessages();
+
+  // Load friends and requests on component mount
   useEffect(() => {
     loadFriends();
-  }, []);
-
-  const loadFriends = async () => {
-    setLoading(true);
-    try {
-      // Get all users to simulate friends list
-      const users = await getAllUsers();
-      const formattedFriends: Friend[] = users.slice(0, 8).map((user, index) => ({
-        id: user.id,
-        username: user.username,
-        name: getDisplayName(user),
-        avatar: user.avatar_url || `https://images.unsplash.com/photo-${1438761681033 + index * 1000}-6461ffad8d80`,
-        status: ['online', 'away', 'offline'][index % 3] as 'online' | 'away' | 'offline'
-      }));
-      setFriends(formattedFriends);
-
-      // Mock friend requests - in real app this would come from database
-      setFriendRequests([]);
-    } catch (error) {
-      console.error('Error loading friends:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    loadFriendRequests();
+  }, [loadFriends, loadFriendRequests]);
 
   const filteredFriends = friends.filter(friend =>
-    friend.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    `${friend.first_name} ${friend.last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
     friend.username.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'online': return 'bg-green-500';
-      case 'away': return 'bg-yellow-500';
-      default: return 'bg-gray-400';
+  const getDisplayName = (friend: { username: string; first_name?: string; last_name?: string }) => {
+    if (friend.first_name && friend.last_name) {
+      return `${friend.first_name} ${friend.last_name}`;
+    } else if (friend.first_name) {
+      return friend.first_name;
+    } else if (friend.last_name) {
+      return friend.last_name;
     }
+    return friend.username;
   };
 
-  const sendFriendRequest = async () => {
+  const getUserInitials = (friend: { username: string; first_name?: string; last_name?: string }) => {
+    const displayName = getDisplayName(friend);
+    return displayName
+      .split(' ')
+      .map(name => name[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const handleSendFriendRequest = async () => {
     if (!newFriendUsername.trim()) return;
     
-    try {
-      const user = await getUserByUsername(newFriendUsername.trim());
-      if (!user) {
-        toast({
-          title: "User not found",
-          description: "No user found with that username",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Check if already friends
-      const isAlreadyFriend = friends.some(f => f.username === user.username);
-      if (isAlreadyFriend) {
-        toast({
-          title: "Already friends",
-          description: "You are already friends with this user",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      toast({
-        title: "Friend request sent!",
-        description: `Friend request sent to @${user.username}`,
-      });
-      
+    const success = await sendFriendRequest(newFriendUsername);
+    if (success) {
       setNewFriendUsername('');
-    } catch (error) {
+    }
+  };
+
+  const handleMessageFriend = async (friendUserId: string) => {
+    const conversationId = await createConversation(friendUserId);
+    if (conversationId) {
+      // Navigate to inbox with this conversation - this would be handled by router
+      console.log(`Navigate to conversation ${conversationId}`);
       toast({
-        title: "Error",
-        description: "Failed to send friend request",
-        variant: "destructive"
+        title: "Conversation opened",
+        description: "Switch to Inbox tab to see your conversation",
       });
     }
   };
 
-  const handleFriendRequest = (requestId: string, action: 'accept' | 'decline') => {
-    setFriendRequests(prev => 
-      prev.map(req => 
-        req.id === requestId 
-          ? { ...req, status: action === 'accept' ? 'accepted' : 'declined' }
-          : req
-      )
-    );
-  };
-
-  const createCollaborationBoard = (friend: Friend) => {
-    console.log(`Creating collaboration board with ${friend.name}`);
-    // This would navigate to a new collaboration board
+  const createCollaborationBoard = (friendUserId: string) => {
+    console.log(`Creating collaboration board with ${friendUserId}`);
+    // This would create a new collaboration board
   };
 
   return (
     <div className="space-y-6">
       {/* Friend Requests */}
-      {friendRequests.filter(req => req.status === 'pending').length > 0 && (
+      {friendRequests.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -155,40 +111,39 @@ export const Friends = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {friendRequests
-              .filter(req => req.status === 'pending')
-              .map(request => (
-                <div key={request.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <AvatarImage src={request.from.avatar} />
-                      <AvatarFallback>
-                        {request.from.name.split(' ').map(n => n[0]).join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium">{request.from.name}</p>
-                      <p className="text-sm text-muted-foreground">@{request.from.username}</p>
-                      <p className="text-xs text-muted-foreground">{request.timestamp}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      onClick={() => handleFriendRequest(request.id, 'accept')}
-                    >
-                      <Check className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleFriendRequest(request.id, 'decline')}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+            {friendRequests.map(request => (
+              <div key={request.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Avatar>
+                    <AvatarFallback>
+                      {getUserInitials(request.sender)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-medium">{getDisplayName(request.sender)}</p>
+                    <p className="text-sm text-muted-foreground">@{request.sender.username}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(request.created_at).toLocaleDateString()}
+                    </p>
                   </div>
                 </div>
-              ))}
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    onClick={() => acceptFriendRequest(request.id)}
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => declineFriendRequest(request.id)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}
@@ -204,9 +159,9 @@ export const Friends = () => {
               placeholder="Enter username"
               value={newFriendUsername}
               onChange={(e) => setNewFriendUsername(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && sendFriendRequest()}
+              onKeyPress={(e) => e.key === 'Enter' && handleSendFriendRequest()}
             />
-            <Button onClick={sendFriendRequest}>
+            <Button onClick={handleSendFriendRequest}>
               <UserPlus className="h-4 w-4" />
             </Button>
           </div>
@@ -238,7 +193,7 @@ export const Friends = () => {
               </div>
             ) : filteredFriends.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
-                {searchQuery ? 'No friends found' : 'No friends yet. Search for users to add them!'}
+                {searchQuery ? 'No friends found' : 'No friends yet. Add some friends!'}
               </p>
             ) : (
               filteredFriends.map(friend => (
@@ -246,17 +201,14 @@ export const Friends = () => {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <Avatar>
-                        <AvatarImage src={friend.avatar} />
                         <AvatarFallback>
-                          {friend.name.split(' ').map(n => n[0]).join('')}
+                          {getUserInitials(friend)}
                         </AvatarFallback>
                       </Avatar>
-                      <div 
-                        className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background ${getStatusColor(friend.status)}`}
-                      />
+                      <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background bg-green-500" />
                     </div>
                     <div>
-                      <p className="font-medium">{friend.name}</p>
+                      <p className="font-medium">{getDisplayName(friend)}</p>
                       <p className="text-sm text-muted-foreground">@{friend.username}</p>
                       <Badge variant="outline" className="text-xs">
                         {friend.status}
@@ -268,7 +220,7 @@ export const Friends = () => {
                     <Button 
                       size="sm" 
                       variant="outline"
-                      onClick={() => console.log(`Message ${friend.name}`)}
+                      onClick={() => handleMessageFriend(friend.friend_user_id)}
                     >
                       <MessageCircle className="h-4 w-4" />
                     </Button>
@@ -280,11 +232,14 @@ export const Friends = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => createCollaborationBoard(friend)}>
+                        <DropdownMenuItem onClick={() => createCollaborationBoard(friend.friend_user_id)}>
                           <Users className="h-4 w-4 mr-2" />
                           Create Collaboration Board
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem 
+                          className="text-destructive"
+                          onClick={() => removeFriend(friend.friend_user_id)}
+                        >
                           Remove Friend
                         </DropdownMenuItem>
                       </DropdownMenuContent>
