@@ -90,12 +90,21 @@ const Home = () => {
     sessionState,
     switchToSolo,
     switchToCollaborative,
+    createCollaborativeSession,
+    getFriendsAndCollaborators,
     getSwipeContext,
     canSwitchToSolo,
     isInSolo,
     currentSession,
     availableSessions
   } = useSessionManagement();
+
+  const { friends, recentCollaborators } = getFriendsAndCollaborators();
+
+  // Wrapper function to handle session creation
+  const handleCreateSession = async (participants: string[], sessionName: string): Promise<void> => {
+    await createCollaborativeSession(participants, sessionName);
+  };
   
   // Initialize with proper defaults that match the "default state" described
   // Initialize with proper defaults and ensure stable state
@@ -423,7 +432,10 @@ const Home = () => {
           availableSessions={availableSessions}
           onSwitchToSolo={switchToSolo}
           onSwitchToCollaborative={switchToCollaborative}
+          onCreateSession={handleCreateSession}
           canSwitchToSolo={canSwitchToSolo()}
+          friendsList={friends}
+          recentCollaborators={recentCollaborators}
         />
 
         {/* Active Preferences Display */}

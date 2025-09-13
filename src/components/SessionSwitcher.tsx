@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CollaborationSession } from '@/hooks/useSessionManagement';
+import { CreateSessionDialog } from './CreateSessionDialog';
 
 interface SessionSwitcherProps {
   isInSolo: boolean;
@@ -21,7 +22,20 @@ interface SessionSwitcherProps {
   availableSessions: CollaborationSession[];
   onSwitchToSolo: () => void;
   onSwitchToCollaborative: (sessionId: string) => void;
+  onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
   canSwitchToSolo: boolean;
+  friendsList?: Array<{
+    id: string;
+    name: string;
+    username: string;
+    avatar: string;
+  }>;
+  recentCollaborators?: Array<{
+    id: string;
+    name: string;
+    username: string;
+    avatar: string;
+  }>;
 }
 
 export const SessionSwitcher = ({
@@ -30,12 +44,17 @@ export const SessionSwitcher = ({
   availableSessions,
   onSwitchToSolo,
   onSwitchToCollaborative,
-  canSwitchToSolo
+  onCreateSession,
+  canSwitchToSolo,
+  friendsList = [],
+  recentCollaborators = []
 }: SessionSwitcherProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
-  const activeSessionsCount = availableSessions.filter(s => s.isActive).length;
-  const inactiveSessionsCount = availableSessions.filter(s => !s.isActive).length;
+  const activeSessionsCount = availableSessions.filter(s => s.status === 'active').length;
+  const dormantSessionsCount = availableSessions.filter(s => s.status === 'dormant').length;
+  const pendingSessionsCount = availableSessions.filter(s => s.status === 'pending').length;
 
   return (
     <Card className="mb-4">
@@ -155,7 +174,7 @@ export const SessionSwitcher = ({
             </button>
 
             {/* Active Collaborative Sessions */}
-            {availableSessions.filter(s => s.isActive).map((session) => (
+            {availableSessions.filter(s => s.status === 'active').map((session) => (
               <button
                 key={session.id}
                 onClick={() => {
@@ -202,48 +221,68 @@ export const SessionSwitcher = ({
               </button>
             ))}
 
-            {/* Inactive/Past Sessions */}
-            {availableSessions.filter(s => !s.isActive).length > 0 && (
+            {/* Pending/Dormant Sessions */}
+            {(pendingSessionsCount > 0 || dormantSessionsCount > 0) && (
               <>
                 <div className="text-xs text-muted-foreground font-medium mt-4 mb-2">
-                  Past Sessions
+                  Pending Sessions
                 </div>
-                {availableSessions.filter(s => !s.isActive).map((session) => (
-                  <button
-                    key={session.id}
-                    onClick={() => {
-                      onSwitchToCollaborative(session.id);
-                      setIsExpanded(false);
-                    }}
-                    className="w-full p-3 rounded-lg border text-left transition-colors hover:bg-muted/50 border-border opacity-75"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <Users className="h-4 w-4 text-muted-foreground" />
-                          <Clock className="absolute -top-1 -right-1 w-2 h-2" />
+                {availableSessions.filter(s => s.status === 'pending' || s.status === 'dormant').map((session) => {
+                  const allAccepted = session.participants.every(p => p.hasAccepted);
+                  const acceptedCount = session.participants.filter(p => p.hasAccepted).length;
+                  
+                  return (
+                    <div
+                      key={session.id}
+                      className={cn(
+                        "w-full p-3 rounded-lg border text-left transition-colors",
+                        session.status === 'pending' ? "opacity-60 border-dashed" : "opacity-75",
+                        "cursor-default"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                            <Clock className="absolute -top-1 -right-1 w-2 h-2 text-amber-500" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{session.name}</p>
+                            <div className="flex items-center gap-2">
+                              <div className="flex -space-x-1">
+                                {session.participants.slice(0, 2).map((participant) => (
+                                  <Avatar key={participant.id} className={cn(
+                                    "w-4 h-4 border border-background",
+                                    participant.hasAccepted ? "" : "opacity-50"
+                                  )}>
+                                    <AvatarImage src={participant.avatar} />
+                                    <AvatarFallback className="text-xs">
+                                      {participant.name[0]}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                ))}
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {acceptedCount}/{session.participants.length} accepted
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-sm">{session.name}</p>
-                          <span className="text-xs text-muted-foreground">
-                            {session.participants.length} participant{session.participants.length !== 1 ? 's' : ''} • Inactive
-                          </span>
-                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {session.status === 'pending' ? 'Waiting' : 'Dormant'}
+                        </Badge>
                       </div>
-                      <Badge variant="outline" className="text-xs">
-                        Rejoin
-                      </Badge>
                     </div>
-                  </button>
-                ))}
+                  );
+                })}
               </>
             )}
+
 
             {/* Create New Session Option */}
             <button
               onClick={() => {
-                // This would open a dialog to create new session
-                console.log('Create new collaboration session');
+                setShowCreateDialog(true);
                 setIsExpanded(false);
               }}
               className="w-full p-3 rounded-lg border border-dashed border-border text-left transition-colors hover:bg-muted/50"
@@ -258,6 +297,14 @@ export const SessionSwitcher = ({
             </button>
           </div>
         )}
+
+        <CreateSessionDialog
+          isOpen={showCreateDialog}
+          onClose={() => setShowCreateDialog(false)}
+          onCreateSession={onCreateSession}
+          friendsList={friendsList}
+          recentCollaborators={recentCollaborators}
+        />
       </CardContent>
     </Card>
   );

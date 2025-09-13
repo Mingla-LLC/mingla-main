@@ -11,10 +11,13 @@ export interface CollaborationSession {
     name: string;
     username: string;
     avatar: string;
+    hasAccepted: boolean;
   }>;
   createdAt: string;
   isActive: boolean;
   boardId?: string;
+  status: 'pending' | 'active' | 'dormant';
+  invitedBy: string;
 }
 
 export interface SessionState {
@@ -42,11 +45,14 @@ export const useSessionManagement = () => {
           id: '1',
           name: 'Emma Wilson',
           username: 'emmawilson',
-          avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80'
+          avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80',
+          hasAccepted: true
         }
       ],
       createdAt: new Date().toISOString(),
-      isActive: true
+      isActive: true,
+      status: 'active',
+      invitedBy: 'currentUser'
     },
     {
       id: 'session-2', 
@@ -56,17 +62,52 @@ export const useSessionManagement = () => {
           id: '2',
           name: 'James Rodriguez',
           username: 'jamesrodriguez',
-          avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e'
+          avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e',
+          hasAccepted: true
         },
         {
           id: '3',
           name: 'Priya Patel',
           username: 'priyapatel',
-          avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04'
+          avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04',
+          hasAccepted: false
         }
       ],
       createdAt: new Date().toISOString(),
-      isActive: false
+      isActive: false,
+      status: 'dormant',
+      invitedBy: 'currentUser'
+    }
+  ];
+
+  // Mock friends and recent collaborators
+  const mockFriends = [
+    {
+      id: '4',
+      name: 'Sarah Kim',
+      username: 'sarahkim',
+      avatar: 'https://images.unsplash.com/photo-1494790108755-2616b35a1db4'
+    },
+    {
+      id: '5',
+      name: 'Alex Thompson',
+      username: 'alexthompson',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d'
+    }
+  ];
+
+  const mockRecentCollaborators = [
+    {
+      id: '1',
+      name: 'Emma Wilson',
+      username: 'emmawilson',
+      avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80'
+    },
+    {
+      id: '2',
+      name: 'James Rodriguez',
+      username: 'jamesrodriguez',
+      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e'
     }
   ];
 
@@ -123,11 +164,11 @@ export const useSessionManagement = () => {
     }));
   }, [sessionState.availableSessions]);
 
-  // Create new collaborative session
+  // Create new collaborative session with pending status
   const createCollaborativeSession = useCallback(async (participants: string[], sessionName?: string) => {
     if (!user) return;
 
-    // Mock creating new session
+    // Mock creating new session - starts as dormant until all accept
     const newSession: CollaborationSession = {
       id: `session-${Date.now()}`,
       name: sessionName || `Collaboration Session ${new Date().toLocaleDateString()}`,
@@ -135,28 +176,66 @@ export const useSessionManagement = () => {
         id: username, // In real app, would resolve to actual user ID
         name: username,
         username,
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e' // Default avatar
+        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e', // Default avatar
+        hasAccepted: false // All start as not accepted
       })),
       createdAt: new Date().toISOString(),
-      isActive: true,
+      isActive: false,
+      status: 'pending',
+      invitedBy: user.id || 'currentUser',
       boardId: `board-${Date.now()}`
     };
 
     setSessionState(prev => ({
       ...prev,
-      availableSessions: [...prev.availableSessions, newSession],
-      currentSession: newSession,
-      isInSolo: false
+      availableSessions: [...prev.availableSessions, newSession]
+      // Don't switch to this session yet - it's dormant
     }));
-
-    toast({
-      title: "Collaboration session created!",
-      description: `"${newSession.name}" is ready. A board has been automatically created.`,
-      duration: 5000,
-    });
 
     return newSession;
   }, [user]);
+
+  // Accept invitation to collaborative session
+  const acceptSessionInvitation = useCallback(async (sessionId: string) => {
+    setSessionState(prev => {
+      const updatedSessions = prev.availableSessions.map(session => {
+        if (session.id === sessionId) {
+          const updatedParticipants = session.participants.map(p => ({
+            ...p,
+            hasAccepted: p.username === user?.email ? true : p.hasAccepted
+          }));
+          
+          const allAccepted = updatedParticipants.every(p => p.hasAccepted);
+          
+          return {
+            ...session,
+            participants: updatedParticipants,
+            status: allAccepted ? 'active' as const : 'pending' as const,
+            isActive: allAccepted
+          };
+        }
+        return session;
+      });
+
+      return {
+        ...prev,
+        availableSessions: updatedSessions
+      };
+    });
+
+    toast({
+      title: "Invitation accepted!",
+      description: "You've joined the collaboration session.",
+    });
+  }, [user]);
+
+  // Get friends and recent collaborators
+  const getFriendsAndCollaborators = useCallback(() => {
+    return {
+      friends: mockFriends,
+      recentCollaborators: mockRecentCollaborators
+    };
+  }, []);
 
   // Get session context for swipe actions
   const getSwipeContext = useCallback(() => {
@@ -185,6 +264,8 @@ export const useSessionManagement = () => {
     switchToSolo,
     switchToCollaborative,
     createCollaborativeSession,
+    acceptSessionInvitation,
+    getFriendsAndCollaborators,
     getSwipeContext,
     canSwitchToSolo,
     isInSolo: sessionState.isInSolo,
