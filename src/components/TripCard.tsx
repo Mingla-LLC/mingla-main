@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, DollarSign, CheckCircle, Cloud, Zap } from 'lucide-react';
+import { MapPin, Clock, DollarSign, CheckCircle, Cloud, Zap, Heart } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useUserProfile } from '@/hooks/useUserProfile';
+import { useAppStore } from '@/store/appStore';
 import { formatCurrency } from '@/utils/currency';
 import { getWeather, getWeatherBadge } from "@/utils/weather";
 import { reasonCardNotes } from "@/utils/ai/reason";
@@ -39,7 +39,17 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
   const [weatherBadge, setWeatherBadge] = useState<string>('');
   const [adjustedDuration, setAdjustedDuration] = useState<string>(trip.duration);
   const [safetyNotes, setSafetyNotes] = useState<string[]>([]);
-  const { profile } = useUserProfile();
+  const { profile } = useAppStore();
+  const isLiked = useAppStore().saves.some(save => save.experience_id === trip.id);
+
+  const handleLike = async () => {
+    const { writeThroughHelpers } = await import('@/store/writeThroughHelpers');
+    const result = await writeThroughHelpers.likeExperience(trip.id);
+    
+    if (!result.success) {
+      console.error('Failed to like experience:', result.error);
+    }
+  };
 
   useEffect(() => {
     const loadWeatherAndReasoning = async () => {
@@ -239,6 +249,19 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
               <span>{badge}</span>
             </Badge>
           ))}
+          {/* Like button */}
+          <Button
+            variant={isLiked ? "default" : "outline"}
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleLike();
+            }}
+            className="flex items-center gap-1 h-6 px-2"
+          >
+            <Heart className={cn("h-3 w-3", isLiked && "fill-current")} />
+            <span className="text-xs">{isLiked ? "Liked" : "Like"}</span>
+          </Button>
         </div>
 
         {/* Stats */}
