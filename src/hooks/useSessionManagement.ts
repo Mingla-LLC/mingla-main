@@ -165,7 +165,7 @@ export const useSessionManagement = () => {
   }, [sessionState.availableSessions]);
 
   // Create new collaborative session with pending status
-  const createCollaborativeSession = useCallback(async (participants: string[], sessionName?: string) => {
+  const createCollaborativeSession = useCallback(async (participants: string[], sessionName: string) => {
     if (!user) return;
 
     // Mock creating new session - starts as dormant until all accept
@@ -193,7 +193,7 @@ export const useSessionManagement = () => {
     }));
 
     return newSession;
-  }, [user]);
+  }, [user, setSessionState]);
 
   // Accept invitation to collaborative session
   const acceptSessionInvitation = useCallback(async (sessionId: string) => {

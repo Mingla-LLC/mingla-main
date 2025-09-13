@@ -103,7 +103,10 @@ const Home = () => {
 
   // Wrapper function to handle session creation
   const handleCreateSession = async (participants: string[], sessionName: string): Promise<void> => {
-    await createCollaborativeSession(participants, sessionName);
+    const result = await createCollaborativeSession(participants, sessionName);
+    if (!result) {
+      throw new Error('Failed to create session');
+    }
   };
   
   // Initialize with proper defaults that match the "default state" described
