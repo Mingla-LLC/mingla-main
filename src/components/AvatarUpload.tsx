@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Camera, Loader2, Upload } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { processAvatarImage, validateImageFile } from '@/utils/imageUtils';
 
 interface AvatarUploadProps {
   currentAvatarUrl?: string;
@@ -33,21 +34,12 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
+    // Validate file
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
       toast({
-        title: "Invalid file type",
-        description: "Please select an image file (JPG, PNG, etc.)",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: "File too large",
-        description: "Please select an image smaller than 5MB",
+        title: "Invalid file",
+        description: validation.error,
         variant: "destructive"
       });
       return;
@@ -56,14 +48,27 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({
     setUploading(true);
 
     try {
+      // Process the image (resize and crop to square)
+      toast({
+        title: "Processing image...",
+        description: "Resizing and optimizing your profile picture"
+      });
+
+      const processedBlob = await processAvatarImage(file, {
+        maxWidth: 512,
+        maxHeight: 512,
+        quality: 0.9,
+        format: 'jpeg'
+      });
+
       // Generate unique filename
-      const fileExt = file.name.split('.').pop();
+      const fileExt = 'jpg'; // Always use jpg for processed images
       const fileName = `${userId}/avatar.${fileExt}`;
 
-      // Upload file to Supabase Storage
+      // Upload processed file to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, file, {
+        .upload(fileName, processedBlob, {
           cacheControl: '3600',
           upsert: true // Replace existing file
         });
@@ -128,13 +133,13 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({
         )}
       </Button>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleFileSelect}
-        className="hidden"
-      />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
     </div>
   );
 };

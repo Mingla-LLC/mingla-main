@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
-import { AvatarUpload } from '@/components/AvatarUpload';
+import { AvatarPreview } from '@/components/AvatarPreview';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -132,7 +132,7 @@ export default function ProfileSettings() {
             <CardTitle>Profile Photo</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center space-y-4">
-            <AvatarUpload
+            <AvatarPreview
               currentAvatarUrl={formData.avatar_url}
               userId={user.id}
               userInitials={getUserInitials({ 

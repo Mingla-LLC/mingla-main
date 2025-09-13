@@ -217,8 +217,20 @@ const Profile = () => {
       <div className="px-6 pt-12 pb-6">
         <div className="flex items-center gap-4 mb-6">
           <Avatar className="w-16 h-16">
-            <AvatarImage src="https://images.unsplash.com/photo-1494790108755-2616b79444d7" />
-            <AvatarFallback className="text-lg">JD</AvatarFallback>
+            {profileData?.avatar_url && (
+              <AvatarImage 
+                src={profileData.avatar_url} 
+                alt="Profile picture"
+              />
+            )}
+            <AvatarFallback className="text-lg">
+              {profileData?.first_name && profileData?.last_name 
+                ? `${profileData.first_name[0]}${profileData.last_name[0]}`.toUpperCase()
+                : profileData?.username 
+                  ? profileData.username[0].toUpperCase()
+                  : user.email?.[0].toUpperCase() || 'U'
+              }
+            </AvatarFallback>
           </Avatar>
           <div>
             <h1 className="text-2xl font-bold">
