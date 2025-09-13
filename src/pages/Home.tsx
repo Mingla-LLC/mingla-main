@@ -24,15 +24,7 @@ interface ActivePreferences {
   travelTime: number;
   travelDistance: number;
   location: string;
-  isCollaborating: boolean;
-  activeCollaborators: number;
-  activeCollaboratorsList: Array<{
-    id: string;
-    username: string;
-    name: string;
-    avatar: string;
-    initials: string;
-  }>;
+  groupSize: number;
 }
 
 const Home = () => {
@@ -118,61 +110,33 @@ const Home = () => {
   // Initialize with proper defaults that match the "default state" described
   // Initialize with proper defaults and ensure stable state
   const [activePreferences, setActivePreferences] = useState<ActivePreferences>(() => ({
-    budgetRange: [10, 10000], // Any budget
-    categories: [], // Freestyle - empty array means show all categories
+    budgetRange: [10, 10000],
+    categories: [],
     time: 'now',
     travel: 'drive',
     travelConstraint: 'time',
     travelTime: 15,
     travelDistance: 5,
     location: 'current',
-    isCollaborating: false,
-    activeCollaborators: 0,
-    activeCollaboratorsList: []
+    groupSize: 2
   }));
 
   // Memoize all filters to prevent unnecessary re-renders
   const experienceFilters = useMemo(() => {
-    if (activePreferences.isCollaborating && activePreferences.activeCollaboratorsList.length > 0) {
-      // In collaborative mode, create collaborative preferences
-      const collaborativePreferences = activePreferences.activeCollaboratorsList.map(collaborator => ({
-        id: collaborator.id,
-        categories: activePreferences.categories, // In real app, this would come from each user's preferences
-        budgetRange: activePreferences.budgetRange,
-        time: activePreferences.time,
-        travel: activePreferences.travel,
-        travelTime: activePreferences.travelTime,
-        location: activePreferences.location
-      }));
-
-      return {
-        collaborativePreferences,
-        groupSize: activePreferences.activeCollaborators,
-        time: activePreferences.time,
-        travel: activePreferences.travel,
-        travelTime: activePreferences.travelTime,
-        travelDistance: activePreferences.travelDistance,
-        location: activePreferences.location
-      };
-    } else {
-      // Solo mode - use individual preferences
-      return {
-        categories: activePreferences.categories.length > 0 ? activePreferences.categories : undefined,
-        budgetRange: activePreferences.budgetRange,
-        groupSize: 1, // Solo mode always has group size of 1
-        time: activePreferences.time,
-        travel: activePreferences.travel,
-        travelTime: activePreferences.travelTime,
-        travelDistance: activePreferences.travelDistance,
-        location: activePreferences.location
-      };
-    }
+    return {
+      categories: activePreferences.categories,
+      budgetRange: activePreferences.budgetRange,
+      groupSize: activePreferences.groupSize,
+      time: activePreferences.time,
+      travel: activePreferences.travel,
+      travelTime: activePreferences.travelTime,
+      travelDistance: activePreferences.travelDistance,
+      location: activePreferences.location
+    };
   }, [
     activePreferences.categories,
     activePreferences.budgetRange,
-    activePreferences.activeCollaborators,
-    activePreferences.activeCollaboratorsList,
-    activePreferences.isCollaborating,
+    activePreferences.groupSize,
     activePreferences.time,
     activePreferences.travel,
     activePreferences.travelTime,
@@ -442,7 +406,7 @@ const Home = () => {
         {(activePreferences.budgetRange[0] !== 10 || activePreferences.budgetRange[1] !== 10000 || 
           activePreferences.categories.length > 0 || activePreferences.time !== 'now' || 
           activePreferences.travel !== 'drive' || activePreferences.travelTime !== 15 || 
-          activePreferences.location !== 'current' || activePreferences.isCollaborating) && (
+          activePreferences.location !== 'current' || activePreferences.groupSize > 1) && (
           <div className="flex items-center gap-2 mb-4 flex-wrap">
             {/* Budget Preference */}
             {(activePreferences.budgetRange[0] !== 10 || activePreferences.budgetRange[1] !== 10000) && (
@@ -577,14 +541,14 @@ const Home = () => {
               </div>
             )}
 
-            {/* Collaboration Mode Indicator */}
-            {activePreferences.isCollaborating && (
+            {/* Group Size Indicator */}
+            {activePreferences.groupSize > 1 && (
               <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 rounded-full">
                 <div className="w-4 h-4 rounded-full bg-gradient-to-r from-primary to-primary-dark flex items-center justify-center">
                   <span className="text-xs">👥</span>
                 </div>
                 <span className="text-xs text-primary font-medium">
-                  Collaborating ({activePreferences.activeCollaborators})
+                  Group of {activePreferences.groupSize}
                 </span>
               </div>
             )}
@@ -657,28 +621,10 @@ const Home = () => {
         measurementSystem={measurementSystem}
         activePreferences={{
           ...activePreferences,
-          travelConstraint: activePreferences.travelConstraint,
-          travelTime: activePreferences.travelTime,
-          travelDistance: activePreferences.travelDistance,
-          location: activePreferences.location,
-          isCollaborating: !isInSolo,
-          activeCollaborators: currentSession?.participants.length || 0,
-          activeCollaboratorsList: currentSession?.participants.map(p => ({
-            id: p.id,
-            username: p.username,
-            name: p.name,
-            avatar: p.avatar,
-            initials: p.name.split(' ').map(n => n[0]).join('')
-          })) || []
+          groupSize: activePreferences.groupSize
         }}
         onPreferencesUpdate={(preferences) => {
-          setActivePreferences({
-            ...preferences,
-            travelConstraint: preferences.travelConstraint || 'time',
-            travelTime: preferences.travelTime || 15,
-            travelDistance: preferences.travelDistance || 5,
-            location: preferences.location || 'current'
-          });
+          setActivePreferences(preferences);
           // Reset to first trip when preferences change
           setCurrentTripIndex(0);
         }}
