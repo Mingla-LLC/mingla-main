@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { TripCard } from '@/components/TripCard';
 import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
-import { CollaborationRequestDialog } from '@/components/CollaborationRequestDialog';
+import { SessionInviteNotifications } from '@/components/SessionInviteNotifications';
 import { SessionSwitcher } from '@/components/SessionSwitcher';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -39,7 +39,6 @@ const Home = () => {
   const [currentTripIndex, setCurrentTripIndex] = useState(0);
   const [showPreferences, setShowPreferences] = useState(false);
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
-  const [showCollaborationRequests, setShowCollaborationRequests] = useState(false);
   const [measurementSystem, setMeasurementSystem] = useState('metric');
   const [user, setUser] = useState<User | null>(null);
   const { profile } = useUserProfile();
@@ -91,15 +90,22 @@ const Home = () => {
     switchToSolo,
     switchToCollaborative,
     createCollaborativeSession,
+    acceptSessionInvitation,
+    declineSessionInvitation,
     getFriendsAndCollaborators,
     getSwipeContext,
     canSwitchToSolo,
     isInSolo,
     currentSession,
-    availableSessions
+    availableSessions,
+    pendingInvites,
+    loading: sessionLoading
   } = useSessionManagement();
 
-  const { friends, recentCollaborators } = getFriendsAndCollaborators();
+  // Load friends data
+  useEffect(() => {
+    getFriendsAndCollaborators();
+  }, [getFriendsAndCollaborators]);
 
   // Wrapper function to handle session creation
   const handleCreateSession = async (participants: string[], sessionName: string): Promise<void> => {
@@ -381,22 +387,15 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Notification Bar for Collaboration Requests */}
-      {pendingRequests.length > 0 && (
-        <div className="bg-primary text-primary-foreground px-4 py-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">
-              {pendingRequests.length} collaboration request{pendingRequests.length > 1 ? 's' : ''}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowCollaborationRequests(true)}
-              className="text-primary-foreground hover:bg-primary-foreground/20"
-            >
-              View
-            </Button>
-          </div>
+      {/* Notification Bar for Collaboration Invites */}
+      {pendingInvites && pendingInvites.length > 0 && (
+        <div className="px-6 pt-4">
+          <SessionInviteNotifications
+            invites={pendingInvites}
+            onAccept={acceptSessionInvitation}
+            onDecline={declineSessionInvitation}
+            loading={sessionLoading}
+          />
         </div>
       )}
 
@@ -700,14 +699,6 @@ const Home = () => {
         </div>
       )}
 
-      {/* Collaboration Requests Dialog */}
-      <CollaborationRequestDialog
-        isOpen={showCollaborationRequests}
-        onClose={() => setShowCollaborationRequests(false)}
-        requests={collaborationRequests}
-        onAcceptRequest={handleAcceptRequest}
-        onDeclineRequest={handleDeclineRequest}
-      />
     </div>
   );
 };
