@@ -9,6 +9,7 @@ import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { formatCurrency } from '@/utils/currency';
+import { getCategoryBySlug } from '@/lib/categories';
 import type { User } from '@supabase/supabase-js';
 
 // Mock data for demo
@@ -146,7 +147,10 @@ const Home = () => {
                             trip.cost <= preferences.budgetRange[1];
         
         const matchesCategory = preferences.categories.length === 0 || 
-                               preferences.categories.includes(trip.category);
+                                preferences.categories.some(slug => {
+                                  const category = getCategoryBySlug(slug);
+                                  return category && trip.category === category.name;
+                                });
         
         const matchesTime = preferences.time === 'Anytime' || 
                            preferences.time === 'Now';
@@ -174,7 +178,10 @@ const Home = () => {
           'Outdoor Activity',
           'Cultural Experience'
         ];
-        const matchesCollabCategory = allCollabCategories.includes(trip.category);
+        const matchesCollabCategory = allCollabCategories.some(slug => {
+          const category = getCategoryBySlug(slug);
+          return category && trip.category === category.name;
+        });
         
         // More flexible time matching in collaborative mode
         const matchesCollabTime = true; // Show all times in collaborative mode
@@ -342,29 +349,32 @@ const Home = () => {
               </div>
               
               {/* Categories Preferences */}
-              {activePreferences.categories.slice(0, 6).map((category, index) => (
-                <div key={category} className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
+              {activePreferences.categories.slice(0, 6).map((categorySlug, index) => {
+                const category = getCategoryBySlug(categorySlug);
+                return (
+                <div key={categorySlug} className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
                   <div className="w-4 h-4 rounded-full bg-gradient-to-r from-purple-400 to-pink-500 flex items-center justify-center">
                     <span className="text-xs">✨</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{category}</span>
+                  <span className="text-xs text-muted-foreground">{category?.name || categorySlug}</span>
                   <button 
                     className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
                     onClick={() => {
                       setActivePreferences(prev => ({
                         ...prev,
-                        categories: prev.categories.filter(c => c !== category)
+                        categories: prev.categories.filter(c => c !== categorySlug)
                       }));
                       toast({
                         title: "Preference updated",
-                        description: `${category} removed`,
+                        description: `${category?.name || categorySlug} removed`,
                       });
                     }}
                   >
                     <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
                   </button>
                 </div>
-              ))}
+                );
+              })}
               
               {/* Time Preference */}
               <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">

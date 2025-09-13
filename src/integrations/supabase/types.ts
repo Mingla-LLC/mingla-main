@@ -17,6 +17,7 @@ export type Database = {
       experiences: {
         Row: {
           category: string
+          category_slug: string
           created_at: string | null
           duration_min: number | null
           id: string
@@ -33,6 +34,7 @@ export type Database = {
         }
         Insert: {
           category: string
+          category_slug: string
           created_at?: string | null
           duration_min?: number | null
           id?: string
@@ -49,6 +51,7 @@ export type Database = {
         }
         Update: {
           category?: string
+          category_slug?: string
           created_at?: string | null
           duration_min?: number | null
           id?: string
