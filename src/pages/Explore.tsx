@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TripCard } from '@/components/TripCard';
+import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { categories, getCategoryBySlug } from '@/lib/categories';
 import { useExperiences } from '@/hooks/useExperiences';
 
@@ -17,6 +18,7 @@ const trending = [
 const Explore = () => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   
   // Memoize the category filter to prevent unnecessary re-renders
   const categoryFilters = useMemo(() => {
@@ -56,6 +58,16 @@ const Explore = () => {
     setSelectedCategory(slug);
   };
 
+  const handleSwipeRight = (tripId: string) => {
+    // Handle like/save functionality
+    console.log('Saved trip:', tripId);
+  };
+
+  const handleSwipeLeft = (tripId: string) => {
+    // Handle dismiss functionality
+    console.log('Dismissed trip:', tripId);
+  };
+
   if (error) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -73,14 +85,14 @@ const Explore = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="px-6 pt-12 pb-6">
+      <div className="px-6 pt-12 pb-4">
         <h1 className="text-2xl font-bold mb-2">Explore</h1>
-        <p className="text-muted-foreground mb-6">
+        <p className="text-muted-foreground mb-4">
           Discover experiences by category and trending activities
         </p>
 
         {/* Search */}
-        <div className="relative mb-6">
+        <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
@@ -92,59 +104,59 @@ const Explore = () => {
         </div>
       </div>
 
-      {/* Categories */}
-      <div className="px-6 mb-8">
-        <h2 className="text-lg font-semibold mb-4">Browse Categories</h2>
-        <div className="grid grid-cols-2 gap-3">
+      {/* Categories - Horizontal Scroll */}
+      <div className="px-6 mb-6">
+        <h2 className="text-lg font-semibold mb-3">Categories</h2>
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           {categories.map((category) => (
             <Card 
               key={category.slug} 
-              className={`p-4 cursor-pointer transition-all ${
+              className={`flex-shrink-0 p-3 cursor-pointer transition-all min-w-[120px] ${
                 selectedCategory === category.slug 
                   ? 'bg-primary text-primary-foreground shadow-elevated' 
                   : 'hover:shadow-card'
               }`}
               onClick={() => handleCategorySelect(category.slug)}
             >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{category.icon}</span>
-                <div className="flex-1">
-                  <h3 className="font-medium text-sm">{category.name}</h3>
-                  <p className={`text-xs ${
-                    selectedCategory === category.slug ? 'text-primary-foreground/80' : 'text-muted-foreground'
-                  }`}>
-                    {experiences.filter(exp => exp.category_slug === category.slug).length} experiences
-                  </p>
-                </div>
+              <div className="text-center">
+                <span className="text-2xl mb-1 block">{category.icon}</span>
+                <h3 className="font-medium text-xs">{category.name}</h3>
+                <p className={`text-xs mt-1 ${
+                  selectedCategory === category.slug ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                }`}>
+                  {experiences.filter(exp => exp.category_slug === category.slug).length}
+                </p>
               </div>
             </Card>
           ))}
         </div>
       </div>
 
-      {/* Trending */}
-      <div className="px-6 mb-8">
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Trending Now</h2>
+      {/* Trending - Compact */}
+      {!selectedCategory && (
+        <div className="px-6 mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Trending Now</h2>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+            {trending.map((item, index) => (
+              <Card 
+                key={index} 
+                className="flex-shrink-0 p-3 hover:shadow-card transition-all cursor-pointer min-w-[100px]"
+                onClick={() => handleTrendingSelect(item.slug)}
+              >
+                <div className="text-center">
+                  <span className="font-medium text-xs block">{item.name}</span>
+                  <Badge variant="outline" className="text-xs text-primary border-primary/20 mt-1">
+                    {item.trend}
+                  </Badge>
+                </div>
+              </Card>
+            ))}
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          {trending.map((item, index) => (
-            <Card 
-              key={index} 
-              className="p-4 hover:shadow-card transition-all cursor-pointer"
-              onClick={() => handleTrendingSelect(item.slug)}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-sm">{item.name}</span>
-                <Badge variant="outline" className="text-xs text-primary border-primary/20">
-                  {item.trend}
-                </Badge>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Results */}
       {selectedCategory && (
@@ -177,10 +189,10 @@ const Explore = () => {
                 <TripCard
                   key={trip.id}
                   trip={trip}
-                  onSwipeRight={() => {}}
-                  onSwipeLeft={() => {}}
-                  onExpand={() => {}}
-                  disableSwipe={true}
+                  onSwipeRight={() => handleSwipeRight(trip.id)}
+                  onSwipeLeft={() => handleSwipeLeft(trip.id)}
+                  onExpand={() => setExpandedTrip(trip.id)}
+                  disableSwipe={false}
                   className="max-w-sm mx-auto"
                 />
               ))}
@@ -196,41 +208,7 @@ const Explore = () => {
         </div>
       )}
 
-      {/* Quick Filters */}
-      {!selectedCategory && (
-        <div className="px-6 mb-8">
-          <h2 className="text-lg font-semibold mb-4">Quick Filters</h2>
-          <div className="flex flex-wrap gap-2">
-            {['Under $30', 'Walking Distance', 'Indoor', 'Group Friendly', 'Date Night', 'Family'].map((filter) => (
-              <Button key={filter} variant="outline" size="sm" className="rounded-full">
-                {filter}
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Popular Locations */}
-      {!selectedCategory && (
-        <div className="px-6 pb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <MapPin className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">Popular Areas</h2>
-          </div>
-          <div className="space-y-3">
-            {['Capitol Hill', 'Pike Place Market', 'Belltown', 'Fremont'].map((location) => (
-              <Card key={location} className="p-4 cursor-pointer hover:shadow-card transition-all">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{location}</span>
-                  <span className="text-sm text-muted-foreground">15 min away</span>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* All Experiences when no filter */}
+      {/* All Experiences when no filter - Compact Grid */}
       {!selectedCategory && !loading && (
         <div className="px-6 pb-8">
           <h2 className="text-lg font-semibold mb-4">All Experiences</h2>
@@ -244,10 +222,10 @@ const Explore = () => {
                 <TripCard
                   key={trip.id}
                   trip={trip}
-                  onSwipeRight={() => {}}
-                  onSwipeLeft={() => {}}
-                  onExpand={() => {}}
-                  disableSwipe={true}
+                  onSwipeRight={() => handleSwipeRight(trip.id)}
+                  onSwipeLeft={() => handleSwipeLeft(trip.id)}
+                  onExpand={() => setExpandedTrip(trip.id)}
+                  disableSwipe={false}
                   className="max-w-sm mx-auto"
                 />
               ))}
@@ -260,6 +238,24 @@ const Explore = () => {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Expanded Trip Modal */}
+      {expandedTrip && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm">
+            <TripCardExpanded
+              trip={trips.find(t => t.id === expandedTrip)!}
+              isOpen={true}
+              onClose={() => setExpandedTrip(null)}
+              onAccept={() => {
+                handleSwipeRight(expandedTrip);
+                setExpandedTrip(null);
+              }}
+              showAcceptButton={true}
+            />
+          </div>
         </div>
       )}
     </div>

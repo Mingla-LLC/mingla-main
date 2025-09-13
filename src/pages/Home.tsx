@@ -42,6 +42,7 @@ const Home = () => {
   const [user, setUser] = useState<User | null>(null);
   const { profile } = useUserProfile();
   
+  // Initialize with proper defaults that match the "default state" described
   const [activePreferences, setActivePreferences] = useState<ActivePreferences>({
     budgetRange: [10, 10000], // Any budget
     categories: [], // Freestyle - empty array means show all categories
@@ -124,6 +125,12 @@ const Home = () => {
       setUser(user);
     };
     getUser();
+  }, []);
+
+  // Initialize preferences on mount to prevent glitching
+  useEffect(() => {
+    // Ensure preferences are set properly on first load
+    setActivePreferences(prev => ({...prev}));
   }, []);
 
   const currentTrip = trips[currentTripIndex];
