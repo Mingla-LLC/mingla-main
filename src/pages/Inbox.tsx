@@ -89,9 +89,11 @@ export const Inbox = () => {
                 <ArrowLeft className="h-4 w-4" />
               </Button>
               <Avatar>
-                <AvatarImage src={currentConversation.participant.avatar} />
                 <AvatarFallback>
-                  {currentConversation.participant.name.split(' ').map(n => n[0]).join('')}
+                  {currentConversation.participants[0] ? 
+                    getDisplayName(currentConversation.participants[0]).split(' ').map(n => n[0]).join('') : 
+                    'U'
+                  }
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
@@ -120,26 +122,28 @@ export const Inbox = () => {
               >
                 {message.sender_id !== currentConversation.participants[0]?.id && (
                   <Avatar className="w-8 h-8">
-                    <AvatarImage src={currentConversation.participant.avatar} />
                     <AvatarFallback className="text-xs">
-                      {currentConversation.participant.name.split(' ').map(n => n[0]).join('')}
+                      {currentConversation.participants[0] ? 
+                        getDisplayName(currentConversation.participants[0]).split(' ').map(n => n[0]).join('') : 
+                        'U'
+                      }
                     </AvatarFallback>
                   </Avatar>
                 )}
                 <div className={cn(
                   "rounded-lg p-3 space-y-1",
-                  message.senderId === 'current' 
-                    ? "bg-primary text-primary-foreground" 
-                    : "bg-muted"
+                  message.sender_id === currentConversation.participants[0]?.id
+                    ? "bg-muted" 
+                    : "bg-primary text-primary-foreground"
                 )}>
                   <p className="text-sm">{message.content}</p>
                   <p className={cn(
                     "text-xs",
-                    message.senderId === 'current' 
-                      ? "text-primary-foreground/70" 
-                      : "text-muted-foreground"
+                    message.sender_id === currentConversation.participants[0]?.id
+                      ? "text-muted-foreground" 
+                      : "text-primary-foreground/70"
                   )}>
-                    {formatTime(message.timestamp)}
+                    {new Date(message.created_at).toLocaleTimeString()}
                   </p>
                 </div>
               </div>
@@ -205,36 +209,42 @@ export const Inbox = () => {
               <div
                 key={conversation.id}
                 className="flex items-center gap-3 p-3 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors"
-                onClick={() => setSelectedConversation(conversation.id)}
+                onClick={() => handleSelectConversation(conversation.id)}
               >
                 <div className="relative">
                   <Avatar>
-                    <AvatarImage src={conversation.participant.avatar} />
                     <AvatarFallback>
-                      {conversation.participant.name.split(' ').map(n => n[0]).join('')}
+                      {conversation.participants[0] ? 
+                        getDisplayName(conversation.participants[0]).split(' ').map(n => n[0]).join('') : 
+                        'U'
+                      }
                     </AvatarFallback>
                   </Avatar>
-                  {conversation.participant.isOnline && (
+                  {conversation.participants[0]?.is_online && (
                     <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />
                   )}
                 </div>
                 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <p className="font-medium truncate">{conversation.participant.name}</p>
-                    <p className="text-xs text-muted-foreground">{conversation.lastMessage.timestamp}</p>
+                    <p className="font-medium truncate">
+                      {conversation.participants[0] ? getDisplayName(conversation.participants[0]) : 'Unknown'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {conversation.last_message ? new Date(conversation.last_message.created_at).toLocaleTimeString() : ''}
+                    </p>
                   </div>
                   <p className={cn(
                     "text-sm truncate",
-                    conversation.unreadCount > 0 ? "font-medium" : "text-muted-foreground"
+                    conversation.unread_count > 0 ? "font-medium" : "text-muted-foreground"
                   )}>
-                    {conversation.lastMessage.content}
+                    {conversation.last_message?.content || 'No messages yet'}
                   </p>
                 </div>
                 
-                {conversation.unreadCount > 0 && (
+                {conversation.unread_count > 0 && (
                   <Badge className="bg-primary text-primary-foreground">
-                    {conversation.unreadCount}
+                    {conversation.unread_count}
                   </Badge>
                 )}
               </div>
