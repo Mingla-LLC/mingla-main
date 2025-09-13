@@ -62,14 +62,44 @@ const Profiles = () => {
         return;
       }
 
-      setProfile(profileData);
-      if (profileData) {
-        setFormData({
-          username: profileData.username || '',
-          firstName: profileData.first_name || '',
-          lastName: profileData.last_name || ''
-        });
-      }
+        setProfile(profileData);
+        if (profileData) {
+          setFormData({
+            username: profileData.username || '',
+            firstName: profileData.first_name || '',
+            lastName: profileData.last_name || ''
+          });
+        } else if (user) {
+          // If no profile exists, create one with default username
+          const defaultUsername = user.email?.split('@')[0] || `user_${user.id.slice(0, 8)}`;
+          
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              id: user.id,
+              username: defaultUsername,
+              currency: 'USD',
+              measurement_system: 'metric'
+            })
+            .select()
+            .single();
+            
+          if (!createError && newProfile) {
+            setProfile(newProfile);
+            setFormData({
+              username: newProfile.username || '',
+              firstName: newProfile.first_name || '',
+              lastName: newProfile.last_name || ''
+            });
+          } else {
+            // Fallback for display purposes
+            setFormData({
+              username: defaultUsername,
+              firstName: '',
+              lastName: ''
+            });
+          }
+        }
     } catch (error) {
       toast({
         title: "Error",
@@ -269,23 +299,26 @@ const Profiles = () => {
                   <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                     <User className="h-8 w-8 text-primary" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <CardTitle className="text-xl font-semibold mb-1 truncate">
-                      {profile?.first_name && profile?.last_name 
-                        ? `${profile.first_name} ${profile.last_name}` 
-                        : profile?.username || 'User'}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground mb-1 truncate">{user.email}</p>
-                    {profile?.created_at && (
-                      <p className="text-xs text-muted-foreground">
-                        Member since {new Date(profile.created_at).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </p>
-                    )}
-                  </div>
+                   <div className="flex-1 min-w-0">
+                     <CardTitle className="text-xl font-semibold mb-1 truncate">
+                       {profile?.first_name && profile?.last_name 
+                         ? `${profile.first_name} ${profile.last_name}` 
+                         : profile?.username || 'User'}
+                     </CardTitle>
+                     <p className="text-sm text-muted-foreground mb-1 truncate">{user.email}</p>
+                     {profile?.username && (
+                       <p className="text-sm text-muted-foreground mb-1 truncate">@{profile.username}</p>
+                     )}
+                     {profile?.created_at && (
+                       <p className="text-xs text-muted-foreground">
+                         Member since {new Date(profile.created_at).toLocaleDateString('en-US', {
+                           year: 'numeric',
+                           month: 'long',
+                           day: 'numeric'
+                         })}
+                       </p>
+                     )}
+                   </div>
                 </div>
                 <Button
                   variant="outline"

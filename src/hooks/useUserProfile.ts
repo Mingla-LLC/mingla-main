@@ -62,7 +62,7 @@ export const useUserProfile = () => {
         // No profile exists, create default
         const defaultProfile = {
           id: userId,
-          username: user?.email?.split('@')[0] || 'user',
+          username: user?.email?.split('@')[0] || `user_${userId.slice(0, 8)}`,
           currency: 'USD',
           measurement_system: 'metric',
           share_location: true,
@@ -70,7 +70,23 @@ export const useUserProfile = () => {
           share_categories: true,
           share_date_time: true
         };
-        setProfile(defaultProfile);
+        
+        // Try to create the profile in the database
+        try {
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert(defaultProfile);
+            
+          if (!insertError) {
+            setProfile(defaultProfile);
+          } else {
+            console.error('Error creating default profile:', insertError);
+            setProfile(defaultProfile); // Still set for display
+          }
+        } catch (insertError) {
+          console.error('Error creating default profile:', insertError);
+          setProfile(defaultProfile); // Still set for display
+        }
       }
     } catch (error) {
       console.error('Error fetching profile:', error);

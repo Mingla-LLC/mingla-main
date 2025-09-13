@@ -86,8 +86,34 @@ const Profile = () => {
         return;
       }
       
-      setProfileData(data);
-      setUsername(data?.username || '');
+      // If no profile exists, create one with default username
+      if (!data) {
+        const defaultUsername = user.email?.split('@')[0] || `user_${user.id.slice(0, 8)}`;
+        
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            username: defaultUsername,
+            currency: 'USD',
+            measurement_system: 'metric'
+          })
+          .select()
+          .single();
+          
+        if (createError) {
+          console.error('Error creating profile:', createError);
+          // Still set a fallback username for display
+          setUsername(defaultUsername);
+          setProfileData({ username: defaultUsername });
+        } else {
+          setProfileData(newProfile);
+          setUsername(newProfile.username);
+        }
+      } else {
+        setProfileData(data);
+        setUsername(data.username || '');
+      }
     } catch (error) {
       console.error('Error fetching profile:', error);
     }
@@ -126,7 +152,9 @@ const Profile = () => {
         .from('profiles')
         .upsert({
           id: user.id,
-          username: username.trim()
+          username: username.trim(),
+          currency: profileData?.currency || 'USD',
+          measurement_system: profileData?.measurement_system || 'metric'
         }, { 
           onConflict: 'id' 
         });
@@ -193,8 +221,15 @@ const Profile = () => {
             <AvatarFallback className="text-lg">JD</AvatarFallback>
           </Avatar>
           <div>
-            <h1 className="text-2xl font-bold">{profileData?.username || user.email?.split('@')[0] || 'User'}</h1>
+            <h1 className="text-2xl font-bold">
+              {profileData?.first_name && profileData?.last_name 
+                ? `${profileData.first_name} ${profileData.last_name}` 
+                : profileData?.username || user.email?.split('@')[0] || 'User'}
+            </h1>
             <p className="text-muted-foreground">{user.email}</p>
+            {profileData?.username && (
+              <p className="text-sm text-muted-foreground">@{profileData.username}</p>
+            )}
             <Badge variant="outline" className="mt-1">Seattle, WA</Badge>
           </div>
         </div>
