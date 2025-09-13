@@ -72,15 +72,30 @@ const travelModes = [
 ];
 
 export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric', activePreferences, onPreferencesUpdate }: PreferencesSheetProps) => {
-  const [budget, setBudget] = useState<[number, number]>(activePreferences?.budgetRange || [10, 10000]);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(activePreferences?.categories || []);
-  const [selectedTime, setSelectedTime] = useState(activePreferences?.time || 'now');
-  const [selectedTravel, setSelectedTravel] = useState(activePreferences?.travel || 'drive');
-  const [travelConstraint, setTravelConstraint] = useState<'time' | 'distance'>(activePreferences?.travelConstraint || 'time');
-  const [travelTime, setTravelTime] = useState(activePreferences?.travelTime || 15);
-  const [travelDistance, setTravelDistance] = useState(activePreferences?.travelDistance || 5);
-  const [selectedLocation, setSelectedLocation] = useState(activePreferences?.location || 'current');
-  const [isCollabMode, setIsCollabMode] = useState(activePreferences?.isCollaborating || false);
+  const [budget, setBudget] = useState<[number, number]>([10, 10000]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedTime, setSelectedTime] = useState('now');
+  const [selectedTravel, setSelectedTravel] = useState('drive');
+  const [travelConstraint, setTravelConstraint] = useState<'time' | 'distance'>('time');
+  const [travelTime, setTravelTime] = useState(15);
+  const [travelDistance, setTravelDistance] = useState(5);
+  const [selectedLocation, setSelectedLocation] = useState('current');
+  const [isCollabMode, setIsCollabMode] = useState(false);
+  
+  // Sync state with activePreferences whenever it changes
+  React.useEffect(() => {
+    if (activePreferences) {
+      setBudget(activePreferences.budgetRange);
+      setSelectedCategories(activePreferences.categories);
+      setSelectedTime(activePreferences.time);
+      setSelectedTravel(activePreferences.travel);
+      setTravelConstraint(activePreferences.travelConstraint);
+      setTravelTime(activePreferences.travelTime);
+      setTravelDistance(activePreferences.travelDistance);
+      setSelectedLocation(activePreferences.location);
+      setIsCollabMode(activePreferences.isCollaborating);
+    }
+  }, [activePreferences]);
   const [sharedBudget, setSharedBudget] = useState(true);
   const [sharedCategories, setSharedCategories] = useState(false);
   const [sharedTime, setSharedTime] = useState(true);
