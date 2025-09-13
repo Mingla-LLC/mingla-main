@@ -8,8 +8,8 @@ import AuthGuard from "./components/AuthGuard";
 import Index from "./pages/Index";
 import Home from "./pages/Home"; 
 import Explore from "./pages/Explore";
-import Boards from "./pages/Boards";
-import Saved from "./pages/Saved";
+import Activity from "./pages/Activity";
+import Connections from "./pages/Connections";
 import Profile from "./pages/Profile";
 import Profiles from "./pages/Profiles";
 import AccountSettings from "./pages/AccountSettings";
@@ -39,17 +39,17 @@ const App = () => (
             </Layout>
           </AuthGuard>
         } />
-        <Route path="/boards" element={
+        <Route path="/activity" element={
           <AuthGuard>
             <Layout>
-              <Boards />
+              <Activity />
             </Layout>
           </AuthGuard>
         } />
-        <Route path="/saved" element={
+        <Route path="/connections" element={
           <AuthGuard>
             <Layout>
-              <Saved />
+              <Connections />
             </Layout>
           </AuthGuard>
         } />
