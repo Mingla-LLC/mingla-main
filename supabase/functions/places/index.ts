@@ -11,16 +11,16 @@ const corsHeaders = {
 const cache = new Map<string, { data: any; expires: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-// Category to Google Places types mapping
+// Category slug to Google Places types mapping
 const categoryMapping: Record<string, string[]> = {
-  'Stroll': ['park', 'tourist_attraction'],
-  'Sip & Chill': ['cafe', 'bar'],
-  'Casual Eats': ['restaurant', 'meal_takeaway'],
-  'Dining experience': ['restaurant'],
-  'Screen & Relax': ['movie_theater'],
-  'Creative': ['art_gallery', 'museum'],
-  'Play & Move': ['bowling_alley', 'gym', 'tourist_attraction'],
-  'Freestyle': ['tourist_attraction', 'point_of_interest']
+  'stroll': ['park', 'tourist_attraction'],
+  'sip': ['cafe', 'bar'],
+  'casual_eats': ['restaurant', 'meal_takeaway'],
+  'dining': ['restaurant'],
+  'screen_relax': ['movie_theater'],
+  'creative': ['art_gallery', 'museum'],
+  'play_move': ['bowling_alley', 'gym', 'tourist_attraction'],
+  'freestyle': ['tourist_attraction', 'point_of_interest']
 };
 
 serve(async (req) => {
@@ -29,16 +29,16 @@ serve(async (req) => {
   }
 
   try {
-    const { lat, lng, radiusMeters = 1000, category, openAtIso } = await req.json();
+    const { lat, lng, radiusMeters = 1000, category_slug, openAtIso } = await req.json();
     
-    if (!lat || !lng || !category) {
+    if (!lat || !lng || !category_slug) {
       return new Response(JSON.stringify({ error: 'Missing required parameters' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const cacheKey = `${lat},${lng},${radiusMeters},${category},${openAtIso || 'anytime'}`;
+    const cacheKey = `${lat},${lng},${radiusMeters},${category_slug},${openAtIso || 'anytime'}`;
     const cached = cache.get(cacheKey);
     
     if (cached && cached.expires > Date.now()) {
@@ -47,19 +47,46 @@ serve(async (req) => {
       });
     }
 
-    const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'Google Maps API key not configured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const placeTypes = categoryMapping[category] || ['tourist_attraction'];
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+
+    const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
+    if (!apiKey) {
+      // Fallback to seed data when no API key
+      console.log('No Google Maps API key, using seed data');
+      
+      const { data: seedExperiences, error } = await supabase
+        .from('experiences')
+        .select('*')
+        .eq('category_slug', category_slug);
+
+      if (error) {
+        console.error('Error fetching seed experiences:', error);
+        return new Response(JSON.stringify({ error: 'Failed to fetch experiences' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Add fake distance to make them appear nearby
+      const nearbyExperiences = (seedExperiences || []).map(exp => ({
+        ...exp,
+        distance: Math.floor(Math.random() * radiusMeters) // Fake distance within radius
+      }));
+
+      cache.set(cacheKey, {
+        data: nearbyExperiences,
+        expires: Date.now() + CACHE_DURATION
+      });
+
+      return new Response(JSON.stringify(nearbyExperiences), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const placeTypes = categoryMapping[category_slug] || ['tourist_attraction'];
 
     let allPlaces: any[] = [];
 
@@ -78,13 +105,13 @@ serve(async (req) => {
         const normalizedPlaces = data.results.slice(0, 10).map((place: any) => ({
           id: crypto.randomUUID(),
           title: place.name,
-          category: category,
+          category_slug: category_slug,
           place_id: place.place_id,
           lat: place.geometry.location.lat,
           lng: place.geometry.location.lng,
           price_min: place.price_level ? place.price_level * 10 : 0,
           price_max: place.price_level ? (place.price_level + 1) * 20 : 50,
-          duration_min: category === 'Stroll' ? 60 : category === 'Dining experience' ? 120 : 90,
+          duration_min: category_slug === 'stroll' ? 60 : category_slug === 'dining' ? 120 : 90,
           image_url: place.photos?.[0] 
             ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.photos[0].photo_reference}&key=${apiKey}`
             : `https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400`,
