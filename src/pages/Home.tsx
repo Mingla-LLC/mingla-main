@@ -437,8 +437,6 @@ const Home = () => {
           onSwitchToCollaborative={switchToCollaborative}
           onCreateSession={handleCreateSession}
           canSwitchToSolo={canSwitchToSolo()}
-          friendsList={friends}
-          recentCollaborators={recentCollaborators}
         />
 
         {/* Active Preferences Display */}

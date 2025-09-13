@@ -24,18 +24,6 @@ interface SessionSwitcherProps {
   onSwitchToCollaborative: (sessionId: string) => void;
   onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
   canSwitchToSolo: boolean;
-  friendsList?: Array<{
-    id: string;
-    name: string;
-    username: string;
-    avatar: string;
-  }>;
-  recentCollaborators?: Array<{
-    id: string;
-    name: string;
-    username: string;
-    avatar: string;
-  }>;
 }
 
 export const SessionSwitcher = ({
@@ -45,9 +33,7 @@ export const SessionSwitcher = ({
   onSwitchToSolo,
   onSwitchToCollaborative,
   onCreateSession,
-  canSwitchToSolo,
-  friendsList = [],
-  recentCollaborators = []
+  canSwitchToSolo
 }: SessionSwitcherProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -302,8 +288,6 @@ export const SessionSwitcher = ({
           isOpen={showCreateDialog}
           onClose={() => setShowCreateDialog(false)}
           onCreateSession={onCreateSession}
-          friendsList={friendsList}
-          recentCollaborators={recentCollaborators}
         />
       </CardContent>
     </Card>

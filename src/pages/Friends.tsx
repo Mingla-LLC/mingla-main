@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
+import { useUsers } from '@/hooks/useUsers';
+import { toast } from '@/hooks/use-toast';
 
 interface Friend {
   id: string;
@@ -39,46 +41,39 @@ interface FriendRequest {
 export const Friends = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [newFriendUsername, setNewFriendUsername] = useState('');
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock data
-  const [friends] = useState<Friend[]>([
-    {
-      id: '1',
-      username: 'emmawilson',
-      name: 'Emma Wilson',
-      avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80',
-      status: 'online'
-    },
-    {
-      id: '2', 
-      username: 'jamesrodriguez',
-      name: 'James Rodriguez',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e',
-      status: 'away'
-    },
-    {
-      id: '3',
-      username: 'priyapatel',
-      name: 'Priya Patel',
-      avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04',
-      status: 'offline'
-    }
-  ]);
+  const { getAllUsers, getUserByUsername, getDisplayName, getUserInitials } = useUsers();
 
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([
-    {
-      id: '1',
-      from: {
-        id: '4',
-        username: 'alexchen',
-        name: 'Alex Chen',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d',
-        status: 'online'
-      },
-      timestamp: '2 hours ago',
-      status: 'pending'
+  // Load friends on component mount
+  useEffect(() => {
+    loadFriends();
+  }, []);
+
+  const loadFriends = async () => {
+    setLoading(true);
+    try {
+      // Get all users to simulate friends list
+      const users = await getAllUsers();
+      const formattedFriends: Friend[] = users.slice(0, 8).map((user, index) => ({
+        id: user.id,
+        username: user.username,
+        name: getDisplayName(user),
+        avatar: user.avatar_url || `https://images.unsplash.com/photo-${1438761681033 + index * 1000}-6461ffad8d80`,
+        status: ['online', 'away', 'offline'][index % 3] as 'online' | 'away' | 'offline'
+      }));
+      setFriends(formattedFriends);
+
+      // Mock friend requests - in real app this would come from database
+      setFriendRequests([]);
+    } catch (error) {
+      console.error('Error loading friends:', error);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  };
 
   const filteredFriends = friends.filter(friend =>
     friend.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -93,12 +88,44 @@ export const Friends = () => {
     }
   };
 
-  const sendFriendRequest = () => {
+  const sendFriendRequest = async () => {
     if (!newFriendUsername.trim()) return;
     
-    // Mock sending friend request
-    console.log(`Sending friend request to: ${newFriendUsername}`);
-    setNewFriendUsername('');
+    try {
+      const user = await getUserByUsername(newFriendUsername.trim());
+      if (!user) {
+        toast({
+          title: "User not found",
+          description: "No user found with that username",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Check if already friends
+      const isAlreadyFriend = friends.some(f => f.username === user.username);
+      if (isAlreadyFriend) {
+        toast({
+          title: "Already friends",
+          description: "You are already friends with this user",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Friend request sent!",
+        description: `Friend request sent to @${user.username}`,
+      });
+      
+      setNewFriendUsername('');
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to send friend request",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleFriendRequest = (requestId: string, action: 'accept' | 'decline') => {
@@ -204,9 +231,14 @@ export const Friends = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {filteredFriends.length === 0 ? (
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                <p className="text-muted-foreground mt-4">Loading friends...</p>
+              </div>
+            ) : filteredFriends.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
-                {searchQuery ? 'No friends found' : 'No friends yet'}
+                {searchQuery ? 'No friends found' : 'No friends yet. Search for users to add them!'}
               </p>
             ) : (
               filteredFriends.map(friend => (

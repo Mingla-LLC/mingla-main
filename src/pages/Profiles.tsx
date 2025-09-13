@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Edit2, User } from 'lucide-react';
+import { ArrowLeft, Edit2, User, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
+import { useUsers } from '@/hooks/useUsers';
 import type { Database } from '@/integrations/supabase/types';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -26,6 +27,9 @@ const Profiles = () => {
     firstName: '', 
     lastName: '' 
   });
+  const [usernameStatus, setUsernameStatus] = useState<'checking' | 'available' | 'taken' | null>(null);
+  const [checkTimeout, setCheckTimeout] = useState<NodeJS.Timeout | null>(null);
+  const { checkUsernameAvailability } = useUsers();
 
   useEffect(() => {
     fetchUserAndProfile();
@@ -107,6 +111,38 @@ const Profiles = () => {
     }
   };
 
+  // Handle username change with availability checking
+  const handleUsernameChange = (newUsername: string) => {
+    setFormData(prev => ({ ...prev, username: newUsername }));
+    
+    // Clear existing timeout
+    if (checkTimeout) {
+      clearTimeout(checkTimeout);
+    }
+    
+    // Don't check availability if username hasn't changed from current
+    if (profile && newUsername.trim() === profile.username) {
+      setUsernameStatus(null);
+      return;
+    }
+    
+    // Don't check if empty
+    if (!newUsername.trim()) {
+      setUsernameStatus(null);
+      return;
+    }
+    
+    setUsernameStatus('checking');
+    
+    // Debounce the availability check
+    const timeout = setTimeout(async () => {
+      const isAvailable = await checkUsernameAvailability(newUsername.trim());
+      setUsernameStatus(isAvailable ? 'available' : 'taken');
+    }, 500);
+    
+    setCheckTimeout(timeout);
+  };
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -117,6 +153,30 @@ const Profiles = () => {
         variant: "destructive"
       });
       return;
+    }
+
+    // Check if username is available (unless it's the current username)
+    if (profile && formData.username.trim() !== profile.username && usernameStatus !== 'available') {
+      if (usernameStatus === 'taken') {
+        toast({
+          title: "Username not available",
+          description: "Please choose a different username",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Double-check availability before submitting
+      const isAvailable = await checkUsernameAvailability(formData.username.trim());
+      if (!isAvailable) {
+        setUsernameStatus('taken');
+        toast({
+          title: "Username not available",
+          description: "Please choose a different username",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     try {
@@ -148,6 +208,7 @@ const Profiles = () => {
       });
 
       setIsEditOpen(false);
+      setUsernameStatus(null);
       fetchUserAndProfile();
     } catch (error) {
       toast({
@@ -159,6 +220,10 @@ const Profiles = () => {
   };
 
   const openEditDialog = () => {
+    setUsernameStatus(null);
+    if (checkTimeout) {
+      clearTimeout(checkTimeout);
+    }
     setIsEditOpen(true);
   };
 
@@ -280,15 +345,34 @@ const Profiles = () => {
                 <Label htmlFor="username" className="text-sm font-medium">
                   Username <span className="text-destructive">*</span>
                 </Label>
-                <Input
-                  id="username"
-                  type="text"
-                  value={formData.username}
-                  onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
-                  placeholder="Enter username"
-                  className="h-10"
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    id="username"
+                    type="text"
+                    value={formData.username}
+                    onChange={(e) => handleUsernameChange(e.target.value)}
+                    placeholder="Enter username"
+                    className="h-10 pr-10"
+                    required
+                  />
+                  {usernameStatus === 'checking' && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-muted-foreground border-t-primary"></div>
+                    </div>
+                  )}
+                  {usernameStatus === 'available' && (
+                    <Check className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-green-500" />
+                  )}
+                  {usernameStatus === 'taken' && (
+                    <X className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-destructive" />
+                  )}
+                </div>
+                {usernameStatus === 'taken' && (
+                  <p className="text-sm text-destructive">This username is already taken</p>
+                )}
+                {usernameStatus === 'available' && (
+                  <p className="text-sm text-green-600">Username is available</p>
+                )}
               </div>
 
               {/* Email Section - Read Only Display */}

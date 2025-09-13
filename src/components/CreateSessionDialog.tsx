@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,43 +7,81 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { X, Users, Send, Plus } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { useUsers } from '@/hooks/useUsers';
 
 interface CreateSessionDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
-  friendsList?: Array<{
-    id: string;
-    name: string;
-    username: string;
-    avatar: string;
-  }>;
-  recentCollaborators?: Array<{
-    id: string;
-    name: string;
-    username: string;
-    avatar: string;
-  }>;
 }
 
 export const CreateSessionDialog = ({
   isOpen,
   onClose,
-  onCreateSession,
-  friendsList = [],
-  recentCollaborators = []
+  onCreateSession
 }: CreateSessionDialogProps) => {
   const [sessionName, setSessionName] = useState('');
   const [inviteInput, setInviteInput] = useState('');
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [availableUsers, setAvailableUsers] = useState<Array<{
+    id: string;
+    username: string;
+    name: string;
+    avatar?: string;
+    type: 'user';
+  }>>([]);
+  const [searchResults, setSearchResults] = useState<Array<{
+    id: string;
+    username: string;
+    name: string;
+    avatar?: string;
+    type: 'user';
+  }>>([]);
 
-  const allSuggestions = [
-    ...friendsList.map(f => ({ ...f, type: 'friend' as const })),
-    ...recentCollaborators
-      .filter(c => !friendsList.find(f => f.username === c.username))
-      .map(c => ({ ...c, type: 'recent' as const }))
-  ];
+  const { getAllUsers, searchUsers, getDisplayName } = useUsers();
+
+  // Load available users on mount
+  useEffect(() => {
+    if (isOpen) {
+      loadAvailableUsers();
+    }
+  }, [isOpen]);
+
+  // Search users when input changes
+  useEffect(() => {
+    if (inviteInput.trim()) {
+      searchForUsers();
+    } else {
+      setSearchResults([]);
+    }
+  }, [inviteInput]);
+
+  const loadAvailableUsers = async () => {
+    const users = await getAllUsers();
+    const formattedUsers = users.map(user => ({
+      id: user.id,
+      username: user.username,
+      name: getDisplayName(user),
+      avatar: user.avatar_url,
+      type: 'user' as const
+    }));
+    setAvailableUsers(formattedUsers);
+  };
+
+  const searchForUsers = async () => {
+    const users = await searchUsers(inviteInput);
+    const formattedUsers = users.map(user => ({
+      id: user.id,
+      username: user.username,
+      name: getDisplayName(user),
+      avatar: user.avatar_url,
+      type: 'user' as const
+    }));
+    setSearchResults(formattedUsers);
+  };
+
+  const allSuggestions = inviteInput.trim() ? searchResults : availableUsers;
 
   const handleAddParticipant = (username: string) => {
     if (!selectedParticipants.includes(username)) {
@@ -105,11 +143,6 @@ export const CreateSessionDialog = ({
     }
   };
 
-  const filteredSuggestions = allSuggestions.filter(s => 
-    s.username.toLowerCase().includes(inviteInput.toLowerCase()) ||
-    s.name.toLowerCase().includes(inviteInput.toLowerCase())
-  );
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg">
@@ -138,13 +171,13 @@ export const CreateSessionDialog = ({
               <Label>Selected Participants ({selectedParticipants.length})</Label>
               <div className="flex flex-wrap gap-2">
                 {selectedParticipants.map((username) => {
-                  const user = allSuggestions.find(s => s.username === username);
+                  const user = [...availableUsers, ...searchResults].find(s => s.username === username);
                   return (
                     <Badge key={username} variant="secondary" className="flex items-center gap-1">
                       <Avatar className="w-4 h-4">
                         <AvatarImage src={user?.avatar} />
                         <AvatarFallback className="text-xs">
-                          {username[0].toUpperCase()}
+                          {user ? user.name[0].toUpperCase() : username[0].toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <span className="text-xs">@{username}</span>
@@ -184,13 +217,14 @@ export const CreateSessionDialog = ({
             </div>
 
             {/* Suggestions */}
-            {inviteInput && filteredSuggestions.length > 0 && (
+            {allSuggestions.length > 0 && (
               <div className="border rounded-lg max-h-40 overflow-y-auto">
-                {filteredSuggestions.slice(0, 5).map((suggestion) => (
+                {allSuggestions.slice(0, 5).map((suggestion) => (
                   <button
                     key={suggestion.username}
                     onClick={() => handleAddParticipant(suggestion.username)}
                     className="w-full p-2 text-left hover:bg-muted flex items-center gap-2"
+                    disabled={selectedParticipants.includes(suggestion.username)}
                   >
                     <Avatar className="w-6 h-6">
                       <AvatarImage src={suggestion.avatar} />
@@ -203,7 +237,7 @@ export const CreateSessionDialog = ({
                       <p className="text-xs text-muted-foreground">@{suggestion.username}</p>
                     </div>
                     <Badge variant="outline" className="ml-auto text-xs">
-                      {suggestion.type === 'friend' ? 'Friend' : 'Recent'}
+                      User
                     </Badge>
                   </button>
                 ))}
@@ -211,11 +245,11 @@ export const CreateSessionDialog = ({
             )}
 
             {/* Quick suggestions */}
-            {!inviteInput && allSuggestions.length > 0 && (
+            {!inviteInput && availableUsers.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">Quick add:</p>
                 <div className="flex flex-wrap gap-2">
-                  {allSuggestions.slice(0, 4).map((suggestion) => (
+                  {availableUsers.slice(0, 4).map((suggestion) => (
                     <button
                       key={suggestion.username}
                       onClick={() => handleAddParticipant(suggestion.username)}
