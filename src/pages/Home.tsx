@@ -18,6 +18,10 @@ interface ActivePreferences {
   categories: string[];
   time: string;
   travel: string;
+  travelConstraint: 'time' | 'distance';
+  travelTime: number;
+  travelDistance: number;
+  location: string;
   isCollaborating: boolean;
   activeCollaborators: number;
   activeCollaboratorsList: Array<{
@@ -39,10 +43,14 @@ const Home = () => {
   const { profile } = useUserProfile();
   
   const [activePreferences, setActivePreferences] = useState<ActivePreferences>({
-    budgetRange: [10, 10000],
-    categories: [], // Empty array means show all categories
+    budgetRange: [10, 10000], // Any budget
+    categories: [], // Freestyle - empty array means show all categories
     time: 'now',
-    travel: 'walk',
+    travel: 'drive',
+    travelConstraint: 'time',
+    travelTime: 15,
+    travelDistance: 5,
+    location: 'current',
     isCollaborating: false,
     activeCollaborators: 0,
     activeCollaboratorsList: []
@@ -243,10 +251,10 @@ const Home = () => {
 
         {/* Active Preferences Display */}
         {(activePreferences.budgetRange[0] !== 10 || activePreferences.budgetRange[1] !== 10000 || 
-          activePreferences.categories.length > 0 || activePreferences.isCollaborating) && (
+          activePreferences.categories.length > 0 || activePreferences.time !== 'now' || 
+          activePreferences.travel !== 'drive' || activePreferences.travelTime !== 15 || 
+          activePreferences.location !== 'current' || activePreferences.isCollaborating) && (
           <div className="flex items-center gap-2 mb-4 flex-wrap">
-            <span className="text-sm text-muted-foreground">Active filters:</span>
-            
             {/* Budget Preference */}
             {(activePreferences.budgetRange[0] !== 10 || activePreferences.budgetRange[1] !== 10000) && (
               <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
@@ -289,6 +297,96 @@ const Home = () => {
                 </div>
               );
             })}
+
+            {/* Time Preference */}
+            {activePreferences.time !== 'now' && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 flex items-center justify-center">
+                  <span className="text-xs">🕐</span>
+                </div>
+                <span className="text-xs text-muted-foreground">{activePreferences.time}</span>
+                <button 
+                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
+                  onClick={() => {
+                    setActivePreferences(prev => ({ ...prev, time: 'now' }));
+                    toast({
+                      title: "Preference updated",
+                      description: "Time filter removed",
+                    });
+                  }}
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                </button>
+              </div>
+            )}
+
+            {/* Travel Mode Preference */}
+            {activePreferences.travel !== 'drive' && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-orange-400 to-red-500 flex items-center justify-center">
+                  <span className="text-xs">🚗</span>
+                </div>
+                <span className="text-xs text-muted-foreground">{activePreferences.travel}</span>
+                <button 
+                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
+                  onClick={() => {
+                    setActivePreferences(prev => ({ ...prev, travel: 'drive' }));
+                    toast({
+                      title: "Preference updated",
+                      description: "Travel mode reset to drive",
+                    });
+                  }}
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                </button>
+              </div>
+            )}
+
+            {/* Travel Constraint Preference */}
+            {activePreferences.travelTime !== 15 && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-teal-400 to-cyan-500 flex items-center justify-center">
+                  <span className="text-xs">⏱️</span>
+                </div>
+                <span className="text-xs text-muted-foreground">{activePreferences.travelTime} min</span>
+                <button 
+                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
+                  onClick={() => {
+                    setActivePreferences(prev => ({ ...prev, travelTime: 15 }));
+                    toast({
+                      title: "Preference updated",
+                      description: "Travel time reset to 15 minutes",
+                    });
+                  }}
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                </button>
+              </div>
+            )}
+
+            {/* Location Preference */}
+            {activePreferences.location !== 'current' && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-pink-400 to-rose-500 flex items-center justify-center">
+                  <span className="text-xs">📍</span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {activePreferences.location === 'manual' ? 'Custom location' : activePreferences.location}
+                </span>
+                <button 
+                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
+                  onClick={() => {
+                    setActivePreferences(prev => ({ ...prev, location: 'current' }));
+                    toast({
+                      title: "Preference updated",
+                      description: "Location reset to current",
+                    });
+                  }}
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                </button>
+              </div>
+            )}
 
             {/* Collaboration Mode Indicator */}
             {activePreferences.isCollaborating && (
@@ -368,9 +466,21 @@ const Home = () => {
         isOpen={showPreferences}
         onClose={() => setShowPreferences(false)}
         measurementSystem={measurementSystem}
-        activePreferences={activePreferences}
+        activePreferences={{
+          ...activePreferences,
+          travelConstraint: activePreferences.travelConstraint,
+          travelTime: activePreferences.travelTime,
+          travelDistance: activePreferences.travelDistance,
+          location: activePreferences.location
+        }}
         onPreferencesUpdate={(preferences) => {
-          setActivePreferences(preferences);
+          setActivePreferences({
+            ...preferences,
+            travelConstraint: preferences.travelConstraint || 'time',
+            travelTime: preferences.travelTime || 15,
+            travelDistance: preferences.travelDistance || 5,
+            location: preferences.location || 'current'
+          });
           // Reset to first trip when preferences change
           setCurrentTripIndex(0);
         }}

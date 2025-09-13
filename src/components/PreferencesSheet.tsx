@@ -22,6 +22,10 @@ interface PreferencesSheetProps {
     categories: string[];
     time: string;
     travel: string;
+    travelConstraint: 'time' | 'distance';
+    travelTime: number;
+    travelDistance: number;
+    location: string;
     isCollaborating?: boolean;
     activeCollaborators?: number;
     activeCollaboratorsList?: Array<{
@@ -37,6 +41,10 @@ interface PreferencesSheetProps {
     categories: string[];
     time: string;
     travel: string;
+    travelConstraint: 'time' | 'distance';
+    travelTime: number;
+    travelDistance: number;
+    location: string;
     isCollaborating: boolean;
     activeCollaborators: number;
     activeCollaboratorsList: Array<{
@@ -64,11 +72,15 @@ const travelModes = [
 ];
 
 export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric', activePreferences, onPreferencesUpdate }: PreferencesSheetProps) => {
-  const [budget, setBudget] = useState<[number, number]>(activePreferences?.budgetRange || [10, 50]);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(activePreferences?.categories || ['stroll']);
-  const [selectedTime, setSelectedTime] = useState(activePreferences?.time || 'Now');
-  const [selectedTravel, setSelectedTravel] = useState(activePreferences?.travel || 'Walk');
-  const [isCollabMode, setIsCollabMode] = useState(false);
+  const [budget, setBudget] = useState<[number, number]>(activePreferences?.budgetRange || [10, 10000]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(activePreferences?.categories || []);
+  const [selectedTime, setSelectedTime] = useState(activePreferences?.time || 'now');
+  const [selectedTravel, setSelectedTravel] = useState(activePreferences?.travel || 'drive');
+  const [travelConstraint, setTravelConstraint] = useState<'time' | 'distance'>(activePreferences?.travelConstraint || 'time');
+  const [travelTime, setTravelTime] = useState(activePreferences?.travelTime || 15);
+  const [travelDistance, setTravelDistance] = useState(activePreferences?.travelDistance || 5);
+  const [selectedLocation, setSelectedLocation] = useState(activePreferences?.location || 'current');
+  const [isCollabMode, setIsCollabMode] = useState(activePreferences?.isCollaborating || false);
   const [sharedBudget, setSharedBudget] = useState(true);
   const [sharedCategories, setSharedCategories] = useState(false);
   const [sharedTime, setSharedTime] = useState(true);
@@ -77,11 +89,7 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
   const [specificTime, setSpecificTime] = useState('');
   const [customDate, setCustomDate] = useState('');
   const [locationInput, setLocationInput] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('current');
   const [groupSize, setGroupSize] = useState(2);
-  const [travelConstraint, setTravelConstraint] = useState<'time' | 'distance'>('time');
-  const [travelTime, setTravelTime] = useState(15);
-  const [travelDistance, setTravelDistance] = useState(5);
   const [collaborators, setCollaborators] = useState([
     { id: '1', username: 'sarah_k', name: 'Sarah', isActive: true, avatar: 'https://images.unsplash.com/photo-1494790108755-2616b79444d7' },
     { id: '2', username: 'mike_dev', name: 'Mike', isActive: false, avatar: '' },
@@ -127,6 +135,10 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                 categories: selectedCategories,
                 time: selectedTime,
                 travel: selectedTravel,
+                travelConstraint,
+                travelTime,
+                travelDistance,
+                location: selectedLocation,
                 isCollaborating: isCollabMode,
                 activeCollaborators: isCollabMode ? activeUsers.length : 0,
                 activeCollaboratorsList: isCollabMode ? activeUsers.map(u => ({
@@ -165,6 +177,10 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                     categories: selectedCategories,
                     time: selectedTime,
                     travel: selectedTravel,
+                    travelConstraint,
+                    travelTime,
+                    travelDistance,
+                    location: selectedLocation,
                     isCollaborating: enabled,
                     activeCollaborators: enabled ? activeUsers.length : 0,
                     activeCollaboratorsList: enabled ? activeUsers.map(u => ({
@@ -254,15 +270,19 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                                 categories: selectedCategories,
                                 time: selectedTime,
                                 travel: selectedTravel,
+                                travelConstraint,
+                                travelTime,
+                                travelDistance,
+                                location: selectedLocation,
                                 isCollaborating: activeUsers.length > 0,
                                 activeCollaborators: activeUsers.length,
-                activeCollaboratorsList: activeUsers.map(u => ({
-                  id: u.id,
-                  username: u.username,
-                  name: u.name,
-                  avatar: u.avatar,
-                  initials: u.name.split(' ').map(n => n[0]).join('')
-                }))
+                    activeCollaboratorsList: activeUsers.map(u => ({
+                      id: u.id,
+                      username: u.username,
+                      name: u.name,
+                      avatar: u.avatar,
+                      initials: u.name.split(' ').map(n => n[0]).join('')
+                    }))
                               });
                             }}
                             className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
@@ -355,6 +375,10 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                               categories: selectedCategories,
                               time: selectedTime,
                               travel: selectedTravel,
+                              travelConstraint,
+                              travelTime,
+                              travelDistance,
+                              location: selectedLocation,
                               isCollaborating: activeUsers.length > 0,
                               activeCollaborators: activeUsers.length,
                     activeCollaboratorsList: activeUsers.map(u => ({
@@ -428,6 +452,10 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                             categories: selectedCategories,
                             time: selectedTime,
                             travel: selectedTravel,
+                            travelConstraint,
+                            travelTime,
+                            travelDistance,
+                            location: selectedLocation,
                             isCollaborating: activeUsers.length > 0,
                             activeCollaborators: activeUsers.length,
                                 activeCollaboratorsList: activeUsers.map(u => ({
