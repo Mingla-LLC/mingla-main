@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { User, Session } from '@supabase/supabase-js';
+import { LocationDisplay } from '@/components/LocationDisplay';
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -242,7 +243,7 @@ const Profile = () => {
             {profileData?.username && (
               <p className="text-sm text-muted-foreground">@{profileData.username}</p>
             )}
-            <Badge variant="outline" className="mt-1">Seattle, WA</Badge>
+            <LocationDisplay />
           </div>
         </div>
 
@@ -302,10 +303,6 @@ const Profile = () => {
           <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/profile-settings')}>
             <UserCog className="h-4 w-4 mr-2" />
             Profile Settings
-          </Button>
-          <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/profiles')}>
-            <UserCog className="h-4 w-4 mr-2" />
-            Manage Profiles
           </Button>
           <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/account-settings')}>
             <Settings className="h-4 w-4 mr-2" />

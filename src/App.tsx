@@ -12,7 +12,6 @@ import Activity from "./pages/Activity";
 import Connections from "./pages/Connections";
 import Profile from "./pages/Profile";
 import ProfileSettings from "./pages/ProfileSettings";
-import Profiles from "./pages/Profiles";
 import AccountSettings from "./pages/AccountSettings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -64,13 +63,6 @@ const App = () => (
         <Route path="/profile-settings" element={
           <AuthGuard>
             <ProfileSettings />
-          </AuthGuard>
-        } />
-        <Route path="/profiles" element={
-          <AuthGuard>
-            <Layout>
-              <Profiles />
-            </Layout>
           </AuthGuard>
         } />
         <Route path="/account-settings" element={

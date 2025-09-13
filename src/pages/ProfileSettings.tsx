@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Check, X, Edit2 } from 'lucide-react';
 import { AvatarPreview } from '@/components/AvatarPreview';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,7 +12,7 @@ import { useUsers } from '@/hooks/useUsers';
 
 export default function ProfileSettings() {
   const { profile, user, loading: profileLoading, refreshProfile } = useUserProfile();
-  const { getUserInitials } = useUsers();
+  const { getUserInitials, checkUsernameAvailability } = useUsers();
   
   const [formData, setFormData] = useState({
     first_name: '',
@@ -21,6 +21,8 @@ export default function ProfileSettings() {
     avatar_url: ''
   });
   const [saving, setSaving] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<'checking' | 'available' | 'taken' | null>(null);
+  const [checkTimeout, setCheckTimeout] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (profile) {
@@ -30,11 +32,92 @@ export default function ProfileSettings() {
         username: profile.username || '',
         avatar_url: profile.avatar_url || ''
       });
+      // Clear any pending username checks when profile changes
+      if (checkTimeout) {
+        clearTimeout(checkTimeout);
+        setCheckTimeout(null);
+      }
+      setUsernameStatus(null);
     }
-  }, [profile]);
+  }, [profile, checkTimeout]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (checkTimeout) {
+        clearTimeout(checkTimeout);
+      }
+    };
+  }, [checkTimeout]);
+
+  // Handle username change with availability checking
+  const handleUsernameChange = (newUsername: string) => {
+    setFormData(prev => ({ ...prev, username: newUsername }));
+    
+    // Clear existing timeout
+    if (checkTimeout) {
+      clearTimeout(checkTimeout);
+    }
+    
+    // Don't check availability if username hasn't changed from current
+    if (profile && newUsername.trim() === profile.username) {
+      setUsernameStatus(null);
+      return;
+    }
+    
+    // Don't check if empty
+    if (!newUsername.trim()) {
+      setUsernameStatus(null);
+      return;
+    }
+    
+    setUsernameStatus('checking');
+    
+    // Debounce the availability check
+    const timeout = setTimeout(async () => {
+      const isAvailable = await checkUsernameAvailability(newUsername.trim());
+      setUsernameStatus(isAvailable ? 'available' : 'taken');
+    }, 500);
+    
+    setCheckTimeout(timeout);
+  };
 
   const handleSave = async () => {
     if (!user?.id) return;
+
+    // Validate required fields
+    if (!formData.username.trim()) {
+      toast({
+        title: "Username required",
+        description: "Please enter a username",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check if username is available (unless it's the current username)
+    if (profile && formData.username.trim() !== profile.username && usernameStatus !== 'available') {
+      if (usernameStatus === 'taken') {
+        toast({
+          title: "Username not available",
+          description: "Please choose a different username",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Double-check availability before submitting
+      const isAvailable = await checkUsernameAvailability(formData.username.trim());
+      if (!isAvailable) {
+        setUsernameStatus('taken');
+        toast({
+          title: "Username not available", 
+          description: "Please choose a different username",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
 
     setSaving(true);
     try {
@@ -179,13 +262,34 @@ export default function ProfileSettings() {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                value={formData.username}
-                onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
-                placeholder="Enter your username"
-              />
+              <Label htmlFor="username">Username *</Label>
+              <div className="relative">
+                <Input
+                  id="username"
+                  value={formData.username}
+                  onChange={(e) => handleUsernameChange(e.target.value)}
+                  placeholder="Enter your username"
+                  required
+                  className="pr-10"
+                />
+                {usernameStatus === 'checking' && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-muted-foreground border-t-primary"></div>
+                  </div>
+                )}
+                {usernameStatus === 'available' && (
+                  <Check className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-green-500" />
+                )}
+                {usernameStatus === 'taken' && (
+                  <X className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-destructive" />
+                )}
+              </div>
+              {usernameStatus === 'taken' && (
+                <p className="text-sm text-destructive">This username is already taken</p>
+              )}
+              {usernameStatus === 'available' && (
+                <p className="text-sm text-green-600">Username is available</p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Your username is how friends can find and add you
               </p>
@@ -209,7 +313,7 @@ export default function ProfileSettings() {
         <div className="pb-6">
           <Button 
             onClick={handleSave} 
-            disabled={saving}
+            disabled={saving || !formData.username.trim() || usernameStatus === 'taken'}
             className="w-full"
           >
             {saving ? (
