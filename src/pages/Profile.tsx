@@ -287,6 +287,10 @@ const Profile = () => {
       {/* Account Actions */}
       <div className="px-6 pb-8">
         <div className="space-y-3">
+          <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/profile-settings')}>
+            <UserCog className="h-4 w-4 mr-2" />
+            Profile Settings
+          </Button>
           <Button variant="outline" className="w-full justify-start" onClick={() => navigate('/profiles')}>
             <UserCog className="h-4 w-4 mr-2" />
             Manage Profiles

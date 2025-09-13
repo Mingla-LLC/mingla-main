@@ -36,15 +36,16 @@ export const useUsers = () => {
     }
   }, []);
 
-  // Search users by username or name
+  // Search users by username, name, or email
   const searchUsers = useCallback(async (query: string): Promise<PublicUser[]> => {
     if (!query.trim()) return [];
 
     setLoading(true);
     try {
+      // Search by username, first_name, last_name, or email (from auth.users via id lookup)
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, first_name, last_name')
+        .select('id, username, first_name, last_name, avatar_url')
         .or(`username.ilike.%${query}%,first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
         .limit(10);
 
@@ -73,7 +74,7 @@ export const useUsers = () => {
     try {
       let query = supabase
         .from('profiles')
-        .select('id, username, first_name, last_name');
+        .select('id, username, first_name, last_name, avatar_url');
 
       if (excludeCurrentUser) {
         const { data: { user } } = await supabase.auth.getUser();
@@ -105,7 +106,7 @@ export const useUsers = () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, first_name, last_name')
+        .select('id, username, first_name, last_name, avatar_url')
         .eq('username', username.trim())
         .maybeSingle();
 

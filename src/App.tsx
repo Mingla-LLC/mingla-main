@@ -11,6 +11,7 @@ import Explore from "./pages/Explore";
 import Activity from "./pages/Activity";
 import Connections from "./pages/Connections";
 import Profile from "./pages/Profile";
+import ProfileSettings from "./pages/ProfileSettings";
 import Profiles from "./pages/Profiles";
 import AccountSettings from "./pages/AccountSettings";
 import Auth from "./pages/Auth";
@@ -58,6 +59,11 @@ const App = () => (
             <Layout>
               <Profile />
             </Layout>
+          </AuthGuard>
+        } />
+        <Route path="/profile-settings" element={
+          <AuthGuard>
+            <ProfileSettings />
           </AuthGuard>
         } />
         <Route path="/profiles" element={

@@ -22,10 +22,11 @@ import {
 import { useFriends } from '@/hooks/useFriends';
 import { useMessages } from '@/hooks/useMessages';
 import { toast } from '@/hooks/use-toast';
+import { UserSearch } from '@/components/UserSearch';
+import { useUsers, type PublicUser } from '@/hooks/useUsers';
 
 export const Friends = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [newFriendUsername, setNewFriendUsername] = useState('');
 
   const {
     friends,
@@ -40,6 +41,7 @@ export const Friends = () => {
   } = useFriends();
 
   const { createConversation } = useMessages();
+  const { getDisplayName: getUserDisplayName, getUserInitials: getUserUserInitials } = useUsers();
 
   // Load friends and requests on component mount
   useEffect(() => {
@@ -73,12 +75,13 @@ export const Friends = () => {
       .slice(0, 2);
   };
 
-  const handleSendFriendRequest = async () => {
-    if (!newFriendUsername.trim()) return;
-    
-    const success = await sendFriendRequest(newFriendUsername);
+  const handleSelectUser = async (user: PublicUser) => {
+    const success = await sendFriendRequest(user.username);
     if (success) {
-      setNewFriendUsername('');
+      toast({
+        title: "Friend request sent",
+        description: `Friend request sent to ${getUserDisplayName(user)}`,
+      });
     }
   };
 
@@ -115,6 +118,9 @@ export const Friends = () => {
               <div key={request.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <Avatar>
+                    {request.sender.avatar_url && (
+                      <AvatarImage src={request.sender.avatar_url} alt={getDisplayName(request.sender)} />
+                    )}
                     <AvatarFallback>
                       {getUserInitials(request.sender)}
                     </AvatarFallback>
@@ -154,17 +160,7 @@ export const Friends = () => {
           <CardTitle>Add Friend</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Enter username"
-              value={newFriendUsername}
-              onChange={(e) => setNewFriendUsername(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSendFriendRequest()}
-            />
-            <Button onClick={handleSendFriendRequest}>
-              <UserPlus className="h-4 w-4" />
-            </Button>
-          </div>
+          <UserSearch onSelectUser={handleSelectUser} />
         </CardContent>
       </Card>
 
@@ -201,6 +197,9 @@ export const Friends = () => {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <Avatar>
+                        {friend.avatar_url && (
+                          <AvatarImage src={friend.avatar_url} alt={getDisplayName(friend)} />
+                        )}
                         <AvatarFallback>
                           {getUserInitials(friend)}
                         </AvatarFallback>

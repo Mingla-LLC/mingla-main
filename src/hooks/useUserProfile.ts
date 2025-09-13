@@ -9,6 +9,7 @@ interface UserProfile {
   first_name?: string;
   last_name?: string;
   username: string;
+  avatar_url?: string;
   share_location?: boolean;
   share_budget?: boolean;
   share_categories?: boolean;
