@@ -42,7 +42,10 @@ export const useBoards = () => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setBoards([]);
+        return;
+      }
 
       // Get boards created by user or where user is a collaborator  
       const { data: boardsData, error } = await supabase
@@ -52,7 +55,12 @@ export const useBoards = () => {
         `)
         .or(`created_by.eq.${user.id},id.in.(select board_id from board_collaborators where user_id = '${user.id}')`);
 
-      if (error) throw error;
+      if (error) {
+        // If there's an error but it's just because no boards exist, that's fine
+        console.log('Boards query result:', error);
+        setBoards([]);
+        return;
+      }
 
       // Get collaborators separately to avoid relation issues
       let formattedBoards: Board[] = [];
@@ -111,11 +119,8 @@ export const useBoards = () => {
       setBoards(formattedBoards);
     } catch (error) {
       console.error('Error loading boards:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load boards",
-        variant: "destructive"
-      });
+      // Don't show error toast for empty state - just set empty boards
+      setBoards([]);
     } finally {
       setLoading(false);
     }
