@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.ai-reason]
 verify_jwt = false
+
+[functions.events]
+verify_jwt = false
