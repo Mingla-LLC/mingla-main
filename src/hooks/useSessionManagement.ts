@@ -58,9 +58,22 @@ export const useSessionManagement = () => {
   const loadUserSessions = useCallback(async () => {
     if (!user) return;
     
+    console.log('LoadUserSessions called for user:', user.id);
     setSessionState(prev => ({ ...prev, loading: true }));
     
     try {
+      // Load pending invites for user first
+      const { data: invitesData, error: invitesError } = await supabase
+        .from('collaboration_invites')
+        .select(`
+          id, session_id, message, status, created_at, invited_by
+        `)
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending');
+
+      console.log('Raw invites data:', invitesData);
+      console.log('Invites error:', invitesError);
+
       // Load sessions where user is creator or participant
       const { data: sessionsData, error: sessionsError } = await supabase
         .from('collaboration_sessions')
@@ -86,17 +99,6 @@ export const useSessionManagement = () => {
         
         participantsData = pData || [];
       }
-
-      // Load pending invites for user
-      const { data: invitesData, error: invitesError } = await supabase
-        .from('collaboration_invites')
-        .select(`
-          id, session_id, message, status, created_at
-        `)
-        .eq('invited_user_id', user.id)
-        .eq('status', 'pending');
-
-      if (invitesError) throw invitesError;
 
       // Load session names and invited by profiles for invites
       const inviteSessionIds = (invitesData || []).map(i => i.session_id);
@@ -153,14 +155,14 @@ export const useSessionManagement = () => {
       // Format invites
       const formattedInvites: SessionInvite[] = (invitesData || []).map(invite => {
         const sessionInfo = sessionNamesData.find(s => s.id === invite.session_id);
-        const invitedByProfile = invitedByProfiles.find(p => p.id === sessionInfo?.created_by);
+        const invitedByProfile = invitedByProfiles.find(p => p.id === invite.invited_by);
         
         return {
           id: invite.id,
           sessionId: invite.session_id,
           sessionName: sessionInfo?.name || 'Collaboration Session',
           invitedBy: {
-            id: invitedByProfile?.id || '',
+            id: invitedByProfile?.id || invite.invited_by || '',
             name: invitedByProfile?.first_name && invitedByProfile?.last_name
               ? `${invitedByProfile.first_name} ${invitedByProfile.last_name}`
               : invitedByProfile?.username || 'Unknown User',

@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useFriends } from '@/hooks/useFriends';
 import { useMessages } from '@/hooks/useMessages';
+import { useSessionManagement } from '@/hooks/useSessionManagement';
 import { toast } from '@/hooks/use-toast';
 import { UserSearch } from '@/components/UserSearch';
 import { useUsers, type PublicUser } from '@/hooks/useUsers';
@@ -47,6 +48,7 @@ export const Friends = () => {
   } = useFriends();
 
   const { createConversation } = useMessages();
+  const { createCollaborativeSession } = useSessionManagement();
   const { getDisplayName: getUserDisplayName, getUserInitials: getUserUserInitials } = useUsers();
 
   // Load friends and requests on component mount
@@ -121,7 +123,7 @@ export const Friends = () => {
     }
   };
 
-  const createCollaborationBoard = async (friendUserId: string) => {
+  const createCollaborationSession = async (friendUserId: string) => {
     try {
       // Get friend's profile first
       const { data: friendProfile } = await supabase
@@ -136,41 +138,27 @@ export const Friends = () => {
            : friendProfile.username)
         : 'Friend';
 
-      // Create a collaboration board
-      const { data: boardData, error: boardError } = await supabase
-        .from('boards')
-        .insert({
-          name: `Collaboration with ${friendName}`,
-          description: `Shared board for collaboration with ${friendName}`,
-          created_by: user?.id,
-          is_public: false
-        })
-        .select()
-        .single();
+      const friendUsername = friendProfile?.username || 'unknown';
 
-      if (boardError) throw boardError;
+      // Create session with invitation using the hook
+      const result = await createCollaborativeSession(
+        [friendUsername], 
+        `Collaboration with ${friendName}`
+      );
 
-      // Add friend as collaborator
-      await supabase
-        .from('board_collaborators')
-        .insert({
-          board_id: boardData.id,
-          user_id: friendUserId,
-          role: 'collaborator'
+      if (result) {
+        toast({
+          title: "Collaboration invitation sent!",
+          description: `Sent collaboration invitation to ${friendName}. They will receive a notification to join.`,
         });
-
-      // Navigate to Activity page boards tab
-      navigate('/activity?tab=boards');
-      
-      toast({
-        title: "Board created!",
-        description: `Created collaboration board "${boardData.name}". ${friendName} has been added as a collaborator.`,
-      });
+      } else {
+        throw new Error('Failed to create session');
+      }
     } catch (error) {
-      console.error('Error creating collaboration board:', error);
+      console.error('Error creating collaboration session:', error);
       toast({
         title: "Error",
-        description: "Failed to create collaboration board. Please try again.",
+        description: "Failed to send collaboration invitation. Please try again.",
         variant: "destructive"
       });
     }
@@ -318,9 +306,9 @@ export const Friends = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => createCollaborationBoard(friend.friend_user_id)}>
+                        <DropdownMenuItem onClick={() => createCollaborationSession(friend.friend_user_id)}>
                           <Users className="h-4 w-4 mr-2" />
-                          Create Collaboration Board
+                          Send Collaboration Invite
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-destructive"

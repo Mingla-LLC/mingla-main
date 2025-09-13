@@ -87,6 +87,7 @@ const Home = () => {
     getFriendsAndCollaborators,
     getSwipeContext,
     canSwitchToSolo,
+    loadUserSessions,
     isInSolo,
     currentSession,
     availableSessions,
@@ -94,10 +95,15 @@ const Home = () => {
     loading: sessionLoading
   } = useSessionManagement();
 
-  // Load friends data
+  // Load friends data and sessions on mount
   useEffect(() => {
     getFriendsAndCollaborators();
-  }, [getFriendsAndCollaborators]);
+    // Force reload sessions to ensure we get the latest invitations
+    if (user) {
+      console.log('Loading sessions for user:', user.id);
+      loadUserSessions();
+    }
+  }, [getFriendsAndCollaborators, loadUserSessions, user]);
 
   // Wrapper function to handle session creation
   const handleCreateSession = async (participants: string[], sessionName: string): Promise<void> => {

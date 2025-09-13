@@ -126,8 +126,8 @@ export const useBoards = () => {
     }
   }, []);
 
-  // Create a new board
-  const createBoard = useCallback(async (name: string, description?: string, sessionId?: string) => {
+  // Create a new board with optional collaboration session
+  const createBoard = useCallback(async (name: string, description?: string, sessionId?: string, collaboratorUserIds?: string[]) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
@@ -155,11 +155,27 @@ export const useBoards = () => {
           role: 'owner'
         });
 
+      // Add additional collaborators if provided
+      if (collaboratorUserIds && collaboratorUserIds.length > 0) {
+        const collaboratorInserts = collaboratorUserIds.map(userId => ({
+          board_id: boardData.id,
+          user_id: userId,
+          role: 'collaborator' as const
+        }));
+        
+        await supabase
+          .from('board_collaborators')
+          .insert(collaboratorInserts);
+      }
+
       await loadBoards();
       
+      const collaboratorCount = collaboratorUserIds?.length || 0;
       toast({
         title: "Board created!",
-        description: `"${name}" has been created successfully.`,
+        description: collaboratorCount > 0 
+          ? `"${name}" has been created with ${collaboratorCount} collaborator(s).`
+          : `"${name}" has been created successfully.`,
       });
 
       return boardData;
