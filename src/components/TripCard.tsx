@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { MapPin, Clock, DollarSign, CheckCircle, Cloud, Zap, Heart } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -42,14 +42,23 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
   const { profile } = useAppStore();
   const isLiked = useAppStore().saves.some(save => save.experience_id === trip.id);
 
-  const handleLike = async () => {
+  const handleLike = useCallback(async () => {
     const { writeThroughHelpers } = await import('@/store/writeThroughHelpers');
     const result = await writeThroughHelpers.likeExperience(trip.id);
     
     if (!result.success) {
       console.error('Failed to like experience:', result.error);
     }
-  };
+  }, [trip.id]);
+
+  // Memoize venue object to prevent unnecessary re-renders
+  const venue = useMemo(() => ({
+    title: trip.title,
+    category: trip.category,
+    duration_min: parseInt(trip.duration.split(' ')[0]) || 60,
+    lat: trip.latitude || 0,
+    lng: trip.longitude || 0
+  }), [trip.title, trip.category, trip.duration, trip.latitude, trip.longitude]);
 
   useEffect(() => {
     const loadWeatherAndReasoning = async () => {
@@ -62,16 +71,10 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
         const reasoning = await reasonCardNotes({
           weather,
           preferences: profile,
-          venue: {
-            title: trip.title,
-            category: trip.category,
-            duration_min: parseInt(trip.duration.split(' ')[0]) || 60,
-            lat: trip.latitude,
-            lng: trip.longitude
-          }
+          venue
         });
 
-        if (reasoning.adjusted_duration !== parseInt(trip.duration.split(' ')[0])) {
+        if (reasoning.adjusted_duration !== venue.duration_min) {
           setAdjustedDuration(`${reasoning.adjusted_duration} min`);
         }
         setSafetyNotes(reasoning.safety_notes);
@@ -82,7 +85,7 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
     };
 
     loadWeatherAndReasoning();
-  }, [trip.latitude, trip.longitude, trip.duration, trip.title, trip.category, profile]);
+  }, [trip.latitude, trip.longitude, venue, profile?.id]); // Only depend on profile.id to avoid frequent re-renders
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (isAnimating || disableSwipe) return;
@@ -253,10 +256,10 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
           <Button
             variant={isLiked ? "default" : "outline"}
             size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleLike();
-            }}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleLike();
+          }}
             className="flex items-center gap-1 h-6 px-2"
           >
             <Heart className={cn("h-3 w-3", isLiked && "fill-current")} />

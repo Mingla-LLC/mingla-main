@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, TrendingUp, MapPin } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,10 +18,13 @@ const Explore = () => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
+  // Memoize the category filter to prevent unnecessary re-renders
+  const categoryFilters = useMemo(() => {
+    return selectedCategory ? [selectedCategory] : undefined;
+  }, [selectedCategory]);
+  
   // Fetch experiences based on selected category
-  const { experiences, loading, error } = useExperiences(
-    selectedCategory ? [selectedCategory] : undefined
-  );
+  const { experiences, loading, error } = useExperiences(categoryFilters);
 
   // Convert experiences to trip format for cards
   const trips = experiences

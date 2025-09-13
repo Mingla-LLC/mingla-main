@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Sliders, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TripCard } from '@/components/TripCard';
@@ -48,10 +48,13 @@ const Home = () => {
     activeCollaboratorsList: []
   });
 
+  // Memoize the category filter to prevent unnecessary re-renders
+  const categoryFilters = useMemo(() => {
+    return activePreferences.categories.length > 0 ? activePreferences.categories : undefined;
+  }, [activePreferences.categories]);
+
   // Fetch experiences based on category preferences
-  const { experiences, loading: experiencesLoading, error } = useExperiences(
-    activePreferences.categories.length > 0 ? activePreferences.categories : undefined
-  );
+  const { experiences, loading: experiencesLoading, error } = useExperiences(categoryFilters);
 
   // Convert experiences to trip format for cards
   const trips = experiences.map(exp => ({
