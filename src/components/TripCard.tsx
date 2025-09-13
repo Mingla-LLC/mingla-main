@@ -38,7 +38,7 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
   const [isAnimating, setIsAnimating] = useState(false);
   const [weatherBadge, setWeatherBadge] = useState<string>('');
   const [adjustedDuration, setAdjustedDuration] = useState<string>(trip.duration);
-  const [safetyNotes, setSafetyNotes] = useState<string[]>([]);
+  const [safetyNotes, setSafetyNotes] = useState<string>('');
   const { profile } = useAppStore();
   const isLiked = useAppStore().saves.some(save => save.experience_id === trip.id);
 
@@ -64,12 +64,26 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
     const loadWeatherAndReasoning = async () => {
       if (trip.latitude && trip.longitude) {
         const weather = await getWeather(trip.latitude, trip.longitude);
-        const badge = getWeatherBadge(weather);
-        setWeatherBadge(badge);
-
+        
         // Get AI reasoning for weather-aware adjustments
         const reasoning = await reasonCardNotes({
-          weather,
+          weather: weather ? {
+            current: {
+              temp: (weather as any).temp || 72,
+              feels_like: (weather as any).feels_like || (weather as any).temp || 72,
+              humidity: (weather as any).humidity || 50,
+              weather: [{
+                main: (weather as any).condition || 'Clear',
+                description: (weather as any).condition || 'clear sky',
+                icon: '01d'
+              }],
+              wind_speed: (weather as any).wind || 0
+            },
+            alerts: ((weather as any).alerts || []).map((alert: any) => ({
+              event: typeof alert === 'string' ? alert : alert?.event || 'Weather Alert',
+              description: typeof alert === 'string' ? alert : alert?.description || 'Weather conditions'
+            }))
+          } : null,
           preferences: profile,
           venue
         });
@@ -78,6 +92,7 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
           setAdjustedDuration(`${reasoning.adjusted_duration} min`);
         }
         setSafetyNotes(reasoning.safety_notes);
+        setWeatherBadge(reasoning.weather_badge);
       } else {
         // Set default weather badge even without coordinates
         setWeatherBadge('☀️');
@@ -234,9 +249,9 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
         </p>
 
         {/* Safety Notes */}
-        {safetyNotes.length > 0 && (
+        {safetyNotes && (
           <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded mb-3">
-            💡 {safetyNotes[0]}
+            💡 {safetyNotes}
           </div>
         )}
 

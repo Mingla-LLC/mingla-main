@@ -29,26 +29,27 @@ const Explore = () => {
   const { experiences, loading, error } = useExperiences(categoryFilters);
 
   // Convert experiences to trip format for cards
-  const trips = experiences
-    .filter(exp => 
-      !searchQuery || 
-      exp.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      exp.category.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    .map(exp => ({
-      id: exp.id,
-      title: exp.title,
-      image: exp.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
-      cost: exp.price_min || 25,
-      duration: `${exp.duration_min || 90} min`,
-      travelTime: '8 min walk',
-      badges: ['Available'],
-      whyItFits: 'Discover new experiences in your area',
-      location: 'Local Area',
-      category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
-      latitude: exp.lat || 47.6062,
-      longitude: exp.lng || -122.3321
-    }));
+  const trips = useMemo(() => 
+    experiences
+      .filter(exp => 
+        !searchQuery || 
+        exp.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        exp.category.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+      .map(exp => ({
+        id: exp.id,
+        title: exp.title,
+        image: exp.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
+        cost: exp.price_min || 25,
+        duration: `${exp.duration_min || 90} min`,
+        travelTime: '8 min walk',
+        badges: ['Available'],
+        whyItFits: 'Discover new experiences in your area',
+        location: 'Local Area',
+        category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
+        latitude: exp.lat || 47.6062,
+        longitude: exp.lng || -122.3321
+      })), [experiences, searchQuery]);
 
   const handleCategorySelect = (categorySlug: string) => {
     setSelectedCategory(categorySlug === selectedCategory ? null : categorySlug);

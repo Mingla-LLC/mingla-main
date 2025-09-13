@@ -43,7 +43,8 @@ const Home = () => {
   const { profile } = useUserProfile();
   
   // Initialize with proper defaults that match the "default state" described
-  const [activePreferences, setActivePreferences] = useState<ActivePreferences>({
+  // Initialize with proper defaults and ensure stable state
+  const [activePreferences, setActivePreferences] = useState<ActivePreferences>(() => ({
     budgetRange: [10, 10000], // Any budget
     categories: [], // Freestyle - empty array means show all categories
     time: 'now',
@@ -55,7 +56,7 @@ const Home = () => {
     isCollaborating: false,
     activeCollaborators: 0,
     activeCollaboratorsList: []
-  });
+  }));
 
   // Memoize the category filter to prevent unnecessary re-renders
   const categoryFilters = useMemo(() => {
@@ -66,20 +67,21 @@ const Home = () => {
   const { experiences, loading: experiencesLoading, error } = useExperiences(categoryFilters);
 
   // Convert experiences to trip format for cards
-  const trips = experiences.map(exp => ({
-    id: exp.id,
-    title: exp.title,
-    image: exp.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
-    cost: exp.price_min || 25,
-    duration: `${exp.duration_min || 90} min`,
-    travelTime: '8 min walk', // Default for now
-    badges: ['Budget-Fit', 'Weather-OK'],
-    whyItFits: 'Perfect match for your preferences based on location and category',
-    location: 'Local Area',
-    category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
-    latitude: exp.lat || 47.6062,
-    longitude: exp.lng || -122.3321
-  }));
+  const trips = useMemo(() => 
+    experiences.map(exp => ({
+      id: exp.id,
+      title: exp.title,
+      image: exp.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
+      cost: exp.price_min || 25,
+      duration: `${exp.duration_min || 90} min`,
+      travelTime: '8 min walk', // Default for now
+      badges: ['Budget-Fit', 'Weather-OK'],
+      whyItFits: 'Perfect match for your preferences based on location and category',
+      location: 'Local Area',
+      category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
+      latitude: exp.lat || 47.6062,
+      longitude: exp.lng || -122.3321
+    })), [experiences]);
 
   const [collaborationRequests, setCollaborationRequests] = useState<Array<{
     id: string;
@@ -125,12 +127,6 @@ const Home = () => {
       setUser(user);
     };
     getUser();
-  }, []);
-
-  // Initialize preferences on mount to prevent glitching
-  useEffect(() => {
-    // Ensure preferences are set properly on first load
-    setActivePreferences(prev => ({...prev}));
   }, []);
 
   const currentTrip = trips[currentTripIndex];
