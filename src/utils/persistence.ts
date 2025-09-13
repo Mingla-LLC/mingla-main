@@ -68,7 +68,11 @@ export async function loadUserData(userId: string) {
 
 export async function saveUserPreferences(userId: string, preferences: any) {
   try {
-    console.log('Preferences will be saved when database types are updated:', preferences);
+    // For now, just log the slug-based categories to console
+    console.log('Preferences will be saved when database types are updated:', {
+      ...preferences,
+      categories: preferences.categories // These are now slugs
+    });
     return true;
   } catch (error) {
     console.error('Error saving preferences:', error);

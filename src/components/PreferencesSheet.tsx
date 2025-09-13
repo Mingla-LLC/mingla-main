@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { formatCurrency } from '@/utils/currency';
+import { categories, getCategoriesBySlug } from '@/lib/categories';
 
 interface PreferencesSheetProps {
   isOpen: boolean;
@@ -48,14 +49,6 @@ interface PreferencesSheetProps {
   }) => void;
 }
 
-const categories = [
-  'Coffee & Walk',
-  'Quick Bite', 
-  'Brunch',
-  'Activity Date',
-  'Creative Date',
-  'Dinner'
-];
 
 const timeOptions = [
   'Now',
@@ -72,7 +65,7 @@ const travelModes = [
 
 export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric', activePreferences, onPreferencesUpdate }: PreferencesSheetProps) => {
   const [budget, setBudget] = useState<[number, number]>(activePreferences?.budgetRange || [10, 50]);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(activePreferences?.categories || ['Coffee & Walk']);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(activePreferences?.categories || ['stroll']);
   const [selectedTime, setSelectedTime] = useState(activePreferences?.time || 'Now');
   const [selectedTravel, setSelectedTravel] = useState(activePreferences?.travel || 'Walk');
   const [isCollabMode, setIsCollabMode] = useState(false);
@@ -529,23 +522,24 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
             <div className="flex flex-wrap gap-2">
               {categories.map((category) => (
                 <Badge
-                  key={category}
-                  variant={selectedCategories.includes(category) ? "default" : "outline"}
+                  key={category.slug}
+                  variant={selectedCategories.includes(category.slug) ? "default" : "outline"}
                   className={cn(
                     "cursor-pointer transition-all",
-                    selectedCategories.includes(category)
+                    selectedCategories.includes(category.slug)
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-muted"
                   )}
                   onClick={() => {
                     setSelectedCategories(prev =>
-                      prev.includes(category)
-                        ? prev.filter(c => c !== category)
-                        : [...prev, category]
+                      prev.includes(category.slug)
+                        ? prev.filter(c => c !== category.slug)
+                        : [...prev, category.slug]
                     );
                   }}
                 >
-                  {category}
+                  <span className="mr-1">{category.icon}</span>
+                  {category.name}
                 </Badge>
               ))}
             </div>
