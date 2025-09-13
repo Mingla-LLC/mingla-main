@@ -1,25 +1,49 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Calendar, Clock, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-interface AcceptedExperience {
-  id: string;
-  title: string;
-  image: string;
-  date: Date;
-  time: string;
-  location: string;
-  collaborators?: string[];
-}
+import { useAppStore } from '@/store/appStore';
+import { useExperiences } from '@/hooks/useExperiences';
 
 interface CalendarViewProps {
-  experiences: AcceptedExperience[];
+  // Remove the experiences prop since we'll fetch from store
 }
 
-export const CalendarView = ({ experiences }: CalendarViewProps) => {
+export const CalendarView = ({}: CalendarViewProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const { saves } = useAppStore();
+  const { experiences } = useExperiences();
+
+  // Transform saves with scheduled_at into calendar experiences
+  const acceptedExperiences = useMemo(() => {
+    const scheduledSaves = saves.filter(save => 
+      save.status === 'scheduled' && save.scheduled_at
+    );
+    
+    return scheduledSaves.map(save => {
+      const experience = experiences.find(exp => exp.id === save.experience_id);
+      if (!experience) return null;
+      
+      return {
+        id: save.experience_id,
+        title: experience.title,
+        image: experience.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
+        date: new Date(save.scheduled_at!),
+        time: '2:00 PM - 4:00 PM', // Default time, could be enhanced
+        location: 'Local Area', // Could be enhanced with real location data
+        collaborators: [] // Could be enhanced with collaboration data
+      };
+    }).filter(Boolean) as Array<{
+      id: string;
+      title: string;
+      image: string;
+      date: Date;
+      time: string;
+      location: string;
+      collaborators: string[];
+    }>;
+  }, [saves, experiences]);
 
   const goToPreviousMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -38,7 +62,7 @@ export const CalendarView = ({ experiences }: CalendarViewProps) => {
   };
 
   const getExperiencesForDate = (date: Date) => {
-    return experiences.filter(exp => {
+    return acceptedExperiences.filter(exp => {
       const expDate = new Date(exp.date);
       return expDate.getDate() === date.getDate() &&
              expDate.getMonth() === date.getMonth() &&
@@ -150,52 +174,61 @@ export const CalendarView = ({ experiences }: CalendarViewProps) => {
         </CardContent>
       </Card>
 
-      {/* Upcoming Experiences */}
-      <div className="space-y-3">
-        <h3 className="text-lg font-semibold">Upcoming This Month</h3>
-        {experiences
-          .filter(exp => {
-            const expDate = new Date(exp.date);
-            return expDate.getMonth() === currentDate.getMonth() &&
-                   expDate.getFullYear() === currentDate.getFullYear() &&
-                   expDate >= today;
-          })
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-          .map(exp => (
-            <Card key={exp.id} className="p-4">
-              <div className="flex items-center gap-4">
-                <img 
-                  src={exp.image} 
-                  alt={exp.title}
-                  className="w-16 h-16 rounded-lg object-cover"
-                />
-                <div className="flex-1 space-y-1">
-                  <h4 className="font-medium">{exp.title}</h4>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-4 w-4" />
-                      {exp.date.toLocaleDateString()}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      {exp.time}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4" />
-                      {exp.location}
+        {/* Upcoming Experiences */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold">Upcoming This Month</h3>
+          {acceptedExperiences.length === 0 ? (
+            <Card className="p-8 text-center">
+              <p className="text-muted-foreground">No accepted experiences yet.</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Swipe right on experiences and accept them to see them here.
+              </p>
+            </Card>
+          ) : (
+            acceptedExperiences
+              .filter(exp => {
+                const expDate = new Date(exp.date);
+                return expDate.getMonth() === currentDate.getMonth() &&
+                       expDate.getFullYear() === currentDate.getFullYear() &&
+                       expDate >= today;
+              })
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+              .map(exp => (
+                <Card key={exp.id} className="p-4">
+                  <div className="flex items-center gap-4">
+                    <img 
+                      src={exp.image} 
+                      alt={exp.title}
+                      className="w-16 h-16 rounded-lg object-cover"
+                    />
+                    <div className="flex-1 space-y-1">
+                      <h4 className="font-medium">{exp.title}</h4>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          {exp.date.toLocaleDateString()}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          {exp.time}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <MapPin className="h-4 w-4" />
+                          {exp.location}
+                        </div>
+                      </div>
+                      {exp.collaborators && exp.collaborators.length > 0 && (
+                        <div className="flex items-center gap-1 text-sm">
+                          <span className="text-muted-foreground">With:</span>
+                          <span className="text-primary">{exp.collaborators.join(', ')}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {exp.collaborators && exp.collaborators.length > 0 && (
-                    <div className="flex items-center gap-1 text-sm">
-                      <span className="text-muted-foreground">With:</span>
-                      <span className="text-primary">{exp.collaborators.join(', ')}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Card>
-          ))}
-      </div>
+                </Card>
+              ))
+          )}
+        </div>
     </div>
   );
 };

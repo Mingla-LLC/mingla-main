@@ -5,12 +5,14 @@ import { TripCard } from '@/components/TripCard';
 import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
 import { CollaborationRequestDialog } from '@/components/CollaborationRequestDialog';
+import { SessionSwitcher } from '@/components/SessionSwitcher';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { formatCurrency } from '@/utils/currency';
 import { getCategoryBySlug } from '@/lib/categories';
 import { useExperiences } from '@/hooks/useExperiences';
+import { useSessionManagement } from '@/hooks/useSessionManagement';
 import type { User } from '@supabase/supabase-js';
 
 interface ActivePreferences {
@@ -41,6 +43,18 @@ const Home = () => {
   const [measurementSystem, setMeasurementSystem] = useState('metric');
   const [user, setUser] = useState<User | null>(null);
   const { profile } = useUserProfile();
+  
+  // Session management
+  const {
+    sessionState,
+    switchToSolo,
+    switchToCollaborative,
+    getSwipeContext,
+    canSwitchToSolo,
+    isInSolo,
+    currentSession,
+    availableSessions
+  } = useSessionManagement();
   
   // Initialize with proper defaults that match the "default state" described
   // Initialize with proper defaults and ensure stable state
@@ -138,18 +152,52 @@ const Home = () => {
     }
   };
 
-  const handleSwipeRight = () => {
+  const handleSwipeRight = async () => {
     if (currentTrip) {
-      toast({
-        title: "Experience saved!",
-        description: `${currentTrip.title} added to your favorites`,
-      });
+      // Actually save the experience
+      const { writeThroughHelpers } = await import('@/store/writeThroughHelpers');
+      const result = await writeThroughHelpers.likeExperience(currentTrip.id);
+      
+      if (result.success) {
+        toast({
+          title: "Experience saved!",
+          description: `${currentTrip.title} added to your favorites`,
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to save experience",
+          variant: "destructive"
+        });
+      }
     }
     nextTrip();
   };
 
   const handleSwipeLeft = () => {
     nextTrip();
+  };
+
+  // Add function to accept/finalize experience
+  const acceptExperience = async (experienceId: string, scheduledDate?: Date) => {
+    const { writeThroughHelpers } = await import('@/store/writeThroughHelpers');
+    const result = await writeThroughHelpers.scheduleExperience(
+      experienceId, 
+      scheduledDate ? scheduledDate.toISOString() : new Date().toISOString()
+    );
+    
+    if (result.success) {
+      toast({
+        title: "Experience accepted!",
+        description: "Added to your calendar",
+      });
+    } else {
+      toast({
+        title: "Error",
+        description: result.error || "Failed to accept experience",
+        variant: "destructive"
+      });
+    }
   };
 
   const removeCategory = (categorySlug: string) => {
@@ -232,8 +280,8 @@ const Home = () => {
               {user ? `Hi, ${profile?.first_name || 'there'}!` : 'Discover'}
             </h1>
             <p className="text-muted-foreground">
-              {activePreferences.isCollaborating 
-                ? `Planning with ${activePreferences.activeCollaborators} others`
+              {!isInSolo && currentSession
+                ? `Planning with ${currentSession.participants.length} others`
                 : 'Find your next perfect experience'
               }
             </p>
@@ -251,6 +299,16 @@ const Home = () => {
             </Button>
           </div>
         </div>
+
+        {/* Session Switcher */}
+        <SessionSwitcher
+          isInSolo={isInSolo}
+          currentSession={currentSession}
+          availableSessions={availableSessions}
+          onSwitchToSolo={switchToSolo}
+          onSwitchToCollaborative={switchToCollaborative}
+          canSwitchToSolo={canSwitchToSolo()}
+        />
 
         {/* Active Preferences Display */}
         {(activePreferences.budgetRange[0] !== 10 || activePreferences.budgetRange[1] !== 10000 || 
@@ -474,7 +532,16 @@ const Home = () => {
           travelConstraint: activePreferences.travelConstraint,
           travelTime: activePreferences.travelTime,
           travelDistance: activePreferences.travelDistance,
-          location: activePreferences.location
+          location: activePreferences.location,
+          isCollaborating: !isInSolo,
+          activeCollaborators: currentSession?.participants.length || 0,
+          activeCollaboratorsList: currentSession?.participants.map(p => ({
+            id: p.id,
+            username: p.username,
+            name: p.name,
+            avatar: p.avatar,
+            initials: p.name.split(' ').map(n => n[0]).join('')
+          })) || []
         }}
         onPreferencesUpdate={(preferences) => {
           setActivePreferences({
