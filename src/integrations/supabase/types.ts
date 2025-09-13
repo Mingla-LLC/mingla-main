@@ -14,6 +14,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      collaboration_invites: {
+        Row: {
+          created_at: string
+          id: string
+          invited_by: string
+          invited_user_id: string
+          message: string | null
+          session_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invited_by: string
+          invited_user_id: string
+          message?: string | null
+          session_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invited_by?: string
+          invited_user_id?: string
+          message?: string | null
+          session_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      collaboration_sessions: {
+        Row: {
+          board_id: string | null
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          board_id?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          board_id?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       conversation_participants: {
         Row: {
           conversation_id: string
@@ -384,6 +447,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      session_participants: {
+        Row: {
+          created_at: string
+          has_accepted: boolean
+          id: string
+          joined_at: string | null
+          session_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          has_accepted?: boolean
+          id?: string
+          joined_at?: string | null
+          session_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          has_accepted?: boolean
+          id?: string
+          joined_at?: string | null
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
