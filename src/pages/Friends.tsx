@@ -25,10 +25,13 @@ import { useMessages } from '@/hooks/useMessages';
 import { toast } from '@/hooks/use-toast';
 import { UserSearch } from '@/components/UserSearch';
 import { useUsers, type PublicUser } from '@/hooks/useUsers';
+import { supabase } from '@/integrations/supabase/client';
+import { useAppStore } from '@/store/appStore';
 
 export const Friends = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
+  const { user } = useAppStore();
 
   const {
     friends,
@@ -89,24 +92,88 @@ export const Friends = () => {
   };
 
   const handleMessageFriend = async (friendUserId: string) => {
-    const conversationId = await createConversation(friendUserId);
-    if (conversationId) {
-      // Navigate to inbox tab
-      navigate('/connections?tab=inbox');
+    try {
+      const conversationId = await createConversation(friendUserId);
+      if (conversationId) {
+        // Navigate to inbox tab with conversation selected
+        navigate('/connections?tab=inbox');
+        // Small delay to ensure navigation completes before showing toast
+        setTimeout(() => {
+          toast({
+            title: "Conversation started",
+            description: "Opening your conversation in the Inbox tab",
+          });
+        }, 100);
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to create conversation. Please try again.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error creating conversation:', error);
       toast({
-        title: "Conversation opened",
-        description: "Switched to Inbox tab to view your conversation",
+        title: "Error",
+        description: "Failed to start conversation. Please try again.",
+        variant: "destructive"
       });
     }
   };
 
-  const createCollaborationBoard = (friendUserId: string) => {
-    // Navigate to Activity page where boards are managed
-    navigate('/activity?tab=boards');
-    toast({
-      title: "Board creation",
-      description: "Create a new board and invite your friend to collaborate",
-    });
+  const createCollaborationBoard = async (friendUserId: string) => {
+    try {
+      // Get friend's profile first
+      const { data: friendProfile } = await supabase
+        .from('profiles')
+        .select('username, first_name, last_name')
+        .eq('id', friendUserId)
+        .single();
+
+      const friendName = friendProfile 
+        ? (friendProfile.first_name && friendProfile.last_name 
+           ? `${friendProfile.first_name} ${friendProfile.last_name}`
+           : friendProfile.username)
+        : 'Friend';
+
+      // Create a collaboration board
+      const { data: boardData, error: boardError } = await supabase
+        .from('boards')
+        .insert({
+          name: `Collaboration with ${friendName}`,
+          description: `Shared board for collaboration with ${friendName}`,
+          created_by: user?.id,
+          is_public: false
+        })
+        .select()
+        .single();
+
+      if (boardError) throw boardError;
+
+      // Add friend as collaborator
+      await supabase
+        .from('board_collaborators')
+        .insert({
+          board_id: boardData.id,
+          user_id: friendUserId,
+          role: 'collaborator'
+        });
+
+      // Navigate to Activity page boards tab
+      navigate('/activity?tab=boards');
+      
+      toast({
+        title: "Board created!",
+        description: `Created collaboration board "${boardData.name}". ${friendName} has been added as a collaborator.`,
+      });
+    } catch (error) {
+      console.error('Error creating collaboration board:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create collaboration board. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   return (

@@ -10,9 +10,11 @@ import {
   ChevronDown, 
   ChevronUp,
   Check,
-  Clock
+  Clock,
+  X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
 import { CollaborationSession } from '@/hooks/useSessionManagement';
 import { CreateSessionDialog } from './CreateSessionDialog';
 
@@ -254,9 +256,28 @@ export const SessionSwitcher = ({
                             </div>
                           </div>
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {session.status === 'pending' ? 'Waiting' : 'Dormant'}
-                        </Badge>
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline" className="text-xs">
+                            {session.status === 'pending' ? 'Waiting' : 'Dormant'}
+                          </Badge>
+                          {session.invitedBy === 'currentUser' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // Cancel session functionality would go here
+                                toast({
+                                  title: "Session cancelled",
+                                  description: "The collaboration session has been cancelled.",
+                                });
+                              }}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );

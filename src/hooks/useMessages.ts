@@ -339,15 +339,18 @@ export const useMessages = () => {
         .select('conversation_id')
         .eq('user_id', participantId);
 
-      const userConvIds = (userConversations || []).map(c => c.conversation_id);
-      const participantConvIds = (participantConversations || []).map(c => c.conversation_id);
-      
-      const commonConversations = userConvIds.filter(id => participantConvIds.includes(id));
-      
-      if (commonConversations.length > 0) {
-        return commonConversations[0];
+      if (userConversations && participantConversations) {
+        const userConvIds = userConversations.map(c => c.conversation_id);
+        const participantConvIds = participantConversations.map(c => c.conversation_id);
+        
+        const commonConversations = userConvIds.filter(id => participantConvIds.includes(id));
+        
+        if (commonConversations.length > 0) {
+          // Load the existing conversation
+          await loadMessages(commonConversations[0]);
+          return commonConversations[0];
+        }
       }
-
 
       // Create new conversation
       const { data: conversationData, error: convError } = await supabase
@@ -376,7 +379,10 @@ export const useMessages = () => {
 
       if (participantsError) throw participantsError;
 
+      // Reload conversations and load this conversation
       await loadConversations();
+      await loadMessages(conversationData.id);
+      
       return conversationData.id;
     } catch (error) {
       console.error('Error creating conversation:', error);
@@ -387,7 +393,7 @@ export const useMessages = () => {
       });
       return null;
     }
-  }, [loadConversations]);
+  }, [loadConversations, loadMessages]);
 
   // Mark messages as read
   const markMessagesAsRead = useCallback(async (messageIds: string[]) => {

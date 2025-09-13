@@ -1,91 +1,69 @@
 import React, { useState } from 'react';
-import { Plus, Users, MessageCircle, ThumbsUp, MoreVertical } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { BoardDetail } from '@/components/BoardDetail';
+import { 
+  Plus, 
+  Users, 
+  Settings, 
+  Share, 
+  MoreVertical, 
+  Calendar,
+  Edit3,
+  Trash2,
+  UserPlus
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { NewBoardDialog } from '@/components/NewBoardDialog';
-
-const boards = [
-  {
-    id: '1',
-    title: 'Weekend Adventures',
-    description: 'Fun activities for Saturday & Sunday',
-    tripCount: 5,
-    collaborators: [
-      { id: '1', name: 'Sarah', avatar: 'https://images.unsplash.com/photo-1494790108755-2616b79444d7', initials: 'S' },
-      { id: '2', name: 'Mike', avatar: '', initials: 'M' },
-    ],
-    autoLinked: ['Sarah'],
-    lastActivity: '2 hours ago',
-    comments: 3,
-    votes: 8,
-    cover: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4'
-  },
-  {
-    id: '2',
-    title: 'Date Night Ideas',
-    description: 'Romantic spots around the city',
-    tripCount: 3,
-    collaborators: [
-      { id: '3', name: 'Alex', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d', initials: 'A' },
-    ],
-    autoLinked: [],
-    lastActivity: '1 day ago',
-    comments: 1,
-    votes: 5,
-    cover: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0'
-  },
-  {
-    id: '3',
-    title: 'Team Building',
-    description: 'Corporate retreat activities',
-    tripCount: 7,
-    collaborators: [
-      { id: '4', name: 'Emma', avatar: '', initials: 'E' },
-      { id: '5', name: 'John', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e', initials: 'J' },
-      { id: '6', name: 'Lisa', avatar: '', initials: 'L' },
-    ],
-    autoLinked: ['Emma', 'John'],
-    lastActivity: '3 days ago',
-    comments: 12,
-    votes: 15,
-    cover: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0'
-  }
-];
+import { BoardDetail } from '@/components/BoardDetail';
+import { useBoards } from '@/hooks/useBoards';
+import { toast } from '@/hooks/use-toast';
 
 const Boards = () => {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
-  const [isNewBoardDialogOpen, setIsNewBoardDialogOpen] = useState(false);
-  const [boardsList, setBoardsList] = useState(boards);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
   
-  const selectedBoardData = boardsList.find(board => board.id === selectedBoard);
+  const { 
+    boards, 
+    loading, 
+    createBoard, 
+    updateBoard, 
+    deleteBoard, 
+    addCollaborator, 
+    removeCollaborator 
+  } = useBoards();
+  
+  const selectedBoardData = boards.find(board => board.id === selectedBoard);
 
-  const handleCreateBoard = (boardData: {
-    title: string;
-    description: string;
-    collaborators: string[];
-    cover?: string;
-  }) => {
-    const newBoard = {
-      id: Date.now().toString(),
-      title: boardData.title,
-      description: boardData.description,
-      tripCount: 0,
-      collaborators: boardData.collaborators.map((username, index) => ({
-        id: `collab-${Date.now()}-${index}`,
-        name: username,
-        avatar: '',
-        initials: username.charAt(0).toUpperCase()
-      })),
-      autoLinked: [],
-      lastActivity: 'Just created',
-      comments: 0,
-      votes: 0,
-      cover: boardData.cover || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4'
-    };
-    setBoardsList(prev => [newBoard, ...prev]);
+  const handleCreateBoard = async (boardData: { title: string; description: string; collaborators: string[] }) => {
+    const result = await createBoard(boardData.title, boardData.description);
+    if (result) {
+      setSelectedBoard(result.id);
+      setShowCreateDialog(false);
+    }
+  };
+
+  const getDisplayName = (profile: { username: string; first_name?: string; last_name?: string }) => {
+    if (profile.first_name && profile.last_name) {
+      return `${profile.first_name} ${profile.last_name}`;
+    }
+    return profile.username;
+  };
+
+  const getUserInitials = (profile: { username: string; first_name?: string; last_name?: string }) => {
+    const displayName = getDisplayName(profile);
+    return displayName
+      .split(' ')
+      .map(name => name[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   if (selectedBoard && selectedBoardData) {
@@ -104,11 +82,9 @@ const Boards = () => {
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-bold">Boards</h1>
           <Button 
-            size="sm" 
-            className="bg-gradient-primary"
-            onClick={() => setIsNewBoardDialogOpen(true)}
+            onClick={() => setShowCreateDialog(true)}
           >
-            <Plus className="h-4 w-4 mr-1" />
+            <Plus className="h-4 w-4 mr-2" />
             New Board
           </Button>
         </div>
@@ -118,93 +94,142 @@ const Boards = () => {
       </div>
 
       {/* Boards List */}
-      <div className="px-6 space-y-4">
-        {boardsList.map((board) => (
-          <Card 
-            key={board.id} 
-            className="overflow-hidden cursor-pointer hover:shadow-elevated transition-all"
-            onClick={() => setSelectedBoard(board.id)}
-          >
-            <div className="flex">
-              {/* Cover Image */}
-              <div className="relative w-20 h-20 flex-shrink-0">
-                <img
-                  src={board.cover}
-                  alt={board.title}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                <div className="absolute bottom-1 left-1">
-                  <Badge variant="secondary" className="text-xs bg-white/90 text-black">
-                    {board.tripCount}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h3 className="font-semibold text-sm mb-1">{board.title}</h3>
-                    <p className="text-xs text-muted-foreground line-clamp-1">
-                      {board.description}
-                    </p>
-                  </div>
-                  <Button variant="ghost" size="sm">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* Collaborators */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="flex -space-x-2">
-                      {board.collaborators.slice(0, 3).map((collaborator) => (
-                        <Avatar key={collaborator.id} className="w-6 h-6 border-2 border-background">
-                          <AvatarImage src={collaborator.avatar} />
-                          <AvatarFallback className="text-xs">
-                            {collaborator.initials}
-                          </AvatarFallback>
-                        </Avatar>
-                      ))}
-                      {board.collaborators.length > 3 && (
-                        <div className="w-6 h-6 bg-muted rounded-full border-2 border-background flex items-center justify-center">
-                          <span className="text-xs text-muted-foreground">
-                            +{board.collaborators.length - 3}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {board.autoLinked.length > 0 && (
-                      <Badge variant="outline" className="text-xs">
-                        Auto-linked: {board.autoLinked.join(', ')}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-
-                {/* Activity Stats */}
-                <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <MessageCircle className="h-3 w-3" />
-                      <span>{board.comments}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <ThumbsUp className="h-3 w-3" />
-                      <span>{board.votes}</span>
-                    </div>
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    {board.lastActivity}
-                  </span>
-                </div>
-              </div>
+      {!selectedBoard && (
+        <div className="px-6 space-y-4">
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+              <p className="text-muted-foreground mt-4">Loading boards...</p>
             </div>
-          </Card>
-        ))}
-      </div>
+          ) : boards.length > 0 ? (
+            boards.map((board) => (
+              <Card 
+                key={board.id} 
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => setSelectedBoard(board.id)}
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="font-semibold text-lg">{board.name}</h3>
+                        {board.session_id && (
+                          <Badge variant="secondary" className="text-xs">
+                            <Users className="h-3 w-3 mr-1" />
+                            Collaborative
+                          </Badge>
+                        )}
+                        {board.is_public && (
+                          <Badge variant="outline" className="text-xs">
+                            Public
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      {board.description && (
+                        <p className="text-muted-foreground text-sm mb-3">{board.description}</p>
+                      )}
+                      
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          {board.collaborators && board.collaborators.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              <div className="flex -space-x-2">
+                                {board.collaborators.slice(0, 3).map((collaborator) => (
+                                  <Avatar key={collaborator.id} className="w-6 h-6 border-2 border-background">
+                                    <AvatarImage src={collaborator.profile?.avatar_url} />
+                                    <AvatarFallback className="text-xs">
+                                      {collaborator.profile ? getUserInitials(collaborator.profile) : 'U'}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                ))}
+                                {board.collaborators.length > 3 && (
+                                  <div className="w-6 h-6 rounded-full bg-muted border-2 border-background flex items-center justify-center">
+                                    <span className="text-xs font-medium">+{board.collaborators.length - 3}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {board.collaborators.length} collaborator{board.collaborators.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            <Calendar className="h-3 w-3 mr-1" />
+                            {new Date(board.updated_at).toLocaleDateString()}
+                          </Badge>
+                          
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedBoard(board.id);
+                              }}>
+                                <Edit3 className="h-4 w-4 mr-2" />
+                                Open Board
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation();
+                                toast({
+                                  title: "Share Board",
+                                  description: "Share functionality coming soon!",
+                                });
+                              }}>
+                                <Share className="h-4 w-4 mr-2" />
+                                Share
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm('Are you sure you want to delete this board?')) {
+                                    deleteBoard(board.id);
+                                  }
+                                }}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                <Users className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">No boards yet</h3>
+              <p className="text-muted-foreground mb-4 max-w-md">
+                Create boards to organize and collaborate on experiences with friends. When you collaborate on sessions, boards are automatically created!
+              </p>
+              <Button 
+                onClick={() => setShowCreateDialog(true)}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Your First Board
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Auto-linking Explanation */}
       <div className="px-6 py-6">
@@ -214,10 +239,10 @@ const Boards = () => {
               <Users className="h-4 w-4 text-accent" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm mb-1">Auto-Collaborator Linking</h3>
+              <h3 className="font-semibold text-sm mb-1">Collaborative Boards</h3>
               <p className="text-xs text-muted-foreground">
-                When you use someone's preferences to generate trip cards, they're automatically 
-                added to boards you create for those trips. Perfect for group planning!
+                When you create collaboration sessions with friends, boards are automatically 
+                created once all participants join. You can also create boards manually for organizing experiences.
               </p>
             </div>
           </div>
@@ -226,30 +251,10 @@ const Boards = () => {
 
       {/* New Board Dialog */}
       <NewBoardDialog
-        isOpen={isNewBoardDialogOpen}
-        onClose={() => setIsNewBoardDialogOpen(false)}
+        isOpen={showCreateDialog}
+        onClose={() => setShowCreateDialog(false)}
         onCreateBoard={handleCreateBoard}
       />
-
-      {/* Empty State */}
-      {boardsList.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-            <Users className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-semibold mb-2">No boards yet</h3>
-          <p className="text-muted-foreground mb-4">
-            Create boards to organize and collaborate on experiences
-          </p>
-          <Button 
-            className="bg-gradient-primary"
-            onClick={() => setIsNewBoardDialogOpen(true)}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Create Your First Board
-          </Button>
-        </div>
-      )}
     </div>
   );
 };
