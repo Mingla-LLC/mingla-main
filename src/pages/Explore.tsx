@@ -20,13 +20,13 @@ const Explore = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   
-  // Memoize the category filter to prevent unnecessary re-renders
-  const categoryFilters = useMemo(() => {
-    return selectedCategory ? [selectedCategory] : undefined;
-  }, [selectedCategory]);
+  // Memoize the filters to prevent unnecessary re-renders
+  const experienceFilters = useMemo(() => ({
+    categories: selectedCategory ? [selectedCategory] : undefined
+  }), [selectedCategory]);
   
   // Fetch experiences based on selected category
-  const { experiences, loading, error } = useExperiences(categoryFilters);
+  const { experiences, loading, error } = useExperiences(experienceFilters);
 
   // Convert experiences to trip format for cards
   const trips = useMemo(() => 

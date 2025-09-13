@@ -72,13 +72,29 @@ const Home = () => {
     activeCollaboratorsList: []
   }));
 
-  // Memoize the category filter to prevent unnecessary re-renders
-  const categoryFilters = useMemo(() => {
-    return activePreferences.categories.length > 0 ? activePreferences.categories : undefined;
-  }, [activePreferences.categories]);
+  // Memoize all filters to prevent unnecessary re-renders
+  const experienceFilters = useMemo(() => ({
+    categories: activePreferences.categories.length > 0 ? activePreferences.categories : undefined,
+    budgetRange: activePreferences.budgetRange,
+    groupSize: activePreferences.activeCollaborators > 0 ? activePreferences.activeCollaborators : 1,
+    time: activePreferences.time,
+    travel: activePreferences.travel,
+    travelTime: activePreferences.travelTime,
+    travelDistance: activePreferences.travelDistance,
+    location: activePreferences.location
+  }), [
+    activePreferences.categories,
+    activePreferences.budgetRange,
+    activePreferences.activeCollaborators,
+    activePreferences.time,
+    activePreferences.travel,
+    activePreferences.travelTime,
+    activePreferences.travelDistance,
+    activePreferences.location
+  ]);
 
-  // Fetch experiences based on category preferences
-  const { experiences, loading: experiencesLoading, error } = useExperiences(categoryFilters);
+  // Fetch experiences based on all preferences
+  const { experiences, loading: experiencesLoading, error } = useExperiences(experienceFilters);
 
   // Convert experiences to trip format for cards
   const trips = useMemo(() => 

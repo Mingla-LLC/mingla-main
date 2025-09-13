@@ -224,7 +224,24 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setGroupSize(Math.max(1, groupSize - 1))}
+                    onClick={() => {
+                      const newSize = Math.max(1, groupSize - 1);
+                      setGroupSize(newSize);
+                      // Update preferences immediately
+                      onPreferencesUpdate?.({
+                        budgetRange: budget,
+                        categories: selectedCategories,
+                        time: selectedTime,
+                        travel: selectedTravel,
+                        travelConstraint,
+                        travelTime,
+                        travelDistance,
+                        location: selectedLocation,
+                        isCollaborating: false,
+                        activeCollaborators: newSize,
+                        activeCollaboratorsList: []
+                      });
+                    }}
                     className="h-8 w-8 p-0"
                   >
                     -
@@ -233,7 +250,24 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setGroupSize(groupSize + 1)}
+                    onClick={() => {
+                      const newSize = groupSize + 1;
+                      setGroupSize(newSize);
+                      // Update preferences immediately
+                      onPreferencesUpdate?.({
+                        budgetRange: budget,
+                        categories: selectedCategories,
+                        time: selectedTime,
+                        travel: selectedTravel,
+                        travelConstraint,
+                        travelTime,
+                        travelDistance,
+                        location: selectedLocation,
+                        isCollaborating: false,
+                        activeCollaborators: newSize,
+                        activeCollaboratorsList: []
+                      });
+                    }}
                     className="h-8 w-8 p-0"
                   >
                     +
