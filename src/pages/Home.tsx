@@ -10,47 +10,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { formatCurrency } from '@/utils/currency';
 import { getCategoryBySlug } from '@/lib/categories';
+import { useExperiences } from '@/hooks/useExperiences';
 import type { User } from '@supabase/supabase-js';
-
-// Mock data for demo
-const mockTrips = [
-  {
-    id: '1',
-    title: 'Sunset Coffee at Waterfront',
-    image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
-    cost: 25,
-    duration: '1.5 hours',
-    travelTime: '8 min walk',
-    badges: ['Budget-Fit', 'Weather-OK', 'Verified'],
-    whyItFits: 'Perfect timing for golden hour, cozy café with outdoor seating, within your budget',
-    location: 'Pike Place Market',
-    category: 'Coffee & Walk'
-  },
-  {
-    id: '2', 
-    title: 'Interactive Art Experience',
-    image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96',
-    cost: 45,
-    duration: '2 hours',
-    travelTime: '12 min drive',
-    badges: ['Creative', 'Weather-OK'],
-    whyItFits: 'Hands-on pottery class perfect for creative dates, includes materials and refreshments',
-    location: 'Capitol Hill',
-    category: 'Creative Date'
-  },
-  {
-    id: '3',
-    title: 'Rooftop Brunch & Views',
-    image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0',
-    cost: 65,
-    duration: '2.5 hours', 
-    travelTime: '15 min transit',
-    badges: ['Weekend Special', 'Verified'],
-    whyItFits: 'Amazing city views, bottomless mimosas, perfect weekend vibes',
-    location: 'Belltown',
-    category: 'Brunch'
-  }
-];
 
 interface ActivePreferences {
   budgetRange: [number, number];
@@ -71,13 +32,43 @@ interface ActivePreferences {
 const Home = () => {
   const [currentTripIndex, setCurrentTripIndex] = useState(0);
   const [showPreferences, setShowPreferences] = useState(false);
-  const [allTrips] = useState(mockTrips);
-  const [trips, setTrips] = useState<typeof mockTrips>([]);
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   const [showCollaborationRequests, setShowCollaborationRequests] = useState(false);
   const [measurementSystem, setMeasurementSystem] = useState('metric');
   const [user, setUser] = useState<User | null>(null);
   const { profile } = useUserProfile();
+  
+  const [activePreferences, setActivePreferences] = useState<ActivePreferences>({
+    budgetRange: [10, 10000],
+    categories: [], // Empty array means show all categories
+    time: 'now',
+    travel: 'walk',
+    isCollaborating: false,
+    activeCollaborators: 0,
+    activeCollaboratorsList: []
+  });
+
+  // Fetch experiences based on category preferences
+  const { experiences, loading: experiencesLoading, error } = useExperiences(
+    activePreferences.categories.length > 0 ? activePreferences.categories : undefined
+  );
+
+  // Convert experiences to trip format for cards
+  const trips = experiences.map(exp => ({
+    id: exp.id,
+    title: exp.title,
+    image: exp.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
+    cost: exp.price_min || 25,
+    duration: `${exp.duration_min || 90} min`,
+    travelTime: '8 min walk', // Default for now
+    badges: ['Budget-Fit', 'Weather-OK'],
+    whyItFits: 'Perfect match for your preferences based on location and category',
+    location: 'Local Area',
+    category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
+    latitude: exp.lat || 47.6062,
+    longitude: exp.lng || -122.3321
+  }));
+
   const [collaborationRequests, setCollaborationRequests] = useState<Array<{
     id: string;
     from: {
@@ -98,242 +89,170 @@ const Home = () => {
         avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80',
         username: 'emmawilson'
       },
-      tripTitle: 'Sunset Coffee at Waterfront',
-      timestamp: '2 minutes ago',
+      tripTitle: 'Art Gallery & Wine Tasting',
+      timestamp: '2 hours ago',
+      status: 'pending'
+    },
+    {
+      id: '2',
+      from: {
+        id: 'user2',
+        name: 'James Rodriguez',
+        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e',
+        username: 'jamesrodriguez'
+      },
+      tripTitle: 'Rooftop Brunch & Views',
+      timestamp: '1 day ago',
       status: 'pending'
     }
   ]);
-  
-  // Preference states
-  const [activePreferences, setActivePreferences] = useState<ActivePreferences>({
-    budgetRange: [10, 50] as [number, number],
-    categories: ['Coffee & Walk'],
-    time: 'Now',
-    travel: 'Walking',
-    isCollaborating: false,
-    activeCollaborators: 0,
-    activeCollaboratorsList: []
-  });
 
-  // Fetch user and measurement system
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
-      
-      if (user) {
-        // Fetch measurement system from profile
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('measurement_system')
-          .eq('id', user.id)
-          .maybeSingle();
-        
-        if (data && !error) {
-          setMeasurementSystem(data.measurement_system || 'metric');
-        }
-      }
     };
-    
     getUser();
   }, []);
 
-  // Filter trips based on preferences
-  const filterTrips = (preferences: ActivePreferences) => {
-    const filtered = allTrips.filter(trip => {
-      if (!preferences.isCollaborating) {
-        // Solo mode: filter by user's preferences only
-        const withinBudget = trip.cost >= preferences.budgetRange[0] && 
-                            trip.cost <= preferences.budgetRange[1];
-        
-        const matchesCategory = preferences.categories.length === 0 || 
-                                preferences.categories.some(slug => {
-                                  const category = getCategoryBySlug(slug);
-                                  return category && trip.category === category.name;
-                                });
-        
-        const matchesTime = preferences.time === 'Anytime' || 
-                           preferences.time === 'Now';
-        
-        const matchesTravel = preferences.travel === 'Any mode' ||
-                             (preferences.travel === 'Walking' && trip.travelTime.includes('walk')) ||
-                             (preferences.travel === 'Drive' && trip.travelTime.includes('drive')) ||
-                             (preferences.travel === 'Public Transport' && trip.travelTime.includes('transit'));
-        
-        return withinBudget && matchesCategory && matchesTime && matchesTravel;
-      } else {
-        // Collaborative mode: show trips that match user's OR any collaborator's preferences
-        // For demo purposes, we'll be more permissive in collaborative mode
-        
-        // Expand budget range in collaborative mode (wider range to accommodate all)
-        const minBudget = Math.max(0, preferences.budgetRange[0] - 20);
-        const maxBudget = preferences.budgetRange[1] + 30;
-        const withinCollabBudget = trip.cost >= minBudget && trip.cost <= maxBudget;
-        
-        // Include more categories in collaborative mode
-        const allCollabCategories = [
-          ...preferences.categories,
-          'Creative Date', 
-          'Brunch', 
-          'Outdoor Activity',
-          'Cultural Experience'
-        ];
-        const matchesCollabCategory = allCollabCategories.some(slug => {
-          const category = getCategoryBySlug(slug);
-          return category && trip.category === category.name;
-        });
-        
-        // More flexible time matching in collaborative mode
-        const matchesCollabTime = true; // Show all times in collaborative mode
-        
-        // More flexible travel options in collaborative mode
-        const matchesCollabTravel = true; // Show all travel modes in collaborative mode
-        
-        return withinCollabBudget && matchesCollabCategory && matchesCollabTime && matchesCollabTravel;
-      }
-    });
-
-    return filtered;
-  };
-
-  // Apply filtering whenever preferences change
-  React.useEffect(() => {
-    const filteredTrips = filterTrips(activePreferences);
-    setTrips(filteredTrips);
-    setCurrentTripIndex(0); // Reset to first card
-  }, [activePreferences, allTrips]);
-
   const currentTrip = trips[currentTripIndex];
-
-  const handleSwipeRight = () => {
-    // Check if there are pending collaboration requests for this trip
-    const hasPendingRequests = collaborationRequests.some(
-      req => req.status === 'pending' && req.tripTitle === currentTrip.title
-    );
-    
-    if (hasPendingRequests) {
-      setShowCollaborationRequests(true);
-      toast({
-        title: "Collaboration Request",
-        description: "You have pending collaboration requests for this trip",
-      });
-    } else {
-      toast({
-        title: "Saved!",
-        description: `${currentTrip.title} added to your saved list`,
-      });
-    }
-    nextTrip();
-  };
-
-  const handleAcceptCollaborationRequest = (requestId: string) => {
-    setCollaborationRequests(prev => 
-      prev.map(req => 
-        req.id === requestId ? { ...req, status: 'accepted' as const } : req
-      )
-    );
-    toast({
-      title: "Request Accepted",
-      description: "You are now collaborating on this trip!",
-    });
-  };
-
-  const handleDeclineCollaborationRequest = (requestId: string) => {
-    setCollaborationRequests(prev => 
-      prev.map(req => 
-        req.id === requestId ? { ...req, status: 'declined' as const } : req
-      )
-    );
-    toast({
-      title: "Request Declined",
-      description: "Collaboration request declined",
-    });
-  };
-
-  const handleSwipeLeft = () => {
-    toast({
-      title: "Dismissed",
-      description: "Looking for more options...",
-    });
-    nextTrip();
-  };
+  const isLoading = experiencesLoading;
 
   const nextTrip = () => {
     if (currentTripIndex < trips.length - 1) {
-      setCurrentTripIndex(prev => prev + 1);
-    } else {
-      // Reset to first trip for demo
-      setCurrentTripIndex(0);
+      setCurrentTripIndex(currentTripIndex + 1);
     }
   };
 
-  const handleExpand = () => {
-    setExpandedTrip(currentTrip.id);
+  const handleSwipeRight = () => {
+    if (currentTrip) {
+      toast({
+        title: "Experience saved!",
+        description: `${currentTrip.title} added to your favorites`,
+      });
+    }
+    nextTrip();
   };
 
-  const refreshTrips = () => {
-    // Re-filter and shuffle trips for demo
-    const filtered = filterTrips(activePreferences);
-    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
-    setTrips(shuffled);
-    setCurrentTripIndex(0);
+  const handleSwipeLeft = () => {
+    nextTrip();
+  };
+
+  const removeCategory = (categorySlug: string) => {
+    setActivePreferences(prev => ({
+      ...prev,
+      categories: prev.categories.filter(c => c !== categorySlug)
+    }));
     toast({
-      title: "Fresh recommendations!",
-      description: `Found ${shuffled.length} activities based on your preferences`,
+      title: "Preference updated",
+      description: `${getCategoryBySlug(categorySlug)?.name || categorySlug} removed`,
     });
   };
 
+  const handleAcceptRequest = (requestId: string) => {
+    setCollaborationRequests(prev => 
+      prev.map(req => 
+        req.id === requestId 
+          ? { ...req, status: 'accepted' as const }
+          : req
+      )
+    );
+    toast({
+      title: "Collaboration accepted",
+      description: "You've joined the experience!",
+    });
+  };
+
+  const handleDeclineRequest = (requestId: string) => {
+    setCollaborationRequests(prev => 
+      prev.map(req => 
+        req.id === requestId 
+          ? { ...req, status: 'declined' as const }
+          : req
+      )
+    );
+  };
+
+  const pendingRequests = collaborationRequests.filter(req => req.status === 'pending');
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center px-6">
+          <h3 className="text-lg font-semibold mb-2">Something went wrong</h3>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-accent/10">
+    <div className="min-h-screen bg-background">
+      {/* Notification Bar for Collaboration Requests */}
+      {pendingRequests.length > 0 && (
+        <div className="bg-primary text-primary-foreground px-4 py-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">
+              {pendingRequests.length} collaboration request{pendingRequests.length > 1 ? 's' : ''}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowCollaborationRequests(true)}
+              className="text-primary-foreground hover:bg-primary-foreground/20"
+            >
+              View
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="px-6 pt-12 pb-6">
-        {/* User Preferences Display */}
         <div className="flex items-center justify-between mb-6">
-          <div className="space-y-2 flex-1">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="font-medium text-foreground">Alex Chen</span>
-              <span className="text-muted-foreground">•</span>
-              <span className="text-xs text-muted-foreground">
-                {activePreferences.isCollaborating 
-                  ? `Collaborating with ${activePreferences.activeCollaborators} friends`
-                  : 'Solo mode'
-                }
-              </span>
-              {/* Active Collaborator Profile Pictures */}
-              {activePreferences.isCollaborating && activePreferences.activeCollaboratorsList && activePreferences.activeCollaboratorsList.length > 0 && (
-                <div className="flex items-center gap-1 ml-2">
-                  {activePreferences.activeCollaboratorsList.slice(0, 3).map((collaborator, index) => (
-                    <div 
-                      key={collaborator.id}
-                      className="w-6 h-6 rounded-full bg-gradient-to-r from-primary to-primary/80 border-2 border-background flex items-center justify-center text-xs font-medium text-primary-foreground overflow-hidden"
-                      style={{ marginLeft: index > 0 ? '-8px' : '0px', zIndex: 10 - index }}
-                    >
-                      {collaborator.avatar ? (
-                        <img 
-                          src={collaborator.avatar} 
-                          alt={collaborator.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        collaborator.initials
-                      )}
-                    </div>
-                  ))}
-                  {activePreferences.activeCollaboratorsList.length > 3 && (
-                    <div className="w-6 h-6 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-medium text-muted-foreground -ml-2">
-                      +{activePreferences.activeCollaboratorsList.length - 3}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Budget Preference */}
+          <div>
+            <h1 className="text-2xl font-bold">
+              {user ? `Hi, ${profile?.first_name || 'there'}!` : 'Discover'}
+            </h1>
+            <p className="text-muted-foreground">
+              {activePreferences.isCollaborating 
+                ? `Planning with ${activePreferences.activeCollaborators} others`
+                : 'Find your next perfect experience'
+              }
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="icon" onClick={() => window.location.reload()}>
+              <RefreshCw className="h-5 w-5" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setShowPreferences(true)}
+            >
+              <Sliders className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Active Preferences Display */}
+        {(activePreferences.budgetRange[0] !== 10 || activePreferences.budgetRange[1] !== 10000 || 
+          activePreferences.categories.length > 0 || activePreferences.isCollaborating) && (
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <span className="text-sm text-muted-foreground">Active filters:</span>
+            
+            {/* Budget Preference */}
+            {(activePreferences.budgetRange[0] !== 10 || activePreferences.budgetRange[1] !== 10000) && (
               <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
-                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-green-400 to-green-600 flex items-center justify-center">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-green-400 to-emerald-500 flex items-center justify-center">
                   <span className="text-xs">💰</span>
                 </div>
-                <span className="text-xs text-muted-foreground">{formatCurrency(activePreferences.budgetRange[0], profile?.currency || 'USD')} - {formatCurrency(activePreferences.budgetRange[1], profile?.currency || 'USD')}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatCurrency(activePreferences.budgetRange[0], profile?.currency || 'USD')} - {formatCurrency(activePreferences.budgetRange[1], profile?.currency || 'USD')}
+                </span>
                 <button 
                   className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
                   onClick={() => {
@@ -347,11 +266,12 @@ const Home = () => {
                   <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
                 </button>
               </div>
-              
-              {/* Categories Preferences */}
-              {activePreferences.categories.slice(0, 6).map((categorySlug, index) => {
-                const category = getCategoryBySlug(categorySlug);
-                return (
+            )}
+            
+            {/* Categories Preferences */}
+            {activePreferences.categories.slice(0, 6).map((categorySlug, index) => {
+              const category = getCategoryBySlug(categorySlug);
+              return (
                 <div key={categorySlug} className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
                   <div className="w-4 h-4 rounded-full bg-gradient-to-r from-purple-400 to-pink-500 flex items-center justify-center">
                     <span className="text-xs">✨</span>
@@ -359,222 +279,123 @@ const Home = () => {
                   <span className="text-xs text-muted-foreground">{category?.name || categorySlug}</span>
                   <button 
                     className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
-                    onClick={() => {
-                      setActivePreferences(prev => ({
-                        ...prev,
-                        categories: prev.categories.filter(c => c !== categorySlug)
-                      }));
-                      toast({
-                        title: "Preference updated",
-                        description: `${category?.name || categorySlug} removed`,
-                      });
-                    }}
+                    onClick={() => removeCategory(categorySlug)}
                   >
                     <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
                   </button>
                 </div>
-                );
-              })}
-              
-              {/* Time Preference */}
-              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
-                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center">
-                  <span className="text-xs">⏰</span>
+              );
+            })}
+
+            {/* Collaboration Mode Indicator */}
+            {activePreferences.isCollaborating && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 rounded-full">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-primary to-primary-dark flex items-center justify-center">
+                  <span className="text-xs">👥</span>
                 </div>
-                <span className="text-xs text-muted-foreground">{activePreferences.time}</span>
-                <button 
-                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
-                  onClick={() => {
-                    setActivePreferences(prev => ({ ...prev, time: 'Anytime' }));
-                    toast({
-                      title: "Preference updated", 
-                      description: "Time filter removed",
-                    });
-                  }}
-                >
-                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                </button>
+                <span className="text-xs text-primary font-medium">
+                  Collaborating ({activePreferences.activeCollaborators})
+                </span>
               </div>
-              
-              {/* Travel Preference */}
-              <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
-                <div className="w-4 h-4 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center">
-                  <span className="text-xs">🚶‍♀️</span>
-                </div>
-                <span className="text-xs text-muted-foreground">{activePreferences.travel}</span>
-                <button 
-                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 transition-colors"
-                  onClick={() => {
-                    setActivePreferences(prev => ({ ...prev, travel: 'Any mode' }));
-                    toast({
-                      title: "Preference updated",
-                      description: "Travel filter removed", 
-                    });
-                  }}
-                >
-                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                </button>
-              </div>
-              
-              {/* Show "..." if more than 6 categories */}
-              {activePreferences.categories.length > 6 && (
-                <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 rounded-full">
-                  <span className="text-xs text-muted-foreground">+{activePreferences.categories.length - 6} more</span>
-                </div>
-              )}
-            </div>
+            )}
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowPreferences(true)}
-            className="flex items-center gap-2 ml-4"
-          >
-            <Sliders className="h-4 w-4" />
-          </Button>
-        </div>
+        )}
       </div>
 
-      {/* Trip Cards Stack */}
-      <div className="px-6 relative">
-        <div className="relative h-[500px]">
-          {/* Background cards for stack effect */}
-          {trips.slice(currentTripIndex + 1, currentTripIndex + 3).map((trip, index) => (
-            <div
-              key={trip.id}
-              className="absolute inset-0"
-              style={{
-                transform: `translateY(${(index + 1) * 8}px) scale(${1 - (index + 1) * 0.02})`,
-                zIndex: 10 - index,
-                opacity: 0.7 - index * 0.2
-              }}
-            >
-              <TripCard
-                trip={trip}
-                onSwipeRight={() => {}}
-                onSwipeLeft={() => {}}
-                onExpand={() => {}}
-                className="pointer-events-none"
-              />
+      <div className="flex-1 px-6">
+        {/* Content */}
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading experiences...</p>
             </div>
-          ))}
-
-          {/* Current active card */}
-          {currentTrip ? (
-            <div className="absolute inset-0 z-20">
-              <TripCard
-                trip={currentTrip}
-                onSwipeRight={handleSwipeRight}
-                onSwipeLeft={handleSwipeLeft}
-                onExpand={handleExpand}
-                className="animate-bounce-in"
-              />
-            </div>
-          ) : (
-            <div className="absolute inset-0 z-20 flex items-center justify-center">
-              <div className="text-center p-8 bg-card rounded-lg shadow-sm border">
-                <div className="text-6xl mb-4">🎯</div>
-                <h3 className="text-lg font-semibold mb-2">No matching activities</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Try adjusting your preferences to see more options
-                </p>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowPreferences(true)}
-                  className="text-sm"
-                >
-                  Update Preferences
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center justify-center gap-4 mt-8">
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={handleSwipeLeft}
-            className="rounded-full h-14 w-14"
-          >
-            ✕
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={refreshTrips}
-            className="flex items-center gap-2"
-          >
-            <RefreshCw className="h-4 w-4" />
-            More
-          </Button>
-          <Button
-            size="lg"
-            onClick={handleSwipeRight}
-            className="rounded-full h-14 w-14 bg-gradient-primary"
-          >
-            ♥
-          </Button>
-        </div>
-
-        {/* Trip Counter and No Results */}
-        <div className="text-center mt-6">
-          {trips.length > 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Trip {currentTripIndex + 1} of {trips.length}
-            </p>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-sm text-muted-foreground mb-2">
-                No activities match your current preferences
+          </div>
+        ) : trips.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center px-6">
+              <h3 className="text-lg font-semibold mb-2">No experiences found</h3>
+              <p className="text-muted-foreground mb-4">
+                Try adjusting your preferences to see more options, or check back later for new experiences.
               </p>
-              <Button
-                variant="outline"
-                size="sm"
+              <Button 
                 onClick={() => setShowPreferences(true)}
-                className="text-xs"
+                variant="outline"
               >
-                Adjust Preferences
+                Update Preferences
               </Button>
             </div>
-          )}
-        </div>
+          </div>
+        ) : currentTrip ? (
+          <div className="space-y-4">
+            <TripCard
+              trip={currentTrip}
+              onSwipeRight={handleSwipeRight}
+              onSwipeLeft={handleSwipeLeft}
+              onExpand={() => setExpandedTrip(currentTrip.id)}
+            />
+            <p className="text-center text-muted-foreground">
+              {currentTripIndex + 1} of {trips.length} experiences
+            </p>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center px-6">
+              <h3 className="text-lg font-semibold mb-2">That's all for now!</h3>
+              <p className="text-muted-foreground mb-4">
+                Check back later for more experiences, or adjust your preferences to see different options.
+              </p>
+              <Button 
+                onClick={() => setCurrentTripIndex(0)}
+                variant="outline"
+                className="mr-2"
+              >
+                Start Over
+              </Button>
+              <Button onClick={() => setShowPreferences(true)}>
+                Update Preferences
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Preferences Sheet */}
-      <PreferencesSheet 
+      <PreferencesSheet
         isOpen={showPreferences}
         onClose={() => setShowPreferences(false)}
         measurementSystem={measurementSystem}
         activePreferences={activePreferences}
-        onPreferencesUpdate={setActivePreferences}
+        onPreferencesUpdate={(preferences) => {
+          setActivePreferences(preferences);
+          // Reset to first trip when preferences change
+          setCurrentTripIndex(0);
+        }}
       />
+
+      {/* Expanded Trip Modal */}
+      {expandedTrip && currentTrip && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm">
+            <TripCardExpanded
+              trip={currentTrip}
+              isOpen={true}
+              onClose={() => setExpandedTrip(null)}
+              onAccept={handleSwipeRight}
+              showAcceptButton={true}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Collaboration Requests Dialog */}
       <CollaborationRequestDialog
         isOpen={showCollaborationRequests}
         onClose={() => setShowCollaborationRequests(false)}
         requests={collaborationRequests}
-        onAcceptRequest={handleAcceptCollaborationRequest}
-        onDeclineRequest={handleDeclineCollaborationRequest}
+        onAcceptRequest={handleAcceptRequest}
+        onDeclineRequest={handleDeclineRequest}
       />
-
-      {/* Expanded Trip Card */}
-      {currentTrip && (
-        <TripCardExpanded
-          trip={currentTrip}
-          isOpen={expandedTrip === currentTrip.id}
-          onClose={() => setExpandedTrip(null)}
-          onAddToBoard={() => {
-            setExpandedTrip(null);
-            toast({
-              title: "Added to Board",
-              description: `${currentTrip.title} added to your board`,
-            });
-          }}
-        />
-      )}
     </div>
   );
 };

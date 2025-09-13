@@ -1,51 +1,79 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, TrendingUp, MapPin } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-
-const collections = [
-  {
-    id: 1,
-    title: 'Tonight',
-    subtitle: 'Perfect for this evening',
-    image: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3',
-    count: 12,
-    color: 'from-primary to-primary-dark'
-  },
-  {
-    id: 2,
-    title: 'Weekend Brunch',
-    subtitle: 'Lazy morning vibes',
-    image: 'https://images.unsplash.com/photo-1551218808-94e220e084d2',
-    count: 18,
-    color: 'from-secondary to-secondary-dark'
-  },
-  {
-    id: 3,
-    title: 'Creative This Week', 
-    subtitle: 'Hands-on experiences',
-    image: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0',
-    count: 9,
-    color: 'from-accent to-accent-dark'
-  }
-];
+import { TripCard } from '@/components/TripCard';
+import { categories, getCategoryBySlug } from '@/lib/categories';
+import { useExperiences } from '@/hooks/useExperiences';
 
 const trending = [
-  { name: 'Pottery Classes', trend: '+25%' },
-  { name: 'Rooftop Dining', trend: '+18%' },
-  { name: 'Wine Tasting', trend: '+15%' },
-  { name: 'Art Galleries', trend: '+12%' }
+  { name: 'Sip & Chill', trend: '+25%', slug: 'sip' },
+  { name: 'Creative & Hands-On', trend: '+18%', slug: 'creative' },
+  { name: 'Dining Experience', trend: '+15%', slug: 'dining' },
+  { name: 'Take a Stroll', trend: '+12%', slug: 'stroll' }
 ];
 
 const Explore = () => {
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Fetch experiences based on selected category
+  const { experiences, loading, error } = useExperiences(
+    selectedCategory ? [selectedCategory] : undefined
+  );
+
+  // Convert experiences to trip format for cards
+  const trips = experiences
+    .filter(exp => 
+      !searchQuery || 
+      exp.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      exp.category.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .map(exp => ({
+      id: exp.id,
+      title: exp.title,
+      image: exp.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
+      cost: exp.price_min || 25,
+      duration: `${exp.duration_min || 90} min`,
+      travelTime: '8 min walk',
+      badges: ['Available'],
+      whyItFits: 'Discover new experiences in your area',
+      location: 'Local Area',
+      category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
+      latitude: exp.lat || 47.6062,
+      longitude: exp.lng || -122.3321
+    }));
+
+  const handleCategorySelect = (categorySlug: string) => {
+    setSelectedCategory(categorySlug === selectedCategory ? null : categorySlug);
+  };
+
+  const handleTrendingSelect = (slug: string) => {
+    setSelectedCategory(slug);
+  };
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center px-6">
+          <h3 className="text-lg font-semibold mb-2">Something went wrong</h3>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="px-6 pt-12 pb-6">
         <h1 className="text-2xl font-bold mb-2">Explore</h1>
         <p className="text-muted-foreground mb-6">
-          Discover curated collections and trending experiences
+          Discover experiences by category and trending activities
         </p>
 
         {/* Search */}
@@ -54,32 +82,36 @@ const Explore = () => {
           <input
             type="text"
             placeholder="Search experiences..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-3 bg-muted rounded-xl border-0 focus:ring-2 focus:ring-primary/20 transition-all"
           />
         </div>
       </div>
 
-      {/* Curated Collections */}
+      {/* Categories */}
       <div className="px-6 mb-8">
-        <h2 className="text-lg font-semibold mb-4">Curated Collections</h2>
-        <div className="space-y-4">
-          {collections.map((collection) => (
-            <Card key={collection.id} className="overflow-hidden cursor-pointer hover:shadow-elevated transition-all">
-              <div className="relative h-32">
-                <img
-                  src={collection.image}
-                  alt={collection.title}
-                  className="w-full h-full object-cover"
-                />
-                <div className={`absolute inset-0 bg-gradient-to-r ${collection.color} opacity-80`} />
-                <div className="absolute inset-0 flex items-center justify-between p-4">
-                  <div>
-                    <h3 className="text-white font-bold text-lg">{collection.title}</h3>
-                    <p className="text-white/90 text-sm">{collection.subtitle}</p>
-                  </div>
-                  <Badge variant="secondary" className="bg-white/20 text-white border-white/20">
-                    {collection.count} experiences
-                  </Badge>
+        <h2 className="text-lg font-semibold mb-4">Browse Categories</h2>
+        <div className="grid grid-cols-2 gap-3">
+          {categories.map((category) => (
+            <Card 
+              key={category.slug} 
+              className={`p-4 cursor-pointer transition-all ${
+                selectedCategory === category.slug 
+                  ? 'bg-primary text-primary-foreground shadow-elevated' 
+                  : 'hover:shadow-card'
+              }`}
+              onClick={() => handleCategorySelect(category.slug)}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{category.icon}</span>
+                <div className="flex-1">
+                  <h3 className="font-medium text-sm">{category.name}</h3>
+                  <p className={`text-xs ${
+                    selectedCategory === category.slug ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                  }`}>
+                    {experiences.filter(exp => exp.category_slug === category.slug).length} experiences
+                  </p>
                 </div>
               </div>
             </Card>
@@ -95,7 +127,11 @@ const Explore = () => {
         </div>
         <div className="grid grid-cols-2 gap-3">
           {trending.map((item, index) => (
-            <Card key={index} className="p-4 hover:shadow-card transition-all cursor-pointer">
+            <Card 
+              key={index} 
+              className="p-4 hover:shadow-card transition-all cursor-pointer"
+              onClick={() => handleTrendingSelect(item.slug)}
+            >
               <div className="flex items-center justify-between">
                 <span className="font-medium text-sm">{item.name}</span>
                 <Badge variant="outline" className="text-xs text-primary border-primary/20">
@@ -107,35 +143,122 @@ const Explore = () => {
         </div>
       </div>
 
-      {/* Quick Filters */}
-      <div className="px-6 mb-8">
-        <h2 className="text-lg font-semibold mb-4">Quick Filters</h2>
-        <div className="flex flex-wrap gap-2">
-          {['Under $30', 'Walking Distance', 'Indoor', 'Group Friendly', 'Date Night', 'Family'].map((filter) => (
-            <Button key={filter} variant="outline" size="sm" className="rounded-full">
-              {filter}
+      {/* Results */}
+      {selectedCategory && (
+        <div className="px-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">
+              {getCategoryBySlug(selectedCategory)?.name} Experiences
+            </h2>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setSelectedCategory(null)}
+            >
+              Clear Filter
             </Button>
-          ))}
+          </div>
+
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading experiences...</p>
+            </div>
+          ) : trips.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">No experiences found in this category</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {trips.slice(0, 10).map((trip) => (
+                <TripCard
+                  key={trip.id}
+                  trip={trip}
+                  onSwipeRight={() => {}}
+                  onSwipeLeft={() => {}}
+                  onExpand={() => {}}
+                  disableSwipe={true}
+                  className="max-w-sm mx-auto"
+                />
+              ))}
+              {trips.length > 10 && (
+                <div className="text-center py-4">
+                  <p className="text-sm text-muted-foreground">
+                    Showing 10 of {trips.length} experiences
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* Quick Filters */}
+      {!selectedCategory && (
+        <div className="px-6 mb-8">
+          <h2 className="text-lg font-semibold mb-4">Quick Filters</h2>
+          <div className="flex flex-wrap gap-2">
+            {['Under $30', 'Walking Distance', 'Indoor', 'Group Friendly', 'Date Night', 'Family'].map((filter) => (
+              <Button key={filter} variant="outline" size="sm" className="rounded-full">
+                {filter}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Popular Locations */}
-      <div className="px-6 pb-8">
-        <div className="flex items-center gap-2 mb-4">
-          <MapPin className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Popular Areas</h2>
+      {!selectedCategory && (
+        <div className="px-6 pb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <MapPin className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Popular Areas</h2>
+          </div>
+          <div className="space-y-3">
+            {['Capitol Hill', 'Pike Place Market', 'Belltown', 'Fremont'].map((location) => (
+              <Card key={location} className="p-4 cursor-pointer hover:shadow-card transition-all">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{location}</span>
+                  <span className="text-sm text-muted-foreground">15 min away</span>
+                </div>
+              </Card>
+            ))}
+          </div>
         </div>
-        <div className="space-y-3">
-          {['Capitol Hill', 'Pike Place Market', 'Belltown', 'Fremont'].map((location) => (
-            <Card key={location} className="p-4 cursor-pointer hover:shadow-card transition-all">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{location}</span>
-                <span className="text-sm text-muted-foreground">15 min away</span>
-              </div>
-            </Card>
-          ))}
+      )}
+
+      {/* All Experiences when no filter */}
+      {!selectedCategory && !loading && (
+        <div className="px-6 pb-8">
+          <h2 className="text-lg font-semibold mb-4">All Experiences</h2>
+          {trips.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">No experiences available</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {trips.slice(0, 5).map((trip) => (
+                <TripCard
+                  key={trip.id}
+                  trip={trip}
+                  onSwipeRight={() => {}}
+                  onSwipeLeft={() => {}}
+                  onExpand={() => {}}
+                  disableSwipe={true}
+                  className="max-w-sm mx-auto"
+                />
+              ))}
+              {trips.length > 5 && (
+                <div className="text-center py-4">
+                  <Button variant="outline" onClick={() => setSelectedCategory('')}>
+                    View All {trips.length} Experiences
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 };

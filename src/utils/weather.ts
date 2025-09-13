@@ -28,17 +28,36 @@ export async function getWeather(lat: number, lng: number): Promise<WeatherData 
 }
 
 export function getWeatherBadge(weather: WeatherData | null): string {
-  if (!weather) return '';
+  if (!weather) return '☀️';
   
-  const { condition, feels_like, precip_prob } = weather;
+  const { condition, feels_like, precip_prob, alerts } = weather;
   
-  if (precip_prob > 50) return '☔';
-  if (feels_like > 30) return '🔥';
-  if (feels_like < 5) return '🥶';
-  if (condition.includes('cloud')) return '☁️';
-  if (condition.includes('clear') || condition.includes('sun')) return '☀️';
+  // Check for extreme weather alerts first
+  if (alerts && alerts.length > 0) {
+    return '🚫';
+  }
   
-  return '🌤️';
+  // Check for rain/precipitation
+  if (condition.includes('rain') || condition.includes('drizzle') || precip_prob > 0.6) {
+    return '☔';
+  }
+  
+  // Check for hot weather (≥85°F)
+  if (feels_like >= 85) {
+    return '🔥';
+  }
+  
+  // Check for other conditions
+  if (condition.includes('snow')) {
+    return '❄️';
+  }
+  
+  if (condition.includes('cloud')) {
+    return '☁️';
+  }
+  
+  // Default to sunny
+  return '☀️';
 }
 
 export function getWeatherWarning(weather: WeatherData | null): string | null {

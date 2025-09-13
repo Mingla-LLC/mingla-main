@@ -65,6 +65,9 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
           setAdjustedDuration(`${reasoning.adjusted_duration} min`);
         }
         setSafetyNotes(reasoning.safety_notes);
+      } else {
+        // Set default weather badge even without coordinates
+        setWeatherBadge('☀️');
       }
     };
 
