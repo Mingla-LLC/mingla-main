@@ -7,19 +7,10 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { TripCard } from '@/components/TripCard';
 import { TripCardExpanded } from '@/components/TripCardExpanded';
+import { Board } from '@/hooks/useBoards';
 
 interface BoardDetailProps {
-  board: {
-    id: string;
-    title: string;
-    description: string;
-    collaborators: Array<{
-      id: string;
-      name: string;
-      avatar: string;
-      initials: string;
-    }>;
-  };
+  board: Board;
   onBack: () => void;
 }
 
@@ -100,7 +91,12 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
   
   // Add dummy users for tagging demo
   const allCollaborators = [
-    ...board.collaborators,
+    ...(board.collaborators?.map(c => ({
+      id: c.id,
+      name: c.profile?.username || 'Unknown',
+      avatar: c.profile?.avatar_url || '',
+      initials: c.profile?.username?.charAt(0).toUpperCase() || 'U'
+    })) || []),
     { id: 'dummy1', name: 'Emma Wilson', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80', initials: 'EW' },
     { id: 'dummy2', name: 'James Rodriguez', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e', initials: 'JR' },
     { id: 'dummy3', name: 'Priya Patel', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04', initials: 'PP' }
@@ -165,7 +161,7 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
     if (!trip) return;
 
     const currentUserId = 'currentUser'; // In real app, get from auth
-    const totalCollaborators = board.collaborators.length + 1; // +1 for board creator
+    const totalCollaborators = (board.collaborators?.length || 0) + 1; // +1 for board creator
 
     setTrips(prev => prev.map(t => {
       if (t.id === tripId && !t.finalized) {
@@ -190,7 +186,7 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
 
   const handleRevokeRequest = (tripId: string) => {
     const currentUserId = 'currentUser';
-    const totalCollaborators = board.collaborators.length + 1;
+    const totalCollaborators = (board.collaborators?.length || 0) + 1;
 
     setTrips(prev => prev.map(t => {
       if (t.id === tripId && t.finalized) {
@@ -246,7 +242,7 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="flex-1">
-            <h1 className="text-xl font-bold">{board.title}</h1>
+            <h1 className="text-xl font-bold">{board.name}</h1>
             <p className="text-sm text-muted-foreground">{board.description}</p>
           </div>
         </div>
@@ -254,17 +250,17 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
         {/* Collaborators */}
         <div className="flex items-center gap-3">
           <div className="flex -space-x-2">
-            {board.collaborators.map((collaborator) => (
+            {board.collaborators?.map((collaborator) => (
               <Avatar key={collaborator.id} className="w-8 h-8 border-2 border-background">
-                <AvatarImage src={collaborator.avatar} />
+                <AvatarImage src={collaborator.profile?.avatar_url} />
                 <AvatarFallback className="text-xs">
-                  {collaborator.initials}
+                  {collaborator.profile?.username?.charAt(0).toUpperCase() || 'U'}
                 </AvatarFallback>
               </Avatar>
             ))}
           </div>
           <span className="text-sm text-muted-foreground">
-            {board.collaborators.length} collaborators
+            {board.collaborators?.length || 0} collaborators
           </span>
         </div>
       </div>
@@ -357,15 +353,15 @@ export const BoardDetail = ({ board, onBack }: BoardDetailProps) => {
                   )}
                   
                   {!trip.finalized && trip.finalizeRequests && trip.finalizeRequests.length > 0 && (
-                    <p className="text-xs text-blue-600">
-                      Finalization requested - {trip.finalizeRequests.length} of {board.collaborators.length + 1} collaborators agree
-                    </p>
+                     <p className="text-xs text-blue-600">
+                       Finalization requested - {trip.finalizeRequests.length} of {(board.collaborators?.length || 0) + 1} collaborators agree
+                     </p>
                   )}
                   
                   {trip.revokeRequestedBy && (
-                    <p className="text-xs text-orange-600">
-                      Revoke requested - {trip.revokeRequests.length} of {board.collaborators.length + 1} collaborators agree
-                    </p>
+                     <p className="text-xs text-orange-600">
+                       Revoke requested - {trip.revokeRequests.length} of {(board.collaborators?.length || 0) + 1} collaborators agree
+                     </p>
                   )}
                 </div>
               </Card>
