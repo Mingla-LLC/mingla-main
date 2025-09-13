@@ -26,6 +26,15 @@ export interface ExperienceFilters {
   travelTime?: number;
   travelDistance?: number;
   location?: string;
+  collaborativePreferences?: Array<{
+    id: string;
+    categories: string[];
+    budgetRange: [number, number];
+    time: string;
+    travel: string;
+    travelTime: number;
+    location: string;
+  }>;
 }
 
 export const useExperiences = (filters: ExperienceFilters = {}) => {
@@ -48,11 +57,38 @@ export const useExperiences = (filters: ExperienceFilters = {}) => {
         query = query.in('category_slug', filters.categories);
       }
 
-      // Filter by budget range if provided
-      if (filters.budgetRange && filters.budgetRange[0] !== 10 && filters.budgetRange[1] !== 10000) {
-        query = query
-          .gte('price_min', filters.budgetRange[0])
-          .lte('price_max', filters.budgetRange[1]);
+      // For collaborative sessions, apply intersected preferences
+      if (filters.collaborativePreferences && filters.collaborativePreferences.length > 0) {
+        // Find intersection of all collaborators' categories
+        const allCategories = filters.collaborativePreferences.map(p => p.categories);
+        const commonCategories = allCategories.reduce((common, current) => {
+          if (common.length === 0) return current;
+          return common.filter(cat => current.includes(cat));
+        }, []);
+        
+        if (commonCategories.length > 0) {
+          query = query.in('category_slug', commonCategories);
+        }
+        
+        // Find most restrictive budget range (intersection)
+        const budgetRanges = filters.collaborativePreferences.map(p => p.budgetRange);
+        const minBudget = Math.max(...budgetRanges.map(b => b[0]));
+        const maxBudget = Math.min(...budgetRanges.map(b => b[1]));
+        
+        if (minBudget <= maxBudget && (minBudget !== 10 || maxBudget !== 10000)) {
+          query = query
+            .gte('price_min', minBudget)
+            .lte('price_max', maxBudget);
+        }
+      } else {
+        // Single user preferences
+
+        // Filter by budget range if provided
+        if (filters.budgetRange && filters.budgetRange[0] !== 10 && filters.budgetRange[1] !== 10000) {
+          query = query
+            .gte('price_min', filters.budgetRange[0])
+            .lte('price_max', filters.budgetRange[1]);
+        }
       }
 
       const { data, error } = await query;

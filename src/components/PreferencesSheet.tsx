@@ -285,7 +285,35 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                 {/* Active Collaborators */}
                 {allUsers.filter(u => u.isActive).length > 0 && (
                   <div className="mb-4">
-                    <Label className="text-sm font-medium text-primary mb-2 block">Active Collaborators</Label>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm font-medium text-primary">Active Collaborators</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          // Deselect all collaborators
+                          setCollaborators(prev => prev.map(c => ({ ...c, isActive: false })));
+                          
+                          // Update preferences to remove all collaborators
+                          onPreferencesUpdate?.({
+                            budgetRange: budget,
+                            categories: selectedCategories,
+                            time: selectedTime,
+                            travel: selectedTravel,
+                            travelConstraint,
+                            travelTime,
+                            travelDistance,
+                            location: selectedLocation,
+                            isCollaborating: false,
+                            activeCollaborators: 0,
+                            activeCollaboratorsList: []
+                          });
+                        }}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Deselect All
+                      </Button>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {allUsers.filter(u => u.isActive).map((user) => (
                         <div key={user.id} className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-full">
@@ -344,11 +372,65 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                   </div>
                 )}
 
+                {/* Friends & Recent Collaborators */}
+                {!allUsers.some(u => u.isActive) && (
+                  <div className="mb-4">
+                    <Label className="text-sm font-medium mb-2 block">Friends & Recent Collaborators</Label>
+                    <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto">
+                      {allUsers.filter(u => !u.isActive).slice(0, 8).map((user) => (
+                        <button
+                          key={user.id}
+                          onClick={() => {
+                            // Add user to active collaborators
+                            setCollaborators(prev => prev.map(c => 
+                              c.id === user.id ? { ...c, isActive: true } : c
+                            ));
+                            
+                            // Update preferences
+                            const updatedUsers = allUsers.map(u => 
+                              u.id === user.id ? { ...u, isActive: true } : u
+                            );
+                            const activeUsers = updatedUsers.filter(u => u.isActive);
+                            onPreferencesUpdate?.({
+                              budgetRange: budget,
+                              categories: selectedCategories,
+                              time: selectedTime,
+                              travel: selectedTravel,
+                              travelConstraint,
+                              travelTime,
+                              travelDistance,
+                              location: selectedLocation,
+                              isCollaborating: true,
+                              activeCollaborators: activeUsers.length,
+                              activeCollaboratorsList: activeUsers.map(u => ({
+                                id: u.id,
+                                username: u.username,
+                                name: u.name,
+                                avatar: u.avatar,
+                                initials: u.name.split(' ').map(n => n[0]).join('')
+                              }))
+                            });
+                          }}
+                          className="flex items-center gap-2 px-2 py-1 bg-muted hover:bg-muted/80 rounded-full transition-colors"
+                        >
+                          <Avatar className="w-4 h-4">
+                            <AvatarImage src={user.avatar} />
+                            <AvatarFallback className="text-xs">
+                              {user.name.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-xs">@{user.username}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Add Collaborator */}
                 <div className="flex gap-2 relative">
                   <div className="flex-1 relative">
                     <Input
-                      placeholder="Enter username"
+                      placeholder="Enter email or username to invite..."
                       value={newUsername}
                       onChange={(e) => setNewUsername(e.target.value)}
                       className="h-8 text-sm pr-8"
@@ -399,24 +481,30 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                     variant="outline"
                     onClick={() => {
                       if (newUsername.trim()) {
-                        // Send collaboration request instead of directly adding
-                        const username = newUsername.trim().replace('@', '');
-                        const existingUser = allUsers.find(u => u.username === username);
+                        const input = newUsername.trim().replace('@', '');
+                        
+                        // Check if it's an email or username
+                        const isEmail = input.includes('@');
+                        const existingUser = allUsers.find(u => 
+                          isEmail ? u.username.includes(input.split('@')[0]) : u.username === input
+                        );
                         
                         if (existingUser) {
-                          // Mock sending collaboration request
-                          console.log(`Sending collaboration request to ${username}`);
-                          // In real app, this would send a request to the backend
+                          // Send collaboration request
+                          console.log(`Sending collaboration request to ${input} (${isEmail ? 'email' : 'username'})`);
+                          
+                          // Show toast notification
+                          // toast({ title: "Collaboration request sent!", description: `Invited ${existingUser.name} to join this session` });
                           
                           // For demo, simulate immediate acceptance after 2 seconds
                           setTimeout(() => {
                             setCollaborators(prev => prev.map(c => 
-                              c.username === username ? { ...c, isActive: true } : c
+                              c.id === existingUser.id ? { ...c, isActive: true } : c
                             ));
                             
                             // Update preferences with new active collaborators
                             const updatedUsers = allUsers.map(u => 
-                              u.username === username ? { ...u, isActive: true } : u
+                              u.id === existingUser.id ? { ...u, isActive: true } : u
                             );
                             const activeUsers = updatedUsers.filter(u => u.isActive);
                             onPreferencesUpdate?.({
@@ -440,11 +528,11 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                             });
                           }, 2000);
                         } else {
-                          // Create new user and send request
+                          // Create new user and send request  
                           const newUser = {
                             id: Date.now().toString(),
-                            username: username,
-                            name: username,
+                            username: input,
+                            name: input,
                             isActive: false,
                             avatar: ''
                           };

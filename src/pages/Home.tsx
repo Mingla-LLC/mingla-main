@@ -73,19 +73,47 @@ const Home = () => {
   }));
 
   // Memoize all filters to prevent unnecessary re-renders
-  const experienceFilters = useMemo(() => ({
-    categories: activePreferences.categories.length > 0 ? activePreferences.categories : undefined,
-    budgetRange: activePreferences.budgetRange,
-    groupSize: activePreferences.activeCollaborators > 0 ? activePreferences.activeCollaborators : 1,
-    time: activePreferences.time,
-    travel: activePreferences.travel,
-    travelTime: activePreferences.travelTime,
-    travelDistance: activePreferences.travelDistance,
-    location: activePreferences.location
-  }), [
+  const experienceFilters = useMemo(() => {
+    if (activePreferences.isCollaborating && activePreferences.activeCollaboratorsList.length > 0) {
+      // In collaborative mode, create collaborative preferences
+      const collaborativePreferences = activePreferences.activeCollaboratorsList.map(collaborator => ({
+        id: collaborator.id,
+        categories: activePreferences.categories, // In real app, this would come from each user's preferences
+        budgetRange: activePreferences.budgetRange,
+        time: activePreferences.time,
+        travel: activePreferences.travel,
+        travelTime: activePreferences.travelTime,
+        location: activePreferences.location
+      }));
+
+      return {
+        collaborativePreferences,
+        groupSize: activePreferences.activeCollaborators,
+        time: activePreferences.time,
+        travel: activePreferences.travel,
+        travelTime: activePreferences.travelTime,
+        travelDistance: activePreferences.travelDistance,
+        location: activePreferences.location
+      };
+    } else {
+      // Solo mode - use individual preferences
+      return {
+        categories: activePreferences.categories.length > 0 ? activePreferences.categories : undefined,
+        budgetRange: activePreferences.budgetRange,
+        groupSize: 1, // Solo mode always has group size of 1
+        time: activePreferences.time,
+        travel: activePreferences.travel,
+        travelTime: activePreferences.travelTime,
+        travelDistance: activePreferences.travelDistance,
+        location: activePreferences.location
+      };
+    }
+  }, [
     activePreferences.categories,
     activePreferences.budgetRange,
     activePreferences.activeCollaborators,
+    activePreferences.activeCollaboratorsList,
+    activePreferences.isCollaborating,
     activePreferences.time,
     activePreferences.travel,
     activePreferences.travelTime,
