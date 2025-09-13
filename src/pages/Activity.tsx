@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import Boards from '@/pages/Boards';
@@ -6,7 +7,21 @@ import Saved from '@/pages/Saved';
 import { CalendarView } from '@/components/CalendarView';
 
 const Activity = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'boards');
   const [savedTab, setSavedTab] = useState('liked');
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && (tab === 'boards' || tab === 'saved')) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setSearchParams({ tab: value });
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -18,7 +33,7 @@ const Activity = () => {
 
       {/* Main Content */}
       <div className="px-6">
-        <Tabs defaultValue="boards" className="w-full">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="boards">Boards</TabsTrigger>
             <TabsTrigger value="saved">Saved</TabsTrigger>

@@ -1,9 +1,25 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Friends } from '@/pages/Friends';
 import { Inbox } from '@/pages/Inbox';
 
 const Connections = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'friends');
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && (tab === 'friends' || tab === 'inbox')) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setSearchParams({ tab: value });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -14,7 +30,7 @@ const Connections = () => {
 
       {/* Main Content */}
       <div className="px-6">
-        <Tabs defaultValue="friends" className="w-full">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="friends">Friends</TabsTrigger>
             <TabsTrigger value="inbox">Inbox</TabsTrigger>

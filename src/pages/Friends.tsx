@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,7 @@ import { useUsers, type PublicUser } from '@/hooks/useUsers';
 
 export const Friends = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
 
   const {
     friends,
@@ -89,18 +91,22 @@ export const Friends = () => {
   const handleMessageFriend = async (friendUserId: string) => {
     const conversationId = await createConversation(friendUserId);
     if (conversationId) {
-      // Navigate to inbox with this conversation - this would be handled by router
-      console.log(`Navigate to conversation ${conversationId}`);
+      // Navigate to inbox tab
+      navigate('/connections?tab=inbox');
       toast({
         title: "Conversation opened",
-        description: "Switch to Inbox tab to see your conversation",
+        description: "Switched to Inbox tab to view your conversation",
       });
     }
   };
 
   const createCollaborationBoard = (friendUserId: string) => {
-    console.log(`Creating collaboration board with ${friendUserId}`);
-    // This would create a new collaboration board
+    // Navigate to Activity page where boards are managed
+    navigate('/activity?tab=boards');
+    toast({
+      title: "Board creation",
+      description: "Create a new board and invite your friend to collaborate",
+    });
   };
 
   return (
