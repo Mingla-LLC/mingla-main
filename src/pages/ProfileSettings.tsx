@@ -43,7 +43,8 @@ export default function ProfileSettings() {
         .update({
           first_name: formData.first_name.trim() || null,
           last_name: formData.last_name.trim() || null,
-          username: formData.username.trim()
+          username: formData.username.trim(),
+          avatar_url: formData.avatar_url || null
         })
         .eq('id', user.id);
 
