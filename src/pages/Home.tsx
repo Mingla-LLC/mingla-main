@@ -84,6 +84,7 @@ const Home = () => {
     createCollaborativeSession,
     acceptSessionInvitation,
     declineSessionInvitation,
+    cancelEntireSession,
     getFriendsAndCollaborators,
     getSwipeContext,
     canSwitchToSolo,
@@ -405,7 +406,9 @@ const Home = () => {
           onSwitchToSolo={switchToSolo}
           onSwitchToCollaborative={switchToCollaborative}
           onCreateSession={handleCreateSession}
+          onCancelSession={cancelEntireSession}
           canSwitchToSolo={canSwitchToSolo()}
+          currentUserId={user?.id}
         />
 
         {/* Active Preferences Display */}

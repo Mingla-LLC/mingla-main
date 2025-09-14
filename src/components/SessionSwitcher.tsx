@@ -25,7 +25,9 @@ interface SessionSwitcherProps {
   onSwitchToSolo: () => void;
   onSwitchToCollaborative: (sessionId: string) => void;
   onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
+  onCancelSession: (sessionId: string) => void;
   canSwitchToSolo: boolean;
+  currentUserId?: string;
 }
 
 export const SessionSwitcher = ({
@@ -35,7 +37,9 @@ export const SessionSwitcher = ({
   onSwitchToSolo,
   onSwitchToCollaborative,
   onCreateSession,
-  canSwitchToSolo
+  onCancelSession,
+  canSwitchToSolo,
+  currentUserId
 }: SessionSwitcherProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -260,18 +264,14 @@ export const SessionSwitcher = ({
                           <Badge variant="outline" className="text-xs">
                             {session.status === 'pending' ? 'Waiting' : 'Dormant'}
                           </Badge>
-                          {session.invitedBy === 'currentUser' && (
+                          {session.invitedBy === currentUserId && (
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                // Cancel session functionality would go here
-                                toast({
-                                  title: "Session cancelled",
-                                  description: "The collaboration session has been cancelled.",
-                                });
+                                onCancelSession(session.id);
                               }}
                             >
                               <X className="h-3 w-3" />

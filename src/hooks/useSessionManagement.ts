@@ -452,6 +452,48 @@ export const useSessionManagement = () => {
     }
   }, [loadUserSessions]);
 
+  // Cancel entire session (for session creator)
+  const cancelEntireSession = useCallback(async (sessionId: string) => {
+    try {
+      // Cancel all pending invites for this session
+      const { error: invitesError } = await supabase
+        .from('collaboration_invites')
+        .update({ status: 'cancelled' })
+        .eq('session_id', sessionId)
+        .eq('status', 'pending');
+
+      if (invitesError) throw invitesError;
+
+      // Delete the session
+      const { error: sessionError } = await supabase
+        .from('collaboration_sessions')
+        .delete()
+        .eq('id', sessionId);
+
+      if (sessionError) throw sessionError;
+
+      // Remove all participants
+      await supabase
+        .from('session_participants')
+        .delete()
+        .eq('session_id', sessionId);
+
+      await loadUserSessions();
+      
+      toast({
+        title: "Session cancelled",
+        description: "The collaboration session has been cancelled.",
+      });
+    } catch (error) {
+      console.error('Error cancelling session:', error);
+      toast({
+        title: "Error",
+        description: "Failed to cancel session",
+        variant: "destructive"
+      });
+    }
+  }, [loadUserSessions]);
+
   // Get friends for session creation
   const getFriendsAndCollaborators = useCallback(async () => {
     if (!user) return { friends: [], recentCollaborators: [] };
@@ -555,6 +597,7 @@ export const useSessionManagement = () => {
     acceptSessionInvitation,
     declineSessionInvitation,
     cancelSessionInvitation,
+    cancelEntireSession,
     getFriendsAndCollaborators,
     getSwipeContext,
     canSwitchToSolo,
