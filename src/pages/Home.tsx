@@ -406,7 +406,7 @@ const Home = () => {
           onSwitchToSolo={switchToSolo}
           onSwitchToCollaborative={switchToCollaborative}
           onCreateSession={handleCreateSession}
-          onCancelSession={cancelEntireSession}
+          onCancelSession={async (sessionId: string) => await cancelEntireSession(sessionId)}
           canSwitchToSolo={canSwitchToSolo()}
           currentUserId={user?.id}
         />

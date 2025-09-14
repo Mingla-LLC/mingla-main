@@ -18,6 +18,12 @@ export interface CollaborationSession {
   boardId?: string;
   status: 'pending' | 'active' | 'dormant';
   invitedBy: string;
+  inviterProfile?: {
+    id: string;
+    name: string;
+    username: string;
+    avatar?: string;
+  };
 }
 
 export interface SessionInvite {
@@ -146,12 +152,18 @@ export const useSessionManagement = () => {
         invitedByIds = sessionNamesData.map(s => s.created_by);
       }
 
+      // Also load profiles for session creators
+      const allCreatorIds = [...new Set([
+        ...invitedByIds,
+        ...(sessionsData || []).map(s => s.created_by)
+      ])];
+
       let invitedByProfiles: any[] = [];
-      if (invitedByIds.length > 0) {
+      if (allCreatorIds.length > 0) {
         const { data: pData } = await supabase
           .from('profiles')
           .select('id, username, first_name, last_name, avatar_url')
-          .in('id', invitedByIds);
+          .in('id', allCreatorIds);
         
         invitedByProfiles = pData || [];
       }
@@ -171,6 +183,9 @@ export const useSessionManagement = () => {
 
         const allAccepted = participants.length > 0 && participants.every(p => p.hasAccepted);
         
+        // Get inviter profile info
+        const inviterProfile = invitedByProfiles.find(p => p.id === session.created_by);
+        
         return {
           id: session.id,
           name: session.name,
@@ -179,7 +194,15 @@ export const useSessionManagement = () => {
           isActive: allAccepted && session.status === 'active',
           boardId: session.board_id,
           status: allAccepted ? 'active' : session.status as 'pending' | 'active' | 'dormant',
-          invitedBy: session.created_by
+          invitedBy: session.created_by,
+          inviterProfile: inviterProfile ? {
+            id: inviterProfile.id,
+            name: inviterProfile.first_name && inviterProfile.last_name
+              ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
+              : inviterProfile.username || 'Unknown User',
+            username: inviterProfile.username || 'unknown',
+            avatar: inviterProfile.avatar_url
+          } : undefined
         };
       });
 

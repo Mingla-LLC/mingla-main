@@ -25,7 +25,7 @@ interface SessionSwitcherProps {
   onSwitchToSolo: () => void;
   onSwitchToCollaborative: (sessionId: string) => void;
   onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
-  onCancelSession: (sessionId: string) => void;
+  onCancelSession: (sessionId: string) => Promise<void>;
   canSwitchToSolo: boolean;
   currentUserId?: string;
 }
@@ -234,7 +234,7 @@ export const SessionSwitcher = ({
                           <div>
                             <p className="font-medium text-sm">{session.name}</p>
                             <p className="text-xs text-muted-foreground">
-                              Invitation from {session.participants.find(p => p.id === session.invitedBy)?.name || 'Friend'}
+                              Invitation from {session.inviterProfile?.name || session.inviterProfile?.username || 'Friend'}
                             </p>
                           </div>
                         </div>
@@ -251,9 +251,10 @@ export const SessionSwitcher = ({
                             variant="ghost"
                             size="sm"
                             className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              onCancelSession(session.id);
+                              await onCancelSession(session.id);
+                              setIsExpanded(false);
                             }}
                           >
                             <X className="h-3 w-3" />
@@ -316,9 +317,10 @@ export const SessionSwitcher = ({
                             variant="ghost"
                             size="sm"
                             className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              onCancelSession(session.id);
+                              await onCancelSession(session.id);
+                              setIsExpanded(false);
                             }}
                           >
                             <X className="h-3 w-3" />
