@@ -74,15 +74,46 @@ export const useSessionManagement = () => {
       console.log('Raw invites data:', invitesData);
       console.log('Invites error:', invitesError);
 
-      // Load sessions where user is creator or participant
-      const { data: sessionsData, error: sessionsError } = await supabase
+      // Load sessions where user is creator
+      const { data: createdSessions, error: createdError } = await supabase
         .from('collaboration_sessions')
         .select(`
           id, name, created_by, board_id, status, created_at, updated_at
         `)
-        .or(`created_by.eq.${user.id},id.in.(select session_id from session_participants where user_id = '${user.id}')`);
+        .eq('created_by', user.id);
 
-      if (sessionsError) throw sessionsError;
+      if (createdError) throw createdError;
+
+      // Load sessions where user is participant  
+      const { data: participantSessionIds, error: participantError } = await supabase
+        .from('session_participants')
+        .select('session_id')
+        .eq('user_id', user.id);
+
+      if (participantError) throw participantError;
+
+      const participantIds = (participantSessionIds || []).map(p => p.session_id);
+      let participantSessions: any[] = [];
+      
+      if (participantIds.length > 0) {
+        const { data: pSessions, error: pSessionsError } = await supabase
+          .from('collaboration_sessions')
+          .select(`
+            id, name, created_by, board_id, status, created_at, updated_at
+          `)
+          .in('id', participantIds);
+
+        if (pSessionsError) throw pSessionsError;
+        participantSessions = pSessions || [];
+      }
+
+      // Combine both sets of sessions
+      const sessionsData = [
+        ...(createdSessions || []),
+        ...participantSessions
+      ];
+
+      
 
       // Load session participants separately
       const sessionIds = (sessionsData || []).map(s => s.id);

@@ -213,24 +213,72 @@ export const SessionSwitcher = ({
               </button>
             ))}
 
-            {/* Pending/Dormant Sessions */}
-            {(pendingSessionsCount > 0 || dormantSessionsCount > 0) && (
+            {/* Invitations (for invited users) */}
+            {availableSessions.filter(s => s.status === 'pending' && s.invitedBy !== currentUserId).length > 0 && (
               <>
                 <div className="text-xs text-muted-foreground font-medium mt-4 mb-2">
-                  Pending Sessions
+                  Invitations
                 </div>
-                {availableSessions.filter(s => s.status === 'pending' || s.status === 'dormant').map((session) => {
-                  const allAccepted = session.participants.every(p => p.hasAccepted);
+                {availableSessions.filter(s => s.status === 'pending' && s.invitedBy !== currentUserId).map((session) => {
+                  return (
+                    <div
+                      key={session.id}
+                      className="w-full p-3 rounded-lg border border-primary/20 bg-primary/5 text-left"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <Users className="h-4 w-4 text-primary" />
+                            <div className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{session.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Invitation from {session.participants.find(p => p.id === session.invitedBy)?.name || 'Friend'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-xs px-2"
+                            onClick={() => onSwitchToCollaborative(session.id)}
+                          >
+                            Accept
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onCancelSession(session.id);
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Pending Sessions (for session creators) */}
+            {availableSessions.filter(s => s.status === 'pending' && s.invitedBy === currentUserId).length > 0 && (
+              <>
+                <div className="text-xs text-muted-foreground font-medium mt-4 mb-2">
+                  Pending Invitations
+                </div>
+                {availableSessions.filter(s => s.status === 'pending' && s.invitedBy === currentUserId).map((session) => {
                   const acceptedCount = session.participants.filter(p => p.hasAccepted).length;
                   
                   return (
                     <div
                       key={session.id}
-                      className={cn(
-                        "w-full p-3 rounded-lg border text-left transition-colors",
-                        session.status === 'pending' ? "opacity-60 border-dashed" : "opacity-75",
-                        "cursor-default"
-                      )}
+                      className="w-full p-3 rounded-lg border border-dashed opacity-60 text-left cursor-default"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -262,21 +310,67 @@ export const SessionSwitcher = ({
                         </div>
                         <div className="flex items-center gap-1">
                           <Badge variant="outline" className="text-xs">
-                            {session.status === 'pending' ? 'Waiting' : 'Dormant'}
+                            Waiting
                           </Badge>
-                          {session.invitedBy === currentUserId && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onCancelSession(session.id);
-                              }}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onCancelSession(session.id);
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Dormant Sessions */}
+            {dormantSessionsCount > 0 && (
+              <>
+                <div className="text-xs text-muted-foreground font-medium mt-4 mb-2">
+                  Dormant Sessions
+                </div>
+                {availableSessions.filter(s => s.status === 'dormant').map((session) => {
+                  return (
+                    <div
+                      key={session.id}
+                      className="w-full p-3 rounded-lg border opacity-75 text-left cursor-default"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{session.name}</p>
+                            <div className="flex items-center gap-2">
+                              <div className="flex -space-x-1">
+                                {session.participants.slice(0, 2).map((participant) => (
+                                  <Avatar key={participant.id} className="w-4 h-4 border border-background">
+                                    <AvatarImage src={participant.avatar} />
+                                    <AvatarFallback className="text-xs">
+                                      {participant.name[0]}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                ))}
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {session.participants.length} participant{session.participants.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline" className="text-xs">
+                            Dormant
+                          </Badge>
                         </div>
                       </div>
                     </div>
