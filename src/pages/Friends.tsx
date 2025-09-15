@@ -28,6 +28,7 @@ import { UserSearch } from '@/components/UserSearch';
 import { useUsers, type PublicUser } from '@/hooks/useUsers';
 import { supabase } from '@/integrations/supabase/client';
 import { useAppStore } from '@/store/appStore';
+import { CreateSessionDialog } from '@/components/CreateSessionDialog';
 
 export const Friends = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -123,7 +124,16 @@ export const Friends = () => {
     }
   };
 
-  const createCollaborationSession = async (friendUserId: string) => {
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedFriendForCollab, setSelectedFriendForCollab] = useState<string | null>(null);
+
+  const handleCreateCollaboration = async (participants: string[], sessionName: string) => {
+    await createCollaborativeSession(participants, sessionName);
+    setShowCreateDialog(false);
+    setSelectedFriendForCollab(null);
+  };
+
+  const openCollaborationDialog = async (friendUserId: string) => {
     try {
       // Get friend's profile first
       const { data: friendProfile } = await supabase
@@ -140,25 +150,13 @@ export const Friends = () => {
 
       const friendUsername = friendProfile?.username || 'unknown';
 
-      // Create session with invitation using the hook
-      const result = await createCollaborativeSession(
-        [friendUsername], 
-        `Collaboration with ${friendName}`
-      );
-
-      if (result) {
-        toast({
-          title: "Collaboration invitation sent!",
-          description: `Sent collaboration invitation to ${friendName}. They will receive a notification to join.`,
-        });
-      } else {
-        throw new Error('Failed to create session');
-      }
+      setSelectedFriendForCollab(friendUsername);
+      setShowCreateDialog(true);
     } catch (error) {
-      console.error('Error creating collaboration session:', error);
+      console.error('Error loading friend profile:', error);
       toast({
         title: "Error",
-        description: "Failed to send collaboration invitation. Please try again.",
+        description: "Failed to load friend information. Please try again.",
         variant: "destructive"
       });
     }
@@ -306,7 +304,7 @@ export const Friends = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => createCollaborationSession(friend.friend_user_id)}>
+                        <DropdownMenuItem onClick={() => openCollaborationDialog(friend.friend_user_id)}>
                           <Users className="h-4 w-4 mr-2" />
                           Send Collaboration Invite
                         </DropdownMenuItem>
@@ -325,6 +323,18 @@ export const Friends = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Create Collaboration Dialog */}
+      <CreateSessionDialog
+        isOpen={showCreateDialog}
+        onClose={() => {
+          setShowCreateDialog(false);
+          setSelectedFriendForCollab(null);
+        }}
+        onCreateSession={handleCreateCollaboration}
+        prefilledParticipants={selectedFriendForCollab ? [selectedFriendForCollab] : []}
+        prefilledSessionName={selectedFriendForCollab ? `Collaboration with ${selectedFriendForCollab}` : ''}
+      />
     </div>
   );
 };

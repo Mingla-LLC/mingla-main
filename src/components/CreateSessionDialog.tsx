@@ -13,12 +13,16 @@ interface CreateSessionDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
+  prefilledParticipants?: string[];
+  prefilledSessionName?: string;
 }
 
 export const CreateSessionDialog = ({
   isOpen,
   onClose,
-  onCreateSession
+  onCreateSession,
+  prefilledParticipants = [],
+  prefilledSessionName = ''
 }: CreateSessionDialogProps) => {
   const [sessionName, setSessionName] = useState('');
   const [inviteInput, setInviteInput] = useState('');
@@ -41,12 +45,18 @@ export const CreateSessionDialog = ({
 
   const { getAllUsers, searchUsers, getDisplayName } = useUsers();
 
-  // Load available users on mount
+  // Load available users and prefill data on mount
   useEffect(() => {
     if (isOpen) {
       loadAvailableUsers();
+      if (prefilledParticipants.length > 0) {
+        setSelectedParticipants(prefilledParticipants);
+      }
+      if (prefilledSessionName) {
+        setSessionName(prefilledSessionName);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, prefilledParticipants, prefilledSessionName]);
 
   // Search users when input changes
   useEffect(() => {

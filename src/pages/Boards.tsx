@@ -23,11 +23,14 @@ import {
 import { NewBoardDialog } from '@/components/NewBoardDialog';
 import { BoardDetail } from '@/components/BoardDetail';
 import { useBoards } from '@/hooks/useBoards';
+import { useSessionManagement } from '@/hooks/useSessionManagement';
 import { toast } from '@/hooks/use-toast';
+import { CreateSessionDialog } from '@/components/CreateSessionDialog';
 
 const Boards = () => {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showCollabDialog, setShowCollabDialog] = useState(false);
   
   const { 
     boards, 
@@ -38,6 +41,8 @@ const Boards = () => {
     addCollaborator, 
     removeCollaborator 
   } = useBoards();
+
+  const { createCollaborativeSession } = useSessionManagement();
   
   const selectedBoardData = boards.find(board => board.id === selectedBoard);
 
@@ -47,6 +52,11 @@ const Boards = () => {
       setSelectedBoard(result.id);
       setShowCreateDialog(false);
     }
+  };
+
+  const handleCreateCollaboration = async (participants: string[], sessionName: string) => {
+    await createCollaborativeSession(participants, sessionName);
+    setShowCollabDialog(false);
   };
 
   const getDisplayName = (profile: { username: string; first_name?: string; last_name?: string }) => {
@@ -81,12 +91,21 @@ const Boards = () => {
       <div className="px-6 pt-12 pb-6">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-bold">Boards</h1>
-          <Button 
-            onClick={() => setShowCreateDialog(true)}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Board
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => setShowCreateDialog(true)}
+              variant="outline"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              New Board
+            </Button>
+            <Button 
+              onClick={() => setShowCollabDialog(true)}
+            >
+              <Users className="h-4 w-4 mr-2" />
+              New Collaboration
+            </Button>
+          </div>
         </div>
         <p className="text-muted-foreground">
           Organize and collaborate on your experiences
@@ -220,12 +239,21 @@ const Boards = () => {
               <p className="text-muted-foreground mb-4 max-w-md">
                 Create boards to organize and collaborate on experiences with friends. When you collaborate on sessions, boards are automatically created!
               </p>
-              <Button 
-                onClick={() => setShowCreateDialog(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Your First Board
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => setShowCreateDialog(true)}
+                  variant="outline"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Board
+                </Button>
+                <Button 
+                  onClick={() => setShowCollabDialog(true)}
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  Start Collaboration
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -254,6 +282,13 @@ const Boards = () => {
         isOpen={showCreateDialog}
         onClose={() => setShowCreateDialog(false)}
         onCreateBoard={handleCreateBoard}
+      />
+
+      {/* Create Collaboration Dialog */}
+      <CreateSessionDialog
+        isOpen={showCollabDialog}
+        onClose={() => setShowCollabDialog(false)}
+        onCreateSession={handleCreateCollaboration}
       />
     </div>
   );

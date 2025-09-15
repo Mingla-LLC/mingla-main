@@ -6,6 +6,7 @@ import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
 import { SessionInviteNotifications } from '@/components/SessionInviteNotifications';
 import { SessionSwitcher } from '@/components/SessionSwitcher';
+import { NotificationBar } from '@/components/NotificationBar';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -33,6 +34,8 @@ const Home = () => {
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   const [measurementSystem, setMeasurementSystem] = useState('metric');
   const [user, setUser] = useState<User | null>(null);
+  const [showNotifications, setShowNotifications] = useState(true);
+  const [isSessionSwitcherOpen, setIsSessionSwitcherOpen] = useState(false);
   const { profile } = useUserProfile();
   
   // Helper function to calculate travel time in minutes
@@ -359,15 +362,12 @@ const Home = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Notification Bar for Collaboration Invites */}
-      {pendingInvites && pendingInvites.length > 0 && (
-        <div className="px-6 pt-4">
-          <SessionInviteNotifications
-            invites={pendingInvites}
-            onAccept={acceptSessionInvitation}
-            onDecline={declineSessionInvitation}
-            loading={sessionLoading}
-          />
-        </div>
+      {showNotifications && pendingInvites && pendingInvites.length > 0 && (
+        <NotificationBar
+          invites={pendingInvites}
+          onOpenSwitcher={() => setIsSessionSwitcherOpen(true)}
+          onDismiss={() => setShowNotifications(false)}
+        />
       )}
 
       {/* Header */}
@@ -409,6 +409,8 @@ const Home = () => {
           onCancelSession={async (sessionId: string) => await cancelEntireSession(sessionId)}
           canSwitchToSolo={canSwitchToSolo()}
           currentUserId={user?.id}
+          isOpen={isSessionSwitcherOpen}
+          onToggle={setIsSessionSwitcherOpen}
         />
 
         {/* Active Preferences Display */}

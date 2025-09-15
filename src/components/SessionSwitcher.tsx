@@ -28,6 +28,8 @@ interface SessionSwitcherProps {
   onCancelSession: (sessionId: string) => Promise<void>;
   canSwitchToSolo: boolean;
   currentUserId?: string;
+  isOpen?: boolean;
+  onToggle?: (isOpen: boolean) => void;
 }
 
 export const SessionSwitcher = ({
@@ -39,10 +41,24 @@ export const SessionSwitcher = ({
   onCreateSession,
   onCancelSession,
   canSwitchToSolo,
-  currentUserId
+  currentUserId,
+  isOpen,
+  onToggle
 }: SessionSwitcherProps) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [internalExpanded, setInternalExpanded] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+
+  // Use external control if provided, otherwise use internal state
+  const isExpanded = isOpen !== undefined ? isOpen : internalExpanded;
+  
+  const handleToggleExpanded = () => {
+    const newState = !isExpanded;
+    if (onToggle) {
+      onToggle(newState);
+    } else {
+      setInternalExpanded(newState);
+    }
+  };
 
   const activeSessionsCount = availableSessions.filter(s => s.status === 'active').length;
   const dormantSessionsCount = availableSessions.filter(s => s.status === 'dormant').length;
@@ -97,7 +113,7 @@ export const SessionSwitcher = ({
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={handleToggleExpanded}
             className="flex items-center gap-1"
           >
             Switch
@@ -135,7 +151,11 @@ export const SessionSwitcher = ({
               onClick={() => {
                 if (canSwitchToSolo) {
                   onSwitchToSolo();
-                  setIsExpanded(false);
+                  if (onToggle) {
+                    onToggle(false);
+                  } else {
+                    setInternalExpanded(false);
+                  }
                 }
               }}
               disabled={!canSwitchToSolo}
@@ -171,7 +191,11 @@ export const SessionSwitcher = ({
                 key={session.id}
                 onClick={() => {
                   onSwitchToCollaborative(session.id);
-                  setIsExpanded(false);
+                  if (onToggle) {
+                    onToggle(false);
+                  } else {
+                    setInternalExpanded(false);
+                  }
                 }}
                 className={cn(
                   "w-full p-3 rounded-lg border text-left transition-colors",
@@ -254,7 +278,11 @@ export const SessionSwitcher = ({
                             onClick={async (e) => {
                               e.stopPropagation();
                               await onCancelSession(session.id);
-                              setIsExpanded(false);
+                              if (onToggle) {
+                                onToggle(false);
+                              } else {
+                                setInternalExpanded(false);
+                              }
                             }}
                           >
                             <X className="h-3 w-3" />
@@ -320,7 +348,11 @@ export const SessionSwitcher = ({
                             onClick={async (e) => {
                               e.stopPropagation();
                               await onCancelSession(session.id);
-                              setIsExpanded(false);
+                              if (onToggle) {
+                                onToggle(false);
+                              } else {
+                                setInternalExpanded(false);
+                              }
                             }}
                           >
                             <X className="h-3 w-3" />
@@ -386,7 +418,11 @@ export const SessionSwitcher = ({
             <button
               onClick={() => {
                 setShowCreateDialog(true);
-                setIsExpanded(false);
+                if (onToggle) {
+                  onToggle(false);
+                } else {
+                  setInternalExpanded(false);
+                }
               }}
               className="w-full p-3 rounded-lg border border-dashed border-border text-left transition-colors hover:bg-muted/50"
             >

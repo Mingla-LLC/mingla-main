@@ -473,22 +473,31 @@ export const useSessionManagement = () => {
   }, [loadUserSessions]);
 
   // Cancel sent invitation
-  const cancelSessionInvitation = useCallback(async (sessionId: string, userId: string) => {
+  const cancelSessionInvitation = useCallback(async (sessionId: string, userId?: string) => {
+    if (!user) return;
+    
     try {
-      const { error } = await supabase
-        .from('collaboration_invites')
-        .update({ status: 'cancelled' })
-        .eq('session_id', sessionId)
-        .eq('invited_user_id', userId);
+      if (userId) {
+        // Cancel specific user's invitation
+        const { error } = await supabase
+          .from('collaboration_invites')
+          .update({ status: 'cancelled' })
+          .eq('session_id', sessionId)
+          .eq('invited_user_id', userId);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      // Remove participant
-      await supabase
-        .from('session_participants')
-        .delete()
-        .eq('session_id', sessionId)
-        .eq('user_id', userId);
+        // Remove participant
+        await supabase
+          .from('session_participants')
+          .delete()
+          .eq('session_id', sessionId)
+          .eq('user_id', userId);
+      } else {
+        // Cancel all invitations for the session
+        await cancelEntireSession(sessionId);
+        return;
+      }
 
       await loadUserSessions();
       
@@ -504,10 +513,12 @@ export const useSessionManagement = () => {
         variant: "destructive"
       });
     }
-  }, [loadUserSessions]);
+  }, [user, loadUserSessions]);
 
   // Cancel entire session (for session creator)
   const cancelEntireSession = useCallback(async (sessionId: string) => {
+    if (!user) return;
+    
     try {
       // Cancel all pending invites for this session
       const { error: invitesError } = await supabase
@@ -532,6 +543,15 @@ export const useSessionManagement = () => {
         .delete()
         .eq('session_id', sessionId);
 
+      // If current session is the one being cancelled, switch to solo
+      if (sessionState.currentSession?.id === sessionId) {
+        setSessionState(prev => ({
+          ...prev,
+          currentSession: null,
+          isInSolo: true
+        }));
+      }
+
       await loadUserSessions();
       
       toast({
@@ -546,7 +566,7 @@ export const useSessionManagement = () => {
         variant: "destructive"
       });
     }
-  }, [loadUserSessions]);
+  }, [user, sessionState.currentSession, loadUserSessions]);
 
   // Get friends for session creation
   const getFriendsAndCollaborators = useCallback(async () => {
