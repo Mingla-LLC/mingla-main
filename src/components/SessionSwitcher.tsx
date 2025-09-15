@@ -237,16 +237,16 @@ export const SessionSwitcher = ({
               </button>
             ))}
 
-            {/* Invitations (for invited users) */}
+            {/* Received Invitations */}
             {availableSessions.filter(s => s.status === 'pending' && s.invitedBy !== currentUserId).length > 0 && (
               <>
                 <div className="text-xs text-muted-foreground font-medium mt-4 mb-2">
-                  Invitations
+                  Invitations Received
                 </div>
                 {availableSessions.filter(s => s.status === 'pending' && s.invitedBy !== currentUserId).map((session) => {
                   return (
                     <div
-                      key={session.id}
+                      key={`invite-received-${session.id}`}
                       className="w-full p-3 rounded-lg border border-primary/20 bg-primary/5 text-left"
                     >
                       <div className="flex items-center justify-between">
@@ -258,7 +258,7 @@ export const SessionSwitcher = ({
                           <div>
                             <p className="font-medium text-sm">{session.name}</p>
                             <p className="text-xs text-muted-foreground">
-                              Invitation from {session.inviterProfile?.name || session.inviterProfile?.username || 'Friend'}
+                              From {session.inviterProfile?.name || session.inviterProfile?.username || 'Friend'}
                             </p>
                           </div>
                         </div>
@@ -295,18 +295,18 @@ export const SessionSwitcher = ({
               </>
             )}
 
-            {/* Pending Sessions (for session creators) */}
+            {/* Sent Invitations (for session creators) */}
             {availableSessions.filter(s => s.status === 'pending' && s.invitedBy === currentUserId).length > 0 && (
               <>
                 <div className="text-xs text-muted-foreground font-medium mt-4 mb-2">
-                  Pending Invitations
+                  Invitations Sent
                 </div>
                 {availableSessions.filter(s => s.status === 'pending' && s.invitedBy === currentUserId).map((session) => {
                   const acceptedCount = session.participants.filter(p => p.hasAccepted).length;
                   
                   return (
                     <div
-                      key={session.id}
+                      key={`invite-sent-${session.id}`}
                       className="w-full p-3 rounded-lg border border-dashed opacity-60 text-left cursor-default"
                     >
                       <div className="flex items-center justify-between">

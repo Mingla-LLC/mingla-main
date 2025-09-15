@@ -4,15 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
-  Plus, 
   Users, 
   Settings, 
   Share, 
   MoreVertical, 
   Calendar,
   Edit3,
-  Trash2,
-  UserPlus
+  Trash2
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -20,44 +18,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { NewBoardDialog } from '@/components/NewBoardDialog';
 import { BoardDetail } from '@/components/BoardDetail';
 import { useBoards } from '@/hooks/useBoards';
-import { useSessionManagement } from '@/hooks/useSessionManagement';
 import { toast } from '@/hooks/use-toast';
-import { CreateSessionDialog } from '@/components/CreateSessionDialog';
 
 const Boards = () => {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showCollabDialog, setShowCollabDialog] = useState(false);
   
   const { 
     boards, 
     loading, 
-    createBoard, 
-    updateBoard, 
-    deleteBoard, 
-    addCollaborator, 
-    removeCollaborator 
+    deleteBoard
   } = useBoards();
-
-  const { createCollaborativeSession } = useSessionManagement();
   
   const selectedBoardData = boards.find(board => board.id === selectedBoard);
-
-  const handleCreateBoard = async (boardData: { title: string; description: string; collaborators: string[] }) => {
-    const result = await createBoard(boardData.title, boardData.description);
-    if (result) {
-      setSelectedBoard(result.id);
-      setShowCreateDialog(false);
-    }
-  };
-
-  const handleCreateCollaboration = async (participants: string[], sessionName: string) => {
-    await createCollaborativeSession(participants, sessionName);
-    setShowCollabDialog(false);
-  };
 
   const getDisplayName = (profile: { username: string; first_name?: string; last_name?: string }) => {
     if (profile.first_name && profile.last_name) {
@@ -91,21 +65,6 @@ const Boards = () => {
       <div className="px-6 pt-12 pb-6">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-bold">Boards</h1>
-          <div className="flex gap-2">
-            <Button 
-              onClick={() => setShowCreateDialog(true)}
-              variant="outline"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              New Board
-            </Button>
-            <Button 
-              onClick={() => setShowCollabDialog(true)}
-            >
-              <Users className="h-4 w-4 mr-2" />
-              New Collaboration
-            </Button>
-          </div>
         </div>
         <p className="text-muted-foreground">
           Organize and collaborate on your experiences
@@ -237,23 +196,8 @@ const Boards = () => {
               </div>
               <h3 className="text-lg font-semibold mb-2">No boards yet</h3>
               <p className="text-muted-foreground mb-4 max-w-md">
-                Create boards to organize and collaborate on experiences with friends. When you collaborate on sessions, boards are automatically created!
+                Boards are automatically created when you start collaboration sessions with friends. Visit the Home tab to create collaborative sessions!
               </p>
-              <div className="flex gap-2">
-                <Button 
-                  onClick={() => setShowCreateDialog(true)}
-                  variant="outline"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Board
-                </Button>
-                <Button 
-                  onClick={() => setShowCollabDialog(true)}
-                >
-                  <Users className="h-4 w-4 mr-2" />
-                  Start Collaboration
-                </Button>
-              </div>
             </div>
           )}
         </div>
@@ -276,20 +220,6 @@ const Boards = () => {
           </div>
         </Card>
       </div>
-
-      {/* New Board Dialog */}
-      <NewBoardDialog
-        isOpen={showCreateDialog}
-        onClose={() => setShowCreateDialog(false)}
-        onCreateBoard={handleCreateBoard}
-      />
-
-      {/* Create Collaboration Dialog */}
-      <CreateSessionDialog
-        isOpen={showCollabDialog}
-        onClose={() => setShowCollabDialog(false)}
-        onCreateSession={handleCreateCollaboration}
-      />
     </div>
   );
 };

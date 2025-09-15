@@ -43,7 +43,13 @@ export const NotificationBar = ({ invites, onOpenSwitcher, onDismiss }: Notifica
         </div>
         
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={onOpenSwitcher}>
+          <Button 
+            size="sm" 
+            onClick={(e) => {
+              e.preventDefault();
+              onOpenSwitcher();
+            }}
+          >
             View Invites
           </Button>
           <Button variant="ghost" size="sm" onClick={onDismiss}>

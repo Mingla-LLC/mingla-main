@@ -72,7 +72,8 @@ export const useSessionManagement = () => {
       const { data: invitesData, error: invitesError } = await supabase
         .from('collaboration_invites')
         .select(`
-          id, session_id, message, status, created_at, invited_by
+          id, session_id, message, status, created_at, invited_by,
+          profiles!collaboration_invites_invited_by_fkey (id, username, first_name, last_name, avatar_url)
         `)
         .eq('invited_user_id', user.id)
         .eq('status', 'pending');
@@ -80,17 +81,7 @@ export const useSessionManagement = () => {
       console.log('Raw invites data:', invitesData);
       console.log('Invites error:', invitesError);
 
-      // Load sessions where user is creator
-      const { data: createdSessions, error: createdError } = await supabase
-        .from('collaboration_sessions')
-        .select(`
-          id, name, created_by, board_id, status, created_at, updated_at
-        `)
-        .eq('created_by', user.id);
-
-      if (createdError) throw createdError;
-
-      // Load sessions where user is participant  
+      // Load sessions where user is participant (including creator and invited)
       const { data: participantSessionIds, error: participantError } = await supabase
         .from('session_participants')
         .select('session_id')
@@ -99,25 +90,19 @@ export const useSessionManagement = () => {
       if (participantError) throw participantError;
 
       const participantIds = (participantSessionIds || []).map(p => p.session_id);
-      let participantSessions: any[] = [];
+      let sessionsData: any[] = [];
       
       if (participantIds.length > 0) {
-        const { data: pSessions, error: pSessionsError } = await supabase
+        const { data: sessions, error: sessionsError } = await supabase
           .from('collaboration_sessions')
           .select(`
             id, name, created_by, board_id, status, created_at, updated_at
           `)
           .in('id', participantIds);
 
-        if (pSessionsError) throw pSessionsError;
-        participantSessions = pSessions || [];
+        if (sessionsError) throw sessionsError;
+        sessionsData = sessions || [];
       }
-
-      // Combine both sets of sessions
-      const sessionsData = [
-        ...(createdSessions || []),
-        ...participantSessions
-      ];
 
       
 
@@ -209,7 +194,7 @@ export const useSessionManagement = () => {
       // Format invites
       const formattedInvites: SessionInvite[] = (invitesData || []).map(invite => {
         const sessionInfo = sessionNamesData.find(s => s.id === invite.session_id);
-        const invitedByProfile = invitedByProfiles.find(p => p.id === invite.invited_by);
+        const invitedByProfile = invite.profiles || invitedByProfiles.find(p => p.id === invite.invited_by);
         
         return {
           id: invite.id,
@@ -285,6 +270,8 @@ export const useSessionManagement = () => {
   const createCollaborativeSession = useCallback(async (participants: string[], sessionName: string) => {
     if (!user) return null;
 
+    console.log('Creating collaboration session:', { participants, sessionName, userId: user.id });
+
     try {
       // Create the session
       const { data: sessionData, error: sessionError } = await supabase
@@ -297,7 +284,12 @@ export const useSessionManagement = () => {
         .select()
         .single();
 
-      if (sessionError) throw sessionError;
+      if (sessionError) {
+        console.error('Session creation error:', sessionError);
+        throw sessionError;
+      }
+
+      console.log('Session created:', sessionData);
 
       // Add creator as participant (auto-accepted)
       const { error: participantError } = await supabase
@@ -309,20 +301,32 @@ export const useSessionManagement = () => {
           joined_at: new Date().toISOString()
         });
 
-      if (participantError) throw participantError;
+      if (participantError) {
+        console.error('Participant creation error:', participantError);
+        throw participantError;
+      }
 
       // Send invites to participants
-      for (const username of participants) {
+      const invitePromises = participants.map(async (username) => {
+        console.log('Processing participant:', username);
+        
         // Find user by username
-        const { data: invitedUser } = await supabase
+        const { data: invitedUser, error: userError } = await supabase
           .from('profiles')
           .select('id')
           .eq('username', username)
           .single();
 
+        if (userError) {
+          console.error('Error finding user:', userError);
+          return;
+        }
+
         if (invitedUser) {
+          console.log('Found invited user:', invitedUser);
+          
           // Create participant record
-          await supabase
+          const { error: partError } = await supabase
             .from('session_participants')
             .insert({
               session_id: sessionData.id,
@@ -330,8 +334,12 @@ export const useSessionManagement = () => {
               has_accepted: false
             });
 
+          if (partError) {
+            console.error('Error creating participant:', partError);
+          }
+
           // Send invite
-          await supabase
+          const { error: inviteError } = await supabase
             .from('collaboration_invites')
             .insert({
               session_id: sessionData.id,
@@ -339,9 +347,14 @@ export const useSessionManagement = () => {
               invited_user_id: invitedUser.id,
               status: 'pending'
             });
-        }
-      }
 
+          if (inviteError) {
+            console.error('Error sending invite:', inviteError);
+          }
+        }
+      });
+
+      await Promise.all(invitePromises);
       await loadUserSessions();
       
       toast({
@@ -354,7 +367,7 @@ export const useSessionManagement = () => {
       console.error('Error creating session:', error);
       toast({
         title: "Error",
-        description: "Failed to create collaboration session",
+        description: "Failed to create collaboration session. Please try again.",
         variant: "destructive"
       });
       return null;
