@@ -186,58 +186,64 @@ export const useSessionManagement = () => {
         return profile.username || 'Unknown User';
       };
 
-      // Format sessions with correct status logic
-      const formattedSessions: CollaborationSession[] = allSessions.map(session => {
-        const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
-        const participants = sessionParticipants.map(p => {
-          const profile = getProfile(p.user_id);
-          return {
-            id: p.user_id,
-            name: formatProfileName(profile),
-            username: profile?.username || 'unknown',
-            avatar: profile?.avatar_url || '',
-            hasAccepted: p.has_accepted
-          };
-        });
-
-        const userParticipation = userParticipations?.find(up => up.session_id === session.id);
-        const allAccepted = participants.length > 0 && participants.every(p => p.hasAccepted);
-        
-        // Determine status based on user's acceptance and overall session state
-        let status: 'pending' | 'active' | 'dormant' = 'dormant';
-        
-        if (userParticipation && !userParticipation.has_accepted) {
-          // User hasn't accepted yet - this is a pending invitation for them
-          status = 'pending';
-        } else if (allAccepted && participants.length > 0) {
-          // All participants have accepted - session is active
-          status = 'active';
-        } else if (userParticipation?.has_accepted) {
-          // User accepted but not everyone has - session is dormant
-          status = 'dormant';
-        }
-
-        // Get inviter profile (creator of the session)
-        const inviterProfile = getProfile(session.created_by);
-        const formattedInviterProfile = inviterProfile ? {
-          id: inviterProfile.id,
-          name: formatProfileName(inviterProfile),
-          username: inviterProfile.username || 'unknown',
-          avatar: inviterProfile.avatar_url
-        } : undefined;
-
+  // Format sessions with correct status logic
+  const formattedSessions: CollaborationSession[] = allSessions
+    .filter(session => {
+      // Only include sessions with at least 2 participants
+      const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
+      return sessionParticipants.length >= 2;
+    })
+    .map(session => {
+      const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
+      const participants = sessionParticipants.map(p => {
+        const profile = getProfile(p.user_id);
         return {
-          id: session.id,
-          name: session.name,
-          participants,
-          createdAt: session.created_at,
-          isActive: allAccepted,
-          boardId: session.board_id,
-          status,
-          invitedBy: session.created_by,
-          inviterProfile: formattedInviterProfile
+          id: p.user_id,
+          name: formatProfileName(profile),
+          username: profile?.username || 'unknown',
+          avatar: profile?.avatar_url || '',
+          hasAccepted: p.has_accepted
         };
       });
+
+      const userParticipation = userParticipations?.find(up => up.session_id === session.id);
+      const allAccepted = participants.length >= 2 && participants.every(p => p.hasAccepted);
+      
+      // Determine status based on user's acceptance and overall session state
+      let status: 'pending' | 'active' | 'dormant' = 'dormant';
+      
+      if (userParticipation && !userParticipation.has_accepted) {
+        // User hasn't accepted yet - this is a pending invitation for them
+        status = 'pending';
+      } else if (allAccepted && participants.length >= 2) {
+        // All participants have accepted and there are at least 2 - session is active
+        status = 'active';
+      } else if (userParticipation?.has_accepted && participants.length >= 2) {
+        // User accepted but not everyone has - session is dormant
+        status = 'dormant';
+      }
+
+      // Get inviter profile (creator of the session)
+      const inviterProfile = getProfile(session.created_by);
+      const formattedInviterProfile = inviterProfile ? {
+        id: inviterProfile.id,
+        name: formatProfileName(inviterProfile),
+        username: inviterProfile.username || 'unknown',
+        avatar: inviterProfile.avatar_url
+      } : undefined;
+
+      return {
+        id: session.id,
+        name: session.name,
+        participants,
+        createdAt: session.created_at,
+        isActive: allAccepted && participants.length >= 2,
+        boardId: session.board_id,
+        status,
+        invitedBy: session.created_by,
+        inviterProfile: formattedInviterProfile
+      };
+    });
 
       // Format invites for notification bar (only received invites)
       const formattedInvites: SessionInvite[] = (receivedInvites || []).map(invite => {
@@ -557,7 +563,7 @@ export const useSessionManagement = () => {
     try {
       // If user is currently in this active session, leave it
       if (sessionState.currentSession?.id === sessionId) {
-        // Remove user from session participants
+        // Remove user from session participants (this will trigger cleanup)
         await supabase
           .from('session_participants')
           .delete()
@@ -571,6 +577,9 @@ export const useSessionManagement = () => {
           .eq('session_id', sessionId)
           .eq('invited_user_id', user.id);
 
+        // Clear from localStorage
+        localStorage.removeItem('collaboration_session_state');
+
         // Switch to solo mode
         const newState = {
           currentSession: null,
@@ -581,12 +590,6 @@ export const useSessionManagement = () => {
         };
         
         setSessionState(newState);
-        
-        // Save to localStorage
-        localStorage.setItem('collaboration_session_state', JSON.stringify({
-          currentSession: null,
-          isInSolo: true
-        }));
 
         toast({
           title: "Left collaboration session",
@@ -598,7 +601,7 @@ export const useSessionManagement = () => {
         return;
       }
 
-      // Handle pending invitations
+      // Handle pending invitations or session management
       if (session.invitedBy === user.id) {
         // User is the creator - revoke the session
         await supabase
@@ -607,6 +610,7 @@ export const useSessionManagement = () => {
           .eq('session_id', sessionId)
           .eq('invited_by', user.id);
 
+        // Delete the session (this will cascade to participants and invites via trigger)
         await supabase
           .from('collaboration_sessions')
           .delete()
@@ -625,6 +629,7 @@ export const useSessionManagement = () => {
           .eq('session_id', sessionId)
           .eq('invited_user_id', user.id);
 
+        // Remove user from participants (this may trigger session cleanup)
         await supabase
           .from('session_participants')
           .delete()
