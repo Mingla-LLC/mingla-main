@@ -85,7 +85,6 @@ const Home = () => {
     switchToSolo,
     switchToCollaborative,
     createCollaborativeSession,
-    acceptSessionInvitation,
     declineSessionInvitation,
     cancelSessionInvitation,
     cancelEntireSession,

@@ -145,13 +145,6 @@ export const useSessionManagement = () => {
         allParticipants = participantsData || [];
       }
 
-      console.log('=== SESSION LOADING DEBUG ===');
-      console.log('User ID:', user.id);
-      console.log('Received invites data:', receivedInvitesData);
-      console.log('Sent invites data:', sentInvitesData);
-      console.log('All session IDs:', allSessionIds);
-      console.log('All sessions data:', allSessionsData);
-
       // Format received invites as sessions
       const receivedInviteSessions: CollaborationSession[] = (receivedInvitesData || []).map(invite => {
         const session = allSessionsData.find(s => s.id === invite.session_id);
@@ -159,9 +152,6 @@ export const useSessionManagement = () => {
           console.warn('Session not found for invite:', invite.session_id);
           return null;
         }
-
-        console.log('Processing received invite:', invite);
-        console.log('Found session:', session);
 
         const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
         const participants = sessionParticipants.map(p => ({
@@ -174,7 +164,7 @@ export const useSessionManagement = () => {
           hasAccepted: p.has_accepted
         }));
 
-        const sessionData = {
+        return {
           id: session.id,
           name: session.name,
           participants,
@@ -192,9 +182,6 @@ export const useSessionManagement = () => {
             avatar: invite.inviter_profile.avatar_url
           } : undefined
         };
-
-        console.log('Created received session:', sessionData);
-        return sessionData;
       }).filter(Boolean) as CollaborationSession[];
 
       console.log('Received invite sessions:', receivedInviteSessions);
@@ -313,9 +300,6 @@ export const useSessionManagement = () => {
       
       const uniqueSessions = Array.from(sessionMap.values());
 
-      console.log('Final unique sessions:', uniqueSessions);
-      console.log('=== END SESSION LOADING DEBUG ===');
-
       setSessionState(prev => ({
         ...prev,
         availableSessions: uniqueSessions,
@@ -398,11 +382,43 @@ export const useSessionManagement = () => {
         const allAccepted = allParticipants?.every(p => p.has_accepted) || false;
 
         if (allAccepted) {
-          // Update session status to active
-          await supabase
-            .from('collaboration_sessions')
-            .update({ status: 'active' })
-            .eq('id', sessionId);
+          // Create board for the session if it doesn't exist
+          let boardId = session.boardId;
+          
+          if (!boardId) {
+            const { data: boardData, error: boardError } = await supabase
+              .from('boards')
+              .insert({
+                name: session.name,
+                description: `Collaborative board for ${session.name}`,
+                created_by: session.invitedBy,
+                is_public: false,
+                session_id: sessionId
+              })
+              .select()
+              .single();
+
+            if (boardError) {
+              console.error('Board creation error:', boardError);
+            } else {
+              boardId = boardData.id;
+              
+              // Update session with board_id
+              await supabase
+                .from('collaboration_sessions')
+                .update({ 
+                  status: 'active',
+                  board_id: boardData.id 
+                })
+                .eq('id', sessionId);
+            }
+          } else {
+            // Update session status to active
+            await supabase
+              .from('collaboration_sessions')
+              .update({ status: 'active' })
+              .eq('id', sessionId);
+          }
         }
 
         await loadUserSessions();
@@ -415,19 +431,19 @@ export const useSessionManagement = () => {
         });
       }
 
+      // Reload sessions to get updated data
+      await loadUserSessions();
+      
+      // Find the updated session
+      const updatedSession = sessionState.availableSessions.find(s => s.id === sessionId) || session;
+
       // Set as current session
       setSessionState(prev => ({
         ...prev,
-        currentSession: session,
+        currentSession: updatedSession,
         isInSolo: false
       }));
 
-      toast({
-        title: session.boardId ? "Rejoined collaboration" : "Collaboration started!",
-        description: session.boardId 
-          ? `Welcome back to "${session.name}"` 
-          : `A board will be created for "${session.name}" when all participants join.`,
-      });
     } catch (error) {
       console.error('Error switching to collaborative session:', error);
       toast({
@@ -445,33 +461,14 @@ export const useSessionManagement = () => {
     console.log('Creating collaboration session:', { participants, sessionName, userId: user.id });
 
     try {
-      // Create a board first
-      const { data: boardData, error: boardError } = await supabase
-        .from('boards')
-        .insert({
-          name: sessionName || `Collaboration Session ${new Date().toLocaleDateString()}`,
-          description: `Collaborative board for ${sessionName}`,
-          created_by: user.id,
-          is_public: false
-        })
-        .select()
-        .single();
-
-      if (boardError) {
-        console.error('Board creation error:', boardError);
-        throw boardError;
-      }
-
-      console.log('Board created:', boardData);
-
-      // Create the session
+      // Create the session first (NO board creation yet)
       const { data: sessionData, error: sessionError } = await supabase
         .from('collaboration_sessions')
         .insert({
           name: sessionName || `Collaboration Session ${new Date().toLocaleDateString()}`,
           created_by: user.id,
           status: 'pending',
-          board_id: boardData.id
+          board_id: null // Board will be created when all participants accept
         })
         .select()
         .single();
@@ -482,16 +479,6 @@ export const useSessionManagement = () => {
       }
 
       console.log('Session created:', sessionData);
-
-      // Update board with session_id
-      const { error: updateError } = await supabase
-        .from('boards')
-        .update({ session_id: sessionData.id })
-        .eq('id', boardData.id);
-
-      if (updateError) {
-        console.error('Board update error:', updateError);
-      }
 
       // Add creator as participant (auto-accepted)
       const { error: participantError } = await supabase
@@ -561,7 +548,7 @@ export const useSessionManagement = () => {
       
       toast({
         title: "Session created!",
-        description: `Invites sent to ${participants.length} user(s). They'll be notified to join "${sessionName}".`,
+        description: `Invites sent to ${participants.length} user(s). A board will be created when everyone accepts.`,
       });
 
       return sessionData;
@@ -883,7 +870,6 @@ export const useSessionManagement = () => {
     switchToSolo,
     switchToCollaborative,
     createCollaborativeSession,
-    acceptSessionInvitation,
     declineSessionInvitation,
     cancelSessionInvitation,
     cancelEntireSession,
