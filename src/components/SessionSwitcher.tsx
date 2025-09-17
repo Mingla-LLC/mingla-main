@@ -74,6 +74,7 @@ export const SessionSwitcher = ({
   console.log('Current user ID:', currentUserId);
   console.log('Received invites:', receivedInvites);
   console.log('Sent invites:', sentInvites);
+  console.log('Session statuses:', availableSessions.map(s => ({ id: s.id, status: s.status, invitedBy: s.invitedBy })));
 
   return (
     <Card className="mb-4" data-session-switcher>

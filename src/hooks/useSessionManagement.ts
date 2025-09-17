@@ -276,9 +276,29 @@ export const useSessionManagement = () => {
         };
       });
 
-      // Combine all sessions (remove duplicates by id)
+      // Combine all sessions with proper priority (pending > active > dormant)
       const allSessions = [...receivedInviteSessions, ...sentInviteSessions, ...activeSessions];
-      const uniqueSessions = Array.from(new Map(allSessions.map(s => [s.id, s])).values());
+      
+      // Custom deduplication that preserves pending status priority
+      const sessionMap = new Map<string, CollaborationSession>();
+      
+      for (const session of allSessions) {
+        const existingSession = sessionMap.get(session.id);
+        
+        if (!existingSession) {
+          sessionMap.set(session.id, session);
+        } else {
+          // Priority: pending > active > dormant
+          const currentPriority = session.status === 'pending' ? 3 : session.status === 'active' ? 2 : 1;
+          const existingPriority = existingSession.status === 'pending' ? 3 : existingSession.status === 'active' ? 2 : 1;
+          
+          if (currentPriority > existingPriority) {
+            sessionMap.set(session.id, session);
+          }
+        }
+      }
+      
+      const uniqueSessions = Array.from(sessionMap.values());
 
       setSessionState(prev => ({
         ...prev,
