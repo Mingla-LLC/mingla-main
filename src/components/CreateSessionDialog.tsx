@@ -10,11 +10,6 @@ import { toast } from 'sonner';
 import { useUsers } from '@/hooks/useUsers';
 import { supabase } from '@/integrations/supabase/client';
 
-const CreateSchema = z.object({
-  name: z.string().trim().min(1, 'Name required').max(80, 'Max 80 chars'),
-  participantIds: z.array(z.string()).min(1, 'Add at least one participant'),
-});
-
 interface CreateSessionDialogProps {
   isOpen: boolean;
   onClose: () => void;
