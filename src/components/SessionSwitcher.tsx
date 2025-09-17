@@ -65,7 +65,7 @@ export const SessionSwitcher = ({
   const pendingSessionsCount = availableSessions.filter(s => s.status === 'pending').length;
 
   return (
-    <Card className="mb-4">
+    <Card className="mb-4" data-session-switcher>
       <CardContent className="p-4">
         {/* Current Session Display */}
         <div className="flex items-center justify-between mb-3">

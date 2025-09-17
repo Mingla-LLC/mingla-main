@@ -273,13 +273,33 @@ export const useSessionManagement = () => {
     console.log('Creating collaboration session:', { participants, sessionName, userId: user.id });
 
     try {
+      // Create a board first
+      const { data: boardData, error: boardError } = await supabase
+        .from('boards')
+        .insert({
+          name: sessionName || `Collaboration Session ${new Date().toLocaleDateString()}`,
+          description: `Collaborative board for ${sessionName}`,
+          created_by: user.id,
+          is_public: false
+        })
+        .select()
+        .single();
+
+      if (boardError) {
+        console.error('Board creation error:', boardError);
+        throw boardError;
+      }
+
+      console.log('Board created:', boardData);
+
       // Create the session
       const { data: sessionData, error: sessionError } = await supabase
         .from('collaboration_sessions')
         .insert({
           name: sessionName || `Collaboration Session ${new Date().toLocaleDateString()}`,
           created_by: user.id,
-          status: 'pending'
+          status: 'pending',
+          board_id: boardData.id
         })
         .select()
         .single();
@@ -290,6 +310,16 @@ export const useSessionManagement = () => {
       }
 
       console.log('Session created:', sessionData);
+
+      // Update board with session_id
+      const { error: updateError } = await supabase
+        .from('boards')
+        .update({ session_id: sessionData.id })
+        .eq('id', boardData.id);
+
+      if (updateError) {
+        console.error('Board update error:', updateError);
+      }
 
       // Add creator as participant (auto-accepted)
       const { error: participantError } = await supabase

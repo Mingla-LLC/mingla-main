@@ -48,6 +48,13 @@ export const NotificationBar = ({ invites, onOpenSwitcher, onDismiss }: Notifica
             onClick={(e) => {
               e.preventDefault();
               onOpenSwitcher();
+              // Also scroll to switcher
+              setTimeout(() => {
+                const switcher = document.querySelector('[data-session-switcher]');
+                if (switcher) {
+                  switcher.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }, 100);
             }}
           >
             View Invites
