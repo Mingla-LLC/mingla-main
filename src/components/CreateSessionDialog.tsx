@@ -6,11 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { X, Users, Send, Plus } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createSession } from '@/api/sessions';
 import { toast } from 'sonner';
-import { z } from 'zod';
 import { useUsers } from '@/hooks/useUsers';
+import { supabase } from '@/integrations/supabase/client';
 
 const CreateSchema = z.object({
   name: z.string().trim().min(1, 'Name required').max(80, 'Max 80 chars'),
@@ -33,26 +31,7 @@ export const CreateSessionDialog = ({
   const [sessionName, setSessionName] = useState('');
   const [inviteInput, setInviteInput] = useState('');
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
-  const qc = useQueryClient();
-  
-  const { mutate, isPending, error } = useMutation({
-    mutationFn: createSession,
-    onSuccess: async (data) => {
-      toast.success(`Invites sent for "${data.session.name}"`);
-      // Reset form and close
-      setSessionName('');
-      setSelectedParticipants([]);
-      setInviteInput('');
-      onClose();
-      // Refresh session data  
-      await qc.invalidateQueries({ queryKey: ['sessions'] });
-    },
-    onError: (err: any) => {
-      console.error('Session creation failed:', err);
-      const msg = err?.message ?? 'Could not create session';
-      toast.error(msg);
-    },
-  });
+  const [isCreating, setIsCreating] = useState(false);
   const [availableUsers, setAvailableUsers] = useState<Array<{
     id: string;
     username: string;
@@ -129,7 +108,7 @@ export const CreateSessionDialog = ({
     setSelectedParticipants(selectedParticipants.filter(p => p !== username));
   };
 
-  const onSubmit = async () => {
+  const createSession = async () => {
     if (!sessionName.trim()) {
       toast.error('Name required');
       return;
@@ -140,17 +119,118 @@ export const CreateSessionDialog = ({
       return;
     }
     
-    console.log('=== SUBMITTING SESSION CREATION ===');
-    console.log('Session name:', sessionName.trim());
-    console.log('Participants:', selectedParticipants);
+    setIsCreating(true);
+    console.log('=== CREATING SESSION DIRECTLY ===');
     
     try {
-      mutate({ 
-        name: sessionName.trim(), 
-        participantIds: selectedParticipants 
-      });
-    } catch (err) {
-      console.error('Error in mutate call:', err);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+      
+      console.log('Creating session for user:', user.id);
+      
+      // Create the session
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('collaboration_sessions')
+        .insert({
+          name: sessionName.trim(),
+          created_by: user.id,
+          status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (sessionError) {
+        console.error('Session creation error:', sessionError);
+        throw new Error(sessionError.message);
+      }
+      
+      console.log('Session created:', sessionData);
+
+      // Add creator as participant
+      const { error: creatorError } = await supabase
+        .from('session_participants')
+        .insert({
+          session_id: sessionData.id,
+          user_id: user.id,
+          has_accepted: true,
+          joined_at: new Date().toISOString()
+        });
+
+      if (creatorError) {
+        console.error('Creator participant error:', creatorError);
+        throw new Error('Failed to add creator');
+      }
+
+      // Process each participant
+      for (const username of selectedParticipants) {
+        console.log('Processing participant:', username);
+        
+        const { data: userData, error: userError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', username)
+          .single();
+
+        if (userError || !userData) {
+          console.error('User lookup failed:', userError);
+          throw new Error(`User "${username}" not found`);
+        }
+
+        if (userData.id === user.id) {
+          console.log('Skipping self-invite');
+          continue;
+        }
+
+        // Add as participant
+        const { error: participantError } = await supabase
+          .from('session_participants')
+          .insert({
+            session_id: sessionData.id,
+            user_id: userData.id,
+            has_accepted: false,
+          });
+
+        if (participantError) {
+          console.error('Participant error:', participantError);
+          throw new Error(`Failed to add ${username}`);
+        }
+
+        // Create invitation
+        const { error: inviteError } = await supabase
+          .from('collaboration_invites')
+          .insert({
+            session_id: sessionData.id,
+            invited_user_id: userData.id,
+            invited_by: user.id,
+            status: 'pending',
+            message: `${user.email} invited you to "${sessionName.trim()}"`
+          });
+
+        if (inviteError) {
+          console.error('Invite error:', inviteError);
+          throw new Error(`Failed to invite ${username}`);
+        }
+      }
+
+      console.log('Session creation complete!');
+      toast.success(`Invites sent for "${sessionName.trim()}"!`);
+      
+      // Reset and close
+      setSessionName('');
+      setSelectedParticipants([]);
+      setInviteInput('');
+      onClose();
+      
+      // Trigger a page reload to refresh all data
+      setTimeout(() => window.location.reload(), 1000);
+      
+    } catch (error) {
+      console.error('Session creation failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create session');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -294,24 +374,19 @@ export const CreateSessionDialog = ({
             </Button>
             <Button 
               type="button"
-              onClick={onSubmit}
-              disabled={isPending || !sessionName.trim() || selectedParticipants.length === 0}
+              onClick={createSession}
+              disabled={isCreating || !sessionName.trim() || selectedParticipants.length === 0}
               className="flex-1"
             >
-              {isPending ? (
+              {isCreating ? (
                 "Creating..."
               ) : (
                 <>
                   <Send className="h-4 w-4 mr-2" />
-                  Create
+                  Create Session
                 </>
               )}
             </Button>
-            {error && (
-              <p className="text-sm text-destructive mt-2">
-                Error: {error.message}
-              </p>
-            )}
           </div>
         </div>
       </DialogContent>
