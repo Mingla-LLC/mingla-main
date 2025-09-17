@@ -548,7 +548,7 @@ const Home = () => {
 
             {/* Smart Session Indicator */}
             <div className="flex items-center gap-1 px-2 py-1 bg-primary/10 rounded-full">
-              {sessionState.isInSolo ? (
+              {isInSolo ? (
                 <>
                   <div className="w-4 h-4 rounded-full bg-gradient-to-r from-primary to-primary-dark flex items-center justify-center">
                     <span className="text-xs">👤</span>
@@ -557,16 +557,16 @@ const Home = () => {
                     Solo Mode
                   </span>
                 </>
-              ) : sessionState.currentSession ? (
+              ) : currentSession ? (
                 <>
                   <div className="w-4 h-4 rounded-full bg-gradient-to-r from-green-400 to-green-600 flex items-center justify-center">
                     <span className="text-xs">👥</span>
                   </div>
                   <span className="text-xs text-green-600 font-medium">
-                    {sessionState.currentSession.name}
+                    {currentSession.name}
                   </span>
                   <div className="flex -space-x-1 ml-1">
-                    {sessionState.currentSession.participants.slice(0, 3).map((participant) => (
+                    {currentSession.participants.slice(0, 3).map((participant) => (
                       <div key={participant.id} className="w-4 h-4 rounded-full bg-muted border border-background overflow-hidden">
                         {participant.avatar ? (
                           <img src={participant.avatar} alt={participant.name} className="w-full h-full object-cover" />
@@ -577,9 +577,9 @@ const Home = () => {
                         )}
                       </div>
                     ))}
-                    {sessionState.currentSession.participants.length > 3 && (
+                    {currentSession.participants.length > 3 && (
                       <div className="w-4 h-4 rounded-full bg-primary/20 border border-background flex items-center justify-center">
-                        <span className="text-[8px] font-medium text-primary">+{sessionState.currentSession.participants.length - 3}</span>
+                        <span className="text-[8px] font-medium text-primary">+{currentSession.participants.length - 3}</span>
                       </div>
                     )}
                   </div>
