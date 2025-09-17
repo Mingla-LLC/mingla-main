@@ -379,6 +379,18 @@ const Home = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            {!isInSolo && currentSession && (
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={async () => {
+                  await cancelSession(currentSession.id);
+                }}
+                className="text-xs"
+              >
+                Leave Session
+              </Button>
+            )}
             <Button variant="ghost" size="icon" onClick={() => window.location.reload()}>
               <RefreshCw className="h-5 w-5" />
             </Button>

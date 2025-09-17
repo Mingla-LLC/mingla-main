@@ -50,12 +50,30 @@ export interface SessionState {
 }
 
 export const useSessionManagement = () => {
-  const [sessionState, setSessionState] = useState<SessionState>({
-    currentSession: null,
-    availableSessions: [],
-    pendingInvites: [],
-    isInSolo: true,
-    loading: false
+  const [sessionState, setSessionState] = useState<SessionState>(() => {
+    // Try to restore session state from localStorage
+    const saved = localStorage.getItem('collaboration_session_state');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return {
+          currentSession: parsed.currentSession || null,
+          availableSessions: [],
+          pendingInvites: [],
+          isInSolo: !parsed.currentSession,
+          loading: false
+        };
+      } catch {
+        // If parsing fails, use default state
+      }
+    }
+    return {
+      currentSession: null,
+      availableSessions: [],
+      pendingInvites: [],
+      isInSolo: true,
+      loading: false
+    };
   });
   
   const { user } = useAppStore();
@@ -269,12 +287,22 @@ export const useSessionManagement = () => {
       });
     }
     
-    setSessionState(prev => ({
-      ...prev,
+    const newState = {
+      currentSession: null,
+      availableSessions: sessionState.availableSessions,
+      pendingInvites: sessionState.pendingInvites,
+      isInSolo: true,
+      loading: sessionState.loading
+    };
+    
+    setSessionState(newState);
+    
+    // Save to localStorage
+    localStorage.setItem('collaboration_session_state', JSON.stringify({
       currentSession: null,
       isInSolo: true
     }));
-  }, [sessionState.currentSession]);
+  }, [sessionState]);
 
   // Switch to collaborative session (accept invitation)
   const switchToCollaborative = useCallback(async (sessionId: string) => {
@@ -375,8 +403,18 @@ export const useSessionManagement = () => {
 
       // For active sessions, just switch to them
       if (session.status === 'active') {
-        setSessionState(prev => ({
-          ...prev,
+        const newState = {
+          currentSession: session,
+          availableSessions: sessionState.availableSessions,
+          pendingInvites: sessionState.pendingInvites,
+          isInSolo: false,
+          loading: sessionState.loading
+        };
+        
+        setSessionState(newState);
+        
+        // Save to localStorage
+        localStorage.setItem('collaboration_session_state', JSON.stringify({
           currentSession: session,
           isInSolo: false
         }));
@@ -534,8 +572,18 @@ export const useSessionManagement = () => {
           .eq('invited_user_id', user.id);
 
         // Switch to solo mode
-        setSessionState(prev => ({
-          ...prev,
+        const newState = {
+          currentSession: null,
+          availableSessions: sessionState.availableSessions,
+          pendingInvites: sessionState.pendingInvites,
+          isInSolo: true,
+          loading: sessionState.loading
+        };
+        
+        setSessionState(newState);
+        
+        // Save to localStorage
+        localStorage.setItem('collaboration_session_state', JSON.stringify({
           currentSession: null,
           isInSolo: true
         }));
