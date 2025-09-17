@@ -68,94 +68,89 @@ export const useSessionManagement = () => {
     setSessionState(prev => ({ ...prev, loading: true }));
     
     try {
-      // Load pending invites for user first
-      const { data: invitesData, error: invitesError } = await supabase
+      // Load pending invites received by user
+      const { data: receivedInvitesData, error: receivedInvitesError } = await supabase
         .from('collaboration_invites')
         .select(`
           id, session_id, message, status, created_at, invited_by,
-          profiles!collaboration_invites_invited_by_fkey (id, username, first_name, last_name, avatar_url)
+          inviter_profile:profiles!collaboration_invites_invited_by_fkey (id, username, first_name, last_name, avatar_url)
         `)
         .eq('invited_user_id', user.id)
         .eq('status', 'pending');
 
-      console.log('Raw invites data:', invitesData);
-      console.log('Invites error:', invitesError);
+      if (receivedInvitesError) {
+        console.error('Received invites error:', receivedInvitesError);
+      }
 
-      // Load sessions where user is participant (including creator and invited)
+      // Load pending invites sent by user  
+      const { data: sentInvitesData, error: sentInvitesError } = await supabase
+        .from('collaboration_invites')
+        .select(`
+          id, session_id, message, status, created_at, invited_user_id
+        `)
+        .eq('invited_by', user.id)
+        .eq('status', 'pending');
+
+      if (sentInvitesError) {
+        console.error('Sent invites error:', sentInvitesError);
+      }
+
+      // Load sessions where user is participant (accepted)
       const { data: participantSessionIds, error: participantError } = await supabase
         .from('session_participants')
-        .select('session_id')
-        .eq('user_id', user.id);
+        .select('session_id, has_accepted')
+        .eq('user_id', user.id)
+        .eq('has_accepted', true);
 
-      if (participantError) throw participantError;
+      if (participantError) {
+        console.error('Participant error:', participantError);
+      }
 
-      const participantIds = (participantSessionIds || []).map(p => p.session_id);
-      let sessionsData: any[] = [];
-      
-      if (participantIds.length > 0) {
+      // Get all session IDs we need to load
+      const allSessionIds = [
+        ...new Set([
+          ...(receivedInvitesData || []).map(i => i.session_id),
+          ...(sentInvitesData || []).map(i => i.session_id),
+          ...(participantSessionIds || []).map(p => p.session_id)
+        ])
+      ];
+
+      let allSessionsData: any[] = [];
+      if (allSessionIds.length > 0) {
         const { data: sessions, error: sessionsError } = await supabase
           .from('collaboration_sessions')
           .select(`
             id, name, created_by, board_id, status, created_at, updated_at
           `)
-          .in('id', participantIds);
+          .in('id', allSessionIds);
 
-        if (sessionsError) throw sessionsError;
-        sessionsData = sessions || [];
+        if (sessionsError) {
+          console.error('Sessions error:', sessionsError);
+        } else {
+          allSessionsData = sessions || [];
+        }
       }
 
-      
-
-      // Load session participants separately
-      const sessionIds = (sessionsData || []).map(s => s.id);
-      let participantsData: any[] = [];
-      
-      if (sessionIds.length > 0) {
-        const { data: pData } = await supabase
+      // Load participants for all sessions
+      let allParticipants: any[] = [];
+      if (allSessionIds.length > 0) {
+        const { data: participantsData } = await supabase
           .from('session_participants')
           .select(`
             session_id, user_id, has_accepted, joined_at,
             profiles!session_participants_user_id_fkey (id, username, first_name, last_name, avatar_url)
           `)
-          .in('session_id', sessionIds);
+          .in('session_id', allSessionIds);
         
-        participantsData = pData || [];
+        allParticipants = participantsData || [];
       }
 
-      // Load session names and invited by profiles for invites
-      const inviteSessionIds = (invitesData || []).map(i => i.session_id);
-      let sessionNamesData: any[] = [];
-      let invitedByIds: string[] = [];
+      // Format received invites as sessions
+      const receivedInviteSessions: CollaborationSession[] = (receivedInvitesData || []).map(invite => {
+        const session = allSessionsData.find(s => s.id === invite.session_id);
+        if (!session) return null;
 
-      if (inviteSessionIds.length > 0) {
-        const { data: sData } = await supabase
-          .from('collaboration_sessions')
-          .select('id, name, created_by')
-          .in('id', inviteSessionIds);
-        
-        sessionNamesData = sData || [];
-        invitedByIds = sessionNamesData.map(s => s.created_by);
-      }
-
-      // Also load profiles for session creators
-      const allCreatorIds = [...new Set([
-        ...invitedByIds,
-        ...(sessionsData || []).map(s => s.created_by)
-      ])];
-
-      let invitedByProfiles: any[] = [];
-      if (allCreatorIds.length > 0) {
-        const { data: pData } = await supabase
-          .from('profiles')
-          .select('id, username, first_name, last_name, avatar_url')
-          .in('id', allCreatorIds);
-        
-        invitedByProfiles = pData || [];
-      }
-
-      // Format sessions
-      const formattedSessions: CollaborationSession[] = (sessionsData || []).map(session => {
-        const sessionParticipants = participantsData.filter(p => p.session_id === session.id);
+        const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
         const participants = sessionParticipants.map(p => ({
           id: p.profiles?.id || p.user_id,
           name: p.profiles?.first_name && p.profiles?.last_name 
@@ -166,47 +161,102 @@ export const useSessionManagement = () => {
           hasAccepted: p.has_accepted
         }));
 
-        const allAccepted = participants.length > 0 && participants.every(p => p.hasAccepted);
-        
-        // Get inviter profile info
-        const inviterProfile = invitedByProfiles.find(p => p.id === session.created_by);
-        
         return {
           id: session.id,
           name: session.name,
           participants,
           createdAt: session.created_at,
-          isActive: allAccepted && session.status === 'active',
+          isActive: false,
           boardId: session.board_id,
-          status: allAccepted ? 'active' : session.status as 'pending' | 'active' | 'dormant',
+          status: 'pending' as const,
           invitedBy: session.created_by,
-          inviterProfile: inviterProfile ? {
-            id: inviterProfile.id,
-            name: inviterProfile.first_name && inviterProfile.last_name
-              ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
-              : inviterProfile.username || 'Unknown User',
-            username: inviterProfile.username || 'unknown',
-            avatar: inviterProfile.avatar_url
+          inviterProfile: invite.inviter_profile ? {
+            id: invite.inviter_profile.id,
+            name: invite.inviter_profile.first_name && invite.inviter_profile.last_name
+              ? `${invite.inviter_profile.first_name} ${invite.inviter_profile.last_name}`
+              : invite.inviter_profile.username || 'Unknown User',
+            username: invite.inviter_profile.username || 'unknown',
+            avatar: invite.inviter_profile.avatar_url
           } : undefined
         };
-      });
+      }).filter(Boolean) as CollaborationSession[];
 
-      // Format invites
-      const formattedInvites: SessionInvite[] = (invitesData || []).map(invite => {
-        const sessionInfo = sessionNamesData.find(s => s.id === invite.session_id);
-        const invitedByProfile = invite.profiles || invitedByProfiles.find(p => p.id === invite.invited_by);
+      // Format sent invites as sessions  
+      const sentInviteSessions: CollaborationSession[] = (sentInvitesData || []).map(invite => {
+        const session = allSessionsData.find(s => s.id === invite.session_id);
+        if (!session) return null;
+
+        const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
+        const participants = sessionParticipants.map(p => ({
+          id: p.profiles?.id || p.user_id,
+          name: p.profiles?.first_name && p.profiles?.last_name 
+            ? `${p.profiles.first_name} ${p.profiles.last_name}` 
+            : p.profiles?.username || 'Unknown User',
+          username: p.profiles?.username || 'unknown',
+          avatar: p.profiles?.avatar_url || '',
+          hasAccepted: p.has_accepted
+        }));
+
+        return {
+          id: session.id,
+          name: session.name,
+          participants,
+          createdAt: session.created_at,
+          isActive: false,
+          boardId: session.board_id,
+          status: 'pending' as const,
+          invitedBy: session.created_by,
+          inviterProfile: undefined
+        };
+      }).filter(Boolean) as CollaborationSession[];
+
+      // Format accepted sessions
+      const acceptedSessionIds = (participantSessionIds || []).map(p => p.session_id);
+      const activeSessions: CollaborationSession[] = allSessionsData
+        .filter(session => acceptedSessionIds.includes(session.id))
+        .map(session => {
+          const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
+          const participants = sessionParticipants.map(p => ({
+            id: p.profiles?.id || p.user_id,
+            name: p.profiles?.first_name && p.profiles?.last_name 
+              ? `${p.profiles.first_name} ${p.profiles.last_name}` 
+              : p.profiles?.username || 'Unknown User',
+            username: p.profiles?.username || 'unknown',
+            avatar: p.profiles?.avatar_url || '',
+            hasAccepted: p.has_accepted
+          }));
+
+          const allAccepted = participants.length > 0 && participants.every(p => p.hasAccepted);
+          
+          return {
+            id: session.id,
+            name: session.name,
+            participants,
+            createdAt: session.created_at,
+            isActive: allAccepted,
+            boardId: session.board_id,
+            status: allAccepted ? 'active' as const : 'dormant' as const,
+            invitedBy: session.created_by,
+            inviterProfile: undefined
+          };
+        });
+
+      // Format invites for notification bar
+      const formattedInvites: SessionInvite[] = (receivedInvitesData || []).map(invite => {
+        const session = allSessionsData.find(s => s.id === invite.session_id);
+        const inviterProfile = invite.inviter_profile;
         
         return {
           id: invite.id,
           sessionId: invite.session_id,
-          sessionName: sessionInfo?.name || 'Collaboration Session',
+          sessionName: session?.name || 'Collaboration Session',
           invitedBy: {
-            id: invitedByProfile?.id || invite.invited_by || '',
-            name: invitedByProfile?.first_name && invitedByProfile?.last_name
-              ? `${invitedByProfile.first_name} ${invitedByProfile.last_name}`
-              : invitedByProfile?.username || 'Unknown User',
-            username: invitedByProfile?.username || 'unknown',
-            avatar: invitedByProfile?.avatar_url
+            id: inviterProfile?.id || invite.invited_by || '',
+            name: inviterProfile?.first_name && inviterProfile?.last_name
+              ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
+              : inviterProfile?.username || 'Unknown User',
+            username: inviterProfile?.username || 'unknown',
+            avatar: inviterProfile?.avatar_url
           },
           message: invite.message,
           status: invite.status as 'pending',
@@ -214,12 +264,17 @@ export const useSessionManagement = () => {
         };
       });
 
+      // Combine all sessions (remove duplicates by id)
+      const allSessions = [...receivedInviteSessions, ...sentInviteSessions, ...activeSessions];
+      const uniqueSessions = Array.from(new Map(allSessions.map(s => [s.id, s])).values());
+
       setSessionState(prev => ({
         ...prev,
-        availableSessions: formattedSessions,
+        availableSessions: uniqueSessions,
         pendingInvites: formattedInvites,
         loading: false
       }));
+
     } catch (error) {
       console.error('Error loading sessions:', error);
       setSessionState(prev => ({ ...prev, loading: false }));
@@ -247,24 +302,93 @@ export const useSessionManagement = () => {
     }));
   }, [sessionState.currentSession]);
 
-  // Switch to collaborative session
+  // Switch to collaborative session (accept invitation)
   const switchToCollaborative = useCallback(async (sessionId: string) => {
     const session = sessionState.availableSessions.find(s => s.id === sessionId);
-    if (!session) return;
+    if (!session || !user) return;
 
-    setSessionState(prev => ({
-      ...prev,
-      currentSession: session,
-      isInSolo: false
-    }));
+    try {
+      // If this is a pending invite, accept it
+      if (session.status === 'pending' && session.invitedBy !== user.id) {
+        // Update participant status to accepted
+        const { error: participantError } = await supabase
+          .from('session_participants')
+          .update({ 
+            has_accepted: true, 
+            joined_at: new Date().toISOString() 
+          })
+          .eq('session_id', sessionId)
+          .eq('user_id', user.id);
 
-    toast({
-      title: session.boardId ? "Rejoined collaboration" : "Collaboration started!",
-      description: session.boardId 
-        ? `Welcome back to "${session.name}"` 
-        : `A board will be created for "${session.name}" when all participants join.`,
-    });
-  }, [sessionState.availableSessions]);
+        if (participantError) {
+          console.error('Participant update error:', participantError);
+          toast({
+            title: "Error",
+            description: "Failed to accept invitation",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        // Update invite status
+        const { error: inviteError } = await supabase
+          .from('collaboration_invites')
+          .update({ status: 'accepted' })
+          .eq('session_id', sessionId)
+          .eq('invited_user_id', user.id);
+
+        if (inviteError) {
+          console.error('Invite update error:', inviteError);
+        }
+
+        // Check if all participants have accepted
+        const { data: allParticipants } = await supabase
+          .from('session_participants')
+          .select('has_accepted')
+          .eq('session_id', sessionId);
+
+        const allAccepted = allParticipants?.every(p => p.has_accepted) || false;
+
+        if (allAccepted) {
+          // Update session status to active
+          await supabase
+            .from('collaboration_sessions')
+            .update({ status: 'active' })
+            .eq('id', sessionId);
+        }
+
+        await loadUserSessions();
+        
+        toast({
+          title: "Invitation accepted!",
+          description: allAccepted 
+            ? `All participants have joined! You can now collaborate on "${session.name}".`
+            : "You've joined the collaboration session. Waiting for other participants.",
+        });
+      }
+
+      // Set as current session
+      setSessionState(prev => ({
+        ...prev,
+        currentSession: session,
+        isInSolo: false
+      }));
+
+      toast({
+        title: session.boardId ? "Rejoined collaboration" : "Collaboration started!",
+        description: session.boardId 
+          ? `Welcome back to "${session.name}"` 
+          : `A board will be created for "${session.name}" when all participants join.`,
+      });
+    } catch (error) {
+      console.error('Error switching to collaborative session:', error);
+      toast({
+        title: "Error",
+        description: "Failed to join collaboration session",
+        variant: "destructive"
+      });
+    }
+  }, [sessionState.availableSessions, user, loadUserSessions]);
 
   // Create new collaborative session
   const createCollaborativeSession = useCallback(async (participants: string[], sessionName: string) => {

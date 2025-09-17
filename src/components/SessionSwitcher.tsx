@@ -60,9 +60,15 @@ export const SessionSwitcher = ({
     }
   };
 
-  const activeSessionsCount = availableSessions.filter(s => s.status === 'active').length;
-  const dormantSessionsCount = availableSessions.filter(s => s.status === 'dormant').length;
-  const pendingSessionsCount = availableSessions.filter(s => s.status === 'pending').length;
+  // Filter sessions by type
+  const activeSessions = availableSessions.filter(s => s.status === 'active');
+  const dormantSessions = availableSessions.filter(s => s.status === 'dormant');
+  const receivedInvites = availableSessions.filter(s => 
+    s.status === 'pending' && s.invitedBy !== currentUserId && s.inviterProfile
+  );
+  const sentInvites = availableSessions.filter(s => 
+    s.status === 'pending' && s.invitedBy === currentUserId
+  );
 
   return (
     <Card className="mb-4" data-session-switcher>
@@ -186,7 +192,7 @@ export const SessionSwitcher = ({
             </button>
 
             {/* Active Collaborative Sessions */}
-            {availableSessions.filter(s => s.status === 'active').map((session) => (
+            {activeSessions.map((session) => (
               <button
                 key={session.id}
                 onClick={() => {
@@ -238,70 +244,68 @@ export const SessionSwitcher = ({
             ))}
 
             {/* Received Invitations */}
-            {availableSessions.filter(s => s.status === 'pending' && s.invitedBy !== currentUserId).length > 0 && (
+            {receivedInvites.length > 0 && (
               <>
                 <div className="text-xs text-muted-foreground font-medium mt-4 mb-2">
                   Invitations Received
                 </div>
-                {availableSessions.filter(s => s.status === 'pending' && s.invitedBy !== currentUserId).map((session) => {
-                  return (
-                    <div
-                      key={`invite-received-${session.id}`}
-                      className="w-full p-3 rounded-lg border border-primary/20 bg-primary/5 text-left"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <Users className="h-4 w-4 text-primary" />
-                            <div className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">{session.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              From {session.inviterProfile?.name || session.inviterProfile?.username || 'Friend'}
-                            </p>
-                          </div>
+                {receivedInvites.map((session) => (
+                  <div
+                    key={`invite-received-${session.id}`}
+                    className="w-full p-3 rounded-lg border border-primary/20 bg-primary/5 text-left"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <Users className="h-4 w-4 text-primary" />
+                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-6 text-xs px-2"
-                            onClick={() => onSwitchToCollaborative(session.id)}
-                          >
-                            Accept
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              await onCancelSession(session.id);
-                              if (onToggle) {
-                                onToggle(false);
-                              } else {
-                                setInternalExpanded(false);
-                              }
-                            }}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
+                        <div>
+                          <p className="font-medium text-sm">{session.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            From {session.inviterProfile?.name || session.inviterProfile?.username || 'Friend'}
+                          </p>
                         </div>
                       </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-xs px-2"
+                          onClick={() => onSwitchToCollaborative(session.id)}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await onCancelSession(session.id);
+                            if (onToggle) {
+                              onToggle(false);
+                            } else {
+                              setInternalExpanded(false);
+                            }
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </>
             )}
 
-            {/* Sent Invitations (for session creators) */}
-            {availableSessions.filter(s => s.status === 'pending' && s.invitedBy === currentUserId).length > 0 && (
+            {/* Sent Invitations */}
+            {sentInvites.length > 0 && (
               <>
                 <div className="text-xs text-muted-foreground font-medium mt-4 mb-2">
                   Invitations Sent
                 </div>
-                {availableSessions.filter(s => s.status === 'pending' && s.invitedBy === currentUserId).map((session) => {
+                {sentInvites.map((session) => {
                   const acceptedCount = session.participants.filter(p => p.hasAccepted).length;
                   
                   return (
@@ -366,53 +370,50 @@ export const SessionSwitcher = ({
             )}
 
             {/* Dormant Sessions */}
-            {dormantSessionsCount > 0 && (
+            {dormantSessions.length > 0 && (
               <>
                 <div className="text-xs text-muted-foreground font-medium mt-4 mb-2">
                   Dormant Sessions
                 </div>
-                {availableSessions.filter(s => s.status === 'dormant').map((session) => {
-                  return (
-                    <div
-                      key={session.id}
-                      className="w-full p-3 rounded-lg border opacity-75 text-left cursor-default"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">{session.name}</p>
-                            <div className="flex items-center gap-2">
-                              <div className="flex -space-x-1">
-                                {session.participants.slice(0, 2).map((participant) => (
-                                  <Avatar key={participant.id} className="w-4 h-4 border border-background">
-                                    <AvatarImage src={participant.avatar} />
-                                    <AvatarFallback className="text-xs">
-                                      {participant.name[0]}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                ))}
-                              </div>
-                              <span className="text-xs text-muted-foreground">
-                                {session.participants.length} participant{session.participants.length !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                          </div>
+                {dormantSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className="w-full p-3 rounded-lg border opacity-75 text-left cursor-default"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <Users className="h-4 w-4 text-muted-foreground" />
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Badge variant="outline" className="text-xs">
-                            Dormant
-                          </Badge>
+                        <div>
+                          <p className="font-medium text-sm">{session.name}</p>
+                          <div className="flex items-center gap-2">
+                            <div className="flex -space-x-1">
+                              {session.participants.slice(0, 2).map((participant) => (
+                                <Avatar key={participant.id} className="w-4 h-4 border border-background">
+                                  <AvatarImage src={participant.avatar} />
+                                  <AvatarFallback className="text-xs">
+                                    {participant.name[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                              ))}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {session.participants.length} participant{session.participants.length !== 1 ? 's' : ''}
+                            </span>
+                          </div>
                         </div>
                       </div>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs">
+                          Dormant
+                        </Badge>
+                      </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </>
             )}
-
 
             {/* Create New Session Option */}
             <button
