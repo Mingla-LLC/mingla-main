@@ -34,24 +34,22 @@ export const CreateSessionDialog = ({
   const [inviteInput, setInviteInput] = useState('');
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
   const qc = useQueryClient();
-
-  const { mutate, isPending } = useMutation({
+  
+  const { mutate, isPending, error } = useMutation({
     mutationFn: createSession,
     onSuccess: async (data) => {
       toast.success(`Invites sent for "${data.session.name}"`);
-      // refresh lists the Switcher depends on
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ['sessions', 'mine'] }),
-        qc.invalidateQueries({ queryKey: ['invitations', 'pending'] }),
-      ]);
       // Reset form and close
       setSessionName('');
       setSelectedParticipants([]);
       setInviteInput('');
       onClose();
+      // Refresh session data  
+      await qc.invalidateQueries({ queryKey: ['sessions'] });
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.message ?? err?.message ?? 'Could not create session';
+      console.error('Session creation failed:', err);
+      const msg = err?.message ?? 'Could not create session';
       toast.error(msg);
     },
   });
@@ -131,7 +129,7 @@ export const CreateSessionDialog = ({
     setSelectedParticipants(selectedParticipants.filter(p => p !== username));
   };
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!sessionName.trim()) {
@@ -144,12 +142,18 @@ export const CreateSessionDialog = ({
       return;
     }
     
-    const input = { 
-      name: sessionName.trim(), 
-      participantIds: selectedParticipants 
-    };
+    console.log('=== SUBMITTING SESSION CREATION ===');
+    console.log('Session name:', sessionName.trim());
+    console.log('Participants:', selectedParticipants);
     
-    mutate(input); // no local creating state; rely on isPending
+    try {
+      mutate({ 
+        name: sessionName.trim(), 
+        participantIds: selectedParticipants 
+      });
+    } catch (err) {
+      console.error('Error in mutate call:', err);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -293,7 +297,7 @@ export const CreateSessionDialog = ({
               </Button>
               <Button 
                 type="submit"
-                disabled={isPending}
+                disabled={isPending || !sessionName.trim() || selectedParticipants.length === 0}
                 className="flex-1"
               >
                 {isPending ? (
@@ -305,6 +309,11 @@ export const CreateSessionDialog = ({
                   </>
                 )}
               </Button>
+              {error && (
+                <p className="text-sm text-destructive mt-2">
+                  Error: {error.message}
+                </p>
+              )}
             </div>
           </form>
         </div>

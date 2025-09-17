@@ -11,12 +11,19 @@ export type CreateSessionResponse = {
 };
 
 export async function createSession(payload: CreateSessionPayload): Promise<CreateSessionResponse> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  console.log('=== CREATE SESSION CALLED ===');
+  console.log('Payload:', payload);
+  
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    console.error('Auth error:', userError);
     throw new Error('User not authenticated');
   }
+  
+  console.log('Authenticated user:', user.id);
 
   try {
+    console.log('Creating session...');
     // Create the session (no board yet - only created when all accept)
     const { data: sessionData, error: sessionError } = await supabase
       .from('collaboration_sessions')
@@ -33,7 +40,10 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
       console.error('Error creating session:', sessionError);
       throw new Error(sessionError.message || 'Failed to create session');
     }
+    
+    console.log('Session created:', sessionData);
 
+    console.log('Adding creator as participant...');
     // Add creator as participant (auto-accepted)
     const { error: creatorParticipantError } = await supabase
       .from('session_participants')
@@ -52,7 +62,9 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
     // Process participants and create invitations
     const invitations = [];
     
+    console.log('Processing participants:', payload.participantIds);
     for (const username of payload.participantIds) {
+      console.log(`Finding user: ${username}`);
       // Find user by username
       const { data: userData, error: userError } = await supabase
         .from('profiles')
@@ -67,9 +79,11 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
 
       // Skip if trying to invite themselves
       if (userData.id === user.id) {
+        console.log(`Skipping self-invite for: ${username}`);
         continue;
       }
 
+      console.log(`Adding participant: ${username} (${userData.id})`);
       // Add as participant (not accepted yet)
       const { error: participantError } = await supabase
         .from('session_participants')
@@ -85,6 +99,7 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
         throw new Error(`Failed to add participant: ${username}`);
       }
 
+      console.log(`Creating invite for: ${username}`);
       // Create invitation
       const { data: inviteData, error: inviteError } = await supabase
         .from('collaboration_invites')
@@ -110,8 +125,7 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
       });
     }
 
-    // MUST return parsed data so callers resolve
-    return {
+    const result = {
       session: {
         id: sessionData.id,
         name: sessionData.name,
@@ -119,8 +133,15 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
       },
       invitations
     };
+
+    console.log('=== SESSION CREATION COMPLETE ===');
+    console.log('Result:', result);
+
+    // MUST return parsed data so callers resolve
+    return result;
   } catch (error) {
-    console.error('createSession failed:', error);
+    console.error('=== SESSION CREATION FAILED ===');
+    console.error('Error:', error);
     throw error;
   }
 }
