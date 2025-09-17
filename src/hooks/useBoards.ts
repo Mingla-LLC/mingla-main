@@ -37,6 +37,171 @@ export const useBoards = () => {
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Demo boards for showcasing features
+  const demoBoards: Board[] = [
+    {
+      id: 'demo-1',
+      name: 'NYC Weekend Adventures',
+      description: 'Exploring the best spots in Manhattan with friends',
+      created_by: 'demo-user-1',
+      is_public: false,
+      created_at: '2025-09-10T14:30:00Z',
+      updated_at: '2025-09-16T16:45:00Z',
+      collaborators: [
+        {
+          id: 'demo-collab-1',
+          board_id: 'demo-1',
+          user_id: 'demo-user-1',
+          role: 'owner',
+          created_at: '2025-09-10T14:30:00Z',
+          profile: {
+            username: 'sarah_explorer',
+            first_name: 'Sarah',
+            last_name: 'Johnson',
+            avatar_url: 'https://images.unsplash.com/photo-1494790108755-2616b612b547?w=100'
+          }
+        },
+        {
+          id: 'demo-collab-2',
+          board_id: 'demo-1',
+          user_id: 'demo-user-2',
+          role: 'collaborator',
+          created_at: '2025-09-10T14:35:00Z',
+          profile: {
+            username: 'mike_adventures',
+            first_name: 'Mike',
+            last_name: 'Chen',
+            avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100'
+          }
+        }
+      ]
+    },
+    {
+      id: 'demo-2',
+      name: 'Brooklyn Food Tour',
+      description: 'Discovering amazing eats across Brooklyn boroughs',
+      created_by: 'demo-user-2',
+      is_public: false,
+      created_at: '2025-09-12T10:15:00Z',
+      updated_at: '2025-09-17T09:20:00Z',
+      collaborators: [
+        {
+          id: 'demo-collab-3',
+          board_id: 'demo-2',
+          user_id: 'demo-user-2',
+          role: 'owner',
+          created_at: '2025-09-12T10:15:00Z',
+          profile: {
+            username: 'mike_adventures',
+            first_name: 'Mike',
+            last_name: 'Chen',
+            avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100'
+          }
+        },
+        {
+          id: 'demo-collab-4',
+          board_id: 'demo-2',
+          user_id: 'demo-user-3',
+          role: 'collaborator',
+          created_at: '2025-09-12T10:20:00Z',
+          profile: {
+            username: 'emma_foodie',
+            first_name: 'Emma',
+            last_name: 'Davis',
+            avatar_url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100'
+          }
+        },
+        {
+          id: 'demo-collab-5',
+          board_id: 'demo-2',
+          user_id: 'demo-user-4',
+          role: 'collaborator',
+          created_at: '2025-09-12T10:25:00Z',
+          profile: {
+            username: 'lisa_nature',
+            first_name: 'Lisa',
+            last_name: 'Wilson',
+            avatar_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100'
+          }
+        }
+      ]
+    },
+    {
+      id: 'demo-3',
+      name: 'Art & Culture Crawl',
+      description: 'Museums, galleries and creative spaces in the city',
+      created_by: 'demo-user-3',
+      is_public: true,
+      created_at: '2025-09-08T11:00:00Z',
+      updated_at: '2025-09-15T13:30:00Z',
+      collaborators: [
+        {
+          id: 'demo-collab-6',
+          board_id: 'demo-3',
+          user_id: 'demo-user-3',
+          role: 'owner',
+          created_at: '2025-09-08T11:00:00Z',
+          profile: {
+            username: 'emma_foodie',
+            first_name: 'Emma',
+            last_name: 'Davis',
+            avatar_url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100'
+          }
+        },
+        {
+          id: 'demo-collab-7',
+          board_id: 'demo-3',
+          user_id: 'demo-user-1',
+          role: 'collaborator',
+          created_at: '2025-09-08T11:05:00Z',
+          profile: {
+            username: 'sarah_explorer',
+            first_name: 'Sarah',
+            last_name: 'Johnson',
+            avatar_url: 'https://images.unsplash.com/photo-1494790108755-2616b612b547?w=100'
+          }
+        }
+      ]
+    },
+    {
+      id: 'demo-4',
+      name: 'Central Park & Chill',
+      description: 'Relaxed outdoor activities and cafe hopping',
+      created_by: 'demo-user-4',
+      is_public: false,
+      created_at: '2025-09-14T16:20:00Z',
+      updated_at: '2025-09-17T08:15:00Z',
+      collaborators: [
+        {
+          id: 'demo-collab-8',
+          board_id: 'demo-4',
+          user_id: 'demo-user-4',
+          role: 'owner',
+          created_at: '2025-09-14T16:20:00Z',
+          profile: {
+            username: 'alex_culture',
+            first_name: 'Alex',
+            last_name: 'Rodriguez',
+            avatar_url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100'
+          }
+        },
+        {
+          id: 'demo-collab-9',
+          board_id: 'demo-4',
+          user_id: 'demo-user-5',
+          role: 'collaborator',
+          created_at: '2025-09-14T16:25:00Z',
+          profile: {
+            username: 'lisa_nature',
+            first_name: 'Lisa',
+            last_name: 'Wilson',
+            avatar_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100'
+          }
+        }
+      ]
+    }
+  ];
+
   // Load user's boards
   const loadBoards = useCallback(async () => {
     setLoading(true);
@@ -116,11 +281,16 @@ export const useBoards = () => {
         });
       }
 
-      setBoards(formattedBoards);
+      // If no real boards found, show demo boards for showcase
+      if (formattedBoards.length === 0) {
+        setBoards(demoBoards);
+      } else {
+        setBoards(formattedBoards);
+      }
     } catch (error) {
       console.error('Error loading boards:', error);
-      // Don't show error toast for empty state - just set empty boards
-      setBoards([]);
+      // Show demo boards when there's an error or no connection
+      setBoards(demoBoards);
     } finally {
       setLoading(false);
     }

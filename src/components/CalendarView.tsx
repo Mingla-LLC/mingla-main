@@ -15,11 +15,74 @@ export const CalendarView = ({}: CalendarViewProps) => {
   const { saves } = useAppStore();
   const { experiences } = useExperiences();
 
-  // Transform saves with scheduled_at into calendar experiences
+  // Demo experiences for calendar showcase
+  const demoExperiences = [
+    {
+      id: 'demo-exp-1',
+      title: 'Central Park Morning Walk',
+      image: 'https://images.unsplash.com/photo-1566404791232-af9fe0ae8f8b?w=400',
+      date: new Date(2025, 8, 23, 14, 0), // September 23, 2025 2:00 PM
+      time: '2:00 PM - 3:30 PM',
+      location: 'Central Park, NYC',
+      collaborators: ['Sarah J.', 'Mike C.']
+    },
+    {
+      id: 'demo-exp-2',
+      title: 'Artisan Coffee Experience',
+      image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400',
+      date: new Date(2025, 8, 30, 16, 30), // September 30, 2025 4:30 PM
+      time: '4:30 PM - 6:00 PM',
+      location: 'Blue Bottle Coffee',
+      collaborators: ['Emma D.']
+    },
+    {
+      id: 'demo-exp-3',
+      title: 'Brooklyn Food Tour',
+      image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400',
+      date: new Date(2025, 9, 7, 18, 0), // October 7, 2025 6:00 PM
+      time: '6:00 PM - 8:30 PM',
+      location: 'Brooklyn Heights',
+      collaborators: ['Mike C.', 'Lisa W.', 'Alex R.']
+    },
+    {
+      id: 'demo-exp-4',
+      title: 'Modern Art Gallery',
+      image: 'https://images.unsplash.com/photo-1544967882-6abcd0847e50?w=400',
+      date: new Date(2025, 9, 14, 15, 30), // October 14, 2025 3:30 PM
+      time: '3:30 PM - 5:00 PM',
+      location: 'Whitney Museum',
+      collaborators: ['Sarah J.']
+    },
+    {
+      id: 'demo-exp-5',
+      title: 'Rooftop Bar Views',
+      image: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400',
+      date: new Date(2025, 9, 21, 17, 0), // October 21, 2025 5:00 PM
+      time: '5:00 PM - 7:30 PM',
+      location: 'Manhattan Skyline',
+      collaborators: ['Emma D.', 'Alex R.']
+    },
+    {
+      id: 'demo-exp-6',
+      title: 'Weekend Market Stroll',
+      image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400',
+      date: new Date(2025, 9, 28, 13, 0), // October 28, 2025 1:00 PM
+      time: '1:00 PM - 3:00 PM',
+      location: 'Union Square Market',
+      collaborators: ['Lisa W.']
+    }
+  ];
+
+  // Transform saves with scheduled_at into calendar experiences, fallback to demo
   const acceptedExperiences = useMemo(() => {
     const scheduledSaves = saves.filter(save => 
       save.status === 'scheduled' && save.scheduled_at
     );
+    
+    if (scheduledSaves.length === 0) {
+      // Return demo experiences when no real saves exist
+      return demoExperiences;
+    }
     
     return scheduledSaves.map(save => {
       const experience = experiences.find(exp => exp.id === save.experience_id);
