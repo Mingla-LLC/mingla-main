@@ -145,6 +145,13 @@ export const useSessionManagement = () => {
         allParticipants = participantsData || [];
       }
 
+      console.log('=== SESSION LOADING DEBUG ===');
+      console.log('User ID:', user.id);
+      console.log('Received invites data:', receivedInvitesData);
+      console.log('Sent invites data:', sentInvitesData);
+      console.log('All session IDs:', allSessionIds);
+      console.log('All sessions data:', allSessionsData);
+
       // Format received invites as sessions
       const receivedInviteSessions: CollaborationSession[] = (receivedInvitesData || []).map(invite => {
         const session = allSessionsData.find(s => s.id === invite.session_id);
@@ -152,6 +159,9 @@ export const useSessionManagement = () => {
           console.warn('Session not found for invite:', invite.session_id);
           return null;
         }
+
+        console.log('Processing received invite:', invite);
+        console.log('Found session:', session);
 
         const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
         const participants = sessionParticipants.map(p => ({
@@ -164,7 +174,7 @@ export const useSessionManagement = () => {
           hasAccepted: p.has_accepted
         }));
 
-        return {
+        const sessionData = {
           id: session.id,
           name: session.name,
           participants,
@@ -182,6 +192,9 @@ export const useSessionManagement = () => {
             avatar: invite.inviter_profile.avatar_url
           } : undefined
         };
+
+        console.log('Created received session:', sessionData);
+        return sessionData;
       }).filter(Boolean) as CollaborationSession[];
 
       console.log('Received invite sessions:', receivedInviteSessions);
@@ -299,6 +312,9 @@ export const useSessionManagement = () => {
       }
       
       const uniqueSessions = Array.from(sessionMap.values());
+
+      console.log('Final unique sessions:', uniqueSessions);
+      console.log('=== END SESSION LOADING DEBUG ===');
 
       setSessionState(prev => ({
         ...prev,
