@@ -64,11 +64,16 @@ export const SessionSwitcher = ({
   const activeSessions = availableSessions.filter(s => s.status === 'active');
   const dormantSessions = availableSessions.filter(s => s.status === 'dormant');
   const receivedInvites = availableSessions.filter(s => 
-    s.status === 'pending' && s.invitedBy !== currentUserId && s.inviterProfile
+    s.status === 'pending' && s.invitedBy !== currentUserId
   );
   const sentInvites = availableSessions.filter(s => 
     s.status === 'pending' && s.invitedBy === currentUserId
   );
+
+  console.log('Available sessions:', availableSessions);
+  console.log('Current user ID:', currentUserId);
+  console.log('Received invites:', receivedInvites);
+  console.log('Sent invites:', sentInvites);
 
   return (
     <Card className="mb-4" data-session-switcher>
@@ -303,7 +308,7 @@ export const SessionSwitcher = ({
             {sentInvites.length > 0 && (
               <>
                 <div className="text-xs text-muted-foreground font-medium mt-4 mb-2">
-                  Invitations Sent
+                  Invitations Sent ({sentInvites.length})
                 </div>
                 {sentInvites.map((session) => {
                   const acceptedCount = session.participants.filter(p => p.hasAccepted).length;

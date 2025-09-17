@@ -148,7 +148,10 @@ export const useSessionManagement = () => {
       // Format received invites as sessions
       const receivedInviteSessions: CollaborationSession[] = (receivedInvitesData || []).map(invite => {
         const session = allSessionsData.find(s => s.id === invite.session_id);
-        if (!session) return null;
+        if (!session) {
+          console.warn('Session not found for invite:', invite.session_id);
+          return null;
+        }
 
         const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
         const participants = sessionParticipants.map(p => ({
@@ -180,6 +183,8 @@ export const useSessionManagement = () => {
           } : undefined
         };
       }).filter(Boolean) as CollaborationSession[];
+
+      console.log('Received invite sessions:', receivedInviteSessions);
 
       // Format sent invites as sessions  
       const sentInviteSessions: CollaborationSession[] = (sentInvitesData || []).map(invite => {

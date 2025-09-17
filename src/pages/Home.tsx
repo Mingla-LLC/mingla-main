@@ -87,6 +87,7 @@ const Home = () => {
     createCollaborativeSession,
     acceptSessionInvitation,
     declineSessionInvitation,
+    cancelSessionInvitation,
     cancelEntireSession,
     getFriendsAndCollaborators,
     getSwipeContext,
@@ -406,7 +407,7 @@ const Home = () => {
           onSwitchToSolo={switchToSolo}
           onSwitchToCollaborative={switchToCollaborative}
           onCreateSession={handleCreateSession}
-          onCancelSession={async (sessionId: string) => await cancelEntireSession(sessionId)}
+          onCancelSession={async (sessionId: string) => await cancelSessionInvitation(sessionId)}
           canSwitchToSolo={canSwitchToSolo()}
           currentUserId={user?.id}
           isOpen={isSessionSwitcherOpen}
