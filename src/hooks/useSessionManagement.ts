@@ -168,7 +168,7 @@ export const useSessionManagement = () => {
         return profile.username || 'Unknown User';
       };
 
-      // Format sessions
+      // Format sessions with correct status logic
       const formattedSessions: CollaborationSession[] = allSessions.map(session => {
         const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
         const participants = sessionParticipants.map(p => {
@@ -185,27 +185,28 @@ export const useSessionManagement = () => {
         const userParticipation = userParticipations?.find(up => up.session_id === session.id);
         const allAccepted = participants.length > 0 && participants.every(p => p.hasAccepted);
         
+        // Determine status based on user's acceptance and overall session state
         let status: 'pending' | 'active' | 'dormant' = 'dormant';
-        if (!userParticipation?.has_accepted) {
+        
+        if (userParticipation && !userParticipation.has_accepted) {
+          // User hasn't accepted yet - this is a pending invitation for them
           status = 'pending';
-        } else if (allAccepted) {
+        } else if (allAccepted && participants.length > 0) {
+          // All participants have accepted - session is active
           status = 'active';
+        } else if (userParticipation?.has_accepted) {
+          // User accepted but not everyone has - session is dormant
+          status = 'dormant';
         }
 
-        // Check if user has a received invite for this session
-        const receivedInvite = (receivedInvites || []).find(i => i.session_id === session.id);
-        let inviterProfile: any = undefined;
-        if (receivedInvite) {
-          const inviter = inviterProfiles.find(p => p.id === receivedInvite.invited_by);
-          if (inviter) {
-            inviterProfile = {
-              id: inviter.id,
-              name: formatProfileName(inviter),
-              username: inviter.username || 'unknown',
-              avatar: inviter.avatar_url
-            };
-          }
-        }
+        // Get inviter profile (creator of the session)
+        const inviterProfile = getProfile(session.created_by);
+        const formattedInviterProfile = inviterProfile ? {
+          id: inviterProfile.id,
+          name: formatProfileName(inviterProfile),
+          username: inviterProfile.username || 'unknown',
+          avatar: inviterProfile.avatar_url
+        } : undefined;
 
         return {
           id: session.id,
@@ -216,7 +217,7 @@ export const useSessionManagement = () => {
           boardId: session.board_id,
           status,
           invitedBy: session.created_by,
-          inviterProfile
+          inviterProfile: formattedInviterProfile
         };
       });
 
