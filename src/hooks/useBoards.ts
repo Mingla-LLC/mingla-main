@@ -370,6 +370,27 @@ export const useBoards = () => {
   // Update board
   const updateBoard = useCallback(async (boardId: string, updates: Partial<Pick<Board, 'name' | 'description' | 'is_public'>>) => {
     try {
+      // Check if it's a demo board
+      const isDemoBoard = boardId.startsWith('demo-');
+      
+      if (isDemoBoard) {
+        // Update demo board in local state
+        setBoards(prevBoards => 
+          prevBoards.map(board => 
+            board.id === boardId 
+              ? { ...board, ...updates, updated_at: new Date().toISOString() }
+              : board
+          )
+        );
+        
+        toast({
+          title: "Board updated!",
+          description: "The board has been updated successfully.",
+        });
+        return;
+      }
+
+      // Handle real board update
       const { error } = await supabase
         .from('boards')
         .update(updates)

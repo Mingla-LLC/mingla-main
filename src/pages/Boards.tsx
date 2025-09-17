@@ -3,6 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
 import { 
   Users, 
   Settings, 
@@ -24,11 +25,14 @@ import { toast } from '@/hooks/use-toast';
 
 const Boards = () => {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
+  const [editingBoard, setEditingBoard] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
   
   const { 
     boards, 
     loading, 
-    deleteBoard
+    deleteBoard,
+    updateBoard
   } = useBoards();
   
   const selectedBoardData = boards.find(board => board.id === selectedBoard);
@@ -48,6 +52,24 @@ const Boards = () => {
       .join('')
       .toUpperCase()
       .slice(0, 2);
+  };
+
+  const handleTitleEdit = (boardId: string, currentTitle: string) => {
+    setEditingBoard(boardId);
+    setEditTitle(currentTitle);
+  };
+
+  const handleTitleSave = async (boardId: string) => {
+    if (editTitle.trim() && editTitle !== boards.find(b => b.id === boardId)?.name) {
+      await updateBoard(boardId, { name: editTitle.trim() });
+    }
+    setEditingBoard(null);
+    setEditTitle('');
+  };
+
+  const handleTitleCancel = () => {
+    setEditingBoard(null);
+    setEditTitle('');
   };
 
   if (selectedBoard && selectedBoardData) {
@@ -90,7 +112,33 @@ const Boards = () => {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-lg">{board.name}</h3>
+                        {editingBoard === board.id ? (
+                          <Input
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            onBlur={() => handleTitleSave(board.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleTitleSave(board.id);
+                              } else if (e.key === 'Escape') {
+                                handleTitleCancel();
+                              }
+                            }}
+                            className="font-semibold text-lg border-none p-0 h-auto focus-visible:ring-0"
+                            autoFocus
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <h3 
+                            className="font-semibold text-lg cursor-pointer hover:text-primary transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTitleEdit(board.id, board.name);
+                            }}
+                          >
+                            {board.name}
+                          </h3>
+                        )}
                         {board.session_id && (
                           <Badge variant="secondary" className="text-xs">
                             <Users className="h-3 w-3 mr-1" />
