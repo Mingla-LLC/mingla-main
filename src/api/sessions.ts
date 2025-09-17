@@ -14,15 +14,23 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
   console.log('=== CREATE SESSION CALLED ===');
   console.log('Payload:', payload);
   
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) {
-    console.error('Auth error:', userError);
-    throw new Error('User not authenticated');
-  }
-  
-  console.log('Authenticated user:', user.id);
-
   try {
+    console.log('Getting user session...');
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    console.log('Auth response:', { user: user?.id, error: userError });
+    
+    if (userError) {
+      console.error('Auth error:', userError);
+      throw new Error(`Authentication error: ${userError.message}`);
+    }
+    
+    if (!user) {
+      console.error('No user found');
+      throw new Error('User not authenticated');
+    }
+    
+    console.log('Authenticated user:', user.id, user.email);
+
     console.log('Creating session...');
     // Create the session (no board yet - only created when all accept)
     const { data: sessionData, error: sessionError } = await supabase
@@ -36,15 +44,22 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
       .select()
       .single();
 
+    console.log('Session creation response:', { data: sessionData, error: sessionError });
+
     if (sessionError) {
       console.error('Error creating session:', sessionError);
-      throw new Error(sessionError.message || 'Failed to create session');
+      throw new Error(`Failed to create session: ${sessionError.message}`);
+    }
+    
+    if (!sessionData) {
+      console.error('No session data returned');
+      throw new Error('Failed to create session: No data returned');
     }
     
     console.log('Session created:', sessionData);
 
     console.log('Adding creator as participant...');
-    // Add creator as participant (auto-accepted)
+    // Add creator as participant (auto-accepted)  
     const { error: creatorParticipantError } = await supabase
       .from('session_participants')
       .insert({
@@ -54,9 +69,11 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
         joined_at: new Date().toISOString()
       });
 
+    console.log('Creator participant response:', { error: creatorParticipantError });
+
     if (creatorParticipantError) {
       console.error('Error adding creator as participant:', creatorParticipantError);
-      throw new Error('Failed to add creator to session');
+      throw new Error(`Failed to add creator to session: ${creatorParticipantError.message}`);
     }
 
     // Process participants and create invitations
@@ -66,14 +83,21 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
     for (const username of payload.participantIds) {
       console.log(`Finding user: ${username}`);
       // Find user by username
-      const { data: userData, error: userError } = await supabase
+      const { data: userData, error: userFindError } = await supabase
         .from('profiles')
         .select('id')
         .eq('username', username)
         .single();
 
-      if (userError || !userData) {
-        console.error(`User not found: ${username}`, userError);
+      console.log(`User lookup for ${username}:`, { data: userData, error: userFindError });
+
+      if (userFindError) {
+        console.error(`User lookup error for ${username}:`, userFindError);
+        throw new Error(`User not found: ${username}`);
+      }
+      
+      if (!userData) {
+        console.error(`No user data for: ${username}`);
         throw new Error(`User not found: ${username}`);
       }
 
@@ -94,9 +118,11 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
           joined_at: null
         });
 
+      console.log(`Participant creation for ${username}:`, { error: participantError });
+
       if (participantError) {
         console.error('Error adding participant:', participantError);
-        throw new Error(`Failed to add participant: ${username}`);
+        throw new Error(`Failed to add participant ${username}: ${participantError.message}`);
       }
 
       console.log(`Creating invite for: ${username}`);
@@ -113,9 +139,11 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
         .select()
         .single();
 
+      console.log(`Invite creation for ${username}:`, { data: inviteData, error: inviteError });
+
       if (inviteError) {
         console.error('Error creating invite:', inviteError);
-        throw new Error(`Failed to create invitation for: ${username}`);
+        throw new Error(`Failed to create invitation for ${username}: ${inviteError.message}`);
       }
 
       invitations.push({
@@ -137,11 +165,12 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
     console.log('=== SESSION CREATION COMPLETE ===');
     console.log('Result:', result);
 
-    // MUST return parsed data so callers resolve
     return result;
   } catch (error) {
     console.error('=== SESSION CREATION FAILED ===');
-    console.error('Error:', error);
+    console.error('Error details:', error);
+    console.error('Error message:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     throw error;
   }
 }
