@@ -81,33 +81,27 @@ const Home = () => {
   
   // Session management
   const {
-    sessionState,
-    switchToSolo,
-    switchToCollaborative,
-    createCollaborativeSession,
-    declineSessionInvitation,
-    cancelSessionInvitation,
-    cancelEntireSession,
-    getFriendsAndCollaborators,
-    getSwipeContext,
-    canSwitchToSolo,
-    loadUserSessions,
-    isInSolo,
     currentSession,
     availableSessions,
     pendingInvites,
-    loading: sessionLoading
+    isInSolo,
+    loading: sessionLoading,
+    switchToSolo,
+    switchToCollaborative,
+    createCollaborativeSession,
+    cancelSession,
+    acceptInvite,
+    declineInvite
   } = useSessionManagement();
 
-  // Load friends data and sessions on mount
+  // Load user on mount
   useEffect(() => {
-    getFriendsAndCollaborators();
-    // Force reload sessions to ensure we get the latest invitations
-    if (user) {
-      console.log('Loading sessions for user:', user.id);
-      loadUserSessions();
-    }
-  }, [getFriendsAndCollaborators, loadUserSessions, user]);
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getUser();
+  }, []);
 
   // Wrapper function to handle session creation
   const handleCreateSession = async (participants: string[], sessionName: string): Promise<void> => {
@@ -406,8 +400,8 @@ const Home = () => {
           onSwitchToSolo={switchToSolo}
           onSwitchToCollaborative={switchToCollaborative}
           onCreateSession={handleCreateSession}
-          onCancelSession={async (sessionId: string) => await cancelSessionInvitation(sessionId)}
-          canSwitchToSolo={canSwitchToSolo()}
+          onCancelSession={cancelSession}
+          canSwitchToSolo={true}
           currentUserId={user?.id}
           isOpen={isSessionSwitcherOpen}
           onToggle={setIsSessionSwitcherOpen}
