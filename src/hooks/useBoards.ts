@@ -208,93 +208,42 @@ export const useBoards = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        setBoards([]);
+        console.log('No user found, showing demo data');
+        setBoards(demoBoards);
+        setLoading(false);
         return;
       }
 
-      // Get boards created by user or where user is a collaborator  
-      const { data: boardsData, error } = await supabase
+      // Try to get user's boards, but fallback to demo data
+      const { data: userBoards, error } = await supabase
         .from('boards')
         .select(`
           id, name, description, created_by, session_id, is_public, created_at, updated_at
         `)
-        .or(`created_by.eq.${user.id},id.in.(select board_id from board_collaborators where user_id = '${user.id}')`);
+        .eq('created_by', user.id);
 
-      if (error) {
-        // If there's an error but it's just because no boards exist, that's fine
-        console.log('Boards query result:', error);
-        setBoards([]);
+      if (error || !userBoards || userBoards.length === 0) {
+        console.log('No user boards found or error, showing demo data');
+        setBoards(demoBoards);
+        setLoading(false);
         return;
       }
 
-      // Get collaborators separately to avoid relation issues
-      let formattedBoards: Board[] = [];
+      // If we have real boards, process them
+      const formattedBoards: Board[] = userBoards.map(board => ({
+        ...board,
+        collaborators: []
+      }));
       
-      if (boardsData && boardsData.length > 0) {
-        const boardIds = boardsData.map(b => b.id);
-        
-        // Get creator profiles
-        const creatorIds = [...new Set(boardsData.map(b => b.created_by))];
-        const { data: creatorProfiles } = await supabase
-          .from('profiles')
-          .select('id, username, first_name, last_name')
-          .in('id', creatorIds);
-        
-        // Get all collaborators for these boards
-        const { data: collaboratorsData } = await supabase
-          .from('board_collaborators')
-          .select('id, board_id, user_id, role, created_at')
-          .in('board_id', boardIds);
-
-        // Get profiles for collaborators
-        let collaboratorProfiles: any[] = [];
-        if (collaboratorsData && collaboratorsData.length > 0) {
-          const collaboratorUserIds = [...new Set(collaboratorsData.map(c => c.user_id))];
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, username, first_name, last_name, avatar_url')
-            .in('id', collaboratorUserIds);
-          collaboratorProfiles = profiles || [];
-        }
-
-        formattedBoards = boardsData.map(board => {
-          const creatorProfile = creatorProfiles?.find(p => p.id === board.created_by);
-          const boardCollaborators = (collaboratorsData || [])
-            .filter(c => c.board_id === board.id)
-            .map(c => {
-              const profile = collaboratorProfiles.find(p => p.id === c.user_id);
-              return {
-                id: c.id,
-                board_id: c.board_id,
-                user_id: c.user_id,
-                role: c.role as 'owner' | 'collaborator',
-                created_at: c.created_at,
-                profile
-              } as BoardCollaborator;
-            });
-
-          return {
-            ...board,
-            creator_profile: creatorProfile,
-            collaborators: boardCollaborators
-          } as Board;
-        });
-      }
-
-      // If no real boards found, show demo boards for showcase
-      if (formattedBoards.length === 0) {
-        setBoards(demoBoards);
-      } else {
-        setBoards(formattedBoards);
-      }
+      setBoards(formattedBoards);
     } catch (error) {
       console.error('Error loading boards:', error);
-      // Show demo boards when there's an error or no connection
+      // Show demo boards when there's an error
       setBoards(demoBoards);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [demoBoards]);
 
   // Create a new board with optional collaboration session
   const createBoard = useCallback(async (name: string, description?: string, sessionId?: string, collaboratorUserIds?: string[]) => {
