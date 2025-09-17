@@ -443,7 +443,9 @@ export const useSessionManagement = () => {
 
   // Create new collaborative session
   const createCollaborativeSession = useCallback(async (participants: string[], sessionName: string) => {
-    if (!user) return null;
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
 
     try {
       // Create the session (no board yet - only created when all accept)

@@ -24,7 +24,6 @@ interface SessionSwitcherProps {
   availableSessions: CollaborationSession[];
   onSwitchToSolo: () => void;
   onSwitchToCollaborative: (sessionId: string) => void;
-  onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
   onCancelSession: (sessionId: string) => Promise<void>;
   canSwitchToSolo: boolean;
   currentUserId?: string;
@@ -38,7 +37,6 @@ export const SessionSwitcher = ({
   availableSessions,
   onSwitchToSolo,
   onSwitchToCollaborative,
-  onCreateSession,
   onCancelSession,
   canSwitchToSolo,
   currentUserId,
@@ -481,15 +479,6 @@ export const SessionSwitcher = ({
         <CreateSessionDialog
           isOpen={showCreateDialog}
           onClose={() => setShowCreateDialog(false)}
-          onCreateSession={async (participants: string[], sessionName: string) => {
-            try {
-              await onCreateSession(participants, sessionName);
-              setShowCreateDialog(false);
-            } catch (error) {
-              // Error is handled by the CreateSessionDialog
-              throw error;
-            }
-          }}
         />
       </CardContent>
     </Card>

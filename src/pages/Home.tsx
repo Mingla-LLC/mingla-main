@@ -411,7 +411,6 @@ const Home = () => {
           availableSessions={availableSessions}
           onSwitchToSolo={switchToSolo}
           onSwitchToCollaborative={switchToCollaborative}
-          onCreateSession={handleCreateSession}
           onCancelSession={cancelSession}
           canSwitchToSolo={true}
           currentUserId={user?.id}

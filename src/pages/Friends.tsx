@@ -331,7 +331,6 @@ export const Friends = () => {
           setShowCreateDialog(false);
           setSelectedFriendForCollab(null);
         }}
-        onCreateSession={handleCreateCollaboration}
         prefilledParticipants={selectedFriendForCollab ? [selectedFriendForCollab] : []}
         prefilledSessionName={selectedFriendForCollab ? `Collaboration with ${selectedFriendForCollab}` : ''}
       />

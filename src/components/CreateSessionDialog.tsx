@@ -6,13 +6,20 @@ import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { X, Users, Send, Plus } from 'lucide-react';
-import { toast } from '@/hooks/use-toast';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { createSession } from '@/api/sessions';
+import { toast } from 'sonner';
+import { z } from 'zod';
 import { useUsers } from '@/hooks/useUsers';
+
+const CreateSchema = z.object({
+  name: z.string().trim().min(1, 'Name required').max(80, 'Max 80 chars'),
+  participantIds: z.array(z.string()).min(1, 'Add at least one participant'),
+});
 
 interface CreateSessionDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
   prefilledParticipants?: string[];
   prefilledSessionName?: string;
 }
@@ -20,14 +27,34 @@ interface CreateSessionDialogProps {
 export const CreateSessionDialog = ({
   isOpen,
   onClose,
-  onCreateSession,
   prefilledParticipants = [],
   prefilledSessionName = ''
 }: CreateSessionDialogProps) => {
   const [sessionName, setSessionName] = useState('');
   const [inviteInput, setInviteInput] = useState('');
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
+  const qc = useQueryClient();
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: createSession,
+    onSuccess: async (data) => {
+      toast.success(`Invites sent for "${data.session.name}"`);
+      // refresh lists the Switcher depends on
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['sessions', 'mine'] }),
+        qc.invalidateQueries({ queryKey: ['invitations', 'pending'] }),
+      ]);
+      // Reset form and close
+      setSessionName('');
+      setSelectedParticipants([]);
+      setInviteInput('');
+      onClose();
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message ?? err?.message ?? 'Could not create session';
+      toast.error(msg);
+    },
+  });
   const [availableUsers, setAvailableUsers] = useState<Array<{
     id: string;
     username: string;
@@ -104,47 +131,25 @@ export const CreateSessionDialog = ({
     setSelectedParticipants(selectedParticipants.filter(p => p !== username));
   };
 
-  const handleSubmit = async () => {
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!sessionName.trim()) {
-      toast({
-        title: "Session name required",
-        description: "Please enter a name for your collaboration session",
-        variant: "destructive"
-      });
+      toast.error('Name required');
       return;
     }
-
+    
     if (selectedParticipants.length === 0) {
-      toast({
-        title: "No participants selected",
-        description: "Please add at least one person to collaborate with",
-        variant: "destructive"
-      });
+      toast.error('Add at least one participant');
       return;
     }
-
-    setIsCreating(true);
-    try {
-      await onCreateSession(selectedParticipants, sessionName);
-      setSessionName('');
-      setSelectedParticipants([]);
-      setInviteInput('');
-      onClose();
-      
-      toast({
-        title: "Invitations sent!",
-        description: `Collaboration requests sent to ${selectedParticipants.length} participant${selectedParticipants.length > 1 ? 's' : ''}. The session will start when everyone accepts.`,
-        duration: 5000
-      });
-    } catch (error) {
-      toast({
-        title: "Error creating session",
-        description: "Failed to create collaboration session. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsCreating(false);
-    }
+    
+    const input = { 
+      name: sessionName.trim(), 
+      participantIds: selectedParticipants 
+    };
+    
+    mutate(input); // no local creating state; rely on isPending
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -281,25 +286,27 @@ export const CreateSessionDialog = ({
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2 pt-2">
-            <Button variant="outline" onClick={onClose} className="flex-1">
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleSubmit} 
-              disabled={isCreating || !sessionName.trim() || selectedParticipants.length === 0}
-              className="flex-1"
-            >
-              {isCreating ? (
-                "Creating..."
-              ) : (
-                <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send Invites
-                </>
-              )}
-            </Button>
-          </div>
+          <form onSubmit={onSubmit}>
+            <div className="flex gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={isPending}
+                className="flex-1"
+              >
+                {isPending ? (
+                  "Creating..."
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Create
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
         </div>
       </DialogContent>
     </Dialog>
