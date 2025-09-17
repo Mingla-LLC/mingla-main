@@ -446,7 +446,15 @@ export const SessionSwitcher = ({
         <CreateSessionDialog
           isOpen={showCreateDialog}
           onClose={() => setShowCreateDialog(false)}
-          onCreateSession={onCreateSession}
+          onCreateSession={async (participants: string[], sessionName: string) => {
+            try {
+              await onCreateSession(participants, sessionName);
+              setShowCreateDialog(false);
+            } catch (error) {
+              // Error is handled by the CreateSessionDialog
+              throw error;
+            }
+          }}
         />
       </CardContent>
     </Card>
