@@ -183,6 +183,28 @@ const Home = () => {
         activePreferences.travelConstraint
       );
       
+      // Generate location name based on coordinates
+      const getLocationName = (lat: number, lng: number) => {
+        // NYC coordinates mapping to actual neighborhoods
+        if (Math.abs(lat - 40.7829) < 0.01 && Math.abs(lng - (-73.9654)) < 0.01) {
+          return 'Central Park, NYC';
+        } else if (Math.abs(lat - 40.7505) < 0.01 && Math.abs(lng - (-73.9934)) < 0.01) {
+          return 'Hudson River Park, NYC';
+        } else if (Math.abs(lat - 40.7614) < 0.01 && Math.abs(lng - (-73.9776)) < 0.01) {
+          return 'Times Square, NYC';
+        } else if (Math.abs(lat - 40.7505) < 0.01 && Math.abs(lng - (-73.9857)) < 0.01) {
+          return 'Hell\'s Kitchen, NYC';
+        } else if (Math.abs(lat - 40.7357) < 0.01 && Math.abs(lng - (-74.0036)) < 0.01) {
+          return 'West Village, NYC';
+        } else if (Math.abs(lat - 40.7549) < 0.01 && Math.abs(lng - (-73.9840)) < 0.01) {
+          return 'Theater District, NYC';
+        } else if (Math.abs(lat - 40.7580) < 0.01 && Math.abs(lng - (-73.9855)) < 0.01) {
+          return 'Midtown Manhattan, NYC';
+        } else {
+          return 'Manhattan, NYC';
+        }
+      };
+
       return {
         id: exp.id,
         title: exp.title,
@@ -192,7 +214,7 @@ const Home = () => {
         travelTime: travelInfo,
         badges: ['Budget-Fit', 'Weather-OK'],
         whyItFits: 'Perfect match for your preferences based on location and category',
-        location: 'Local Area',
+        location: getLocationName(exp.lat || 40.7589, exp.lng || -73.9851),
         category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
         latitude: exp.lat || 47.6062,
         longitude: exp.lng || -122.3321
