@@ -237,7 +237,28 @@ export const SessionSwitcher = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge className="text-xs bg-green-500">Active</Badge>
-                    {currentSession?.id === session.id && <Check className="h-4 w-4 text-primary" />}
+                    {currentSession?.id === session.id && (
+                      <>
+                        <Check className="h-4 w-4 text-primary" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-1"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await onCancelSession(session.id);
+                            if (onToggle) {
+                              onToggle(false);
+                            } else {
+                              setInternalExpanded(false);
+                            }
+                          }}
+                          title="Leave session"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </button>

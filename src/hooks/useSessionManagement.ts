@@ -509,7 +509,7 @@ export const useSessionManagement = () => {
     }
   }, [user, loadUserSessions]);
 
-  // Cancel/decline/revoke invite
+  // Cancel/decline/revoke invite OR leave active session
   const cancelSession = useCallback(async (sessionId: string) => {
     if (!user) return;
 
@@ -517,6 +517,40 @@ export const useSessionManagement = () => {
     if (!session) return;
 
     try {
+      // If user is currently in this active session, leave it
+      if (sessionState.currentSession?.id === sessionId) {
+        // Remove user from session participants
+        await supabase
+          .from('session_participants')
+          .delete()
+          .eq('session_id', sessionId)
+          .eq('user_id', user.id);
+
+        // Update any invites to declined status
+        await supabase
+          .from('collaboration_invites')
+          .update({ status: 'declined' })
+          .eq('session_id', sessionId)
+          .eq('invited_user_id', user.id);
+
+        // Switch to solo mode
+        setSessionState(prev => ({
+          ...prev,
+          currentSession: null,
+          isInSolo: true
+        }));
+
+        toast({
+          title: "Left collaboration session",
+          description: `You've left "${session.name}".`,
+        });
+
+        // Reload sessions
+        await loadUserSessions();
+        return;
+      }
+
+      // Handle pending invitations
       if (session.invitedBy === user.id) {
         // User is the creator - revoke the session
         await supabase
@@ -566,7 +600,7 @@ export const useSessionManagement = () => {
         variant: "destructive"
       });
     }
-  }, [sessionState.availableSessions, user, loadUserSessions]);
+  }, [sessionState.availableSessions, sessionState.currentSession, user, loadUserSessions]);
 
   // Accept specific invite (from notification)
   const acceptInvite = useCallback(async (inviteId: string) => {
