@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
@@ -37,8 +37,8 @@ export const useBoards = () => {
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Demo boards for showcasing features
-  const demoBoards: Board[] = [
+  // Demo boards for showcasing features - memoized to prevent re-renders
+  const demoBoards: Board[] = useMemo(() => [
     {
       id: 'demo-1',
       name: 'NYC Weekend Adventures',
@@ -200,11 +200,12 @@ export const useBoards = () => {
         }
       ]
     }
-  ];
+  ], []);
 
   // Load user's boards
   const loadBoards = useCallback(async () => {
     setLoading(true);
+    console.log('Loading boards...');
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -223,13 +224,14 @@ export const useBoards = () => {
         .eq('created_by', user.id);
 
       if (error || !userBoards || userBoards.length === 0) {
-        console.log('No user boards found or error, showing demo data');
+        console.log('No user boards found or error, showing demo data:', error?.message || 'no boards');
         setBoards(demoBoards);
         setLoading(false);
         return;
       }
 
       // If we have real boards, process them
+      console.log('Found user boards:', userBoards.length);
       const formattedBoards: Board[] = userBoards.map(board => ({
         ...board,
         collaborators: []
@@ -243,7 +245,7 @@ export const useBoards = () => {
     } finally {
       setLoading(false);
     }
-  }, [demoBoards]);
+  }, []);
 
   // Create a new board with optional collaboration session
   const createBoard = useCallback(async (name: string, description?: string, sessionId?: string, collaboratorUserIds?: string[]) => {
