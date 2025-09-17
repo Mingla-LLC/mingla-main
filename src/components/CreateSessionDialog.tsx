@@ -129,9 +129,7 @@ export const CreateSessionDialog = ({
     setSelectedParticipants(selectedParticipants.filter(p => p !== username));
   };
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const onSubmit = async () => {
     if (!sessionName.trim()) {
       toast.error('Name required');
       return;
@@ -290,32 +288,31 @@ export const CreateSessionDialog = ({
           </div>
 
           {/* Actions */}
-          <form onSubmit={onSubmit}>
-            <div className="flex gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={onClose} className="flex-1">
-                Cancel
-              </Button>
-              <Button 
-                type="submit"
-                disabled={isPending || !sessionName.trim() || selectedParticipants.length === 0}
-                className="flex-1"
-              >
-                {isPending ? (
-                  "Creating..."
-                ) : (
-                  <>
-                    <Send className="h-4 w-4 mr-2" />
-                    Create
-                  </>
-                )}
-              </Button>
-              {error && (
-                <p className="text-sm text-destructive mt-2">
-                  Error: {error.message}
-                </p>
+          <div className="flex gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+              Cancel
+            </Button>
+            <Button 
+              type="button"
+              onClick={onSubmit}
+              disabled={isPending || !sessionName.trim() || selectedParticipants.length === 0}
+              className="flex-1"
+            >
+              {isPending ? (
+                "Creating..."
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Create
+                </>
               )}
-            </div>
-          </form>
+            </Button>
+            {error && (
+              <p className="text-sm text-destructive mt-2">
+                Error: {error.message}
+              </p>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
