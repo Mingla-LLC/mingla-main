@@ -215,10 +215,17 @@ export const useSessionManagement = () => {
         };
       }).filter(Boolean) as CollaborationSession[];
 
-      // Format accepted sessions
+      // Format accepted sessions (exclude sessions that are already in received/sent invites)
       const acceptedSessionIds = (participantSessionIds || []).map(p => p.session_id);
+      const receivedInviteSessionIds = receivedInviteSessions.map(s => s.id);
+      const sentInviteSessionIds = sentInviteSessions.map(s => s.id);
+      const pendingSessionIds = [...receivedInviteSessionIds, ...sentInviteSessionIds];
+      
       const activeSessions: CollaborationSession[] = allSessionsData
-        .filter(session => acceptedSessionIds.includes(session.id))
+        .filter(session => 
+          acceptedSessionIds.includes(session.id) && 
+          !pendingSessionIds.includes(session.id)
+        )
         .map(session => {
           const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
           const participants = sessionParticipants.map(p => ({

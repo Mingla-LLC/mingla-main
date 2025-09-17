@@ -395,7 +395,10 @@ export const SessionSwitcher = ({
                           <div className="flex items-center gap-2">
                             <div className="flex -space-x-1">
                               {session.participants.slice(0, 2).map((participant) => (
-                                <Avatar key={participant.id} className="w-4 h-4 border border-background">
+                                <Avatar key={participant.id} className={cn(
+                                  "w-4 h-4 border border-background",
+                                  participant.hasAccepted ? "" : "opacity-50"
+                                )}>
                                   <AvatarImage src={participant.avatar} />
                                   <AvatarFallback className="text-xs">
                                     {participant.name[0]}
@@ -404,15 +407,31 @@ export const SessionSwitcher = ({
                               ))}
                             </div>
                             <span className="text-xs text-muted-foreground">
-                              {session.participants.length} participant{session.participants.length !== 1 ? 's' : ''}
+                              {session.participants.filter(p => p.hasAccepted).length}/{session.participants.length} accepted
                             </span>
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Badge variant="outline" className="text-xs">
-                          Dormant
-                        </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Dormant</Badge>
+                        {session.invitedBy === currentUserId && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await onCancelSession(session.id);
+                              if (onToggle) {
+                                onToggle(false);
+                              } else {
+                                setInternalExpanded(false);
+                              }
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
