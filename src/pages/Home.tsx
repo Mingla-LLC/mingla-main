@@ -688,24 +688,28 @@ const Home = () => {
 
       {/* Expanded Trip Card */}
       {expandedTrip && (
-        <TripCardExpanded
-          trip={trips.find(t => t.id === expandedTrip)!}
-          preferences={activePreferences}
-          isOpen={!!expandedTrip}
-          onClose={() => setExpandedTrip(null)}
-          onAccept={() => {
-            const trip = trips.find(t => t.id === expandedTrip);
-            if (trip) {
-              acceptExperience(trip.id);
-            }
-            setExpandedTrip(null);
-          }}
-          onAddToBoard={() => {
-            // Handle add to board logic
-            setExpandedTrip(null);
-          }}
-          showAcceptButton={true}
-        />
+        (() => {
+          const foundTrip = trips.find(t => t.id === expandedTrip);
+          if (!foundTrip) return null;
+          
+          return (
+            <TripCardExpanded
+              trip={foundTrip}
+              preferences={activePreferences}
+              isOpen={!!expandedTrip}
+              onClose={() => setExpandedTrip(null)}
+              onAccept={() => {
+                acceptExperience(foundTrip.id);
+                setExpandedTrip(null);
+              }}
+              onAddToBoard={() => {
+                // Handle add to board logic
+                setExpandedTrip(null);
+              }}
+              showAcceptButton={true}
+            />
+          );
+        })()
       )}
 
       {/* Preferences Sheet */}

@@ -74,30 +74,34 @@ export const TripCardExpanded = ({
   const [selectedPlanB, setSelectedPlanB] = useState<any>(null);
 
   // Generate dynamic content based on preferences and location
-  const tripContext = useMemo(() => ({
-    category: trip.category,
-    cost: trip.cost,
-    location: trip.location,
-    duration: trip.duration,
-    isIndoor: trip.category.toLowerCase().includes('indoor'),
-    isOutdoor: trip.category.toLowerCase().includes('outdoor'),
-    hasFood: trip.category.toLowerCase().includes('food') || trip.category.toLowerCase().includes('dining')
-  }), [trip]);
+  const tripContext = useMemo(() => {
+    if (!trip) return null;
+    
+    return {
+      category: trip.category,
+      cost: trip.cost,
+      location: trip.location,
+      duration: trip.duration,
+      isIndoor: trip.category.toLowerCase().includes('indoor'),
+      isOutdoor: trip.category.toLowerCase().includes('outdoor'),
+      hasFood: trip.category.toLowerCase().includes('food') || trip.category.toLowerCase().includes('dining')
+    };
+  }, [trip]);
 
-  const whyItFits = useMemo(() => 
-    generateWhyItFits(preferences || {}, tripContext), 
-    [preferences, tripContext]
-  );
+  const whyItFits = useMemo(() => {
+    if (!tripContext) return '';
+    return generateWhyItFits(preferences || {}, tripContext);
+  }, [preferences, tripContext]);
 
-  const perfectFor = useMemo(() => 
-    generatePerfectFor(tripContext, preferences), 
-    [tripContext, preferences]
-  );
+  const perfectFor = useMemo(() => {
+    if (!tripContext) return [];
+    return generatePerfectFor(tripContext, preferences);
+  }, [tripContext, preferences]);
 
-  const planBOptions = useMemo(() => 
-    generatePlanBOptions(tripContext, preferences), 
-    [tripContext, preferences]
-  );
+  const planBOptions = useMemo(() => {
+    if (!tripContext) return [];
+    return generatePlanBOptions(tripContext, preferences);
+  }, [tripContext, preferences]);
 
   const activeTrip = selectedPlanB || trip;
 
@@ -186,7 +190,7 @@ export const TripCardExpanded = ({
     if (onAccept) onAccept();
   };
   
-  if (!isOpen) return null;
+  if (!isOpen || !trip) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
