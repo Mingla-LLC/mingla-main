@@ -14,6 +14,7 @@ import Profile from "./pages/Profile";
 import ProfileSettings from "./pages/ProfileSettings";
 import AccountSettings from "./pages/AccountSettings";
 import Auth from "./pages/Auth";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -70,6 +71,11 @@ const App = () => (
             <Layout>
               <AccountSettings />
             </Layout>
+          </AuthGuard>
+        } />
+        <Route path="/admin" element={
+          <AuthGuard>
+            <Admin />
           </AuthGuard>
         } />
         <Route path="*" element={<NotFound />} />

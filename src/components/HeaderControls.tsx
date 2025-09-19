@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
-import { Bell, Users, User, Plus } from 'lucide-react';
+import { Bell, Users, User, Plus, Shield } from 'lucide-react';
 import { CollaborationInviteManager } from './CollaborationInviteManager';
 import { SessionModeSwitch } from './SessionModeSwitch';
+import { useUserRole } from '@/hooks/useUserRole';
 import type { SessionInvite, CollaborationSession } from '@/hooks/useSessionManagement';
 
 interface HeaderControlsProps {
@@ -42,6 +43,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
 }) => {
   const [invitePopoverOpen, setInvitePopoverOpen] = useState(false);
   const [sessionPopoverOpen, setSessionPopoverOpen] = useState(false);
+  const { isAdmin } = useUserRole();
 
   const totalNotifications = pendingInvites.length;
   const pendingSentSessions = sentSessions.filter(session => 
@@ -120,6 +122,18 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
         </PopoverContent>
       </Popover>
       
+      {/* Admin Panel Access */}
+      {isAdmin && (
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/20 text-orange-600"
+          onClick={() => window.open('/admin', '_blank')}
+        >
+          <Shield className="h-4 w-4" />
+        </Button>
+      )}
+
       {/* Quick create session */}
       <Button 
         variant="outline" 
