@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, MapPin, Clock, DollarSign, Calendar, ExternalLink, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { formatCurrency } from '@/utils/currency';
+import { PlanBCard } from './PlanBCard';
+import { MapTimeline } from './MapTimeline';
 
 interface TripCardExpandedProps {
   trip: {
@@ -20,6 +22,12 @@ interface TripCardExpandedProps {
     whyItFits: string;
     location: string;
     category: string;
+    perfectFor?: string[];
+    experienceType?: string;
+  };
+  preferences?: {
+    experienceTypes?: string[];
+    selectedCategories?: string[];
   };
   isOpen: boolean;
   onClose: () => void;
@@ -28,15 +36,40 @@ interface TripCardExpandedProps {
   showAcceptButton?: boolean;
 }
 
-const timeline = [
-  { time: '6:00 PM', activity: 'Meet at Pike Place Market', icon: '📍', duration: '5 min' },
-  { time: '6:05 PM', activity: 'Walk to waterfront café', icon: '🚶‍♀️', duration: '8 min' },
-  { time: '6:15 PM', activity: 'Coffee & sunset viewing', icon: '☕', duration: '1.5 hours' },
-  { time: '7:45 PM', activity: 'Optional: Walk to pier', icon: '🌅', duration: '15 min' }
+const timelineSteps = [
+  { 
+    time: '6:00 PM', 
+    activity: 'Meet at Pike Place Market', 
+    icon: '📍', 
+    duration: '5 min',
+    location: { lat: 47.6097, lng: -122.3331 }
+  },
+  { 
+    time: '6:05 PM', 
+    activity: 'Walk to waterfront café', 
+    icon: '🚶‍♀️', 
+    duration: '8 min',
+    location: { lat: 47.6062, lng: -122.3321 }
+  },
+  { 
+    time: '6:15 PM', 
+    activity: 'Coffee & sunset viewing', 
+    icon: '☕', 
+    duration: '1.5 hours',
+    location: { lat: 47.6048, lng: -122.3400 }
+  },
+  { 
+    time: '7:45 PM', 
+    activity: 'Optional: Walk to pier', 
+    icon: '🌅', 
+    duration: '15 min',
+    location: { lat: 47.6040, lng: -122.3420 }
+  }
 ];
 
 export const TripCardExpanded = ({ 
   trip, 
+  preferences,
   isOpen, 
   onClose, 
   onAccept, 
@@ -44,6 +77,78 @@ export const TripCardExpanded = ({
   showAcceptButton = false 
 }: TripCardExpandedProps) => {
   const { profile } = useUserProfile();
+  const [showPlanB, setShowPlanB] = useState(false);
+
+  // Generate Plan B alternative
+  const planBTrip = {
+    id: trip.id + '_planb',
+    title: `Indoor ${trip.category} Experience`,
+    image: trip.image,
+    cost: trip.cost * 0.8, // Slightly cheaper
+    duration: trip.duration,
+    location: trip.location,
+    category: trip.category,
+    badges: ['Indoor', 'Weather-proof', ...trip.badges.slice(0, 2)]
+  };
+
+  // Generate "Perfect for" based on preferences
+  const generatePerfectFor = () => {
+    if (!preferences?.experienceTypes?.length) return trip.badges;
+    
+    return preferences.experienceTypes.map(type => {
+      switch (type) {
+        case 'First Date':
+          return 'First dates';
+        case 'Romantic':
+          return 'Romantic moments';
+        case 'Friendly':
+          return 'Friend hangouts';
+        case 'Solo Adventure':
+          return 'Solo exploration';
+        case 'Group Fun':
+          return 'Group activities';
+        case 'Business':
+          return 'Professional meetings';
+        default:
+          return type;
+      }
+    });
+  };
+
+  // Generate contextual "Why this fits"
+  const generateWhyItFits = () => {
+    if (!preferences?.experienceTypes?.length && !preferences?.selectedCategories?.length) {
+      return trip.whyItFits;
+    }
+
+    const experienceContext = preferences.experienceTypes?.join(', ') || '';
+    const categoryContext = preferences.selectedCategories?.join(', ') || '';
+    
+    return `Perfect for ${experienceContext}${experienceContext && categoryContext ? ' with a focus on ' : ''}${categoryContext}. This experience matches your preferences for authentic local activities that create meaningful connections.`;
+  };
+
+  const handleAddToCalendar = () => {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() + 1); // Tomorrow
+    startDate.setHours(18, 0); // 6 PM
+    
+    const endDate = new Date(startDate);
+    const duration = parseInt(trip.duration.split(' ')[0]) || 120;
+    endDate.setMinutes(endDate.getMinutes() + duration);
+    
+    const event = {
+      title: trip.title,
+      start: startDate.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z',
+      end: endDate.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z',
+      details: trip.whyItFits,
+      location: trip.location
+    };
+    
+    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(event.title)}&dates=${event.start}/${event.end}&details=${encodeURIComponent(event.details)}&location=${encodeURIComponent(event.location)}`;
+    
+    window.open(calendarUrl, '_blank');
+    if (onAccept) onAccept();
+  };
   
   if (!isOpen) return null;
 
@@ -99,80 +204,65 @@ export const TripCardExpanded = ({
           {/* Why It Fits */}
           <div>
             <h3 className="font-semibold mb-2 text-accent">Why this fits</h3>
-            <p className="text-sm text-muted-foreground">{trip.whyItFits}</p>
+            <p className="text-sm text-muted-foreground">{generateWhyItFits()}</p>
           </div>
 
-          {/* Badges */}
+          {/* Perfect For */}
           <div>
             <h3 className="font-semibold mb-2">Perfect for</h3>
             <div className="flex flex-wrap gap-2">
-              {trip.badges.map((badge) => (
-                <Badge key={badge} variant="outline" className="text-xs">
-                  {badge}
+              {generatePerfectFor().map((item) => (
+                <Badge key={item} variant="outline" className="text-xs">
+                  {item}
                 </Badge>
               ))}
             </div>
           </div>
 
           {/* Plan B Toggle */}
-          <Card className="p-4 bg-muted/30">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <h4 className="font-semibold text-sm">Plan B Option</h4>
-                <p className="text-xs text-muted-foreground">Indoor alternative if weather changes</p>
-              </div>
-              <Switch />
-            </div>
-          </Card>
-
-          {/* Timeline */}
-          <div>
-            <h3 className="font-semibold mb-3">Trip Timeline</h3>
-            <div className="space-y-3">
-              {timeline.map((step, index) => (
-                <div key={index} className="flex items-start gap-3">
-                  <div className="flex items-center justify-center w-8 h-8 bg-primary/10 rounded-full flex-shrink-0">
-                    <span className="text-sm">{step.icon}</span>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{step.time}</span>
-                      <span className="text-xs text-muted-foreground">{step.duration}</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{step.activity}</p>
-                  </div>
-                  {index < timeline.length - 1 && (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  )}
+          <div className="space-y-3">
+            <Card className="p-4 bg-muted/30">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="font-semibold text-sm">Plan B Option</h4>
+                  <p className="text-xs text-muted-foreground">Indoor alternative if weather changes</p>
                 </div>
-              ))}
-            </div>
+                <Switch 
+                  checked={showPlanB}
+                  onCheckedChange={setShowPlanB}
+                />
+              </div>
+            </Card>
+            
+            {showPlanB && (
+              <PlanBCard 
+                trip={planBTrip}
+                currency={profile?.currency || 'USD'}
+                onSelect={() => {
+                  // Handle plan B selection
+                  console.log('Selected Plan B');
+                }}
+              />
+            )}
           </div>
 
-          {/* Map Preview */}
-          <Card className="p-4 bg-gradient-cool/10">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-semibold text-sm mb-1">Route Preview</h4>
-                <p className="text-xs text-muted-foreground">
-                  📍 Start → ☕ Café → 🌅 Waterfront
-                </p>
-              </div>
-              <Button variant="outline" size="sm">
-                <ExternalLink className="h-3 w-3 mr-1" />
-                Maps
-              </Button>
-            </div>
-          </Card>
+          {/* Interactive Timeline */}
+          <div>
+            <h3 className="font-semibold mb-3">Trip Timeline & Route</h3>
+            <MapTimeline 
+              steps={timelineSteps}
+              userLocation={{ lat: 47.6205, lng: -122.3493 }} // Example user location
+            />
+          </div>
         </div>
 
         {/* Action Buttons */}
         <div className="p-6 border-t border-border">
           <div className="flex gap-3">
-            {showAcceptButton && onAccept && (
+            {showAcceptButton && (
               <Button 
                 className="flex-1 bg-gradient-primary"
-                onClick={onAccept}
+                onClick={handleAddToCalendar}
               >
                 <Calendar className="h-4 w-4 mr-2" />
                 Accept & Add to Calendar

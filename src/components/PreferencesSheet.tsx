@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { formatCurrency } from '@/utils/currency';
 import { categories } from '@/lib/categories';
+import { LocationSearch } from './LocationSearch';
 
 interface PreferencesSheetProps {
   isOpen: boolean;
@@ -18,23 +19,31 @@ interface PreferencesSheetProps {
   activePreferences?: {
     budgetRange: [number, number];
     categories: string[];
+    experienceTypes?: string[];
     time: string;
     travel: string;
     travelConstraint: 'time' | 'distance';
     travelTime: number;
     travelDistance: number;
     location: string;
+    customLocation?: string;
+    custom_lat?: number | null;
+    custom_lng?: number | null;
     groupSize?: number;
   };
   onPreferencesUpdate?: (preferences: {
     budgetRange: [number, number];
     categories: string[];
+    experienceTypes: string[];
     time: string;
     travel: string;
     travelConstraint: 'time' | 'distance';
     travelTime: number;
     travelDistance: number;
     location: string;
+    customLocation?: string;
+    custom_lat?: number | null;
+    custom_lng?: number | null;
     groupSize: number;
   }) => void;
 }
@@ -55,6 +64,7 @@ const travelModes = [
 export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric', activePreferences, onPreferencesUpdate }: PreferencesSheetProps) => {
   const [budget, setBudget] = useState<[number, number]>([10, 10000]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [experienceTypes, setExperienceTypes] = useState<string[]>([]);
   const [selectedTime, setSelectedTime] = useState('now');
   const [selectedTravel, setSelectedTravel] = useState('drive');
   const [travelConstraint, setTravelConstraint] = useState<'time' | 'distance'>('time');
@@ -62,18 +72,25 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
   const [travelDistance, setTravelDistance] = useState(5);
   const [selectedLocation, setSelectedLocation] = useState('current');
   const [groupSize, setGroupSize] = useState(2);
+  const [customLocation, setCustomLocation] = useState('');
+  const [customLat, setCustomLat] = useState<number | null>(null);
+  const [customLng, setCustomLng] = useState<number | null>(null);
   
   // Sync state with activePreferences whenever it changes
   React.useEffect(() => {
     if (activePreferences) {
       setBudget(activePreferences.budgetRange);
       setSelectedCategories(activePreferences.categories);
+      setExperienceTypes(activePreferences.experienceTypes || []);
       setSelectedTime(activePreferences.time);
       setSelectedTravel(activePreferences.travel);
       setTravelConstraint(activePreferences.travelConstraint);
       setTravelTime(activePreferences.travelTime);
       setTravelDistance(activePreferences.travelDistance);
       setSelectedLocation(activePreferences.location);
+      setCustomLocation(activePreferences.customLocation || '');
+      setCustomLat(activePreferences.custom_lat || null);
+      setCustomLng(activePreferences.custom_lng || null);
       setGroupSize(activePreferences.groupSize || 2);
     }
   }, [activePreferences]);
@@ -112,12 +129,16 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                 onPreferencesUpdate?.({
                   budgetRange: budget,
                   categories: selectedCategories,
+                  experienceTypes: experienceTypes,
                   time: selectedTime,
                   travel: selectedTravel,
                   travelConstraint,
                   travelTime,
                   travelDistance,
                   location: selectedLocation === 'custom' ? customLocationName : selectedLocation,
+                  customLocation: customLocation,
+                  custom_lat: customLat,
+                  custom_lng: customLng,
                   groupSize
                 });
               onClose();
@@ -165,6 +186,29 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
               </div>
             </div>
           </Card>
+
+          {/* Experience Type */}
+          <div className="space-y-3">
+            <Label className="font-semibold">Experience Type</Label>
+            <div className="flex flex-wrap gap-2">
+              {['First Date', 'Romantic', 'Friendly', 'Solo Adventure', 'Group Fun', 'Business'].map((type) => (
+                <Badge
+                  key={type}
+                  variant={experienceTypes.includes(type) ? 'default' : 'outline'}
+                  className="cursor-pointer text-xs"
+                  onClick={() => {
+                    setExperienceTypes(prev =>
+                      prev.includes(type)
+                        ? prev.filter(t => t !== type)
+                        : [...prev, type]
+                    );
+                  }}
+                >
+                  {type}
+                </Badge>
+              ))}
+            </div>
+          </div>
 
           {/* Budget */}
           <div className="space-y-3">
@@ -370,19 +414,22 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
             
             <Card className="p-3 bg-muted/50 space-y-3">
               <Label className="text-sm font-medium block">Custom Location</Label>
-              <Input
-                placeholder="Enter address or place name (e.g., 'San Francisco, CA')"
-                value={locationInput}
-                onChange={(e) => setLocationInput(e.target.value)}
-                className="h-9"
+              <LocationSearch
+                value={customLocation}
+                onChange={(location, lat, lng) => {
+                  setCustomLocation(location);
+                  setCustomLat(lat || null);
+                  setCustomLng(lng || null);
+                }}
+                placeholder="Search for a city or location"
               />
               <Button
                 variant="outline"
                 size="sm"
                 className="w-full"
                 onClick={() => {
-                  if (locationInput.trim()) {
-                    setCustomLocationName(locationInput.trim());
+                  if (customLocation.trim()) {
+                    setCustomLocationName(customLocation.trim());
                     setSelectedLocation('custom');
                   }
                 }}
