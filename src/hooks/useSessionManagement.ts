@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAppStore } from '@/store/appStore';
+import { 
+  acceptInvite as apiAcceptInvite, 
+  declineInvite as apiDeclineInvite, 
+  revokeInvite as apiRevokeInvite 
+} from '@/api/invites';
 
 export interface CollaborationSession {
   id: string;
@@ -1400,6 +1405,41 @@ export const useSessionManagement = () => {
     };
   }, [user, loadUserSessions]);
 
+  // Revoke specific invite (inviter only)
+  const handleRevokeInvite = useCallback(async (inviteId: string) => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to revoke invitations",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      console.log('🚫 Revoking invite:', inviteId);
+      
+      const result = await apiRevokeInvite(inviteId);
+      console.log('✅ Invite revoked:', result);
+      
+      toast({
+        title: "Invitation Revoked",
+        description: "The invitation has been revoked.",
+      });
+      
+      // Reload sessions to reflect changes
+      await loadUserSessions();
+      
+    } catch (error) {
+      console.error('❌ Error revoking invite:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to revoke invitation",
+        variant: "destructive"
+      });
+    }
+  }, [user, loadUserSessions]);
+
   return {
     ...sessionState,
     switchToSolo,
@@ -1408,6 +1448,7 @@ export const useSessionManagement = () => {
     cancelSession,
     acceptInvite,
     declineInvite,
+    revokeInvite: handleRevokeInvite,
     loading: sessionState.loading
   };
 };

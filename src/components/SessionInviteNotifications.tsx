@@ -10,14 +10,18 @@ interface SessionInviteNotificationsProps {
   invites: SessionInvite[];
   onAccept: (inviteId: string) => void;
   onDecline: (inviteId: string) => void;
+  onRevoke?: (inviteId: string) => void;
   loading?: boolean;
+  currentUserId?: string;
 }
 
 export const SessionInviteNotifications = ({
   invites,
   onAccept,
   onDecline,
-  loading = false
+  onRevoke,
+  loading = false,
+  currentUserId
 }: SessionInviteNotificationsProps) => {
   if (invites.length === 0) {
     return null;
@@ -71,25 +75,42 @@ export const SessionInviteNotifications = ({
                 </div>
 
                 <div className="flex gap-2 pt-2">
-                  <Button
-                    size="sm"
-                    onClick={() => onAccept(invite.id)}
-                    disabled={loading}
-                    className="h-7 text-xs"
-                  >
-                    <Check className="h-3 w-3 mr-1" />
-                    Accept
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onDecline(invite.id)}
-                    disabled={loading}
-                    className="h-7 text-xs"
-                  >
-                    <X className="h-3 w-3 mr-1" />
-                    Decline
-                  </Button>
+                  {currentUserId === invite.invitedBy.id && onRevoke ? (
+                    // Inviter can revoke
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onRevoke(invite.id)}
+                      disabled={loading}
+                      className="h-7 text-xs border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      Revoke
+                    </Button>
+                  ) : (
+                    // Invitee can accept/decline
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => onAccept(invite.id)}
+                        disabled={loading}
+                        className="h-7 text-xs"
+                      >
+                        <Check className="h-3 w-3 mr-1" />
+                        Accept
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onDecline(invite.id)}
+                        disabled={loading}
+                        className="h-7 text-xs"
+                      >
+                        <X className="h-3 w-3 mr-1" />
+                        Decline
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
