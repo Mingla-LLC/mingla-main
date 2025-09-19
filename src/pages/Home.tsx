@@ -429,12 +429,38 @@ const Home = () => {
   };
 
   // Handle session invite actions
-  const handleAcceptInvite = async (sessionId: string) => {
-    await switchToCollaborative(sessionId);
+  const handleAcceptInvite = async (inviteId: string) => {
+    try {
+      await acceptInvite(inviteId);
+      toast({
+        title: "Invite Accepted",
+        description: "Successfully joined the collaborative session!",
+      });
+    } catch (error) {
+      console.error('Error accepting invite:', error);
+      toast({
+        title: "Error",
+        description: "Failed to accept invite. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleDeclineInvite = async (sessionId: string) => {
-    await cancelSession(sessionId);
+  const handleDeclineInvite = async (inviteId: string) => {
+    try {
+      await declineInvite(inviteId);
+      toast({
+        title: "Invite Declined",
+        description: "The invite has been declined.",
+      });
+    } catch (error) {
+      console.error('Error declining invite:', error);
+      toast({
+        title: "Error", 
+        description: "Failed to decline invite. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleCancelSession = async (sessionId: string) => {

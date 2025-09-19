@@ -71,7 +71,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-96 p-0" align="end">
+        <PopoverContent className="w-[420px] p-0" align="end">
           <CollaborationInviteManager
             pendingInvites={pendingInvites}
             sentSessions={sentSessions}
