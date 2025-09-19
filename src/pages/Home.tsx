@@ -6,7 +6,7 @@ import { TripCard } from '@/components/TripCard';
 import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
 import { SessionInviteNotifications } from '@/components/SessionInviteNotifications';
-import { SessionSwitcher } from '@/components/SessionSwitcher';
+
 import { NotificationBar } from '@/components/NotificationBar';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -41,7 +41,7 @@ const Home = () => {
   const [measurementSystem, setMeasurementSystem] = useState('metric');
   const [user, setUser] = useState<User | null>(null);
   const [showNotifications, setShowNotifications] = useState(true);
-  const [isSessionSwitcherOpen, setIsSessionSwitcherOpen] = useState(false);
+  
   const { profile } = useUserProfile();
   
   // Get user's current location
@@ -546,7 +546,7 @@ const Home = () => {
       {showNotifications && pendingInvites && pendingInvites.length > 0 && (
         <NotificationBar
           invites={pendingInvites}
-          onOpenSwitcher={() => setIsSessionSwitcherOpen(true)}
+          onOpenSwitcher={() => {}}
           onDismiss={() => setShowNotifications(false)}
         />
       )}
@@ -591,19 +591,6 @@ const Home = () => {
           </div>
         </div>
 
-        {/* Session Switcher */}
-        <SessionSwitcher
-          isInSolo={isInSolo}
-          currentSession={currentSession}
-          availableSessions={availableSessions}
-          onSwitchToSolo={switchToSolo}
-          onSwitchToCollaborative={switchToCollaborative}
-          onCancelSession={cancelSession}
-          canSwitchToSolo={true}
-          currentUserId={user?.id}
-          isOpen={isSessionSwitcherOpen}
-          onToggle={setIsSessionSwitcherOpen}
-        />
 
         {/* Active Preferences Display */}
         {(activePreferences.budgetRange[0] !== 10 || activePreferences.budgetRange[1] !== 10000 || 
