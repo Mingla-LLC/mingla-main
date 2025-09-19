@@ -31,6 +31,8 @@ interface Preferences {
   mode: string;
 }
 
+export type { Preferences };
+
 interface Save {
   profile_id: string;
   experience_id: string;

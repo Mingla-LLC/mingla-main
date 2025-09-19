@@ -12,8 +12,8 @@ import {
   Navigation
 } from 'lucide-react';
 import { SessionInviteNotifications } from '@/components/SessionInviteNotifications';
-import { RecommendationsGrid } from '@/components/RecommendationsGrid';
-import { useAppStore } from '@/store/appStore';
+import SingleCardResults from '@/components/SingleCardResults';
+import { useAppStore, type Preferences } from '@/store/appStore';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useSessionManagement } from '@/hooks/useSessionManagement';
@@ -199,8 +199,37 @@ const Home = () => {
     }
   };
 
-  // Check if we should show recommendations
-  const shouldShowRecommendations = preferences && (
+  // Convert store preferences to converter format
+  const convertStorePrefsToConverterFormat = (storePrefs: Preferences) => {
+    return {
+      budgetRange: [storePrefs.budget_min, storePrefs.budget_max] as [number, number],
+      categories: storePrefs.categories,
+      time: storePrefs.datetime_pref || 'now',
+      travel: storePrefs.travel_mode || 'drive',
+      travelConstraint: storePrefs.travel_constraint_type as 'time' | 'distance',
+      travelTime: storePrefs.travel_constraint_type === 'time' ? storePrefs.travel_constraint_value : 30,
+      travelDistance: storePrefs.travel_constraint_type === 'distance' ? storePrefs.travel_constraint_value : 10,
+      location: 'current',
+      groupSize: storePrefs.people_count || 1,
+    };
+  };
+
+  // Check if we should show recommendations and create preferences request
+  const location = latitude && longitude ? { lat: latitude, lng: longitude } : null;
+  
+  const preferencesRequest = React.useMemo(() => {
+    if (!preferences || !latitude || !longitude) return null;
+    
+    const convertedPrefs = convertStorePrefsToConverterFormat(preferences);
+    return convertPreferencesToRequest(
+      convertedPrefs, 
+      latitude, 
+      longitude,
+      (profile?.measurement_system as 'metric' | 'imperial') || 'metric'
+    );
+  }, [preferences, latitude, longitude, profile?.measurement_system]);
+  
+  const shouldShowRecommendations = Boolean(preferencesRequest) && preferences && (
     preferences.categories.length > 0 || 
     preferences.budget_max > preferences.budget_min ||
     preferences.travel_constraint_value > 0
@@ -325,15 +354,10 @@ const Home = () => {
         <div className="px-4 pb-8">
           <div className="max-w-6xl mx-auto">
             {shouldShowRecommendations ? (
-              <RecommendationsGrid
-                cards={recommendations}
-                loading={loadingRecommendations}
+              <SingleCardResults
+                preferences={preferencesRequest}
                 onInvite={handleInvite}
                 onSave={handleSave}
-                onShare={handleShare}
-                onViewRoute={handleViewRoute}
-                selectedCard={selectedCard}
-                onCardSelect={setSelectedCard}
               />
             ) : (
               <Card>

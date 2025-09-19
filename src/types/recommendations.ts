@@ -85,6 +85,8 @@ export interface RecommendationsResponse {
       eventbrite: number;
     };
     llmUsed: boolean;
+    cursorNext?: string | null;
+    hasMore?: boolean;
   };
 }
 
