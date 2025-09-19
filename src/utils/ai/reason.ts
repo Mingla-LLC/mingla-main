@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { callAuthenticatedFunction, type SecurityError } from "@/utils/security";
 
 export interface ReasoningResult {
   weather_badge: string;
@@ -60,12 +61,14 @@ export async function reasonCardNotes(input: ReasoningInput): Promise<ReasoningR
 
 async function tryOpenAIReasoning(input: ReasoningInput): Promise<ReasoningResult | null> {
   try {
-    const { data, error } = await supabase.functions.invoke('ai-reason', {
-      body: input
-    });
+    const { data, error } = await callAuthenticatedFunction<ReasoningResult>('ai-reason', input);
 
     if (error || !data) {
-      console.log('OpenAI reasoning unavailable, using fallback');
+      if (error?.type === 'auth_required' || error?.type === 'unauthorized') {
+        console.log('AI reasoning requires authentication, using fallback');
+      } else {
+        console.log('OpenAI reasoning unavailable, using fallback');
+      }
       return null;
     }
 

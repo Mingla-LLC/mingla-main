@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { MapPin } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { callAuthenticatedFunction } from '@/utils/security';
 
 declare global {
   interface Window {
@@ -30,9 +31,19 @@ export const LocationSearch = ({
   useEffect(() => {
     const getApiKey = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('get-google-maps-key');
-        if (error) throw error;
-        setApiKey(data.apiKey);
+        const { data, error } = await callAuthenticatedFunction<{ apiKey: string }>('get-google-maps-key');
+        
+        if (error) {
+          if (error.type === 'auth_required' || error.type === 'unauthorized') {
+            console.log('Google Maps API key requires authentication');
+          } else {
+            console.log('Google Maps API key not available:', error.message);
+          }
+          setApiKey(null);
+          return;
+        }
+        
+        setApiKey(data?.apiKey || null);
       } catch (error) {
         console.log('Google Maps API key not available');
         setApiKey(null);
