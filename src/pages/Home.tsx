@@ -536,10 +536,8 @@ const Home = () => {
         </div>
       </div>
 
-      {/* Premium Content Grid */}
-      <div className="px-6 space-y-6">
-        {/* Content removed - moved to header */}
-
+      {/* Premium Content Grid - Content moved to header */}
+      
       {/* Premium Experience Card */}
       <div className="flex-1 flex items-center justify-center px-6 py-6">
         {currentTrip ? (
