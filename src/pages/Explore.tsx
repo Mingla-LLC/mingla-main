@@ -7,6 +7,7 @@ import { TripCard } from '@/components/TripCard';
 import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { categories, getCategoryBySlug } from '@/lib/categories';
 import { useExperiences } from '@/hooks/useExperiences';
+import { formatCurrency } from '@/utils/currency';
 
 const trending = [
   { name: 'Sip & Chill', trend: '+25%', slug: 'sip' },
@@ -43,8 +44,8 @@ const Explore = () => {
         cost: exp.price_min || 25,
         duration: `${exp.duration_min || 90} min`,
         travelTime: '8 min walk',
-        badges: ['Available'],
-        whyItFits: 'Discover new experiences in your area',
+        badges: [`⏱️ ${exp.duration_min || 90}min`, `💰 ${formatCurrency(exp.price_min || 25, 'USD')}`],
+        whyItFits: `${getCategoryBySlug(exp.category_slug)?.name || exp.category} experience perfect for discovering your local area`,
         location: 'Local Area',
         category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
         latitude: exp.lat || 47.6062,
@@ -185,7 +186,7 @@ const Explore = () => {
               <p className="text-muted-foreground">No experiences found in this category</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="cards-container space-y-4">
               {trips.slice(0, 10).map((trip) => (
                 <TripCard
                   key={trip.id}
@@ -194,7 +195,7 @@ const Explore = () => {
                   onSwipeLeft={() => handleSwipeLeft(trip.id)}
                   onExpand={() => setExpandedTrip(trip.id)}
                   disableSwipe={false}
-                  className="max-w-sm mx-auto"
+                  className="w-full max-w-sm mx-auto"
                 />
               ))}
               {trips.length > 10 && (
@@ -218,7 +219,7 @@ const Explore = () => {
               <p className="text-muted-foreground">No experiences available</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="cards-container space-y-4">
               {trips.slice(0, 5).map((trip) => (
                 <TripCard
                   key={trip.id}
@@ -227,7 +228,7 @@ const Explore = () => {
                   onSwipeLeft={() => handleSwipeLeft(trip.id)}
                   onExpand={() => setExpandedTrip(trip.id)}
                   disableSwipe={false}
-                  className="max-w-sm mx-auto"
+                  className="w-full max-w-sm mx-auto"
                 />
               ))}
               {trips.length > 5 && (

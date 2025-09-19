@@ -200,8 +200,9 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
     <Card
       className={cn(
         "relative overflow-hidden cursor-pointer shadow-card hover:shadow-elevated",
-        "touch-none select-none",
-        isDragging ? "card-swipe" : "card-swipe-smooth",
+        "touch-none select-none w-full max-w-sm mx-auto",
+        "transition-all duration-300 ease-out",
+        isDragging ? "scale-95" : "scale-100",
         isAnimating && dragOffset.x > 0 && "animate-swipe-right",
         isAnimating && dragOffset.x < 0 && "animate-swipe-left",
         className

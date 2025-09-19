@@ -177,6 +177,33 @@ All colors MUST be HSL.
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+  
+  /* Mobile Touch Improvements */
+  .touch-optimized {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    touch-action: pan-y pinch-zoom;
+  }
+  
+  /* Card Container for Mobile */
+  .cards-container {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+  
+  /* Safe area support for mobile */
+  .pb-safe {
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+  }
+  
+  .pt-safe {
+    padding-top: max(3rem, env(safe-area-inset-top));
+  }
 }
 
 @keyframes bounce-in {

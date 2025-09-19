@@ -82,8 +82,7 @@ export const useExperiences = (filters: ExperienceFilters = {}) => {
         }
       } else {
         // Single user preferences
-
-        // Filter by budget range if provided
+        // Filter by budget range if provided and not default values
         if (filters.budgetRange && filters.budgetRange[0] !== 10 && filters.budgetRange[1] !== 10000) {
           query = query
             .gte('price_min', filters.budgetRange[0])
@@ -170,7 +169,9 @@ export const useExperiences = (filters: ExperienceFilters = {}) => {
     filters.time,
     filters.travel,
     filters.travelTime,
-    filters.location
+    filters.travelDistance,
+    filters.location,
+    filters.collaborativePreferences?.map(p => `${p.id}_${p.categories.join(',')}_${p.budgetRange.join(',')}`).join('|')
   ]);
 
   useEffect(() => {

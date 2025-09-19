@@ -292,8 +292,8 @@ const Home = () => {
           cost: exp.price_min || exp.price || 25,
           duration: formatDuration(totalDuration),
           travelTime: travelInfo,
-          badges: ['Real Place', 'Live Data'],
-          whyItFits: 'Real location from Google Places & Eventbrite APIs',
+          badges: [`${activePreferences.travel === 'walk' ? '🚶‍♀️' : activePreferences.travel === 'drive' ? '🚗' : '🚌'} ${travelInfo}`, `💰 ${formatCurrency(exp.price_min || exp.price || 25, profile?.currency || 'USD')}`],
+          whyItFits: `Perfect for ${activePreferences.groupSize === 1 ? 'solo' : `groups of ${activePreferences.groupSize}`} ${activePreferences.travel}ing ${travelInfo}. ${getCategoryBySlug(exp.category_slug)?.name || exp.category} experience matching your ${formatCurrency(activePreferences.budgetRange[0], profile?.currency || 'USD')}-${formatCurrency(activePreferences.budgetRange[1], profile?.currency || 'USD')} budget.`,
           location: exp.formatted_address || exp.location || 'Unknown Location',
           category: getCategoryBySlug(exp.category_slug)?.name || exp.category || 'Experience',
           latitude: exp.lat || lat,
@@ -376,8 +376,8 @@ const Home = () => {
         cost: exp.price_min || 25,
         duration: formatDuration(totalDuration),
         travelTime: travelInfo,
-        badges: ['Budget-Fit', 'Weather-OK'],
-        whyItFits: 'Perfect match for your preferences based on location and category',
+        badges: [`${activePreferences.travel === 'walk' ? '🚶‍♀️' : activePreferences.travel === 'drive' ? '🚗' : '🚌'} ${travelInfo}`, `💰 ${formatCurrency(exp.price_min || 25, profile?.currency || 'USD')}`],
+        whyItFits: `Perfect for ${activePreferences.groupSize === 1 ? 'solo' : `groups of ${activePreferences.groupSize}`} ${activePreferences.travel}ing ${travelInfo}. ${getCategoryBySlug(exp.category_slug)?.name || exp.category} experience matching your budget preferences.`,
         location: getLocationName(exp.lat || 40.7589, exp.lng || -73.9851),
         category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
         latitude: exp.lat || 47.6062,
@@ -474,14 +474,14 @@ const Home = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 relative overflow-hidden touch-optimized">
       {/* Background Pattern */}
       <div className="fixed inset-0 opacity-[0.02] pointer-events-none">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1),transparent_50%)]" />
       </div>
 
       {/* Header */}
-      <div className="relative z-10 px-6 pt-12 pb-6">
+      <div className="relative z-10 px-6 pt-safe pb-6">
         <div className="flex items-center justify-center mb-6">
           <img 
             src={minglaLogo} 
