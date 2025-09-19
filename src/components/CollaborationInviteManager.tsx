@@ -115,7 +115,10 @@ export const CollaborationInviteManager: React.FC<CollaborationInviteManagerProp
                       <div className="flex gap-3 pt-2">
                         <Button
                           size="default"
-                          onClick={() => onAcceptInvite(invite.id)}
+                          onClick={() => {
+                            console.log('🎯 Accept button clicked for invite:', invite.id);
+                            onAcceptInvite(invite.id);
+                          }}
                           disabled={loading}
                           className="flex-1 bg-primary hover:bg-primary/90 font-medium"
                         >
@@ -125,7 +128,10 @@ export const CollaborationInviteManager: React.FC<CollaborationInviteManagerProp
                         <Button
                           size="default"
                           variant="outline"
-                          onClick={() => onDeclineInvite(invite.id)}
+                          onClick={() => {
+                            console.log('❌ Decline button clicked for invite:', invite.id);
+                            onDeclineInvite(invite.id);
+                          }}
                           disabled={loading}
                           className="flex-1 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
                         >
