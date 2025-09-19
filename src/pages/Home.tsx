@@ -201,12 +201,28 @@ const Home = () => {
       // Get user's location coordinates based on their preference
       let lat = 35.7915; // Default to Cary, NC instead of NYC
       let lng = -78.7811;
+      let locationName = 'Cary, NC';
+      
+      console.log('Current activePreferences:', {
+        location: activePreferences.location,
+        customLocation: activePreferences.customLocation,
+        custom_lat: activePreferences.custom_lat,
+        custom_lng: activePreferences.custom_lng
+      });
       
       // If user has a custom location with coordinates, use those
       if (activePreferences.location === 'custom' && activePreferences.custom_lat && activePreferences.custom_lng) {
         lat = activePreferences.custom_lat;
         lng = activePreferences.custom_lng;
-        console.log(`Using custom location: ${activePreferences.customLocation} (${lat}, ${lng})`);
+        locationName = activePreferences.customLocation || `Custom Location (${lat}, ${lng})`;
+        console.log(`✅ Using custom location: ${locationName} (${lat}, ${lng})`);
+      }
+      // If location is set to something else that's not current, use custom coordinates if available
+      else if (activePreferences.location !== 'current' && activePreferences.custom_lat && activePreferences.custom_lng) {
+        lat = activePreferences.custom_lat;
+        lng = activePreferences.custom_lng;
+        locationName = activePreferences.location;
+        console.log(`✅ Using selected location: ${locationName} (${lat}, ${lng})`);
       }
       // If user wants current location, try to get it
       else if (activePreferences.location === 'current' && navigator.geolocation) {
@@ -220,15 +236,14 @@ const Home = () => {
           });
           lat = position.coords.latitude;
           lng = position.coords.longitude;
-          console.log(`Using current location: (${lat}, ${lng})`);
+          locationName = 'Current Location';
+          console.log(`✅ Using current location: (${lat}, ${lng})`);
         } catch (error) {
-          console.log('Could not get current location, using default (Cary, NC)');
+          console.log('⚠️ Could not get current location, using default (Cary, NC)');
         }
       }
-      // If location is set to something else (like "Cary"), try to geocode it
-      else if (activePreferences.location !== 'current') {
-        // For now, use Cary coordinates as default, but in production you'd geocode the location string
-        console.log(`Using default coordinates for: ${activePreferences.location}`);
+      else {
+        console.log(`⚠️ Using default coordinates for: ${activePreferences.location}`);
       }
 
       // Only fetch real data if we have categories selected and a valid location
@@ -238,7 +253,7 @@ const Home = () => {
         return;
       }
 
-      console.log(`Fetching experiences for location: (${lat}, ${lng}) with categories:`, activePreferences.categories);
+      console.log(`🔍 Fetching experiences for ${locationName}: (${lat}, ${lng}) with categories:`, activePreferences.categories);
       
       // Fetch places from Google Places API with the correct location
       const placesPromises = activePreferences.categories.map(category => 
@@ -309,7 +324,7 @@ const Home = () => {
         }
       });
 
-      console.log(`Found ${allExperiences.length} experiences in the selected area (${lat}, ${lng})`);
+      console.log(`📍 Found ${allExperiences.length} experiences in ${locationName} (${lat}, ${lng})`);
 
       // Filter by budget
       const budgetFiltered = allExperiences.filter(exp => {

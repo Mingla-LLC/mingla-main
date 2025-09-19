@@ -397,11 +397,17 @@ export const useSessionManagement = () => {
         }
 
         // Update invite status
-        await supabase
+        const { error: inviteUpdateError } = await supabase
           .from('collaboration_invites')
           .update({ status: 'accepted' })
           .eq('session_id', sessionId)
           .eq('invited_user_id', user.id);
+
+        if (inviteUpdateError) {
+          console.error('Error updating invite status:', inviteUpdateError);
+        } else {
+          console.log('Successfully updated invite status to accepted');
+        }
 
         // Check if all participants have now accepted
         const { data: allParticipants } = await supabase
@@ -717,13 +723,48 @@ export const useSessionManagement = () => {
 
   // Accept specific invite (from notification)
   const acceptInvite = useCallback(async (inviteId: string) => {
-    if (!user) return;
+    try {
+      console.log('🔔 Accepting invite:', inviteId);
+      
+      if (!user) {
+        console.error('❌ No user found for invite acceptance');
+        toast({
+          title: "Error",
+          description: "You must be logged in to accept invitations",
+          variant: "destructive"
+        });
+        return;
+      }
 
-    const invite = sessionState.pendingInvites.find(i => i.id === inviteId);
-    if (!invite) return;
+      const invite = sessionState.pendingInvites.find(i => i.id === inviteId);
+      if (!invite) {
+        console.error('❌ Invite not found:', inviteId);
+        toast({
+          title: "Error", 
+          description: "Invitation not found",
+          variant: "destructive"
+        });
+        return;
+      }
 
-    return switchToCollaborative(invite.sessionId);
-  }, [user, sessionState.pendingInvites, switchToCollaborative]);
+      console.log('✅ Found invite for session:', invite.sessionId);
+      console.log('🎯 Switching to collaborative session...');
+      
+      await switchToCollaborative(invite.sessionId);
+      
+      // Force reload sessions after acceptance
+      console.log('🔄 Reloading sessions after acceptance...');
+      await loadUserSessions();
+      
+    } catch (error) {
+      console.error('❌ Error accepting invite:', error);
+      toast({
+        title: "Error",
+        description: "Failed to accept invitation. Please try again.",
+        variant: "destructive"
+      });
+    }
+  }, [user, sessionState.pendingInvites, switchToCollaborative, loadUserSessions]);
 
   // Decline specific invite (from notification)
   const declineInvite = useCallback(async (inviteId: string) => {
