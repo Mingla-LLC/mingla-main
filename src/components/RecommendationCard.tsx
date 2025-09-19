@@ -125,6 +125,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
         transition: { duration: 0.2 }
       }}
       className="group"
+      data-testid="recommendation-card"
     >
       <Card className="overflow-hidden bg-white shadow-md hover:shadow-xl transition-all duration-300 border-0 rounded-2xl">
         {/* Image Section */}
@@ -151,7 +152,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
 
           {/* Overlays */}
           <div className="absolute top-3 left-3 flex gap-2">
-            <Badge className={`text-xs font-medium ${getCategoryColor(card.category)}`}>
+            <Badge className={`text-xs font-medium ${getCategoryColor(card.category)}`} data-testid="category-badge">
               {card.category.replace('_', ' & ')}
             </Badge>
             <Badge variant="secondary" className="text-xs font-medium bg-black/50 text-white">
@@ -168,7 +169,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
           )}
 
           {/* Travel Info Overlay */}
-          <div className="absolute bottom-3 right-3 bg-black/70 text-white px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1">
+          <div className="absolute bottom-3 right-3 bg-black/70 text-white px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1" data-testid="travel-info">
             <Navigation className="h-3 w-3" />
             {card.route.etaMinutes}m • {card.route.distanceText}
           </div>
@@ -228,6 +229,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
               whileTap={{ scale: 0.95 }}
               onClick={handleInvite}
               className="p-2 rounded-lg border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+              data-testid="invite-button"
             >
               <Users className="h-4 w-4" />
             </motion.button>
@@ -240,6 +242,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
                   ? 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100' 
                   : 'border-input bg-background hover:bg-accent hover:text-accent-foreground'
               }`}
+              data-testid="save-button"
             >
               {isSaved ? <Heart className="h-4 w-4 fill-current" /> : <Bookmark className="h-4 w-4" />}
             </motion.button>

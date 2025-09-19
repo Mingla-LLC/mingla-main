@@ -164,6 +164,7 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="text-center py-12"
+      data-testid="empty-state"
     >
       <Card className="max-w-md mx-auto">
         <CardContent className="p-8">

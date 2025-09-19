@@ -15,7 +15,10 @@ import { formatCurrency } from '@/utils/currency';
 import { getCategoryBySlug } from '@/lib/categories';
 import { useExperiences } from '@/hooks/useExperiences';
 import { useSessionManagement } from '@/hooks/useSessionManagement';
+import { RecommendationsGrid } from '@/components/RecommendationsGrid';
+import { convertPreferencesToRequest } from '@/utils/preferencesConverter';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
+import type { RecommendationCard as CardType } from '@/types/recommendations';
 import minglaLogo from '@/assets/mingla-logo.png';
 import { cn } from '@/lib/utils';
 
@@ -42,6 +45,7 @@ const Home = () => {
   const [measurementSystem, setMeasurementSystem] = useState('metric');
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [showNotifications, setShowNotifications] = useState(true);
+  const [showRecommendations, setShowRecommendations] = useState(false);
   
   const { profile } = useUserProfile();
   
@@ -153,7 +157,41 @@ const Home = () => {
   const handlePreferencesUpdate = useCallback((newPreferences: ActivePreferences) => {
     console.log('📊 Updating preferences:', newPreferences);
     setActivePreferences(newPreferences);
+    
+    // If preferences have categories, show recommendations
+    if (newPreferences.categories.length > 0) {
+      setShowRecommendations(true);
+    }
   }, []);
+
+  // Convert preferences for recommendations API
+  const recommendationsRequest = useMemo(() => {
+    if (activePreferences.categories.length === 0) return null;
+    
+    return convertPreferencesToRequest(
+      activePreferences,
+      latitude || undefined,
+      longitude || undefined,
+      measurementSystem as 'metric' | 'imperial'
+    );
+  }, [activePreferences, latitude, longitude, measurementSystem]);
+
+  // Handle recommendation card actions
+  const handleCardInvite = (card: CardType) => {
+    // Integrate with existing collaboration system
+    toast({
+      title: "Invite sent!",
+      description: `Invited friends to ${card.title}`,
+    });
+  };
+
+  const handleCardSave = (card: CardType) => {
+    // Integrate with existing saves system
+    toast({
+      title: "Saved!",
+      description: `Saved ${card.title} for later`,
+    });
+  };
 
   // Memoize all filters to prevent unnecessary re-renders
   const experienceFilters = useMemo(() => {
@@ -635,8 +673,19 @@ const Home = () => {
               size="sm"
               onClick={() => setShowPreferences(true)}
               className="bg-background/80 backdrop-blur-sm border-primary/20"
+              data-testid="preferences-button"
             >
               <Sliders className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={showRecommendations ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowRecommendations(!showRecommendations)}
+              className="bg-background/80 backdrop-blur-sm border-primary/20"
+              disabled={!recommendationsRequest}
+              data-testid="recommendations-toggle"
+            >
+              <Sparkles className="h-4 w-4" />
             </Button>
           </div>
           
@@ -659,8 +708,20 @@ const Home = () => {
 
       {/* Premium Content Grid - Content moved to header */}
       
-      {/* Premium Experience Card */}
-      <div className="flex-1 flex items-center justify-center px-6 py-6">
+      {/* Recommendations Grid or Premium Experience Card */}
+      {showRecommendations && recommendationsRequest ? (
+        <div className="flex-1 px-6 py-6" data-testid="recommendations-grid">
+          <RecommendationsGrid
+            preferences={recommendationsRequest}
+            onAdjustFilters={() => setShowPreferences(true)}
+            onInvite={handleCardInvite}
+            onSave={handleCardSave}
+          />
+        </div>
+      ) : (
+        // Premium Experience Card
+        <>
+          <div className="flex-1 flex items-center justify-center px-6 py-6">
         {currentTrip ? (
           <div className="relative w-full max-w-sm">
             {/* Premium card with dating app styling */}
@@ -777,8 +838,10 @@ const Home = () => {
               Update Preferences
             </Button>
           </div>
-        )}
-      </div>
+          )}
+        </div>
+        </>
+      )}
 
       {/* Expanded Trip Card */}
       {expandedTrip && (
