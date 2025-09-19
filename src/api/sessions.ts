@@ -76,12 +76,14 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
       throw new Error(`Failed to add creator to session: ${creatorParticipantError.message}`);
     }
 
-    // Process participants and create invitations
+    // Process participants and create invitations in parallel instead of sequential
     const invitations = [];
     
-    console.log('Processing participants:', payload.participantIds);
-    for (const username of payload.participantIds) {
+    console.log('Processing participants in parallel:', payload.participantIds);
+    
+    const participantPromises = payload.participantIds.map(async (username) => {
       console.log(`Finding user: ${username}`);
+      
       // Find user by username
       const { data: userData, error: userFindError } = await supabase
         .from('profiles')
@@ -104,7 +106,7 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
       // Skip if trying to invite themselves
       if (userData.id === user.id) {
         console.log(`Skipping self-invite for: ${username}`);
-        continue;
+        return null;
       }
 
       console.log(`Adding participant: ${username} (${userData.id})`);
@@ -146,12 +148,16 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
         throw new Error(`Failed to create invitation for ${username}: ${inviteError.message}`);
       }
 
-      invitations.push({
+      return {
         id: inviteData.id,
         inviteeId: userData.id,
         status: 'pending' as const
-      });
-    }
+      };
+    });
+    
+    // Wait for all participants to be processed in parallel with timeout
+    const results = await Promise.all(participantPromises);
+    invitations.push(...results.filter(result => result !== null));
 
     const result = {
       session: {

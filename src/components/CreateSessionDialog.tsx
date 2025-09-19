@@ -104,27 +104,46 @@ export const CreateSessionDialog = ({
   };
 
   const handleCreateSession = async () => {
+    console.info("TRACE CreateSessionDialog onSendInvite", { 
+      buildHash: "v2.0.1", 
+      file: "src/components/CreateSessionDialog.tsx", 
+      line: 106,
+      sessionName: sessionName.trim(),
+      participantCount: selectedParticipants.length,
+      isCreating 
+    });
+
     if (!sessionName.trim()) {
       toast.error('Name required');
+      console.info("TRACE: Early return - no session name");
       return;
     }
     
     if (selectedParticipants.length === 0) {
       toast.error('Add at least one participant');
+      console.info("TRACE: Early return - no participants");
       return;
     }
     
+    console.info("TRACE: Setting isCreating to true");
     setIsCreating(true);
     
     try {
-      console.log('Creating session with API function...');
+      console.info("TRACE: About to call createSession API");
       
-      const result = await createSession({
+      // Add timeout to prevent infinite hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Session creation timed out after 30 seconds')), 30000)
+      );
+      
+      const apiPromise = createSession({
         name: sessionName.trim(),
         participantIds: selectedParticipants
       });
       
-      console.log('Session created successfully:', result);
+      const result = await Promise.race([apiPromise, timeoutPromise]);
+      
+      console.info('TRACE: Session API call completed successfully:', result);
       toast.success(`Session "${sessionName.trim()}" created! Invites sent to ${selectedParticipants.length} participants.`);
       
       // Reset and close
@@ -137,9 +156,12 @@ export const CreateSessionDialog = ({
       setTimeout(() => window.location.reload(), 1000);
       
     } catch (error) {
-      console.error('Session creation failed:', error);
+      console.error('TRACE: Session creation failed:', error);
+      console.error('TRACE: Error type:', typeof error, error instanceof Error);
+      console.error('TRACE: Error message:', error instanceof Error ? error.message : 'Unknown error');
       toast.error(error instanceof Error ? error.message : 'Failed to create session');
     } finally {
+      console.info("TRACE: Finally block - setting isCreating to false");
       setIsCreating(false);
     }
   };
