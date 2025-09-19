@@ -404,6 +404,9 @@ export type Database = {
           budget_min: number | null
           categories: string[] | null
           created_at: string | null
+          custom_lat: number | null
+          custom_lng: number | null
+          custom_location: string | null
           datetime_pref: string | null
           mode: string | null
           people_count: number | null
@@ -418,6 +421,9 @@ export type Database = {
           budget_min?: number | null
           categories?: string[] | null
           created_at?: string | null
+          custom_lat?: number | null
+          custom_lng?: number | null
+          custom_location?: string | null
           datetime_pref?: string | null
           mode?: string | null
           people_count?: number | null
@@ -432,6 +438,9 @@ export type Database = {
           budget_min?: number | null
           categories?: string[] | null
           created_at?: string | null
+          custom_lat?: number | null
+          custom_lng?: number | null
+          custom_location?: string | null
           datetime_pref?: string | null
           mode?: string | null
           people_count?: number | null

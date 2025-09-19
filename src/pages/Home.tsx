@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Sliders, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TripCard } from '@/components/TripCard';
@@ -152,9 +152,154 @@ const Home = () => {
   const { experiences, loading: experiencesLoading, error } = useExperiences(experienceFilters);
 
   // Convert experiences to trip format for cards
-  const trips = useMemo(() => 
-    experiences.map(exp => {
-      // Calculate total date duration (experience + travel time)
+  // Fetch real places and events data
+  const [realTrips, setRealTrips] = useState<any[]>([]);
+  const [loadingRealData, setLoadingRealData] = useState(false);
+
+  const fetchRealData = useCallback(async () => {
+    if (!activePreferences) return;
+    
+    setLoadingRealData(true);
+    try {
+      // Get user's location coordinates (default to NYC if custom location not geocoded yet)
+      let lat = 40.7589; // Default NYC
+      let lng = -73.9851; // Default NYC
+      
+      // If user has geolocation enabled, use their current location
+      if (activePreferences.location === 'current' && navigator.geolocation) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 5000,
+              maximumAge: 300000
+            });
+          });
+          lat = position.coords.latitude;
+          lng = position.coords.longitude;
+        } catch (error) {
+          console.log('Could not get current location, using default');
+        }
+      }
+
+      // Fetch places from Google Places API
+      const placesPromises = activePreferences.categories.map(category => 
+        supabase.functions.invoke('places', {
+          body: {
+            lat,
+            lng,
+            radiusMeters: activePreferences.travelConstraint === 'distance' 
+              ? activePreferences.travelDistance * 1000 
+              : 5000, // Default 5km radius
+            category_slug: category
+          }
+        })
+      );
+
+      // Fetch events from Eventbrite
+      const eventsPromise = supabase.functions.invoke('events', {
+        body: { location: `${lat},${lng}` }
+      });
+
+      // Execute all API calls
+      const [placesResults, eventsResult] = await Promise.all([
+        Promise.all(placesPromises),
+        eventsPromise
+      ]);
+
+      // Combine places and events
+      let allExperiences: any[] = [];
+      
+      // Add places
+      placesResults.forEach(result => {
+        if (result.data && Array.isArray(result.data)) {
+          allExperiences = allExperiences.concat(result.data);
+        }
+      });
+
+      // Add events
+      if (eventsResult.data && Array.isArray(eventsResult.data.events)) {
+        allExperiences = allExperiences.concat(
+          eventsResult.data.events.map((event: any) => ({
+            ...event,
+            category_slug: 'events',
+            category: 'Events'
+          }))
+        );
+      }
+
+      // Filter by budget
+      const budgetFiltered = allExperiences.filter(exp => {
+        const price = exp.price_min || 0;
+        return price >= activePreferences.budgetRange[0] && price <= activePreferences.budgetRange[1];
+      });
+
+      // Convert to trip format
+      const formattedTrips = budgetFiltered.slice(0, 10).map(exp => {
+        const experienceDuration = exp.duration_min || 90;
+        const estimatedTravelTime = calculateTravelTime(
+          activePreferences.location,
+          exp.lat,
+          exp.lng,
+          activePreferences.travel
+        );
+        const totalDuration = experienceDuration + (estimatedTravelTime * 2);
+        
+        const formatDuration = (minutes: number) => {
+          if (minutes >= 60) {
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+          }
+          return `${minutes}m`;
+        };
+
+        const travelInfo = calculateTravelInfo(
+          activePreferences.location,
+          exp.lat,
+          exp.lng,
+          activePreferences.travel,
+          activePreferences.travelConstraint
+        );
+
+        return {
+          id: exp.id || `exp_${Date.now()}_${Math.random()}`,
+          title: exp.title || exp.name || 'Untitled Experience',
+          image: exp.image_url || exp.photo || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
+          cost: exp.price_min || exp.price || 25,
+          duration: formatDuration(totalDuration),
+          travelTime: travelInfo,
+          badges: ['Real Place', 'Live Data'],
+          whyItFits: 'Real location from Google Places & Eventbrite APIs',
+          location: exp.formatted_address || exp.location || 'Unknown Location',
+          category: getCategoryBySlug(exp.category_slug)?.name || exp.category || 'Experience',
+          latitude: exp.lat || lat,
+          longitude: exp.lng || lng
+        };
+      });
+
+      setRealTrips(formattedTrips);
+    } catch (error) {
+      console.error('Error fetching real data:', error);
+      // Fallback to experiences data
+      setRealTrips([]);
+    } finally {
+      setLoadingRealData(false);
+    }
+  }, [activePreferences]);
+
+  // Fetch real data when preferences change
+  useEffect(() => {
+    fetchRealData();
+  }, [fetchRealData]);
+
+  const trips = useMemo(() => {
+    if (realTrips.length > 0) {
+      return realTrips;
+    }
+    
+    // Fallback to experiences data
+    return experiences.map(exp => {
       const experienceDuration = exp.duration_min || 90;
       const estimatedTravelTime = calculateTravelTime(
         activePreferences.location,
@@ -162,9 +307,8 @@ const Home = () => {
         exp.lng,
         activePreferences.travel
       );
-      const totalDuration = experienceDuration + (estimatedTravelTime * 2); // Round trip
+      const totalDuration = experienceDuration + (estimatedTravelTime * 2);
       
-      // Format duration
       const formatDuration = (minutes: number) => {
         if (minutes >= 60) {
           const hours = Math.floor(minutes / 60);
@@ -174,7 +318,6 @@ const Home = () => {
         return `${minutes}m`;
       };
       
-      // Calculate distance or time based on travel constraint
       const travelInfo = calculateTravelInfo(
         activePreferences.location,
         exp.lat,
@@ -183,9 +326,7 @@ const Home = () => {
         activePreferences.travelConstraint
       );
       
-      // Generate location name based on coordinates
       const getLocationName = (lat: number, lng: number) => {
-        // NYC coordinates mapping to actual neighborhoods
         if (Math.abs(lat - 40.7829) < 0.01 && Math.abs(lng - (-73.9654)) < 0.01) {
           return 'Central Park, NYC';
         } else if (Math.abs(lat - 40.7505) < 0.01 && Math.abs(lng - (-73.9934)) < 0.01) {
@@ -219,7 +360,8 @@ const Home = () => {
         latitude: exp.lat || 47.6062,
         longitude: exp.lng || -122.3321
       };
-    }), [experiences, activePreferences.location, activePreferences.travel, activePreferences.travelConstraint]);
+    });
+  }, [realTrips, experiences, activePreferences.location, activePreferences.travel, activePreferences.travelConstraint]);
 
   const [collaborationRequests, setCollaborationRequests] = useState<Array<{
     id: string;
@@ -268,7 +410,7 @@ const Home = () => {
   }, []);
 
   const currentTrip = trips[currentTripIndex];
-  const isLoading = experiencesLoading;
+  const isLoading = experiencesLoading || sessionLoading || loadingRealData;
 
   const nextTrip = () => {
     if (currentTripIndex < trips.length - 1) {

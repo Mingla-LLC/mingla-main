@@ -81,6 +81,7 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
   const [specificTime, setSpecificTime] = useState('');
   const [customDate, setCustomDate] = useState('');
   const [locationInput, setLocationInput] = useState('');
+  const [customLocationName, setCustomLocationName] = useState('');
   
   const { profile } = useUserProfile();
 
@@ -108,17 +109,17 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
           <Button 
             className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold" 
             onClick={() => {
-              onPreferencesUpdate?.({
-                budgetRange: budget,
-                categories: selectedCategories,
-                time: selectedTime,
-                travel: selectedTravel,
-                travelConstraint,
-                travelTime,
-                travelDistance,
-                location: selectedLocation,
-                groupSize
-              });
+                onPreferencesUpdate?.({
+                  budgetRange: budget,
+                  categories: selectedCategories,
+                  time: selectedTime,
+                  travel: selectedTravel,
+                  travelConstraint,
+                  travelTime,
+                  travelDistance,
+                  location: selectedLocation === 'custom' ? customLocationName : selectedLocation,
+                  groupSize
+                });
               onClose();
             }}
             size="lg"
@@ -367,14 +368,32 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
               ))}
             </div>
             
-            <Card className="p-3 bg-muted/50">
-              <Label className="text-sm font-medium block mb-2">Custom Location</Label>
+            <Card className="p-3 bg-muted/50 space-y-3">
+              <Label className="text-sm font-medium block">Custom Location</Label>
               <Input
-                placeholder="Enter address or place name"
+                placeholder="Enter address or place name (e.g., 'San Francisco, CA')"
                 value={locationInput}
                 onChange={(e) => setLocationInput(e.target.value)}
-                className="h-8"
+                className="h-9"
               />
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => {
+                  if (locationInput.trim()) {
+                    setCustomLocationName(locationInput.trim());
+                    setSelectedLocation('custom');
+                  }
+                }}
+              >
+                Use This Location
+              </Button>
+              {customLocationName && selectedLocation === 'custom' && (
+                <div className="text-xs text-muted-foreground">
+                  Selected: {customLocationName}
+                </div>
+              )}
             </Card>
           </div>
         </div>
