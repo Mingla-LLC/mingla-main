@@ -86,7 +86,19 @@ export const useSessionManagement = () => {
     setSessionState(prev => ({ ...prev, loading: true }));
     
     try {
-      // 1. Load all sessions where user is a participant or creator
+      // 1. First load received invites to know all relevant sessions
+      const { data: receivedInvites, error: receivedError } = await supabase
+        .from('collaboration_invites')
+        .select('*')
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending');
+
+      console.log('📮 Received invites:', receivedInvites);
+      if (receivedError) {
+        console.error('❌ Error loading received invites:', receivedError);
+      }
+
+      // 2. Load all sessions where user is a participant or creator
       const { data: userParticipations, error: participationError } = await supabase
         .from('session_participants')
         .select('session_id, has_accepted, joined_at')
@@ -101,7 +113,7 @@ export const useSessionManagement = () => {
       console.log('👥 User participations:', userParticipations);
       const sessionIds = userParticipations?.map(p => p.session_id) || [];
 
-      // 2. Load all collaboration sessions for these session IDs
+      // 3. Load all collaboration sessions for these session IDs
       let allSessions: any[] = [];
       if (sessionIds.length > 0) {
         const { data: sessions, error: sessionsError } = await supabase
@@ -117,13 +129,36 @@ export const useSessionManagement = () => {
         }
       }
 
-      // 3. Load all participants for these sessions
+      // 3.5. Also load sessions from received invites to ensure we have all relevant sessions
+      if (receivedInvites && receivedInvites.length > 0) {
+        const inviteSessionIds = [...new Set(receivedInvites.map(invite => invite.session_id))];
+        const missingSessionIds = inviteSessionIds.filter(id => !sessionIds.includes(id));
+        
+        if (missingSessionIds.length > 0) {
+          console.log('🔍 Loading additional sessions from invites:', missingSessionIds);
+          const { data: inviteSessions, error: inviteSessionsError } = await supabase
+            .from('collaboration_sessions')
+            .select('*')
+            .in('id', missingSessionIds);
+
+          if (inviteSessionsError) {
+            console.error('❌ Error loading invite sessions:', inviteSessionsError);
+          } else {
+            allSessions = [...allSessions, ...(inviteSessions || [])];
+            console.log('📋 Added invite sessions:', inviteSessions);
+          }
+        }
+      }
+
+      // 4. Load all participants for these sessions (including invite sessions)
       let allParticipants: any[] = [];
-      if (sessionIds.length > 0) {
+      const allSessionIds = [...new Set([...sessionIds, ...(receivedInvites?.map(i => i.session_id) || [])])];
+      
+      if (allSessionIds.length > 0) {
         const { data: participants, error: participantsError } = await supabase
           .from('session_participants')
           .select('*')
-          .in('session_id', sessionIds);
+          .in('session_id', allSessionIds);
 
         console.log('👥 All participants:', participants);
         if (participantsError) {
@@ -133,7 +168,7 @@ export const useSessionManagement = () => {
         }
       }
 
-      // 4. Load profiles for all participants
+      // 5. Load profiles for all participants
       const participantUserIds = [...new Set(allParticipants.map(p => p.user_id))];
       let profiles: any[] = [];
       if (participantUserIds.length > 0) {
@@ -148,18 +183,6 @@ export const useSessionManagement = () => {
           profiles = profilesData || [];
           console.log('👤 Loaded profiles:', profiles);
         }
-      }
-
-      // 5. Load received invites
-      const { data: receivedInvites, error: receivedError } = await supabase
-        .from('collaboration_invites')
-        .select('*')
-        .eq('invited_user_id', user.id)
-        .eq('status', 'pending');
-
-      console.log('📮 Received invites:', receivedInvites);
-      if (receivedError) {
-        console.error('❌ Error loading received invites:', receivedError);
       }
 
       // 6. Load inviter profiles for received invites
@@ -193,12 +216,15 @@ export const useSessionManagement = () => {
         return profile.username || 'Unknown User';
       };
 
-      // Format sessions with correct status logic
+      // Format sessions with correct status logic - include sessions even with 1 participant for pending invites
       const formattedSessions: CollaborationSession[] = allSessions
         .filter(session => {
-          // Only include sessions with at least 2 participants
-          const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
-          return sessionParticipants.length >= 2;
+          // Include sessions where:
+          // 1. User is a participant (already filtered by sessionIds)
+          // 2. OR user has a pending invite to this session
+          const userIsParticipant = sessionIds.includes(session.id);
+          const userHasInvite = receivedInvites?.some(invite => invite.session_id === session.id);
+          return userIsParticipant || userHasInvite;
         })
         .map(session => {
           const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
@@ -382,10 +408,51 @@ export const useSessionManagement = () => {
   const switchToCollaborative = useCallback(async (sessionId: string) => {
     console.log('🚀 switchToCollaborative called with sessionId:', sessionId);
     
-    const session = sessionState.availableSessions.find(s => s.id === sessionId);
+    // First try to find in available sessions, then reload if not found
+    let session = sessionState.availableSessions.find(s => s.id === sessionId);
+    
+    if (!session) {
+      console.log('🔄 Session not found in current state, reloading sessions...');
+      await loadUserSessions();
+      // Try to find again after reload
+      session = sessionState.availableSessions.find(s => s.id === sessionId);
+    }
+    
     if (!session || !user) {
-      console.error('❌ Session not found or no user:', { sessionId, session, user: user?.id });
-      return;
+      console.error('❌ Session not found or no user:', { 
+        sessionId, 
+        session: session ? 'found' : 'not found', 
+        user: user?.id,
+        availableSessions: sessionState.availableSessions.map(s => s.id)
+      });
+      
+      // If still not found, try to fetch directly from database
+      const { data: directSession } = await supabase
+        .from('collaboration_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+      
+      if (directSession) {
+        console.log('✅ Found session in database, creating temporary session object');
+        session = {
+          id: directSession.id,
+          name: directSession.name,
+          participants: [], // Will be populated after acceptance
+          createdAt: directSession.created_at,
+          isActive: false,
+          boardId: directSession.board_id,
+          status: 'pending' as const,
+          invitedBy: directSession.created_by
+        };
+      } else {
+        toast({
+          title: "Error",
+          description: "Session not found. It may have been cancelled.",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     console.log('✅ Found session:', session);
@@ -519,50 +586,79 @@ export const useSessionManagement = () => {
           }
         }
 
-        // Force reload sessions to update UI
-        console.log('🔄 Reloading sessions...');
+        // Force reload sessions to update UI and remove accepted invite from pending
+        console.log('🔄 Reloading sessions and updating state...');
         await loadUserSessions();
         
-        // Wait a moment for the state to update, then check if session is now active
-        setTimeout(async () => {
-          const { data: updatedSession } = await supabase
-            .from('collaboration_sessions')
-            .select('*, board_id')
-            .eq('id', sessionId)
-            .single();
-          
-          console.log('🔍 Updated session after reload:', updatedSession);
-          
-          if (updatedSession && updatedSession.status === 'active') {
-            console.log('🎯 Session is now active, switching to it...');
-            
-            // Re-load sessions to get the latest state
-            await loadUserSessions();
-            
-            // Find the updated session in available sessions
-            const latestSessions = sessionState.availableSessions;
-            const activeSession = latestSessions.find(s => s.id === sessionId && s.status === 'active');
-            
-            if (activeSession) {
-              console.log('📍 Found active session, setting as current');
-              const newState = {
-                currentSession: activeSession,
-                availableSessions: latestSessions,
-                pendingInvites: sessionState.pendingInvites.filter(invite => invite.sessionId !== sessionId),
-                isInSolo: false,
-                loading: false
-              };
-              
-              setSessionState(newState);
-              
-              // Save to localStorage
-              localStorage.setItem('collaboration_session_state', JSON.stringify({
-                currentSession: activeSession,
-                isInSolo: false
-              }));
-            }
-          }
-        }, 1000); // Give time for database updates to propagate
+        // Immediately update state to remove the accepted invite
+        setSessionState(prevState => ({
+          ...prevState,
+          pendingInvites: prevState.pendingInvites.filter(invite => invite.sessionId !== sessionId)
+        }));
+        
+        // Check if session is now active after all participants accepted
+        const { data: updatedSession } = await supabase
+          .from('collaboration_sessions')
+          .select('*, board_id')
+          .eq('id', sessionId)
+          .single();
+        
+                console.log('🔍 Updated session after reload:', updatedSession);
+                
+                if (updatedSession && updatedSession.status === 'active' && updatedSession.board_id) {
+                  console.log('🎯 Session is now active with board, switching to it...');
+                  
+                  // Get updated participant information
+                  const { data: updatedParticipants } = await supabase
+                    .from('session_participants')
+                    .select('user_id, has_accepted')
+                    .eq('session_id', sessionId);
+                  
+                  const { data: participantProfiles } = await supabase
+                    .from('profiles')
+                    .select('id, username, first_name, last_name, avatar_url')
+                    .in('id', updatedParticipants?.map(p => p.user_id) || []);
+                  
+                  // Create active session object
+                  const activeSession: CollaborationSession = {
+                    id: updatedSession.id,
+                    name: updatedSession.name,
+                    participants: updatedParticipants?.map(p => {
+                      const profile = participantProfiles?.find(prof => prof.id === p.user_id);
+                      return {
+                        id: p.user_id,
+                        name: profile ? (profile.first_name && profile.last_name ? `${profile.first_name} ${profile.last_name}` : profile.username) : 'Unknown',
+                        username: profile?.username || 'unknown',
+                        avatar: profile?.avatar_url || '',
+                        hasAccepted: p.has_accepted
+                      };
+                    }) || [],
+                    createdAt: updatedSession.created_at,
+                    isActive: true,
+                    boardId: updatedSession.board_id,
+                    status: 'active',
+                    invitedBy: updatedSession.created_by
+                  };
+                  
+                  console.log('📍 Setting active session as current:', activeSession);
+                  setSessionState(prevState => ({
+                    ...prevState,
+                    currentSession: activeSession,
+                    pendingInvites: prevState.pendingInvites.filter(invite => invite.sessionId !== sessionId),
+                    isInSolo: false
+                  }));
+                  
+                  // Save to localStorage
+                  localStorage.setItem('collaboration_session_state', JSON.stringify({
+                    currentSession: activeSession,
+                    isInSolo: false
+                  }));
+
+                  toast({
+                    title: "Collaboration Active!",
+                    description: `All participants joined! "${session.name}" board is ready for collaboration.`,
+                  });
+                }
 
         return;
       }
@@ -838,25 +934,35 @@ export const useSessionManagement = () => {
       const invite = sessionState.pendingInvites.find(i => i.id === inviteId);
       if (!invite) {
         console.error('❌ Invite not found:', inviteId);
+        
+        // Force reload sessions in case invites are stale
+        await loadUserSessions();
+        
         toast({
           title: "Error", 
-          description: "Invitation not found",
+          description: "Invitation not found or already processed",
           variant: "destructive"
         });
         return;
       }
 
       console.log('✅ Found invite for session:', invite.sessionId);
+      
+      // Immediately remove from UI to prevent double-clicking
+      setSessionState(prevState => ({
+        ...prevState,
+        pendingInvites: prevState.pendingInvites.filter(i => i.id !== inviteId)
+      }));
+      
       console.log('🎯 Switching to collaborative session...');
-      
       await switchToCollaborative(invite.sessionId);
-      
-      // Force reload sessions after acceptance
-      console.log('🔄 Reloading sessions after acceptance...');
-      await loadUserSessions();
       
     } catch (error) {
       console.error('❌ Error accepting invite:', error);
+      
+      // Restore invite to UI if error occurred
+      await loadUserSessions();
+      
       toast({
         title: "Error",
         description: "Failed to accept invitation. Please try again.",
@@ -870,10 +976,55 @@ export const useSessionManagement = () => {
     if (!user) return;
 
     const invite = sessionState.pendingInvites.find(i => i.id === inviteId);
-    if (!invite) return;
+    if (!invite) {
+      console.log('⚠️ Invite not found for decline, reloading sessions...');
+      await loadUserSessions();
+      return;
+    }
 
-    return cancelSession(invite.sessionId);
-  }, [user, sessionState.pendingInvites, cancelSession]);
+    console.log('❌ Declining invite:', inviteId, 'for session:', invite.sessionId);
+    
+    // Immediately remove from UI
+    setSessionState(prevState => ({
+      ...prevState,
+      pendingInvites: prevState.pendingInvites.filter(i => i.id !== inviteId)
+    }));
+
+    try {
+      // Update invite status to declined
+      await supabase
+        .from('collaboration_invites')
+        .update({ status: 'declined' })
+        .eq('id', inviteId);
+
+      // Remove user from session participants
+      await supabase
+        .from('session_participants')
+        .delete()
+        .eq('session_id', invite.sessionId)
+        .eq('user_id', user.id);
+
+      toast({
+        title: "Invitation declined",
+        description: "You've declined the collaboration invitation.",
+      });
+
+      // Reload sessions to update state
+      await loadUserSessions();
+
+    } catch (error) {
+      console.error('❌ Error declining invite:', error);
+      
+      // Restore invite to UI if error occurred
+      await loadUserSessions();
+      
+      toast({
+        title: "Error",
+        description: "Failed to decline invitation. Please try again.",
+        variant: "destructive"
+      });
+    }
+  }, [user, sessionState.pendingInvites, loadUserSessions]);
 
   // Set up real-time subscriptions
   useEffect(() => {
