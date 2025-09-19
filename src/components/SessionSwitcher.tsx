@@ -61,12 +61,39 @@ export const SessionSwitcher = ({
   // Filter sessions by type
   const activeSessions = availableSessions.filter(s => s.status === 'active');
   const dormantSessions = availableSessions.filter(s => s.status === 'dormant');
-  const receivedInvites = availableSessions.filter(s => 
-    s.status === 'pending' && s.invitedBy !== currentUserId
-  );
-  const sentInvites = availableSessions.filter(s => 
-    s.status === 'pending' && s.invitedBy === currentUserId
-  );
+  
+  // Fixed filtering logic for received vs sent invites
+  const receivedInvites = availableSessions.filter(s => {
+    const isReceived = s.status === 'pending' && s.invitedBy !== currentUserId;
+    console.log('Checking received invite:', { 
+      sessionId: s.id, 
+      status: s.status, 
+      invitedBy: s.invitedBy, 
+      currentUserId, 
+      isReceived 
+    });
+    return isReceived;
+  });
+  
+  const sentInvites = availableSessions.filter(s => {
+    const isSent = s.status === 'pending' && s.invitedBy === currentUserId;
+    console.log('Checking sent invite:', { 
+      sessionId: s.id, 
+      status: s.status, 
+      invitedBy: s.invitedBy, 
+      currentUserId, 
+      isSent 
+    });
+    return isSent;
+  });
+
+  console.log('Session filtering results:', {
+    total: availableSessions.length,
+    active: activeSessions.length,
+    dormant: dormantSessions.length,
+    received: receivedInvites.length,
+    sent: sentInvites.length
+  });
 
   return (
     <Card className="mb-4" data-session-switcher>

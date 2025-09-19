@@ -11,6 +11,7 @@ import { NotificationBar } from '@/components/NotificationBar';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useGeolocation } from '@/hooks/useGeolocation';
 import { formatCurrency } from '@/utils/currency';
 import { getCategoryBySlug } from '@/lib/categories';
 import { useExperiences } from '@/hooks/useExperiences';
@@ -20,12 +21,16 @@ import type { User } from '@supabase/supabase-js';
 interface ActivePreferences {
   budgetRange: [number, number];
   categories: string[];
+  experienceTypes?: string[];
   time: string;
   travel: string;
   travelConstraint: 'time' | 'distance';
   travelTime: number;
   travelDistance: number;
   location: string;
+  customLocation?: string;
+  custom_lat?: number | null;
+  custom_lng?: number | null;
   groupSize: number;
 }
 
@@ -38,6 +43,19 @@ const Home = () => {
   const [showNotifications, setShowNotifications] = useState(true);
   const [isSessionSwitcherOpen, setIsSessionSwitcherOpen] = useState(false);
   const { profile } = useUserProfile();
+  
+  // Get user's current location
+  const { 
+    latitude, 
+    longitude, 
+    city, 
+    country, 
+    loading: locationLoading, 
+    getCurrentLocation,
+    formatLocation 
+  } = useGeolocation({
+    autoStart: true
+  });
   
   // Helper function to calculate travel time in minutes
   const calculateTravelTime = (fromLocation: string, toLat: number | null, toLng: number | null, travelMode: string): number => {
@@ -117,12 +135,16 @@ const Home = () => {
   const [activePreferences, setActivePreferences] = useState<ActivePreferences>(() => ({
     budgetRange: [10, 10000],
     categories: [],
+    experienceTypes: [],
     time: 'now',
     travel: 'drive',
     travelConstraint: 'time',
     travelTime: 15,
     travelDistance: 5,
     location: 'current',
+    customLocation: '',
+    custom_lat: null,
+    custom_lng: null,
     groupSize: 2
   }));
 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
 import { Input } from '@/components/ui/input';
 import { MapPin } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 declare global {
   interface Window {
@@ -23,45 +23,78 @@ export const LocationSearch = ({
   className 
 }: LocationSearchProps) => {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [apiKey, setApiKey] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<any>(null);
 
   useEffect(() => {
-    const initializeAutocomplete = async () => {
+    const getApiKey = async () => {
       try {
-        const loader = new Loader({
-          apiKey: 'YOUR_GOOGLE_MAPS_API_KEY', // This will be replaced with proper key
-          version: 'weekly',
-          libraries: ['places']
-        });
+        const { data, error } = await supabase.functions.invoke('get-google-maps-key');
+        if (error) throw error;
+        setApiKey(data.apiKey);
+      } catch (error) {
+        console.log('Google Maps API key not available');
+        setApiKey(null);
+      }
+    };
 
-        await loader.load();
-        
-        if (inputRef.current && window.google?.maps?.places) {
-          autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
-            types: ['(cities)'],
-            fields: ['place_id', 'formatted_address', 'geometry']
-          });
+    getApiKey();
+  }, []);
 
-          autocompleteRef.current.addListener('place_changed', () => {
-            const place = autocompleteRef.current?.getPlace();
-            if (place && place.geometry && place.geometry.location) {
-              const lat = place.geometry.location.lat();
-              const lng = place.geometry.location.lng();
-              onChange(place.formatted_address || '', lat, lng);
-            }
-          });
-        }
-        
+  useEffect(() => {
+    const initializeAutocomplete = async () => {
+      if (!apiKey) {
         setIsLoaded(true);
+        return;
+      }
+
+      try {
+        // Dynamically load Google Maps API
+        if (!window.google) {
+          const script = document.createElement('script');
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+          script.async = true;
+          script.defer = true;
+          document.head.appendChild(script);
+          
+          script.onload = () => {
+            setupAutocomplete();
+          };
+        } else {
+          setupAutocomplete();
+        }
       } catch (error) {
         console.log('Google Maps API not available, using fallback input');
         setIsLoaded(true);
       }
     };
 
-    initializeAutocomplete();
-  }, [onChange]);
+    const setupAutocomplete = () => {
+      if (inputRef.current && window.google?.maps?.places) {
+        autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
+          types: ['(cities)'],
+          fields: ['place_id', 'formatted_address', 'geometry']
+        });
+
+        autocompleteRef.current.addListener('place_changed', () => {
+          const place = autocompleteRef.current?.getPlace();
+          if (place && place.geometry && place.geometry.location) {
+            const lat = place.geometry.location.lat();
+            const lng = place.geometry.location.lng();
+            onChange(place.formatted_address || '', lat, lng);
+          }
+        });
+      }
+      setIsLoaded(true);
+    };
+
+    if (apiKey) {
+      initializeAutocomplete();
+    } else if (apiKey === null) {
+      setIsLoaded(true);
+    }
+  }, [apiKey, onChange]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange(e.target.value);
@@ -77,6 +110,7 @@ export const LocationSearch = ({
         onChange={handleInputChange}
         placeholder={placeholder}
         className={`pl-10 ${className}`}
+        disabled={!isLoaded}
       />
     </div>
   );

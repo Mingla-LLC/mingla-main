@@ -209,19 +209,32 @@ export const useSessionManagement = () => {
       const userParticipation = userParticipations?.find(up => up.session_id === session.id);
       const allAccepted = participants.length >= 2 && participants.every(p => p.hasAccepted);
       
-      // Determine status based on user's acceptance and overall session state
+      // Determine status based on acceptance and session state
       let status: 'pending' | 'active' | 'dormant' = 'dormant';
       
-      if (userParticipation && !userParticipation.has_accepted) {
-        // User hasn't accepted yet - this is a pending invitation for them
+      // Check if this user has not accepted yet (received invite)
+      if (!userParticipation?.has_accepted) {
         status = 'pending';
-      } else if (allAccepted && participants.length >= 2) {
-        // All participants have accepted and there are at least 2 - session is active
+      } 
+      // Check if all participants have accepted (active session)  
+      else if (allAccepted && participants.length >= 2) {
         status = 'active';
-      } else if (userParticipation?.has_accepted && participants.length >= 2) {
-        // User accepted but not everyone has - session is dormant
+      } 
+      // User accepted but waiting for others (dormant)
+      else if (userParticipation?.has_accepted && participants.length >= 2) {
         status = 'dormant';
       }
+
+      console.log('Session status calculation:', {
+        sessionId: session.id,
+        sessionName: session.name,
+        userHasAccepted: userParticipation?.has_accepted,
+        allAccepted,
+        participantCount: participants.length,
+        createdBy: session.created_by,
+        userId: user?.id,
+        finalStatus: status
+      });
 
       // Get inviter profile (creator of the session)
       const inviterProfile = getProfile(session.created_by);
@@ -282,6 +295,51 @@ export const useSessionManagement = () => {
   // Load sessions on mount and when user changes
   useEffect(() => {
     loadUserSessions();
+
+    // Set up realtime subscription for collaboration updates
+    const channel = supabase
+      .channel('collaboration-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'session_participants'
+        },
+        () => {
+          // Reload sessions when participants change
+          loadUserSessions();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public', 
+          table: 'collaboration_sessions'
+        },
+        () => {
+          // Reload sessions when sessions change
+          loadUserSessions();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collaboration_invites'
+        },
+        () => {
+          // Reload sessions when invites change
+          loadUserSessions();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [loadUserSessions]);
 
   // Switch to solo session
