@@ -402,12 +402,22 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
               <LocationSearch
                 value={customLocation}
                 onChange={(location, lat, lng) => {
+                  console.log('📍 LocationSearch onChange:', { location, lat, lng });
                   setCustomLocation(location);
-                  setCustomLat(lat || null);
-                  setCustomLng(lng || null);
-                  if (location.trim()) {
+                  
+                  // Only set coordinates and location if we have valid data
+                  if (lat && lng) {
+                    setCustomLat(lat);
+                    setCustomLng(lng);
                     setCustomLocationName(location.trim());
                     setSelectedLocation('custom');
+                    console.log('✅ Set custom location:', location.trim(), lat, lng);
+                  } else if (!location.trim()) {
+                    // Clear everything if location is empty
+                    setCustomLat(null);
+                    setCustomLng(null);
+                    setCustomLocationName('');
+                    setSelectedLocation('current');
                   }
                 }}
                 placeholder="Type city, address, or place name"

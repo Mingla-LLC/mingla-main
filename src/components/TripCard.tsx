@@ -20,6 +20,7 @@ interface TripCardProps {
     badges: string[];
     whyItFits: string;
     location: string;
+    city?: string;
     category: string;
     latitude?: number;
     longitude?: number;
@@ -243,7 +244,14 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
 
       {/* Content */}
       <div className="p-6">
-        <h3 className="text-xl font-bold mb-2 text-foreground">{trip.title}</h3>
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1">
+            <h3 className="text-xl font-bold text-foreground">{trip.title}</h3>
+            {trip.city && (
+              <p className="text-sm font-medium text-primary mt-1">{trip.city}</p>
+            )}
+          </div>
+        </div>
         
         <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
           {trip.whyItFits}
@@ -301,10 +309,23 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1 text-sm text-muted-foreground">
             <MapPin className="h-4 w-4" />
-            <span>{trip.location}</span>
+            <span className="line-clamp-1">{trip.location}</span>
           </div>
-          <div className="text-sm font-medium text-primary">
+          <div className="text-sm font-medium text-primary flex items-center gap-1">
             <span>{trip.travelTime}</span>
+            {(trip.latitude && trip.longitude) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-primary hover:bg-primary/10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(`https://maps.google.com/maps?q=${trip.latitude},${trip.longitude}`, '_blank');
+                }}
+              >
+                🗺️
+              </Button>
+            )}
           </div>
         </div>
 

@@ -24,6 +24,7 @@ interface TripCardExpandedProps {
     badges: string[];
     whyItFits?: string;
     location: string;
+    city?: string;
     category: string;
     perfectFor?: string[];
     experienceType?: string;
@@ -223,7 +224,10 @@ export const TripCardExpanded = ({
 
           {/* Title and Basic Info */}
           <div className="absolute bottom-4 left-4 right-4">
-            <h2 className="text-xl font-bold text-white mb-2">{trip.title}</h2>
+            <h2 className="text-xl font-bold text-white mb-1">{trip.title}</h2>
+            {trip.city && (
+              <p className="text-sm text-white/80 mb-2 font-medium">{trip.city}</p>
+            )}
             <div className="flex items-center gap-4 text-sm text-white/90">
               <div className="flex items-center gap-1">
                 <span>{formatCurrency(trip.cost, profile?.currency || 'USD')} per person</span>
@@ -237,6 +241,21 @@ export const TripCardExpanded = ({
                   <MapPin className="h-4 w-4" />
                   <span>{trip.travelTime}</span>
                 </div>
+              )}
+              {(trip.lat || trip.latitude) && (trip.lng || trip.longitude) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-white/90 hover:bg-white/20"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const lat = trip.lat || trip.latitude;
+                    const lng = trip.lng || trip.longitude;
+                    window.open(`https://maps.google.com/maps?q=${lat},${lng}`, '_blank');
+                  }}
+                >
+                  🗺️
+                </Button>
               )}
             </div>
           </div>

@@ -360,6 +360,19 @@ const Home = () => {
           activePreferences.travelConstraint
         );
 
+        // Extract city from location or address
+        const getCity = (exp: any) => {
+          if (exp.meta?.city) return exp.meta.city;
+          if (exp.meta?.address) {
+            const parts = exp.meta.address.split(',');
+            return parts[parts.length - 2]?.trim() || parts[parts.length - 1]?.trim();
+          }
+          return exp.location || 'Location';
+        };
+
+        const city = getCity(exp);
+        const fullLocation = exp.meta?.address || exp.location || `${city}`;
+
         return {
           id: exp.id || `exp_${Date.now()}_${Math.random()}`,
           title: exp.title || exp.name || 'Untitled Experience',
@@ -368,8 +381,9 @@ const Home = () => {
           duration: formatDuration(totalDuration),
           travelTime: travelInfo,
           badges: [`${activePreferences.travel === 'walk' ? '🚶‍♀️' : activePreferences.travel === 'drive' ? '🚗' : '🚌'} ${travelInfo}`, `💰 ${formatCurrency(exp.price_min || exp.price || 25, profile?.currency || 'USD')}`],
-          whyItFits: `Perfect for ${activePreferences.groupSize === 1 ? 'solo' : `groups of ${activePreferences.groupSize}`} ${activePreferences.travel === 'walk' ? 'walking' : activePreferences.travel === 'drive' ? 'driving' : 'taking public transport'} ${travelInfo}. ${getCategoryBySlug(exp.category_slug)?.name || exp.category} experience matching your ${formatCurrency(activePreferences.budgetRange[0], profile?.currency || 'USD')}-${formatCurrency(activePreferences.budgetRange[1], profile?.currency || 'USD')} budget.`,
-          location: exp.formatted_address || exp.location || 'Unknown Location',
+          whyItFits: `Perfect for ${activePreferences.experienceTypes?.join(' & ') || 'your group'} - ${getCategoryBySlug(exp.category_slug)?.name || exp.category} in ${city}`,
+          location: fullLocation,
+          city: city,
           category: getCategoryBySlug(exp.category_slug)?.name || exp.category || 'Experience',
           latitude: exp.lat || lat,
           longitude: exp.lng || lng

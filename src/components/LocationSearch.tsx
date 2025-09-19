@@ -93,7 +93,9 @@ export const LocationSearch = ({
           if (place && place.geometry && place.geometry.location) {
             const lat = place.geometry.location.lat();
             const lng = place.geometry.location.lng();
-            onChange(place.formatted_address || '', lat, lng);
+            const formattedAddress = place.formatted_address || '';
+            console.log('🎯 Location selected:', formattedAddress, lat, lng);
+            onChange(formattedAddress, lat, lng);
           }
         });
       }
@@ -108,7 +110,15 @@ export const LocationSearch = ({
   }, [apiKey, onChange]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(e.target.value);
+    const newValue = e.target.value;
+    // Only call onChange for manual typing, not for autocomplete selections
+    if (!window.google?.maps?.places || !autocompleteRef.current) {
+      onChange(newValue);
+    } else {
+      // For Google Places, let the place_changed event handle the onChange
+      // But still update the input value visually
+      onChange(newValue);
+    }
   };
 
   return (
