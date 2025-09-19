@@ -138,7 +138,7 @@ export const CreateSessionDialog = ({
       
       const apiPromise = createSession({
         name: sessionName.trim(),
-        participantIds: selectedParticipants
+        participants: selectedParticipants
       });
       
       const result = await Promise.race([apiPromise, timeoutPromise]);
