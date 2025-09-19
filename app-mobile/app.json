@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "Mingla",
+    "slug": "mingla-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f8f9fa"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mingla.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Mingla needs location access to find experiences near you and provide location-based recommendations.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Mingla needs location access to find experiences near you and provide location-based recommendations.",
+        "NSCameraUsageDescription": "Mingla needs camera access to capture photos for your experiences.",
+        "NSPhotoLibraryUsageDescription": "Mingla needs photo library access to select images for your experiences."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f8f9fa"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.mingla.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-location",
+      "expo-notifications",
+      "expo-camera",
+      "expo-calendar"
+    ]
+  }
+}

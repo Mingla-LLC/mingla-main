@@ -1,0 +1,123 @@
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { User, Preferences, Save, CollaborationSession, CollaborationInvite } from '../types';
+
+interface AppState {
+  // Auth state
+  user: User | null;
+  isAuthenticated: boolean;
+  
+  // User data
+  profile: User | null;
+  preferences: Preferences | null;
+  saves: Save[];
+  
+  // Session state
+  currentSession: CollaborationSession | null;
+  availableSessions: CollaborationSession[];
+  pendingInvites: CollaborationInvite[];
+  isInSolo: boolean;
+  
+  // Actions
+  setAuth: (user: User | null) => void;
+  setProfile: (profile: User | null) => void;
+  setPreferences: (preferences: Preferences | null) => void;
+  setSaves: (saves: Save[]) => void;
+  addSave: (save: Save) => void;
+  removeSave: (experienceId: string) => void;
+  updateSave: (experienceId: string, updates: Partial<Save>) => void;
+  
+  // Session actions
+  setCurrentSession: (session: CollaborationSession | null) => void;
+  setAvailableSessions: (sessions: CollaborationSession[]) => void;
+  setPendingInvites: (invites: CollaborationInvite[]) => void;
+  setIsInSolo: (isInSolo: boolean) => void;
+  
+  // Utilities
+  clearUserData: () => void;
+}
+
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      // Initial state
+      user: null,
+      isAuthenticated: false,
+      profile: null,
+      preferences: null,
+      saves: [],
+      currentSession: null,
+      availableSessions: [],
+      pendingInvites: [],
+      isInSolo: true,
+
+      // Auth actions
+      setAuth: (user) => {
+        console.log('setAuth called with user:', user ? 'User exists' : 'No user');
+        set({ 
+          user, 
+          isAuthenticated: !!user 
+        });
+        console.log('isAuthenticated set to:', !!user);
+        
+        if (!user) {
+          get().clearUserData();
+        }
+      },
+
+      // User data actions
+      setProfile: (profile) => set({ profile }),
+      setPreferences: (preferences) => set({ preferences }),
+      setSaves: (saves) => set({ saves }),
+      
+      addSave: (save) => set((state) => ({
+        saves: [...state.saves, save]
+      })),
+      
+      removeSave: (experienceId) => set((state) => ({
+        saves: state.saves.filter(save => save.experience_id !== experienceId)
+      })),
+      
+      updateSave: (experienceId, updates) => set((state) => ({
+        saves: state.saves.map(save => 
+          save.experience_id === experienceId 
+            ? { ...save, ...updates }
+            : save
+        )
+      })),
+
+      // Session actions
+      setCurrentSession: (currentSession) => set({ currentSession }),
+      setAvailableSessions: (availableSessions) => set({ availableSessions }),
+      setPendingInvites: (pendingInvites) => set({ pendingInvites }),
+      setIsInSolo: (isInSolo) => set({ isInSolo }),
+
+      // Utilities
+      clearUserData: () => set({
+        user: null,
+        isAuthenticated: false,
+        profile: null,
+        preferences: null,
+        saves: [],
+        currentSession: null,
+        availableSessions: [],
+        pendingInvites: [],
+        isInSolo: true
+      }),
+    }),
+    {
+      name: 'mingla-mobile-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+        profile: state.profile,
+        preferences: state.preferences,
+        saves: state.saves,
+        currentSession: state.currentSession,
+        isInSolo: state.isInSolo
+      }),
+    }
+  )
+);
