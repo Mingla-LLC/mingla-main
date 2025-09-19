@@ -738,9 +738,6 @@ const Home = () => {
                   <div className="w-4 h-4 rounded-full bg-gradient-to-r from-primary to-primary-dark flex items-center justify-center">
                     <span className="text-xs">👤</span>
                   </div>
-                  <span className="text-xs text-primary font-medium">
-                    Solo Mode
-                  </span>
                 </>
               ) : currentSession ? (
                 <>
