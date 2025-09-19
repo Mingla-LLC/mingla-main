@@ -6,8 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { TripCard } from '@/components/TripCard';
 import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
-import { SessionModeSwitch } from '@/components/SessionModeSwitch';
-import { CollaborationInviteManager } from '@/components/CollaborationInviteManager';
+import { HeaderControls } from '@/components/HeaderControls';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -520,57 +519,26 @@ const Home = () => {
             </Button>
           </div>
           
-          <div className="flex items-center gap-2">
-            <Badge 
-              variant={isInSolo ? "secondary" : "default"} 
-              className="px-3 py-1 font-medium"
-            >
-              {isInSolo ? (
-                <>
-                  <User className="h-3 w-3 mr-1" />
-                  Solo Mode
-                </>
-              ) : (
-                <>
-                  <Users className="h-3 w-3 mr-1" />
-                  Collaborative
-                </>
-              )}
-            </Badge>
-            {currentSession && (
-              <Badge variant="outline" className="px-2 py-1 text-xs">
-                {currentSession.participants.length} friends
-              </Badge>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Premium Content Grid */}
-      <div className="px-6 space-y-6">
-        {/* Collaboration Invites */}
-        {(pendingInvites.length > 0 || sentSessions.length > 0) && (
-          <CollaborationInviteManager
-            pendingInvites={pendingInvites}
-            sentSessions={sentSessions}
-            onAcceptInvite={handleAcceptInvite}
-            onDeclineInvite={handleDeclineInvite}
-            onCancelSession={handleCancelSession}
-            loading={sessionLoading}
-          />
-        )}
-
-        {/* Session Mode Switch */}
-        <SessionModeSwitch
+        <HeaderControls
           currentSession={currentSession}
           availableSessions={availableSessions}
           isInSolo={isInSolo}
           onSwitchToSolo={switchToSolo}
           onSwitchToCollaborative={switchToCollaborative}
           onCreateSession={handleCreateSession}
+          pendingInvites={pendingInvites}
+          sentSessions={sentSessions}
+          onAcceptInvite={handleAcceptInvite}
+          onDeclineInvite={handleDeclineInvite}
+          onCancelSession={handleCancelSession}
           loading={sessionLoading}
         />
+        </div>
       </div>
+
+      {/* Premium Content Grid */}
+      <div className="px-6 space-y-6">
+        {/* Content removed - moved to header */}
 
       {/* Premium Experience Card */}
       <div className="flex-1 flex items-center justify-center px-6 py-6">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, MapPin, Clock, DollarSign, Calendar, ExternalLink, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,9 +6,12 @@ import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useGeolocation } from '@/hooks/useGeolocation';
 import { formatCurrency } from '@/utils/currency';
 import { PlanBCard } from './PlanBCard';
 import { MapTimeline } from './MapTimeline';
+import { generateWhyItFits, generatePerfectFor, generatePlanBOptions } from '@/utils/preferences';
+import { generateRealTimeline } from '@/utils/timeline';
 
 interface TripCardExpandedProps {
   trip: {
@@ -17,17 +20,28 @@ interface TripCardExpandedProps {
     image: string;
     cost: number;
     duration: string;
-    travelTime: string;
+    travelTime?: string;
     badges: string[];
-    whyItFits: string;
+    whyItFits?: string;
     location: string;
     category: string;
     perfectFor?: string[];
     experienceType?: string;
+    // Additional fields for rich data
+    lat?: number;
+    lng?: number;
+    latitude?: number;
+    longitude?: number;
+    address?: string;
   };
   preferences?: {
+    budget_min?: number;
+    budget_max?: number;
+    categories?: string[];
+    travel_mode?: string;
     experienceTypes?: string[];
     selectedCategories?: string[];
+    [key: string]: any;
   };
   isOpen: boolean;
   onClose: () => void;
@@ -36,36 +50,7 @@ interface TripCardExpandedProps {
   showAcceptButton?: boolean;
 }
 
-const timelineSteps = [
-  { 
-    time: '6:00 PM', 
-    activity: 'Meet at Pike Place Market', 
-    icon: '📍', 
-    duration: '5 min',
-    location: { lat: 47.6097, lng: -122.3331 }
-  },
-  { 
-    time: '6:05 PM', 
-    activity: 'Walk to waterfront café', 
-    icon: '🚶‍♀️', 
-    duration: '8 min',
-    location: { lat: 47.6062, lng: -122.3321 }
-  },
-  { 
-    time: '6:15 PM', 
-    activity: 'Coffee & sunset viewing', 
-    icon: '☕', 
-    duration: '1.5 hours',
-    location: { lat: 47.6048, lng: -122.3400 }
-  },
-  { 
-    time: '7:45 PM', 
-    activity: 'Optional: Walk to pier', 
-    icon: '🌅', 
-    duration: '15 min',
-    location: { lat: 47.6040, lng: -122.3420 }
-  }
-];
+// Timeline will be generated dynamically
 
 export const TripCardExpanded = ({ 
   trip, 
@@ -77,54 +62,70 @@ export const TripCardExpanded = ({
   showAcceptButton = false 
 }: TripCardExpandedProps) => {
   const { profile } = useUserProfile();
+  const { latitude, longitude } = useGeolocation();
   const [showPlanB, setShowPlanB] = useState(false);
+  const [selectedPlanB, setSelectedPlanB] = useState<any>(null);
 
-  // Generate Plan B alternative
-  const planBTrip = {
-    id: trip.id + '_planb',
-    title: `Indoor ${trip.category} Experience`,
-    image: trip.image,
-    cost: trip.cost * 0.8, // Slightly cheaper
-    duration: trip.duration,
-    location: trip.location,
+  // Generate dynamic content based on preferences and location
+  const tripContext = useMemo(() => ({
     category: trip.category,
-    badges: ['Indoor', 'Weather-proof', ...trip.badges.slice(0, 2)]
-  };
+    cost: trip.cost,
+    location: trip.location,
+    duration: trip.duration,
+    isIndoor: trip.category.toLowerCase().includes('indoor'),
+    isOutdoor: trip.category.toLowerCase().includes('outdoor'),
+    hasFood: trip.category.toLowerCase().includes('food') || trip.category.toLowerCase().includes('dining')
+  }), [trip]);
 
-  // Generate "Perfect for" based on preferences
-  const generatePerfectFor = () => {
-    if (!preferences?.experienceTypes?.length) return trip.badges;
-    
-    return preferences.experienceTypes.map(type => {
-      switch (type) {
-        case 'First Date':
-          return 'First dates';
-        case 'Romantic':
-          return 'Romantic moments';
-        case 'Friendly':
-          return 'Friend hangouts';
-        case 'Solo Adventure':
-          return 'Solo exploration';
-        case 'Group Fun':
-          return 'Group activities';
-        case 'Business':
-          return 'Professional meetings';
-        default:
-          return type;
-      }
-    });
-  };
+  const whyItFits = useMemo(() => 
+    generateWhyItFits(preferences || {}, tripContext), 
+    [preferences, tripContext]
+  );
 
-  // Generate contextual "Why this fits"
-  const generateWhyItFits = () => {
-    if (!preferences?.experienceTypes?.length && !preferences?.selectedCategories?.length) {
-      return trip.whyItFits;
+  const perfectFor = useMemo(() => 
+    generatePerfectFor(tripContext, preferences), 
+    [tripContext, preferences]
+  );
+
+  const planBOptions = useMemo(() => 
+    generatePlanBOptions(tripContext, preferences), 
+    [tripContext, preferences]
+  );
+
+  const activeTrip = selectedPlanB || trip;
+
+  // Generate real timeline based on user location and destination
+  const timelineSteps = useMemo(() => {
+    if (!latitude || !longitude || (!trip.lat && !trip.latitude) || (!trip.lng && !trip.longitude)) {
+      // Fallback timeline if no location data
+      const tripLat = trip.lat || trip.latitude || 40.7505;
+      const tripLng = trip.lng || trip.longitude || -73.9934;
+      return [
+        { time: '2:30 PM', activity: 'Arrive at venue', location: { lat: tripLat, lng: tripLng }, icon: '📍', duration: '5 min' },
+        { time: '2:35 PM', activity: `Enjoy ${trip.category.toLowerCase()}`, location: { lat: tripLat, lng: tripLng }, icon: '✨', duration: '2h' },
+        { time: '4:35 PM', activity: 'Wrap up', location: { lat: tripLat, lng: tripLng }, icon: '📸', duration: '15 min' },
+      ];
     }
 
-    const experienceContext = preferences.experienceTypes?.join(', ') || '';
-    const categoryContext = preferences.selectedCategories?.join(', ') || '';
-    
-    return `Perfect for ${experienceContext}${experienceContext && categoryContext ? ' with a focus on ' : ''}${categoryContext}. This experience matches your preferences for authentic local activities that create meaningful connections.`;
+    const tripLat = activeTrip.lat || activeTrip.latitude || trip.lat || trip.latitude || 40.7505;
+    const tripLng = activeTrip.lng || activeTrip.longitude || trip.lng || trip.longitude || -73.9934;
+
+    return generateRealTimeline(
+      { lat: latitude, lng: longitude, name: 'Your location' },
+      { lat: tripLat, lng: tripLng, name: activeTrip.title },
+      activeTrip.duration,
+      activeTrip.category
+    );
+  }, [latitude, longitude, trip, activeTrip]);
+
+  // Handle Plan B selection
+  const handlePlanBSelect = (planBTrip: any) => {
+    setSelectedPlanB({
+      ...trip,
+      ...planBTrip,
+      title: `${trip.title} - ${planBTrip.category}`,
+      id: trip.id + '_planb'
+    });
   };
 
   const handleAddToCalendar = () => {
@@ -192,10 +193,12 @@ export const TripCardExpanded = ({
                 <Clock className="h-4 w-4" />
                 <span>{trip.duration}</span>
               </div>
-              <div className="flex items-center gap-1">
-                <MapPin className="h-4 w-4" />
-                <span>{trip.travelTime}</span>
-              </div>
+              {trip.travelTime && (
+                <div className="flex items-center gap-1">
+                  <MapPin className="h-4 w-4" />
+                  <span>{trip.travelTime}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -204,45 +207,55 @@ export const TripCardExpanded = ({
           {/* Why It Fits */}
           <div>
             <h3 className="font-semibold mb-2 text-accent">Why this fits</h3>
-            <p className="text-sm text-muted-foreground">{generateWhyItFits()}</p>
+            <p className="text-sm text-muted-foreground">{whyItFits}</p>
           </div>
 
           {/* Perfect For */}
           <div>
             <h3 className="font-semibold mb-2">Perfect for</h3>
             <div className="flex flex-wrap gap-2">
-              {generatePerfectFor().map((item) => (
-                <Badge key={item} variant="outline" className="text-xs">
+              {perfectFor.map((item, index) => (
+                <Badge key={index} variant="outline" className="text-xs">
                   {item}
                 </Badge>
               ))}
             </div>
           </div>
 
-          {/* Plan B Toggle */}
-          <div className="space-y-3">
-            <Card className="p-4 bg-muted/30">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <h4 className="font-semibold text-sm">Plan B Option</h4>
-                  <p className="text-xs text-muted-foreground">Indoor alternative if weather changes</p>
-                </div>
-                <Switch 
-                  checked={showPlanB}
-                  onCheckedChange={setShowPlanB}
-                />
+          {/* Plan B Section */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-semibold">Plan B</h4>
+                <p className="text-sm text-muted-foreground">Alternative options</p>
               </div>
-            </Card>
+              <Switch 
+                checked={showPlanB} 
+                onCheckedChange={setShowPlanB}
+                className="data-[state=checked]:bg-primary"
+              />
+            </div>
             
             {showPlanB && (
-              <PlanBCard 
-                trip={planBTrip}
-                currency={profile?.currency || 'USD'}
-                onSelect={() => {
-                  // Handle plan B selection
-                  console.log('Selected Plan B');
-                }}
-              />
+              <div className="space-y-3">
+                {planBOptions.map((option, index) => (
+                  <PlanBCard
+                    key={index}
+                    trip={{
+                      id: `${trip.id}_planb_${index}`,
+                      title: option.location.replace(trip.location + " - ", ""),
+                      image: trip.image,
+                      cost: option.cost,
+                      duration: option.duration,
+                      location: option.location,
+                      category: option.category,
+                      badges: trip.badges
+                    }}
+                    onSelect={() => handlePlanBSelect(option)}
+                    currency={profile?.currency || 'USD'}
+                  />
+                ))}
+              </div>
             )}
           </div>
 
@@ -251,7 +264,8 @@ export const TripCardExpanded = ({
             <h3 className="font-semibold mb-3">Trip Timeline & Route</h3>
             <MapTimeline 
               steps={timelineSteps}
-              userLocation={{ lat: 47.6205, lng: -122.3493 }} // Example user location
+              userLocation={latitude && longitude ? { lat: latitude, lng: longitude } : undefined}
+              className="h-64"
             />
           </div>
         </div>
