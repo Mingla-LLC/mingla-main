@@ -554,30 +554,17 @@ const Home = () => {
       {/* Header */}
       <div className="px-6 pt-12 pb-6">
         <div className="flex items-center justify-between mb-8">
-          {/* Premium Logo and Branding */}
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <img 
-                src="/src/assets/mingla-logo.png" 
-                alt="Mingla" 
-                className="h-12 w-auto object-contain"
-              />
-              <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-lg blur-sm -z-10 opacity-50" />
-            </div>
-            <div className="border-l border-border/30 pl-4">
-              <h1 className="text-3xl font-light tracking-wide">
-                {user ? `Welcome back, ${profile?.first_name || 'Explorer'}` : 'Discover Premium'}
-              </h1>
-              <p className="text-muted-foreground/80 text-sm font-light mt-1">
-                {!isInSolo && currentSession
-                  ? `Collaborating with ${currentSession.participants.length} ${currentSession.participants.length === 1 ? 'person' : 'people'}`
-                  : 'Curated experiences tailored for you'
-                }
-              </p>
-            </div>
+          {/* Logo */}
+          <div className="relative">
+            <img 
+              src="/src/assets/mingla-logo.png" 
+              alt="Mingla" 
+              className="h-12 w-auto object-contain"
+            />
+            <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-lg blur-sm -z-10 opacity-50" />
           </div>
           
-          {/* Premium Action Controls */}
+          {/* Action Controls */}
           <div className="flex items-center gap-3">
             {!isInSolo && currentSession && (
               <Button 
