@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-// Fixed useCallback import
-import { Sliders, RefreshCw, X } from 'lucide-react';
+import { Heart, X, Sliders, RefreshCw, Users, User, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { TripCard } from '@/components/TripCard';
 import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
-import { SessionInviteNotifications } from '@/components/SessionInviteNotifications';
-
-import { NotificationBar } from '@/components/NotificationBar';
+import { SessionModeSwitch } from '@/components/SessionModeSwitch';
+import { CollaborationInviteManager } from '@/components/CollaborationInviteManager';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -16,7 +16,8 @@ import { formatCurrency } from '@/utils/currency';
 import { getCategoryBySlug } from '@/lib/categories';
 import { useExperiences } from '@/hooks/useExperiences';
 import { useSessionManagement } from '@/hooks/useSessionManagement';
-import type { User } from '@supabase/supabase-js';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
+import minglaLogo from '@/assets/mingla-logo.png';
 
 interface ActivePreferences {
   budgetRange: [number, number];
@@ -39,7 +40,7 @@ const Home = () => {
   const [showPreferences, setShowPreferences] = useState(false);
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   const [measurementSystem, setMeasurementSystem] = useState('metric');
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [showNotifications, setShowNotifications] = useState(true);
   
   const { profile } = useUserProfile();
@@ -386,51 +387,11 @@ const Home = () => {
     });
   }, [realTrips, experiences, activePreferences.location, activePreferences.travel, activePreferences.travelConstraint]);
 
-  const [collaborationRequests, setCollaborationRequests] = useState<Array<{
-    id: string;
-    from: {
-      id: string;
-      name: string;
-      avatar: string;
-      username: string;
-    };
-    tripTitle: string;
-    timestamp: string;
-    status: 'pending' | 'accepted' | 'declined';
-  }>>([
-    {
-      id: '1',
-      from: {
-        id: 'user1',
-        name: 'Emma Wilson',
-        avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80',
-        username: 'emmawilson'
-      },
-      tripTitle: 'Art Gallery & Wine Tasting',
-      timestamp: '2 hours ago',
-      status: 'pending'
-    },
-    {
-      id: '2',
-      from: {
-        id: 'user2',
-        name: 'James Rodriguez',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e',
-        username: 'jamesrodriguez'
-      },
-      tripTitle: 'Rooftop Brunch & Views',
-      timestamp: '1 day ago',
-      status: 'pending'
-    }
-  ]);
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-    };
-    getUser();
-  }, []);
+  // Get sent sessions (where user is the creator)
+  const sentSessions = availableSessions.filter(session => 
+    session.invitedBy === user?.id && 
+    (session.status === 'pending' || session.status === 'dormant')
+  );
 
   const currentTrip = trips[currentTripIndex];
   const isLoading = experiencesLoading || sessionLoading || loadingRealData;
@@ -467,6 +428,19 @@ const Home = () => {
     nextTrip();
   };
 
+  // Handle session invite actions
+  const handleAcceptInvite = async (sessionId: string) => {
+    await switchToCollaborative(sessionId);
+  };
+
+  const handleDeclineInvite = async (sessionId: string) => {
+    await cancelSession(sessionId);
+  };
+
+  const handleCancelSession = async (sessionId: string) => {
+    await cancelSession(sessionId);
+  };
+
   // Add function to accept/finalize experience
   const acceptExperience = async (experienceId: string, scheduledDate?: Date) => {
     const { writeThroughHelpers } = await import('@/store/writeThroughHelpers');
@@ -500,197 +474,249 @@ const Home = () => {
     });
   };
 
-  const handleAcceptRequest = (requestId: string) => {
-    setCollaborationRequests(prev => 
-      prev.map(req => 
-        req.id === requestId 
-          ? { ...req, status: 'accepted' as const }
-          : req
-      )
-    );
-    toast({
-      title: "Collaboration accepted",
-      description: "You've joined the experience!",
-    });
-  };
-
-  const handleDeclineRequest = (requestId: string) => {
-    setCollaborationRequests(prev => 
-      prev.map(req => 
-        req.id === requestId 
-          ? { ...req, status: 'declined' as const }
-          : req
-      )
-    );
-  };
-
-  const pendingRequests = collaborationRequests.filter(req => req.status === 'pending');
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center px-6">
-          <h3 className="text-lg font-semibold mb-2">Something went wrong</h3>
-          <p className="text-muted-foreground mb-4">{error}</p>
-          <Button onClick={() => window.location.reload()}>
-            Try Again
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background">
-      {/* Notification Bar for Collaboration Invites */}
-      {showNotifications && pendingInvites && pendingInvites.length > 0 && (
-        <NotificationBar
-          invites={pendingInvites}
-          onOpenSwitcher={() => {}}
-          onDismiss={() => setShowNotifications(false)}
-        />
-      )}
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 relative overflow-hidden">
+      {/* Background Pattern */}
+      <div className="fixed inset-0 opacity-[0.02] pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1),transparent_50%)]" />
+      </div>
 
       {/* Header */}
-      <div className="px-6 pt-12 pb-6">
-        <div className="flex items-center justify-between mb-8">
-          {/* Logo */}
-          <div className="relative">
-            <img 
-              src="/src/assets/mingla-logo.png" 
-              alt="Mingla" 
-              className="h-12 w-auto object-contain"
-            />
-            <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-lg blur-sm -z-10 opacity-50" />
-          </div>
-          
-          {/* Action Controls */}
-          <div className="flex items-center gap-3">
-            {!isInSolo && currentSession && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={async () => {
-                  await cancelSession(currentSession.id);
-                }}
-                className="text-xs font-medium border-destructive/20 text-destructive hover:bg-destructive/5 transition-all duration-200"
-              >
-                Leave Session
-              </Button>
-            )}
-            <div className="flex items-center gap-1 bg-card/50 backdrop-blur-sm rounded-full p-1 border border-border/20">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => window.location.reload()}
-                className="h-8 w-8 rounded-full hover:bg-primary/10 transition-all duration-200"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setShowPreferences(true)}
-                className="h-8 w-8 rounded-full hover:bg-primary/10 transition-all duration-200"
-              >
-                <Sliders className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+      <div className="relative z-10 px-6 pt-12 pb-6">
+        <div className="flex items-center justify-center mb-6">
+          <img 
+            src={minglaLogo} 
+            alt="Mingla" 
+            className="h-12 w-auto"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              const fallback = document.createElement('div');
+              fallback.className = 'text-3xl font-bold text-primary';
+              fallback.textContent = 'Mingla';
+              target.parentElement?.appendChild(fallback);
+            }}
+          />
         </div>
 
-
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchRealData}
+              disabled={isLoading}
+              className="bg-background/80 backdrop-blur-sm border-primary/20"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPreferences(true)}
+              className="bg-background/80 backdrop-blur-sm border-primary/20"
+            >
+              <Sliders className="h-4 w-4" />
+            </Button>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Badge 
+              variant={isInSolo ? "secondary" : "default"} 
+              className="px-3 py-1 font-medium"
+            >
+              {isInSolo ? (
+                <>
+                  <User className="h-3 w-3 mr-1" />
+                  Solo Mode
+                </>
+              ) : (
+                <>
+                  <Users className="h-3 w-3 mr-1" />
+                  Collaborative
+                </>
+              )}
+            </Badge>
+            {currentSession && (
+              <Badge variant="outline" className="px-2 py-1 text-xs">
+                {currentSession.participants.length} friends
+              </Badge>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 px-6">
-        {/* Content */}
-        {isLoading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-muted-foreground">Loading experiences...</p>
-            </div>
-          </div>
-        ) : trips.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center px-6">
-              <h3 className="text-lg font-semibold mb-2">No experiences found</h3>
-              <p className="text-muted-foreground mb-4">
-                Try adjusting your preferences to see more options, or check back later for new experiences.
-              </p>
-              <Button 
-                onClick={() => setShowPreferences(true)}
+      {/* Premium Content Grid */}
+      <div className="px-6 space-y-6">
+        {/* Collaboration Invites */}
+        {(pendingInvites.length > 0 || sentSessions.length > 0) && (
+          <CollaborationInviteManager
+            pendingInvites={pendingInvites}
+            sentSessions={sentSessions}
+            onAcceptInvite={handleAcceptInvite}
+            onDeclineInvite={handleDeclineInvite}
+            onCancelSession={handleCancelSession}
+            loading={sessionLoading}
+          />
+        )}
+
+        {/* Session Mode Switch */}
+        <SessionModeSwitch
+          currentSession={currentSession}
+          availableSessions={availableSessions}
+          isInSolo={isInSolo}
+          onSwitchToSolo={switchToSolo}
+          onSwitchToCollaborative={switchToCollaborative}
+          onCreateSession={handleCreateSession}
+          loading={sessionLoading}
+        />
+      </div>
+
+      {/* Premium Experience Card */}
+      <div className="flex-1 flex items-center justify-center px-6 py-6">
+        {currentTrip ? (
+          <div className="relative w-full max-w-sm">
+            {/* Premium card with dating app styling */}
+            <Card className="relative overflow-hidden bg-gradient-to-br from-card to-card/80 backdrop-blur-sm border-primary/10 shadow-xl">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5" />
+              <CardContent className="p-0 relative">
+                <div className="relative">
+                  <img
+                    src={currentTrip.image}
+                    alt={currentTrip.title}
+                    className="w-full h-96 object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                  
+                  {/* Floating badges */}
+                  <div className="absolute top-4 left-4 flex flex-wrap gap-2">
+                    {currentTrip.badges?.slice(0, 2).map((badge, index) => (
+                      <Badge 
+                        key={index} 
+                        variant="secondary" 
+                        className="bg-background/90 backdrop-blur-sm text-xs"
+                      >
+                        {badge}
+                      </Badge>
+                    ))}
+                  </div>
+
+                  {/* Session indicator */}
+                  <div className="absolute top-4 right-4">
+                    <Badge 
+                      variant={isInSolo ? "secondary" : "default"} 
+                      className="bg-background/90 backdrop-blur-sm text-xs"
+                    >
+                      {isInSolo ? (
+                        <>
+                          <User className="h-3 w-3 mr-1" />
+                          Solo
+                        </>
+                      ) : (
+                        <>
+                          <Users className="h-3 w-3 mr-1" />
+                          {currentSession?.participants.length}
+                        </>
+                      )}
+                    </Badge>
+                  </div>
+
+                  {/* Content overlay */}
+                  <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
+                    <h2 className="text-2xl font-bold mb-2">{currentTrip.title}</h2>
+                    <div className="flex items-center gap-4 text-sm opacity-90 mb-3">
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="h-4 w-4" />
+                        {formatCurrency(currentTrip.cost, profile?.currency || 'USD')}
+                      </span>
+                      <span>{currentTrip.duration}</span>
+                      <span>{currentTrip.travelTime}</span>
+                    </div>
+                    <p className="text-sm opacity-80 line-clamp-2">
+                      {currentTrip.whyItFits}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Action buttons - dating app style */}
+            <div className="flex justify-center gap-6 mt-8">
+              <Button
+                size="lg"
                 variant="outline"
+                onClick={handleSwipeLeft}
+                className="w-16 h-16 rounded-full border-2 border-muted hover:border-destructive hover:bg-destructive/10 group"
               >
-                Update Preferences
+                <X className="h-6 w-6 group-hover:text-destructive" />
+              </Button>
+              
+              <Button
+                size="lg"
+                onClick={() => setExpandedTrip(currentTrip.id)}
+                className="w-20 h-16 rounded-full bg-primary/10 hover:bg-primary/20 text-primary border-2 border-primary/20"
+              >
+                <Sparkles className="h-6 w-6" />
+              </Button>
+
+              <Button
+                size="lg"
+                onClick={handleSwipeRight}
+                className="w-16 h-16 rounded-full bg-primary hover:bg-primary/90 group"
+              >
+                <Heart className="h-6 w-6 text-white fill-current" />
               </Button>
             </div>
-          </div>
-        ) : currentTrip ? (
-          <div className="space-y-4">
-            <TripCard
-              trip={currentTrip}
-              onSwipeRight={handleSwipeRight}
-              onSwipeLeft={handleSwipeLeft}
-              onExpand={() => setExpandedTrip(currentTrip.id)}
-            />
-            <p className="text-center text-muted-foreground">
-              {currentTripIndex + 1} of {trips.length} experiences
-            </p>
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center px-6">
-              <h3 className="text-lg font-semibold mb-2">That's all for now!</h3>
-              <p className="text-muted-foreground mb-4">
-                Check back later for more experiences, or adjust your preferences to see different options.
-              </p>
-              <Button 
-                onClick={() => setCurrentTripIndex(0)}
-                variant="outline"
-                className="mr-2"
-              >
-                Start Over
-              </Button>
-              <Button onClick={() => setShowPreferences(true)}>
-                Update Preferences
-              </Button>
+          <div className="text-center py-16">
+            <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Sparkles className="h-12 w-12 text-primary" />
             </div>
+            <h3 className="text-2xl font-bold mb-3">All caught up!</h3>
+            <p className="text-muted-foreground mb-6 max-w-md">
+              You've explored all available experiences. Adjust your preferences to discover more amazing places!
+            </p>
+            <Button 
+              onClick={() => setShowPreferences(true)}
+              className="bg-primary hover:bg-primary/90"
+            >
+              <Sliders className="h-4 w-4 mr-2" />
+              Update Preferences
+            </Button>
           </div>
         )}
       </div>
+
+      {/* Expanded Trip Card */}
+      {expandedTrip && (
+        <TripCardExpanded
+          trip={trips.find(t => t.id === expandedTrip)!}
+          isOpen={!!expandedTrip}
+          onClose={() => setExpandedTrip(null)}
+          onAccept={() => {
+            const trip = trips.find(t => t.id === expandedTrip);
+            if (trip) {
+              acceptExperience(trip.id);
+            }
+            setExpandedTrip(null);
+          }}
+          onAddToBoard={() => {
+            // Handle add to board logic
+            setExpandedTrip(null);
+          }}
+          showAcceptButton={true}
+        />
+      )}
 
       {/* Preferences Sheet */}
       <PreferencesSheet
         isOpen={showPreferences}
         onClose={() => setShowPreferences(false)}
-        measurementSystem={measurementSystem}
-        activePreferences={{
-          ...activePreferences,
-          groupSize: activePreferences.groupSize
-        }}
-        onPreferencesUpdate={(preferences) => {
-          setActivePreferences(preferences);
-          // Reset to first trip when preferences change
-          setCurrentTripIndex(0);
-        }}
+        activePreferences={activePreferences}
+        onPreferencesChange={setActivePreferences}
+        onRemoveCategory={removeCategory}
       />
-
-      {/* Expanded Trip Modal */}
-      {expandedTrip && currentTrip && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm">
-            <TripCardExpanded
-              trip={currentTrip}
-              isOpen={true}
-              onClose={() => setExpandedTrip(null)}
-              onAccept={handleSwipeRight}
-              showAcceptButton={true}
-            />
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };

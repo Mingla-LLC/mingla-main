@@ -8,85 +8,17 @@ import { BoardSelectionDialog } from '@/components/BoardSelectionDialog';
 import { NewBoardDialog } from '@/components/NewBoardDialog';
 import { SavedTripCard } from '@/components/SavedTripCard';
 
-const savedTrips = [
-  {
-    id: '1',
-    title: 'Sunset Coffee at Waterfront',
-    image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
-    cost: 25,
-    duration: '1.5 hours',
-    travelTime: '8 min walk',
-    badges: ['Budget-Fit', 'Weather-OK', 'Verified'],
-    whyItFits: 'Perfect timing for golden hour, cozy café with outdoor seating, within your budget',
-    savedDate: '2024-01-15',
-    location: 'Pike Place Market',
-    category: 'Coffee & Walk',
-    status: 'saved', // 'saved', 'accepted', 'declined'
-    scheduledDate: null
-  },
-  {
-    id: '2',
-    title: 'Interactive Art Experience', 
-    image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96',
-    cost: 45,
-    duration: '2 hours',
-    travelTime: '12 min drive',
-    badges: ['Creative', 'Weather-OK'],
-    whyItFits: 'Hands-on pottery class perfect for creative dates, includes materials and refreshments',
-    savedDate: '2024-01-14',
-    location: 'Capitol Hill',
-    category: 'Creative Date',
-    status: 'accepted',
-    scheduledDate: '2024-01-20'
-  },
-  {
-    id: '3',
-    title: 'Rooftop Brunch & Views',
-    image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0',
-    cost: 65,
-    duration: '2.5 hours',
-    travelTime: '15 min transit',
-    badges: ['Weekend Special', 'Verified'],
-    whyItFits: 'Amazing city views, bottomless mimosas, perfect weekend vibes',
-    savedDate: '2024-01-13', 
-    location: 'Belltown',
-    category: 'Brunch',
-    status: 'saved',
-    scheduledDate: null
-  }
-];
+// Mock data removed - will be replaced with real user saves from Supabase
 
 const Saved = () => {
   const [selectedTrips, setSelectedTrips] = useState<string[]>([]);
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [trips, setTrips] = useState(savedTrips);
+  const [trips, setTrips] = useState<any[]>([]); // Will be loaded from real user saves
   const [isBoardSelectionOpen, setIsBoardSelectionOpen] = useState(false);
   const [isNewBoardDialogOpen, setIsNewBoardDialogOpen] = useState(false);
   const [selectedTripForBoard, setSelectedTripForBoard] = useState<string | null>(null);
-  const [boards, setBoards] = useState([
-    {
-      id: '1',
-      title: 'Weekend Adventures',
-      description: 'Fun activities for Saturday & Sunday',
-      tripCount: 5,
-      collaborators: [
-        { id: '1', name: 'Sarah', avatar: 'https://images.unsplash.com/photo-1494790108755-2616b79444d7', initials: 'S' },
-        { id: '2', name: 'Mike', avatar: '', initials: 'M' },
-      ],
-      cover: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4'
-    },
-    {
-      id: '2',
-      title: 'Date Night Ideas',
-      description: 'Romantic spots around the city',
-      tripCount: 3,
-      collaborators: [
-        { id: '3', name: 'Alex', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d', initials: 'A' },
-      ],
-      cover: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0'
-    }
-  ]);
+  const [boards, setBoards] = useState<any[]>([]); // Will be loaded from real boards
 
   const handleAddToBoard = (tripId: string) => {
     setSelectedTripForBoard(tripId);
@@ -283,20 +215,15 @@ const Saved = () => {
       />
 
       {/* Empty State */}
-      {activeSavedTrips.length === 0 && acceptedTrips.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-            <Calendar className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-semibold mb-2">No saved experiences yet</h3>
-          <p className="text-muted-foreground mb-4">
-            Start swiping right on experiences you love!
-          </p>
-          <Button className="bg-gradient-primary">
-            Discover Experiences
-          </Button>
+      <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+          <Calendar className="h-8 w-8 text-muted-foreground" />
         </div>
-      )}
+        <h3 className="text-lg font-semibold mb-2">No saved experiences yet</h3>
+        <p className="text-muted-foreground mb-4">
+          Start exploring and save experiences you love on the Home tab!
+        </p>
+      </div>
 
     </div>
   );

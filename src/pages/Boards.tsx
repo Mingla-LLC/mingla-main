@@ -244,7 +244,7 @@ const Boards = () => {
               </div>
               <h3 className="text-lg font-semibold mb-2">No boards yet</h3>
               <p className="text-muted-foreground mb-4 max-w-md">
-                Boards are automatically created when you start collaboration sessions with friends. Visit the Home tab to create collaborative sessions!
+                Boards are automatically created when you start collaboration sessions with friends. Visit the Home tab to begin collaborating!
               </p>
             </div>
           )}
