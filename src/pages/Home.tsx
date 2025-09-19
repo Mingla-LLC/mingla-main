@@ -149,6 +149,12 @@ const Home = () => {
     groupSize: 2
   }));
 
+  // Handle preferences update with immediate application
+  const handlePreferencesUpdate = useCallback((newPreferences: ActivePreferences) => {
+    console.log('📊 Updating preferences:', newPreferences);
+    setActivePreferences(newPreferences);
+  }, []);
+
   // Memoize all filters to prevent unnecessary re-renders
   const experienceFilters = useMemo(() => {
     return {
@@ -805,7 +811,7 @@ const Home = () => {
         isOpen={showPreferences}
         onClose={() => setShowPreferences(false)}
         activePreferences={activePreferences}
-        onPreferencesUpdate={setActivePreferences}
+        onPreferencesUpdate={handlePreferencesUpdate}
       />
     </div>
   );

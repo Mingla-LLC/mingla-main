@@ -122,21 +122,24 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
           <Button 
             className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground font-semibold" 
             onClick={() => {
-                onPreferencesUpdate?.({
-                  budgetRange: budget,
-                  categories: selectedCategories,
-                  experienceTypes: experienceTypes,
-                  time: selectedTime,
-                  travel: selectedTravel,
-                  travelConstraint,
-                  travelTime,
-                  travelDistance,
-                  location: selectedLocation === 'custom' ? customLocationName : selectedLocation,
-                  customLocation: customLocation,
-                  custom_lat: customLat,
-                  custom_lng: customLng,
-                  groupSize
-                });
+              const newPreferences = {
+                budgetRange: budget,
+                categories: selectedCategories,
+                experienceTypes: experienceTypes,
+                time: selectedTime,
+                travel: selectedTravel,
+                travelConstraint,
+                travelTime,
+                travelDistance,
+                location: selectedLocation === 'custom' ? customLocationName : selectedLocation,
+                customLocation: customLocation,
+                custom_lat: customLat,
+                custom_lng: customLng,
+                groupSize
+              };
+              
+              console.log('🎯 Applying preferences:', newPreferences);
+              onPreferencesUpdate?.(newPreferences);
               onClose();
             }}
             size="lg"
