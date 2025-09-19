@@ -180,17 +180,36 @@ const Home = () => {
   const [realTrips, setRealTrips] = useState<any[]>([]);
   const [loadingRealData, setLoadingRealData] = useState(false);
 
+  // Add distance calculation helper function
+  const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; // Distance in kilometers
+  };
+
   const fetchRealData = useCallback(async () => {
     if (!activePreferences) return;
     
     setLoadingRealData(true);
     try {
-      // Get user's location coordinates (default to NYC if custom location not geocoded yet)
-      let lat = 40.7589; // Default NYC
-      let lng = -73.9851; // Default NYC
+      // Get user's location coordinates based on their preference
+      let lat = 35.7915; // Default to Cary, NC instead of NYC
+      let lng = -78.7811;
       
-      // If user has geolocation enabled, use their current location
-      if (activePreferences.location === 'current' && navigator.geolocation) {
+      // If user has a custom location with coordinates, use those
+      if (activePreferences.location === 'custom' && activePreferences.custom_lat && activePreferences.custom_lng) {
+        lat = activePreferences.custom_lat;
+        lng = activePreferences.custom_lng;
+        console.log(`Using custom location: ${activePreferences.customLocation} (${lat}, ${lng})`);
+      }
+      // If user wants current location, try to get it
+      else if (activePreferences.location === 'current' && navigator.geolocation) {
         try {
           const position = await new Promise<GeolocationPosition>((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -201,12 +220,27 @@ const Home = () => {
           });
           lat = position.coords.latitude;
           lng = position.coords.longitude;
+          console.log(`Using current location: (${lat}, ${lng})`);
         } catch (error) {
-          console.log('Could not get current location, using default');
+          console.log('Could not get current location, using default (Cary, NC)');
         }
       }
+      // If location is set to something else (like "Cary"), try to geocode it
+      else if (activePreferences.location !== 'current') {
+        // For now, use Cary coordinates as default, but in production you'd geocode the location string
+        console.log(`Using default coordinates for: ${activePreferences.location}`);
+      }
 
-      // Fetch places from Google Places API
+      // Only fetch real data if we have categories selected and a valid location
+      if (activePreferences.categories.length === 0) {
+        setRealTrips([]);
+        setLoadingRealData(false);
+        return;
+      }
+
+      console.log(`Fetching experiences for location: (${lat}, ${lng}) with categories:`, activePreferences.categories);
+      
+      // Fetch places from Google Places API with the correct location
       const placesPromises = activePreferences.categories.map(category => 
         supabase.functions.invoke('places', {
           body: {
@@ -214,15 +248,20 @@ const Home = () => {
             lng,
             radiusMeters: activePreferences.travelConstraint === 'distance' 
               ? activePreferences.travelDistance * 1000 
-              : 5000, // Default 5km radius
+              : 10000, // Increased to 10km radius for better results
             category_slug: category
           }
         })
       );
 
-      // Fetch events from Eventbrite
+      // Fetch events from Eventbrite for the correct location
       const eventsPromise = supabase.functions.invoke('events', {
-        body: { location: `${lat},${lng}` }
+        body: { 
+          location: `${lat},${lng}`,
+          radius: activePreferences.travelConstraint === 'distance' 
+            ? activePreferences.travelDistance 
+            : 10 // 10km default radius
+        }
       });
 
       // Execute all API calls
@@ -251,6 +290,26 @@ const Home = () => {
           }))
         );
       }
+
+      // Add location-based filtering for experiences
+      allExperiences = allExperiences.filter(exp => {
+        // Only show experiences with location data
+        if (!exp.lat || !exp.lng) return false;
+        
+        // Calculate distance from user's selected location
+        const distance = calculateDistance(lat, lng, exp.lat, exp.lng);
+        
+        // Filter by travel constraint
+        if (activePreferences.travelConstraint === 'distance') {
+          return distance <= activePreferences.travelDistance;
+        } else {
+          // For time constraint, assume average speed and filter by estimated travel time
+          const estimatedTimeMinutes = distance * (activePreferences.travel === 'walk' ? 20 : activePreferences.travel === 'drive' ? 2 : 4);
+          return estimatedTimeMinutes <= activePreferences.travelTime;
+        }
+      });
+
+      console.log(`Found ${allExperiences.length} experiences in the selected area (${lat}, ${lng})`);
 
       // Filter by budget
       const budgetFiltered = allExperiences.filter(exp => {
