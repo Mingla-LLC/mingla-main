@@ -714,8 +714,7 @@ const Home = () => {
         isOpen={showPreferences}
         onClose={() => setShowPreferences(false)}
         activePreferences={activePreferences}
-        onPreferencesChange={setActivePreferences}
-        onRemoveCategory={removeCategory}
+        onPreferencesUpdate={setActivePreferences}
       />
     </div>
   );
