@@ -931,58 +931,342 @@ export const useSessionManagement = () => {
         return;
       }
 
-      const invite = sessionState.pendingInvites.find(i => i.id === inviteId);
+      // Find invite in current state OR fetch from database
+      let invite = sessionState.pendingInvites.find(i => i.id === inviteId);
+      
       if (!invite) {
-        console.error('❌ Invite not found:', inviteId);
+        console.log('🔍 Invite not in state, fetching from database...');
         
-        // Force reload sessions in case invites are stale
-        await loadUserSessions();
-        
+        // Fetch invite directly from database
+        const { data: dbInvite, error: inviteError } = await supabase
+          .from('collaboration_invites')
+          .select('*')
+          .eq('id', inviteId)
+          .eq('status', 'pending')
+          .single();
+
+        if (inviteError || !dbInvite) {
+          console.error('❌ Invite not found in database:', inviteError);
+          toast({
+            title: "Error", 
+            description: "Invitation not found or already processed",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        // Get session name separately
+        const { data: sessionData, error: sessionError } = await supabase
+          .from('collaboration_sessions')
+          .select('name')
+          .eq('id', dbInvite.session_id)
+          .single();
+
+        // Get inviter profile separately  
+        const { data: inviterProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, username, first_name, last_name, avatar_url')
+          .eq('id', dbInvite.invited_by)
+          .single();
+
+        // Convert database invite to our format
+        invite = {
+          id: dbInvite.id,
+          sessionId: dbInvite.session_id,
+          sessionName: sessionData?.name || 'Collaboration Session',
+          invitedBy: {
+            id: dbInvite.invited_by,
+            name: inviterProfile?.first_name && inviterProfile?.last_name 
+              ? `${inviterProfile.first_name} ${inviterProfile.last_name}` 
+              : inviterProfile?.username || 'Unknown',
+            username: inviterProfile?.username || 'unknown',
+            avatar: inviterProfile?.avatar_url
+          },
+          message: dbInvite.message,
+          status: 'pending',
+          createdAt: dbInvite.created_at
+        };
+      }
+
+      console.log('✅ Found invite for session:', invite.sessionId);
+
+      // Step 1: Update invite status to accepted
+      const { error: inviteUpdateError } = await supabase
+        .from('collaboration_invites')
+        .update({ 
+          status: 'accepted',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', inviteId)
+        .eq('invited_user_id', user.id);
+
+      if (inviteUpdateError) {
+        console.error('❌ Error updating invite status:', inviteUpdateError);
         toast({
-          title: "Error", 
-          description: "Invitation not found or already processed",
+          title: "Error",
+          description: "Failed to accept invitation",
           variant: "destructive"
         });
         return;
       }
 
-      console.log('✅ Found invite for session:', invite.sessionId);
-      
-      // Immediately remove from UI to prevent double-clicking
+      console.log('✅ Invite status updated to accepted');
+
+      // Step 2: Add user as participant or update existing participation
+      const { data: existingParticipant, error: checkError } = await supabase
+        .from('session_participants')
+        .select('*')
+        .eq('session_id', invite.sessionId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('❌ Error checking existing participation:', checkError);
+      }
+
+      if (existingParticipant) {
+        // Update existing participant
+        const { error: updateError } = await supabase
+          .from('session_participants')
+          .update({ 
+            has_accepted: true, 
+            joined_at: new Date().toISOString() 
+          })
+          .eq('id', existingParticipant.id);
+
+        if (updateError) {
+          console.error('❌ Error updating participant:', updateError);
+          toast({
+            title: "Error",
+            description: "Failed to join session",
+            variant: "destructive"
+          });
+          return;
+        }
+      } else {
+        // Create new participant record
+        const { error: participantError } = await supabase
+          .from('session_participants')
+          .insert({
+            session_id: invite.sessionId,
+            user_id: user.id,
+            has_accepted: true,
+            joined_at: new Date().toISOString()
+          });
+
+        if (participantError) {
+          console.error('❌ Error creating participant:', participantError);
+          toast({
+            title: "Error",
+            description: "Failed to join session",
+            variant: "destructive"
+          });
+          return;
+        }
+      }
+
+      console.log('✅ User added as participant successfully');
+
+      // Step 3: Check if all participants have accepted
+      const { data: allParticipants, error: participantsError } = await supabase
+        .from('session_participants')
+        .select('has_accepted, user_id')
+        .eq('session_id', invite.sessionId);
+
+      if (participantsError) {
+        console.error('❌ Error fetching participants:', participantsError);
+        toast({
+          title: "Joined session!",
+          description: "Successfully joined collaboration session",
+        });
+        
+        // Remove invite from UI and reload
+        setSessionState(prevState => ({
+          ...prevState,
+          pendingInvites: prevState.pendingInvites.filter(i => i.id !== inviteId)
+        }));
+        await loadUserSessions();
+        return;
+      }
+
+      const allAccepted = allParticipants?.every(p => p.has_accepted) || false;
+      console.log('👥 All participants:', allParticipants);
+      console.log('✅ All participants accepted?', allAccepted);
+
+      if (allAccepted && allParticipants.length >= 2) {
+        console.log('🎉 All participants accepted! Creating board and activating session...');
+        
+        // Get session details for board creation
+        const { data: sessionData, error: sessionError } = await supabase
+          .from('collaboration_sessions')
+          .select('*')
+          .eq('id', invite.sessionId)
+          .single();
+
+        if (sessionError || !sessionData) {
+          console.error('❌ Error fetching session:', sessionError);
+        } else {
+          // Create board
+          const { data: boardData, error: boardError } = await supabase
+            .from('boards')
+            .insert({
+              name: sessionData.name,
+              description: `Collaborative board for ${sessionData.name}`,
+              created_by: sessionData.created_by,
+              is_public: false,
+              session_id: invite.sessionId
+            })
+            .select()
+            .single();
+
+          if (boardError) {
+            console.error('❌ Error creating board:', boardError);
+          } else {
+            console.log('✅ Board created successfully:', boardData);
+            
+            // Update session status and board_id
+            const { error: sessionUpdateError } = await supabase
+              .from('collaboration_sessions')
+              .update({ 
+                status: 'active',
+                board_id: boardData.id,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', invite.sessionId);
+
+            if (sessionUpdateError) {
+              console.error('❌ Error updating session status:', sessionUpdateError);
+            } else {
+              console.log('✅ Session updated to active status');
+            }
+
+            // Add all participants as board collaborators
+            const collaborators = allParticipants.map(p => ({
+              board_id: boardData.id,
+              user_id: p.user_id,
+              role: p.user_id === sessionData.created_by ? 'owner' : 'collaborator'
+            }));
+
+            const { error: collaboratorsError } = await supabase
+              .from('board_collaborators')
+              .insert(collaborators);
+
+            if (collaboratorsError) {
+              console.error('❌ Error adding collaborators:', collaboratorsError);
+            } else {
+              console.log('✅ Collaborators added successfully');
+            }
+          }
+        }
+
+        toast({
+          title: "Collaboration started!",
+          description: `All participants have joined! Board "${invite.sessionName}" is ready for collaboration.`,
+        });
+      } else {
+        toast({
+          title: "Invitation accepted!",
+          description: "Waiting for other participants to join...",
+        });
+      }
+
+      // Step 4: Remove from UI and reload sessions
       setSessionState(prevState => ({
         ...prevState,
         pendingInvites: prevState.pendingInvites.filter(i => i.id !== inviteId)
       }));
       
-      console.log('🎯 Switching to collaborative session...');
-      await switchToCollaborative(invite.sessionId);
+      await loadUserSessions();
       
     } catch (error) {
       console.error('❌ Error accepting invite:', error);
-      
-      // Restore invite to UI if error occurred
-      await loadUserSessions();
-      
       toast({
         title: "Error",
         description: "Failed to accept invitation. Please try again.",
         variant: "destructive"
       });
+      
+      // Reload sessions to restore correct state
+      await loadUserSessions();
     }
-  }, [user, sessionState.pendingInvites, switchToCollaborative, loadUserSessions]);
+  }, [user, sessionState.pendingInvites, loadUserSessions]);
 
   // Decline specific invite (from notification)
   const declineInvite = useCallback(async (inviteId: string) => {
     if (!user) return;
 
-    const invite = sessionState.pendingInvites.find(i => i.id === inviteId);
-    if (!invite) {
-      console.log('⚠️ Invite not found for decline, reloading sessions...');
-      await loadUserSessions();
-      return;
-    }
+    console.log('❌ Declining invite:', inviteId);
 
-    console.log('❌ Declining invite:', inviteId, 'for session:', invite.sessionId);
+    try {
+      // Update invite status to declined
+      const { error: inviteUpdateError } = await supabase
+        .from('collaboration_invites')
+        .update({ 
+          status: 'declined',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', inviteId)
+        .eq('invited_user_id', user.id);
+
+      if (inviteUpdateError) {
+        console.error('❌ Error declining invite:', inviteUpdateError);
+        toast({
+          title: "Error",
+          description: "Failed to decline invitation",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('✅ Invite declined successfully');
+
+      // Remove any participant record for this user in this session
+      // Find the invite to get session ID
+      const inviteToDecline = sessionState.pendingInvites.find(i => i.id === inviteId);
+      if (inviteToDecline) {
+        await supabase
+          .from('session_participants')
+          .delete()
+          .eq('session_id', inviteToDecline.sessionId)
+          .eq('user_id', user.id);
+      } else {
+        // If invite not in state, get session ID from database
+        const { data: dbInvite } = await supabase
+          .from('collaboration_invites')
+          .select('session_id')
+          .eq('id', inviteId)
+          .single();
+        
+        if (dbInvite) {
+          await supabase
+            .from('session_participants')
+            .delete()
+            .eq('session_id', dbInvite.session_id)
+            .eq('user_id', user.id);
+        }
+      }
+
+      toast({
+        title: "Invitation declined",
+        description: "You've declined the collaboration invitation",
+      });
+
+      // Remove from UI and reload
+      setSessionState(prevState => ({
+        ...prevState,
+        pendingInvites: prevState.pendingInvites.filter(i => i.id !== inviteId)
+      }));
+
+      await loadUserSessions();
+
+    } catch (error) {
+      console.error('❌ Error declining invite:', error);
+      toast({
+        title: "Error",
+        description: "Failed to decline invitation",
+        variant: "destructive"
+      });
+    }
     
     // Immediately remove from UI
     setSessionState(prevState => ({
@@ -997,12 +1281,21 @@ export const useSessionManagement = () => {
         .update({ status: 'declined' })
         .eq('id', inviteId);
 
-      // Remove user from session participants
-      await supabase
-        .from('session_participants')
-        .delete()
-        .eq('session_id', invite.sessionId)
-        .eq('user_id', user.id);
+      // Get session ID from invite to remove participant
+      const { data: dbInvite } = await supabase
+        .from('collaboration_invites')
+        .select('session_id')
+        .eq('id', inviteId)
+        .single();
+      
+      if (dbInvite) {
+        // Remove user from session participants
+        await supabase
+          .from('session_participants')
+          .delete()
+          .eq('session_id', dbInvite.session_id)
+          .eq('user_id', user.id);
+      }
 
       toast({
         title: "Invitation declined",

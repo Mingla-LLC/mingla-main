@@ -178,19 +178,37 @@ export const CreateSessionDialog = ({
           continue;
         }
 
-        // Add as participant
+        // Add as participant (not accepted yet)
         const { error: participantError } = await supabase
           .from('session_participants')
           .insert({
             session_id: sessionData.id,
             user_id: userData.id,
             has_accepted: false,
+            joined_at: null
           });
 
         if (participantError) {
           console.error('Participant error:', participantError);
           throw new Error(`Failed to add ${username}`);
         }
+
+        console.log(`✅ Added ${username} as participant`);
+      
+        // Verify participant was added
+        const { data: verifyParticipant, error: verifyError } = await supabase
+          .from('session_participants')
+          .select('*')
+          .eq('session_id', sessionData.id)
+          .eq('user_id', userData.id)
+          .single();
+        
+        if (verifyError || !verifyParticipant) {
+          console.error('❌ Failed to verify participant addition:', verifyError);
+          throw new Error(`Failed to verify ${username} was added`);
+        }
+        
+        console.log('✅ Verified participant added:', verifyParticipant);
 
         // Create invitation
         const { error: inviteError } = await supabase
