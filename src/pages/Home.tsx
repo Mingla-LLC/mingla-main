@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+// Fixed useCallback import
 import { Sliders, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TripCard } from '@/components/TripCard';
