@@ -13,6 +13,7 @@ import { createSession } from '@/api/sessions';
 interface CreateSessionDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
   prefilledParticipants?: string[];
   prefilledSessionName?: string;
 }
@@ -20,6 +21,7 @@ interface CreateSessionDialogProps {
 export const CreateSessionDialog = ({
   isOpen,
   onClose,
+  onCreateSession,
   prefilledParticipants = [],
   prefilledSessionName = ''
 }: CreateSessionDialogProps) => {
