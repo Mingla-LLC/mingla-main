@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { X, Users, Send, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUsers } from '@/hooks/useUsers';
-import { supabase } from '@/integrations/supabase/client';
+import { createSession } from '@/api/sessions';
 
 interface CreateSessionDialogProps {
   isOpen: boolean;
@@ -103,7 +103,7 @@ export const CreateSessionDialog = ({
     setSelectedParticipants(selectedParticipants.filter(p => p !== username));
   };
 
-  const createSession = async () => {
+  const handleCreateSession = async () => {
     if (!sessionName.trim()) {
       toast.error('Name required');
       return;
@@ -115,120 +115,17 @@ export const CreateSessionDialog = ({
     }
     
     setIsCreating(true);
-    console.log('=== CREATING SESSION DIRECTLY ===');
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('Not authenticated');
-      }
+      console.log('Creating session with API function...');
       
-      console.log('Creating session for user:', user.id);
+      const result = await createSession({
+        name: sessionName.trim(),
+        participantIds: selectedParticipants
+      });
       
-      // Create the session
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('collaboration_sessions')
-        .insert({
-          name: sessionName.trim(),
-          created_by: user.id,
-          status: 'pending',
-        })
-        .select()
-        .single();
-
-      if (sessionError) {
-        console.error('Session creation error:', sessionError);
-        throw new Error(sessionError.message);
-      }
-      
-      console.log('Session created:', sessionData);
-
-      // Add creator as participant
-      const { error: creatorError } = await supabase
-        .from('session_participants')
-        .insert({
-          session_id: sessionData.id,
-          user_id: user.id,
-          has_accepted: true,
-          joined_at: new Date().toISOString()
-        });
-
-      if (creatorError) {
-        console.error('Creator participant error:', creatorError);
-        throw new Error('Failed to add creator');
-      }
-
-      // Process each participant
-      for (const username of selectedParticipants) {
-        console.log('Processing participant:', username);
-        
-        const { data: userData, error: userError } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('username', username)
-          .single();
-
-        if (userError || !userData) {
-          console.error('User lookup failed:', userError);
-          throw new Error(`User "${username}" not found`);
-        }
-
-        if (userData.id === user.id) {
-          console.log('Skipping self-invite');
-          continue;
-        }
-
-        // Add as participant (not accepted yet)
-        const { error: participantError } = await supabase
-          .from('session_participants')
-          .insert({
-            session_id: sessionData.id,
-            user_id: userData.id,
-            has_accepted: false,
-            joined_at: null
-          });
-
-        if (participantError) {
-          console.error('Participant error:', participantError);
-          throw new Error(`Failed to add ${username}`);
-        }
-
-        console.log(`✅ Added ${username} as participant`);
-      
-        // Verify participant was added
-        const { data: verifyParticipant, error: verifyError } = await supabase
-          .from('session_participants')
-          .select('*')
-          .eq('session_id', sessionData.id)
-          .eq('user_id', userData.id)
-          .single();
-        
-        if (verifyError || !verifyParticipant) {
-          console.error('❌ Failed to verify participant addition:', verifyError);
-          throw new Error(`Failed to verify ${username} was added`);
-        }
-        
-        console.log('✅ Verified participant added:', verifyParticipant);
-
-        // Create invitation
-        const { error: inviteError } = await supabase
-          .from('collaboration_invites')
-          .insert({
-            session_id: sessionData.id,
-            invited_user_id: userData.id,
-            invited_by: user.id,
-            status: 'pending',
-            message: `${user.email} invited you to "${sessionName.trim()}"`
-          });
-
-        if (inviteError) {
-          console.error('Invite error:', inviteError);
-          throw new Error(`Failed to invite ${username}`);
-        }
-      }
-
-      console.log('Session creation complete!');
-      toast.success(`Invites sent for "${sessionName.trim()}"!`);
+      console.log('Session created successfully:', result);
+      toast.success(`Session "${sessionName.trim()}" created! Invites sent to ${selectedParticipants.length} participants.`);
       
       // Reset and close
       setSessionName('');
@@ -387,7 +284,7 @@ export const CreateSessionDialog = ({
             </Button>
             <Button 
               type="button"
-              onClick={createSession}
+              onClick={handleCreateSession}
               disabled={isCreating || !sessionName.trim() || selectedParticipants.length === 0}
               className="flex-1"
             >
