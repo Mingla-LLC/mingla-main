@@ -17,7 +17,7 @@ import { useAppStore } from '@/store/appStore';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useSessionManagement } from '@/hooks/useSessionManagement';
-import { convertPreferences } from '@/utils/preferencesConverter';
+import { convertPreferencesToRequest } from '@/utils/preferencesConverter';
 import type { RecommendationCard } from '@/types/recommendations';
 
 const Home = () => {
@@ -123,7 +123,31 @@ const Home = () => {
     setLoadingRecommendations(true);
     try {
       const coordinates = getUserCoordinates();
-      const apiPreferences = convertPreferences(preferences, coordinates);
+      
+      // Convert app store preferences to API format
+      const apiPreferences = {
+        budget: {
+          min: preferences.budget_min || 0,
+          max: preferences.budget_max || 1000,
+          perPerson: true
+        },
+        categories: preferences.categories || [],
+        timeWindow: {
+          kind: "Now" as const,
+          start: null,
+          end: null,
+          timeOfDay: new Date().toTimeString().slice(0, 5)
+        },
+        travel: {
+          mode: (preferences.travel_mode?.toUpperCase() || 'WALKING') as 'WALKING' | 'DRIVING' | 'TRANSIT',
+          constraint: {
+            type: (preferences.travel_constraint_type?.toUpperCase() || 'TIME') as 'TIME' | 'DISTANCE',
+            maxMinutes: preferences.travel_constraint_value || 30
+          }
+        },
+        origin: coordinates,
+        units: 'imperial' as const
+      };
       
       const response = await fetch('/api/recommendations', {
         method: 'POST',
