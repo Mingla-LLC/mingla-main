@@ -553,41 +553,62 @@ const Home = () => {
 
       {/* Header */}
       <div className="px-6 pt-12 pb-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">
-              {user ? `Hi, ${profile?.first_name || 'there'}!` : 'Discover'}
-            </h1>
-            <p className="text-muted-foreground">
-              {!isInSolo && currentSession
-                ? `Planning with ${currentSession.participants.length} others`
-                : 'Find your next perfect experience'
-              }
-            </p>
+        <div className="flex items-center justify-between mb-8">
+          {/* Premium Logo and Branding */}
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <img 
+                src="/src/assets/mingla-logo.png" 
+                alt="Mingla" 
+                className="h-12 w-auto object-contain"
+              />
+              <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-lg blur-sm -z-10 opacity-50" />
+            </div>
+            <div className="border-l border-border/30 pl-4">
+              <h1 className="text-3xl font-light tracking-wide bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                {user ? `Welcome back, ${profile?.first_name || 'Explorer'}` : 'Discover Premium'}
+              </h1>
+              <p className="text-muted-foreground/80 text-sm font-light mt-1">
+                {!isInSolo && currentSession
+                  ? `Collaborating with ${currentSession.participants.length} ${currentSession.participants.length === 1 ? 'person' : 'people'}`
+                  : 'Curated experiences tailored for you'
+                }
+              </p>
+            </div>
           </div>
-          <div className="flex gap-2">
+          
+          {/* Premium Action Controls */}
+          <div className="flex items-center gap-3">
             {!isInSolo && currentSession && (
               <Button 
-                variant="destructive" 
+                variant="outline" 
                 size="sm"
                 onClick={async () => {
                   await cancelSession(currentSession.id);
                 }}
-                className="text-xs"
+                className="text-xs font-medium border-destructive/20 text-destructive hover:bg-destructive/5 transition-all duration-200"
               >
                 Leave Session
               </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={() => window.location.reload()}>
-              <RefreshCw className="h-5 w-5" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={() => setShowPreferences(true)}
-            >
-              <Sliders className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-1 bg-card/50 backdrop-blur-sm rounded-full p-1 border border-border/20">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => window.location.reload()}
+                className="h-8 w-8 rounded-full hover:bg-primary/10 transition-all duration-200"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setShowPreferences(true)}
+                className="h-8 w-8 rounded-full hover:bg-primary/10 transition-all duration-200"
+              >
+                <Sliders className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
