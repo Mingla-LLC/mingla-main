@@ -17,6 +17,7 @@ import { useExperiences } from '@/hooks/useExperiences';
 import { useSessionManagement } from '@/hooks/useSessionManagement';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import minglaLogo from '@/assets/mingla-logo.png';
+import { cn } from '@/lib/utils';
 
 interface ActivePreferences {
   budgetRange: [number, number];
@@ -559,8 +560,8 @@ const Home = () => {
                     {currentTrip.badges?.slice(0, 2).map((badge, index) => (
                       <Badge 
                         key={index} 
-                        variant="secondary" 
-                        className="bg-background/90 backdrop-blur-sm text-xs"
+                        variant="default" 
+                        className="bg-black/80 text-white backdrop-blur-sm text-xs font-medium border border-white/20 shadow-lg"
                       >
                         {badge}
                       </Badge>
@@ -570,8 +571,13 @@ const Home = () => {
                   {/* Session indicator */}
                   <div className="absolute top-4 right-4">
                     <Badge 
-                      variant={isInSolo ? "secondary" : "default"} 
-                      className="bg-background/90 backdrop-blur-sm text-xs"
+                      variant={isInSolo ? "outline" : "default"} 
+                      className={cn(
+                        "backdrop-blur-sm text-xs font-medium border shadow-lg",
+                        isInSolo 
+                          ? "bg-black/80 text-white border-white/20" 
+                          : "bg-primary text-primary-foreground border-primary/20"
+                      )}
                     >
                       {isInSolo ? (
                         <>

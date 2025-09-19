@@ -235,7 +235,7 @@ export const TripCard = ({ trip, onSwipeRight, onSwipeLeft, onExpand, className,
         
         {/* Category - moved to bottom corner for better readability */}
         <div className="absolute bottom-4 right-4">
-          <Badge variant="outline" className="bg-card/90 backdrop-blur-sm text-xs">
+          <Badge variant="outline" className="bg-black/80 text-white backdrop-blur-sm text-xs font-medium border border-white/20 shadow-lg">
             {trip.category}
           </Badge>
         </div>
