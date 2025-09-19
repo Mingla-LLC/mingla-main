@@ -565,7 +565,7 @@ const Home = () => {
               <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-lg blur-sm -z-10 opacity-50" />
             </div>
             <div className="border-l border-border/30 pl-4">
-              <h1 className="text-3xl font-light tracking-wide bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-light tracking-wide">
                 {user ? `Welcome back, ${profile?.first_name || 'Explorer'}` : 'Discover Premium'}
               </h1>
               <p className="text-muted-foreground/80 text-sm font-light mt-1">
