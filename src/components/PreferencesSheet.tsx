@@ -102,11 +102,7 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
   
   const { profile } = useUserProfile();
 
-  const savedLocations = [
-    'Downtown Office',
-    'Home (Capitol Hill)', 
-    'Gym (Fremont)'
-  ];
+  // Removed saved locations - users can only use current location or custom location
 
   if (!isOpen) return null;
 
@@ -397,48 +393,28 @@ export const PreferencesSheet = ({ isOpen, onClose, measurementSystem = 'metric'
                 onClick={() => setSelectedLocation('current')}
                 className="justify-start"
               >
-                📍 Current Location
+                📍 Use Current Location
               </Button>
-              {savedLocations.map((location) => (
-                <Button
-                  key={location}
-                  variant={selectedLocation === location ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedLocation(location)}
-                  className="justify-start"
-                >
-                  {location}
-                </Button>
-              ))}
             </div>
             
             <Card className="p-3 bg-muted/50 space-y-3">
-              <Label className="text-sm font-medium block">Custom Location</Label>
+              <Label className="text-sm font-medium block">Or Search for Location</Label>
               <LocationSearch
                 value={customLocation}
                 onChange={(location, lat, lng) => {
                   setCustomLocation(location);
                   setCustomLat(lat || null);
                   setCustomLng(lng || null);
-                }}
-                placeholder="Search for a city or location"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => {
-                  if (customLocation.trim()) {
-                    setCustomLocationName(customLocation.trim());
+                  if (location.trim()) {
+                    setCustomLocationName(location.trim());
                     setSelectedLocation('custom');
                   }
                 }}
-              >
-                Use This Location
-              </Button>
+                placeholder="Type city, address, or place name"
+              />
               {customLocationName && selectedLocation === 'custom' && (
                 <div className="text-xs text-muted-foreground">
-                  Selected: {customLocationName}
+                  📍 Using: {customLocationName}
                 </div>
               )}
             </Card>

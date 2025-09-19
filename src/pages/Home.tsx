@@ -664,6 +664,7 @@ const Home = () => {
       {expandedTrip && (
         <TripCardExpanded
           trip={trips.find(t => t.id === expandedTrip)!}
+          preferences={activePreferences}
           isOpen={!!expandedTrip}
           onClose={() => setExpandedTrip(null)}
           onAccept={() => {

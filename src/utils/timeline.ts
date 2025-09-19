@@ -40,23 +40,50 @@ export function generateRealTimeline(
   userLocation: Location, 
   destination: Location,
   tripDuration: string,
-  category: string
+  category: string,
+  userPreferences?: {
+    time?: string;
+    travel?: string;
+    specificTime?: string;
+    customDate?: string;
+  }
 ): TimelineStep[] {
   const meetupPoint = calculateMeetupPoint(userLocation, destination);
   const distanceToMeetup = calculateDistance(userLocation, meetupPoint);
   const distanceToDestination = calculateDistance(meetupPoint, destination);
   
-  // Calculate travel times (assuming 25 mph average speed for city travel)
-  const travelTimeToMeetup = Math.ceil(distanceToMeetup / 25 * 60); // minutes
-  const travelTimeToDestination = Math.ceil(distanceToDestination / 25 * 60); // minutes
+  // Calculate travel times based on travel mode
+  const travelMode = userPreferences?.travel?.toLowerCase() || 'drive';
+  let avgSpeed = 25; // mph for driving
+  if (travelMode === 'walk') avgSpeed = 3;
+  else if (travelMode === 'public transport') avgSpeed = 15;
+  
+  const travelTimeToMeetup = Math.ceil(distanceToMeetup / avgSpeed * 60); // minutes
+  const travelTimeToDestination = Math.ceil(distanceToDestination / avgSpeed * 60); // minutes
   
   // Parse trip duration
   const durationMatch = tripDuration.match(/(\d+)/);
   const activityDuration = durationMatch ? parseInt(durationMatch[1]) * 60 : 120; // default 2 hours
   
+  // Calculate start time based on user preferences
   const now = new Date();
   const steps: TimelineStep[] = [];
-  let currentTime = new Date(now.getTime() + 30 * 60000); // Start 30 minutes from now
+  let currentTime = new Date();
+  
+  // Set time based on user preference
+  if (userPreferences?.time === 'Tonight') {
+    currentTime.setHours(18, 0, 0, 0); // 6 PM tonight
+  } else if (userPreferences?.time === 'This Weekend') {
+    const daysUntilSaturday = (6 - now.getDay()) % 7 || 7;
+    currentTime.setDate(now.getDate() + daysUntilSaturday);
+    currentTime.setHours(14, 0, 0, 0); // 2 PM Saturday
+  } else if (userPreferences?.specificTime) {
+    const [hours, minutes] = userPreferences.specificTime.split(':').map(Number);
+    currentTime.setHours(hours, minutes, 0, 0);
+  } else {
+    // Default: 30 minutes from now
+    currentTime = new Date(now.getTime() + 30 * 60000);
+  }
   
   // Step 1: Meet up
   if (distanceToMeetup > 0.5) { // Only add meetup if it's more than 0.5 miles away

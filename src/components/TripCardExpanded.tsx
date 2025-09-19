@@ -35,12 +35,19 @@ interface TripCardExpandedProps {
     address?: string;
   };
   preferences?: {
-    budget_min?: number;
-    budget_max?: number;
+    budgetRange?: [number, number];
     categories?: string[];
-    travel_mode?: string;
     experienceTypes?: string[];
-    selectedCategories?: string[];
+    time?: string;
+    travel?: string;
+    travelConstraint?: 'time' | 'distance';
+    travelTime?: number;
+    travelDistance?: number;
+    location?: string;
+    customLocation?: string;
+    custom_lat?: number | null;
+    custom_lng?: number | null;
+    groupSize?: number;
     [key: string]: any;
   };
   isOpen: boolean;
@@ -96,27 +103,55 @@ export const TripCardExpanded = ({
 
   // Generate real timeline based on user location and destination
   const timelineSteps = useMemo(() => {
-    if (!latitude || !longitude || (!trip.lat && !trip.latitude) || (!trip.lng && !trip.longitude)) {
-      // Fallback timeline if no location data
-      const tripLat = trip.lat || trip.latitude || 40.7505;
-      const tripLng = trip.lng || trip.longitude || -73.9934;
-      return [
-        { time: '2:30 PM', activity: 'Arrive at venue', location: { lat: tripLat, lng: tripLng }, icon: '📍', duration: '5 min' },
-        { time: '2:35 PM', activity: `Enjoy ${trip.category.toLowerCase()}`, location: { lat: tripLat, lng: tripLng }, icon: '✨', duration: '2h' },
-        { time: '4:35 PM', activity: 'Wrap up', location: { lat: tripLat, lng: tripLng }, icon: '📸', duration: '15 min' },
-      ];
+    const tripLat = activeTrip.lat || activeTrip.latitude || trip.lat || trip.latitude;
+    const tripLng = activeTrip.lng || activeTrip.longitude || trip.lng || trip.longitude;
+
+    // If we have both user location and destination coordinates, generate real timeline
+    if (latitude && longitude && tripLat && tripLng) {
+      return generateRealTimeline(
+        { lat: latitude, lng: longitude, name: 'Your location' },
+        { lat: tripLat, lng: tripLng, name: activeTrip.title },
+        activeTrip.duration,
+        activeTrip.category,
+        {
+          time: preferences?.time,
+          travel: preferences?.travel,
+          specificTime: preferences?.specificTime,
+          customDate: preferences?.customDate
+        }
+      );
     }
 
-    const tripLat = activeTrip.lat || activeTrip.latitude || trip.lat || trip.latitude || 40.7505;
-    const tripLng = activeTrip.lng || activeTrip.longitude || trip.lng || trip.longitude || -73.9934;
-
-    return generateRealTimeline(
-      { lat: latitude, lng: longitude, name: 'Your location' },
-      { lat: tripLat, lng: tripLng, name: activeTrip.title },
-      activeTrip.duration,
-      activeTrip.category
-    );
-  }, [latitude, longitude, trip, activeTrip]);
+    // Fallback timeline with better default times
+    const now = new Date();
+    const startTime = new Date(now.getTime() + 30 * 60000); // 30 min from now
+    const fallbackLat = tripLat || 40.7505;
+    const fallbackLng = tripLng || -73.9934;
+    
+    return [
+      { 
+        time: startTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        activity: 'Arrive at venue', 
+        location: { lat: fallbackLat, lng: fallbackLng }, 
+        icon: '📍', 
+        duration: '5 min' 
+      },
+      { 
+        time: new Date(startTime.getTime() + 5 * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        activity: `Enjoy ${trip.category.toLowerCase()}`, 
+        location: { lat: fallbackLat, lng: fallbackLng }, 
+        icon: '✨', 
+        duration: trip.duration 
+      },
+      { 
+        time: new Date(startTime.getTime() + 125 * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        activity: 'Wrap up & photos', 
+        location: { lat: fallbackLat, lng: fallbackLng }, 
+        icon: '📸', 
+        duration: '15 min' 
+      },
+    ];
+  }, [latitude, longitude, trip, activeTrip, preferences]);
 
   // Handle Plan B selection
   const handlePlanBSelect = (planBTrip: any) => {
@@ -155,7 +190,7 @@ export const TripCardExpanded = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-card w-full max-w-md max-h-[90vh] rounded-2xl overflow-hidden animate-scale-in">
+      <div className="bg-card w-full max-w-md max-h-[95vh] rounded-2xl overflow-hidden animate-scale-in flex flex-col">
         {/* Header Image */}
         <div className="relative h-64">
           <img 
@@ -203,7 +238,7 @@ export const TripCardExpanded = ({
           </div>
         </div>
 
-        <div className="p-6 space-y-6 max-h-[50vh] overflow-y-auto">
+        <div className="p-4 space-y-4 flex-1 overflow-y-auto">
           {/* Why It Fits */}
           <div>
             <h3 className="font-semibold mb-2 text-accent">Why this fits</h3>
@@ -271,7 +306,7 @@ export const TripCardExpanded = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="p-6 border-t border-border">
+        <div className="p-4 border-t border-border flex-shrink-0">
           <div className="flex gap-3">
             {showAcceptButton && (
               <Button 

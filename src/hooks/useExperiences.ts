@@ -146,14 +146,22 @@ export const useExperiences = (filters: ExperienceFilters = {}) => {
         });
       }
 
-      // Filter by travel constraints (simplified logic)
-      if (filters.travelTime && filters.travelTime !== 15) {
+      // Filter by travel constraints and location
+      if (filters.location && (filters.travelTime || filters.travelDistance)) {
         filteredData = filteredData.filter(exp => {
-          // Simple logic - assume all experiences within reasonable travel time
-          // In real app, this would calculate actual travel time based on location
-          return true; // For now, show all experiences
+          // Only show experiences that have location data
+          if (!exp.lat || !exp.lng) return false;
+          
+          // For now, include all experiences with location data
+          // In production, this would calculate actual travel time/distance from user location
+          return true;
         });
       }
+      
+      // Ensure experiences have required data for display
+      filteredData = filteredData.filter(exp => {
+        return exp.title && exp.category && (exp.price_min !== null || exp.price_max !== null);
+      });
 
       setExperiences(filteredData);
     } catch (err) {
