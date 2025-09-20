@@ -66,27 +66,45 @@ const Home = () => {
     };
   };
 
-  // Create preferences request for recommendations
+  // Create premium dating preferences request for recommendations
   const preferencesRequest = React.useMemo(() => {
-    if (!preferences || !latitude || !longitude) {
-      // Return default preferences if none set
+    console.log('🎯 Building preferences request:', { preferences, latitude, longitude, profile });
+    
+    if (!latitude || !longitude) {
+      console.log('⚠️ No location available, using default coordinates');
       return {
-        budget: { min: 10, max: 50, perPerson: true },
-        categories: ['stroll', 'sip'],
+        budget: { min: 25, max: 150, perPerson: true },
+        categories: ['sip', 'stroll', 'dine'],
         timeWindow: { kind: 'Now' as const },
         travel: { mode: 'DRIVING' as const, constraint: { type: 'TIME' as const, maxMinutes: 30 } },
         origin: { lat: latitude || 37.7749, lng: longitude || -122.4194 },
-        units: 'metric' as const
+        units: (profile?.measurement_system as 'metric' | 'imperial') || 'metric'
       };
     }
     
+    if (!preferences) {
+      console.log('📍 No user preferences, using premium defaults with location');
+      return {
+        budget: { min: 25, max: 150, perPerson: true },
+        categories: ['sip', 'stroll', 'dine'], 
+        timeWindow: { kind: 'Now' as const },
+        travel: { mode: 'DRIVING' as const, constraint: { type: 'TIME' as const, maxMinutes: 30 } },
+        origin: { lat: latitude, lng: longitude },
+        units: (profile?.measurement_system as 'metric' | 'imperial') || 'metric'
+      };
+    }
+    
+    console.log('✅ Converting user preferences:', preferences);
     const convertedPrefs = convertStorePrefsToConverterFormat(preferences);
-    return convertPreferencesToRequest(
+    const finalRequest = convertPreferencesToRequest(
       convertedPrefs, 
       latitude, 
       longitude,
       (profile?.measurement_system as 'metric' | 'imperial') || 'metric'
     );
+    
+    console.log('🚀 Final preferences request:', finalRequest);
+    return finalRequest;
   }, [preferences, latitude, longitude, profile?.measurement_system]);
 
   const handleInvite = async (card: RecommendationCard) => {
@@ -167,7 +185,7 @@ const Home = () => {
 
         {/* Header with Logo and Controls */}
         <div className="flex items-center justify-between p-4 border-b bg-background/95 backdrop-blur-sm">
-          {/* Left Controls */}
+          {/* Left Controls - Just Refresh */}
           <div className="flex items-center gap-2">
             <Button 
               variant="ghost" 
@@ -177,15 +195,6 @@ const Home = () => {
               title="Refresh recommendations"
             >
               <RefreshCw className="h-5 w-5" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="rounded-full w-12 h-12"
-              onClick={() => setIsPreferencesOpen(true)}
-              title="Open preferences"
-            >
-              <Sliders className="h-5 w-5" />
             </Button>
           </div>
 
@@ -198,8 +207,17 @@ const Home = () => {
             />
           </div>
 
-          {/* Right Controls */}
+          {/* Right Controls - Preferences, Notifications, Session Mode, Invite */}
           <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="rounded-full w-12 h-12"
+              onClick={() => setIsPreferencesOpen(true)}
+              title="Open preferences"
+            >
+              <Sliders className="h-5 w-5" />
+            </Button>
             <HeaderControls
               currentSession={currentSession}
               availableSessions={availableSessions}
@@ -240,27 +258,27 @@ const Home = () => {
           </div>
         </div>
 
-        {/* Main Content - Single Card Results */}
+        {/* Main Content - Premium Single Card Results */}
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full max-w-md">
-            {user && (latitude || longitude) ? (
+            {user ? (
               <SingleCardResults
                 preferences={preferencesRequest}
                 onInvite={handleInvite}
                 onSave={handleSave}
               />
             ) : (
-              <Card className="text-center p-8">
+              <Card className="text-center p-8 bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
                 <CardContent className="p-6">
-                  <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
-                    <MapPin className="w-8 h-8 text-muted-foreground" />
+                  <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                    <MapPin className="w-8 h-8 text-primary" />
                   </div>
-                  <h3 className="text-xl font-semibold mb-2">Set Your Preferences</h3>
+                  <h3 className="text-xl font-semibold mb-2 text-primary">Welcome to Mingla</h3>
                   <p className="text-muted-foreground mb-6">
-                    Tell us what you're looking for to get personalized recommendations
+                    Discover amazing date spots and activities near you. Set your preferences to get started.
                   </p>
-                  <Button onClick={() => setIsPreferencesOpen(true)}>
-                    Set Preferences
+                  <Button onClick={() => setIsPreferencesOpen(true)} className="bg-primary hover:bg-primary/90">
+                    Set My Preferences
                   </Button>
                 </CardContent>
               </Card>
