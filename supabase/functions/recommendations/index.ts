@@ -11,16 +11,40 @@ const GOOGLE_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY');
 const EVENTBRITE_TOKEN = Deno.env.get('EVENTBRITE_TOKEN');
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 
-// Category to Google Places types mapping
+// Category to Google Places types mapping - EXPANDED
 const CATEGORY_TO_PLACE_TYPES: Record<string, string[]> = {
-  'stroll': ['park', 'tourist_attraction', 'point_of_interest', 'natural_feature', 'zoo'],
-  'sip': ['bar', 'cafe', 'night_club', 'wine_bar', 'coffee_shop'],
-  'casual_eats': ['restaurant', 'food_court', 'meal_takeaway', 'fast_food_restaurant'],
-  'screen_relax': ['movie_theater', 'spa', 'beauty_salon'],
-  'creative': ['art_gallery', 'museum', 'pottery_studio', 'craft_store'],
-  'play_move': ['bowling_alley', 'gym', 'sports_complex', 'recreation_center'],
-  'dining': ['restaurant', 'fine_dining_restaurant', 'steakhouse'],
-  'freestyle': ['restaurant', 'bar', 'cafe', 'tourist_attraction', 'art_gallery']
+  'stroll': [
+    'park', 'tourist_attraction', 'point_of_interest', 'natural_feature', 'zoo',
+    'aquarium', 'botanical_garden', 'amusement_park', 'campground'
+  ],
+  'sip': [
+    'bar', 'cafe', 'night_club', 'wine_bar', 'coffee_shop',
+    'tea_house', 'hookah_bar', 'brewery', 'cocktail_bar'
+  ],
+  'casual_eats': [
+    'restaurant', 'food_court', 'meal_takeaway', 'fast_food_restaurant',
+    'food_truck', 'sandwich_shop', 'pizza_restaurant', 'deli'
+  ],
+  'screen_relax': [
+    'movie_theater', 'spa', 'beauty_salon', 'massage_therapist', 'nail_salon'
+  ],
+  'creative': [
+    'art_gallery', 'museum', 'pottery_studio', 'craft_store', 'art_studio',
+    'jewelry_store', 'antique_store', 'library'
+  ],
+  'play_move': [
+    'bowling_alley', 'gym', 'sports_complex', 'recreation_center',
+    'tennis_court', 'basketball_court', 'golf_course', 'mini_golf',
+    'climbing_gym', 'skating_rink'
+  ],
+  'dining': [
+    'restaurant', 'fine_dining_restaurant', 'steakhouse', 'seafood_restaurant',
+    'italian_restaurant', 'french_restaurant', 'sushi_restaurant'
+  ],
+  'freestyle': [
+    'restaurant', 'bar', 'cafe', 'tourist_attraction', 'art_gallery',
+    'museum', 'park', 'movie_theater', 'bowling_alley', 'spa'
+  ]
 };
 
 // LLM cache for generated copy
@@ -173,7 +197,7 @@ async function fetchGooglePlaces(preferences: RecommendationsRequest): Promise<a
   for (const category of preferences.categories) {
     const placeTypes = CATEGORY_TO_PLACE_TYPES[category] || ['tourist_attraction'];
     
-    for (const placeType of placeTypes.slice(0, 2)) { // Limit to 2 types per category
+    for (const placeType of placeTypes.slice(0, 3)) { // Increased from 2 to 3 types per category
       try {
         const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${placeType}&key=${GOOGLE_API_KEY}`;
         
@@ -338,20 +362,27 @@ function filterByConstraints(candidates: any[], preferences: RecommendationsRequ
       }
     }
 
-    // Budget filter
+    // Budget filter - IMPROVED
     const budget = preferences.budget;
     let estimatedCost = 0;
     
     if (candidate.source === 'google_places') {
-      // Estimate cost based on price level
-      const baseCosts = [5, 15, 35, 65, 120]; // $ to $$$$$
-      estimatedCost = baseCosts[candidate.priceLevel || 1] || 25;
+      // More realistic cost estimates with better defaults
+      const baseCosts = [10, 25, 45, 75, 150]; // $ to $$$$$
+      const priceLevel = candidate.priceLevel || 2; // Default to $$ (index 1) instead of $ (index 0)
+      estimatedCost = baseCosts[Math.min(priceLevel - 1, 4)] || 35; // Default to mid-range if no price level
     } else if (candidate.source === 'eventbrite') {
-      estimatedCost = candidate.price || 0;
+      estimatedCost = candidate.price || 25; // Better default for events
     }
 
     const perPersonCost = budget.perPerson ? estimatedCost : estimatedCost / 2;
-    if (perPersonCost < budget.min || perPersonCost > budget.max) return false;
+    
+    // Allow more flexibility - only filter if costs are way outside budget
+    const budgetBuffer = (budget.max - budget.min) * 0.3; // 30% buffer
+    const minWithBuffer = Math.max(0, budget.min - budgetBuffer);
+    const maxWithBuffer = budget.max + budgetBuffer;
+    
+    if (perPersonCost < minWithBuffer || perPersonCost > maxWithBuffer) return false;
 
     // Store estimated cost for later use
     candidate.estimatedCost = Math.round(perPersonCost);
