@@ -207,36 +207,33 @@ const Home = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-lg border-b border-border/50">
-        <div className="px-6 py-3">
+        <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             {/* Left side - Controls */}
             <div className="flex items-center gap-3">
               <Button 
-                variant="ghost" 
-                size="sm" 
-                className="hover:bg-primary/10"
+                variant="outline" 
+                size="lg" 
+                className="h-12 w-12 rounded-2xl border-2 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
+              >
+                <RefreshCw className="h-5 w-5" />
+              </Button>
+              <Button 
+                variant="outline" 
+                size="lg" 
+                className="h-12 w-12 rounded-2xl border-2 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
                 onClick={() => setShowPreferences(true)}
                 data-testid="preferences-button"
               >
-                <Sliders className="h-4 w-4 mr-2" />
-                Filters
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="hover:bg-primary/10"
-              >
-                <RefreshCw className="h-4 w-4" />
+                <Sliders className="h-5 w-5" />
               </Button>
             </div>
             
             {/* Center - Logo */}
             <div className="flex items-center">
-              <img 
-                src={minglaLogo} 
-                alt="Mingla" 
-                className="h-8 w-auto"
-              />
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+                Mingla
+              </h1>
             </div>
             
             {/* Right side - Session Controls */}

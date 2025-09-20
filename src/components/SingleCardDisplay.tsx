@@ -4,6 +4,7 @@ import { Heart, X, Users, MapPin, Clock, Star, Navigation, MessageCircle, Dollar
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { AnimatedTimeline } from '@/components/AnimatedTimeline';
 import type { RecommendationCard as CardType } from '@/types/recommendations';
 interface SingleCardDisplayProps {
   card: CardType;
@@ -154,42 +155,47 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
                 duration: 0.3,
                 ease: [0.4, 0, 0.2, 1]
               }} className="overflow-hidden">
-                    <div className="pt-4 space-y-4 bg-accent/5 rounded-xl p-4 mt-2">
-                      {/* Metadata Grid */}
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">
-                          <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span className="text-xs">{Math.round(card.durationMinutes / 60)}h {card.durationMinutes % 60}m</span>
+                    <div className="pt-4 space-y-4">
+                      {/* Animated Timeline */}
+                      <AnimatedTimeline card={card} isVisible={isExpanded} />
+                      
+                      <div className="bg-accent/5 rounded-xl p-4 space-y-4">
+                        {/* Metadata Grid */}
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">
+                            <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <span className="text-xs">{Math.round(card.durationMinutes / 60)}h {card.durationMinutes % 60}m</span>
+                          </div>
+                          <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">
+                            <DollarSign className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <span className="text-xs">${card.estimatedCostPerPerson}/person</span>
+                          </div>
+                          {card.reviewCount && <>
+                              <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">
+                                <Users className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                <span className="text-xs">{card.reviewCount > 1000 ? `${(card.reviewCount / 1000).toFixed(1)}k` : card.reviewCount} reviews</span>
+                              </div>
+                              <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">
+                                <Star className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                <span className="text-xs">{card.rating?.toFixed(1)}/5.0</span>
+                              </div>
+                            </>}
                         </div>
-                        <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">
-                          <DollarSign className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <span className="text-xs">${card.estimatedCostPerPerson}/person</span>
-                        </div>
-                        {card.reviewCount && <>
-                            <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">
-                              <Users className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                              <span className="text-xs">{card.reviewCount > 1000 ? `${(card.reviewCount / 1000).toFixed(1)}k` : card.reviewCount} reviews</span>
-                            </div>
-                            <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">
-                              <Star className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                              <span className="text-xs">{card.rating?.toFixed(1)}/5.0</span>
-                            </div>
-                          </>}
-                      </div>
 
-                      {/* Address */}
-                      <div className="bg-background/50 p-3 rounded-lg">
-                        <div className="flex items-start gap-2 text-sm">
-                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <span className="text-muted-foreground text-xs leading-relaxed">{card.address}</span>
+                        {/* Address */}
+                        <div className="bg-background/50 p-3 rounded-lg">
+                          <div className="flex items-start gap-2 text-sm">
+                            <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                            <span className="text-muted-foreground text-xs leading-relaxed">{card.address}</span>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* View Route Button */}
-                      <Button onClick={handleViewRoute} variant="outline" className="w-full bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary" size="sm">
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        Open in Maps
-                      </Button>
+                        {/* View Route Button */}
+                        <Button onClick={handleViewRoute} variant="outline" className="w-full bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary" size="sm">
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Open in Maps
+                        </Button>
+                      </div>
                     </div>
                   </motion.div>}
               </AnimatePresence>
