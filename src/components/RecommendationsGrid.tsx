@@ -11,6 +11,7 @@ import type { RecommendationsRequest, RecommendationsResponse, RecommendationCar
 
 interface RecommendationsGridProps {
   preferences: RecommendationsRequest;
+  fullPreferences?: any; // Full preferences from PreferencesSheet
   onAdjustFilters?: () => void;
   onInvite?: (card: CardType) => void;
   onSave?: (card: CardType) => void;
@@ -18,6 +19,7 @@ interface RecommendationsGridProps {
 
 export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
   preferences,
+  fullPreferences,
   onAdjustFilters,
   onInvite,
   onSave
@@ -67,8 +69,17 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
               preferences: {
                 budget: preferences.budget,
                 categories: preferences.categories,
-                location: 'Current Location',
-                travelMode: preferences.travel?.mode || 'DRIVE'
+                experienceTypes: fullPreferences?.experienceTypes || [],
+                groupSize: fullPreferences?.groupSize || 2,
+                timeWindow: preferences.timeWindow,
+                travel: preferences.travel,
+                location: {
+                  name: fullPreferences?.customLocation || fullPreferences?.location || 'Current Location',
+                  isCustom: fullPreferences?.location === 'custom' || false,
+                  lat: fullPreferences?.custom_lat,
+                  lng: fullPreferences?.custom_lng
+                },
+                measurementSystem: preferences.units || 'metric'
               }
             }
           });

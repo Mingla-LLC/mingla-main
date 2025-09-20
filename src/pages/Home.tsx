@@ -612,7 +612,13 @@ const Home = () => {
       
       {/* Recommendations Grid or Premium Experience Card */}
       {showRecommendations && recommendationsRequest ? <div className="flex-1 px-6 py-6" data-testid="recommendations-grid">
-          <RecommendationsGrid preferences={recommendationsRequest} onAdjustFilters={() => setShowPreferences(true)} onInvite={handleCardInvite} onSave={handleCardSave} />
+          <RecommendationsGrid 
+            preferences={recommendationsRequest} 
+            fullPreferences={activePreferences}
+            onAdjustFilters={() => setShowPreferences(true)} 
+            onInvite={handleCardInvite} 
+            onSave={handleCardSave} 
+          />
         </div> :
     // Premium Experience Card
     <>

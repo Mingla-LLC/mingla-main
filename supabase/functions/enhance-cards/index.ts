@@ -19,11 +19,30 @@ interface CardData {
   imageUrl?: string;
 }
 
-interface UserPreferences {
+interface DetailedUserPreferences {
   budget: { min: number; max: number; perPerson: boolean };
   categories: string[];
-  location?: string;
-  travelMode?: string;
+  experienceTypes?: string[];
+  groupSize?: number;
+  timeWindow?: {
+    kind: string;
+    timeOfDay?: string;
+  };
+  travel?: {
+    mode: string;
+    constraint: {
+      type: string;
+      maxMinutes?: number;
+      maxDistance?: number;
+    };
+  };
+  location?: {
+    name: string;
+    isCustom: boolean;
+    lat?: number;
+    lng?: number;
+  };
+  measurementSystem?: string;
 }
 
 serve(async (req) => {
@@ -35,10 +54,13 @@ serve(async (req) => {
   try {
     const { cards, preferences } = await req.json() as {
       cards: CardData[];
-      preferences: UserPreferences;
+      preferences: DetailedUserPreferences;
     };
 
-    console.log('Enhancing cards with OpenAI:', { cardsCount: cards.length, preferences });
+    console.log('Enhancing cards with comprehensive preferences:', { 
+      cardsCount: cards.length, 
+      preferencesKeys: Object.keys(preferences) 
+    });
 
     if (!openAIApiKey) {
       throw new Error('OpenAI API key not configured');
@@ -50,33 +72,108 @@ serve(async (req) => {
       });
     }
 
+    // Create detailed context from user preferences
+    const createPersonalizationContext = (prefs: DetailedUserPreferences) => {
+      let context = [];
+      
+      // Group context
+      if (prefs.groupSize) {
+        const groupType = prefs.groupSize === 1 ? 'solo experience' :
+                         prefs.groupSize === 2 ? 'intimate date for two' :
+                         prefs.groupSize <= 4 ? 'small group outing' : 'large group activity';
+        context.push(`Planning for ${prefs.groupSize} ${prefs.groupSize === 1 ? 'person' : 'people'} (${groupType})`);
+      }
+
+      // Experience type context
+      if (prefs.experienceTypes && prefs.experienceTypes.length > 0) {
+        context.push(`Experience mood: ${prefs.experienceTypes.join(', ')}`);
+      }
+
+      // Time context
+      if (prefs.timeWindow) {
+        const timeContext = prefs.timeWindow.kind === 'Now' ? 'happening right now' :
+                           prefs.timeWindow.kind === 'Tonight' ? 'perfect for this evening' :
+                           prefs.timeWindow.kind === 'ThisWeekend' ? 'great weekend activity' :
+                           'flexible timing';
+        if (prefs.timeWindow.timeOfDay) {
+          context.push(`Timing: ${timeContext} around ${prefs.timeWindow.timeOfDay}`);
+        } else {
+          context.push(`Timing: ${timeContext}`);
+        }
+      }
+
+      // Travel context
+      if (prefs.travel) {
+        const travelMethod = prefs.travel.mode === 'WALKING' ? 'walking distance' :
+                            prefs.travel.mode === 'DRIVING' ? 'driving' :
+                            prefs.travel.mode === 'TRANSIT' ? 'public transportation' : 'convenient travel';
+        
+        let travelConstraint = '';
+        if (prefs.travel.constraint.maxMinutes) {
+          travelConstraint = `within ${prefs.travel.constraint.maxMinutes} minutes`;
+        } else if (prefs.travel.constraint.maxDistance) {
+          const unit = prefs.measurementSystem === 'imperial' ? 'miles' : 'km';
+          travelConstraint = `within ${prefs.travel.constraint.maxDistance} ${unit}`;
+        }
+        
+        context.push(`Travel: ${travelMethod} ${travelConstraint}`.trim());
+      }
+
+      // Location context
+      if (prefs.location) {
+        if (prefs.location.isCustom) {
+          context.push(`Location area: ${prefs.location.name}`);
+        } else {
+          context.push(`Starting from current location`);
+        }
+      }
+
+      // Budget context
+      const budgetRange = `$${prefs.budget.min}-$${prefs.budget.max}`;
+      context.push(`Budget: ${budgetRange} per person`);
+
+      // Category interests
+      if (prefs.categories && prefs.categories.length > 0) {
+        context.push(`Interested in: ${prefs.categories.join(', ')}`);
+      }
+
+      return context.join('. ');
+    };
+
+    const personalizationContext = createPersonalizationContext(preferences);
+
     // Enhance cards in parallel but limit to avoid rate limits
     const enhancedCards = await Promise.all(
       cards.slice(0, 10).map(async (card) => {
         try {
-          const prompt = `You are a dating and experience expert. Create engaging, personalized copy for this date/activity.
+          const prompt = `You are an expert dating and experience curator. Create personalized, engaging copy for this activity using the user's specific preferences.
 
-Location: ${card.title} - ${card.address}
-Category: ${card.category}
-Price Range: ${card.priceLevel} (1-4 scale)
-Estimated Cost: $${card.estimatedCostPerPerson} per person
-User Budget: $${preferences.budget.min}-$${preferences.budget.max}
-User Interests: ${preferences.categories.join(', ')}
-Travel Mode: ${preferences.travelMode || 'driving'}
+ACTIVITY DETAILS:
+- Name: ${card.title}
+- Location: ${card.address}
+- Category: ${card.category}
+- Price Level: ${card.priceLevel}/4 scale
+- Cost: $${card.estimatedCostPerPerson} per person
+
+USER PREFERENCES & CONTEXT:
+${personalizationContext}
+
+TASK:
+Create compelling copy that speaks directly to this user's preferences and situation. Make it feel personally curated for them.
 
 Generate:
-1. A compelling one-liner (max 14 words) that makes this sound exciting and romantic
-2. A practical tip (max 18 words) for making the most of this experience
+1. oneLiner: A magnetic, personalized hook (max 14 words) that makes this feel perfect for their specific situation
+2. tip: A tailored insider tip (max 18 words) that considers their preferences, timing, group size, and travel method
 
-Requirements:
-- Focus on the romantic/dating aspect
-- Make it sound premium and special
-- No generic phrases
-- Be specific to the location/activity type
-- Consider the user's budget and interests
-- Use actionable language
+REQUIREMENTS:
+- Reference their group size, experience type, or timing when relevant
+- Make it feel premium and specially selected
+- Use specific, actionable language
+- Avoid generic phrases like "perfect for" or "great choice"
+- Consider their budget range and travel preferences
+- Make it sound like a personal recommendation from a friend
 
-Format: Return only JSON with "oneLiner" and "tip" fields.`;
+Format: Return only valid JSON with "oneLiner" and "tip" fields.`;
 
           const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -89,11 +186,11 @@ Format: Return only JSON with "oneLiner" and "tip" fields.`;
               messages: [
                 { 
                   role: 'system', 
-                  content: 'You are a dating expert who creates compelling, personalized copy for romantic experiences. Always return valid JSON.' 
+                  content: 'You are a premium dating and experience curator who creates highly personalized recommendations. Always return valid JSON with compelling, specific copy.' 
                 },
                 { role: 'user', content: prompt }
               ],
-              max_completion_tokens: 150,
+              max_completion_tokens: 200,
             }),
           });
 
@@ -105,7 +202,7 @@ Format: Return only JSON with "oneLiner" and "tip" fields.`;
           const data = await response.json();
           const content = data.choices[0].message.content;
           
-          console.log('OpenAI response for card:', card.id, content);
+          console.log('OpenAI personalized response for card:', card.id, content);
 
           let enhancedCopy;
           try {
@@ -117,8 +214,8 @@ Format: Return only JSON with "oneLiner" and "tip" fields.`;
             const tipMatch = content.match(/"tip":\s*"([^"]+)"/);
             
             enhancedCopy = {
-              oneLiner: oneLinearMatch ? oneLinearMatch[1] : `Amazing ${card.category.toLowerCase()} experience at ${card.title}`,
-              tip: tipMatch ? tipMatch[1] : `Perfect for a memorable date, budget around $${card.estimatedCostPerPerson}`
+              oneLiner: oneLinearMatch ? oneLinearMatch[1] : `Curated ${card.category.toLowerCase()} experience at ${card.title}`,
+              tip: tipMatch ? tipMatch[1] : `Tailored for your group, budget around $${card.estimatedCostPerPerson} per person`
             };
           }
 
@@ -126,25 +223,28 @@ Format: Return only JSON with "oneLiner" and "tip" fields.`;
             ...card,
             copy: {
               oneLiner: enhancedCopy.oneLiner || `Premium ${card.category.toLowerCase()} experience awaits`,
-              tip: enhancedCopy.tip || `Ideal for dates, around $${card.estimatedCostPerPerson} per person`
+              tip: enhancedCopy.tip || `Perfect for your preferences, around $${card.estimatedCostPerPerson} per person`
             }
           };
 
         } catch (error) {
           console.error('Error enhancing card:', card.id, error);
-          // Return card with fallback copy
+          // Return card with personalized fallback copy
+          const groupContext = preferences.groupSize === 2 ? 'date' : 
+                              preferences.groupSize === 1 ? 'solo adventure' : 'group experience';
+          
           return {
             ...card,
             copy: {
-              oneLiner: `Discover amazing ${card.category.toLowerCase()} at ${card.title}`,
-              tip: `Perfect date spot with budget around $${card.estimatedCostPerPerson}`
+              oneLiner: `Handpicked ${card.category.toLowerCase()} ${groupContext} at ${card.title}`,
+              tip: `Curated for your ${preferences.budget.min}-${preferences.budget.max} budget and preferences`
             }
           };
         }
       })
     );
 
-    console.log('Successfully enhanced cards:', enhancedCards.length);
+    console.log('Successfully enhanced cards with full personalization:', enhancedCards.length);
 
     return new Response(JSON.stringify({ enhancedCards }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
