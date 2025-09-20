@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.get-google-maps-key]
 verify_jwt = true
+
+[functions.enhance-cards]
+verify_jwt = false

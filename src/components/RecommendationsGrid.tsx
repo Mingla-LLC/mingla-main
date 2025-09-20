@@ -46,7 +46,58 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       }
 
       console.log('✅ Received recommendations:', data);
-      setRecommendations(data);
+      
+      // Enhance cards with OpenAI if we have cards
+      if (data?.cards && data.cards.length > 0) {
+        console.log('🤖 Enhancing cards with OpenAI...');
+        
+        try {
+          const { data: enhancedData, error: enhanceError } = await supabase.functions.invoke('enhance-cards', {
+            body: {
+              cards: data.cards.map((card: CardType) => ({
+                id: card.id,
+                title: card.title,
+                subtitle: card.subtitle,
+                category: card.category,
+                priceLevel: card.priceLevel,
+                estimatedCostPerPerson: card.estimatedCostPerPerson,
+                address: card.address,
+                imageUrl: card.imageUrl
+              })),
+              preferences: {
+                budget: preferences.budget,
+                categories: preferences.categories,
+                location: 'Current Location',
+                travelMode: preferences.travel?.mode || 'DRIVE'
+              }
+            }
+          });
+
+          if (enhanceError) {
+            console.warn('⚠️ OpenAI enhancement failed, using original cards:', enhanceError);
+            setRecommendations(data);
+          } else if (enhancedData?.enhancedCards && enhancedData.enhancedCards.length > 0) {
+            console.log('✨ Cards enhanced successfully with OpenAI');
+            // Merge enhanced copy with original card data
+            const enhancedRecommendations = {
+              ...data,
+              cards: data.cards.map((originalCard: CardType) => {
+                const enhanced = enhancedData.enhancedCards.find((ec: any) => ec.id === originalCard.id);
+                return enhanced ? { ...originalCard, copy: enhanced.copy } : originalCard;
+              })
+            };
+            setRecommendations(enhancedRecommendations);
+          } else {
+            console.warn('⚠️ No enhanced cards returned, using original');
+            setRecommendations(data);
+          }
+        } catch (enhanceError) {
+          console.warn('⚠️ OpenAI enhancement error, using original cards:', enhanceError);
+          setRecommendations(data);
+        }
+      } else {
+        setRecommendations(data);
+      }
       
       if (data?.cards?.length === 0) {
         toast({
