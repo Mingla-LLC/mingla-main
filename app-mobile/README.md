@@ -1,49 +1,50 @@
 # Mingla Mobile App
 
-A cross-platform mobile application for collaborative experience discovery and planning, built with React Native and Expo.
+A cross-platform mobile application for collaborative experience discovery and planning, built with React Native and Expo. This mobile app mirrors the web application functionality while providing native mobile features and optimized user experience.
 
 ## 🚀 Features
 
 ### Core Features
-- **AI-Powered Recommendations**: Weather-aware and personalized experience suggestions
+- **AI-Powered Recommendations**: Weather-aware and personalized experience suggestions with 18+ recommendations
 - **Real-time Collaboration**: Live session management and board collaboration
-- **Location Services**: GPS tracking and location-aware discovery
-- **Push Notifications**: Comprehensive notification system for collaboration
-- **Camera Integration**: Photo capture and cloud upload for experiences
+- **Location Services**: GPS tracking with city name display (not raw coordinates)
+- **Tinder-style Interface**: Swipeable experience cards for intuitive discovery
 - **Board Management**: Create, manage, and collaborate on experience boards
+- **Authentication**: Real Supabase authentication with profile sync
 
 ### Mobile-Specific Features
 - **Cross-platform**: Works seamlessly on iOS and Android
-- **Responsive Design**: Optimized for all screen sizes
-- **Offline Capabilities**: Basic offline support with data persistence
+- **Responsive Design**: Optimized for all screen sizes with dynamic layouts
 - **Native Integration**: Camera, location, notifications, and calendar
-- **Performance Optimized**: Efficient rendering and memory management
+- **Geocoding Service**: Converts coordinates to readable city names
+- **Performance Optimized**: Efficient rendering with caching and fallbacks
 
 ## 📱 Screens
 
 ### Home Screen
-- **AI Recommendations**: Intelligent experience suggestions based on preferences and weather
-- **Location Discovery**: Real-time location-based experience discovery
-- **Quick Actions**: Easy access to explore, collaborate, saved items, and scheduling
+- **AI Recommendations**: Intelligent experience suggestions with Tinder-style swipe interface
+- **Location Discovery**: Real-time location-based discovery with city name display
+- **Quick Actions**: Easy access to connections, collaborate, saved items, and scheduling
 - **Session Status**: Current collaboration session information
+- **Time-specific Greetings**: Personalized greetings based on time of day
 
-### Explore Screen
-- **Category Filtering**: Browse experiences by category
-- **Search Functionality**: Find experiences by name or description
-- **Location-aware Discovery**: Find experiences near your current location
-- **Trending Categories**: Discover popular experience categories
+### Connections Screen
+- **Friends Tab**: Add friends, search, and manage friend relationships
+- **Inbox Tab**: Message conversations with search functionality
+- **Real-time Updates**: Live friend status and message notifications
+- **Demo Data**: Comprehensive demo data for testing and development
 
 ### Activity Screen
 - **Board Management**: Create and manage collaborative boards
-- **Real-time Collaboration**: Live board updates and experience sharing
-- **Saved Experiences**: Manage your saved experiences
+- **Saved Experiences**: View and manage saved experiences with full details
+- **Calendar Integration**: Schedule and view planned experiences
 - **Session Integration**: Connect boards to collaboration sessions
 
 ### Profile Screen
-- **User Statistics**: View your activity and engagement metrics
+- **User Statistics**: View activity and engagement metrics
 - **Settings Management**: Configure app preferences and notifications
 - **Account Management**: Update profile information and preferences
-- **Session History**: View past collaboration sessions
+- **Profile Settings**: Detailed settings page with comprehensive options
 
 ## 🏗️ Architecture
 
@@ -52,39 +53,49 @@ A cross-platform mobile application for collaborative experience discovery and p
 - **Expo**: Development platform and build tools
 - **TypeScript**: Type-safe development
 - **Supabase**: Backend as a Service (database, auth, real-time)
-- **Zustand**: State management with persistence
-- **React Navigation**: Navigation and routing
+- **Zustand**: State management with AsyncStorage persistence
+- **React Navigation**: Bottom tab and stack navigation
+- **React Native Gesture Handler**: Swipe gestures for Tinder-style interface
 
 ### Project Structure
 ```
 src/
 ├── components/          # Reusable UI components
-│   ├── ui/             # Base UI components
+│   ├── ui/             # Base UI components (shadcn/ui)
 │   ├── AuthGuard.tsx   # Authentication guard
-│   ├── ExperienceCard.tsx
+│   ├── SimpleAuthGuard.tsx # Simplified auth guard
+│   ├── SwipeableExperienceCard.tsx # Tinder-style cards
 │   ├── AIRecommendationEngine.tsx
 │   ├── LocationAwareDiscovery.tsx
-│   ├── BoardCollaboration.tsx
+│   ├── SessionSwitcher.tsx
+│   ├── CreateSessionModal.tsx
 │   └── ...
 ├── screens/            # Screen components
 │   ├── HomeScreen.tsx
-│   ├── ExploreScreen.tsx
+│   ├── ConnectionsScreenTest.tsx # Connections with demo data
 │   ├── ActivityScreen.tsx
 │   ├── ProfileScreen.tsx
+│   ├── ProfileSettingsScreen.tsx
 │   └── AuthScreen.tsx
 ├── hooks/              # Custom React hooks
 │   ├── useAuth.ts
+│   ├── useUserProfile.ts # Real user profile management
 │   ├── useExperiences.ts
 │   ├── useBoards.ts
 │   ├── useEnhancedBoards.ts
 │   ├── useRealtimeSession.ts
+│   ├── useFriends.ts
+│   ├── useMessages.ts
 │   └── ...
 ├── services/           # External service integrations
 │   ├── supabase.ts
+│   ├── authService.ts # Real authentication service
+│   ├── geocodingService.ts # Coordinate to city name conversion
 │   ├── realtimeService.ts
 │   ├── enhancedLocationService.ts
 │   ├── enhancedNotificationService.ts
-│   ├── aiReasoningService.ts
+│   ├── aiReasoningService.ts # Fixed AI recommendations
+│   ├── experienceService.ts # Direct experience fetching
 │   └── cameraService.ts
 ├── store/              # State management
 │   └── appStore.ts
@@ -93,7 +104,8 @@ src/
 ├── constants/          # App constants
 │   └── categories.ts
 └── contexts/           # React contexts
-    └── NavigationContext.tsx
+    ├── NavigationContext.tsx
+    └── MobileFeaturesProvider.tsx
 ```
 
 ## 🔧 Setup & Installation
@@ -120,41 +132,77 @@ src/
 3. **Configure environment**
    - Update Supabase configuration in `src/services/supabase.ts`
    - Configure Expo project settings in `app.json`
+   - Ensure Supabase project is properly configured
 
 4. **Start development server**
    ```bash
    npm start
+   # or
+   npx expo start
    ```
 
 5. **Run on device/simulator**
    - iOS: Press `i` in terminal or scan QR code with Camera app
    - Android: Press `a` in terminal or scan QR code with Expo Go app
+   - Web: Press `w` in terminal for web development
+
+## 🐛 Recent Fixes & Improvements
+
+### Authentication & Data Sync
+- ✅ **Real Authentication**: Implemented proper Supabase authentication
+- ✅ **Profile Sync**: User profiles now sync between web and mobile apps
+- ✅ **Profile Pictures**: Avatar images display correctly from web app
+- ✅ **User Data**: Real user data instead of mock data
+
+### AI Recommendations
+- ✅ **Fixed AI Errors**: Resolved "FunctionsHttpError" issues
+- ✅ **18+ Recommendations**: App now shows same number of recommendations as web app
+- ✅ **Fallback System**: Robust fallback when AI service is unavailable
+- ✅ **Performance**: Improved loading times and error handling
+
+### Database & Queries
+- ✅ **Fixed Board Queries**: Resolved "PGRST200" relationship errors
+- ✅ **Simplified Queries**: Optimized database queries for better performance
+- ✅ **Error Handling**: Graceful handling of database connection issues
+
+### Location Services
+- ✅ **City Names**: Location now shows "New York, NY, USA" instead of coordinates
+- ✅ **Geocoding Service**: Reverse geocoding with caching and fallbacks
+- ✅ **Common Locations**: Pre-defined locations for major cities
+- ✅ **Permission Handling**: Improved location permission management
+
+### UI/UX Improvements
+- ✅ **Tinder Interface**: Swipeable experience cards with proper sizing
+- ✅ **Responsive Layout**: Dynamic layouts that work on all screen sizes
+- ✅ **Action Buttons**: Properly positioned action buttons below cards
+- ✅ **Time Greetings**: Personalized greetings based on time of day
+- ✅ **Loading States**: Better loading indicators and error states
 
 ## 📱 Mobile Features
 
 ### Location Services
-- **GPS Tracking**: Real-time location monitoring
-- **Geofencing**: Location-based notifications
-- **Address Resolution**: Reverse geocoding
+- **GPS Tracking**: Real-time location monitoring with city name display
+- **Geocoding**: Automatic conversion of coordinates to readable locations
 - **Permission Management**: Comprehensive location permission handling
+- **Caching**: 24-hour cache for geocoding results to improve performance
 
-### Push Notifications
-- **Collaboration Invites**: Notify users of new collaboration invitations
-- **Session Messages**: Real-time message notifications
-- **Board Updates**: Notify collaborators of board changes
-- **Location Reminders**: Geofenced experience reminders
-
-### Camera Integration
-- **Photo Capture**: High-quality photo capture with editing
-- **Library Selection**: Choose photos from device gallery
-- **Image Processing**: Compression, resizing, and thumbnail generation
-- **Cloud Upload**: Automatic upload to Supabase Storage
+### Authentication
+- **Real Supabase Auth**: Full authentication with sign-in/sign-up
+- **Profile Management**: Real-time profile updates and sync
+- **Session Management**: Automatic session refresh and management
+- **Secure Storage**: Encrypted local storage for user data
 
 ### AI Integration
 - **Weather-aware Recommendations**: AI suggestions based on current weather
 - **Personalized Suggestions**: User preference-based recommendations
-- **Contextual Recommendations**: Time, location, and context-aware suggestions
-- **Intelligent Caching**: Performance optimization with smart caching
+- **Fallback System**: Robust fallback when AI service is unavailable
+- **Performance**: Optimized with caching and timeout handling
+
+### Tinder-style Interface
+- **Swipeable Cards**: Intuitive swipe left/right interface
+- **Dynamic Sizing**: Cards adapt to different screen sizes
+- **Action Buttons**: Like, pass, and save actions
+- **Smooth Animations**: Fluid swipe animations and transitions
 
 ## 🔄 Real-time Features
 
@@ -176,7 +224,7 @@ src/
 - **Mobile-first Design**: Optimized for mobile devices
 - **Consistent Theming**: Unified color scheme and typography
 - **Responsive Layout**: Adapts to different screen sizes
-- **Accessibility**: WCAG compliant design patterns
+- **Tinder-style Interface**: Intuitive swipe-based discovery
 
 ### User Experience
 - **Intuitive Navigation**: Bottom tab navigation with clear hierarchy
@@ -192,11 +240,11 @@ src/
 - **Network Optimization**: Efficient API calls and caching
 - **Bundle Optimization**: Code splitting and lazy loading
 
-### Monitoring
-- **Performance Metrics**: Real-time performance monitoring
-- **Error Tracking**: Comprehensive error logging
-- **Analytics**: User behavior and app usage analytics
-- **Crash Reporting**: Automatic crash detection and reporting
+### Caching Strategy
+- **Geocoding Cache**: 24-hour cache for location names
+- **AI Recommendations**: 5-minute cache for recommendations
+- **User Data**: Persistent storage with AsyncStorage
+- **Image Caching**: Optimized image loading and caching
 
 ## 🔐 Security
 
@@ -212,33 +260,19 @@ src/
 - **SQL Injection Prevention**: Parameterized queries
 - **XSS Protection**: Content Security Policy implementation
 
-## 📊 Analytics & Monitoring
-
-### User Analytics
-- **Experience Interactions**: Track user engagement with experiences
-- **Collaboration Metrics**: Monitor collaboration session activity
-- **Feature Usage**: Track feature adoption and usage patterns
-- **Performance Metrics**: Monitor app performance and user experience
-
-### Business Intelligence
-- **Popular Experiences**: Identify trending experiences
-- **User Behavior**: Understand user preferences and patterns
-- **Collaboration Success**: Measure collaboration effectiveness
-- **Geographic Insights**: Location-based usage analytics
-
 ## 🧪 Testing
 
-### Testing Strategy
-- **Unit Tests**: Component and hook testing
-- **Integration Tests**: Service integration testing
-- **E2E Tests**: End-to-end user journey testing
-- **Performance Tests**: Load and stress testing
+### Current Status
+- **Manual Testing**: Comprehensive manual testing across features
+- **Error Handling**: Robust error handling and fallback systems
+- **Cross-platform**: Tested on iOS and Android
+- **Performance**: Optimized for smooth user experience
 
 ### Quality Assurance
 - **TypeScript**: Compile-time type checking
 - **ESLint**: Code quality and consistency
-- **Prettier**: Code formatting
-- **Husky**: Pre-commit hooks for quality gates
+- **Error Logging**: Comprehensive error logging and debugging
+- **User Feedback**: Real-time user experience monitoring
 
 ## 🚀 Deployment
 
@@ -249,24 +283,35 @@ src/
 - **Bundle Analysis**: Bundle size optimization
 
 ### Distribution
-- **App Store**: iOS App Store deployment
-- **Google Play**: Android Play Store deployment
+- **App Store**: iOS App Store deployment ready
+- **Google Play**: Android Play Store deployment ready
 - **Over-the-Air Updates**: Instant updates via Expo Updates
 - **Beta Testing**: Internal and external beta distribution
 
-## 📈 Roadmap
+## 📈 Current Status
 
-### Upcoming Features
-- **Offline Mode**: Full offline functionality
-- **Advanced AI**: Enhanced AI recommendations
-- **Social Features**: User profiles and social interactions
-- **Monetization**: Premium features and subscriptions
+### ✅ Completed Features
+- Real authentication with Supabase
+- AI-powered recommendations (18+ experiences)
+- Location services with city name display
+- Tinder-style swipeable interface
+- Board management and collaboration
+- Profile management and settings
+- Real-time data sync with web app
+- Comprehensive error handling
+- Performance optimizations
 
-### Technical Improvements
-- **Performance**: Further optimization and caching
-- **Accessibility**: Enhanced accessibility features
-- **Internationalization**: Multi-language support
-- **Advanced Analytics**: Enhanced user insights
+### 🔄 In Progress
+- Advanced search filters
+- Enhanced real-time chat
+- Push notifications
+- Offline mode capabilities
+- Advanced analytics
+
+### 📋 Roadmap
+- **Phase 1**: Core functionality (✅ Complete)
+- **Phase 2**: Advanced features (🔄 In Progress)
+- **Phase 3**: Polish and optimization (📋 Planned)
 
 ## 🤝 Contributing
 
@@ -274,13 +319,13 @@ src/
 - **Code Style**: Follow established coding conventions
 - **Commit Messages**: Use conventional commit format
 - **Pull Requests**: Comprehensive PR descriptions
-- **Testing**: Ensure all tests pass before merging
+- **Testing**: Ensure all features work before merging
 
 ### Getting Started
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
+4. Test thoroughly on both iOS and Android
 5. Submit a pull request
 
 ## 📄 License
@@ -292,8 +337,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ### Documentation
 - **API Documentation**: Comprehensive API reference
 - **Component Library**: UI component documentation
-- **Tutorials**: Step-by-step guides
-- **FAQ**: Frequently asked questions
+- **Setup Guide**: Step-by-step setup instructions
+- **Troubleshooting**: Common issues and solutions
 
 ### Community
 - **GitHub Issues**: Bug reports and feature requests
@@ -304,3 +349,14 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ---
 
 **Built with ❤️ using React Native, Expo, and Supabase**
+
+## 🎯 Key Achievements
+
+- ✅ **Mirrored Web App**: Mobile app now matches web app functionality
+- ✅ **Real Data Sync**: User profiles and data sync between platforms
+- ✅ **18+ Recommendations**: Same number of experiences as web app
+- ✅ **City Name Display**: User-friendly location names instead of coordinates
+- ✅ **Tinder Interface**: Intuitive swipe-based experience discovery
+- ✅ **Error-free Operation**: Resolved all major database and API errors
+- ✅ **Cross-platform**: Works seamlessly on iOS and Android
+- ✅ **Performance Optimized**: Fast loading with caching and fallbacks
