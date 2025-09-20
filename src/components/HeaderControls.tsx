@@ -24,6 +24,7 @@ interface HeaderControlsProps {
   
   // Invite props
   pendingInvites: SessionInvite[];
+  sentSessions: CollaborationSession[];
   onAcceptInvite: (inviteId: string) => void;
   onDeclineInvite: (inviteId: string) => void;
   onCancelSession: (sessionId: string) => void;
@@ -42,6 +43,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
   onSwitchToCollaborative,
   onCreateSession,
   pendingInvites,
+  sentSessions,
   onAcceptInvite,
   onDeclineInvite,
   onCancelSession,
@@ -77,7 +79,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
         <PopoverContent className="w-[420px] p-0" align="end">
           <CollaborationInviteManager
             pendingInvites={pendingInvites}
-            sentSessions={[]}
+            sentSessions={sentSessions}
             onAcceptInvite={onAcceptInvite}
             onDeclineInvite={onDeclineInvite}
             onCancelSession={onCancelSession}

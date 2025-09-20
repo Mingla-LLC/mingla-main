@@ -588,7 +588,23 @@ const Home = () => {
             
           </div>
           
-        <HeaderControls currentSession={currentSession} availableSessions={availableSessions} isInSolo={isInSolo} onSwitchToSolo={switchToSolo} onSwitchToCollaborative={switchToCollaborative} onCreateSession={handleCreateSession} pendingInvites={pendingInvites} sentSessions={sentSessions} onAcceptInvite={handleAcceptInvite} onDeclineInvite={handleDeclineInvite} onCancelSession={handleCancelSession} loading={sessionLoading} />
+        <HeaderControls 
+          showNotifications={false}
+          onToggleNotifications={() => {}}
+          onShowPreferences={() => setShowPreferences(true)}
+          currentSession={currentSession} 
+          availableSessions={availableSessions} 
+          isInSolo={isInSolo} 
+          onSwitchToSolo={switchToSolo} 
+          onSwitchToCollaborative={switchToCollaborative} 
+          onCreateSession={handleCreateSession} 
+          pendingInvites={pendingInvites} 
+          sentSessions={sentSessions} 
+          onAcceptInvite={handleAcceptInvite} 
+          onDeclineInvite={handleDeclineInvite} 
+          onCancelSession={handleCancelSession} 
+          loading={sessionLoading} 
+        />
         </div>
       </div>
 
