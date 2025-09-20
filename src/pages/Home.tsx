@@ -1,26 +1,20 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Heart, X, Sliders, RefreshCw, Users, User, Sparkles } from 'lucide-react';
+import { Heart, X, Sliders, Users, User, Sparkles, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { TripCard } from '@/components/TripCard';
-import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
 import { HeaderControls } from '@/components/HeaderControls';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useGeolocation } from '@/hooks/useGeolocation';
-import { formatCurrency } from '@/utils/currency';
-import { getCategoryBySlug } from '@/lib/categories';
-import { useExperiences } from '@/hooks/useExperiences';
 import { useSessionManagement } from '@/hooks/useSessionManagement';
-import { RecommendationsGrid } from '@/components/RecommendationsGrid';
 import { convertPreferencesToRequest } from '@/utils/preferencesConverter';
+import { SingleCardDisplay } from '@/components/SingleCardDisplay';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
-import type { RecommendationCard as CardType } from '@/types/recommendations';
+import type { RecommendationCard as CardType, RecommendationsRequest, RecommendationsResponse } from '@/types/recommendations';
 import minglaLogo from '@/assets/mingla-logo.png';
 import { cn } from '@/lib/utils';
+import { motion } from 'framer-motion';
 
 interface ActivePreferences {
   budgetRange: [number, number];
@@ -39,13 +33,16 @@ interface ActivePreferences {
 }
 
 const Home = () => {
-  const [currentTripIndex, setCurrentTripIndex] = useState(0);
   const [showPreferences, setShowPreferences] = useState(false);
-  const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   const [measurementSystem, setMeasurementSystem] = useState('metric');
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [showNotifications, setShowNotifications] = useState(true);
-  const [showRecommendations, setShowRecommendations] = useState(false);
+  
+  // Recommendations state
+  const [recommendations, setRecommendations] = useState<RecommendationsResponse | null>(null);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const { profile } = useUserProfile();
   
@@ -53,55 +50,11 @@ const Home = () => {
   const { 
     latitude, 
     longitude, 
-    city, 
-    country, 
     loading: locationLoading, 
-    getCurrentLocation,
-    formatLocation 
+    getCurrentLocation 
   } = useGeolocation({
     autoStart: true
   });
-  
-  // Helper function to calculate travel time in minutes
-  const calculateTravelTime = (fromLocation: string, toLat: number | null, toLng: number | null, travelMode: string): number => {
-    // Simplified calculation - in real app, this would use actual routing API
-    if (!toLat || !toLng) return 15; // Default
-    
-    // Mock distance calculation based on travel mode
-    const baseTime = Math.random() * 20 + 5; // 5-25 minutes
-    
-    switch (travelMode) {
-      case 'walk':
-        return Math.round(baseTime * 1.5);
-      case 'drive':
-        return Math.round(baseTime * 0.7);
-      case 'public':
-        return Math.round(baseTime * 1.2);
-      default:
-        return Math.round(baseTime);
-    }
-  };
-  
-  // Helper function to calculate travel info based on constraint type
-  const calculateTravelInfo = (fromLocation: string, toLat: number | null, toLng: number | null, travelMode: string, constraint: 'time' | 'distance'): string => {
-    if (!toLat || !toLng) return constraint === 'time' ? '15 min' : '1.2 km';
-    
-    const travelTime = calculateTravelTime(fromLocation, toLat, toLng, travelMode);
-    
-    if (constraint === 'time') {
-      const modeIcon = travelMode === 'walk' ? '🚶‍♀️' : travelMode === 'drive' ? '🚗' : '🚌';
-      return `${travelTime} min ${modeIcon}`;
-    } else {
-      // Calculate distance based on time (rough approximation)
-      const distance = travelMode === 'walk' ? travelTime * 0.08 : // ~5 km/h walking speed
-                      travelMode === 'drive' ? travelTime * 0.5 : // ~30 km/h average city speed
-                      travelTime * 0.3; // ~18 km/h public transport
-      
-      return measurementSystem === 'metric' ? 
-        `${distance.toFixed(1)} km` : 
-        `${(distance * 0.621371).toFixed(1)} mi`;
-    }
-  };
   
   // Session management
   const {
@@ -127,24 +80,15 @@ const Home = () => {
     getUser();
   }, []);
 
-  // Wrapper function to handle session creation
-  const handleCreateSession = async (participants: string[], sessionName: string): Promise<void> => {
-    const result = await createCollaborativeSession(participants, sessionName);
-    if (!result) {
-      throw new Error('Failed to create session');
-    }
-  };
-  
-  // Initialize with proper defaults that match the "default state" described
-  // Initialize with proper defaults and ensure stable state
+  // Premium dating app defaults
   const [activePreferences, setActivePreferences] = useState<ActivePreferences>(() => ({
-    budgetRange: [10, 10000],
-    categories: [],
-    experienceTypes: [],
-    time: 'now',
+    budgetRange: [25, 150], // Premium dating range
+    categories: ['sip', 'dining'], // Dating-focused categories
+    experienceTypes: ['Romantic', 'First Date'],
+    time: 'tonight',
     travel: 'drive',
     travelConstraint: 'time',
-    travelTime: 15,
+    travelTime: 20,
     travelDistance: 5,
     location: 'current',
     customLocation: '',
@@ -153,21 +97,15 @@ const Home = () => {
     groupSize: 2
   }));
 
-  // Handle preferences update with immediate application
+  // Handle preferences update
   const handlePreferencesUpdate = useCallback((newPreferences: ActivePreferences) => {
     console.log('📊 Updating preferences:', newPreferences);
     setActivePreferences(newPreferences);
-    
-    // If preferences have categories, show recommendations
-    if (newPreferences.categories.length > 0) {
-      setShowRecommendations(true);
-    }
+    setCurrentCardIndex(0); // Reset to first card
   }, []);
 
   // Convert preferences for recommendations API
   const recommendationsRequest = useMemo(() => {
-    if (activePreferences.categories.length === 0) return null;
-    
     return convertPreferencesToRequest(
       activePreferences,
       latitude || undefined,
@@ -176,703 +114,281 @@ const Home = () => {
     );
   }, [activePreferences, latitude, longitude, measurementSystem]);
 
-  // Handle recommendation card actions
-  const handleCardInvite = (card: CardType) => {
+  // Fetch recommendations
+  const fetchRecommendations = useCallback(async () => {
+    if (!recommendationsRequest) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      console.log('🎯 Fetching recommendations with preferences:', recommendationsRequest);
+      
+      const { data, error: functionError } = await supabase.functions.invoke('recommendations', {
+        body: recommendationsRequest
+      });
+
+      if (functionError) {
+        throw new Error(functionError.message || 'Failed to fetch recommendations');
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      console.log('✅ Received recommendations:', data);
+      setRecommendations(data);
+      setCurrentCardIndex(0);
+      
+      if (data?.cards?.length === 0) {
+        toast({
+          title: "No matches found",
+          description: "Try adjusting your filters to see more options",
+          variant: "default"
+        });
+      }
+      
+    } catch (err) {
+      console.error('❌ Error fetching recommendations:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load recommendations';
+      setError(errorMessage);
+      
+      toast({
+        title: "Error loading recommendations",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [recommendationsRequest]);
+
+  // Fetch recommendations when preferences change
+  useEffect(() => {
+    if (recommendationsRequest?.origin.lat && recommendationsRequest?.origin.lng && recommendationsRequest?.categories.length > 0) {
+      fetchRecommendations();
+    }
+  }, [fetchRecommendations]);
+
+  // Handle card actions
+  const handleCardLike = useCallback((card: CardType) => {
+    console.log('💖 Liked:', card.title);
+    
+    // Advance to next card
+    if (recommendations && currentCardIndex < recommendations.cards.length - 1) {
+      setCurrentCardIndex(prev => prev + 1);
+    }
+    
+    // Save the card
+    toast({
+      title: "Saved!",
+      description: `Added ${card.title} to your favorites`,
+    });
+    
+    // TODO: Integrate with saves system
+  }, [recommendations, currentCardIndex]);
+
+  const handleCardDislike = useCallback((card: CardType) => {
+    console.log('👎 Disliked:', card.title);
+    
+    // Advance to next card
+    if (recommendations && currentCardIndex < recommendations.cards.length - 1) {
+      setCurrentCardIndex(prev => prev + 1);
+    }
+    
+    // TODO: Send feedback to improve recommendations
+  }, [recommendations, currentCardIndex]);
+
+  const handleCardInvite = useCallback((card: CardType) => {
+    console.log('👥 Invite to:', card.title);
+    
     // Integrate with existing collaboration system
     toast({
       title: "Invite sent!",
       description: `Invited friends to ${card.title}`,
     });
-  };
-
-  const handleCardSave = (card: CardType) => {
-    // Integrate with existing saves system
-    toast({
-      title: "Saved!",
-      description: `Saved ${card.title} for later`,
-    });
-  };
-
-  // Memoize all filters to prevent unnecessary re-renders
-  const experienceFilters = useMemo(() => {
-    return {
-      categories: activePreferences.categories,
-      budgetRange: activePreferences.budgetRange,
-      groupSize: activePreferences.groupSize,
-      time: activePreferences.time,
-      travel: activePreferences.travel,
-      travelTime: activePreferences.travelTime,
-      travelDistance: activePreferences.travelDistance,
-      location: activePreferences.location
-    };
-  }, [
-    activePreferences.categories,
-    activePreferences.budgetRange,
-    activePreferences.groupSize,
-    activePreferences.time,
-    activePreferences.travel,
-    activePreferences.travelTime,
-    activePreferences.travelDistance,
-    activePreferences.location
-  ]);
-
-  // Fetch experiences based on all preferences
-  const { experiences, loading: experiencesLoading, error } = useExperiences(experienceFilters);
-
-  // Convert experiences to trip format for cards
-  // Fetch real places and events data
-  const [realTrips, setRealTrips] = useState<any[]>([]);
-  const [loadingRealData, setLoadingRealData] = useState(false);
-
-  // Add distance calculation helper function
-  const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Distance in kilometers
-  };
-
-  const fetchRealData = useCallback(async () => {
-    if (!activePreferences) return;
     
-    setLoadingRealData(true);
-    try {
-      // Get user's location coordinates based on their preference
-      let lat = 35.7915; // Default to Cary, NC instead of NYC
-      let lng = -78.7811;
-      let locationName = 'Cary, NC';
-      
-      console.log('Current activePreferences:', {
-        location: activePreferences.location,
-        customLocation: activePreferences.customLocation,
-        custom_lat: activePreferences.custom_lat,
-        custom_lng: activePreferences.custom_lng
-      });
-      
-      // If user has a custom location with coordinates, use those
-      if (activePreferences.location === 'custom' && activePreferences.custom_lat && activePreferences.custom_lng) {
-        lat = activePreferences.custom_lat;
-        lng = activePreferences.custom_lng;
-        locationName = activePreferences.customLocation || `Custom Location (${lat}, ${lng})`;
-        console.log(`✅ Using custom location: ${locationName} (${lat}, ${lng})`);
-      }
-      // If location is set to something else that's not current, use custom coordinates if available
-      else if (activePreferences.location !== 'current' && activePreferences.custom_lat && activePreferences.custom_lng) {
-        lat = activePreferences.custom_lat;
-        lng = activePreferences.custom_lng;
-        locationName = activePreferences.location;
-        console.log(`✅ Using selected location: ${locationName} (${lat}, ${lng})`);
-      }
-      // If user wants current location, try to get it
-      else if (activePreferences.location === 'current' && navigator.geolocation) {
-        try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: 5000,
-              maximumAge: 300000
-            });
-          });
-          lat = position.coords.latitude;
-          lng = position.coords.longitude;
-          locationName = 'Current Location';
-          console.log(`✅ Using current location: (${lat}, ${lng})`);
-        } catch (error) {
-          console.log('⚠️ Could not get current location, using default (Cary, NC)');
-        }
-      }
-      else {
-        console.log(`⚠️ Using default coordinates for: ${activePreferences.location}`);
-      }
+    // TODO: Integrate with collaboration flow
+  }, []);
 
-      // Only fetch real data if we have categories selected and a valid location
-      if (activePreferences.categories.length === 0) {
-        setRealTrips([]);
-        setLoadingRealData(false);
-        return;
-      }
+  const handleRefresh = () => {
+    fetchRecommendations();
+  };
 
-      console.log(`🔍 Fetching experiences for ${locationName}: (${lat}, ${lng}) with categories:`, activePreferences.categories);
-      
-      // Fetch places from Google Places API with the correct location
-      const placesPromises = activePreferences.categories.map(category => 
-        supabase.functions.invoke('places', {
-          body: {
-            lat,
-            lng,
-            radiusMeters: activePreferences.travelConstraint === 'distance' 
-              ? activePreferences.travelDistance * 1000 
-              : 10000, // Increased to 10km radius for better results
-            category_slug: category
-          }
-        })
-      );
-
-      // Fetch events from Eventbrite for the correct location
-      const eventsPromise = supabase.functions.invoke('events', {
-        body: { 
-          location: `${lat},${lng}`,
-          radius: activePreferences.travelConstraint === 'distance' 
-            ? activePreferences.travelDistance 
-            : 10 // 10km default radius
-        }
-      });
-
-      // Execute all API calls
-      const [placesResults, eventsResult] = await Promise.all([
-        Promise.all(placesPromises),
-        eventsPromise
-      ]);
-
-      // Combine places and events
-      let allExperiences: any[] = [];
-      
-      // Add places
-      placesResults.forEach(result => {
-        if (result.data && Array.isArray(result.data)) {
-          allExperiences = allExperiences.concat(result.data);
-        }
-      });
-
-      // Add events
-      if (eventsResult.data && Array.isArray(eventsResult.data.events)) {
-        allExperiences = allExperiences.concat(
-          eventsResult.data.events.map((event: any) => ({
-            ...event,
-            category_slug: 'events',
-            category: 'Events'
-          }))
-        );
-      }
-
-      // Add location-based filtering for experiences
-      allExperiences = allExperiences.filter(exp => {
-        // Only show experiences with location data
-        if (!exp.lat || !exp.lng) return false;
-        
-        // Calculate distance from user's selected location
-        const distance = calculateDistance(lat, lng, exp.lat, exp.lng);
-        
-        // Filter by travel constraint
-        if (activePreferences.travelConstraint === 'distance') {
-          return distance <= activePreferences.travelDistance;
-        } else {
-          // For time constraint, assume average speed and filter by estimated travel time
-          const estimatedTimeMinutes = distance * (activePreferences.travel === 'walk' ? 20 : activePreferences.travel === 'drive' ? 2 : 4);
-          return estimatedTimeMinutes <= activePreferences.travelTime;
-        }
-      });
-
-      console.log(`📍 Found ${allExperiences.length} experiences in ${locationName} (${lat}, ${lng})`);
-
-      // Filter by budget
-      const budgetFiltered = allExperiences.filter(exp => {
-        const price = exp.price_min || 0;
-        return price >= activePreferences.budgetRange[0] && price <= activePreferences.budgetRange[1];
-      });
-
-      // Convert to trip format
-      const formattedTrips = budgetFiltered.slice(0, 10).map(exp => {
-        const experienceDuration = exp.duration_min || 90;
-        const estimatedTravelTime = calculateTravelTime(
-          activePreferences.location,
-          exp.lat,
-          exp.lng,
-          activePreferences.travel
-        );
-        const totalDuration = experienceDuration + (estimatedTravelTime * 2);
-        
-        const formatDuration = (minutes: number) => {
-          if (minutes >= 60) {
-            const hours = Math.floor(minutes / 60);
-            const remainingMinutes = minutes % 60;
-            return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
-          }
-          return `${minutes}m`;
-        };
-
-        const travelInfo = calculateTravelInfo(
-          activePreferences.location,
-          exp.lat,
-          exp.lng,
-          activePreferences.travel,
-          activePreferences.travelConstraint
-        );
-
-        // Extract city from location or address
-        const getCity = (exp: any) => {
-          if (exp.meta?.city) return exp.meta.city;
-          if (exp.meta?.address) {
-            const parts = exp.meta.address.split(',');
-            return parts[parts.length - 2]?.trim() || parts[parts.length - 1]?.trim();
-          }
-          return exp.location || 'Location';
-        };
-
-        const city = getCity(exp);
-        const fullLocation = exp.meta?.address || exp.location || `${city}`;
-
-        return {
-          id: exp.id || `exp_${Date.now()}_${Math.random()}`,
-          title: exp.title || exp.name || 'Untitled Experience',
-          image: exp.image_url || exp.photo || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
-          cost: exp.price_min || exp.price || 25,
-          duration: formatDuration(totalDuration),
-          travelTime: travelInfo,
-          badges: [`${activePreferences.travel === 'walk' ? '🚶‍♀️' : activePreferences.travel === 'drive' ? '🚗' : '🚌'} ${travelInfo}`, `💰 ${formatCurrency(exp.price_min || exp.price || 25, profile?.currency || 'USD')}`],
-          whyItFits: `Perfect for ${activePreferences.experienceTypes?.join(' & ') || 'your group'} - ${getCategoryBySlug(exp.category_slug)?.name || exp.category} in ${city}`,
-          location: fullLocation,
-          city: city,
-          category: getCategoryBySlug(exp.category_slug)?.name || exp.category || 'Experience',
-          latitude: exp.lat || lat,
-          longitude: exp.lng || lng
-        };
-      });
-
-      setRealTrips(formattedTrips);
-    } catch (error) {
-      console.error('Error fetching real data:', error);
-      // Fallback to experiences data
-      setRealTrips([]);
-    } finally {
-      setLoadingRealData(false);
-    }
-  }, [activePreferences]);
-
-  // Fetch real data when preferences change
-  useEffect(() => {
-    fetchRealData();
-  }, [fetchRealData]);
-
-  const trips = useMemo(() => {
-    if (realTrips.length > 0) {
-      return realTrips;
-    }
-    
-    // Fallback to experiences data
-    return experiences.map(exp => {
-      const experienceDuration = exp.duration_min || 90;
-      const estimatedTravelTime = calculateTravelTime(
-        activePreferences.location,
-        exp.lat,
-        exp.lng,
-        activePreferences.travel
-      );
-      const totalDuration = experienceDuration + (estimatedTravelTime * 2);
-      
-      const formatDuration = (minutes: number) => {
-        if (minutes >= 60) {
-          const hours = Math.floor(minutes / 60);
-          const remainingMinutes = minutes % 60;
-          return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
-        }
-        return `${minutes}m`;
-      };
-      
-      const travelInfo = calculateTravelInfo(
-        activePreferences.location,
-        exp.lat,
-        exp.lng,
-        activePreferences.travel,
-        activePreferences.travelConstraint
-      );
-      
-      const getLocationName = (lat: number, lng: number) => {
-        if (Math.abs(lat - 40.7829) < 0.01 && Math.abs(lng - (-73.9654)) < 0.01) {
-          return 'Central Park, NYC';
-        } else if (Math.abs(lat - 40.7505) < 0.01 && Math.abs(lng - (-73.9934)) < 0.01) {
-          return 'Hudson River Park, NYC';
-        } else if (Math.abs(lat - 40.7614) < 0.01 && Math.abs(lng - (-73.9776)) < 0.01) {
-          return 'Times Square, NYC';
-        } else if (Math.abs(lat - 40.7505) < 0.01 && Math.abs(lng - (-73.9857)) < 0.01) {
-          return 'Hell\'s Kitchen, NYC';
-        } else if (Math.abs(lat - 40.7357) < 0.01 && Math.abs(lng - (-74.0036)) < 0.01) {
-          return 'West Village, NYC';
-        } else if (Math.abs(lat - 40.7549) < 0.01 && Math.abs(lng - (-73.9840)) < 0.01) {
-          return 'Theater District, NYC';
-        } else if (Math.abs(lat - 40.7580) < 0.01 && Math.abs(lng - (-73.9855)) < 0.01) {
-          return 'Midtown Manhattan, NYC';
-        } else {
-          return 'Manhattan, NYC';
-        }
-      };
-
-      return {
-        id: exp.id,
-        title: exp.title,
-        image: exp.image_url || 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
-        cost: exp.price_min || 25,
-        duration: formatDuration(totalDuration),
-        travelTime: travelInfo,
-        badges: [`${activePreferences.travel === 'walk' ? '🚶‍♀️' : activePreferences.travel === 'drive' ? '🚗' : '🚌'} ${travelInfo}`, `💰 ${formatCurrency(exp.price_min || 25, profile?.currency || 'USD')}`],
-        whyItFits: `Perfect for ${activePreferences.groupSize === 1 ? 'solo' : `groups of ${activePreferences.groupSize}`} ${activePreferences.travel === 'walk' ? 'walking' : activePreferences.travel === 'drive' ? 'driving' : 'taking public transport'} ${travelInfo}. ${getCategoryBySlug(exp.category_slug)?.name || exp.category} experience matching your budget preferences.`,
-        location: getLocationName(exp.lat || 40.7589, exp.lng || -73.9851),
-        category: getCategoryBySlug(exp.category_slug)?.name || exp.category,
-        latitude: exp.lat || 47.6062,
-        longitude: exp.lng || -122.3321
-      };
-    });
-  }, [realTrips, experiences, activePreferences.location, activePreferences.travel, activePreferences.travelConstraint]);
-
-  // Get sent sessions (where user is the creator)
-  const sentSessions = availableSessions.filter(session => 
-    session.invitedBy === user?.id && 
-    (session.status === 'pending' || session.status === 'dormant')
-  );
-
-  const currentTrip = trips[currentTripIndex];
-  const isLoading = experiencesLoading || sessionLoading || loadingRealData;
-
-  const nextTrip = () => {
-    if (currentTripIndex < trips.length - 1) {
-      setCurrentTripIndex(currentTripIndex + 1);
+  // Wrapper function to handle session creation
+  const handleCreateSession = async (participants: string[], sessionName: string): Promise<void> => {
+    const result = await createCollaborativeSession(participants, sessionName);
+    if (!result) {
+      throw new Error('Failed to create session');
     }
   };
 
-  const handleSwipeRight = async () => {
-    if (currentTrip) {
-      // Actually save the experience
-      const { writeThroughHelpers } = await import('@/store/writeThroughHelpers');
-      const result = await writeThroughHelpers.likeExperience(currentTrip.id);
-      
-      if (result.success) {
-        toast({
-          title: "Experience saved!",
-          description: `${currentTrip.title} added to your favorites`,
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "Failed to save experience",
-          variant: "destructive"
-        });
-      }
-    }
-    nextTrip();
-  };
-
-  const handleSwipeLeft = () => {
-    nextTrip();
-  };
-
-  // Handle session invite actions
-  const handleAcceptInvite = async (inviteId: string) => {
-    try {
-      await acceptInvite(inviteId);
-      toast({
-        title: "Invite Accepted",
-        description: "Successfully joined the collaborative session!",
-      });
-    } catch (error) {
-      console.error('Error accepting invite:', error);
-      toast({
-        title: "Error",
-        description: "Failed to accept invite. Please try again.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleDeclineInvite = async (inviteId: string) => {
-    try {
-      await declineInvite(inviteId);
-      toast({
-        title: "Invite Declined",
-        description: "The invite has been declined.",
-      });
-    } catch (error) {
-      console.error('Error declining invite:', error);
-      toast({
-        title: "Error", 
-        description: "Failed to decline invite. Please try again.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleCancelSession = async (sessionId: string) => {
-    await cancelSession(sessionId);
-  };
-
-  // Add function to accept/finalize experience
-  const acceptExperience = async (experienceId: string, scheduledDate?: Date) => {
-    const { writeThroughHelpers } = await import('@/store/writeThroughHelpers');
-    const result = await writeThroughHelpers.scheduleExperience(
-      experienceId, 
-      scheduledDate ? scheduledDate.toISOString() : new Date().toISOString()
-    );
-    
-    if (result.success) {
-      toast({
-        title: "Experience accepted!",
-        description: "Added to your calendar",
-      });
-    } else {
-      toast({
-        title: "Error",
-        description: result.error || "Failed to accept experience",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const removeCategory = (categorySlug: string) => {
-    setActivePreferences(prev => ({
-      ...prev,
-      categories: prev.categories.filter(c => c !== categorySlug)
-    }));
-    toast({
-      title: "Preference updated",
-      description: `${getCategoryBySlug(categorySlug)?.name || categorySlug} removed`,
-    });
-  };
+  const currentCard = recommendations?.cards?.[currentCardIndex];
+  const hasNextCard = recommendations && currentCardIndex < recommendations.cards.length - 1;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 relative overflow-hidden touch-optimized">
-      {/* Background Pattern */}
-      <div className="fixed inset-0 opacity-[0.02] pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1),transparent_50%)]" />
-      </div>
-
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5">
       {/* Header */}
-      <div className="relative z-10 px-6 pt-safe pb-6">
-        <div className="flex items-center justify-center mb-6">
-          <img 
-            src={minglaLogo} 
-            alt="Mingla" 
-            className="h-12 w-auto"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              const fallback = document.createElement('div');
-              fallback.className = 'text-3xl font-bold text-primary';
-              fallback.textContent = 'Mingla';
-              target.parentElement?.appendChild(fallback);
-            }}
-          />
-        </div>
+      <HeaderControls
+        showNotifications={showNotifications}
+        onToggleNotifications={() => setShowNotifications(!showNotifications)}
+        onShowPreferences={() => setShowPreferences(true)}
+        currentSession={currentSession}
+        availableSessions={availableSessions}
+        pendingInvites={pendingInvites}
+        isInSolo={isInSolo}
+        loading={sessionLoading}
+        onSwitchToSolo={switchToSolo}
+        onSwitchToCollaborative={switchToCollaborative}
+        onCreateSession={handleCreateSession}
+        onCancelSession={cancelSession}
+        onAcceptInvite={acceptInvite}
+        onDeclineInvite={declineInvite}
+      />
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchRealData}
-              disabled={isLoading}
-              className="bg-background/80 backdrop-blur-sm border-primary/20"
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPreferences(true)}
-              className="bg-background/80 backdrop-blur-sm border-primary/20"
-              data-testid="preferences-button"
-            >
-              <Sliders className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={showRecommendations ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowRecommendations(!showRecommendations)}
-              className="bg-background/80 backdrop-blur-sm border-primary/20"
-              disabled={!recommendationsRequest}
-              data-testid="recommendations-toggle"
-            >
-              <Sparkles className="h-4 w-4" />
-            </Button>
-          </div>
-          
-        <HeaderControls
-          currentSession={currentSession}
-          availableSessions={availableSessions}
-          isInSolo={isInSolo}
-          onSwitchToSolo={switchToSolo}
-          onSwitchToCollaborative={switchToCollaborative}
-          onCreateSession={handleCreateSession}
-          pendingInvites={pendingInvites}
-          sentSessions={sentSessions}
-          onAcceptInvite={handleAcceptInvite}
-          onDeclineInvite={handleDeclineInvite}
-          onCancelSession={handleCancelSession}
-          loading={sessionLoading}
-        />
-        </div>
+      {/* Logo */}
+      <div className="flex justify-center pt-8 pb-6">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <img
+            src={minglaLogo}
+            alt="Mingla"
+            className="h-12 w-auto"
+          />
+        </motion.div>
       </div>
 
-      {/* Premium Content Grid - Content moved to header */}
-      
-      {/* Recommendations Grid or Premium Experience Card */}
-      {showRecommendations && recommendationsRequest ? (
-        <div className="flex-1 px-6 py-6" data-testid="recommendations-grid">
-          <RecommendationsGrid
-            preferences={recommendationsRequest}
-            onAdjustFilters={() => setShowPreferences(true)}
-            onInvite={handleCardInvite}
-            onSave={handleCardSave}
-          />
-        </div>
-      ) : (
-        // Premium Experience Card
-        <>
-          <div className="flex-1 flex items-center justify-center px-6 py-6">
-        {currentTrip ? (
-          <div className="relative w-full max-w-sm">
-            {/* Premium card with dating app styling */}
-            <Card className="relative overflow-hidden bg-gradient-to-br from-card to-card/80 backdrop-blur-sm border-primary/10 shadow-xl">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5" />
-              <CardContent className="p-0 relative">
-                <div className="relative">
-                  <img
-                    src={currentTrip.image}
-                    alt={currentTrip.title}
-                    className="w-full h-96 object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                  
-                  {/* Floating badges */}
-                  <div className="absolute top-4 left-4 flex flex-wrap gap-2">
-                    {currentTrip.badges?.slice(0, 2).map((badge, index) => (
-                      <Badge 
-                        key={index} 
-                        variant="default" 
-                        className="bg-black/80 text-white backdrop-blur-sm text-xs font-medium border border-white/20 shadow-lg"
-                      >
-                        {badge}
-                      </Badge>
-                    ))}
-                  </div>
+      {/* Main Content */}
+      <div className="container mx-auto px-4 pb-24">
+        {loading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center py-20"
+          >
+            <div className="animate-pulse flex flex-col items-center gap-4">
+              <Sparkles className="h-12 w-12 text-primary animate-bounce" />
+              <p className="text-lg font-medium text-muted-foreground">
+                Finding amazing dates near you...
+              </p>
+            </div>
+          </motion.div>
+        )}
 
-                  {/* Session indicator */}
-                  <div className="absolute top-4 right-4">
-                    <Badge 
-                      variant={isInSolo ? "outline" : "default"} 
-                      className={cn(
-                        "backdrop-blur-sm text-xs font-medium border shadow-lg",
-                        isInSolo 
-                          ? "bg-black/80 text-white border-white/20" 
-                          : "bg-primary text-primary-foreground border-primary/20"
-                      )}
-                    >
-                      {isInSolo ? (
-                        <>
-                          <User className="h-3 w-3 mr-1" />
-                          Solo
-                        </>
-                      ) : (
-                        <>
-                          <Users className="h-3 w-3 mr-1" />
-                          {currentSession?.participants.length}
-                        </>
-                      )}
-                    </Badge>
-                  </div>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-20"
+          >
+            <div className="text-center space-y-4 max-w-md">
+              <h3 className="text-xl font-semibold">Unable to load recommendations</h3>
+              <p className="text-muted-foreground">{error}</p>
+              <div className="flex gap-3 justify-center">
+                <Button onClick={handleRefresh} variant="outline">
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Try Again
+                </Button>
+                <Button onClick={() => setShowPreferences(true)} variant="default">
+                  <Sliders className="h-4 w-4 mr-2" />
+                  Adjust Filters
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
-                  {/* Content overlay */}
-                  <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
-                    <h2 className="text-2xl font-bold mb-2">{currentTrip.title}</h2>
-                    <div className="flex items-center gap-4 text-sm opacity-90 mb-3">
-                      <span className="flex items-center gap-1">
-                        <Sparkles className="h-4 w-4" />
-                        {formatCurrency(currentTrip.cost, profile?.currency || 'USD')}
-                      </span>
-                      <span>{currentTrip.duration}</span>
-                      <span>{currentTrip.travelTime}</span>
-                    </div>
-                    <p className="text-sm opacity-80 line-clamp-2">
-                      {currentTrip.whyItFits}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Action buttons - dating app style */}
-            <div className="flex justify-center gap-6 mt-8">
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={handleSwipeLeft}
-                className="w-16 h-16 rounded-full border-2 border-muted hover:border-destructive hover:bg-destructive/10 group"
-              >
-                <X className="h-6 w-6 group-hover:text-destructive" />
-              </Button>
-              
-              <Button
-                size="lg"
-                onClick={() => setExpandedTrip(currentTrip.id)}
-                className="w-20 h-16 rounded-full bg-primary/10 hover:bg-primary/20 text-primary border-2 border-primary/20"
-              >
-                <Sparkles className="h-6 w-6" />
-              </Button>
-
-              <Button
-                size="lg"
-                onClick={handleSwipeRight}
-                className="w-16 h-16 rounded-full bg-primary hover:bg-primary/90 group"
-              >
-                <Heart className="h-6 w-6 text-white fill-current" />
+        {!loading && !error && recommendations && recommendations.cards.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-20"
+          >
+            <div className="text-center space-y-4 max-w-md">
+              <h3 className="text-xl font-semibold">No matches found</h3>
+              <p className="text-muted-foreground">
+                We couldn't find any dates matching your preferences. Try expanding your search criteria.
+              </p>
+              <Button onClick={() => setShowPreferences(true)}>
+                <Sliders className="h-4 w-4 mr-2" />
+                Adjust Preferences
               </Button>
             </div>
-          </div>
-        ) : (
-          <div className="text-center py-16">
-            <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Sparkles className="h-12 w-12 text-primary" />
-            </div>
-            <h3 className="text-2xl font-bold mb-3">All caught up!</h3>
-            <p className="text-muted-foreground mb-6 max-w-md">
-              You've explored all available experiences. Adjust your preferences to discover more amazing places!
-            </p>
-            <Button 
-              onClick={() => setShowPreferences(true)}
-              className="bg-primary hover:bg-primary/90"
-            >
-              <Sliders className="h-4 w-4 mr-2" />
-              Update Preferences
-            </Button>
-          </div>
-          )}
-        </div>
-        </>
-      )}
+          </motion.div>
+        )}
 
-      {/* Expanded Trip Card */}
-      {expandedTrip && (
-        (() => {
-          const foundTrip = trips.find(t => t.id === expandedTrip);
-          if (!foundTrip) return null;
-          
-          return (
-            <TripCardExpanded
-              trip={foundTrip}
-              preferences={activePreferences}
-              isOpen={!!expandedTrip}
-              onClose={() => setExpandedTrip(null)}
-              onAccept={() => {
-                acceptExperience(foundTrip.id);
-                setExpandedTrip(null);
-              }}
-              onAddToBoard={() => {
-                // Handle add to board logic
-                setExpandedTrip(null);
-              }}
-              showAcceptButton={true}
+        {!loading && !error && currentCard && (
+          <>
+            {/* Single Card Display */}
+            <SingleCardDisplay
+              card={currentCard}
+              onLike={handleCardLike}
+              onDislike={handleCardDislike}
+              onInvite={handleCardInvite}
+              hasNext={hasNextCard}
+              cardNumber={currentCardIndex + 1}
+              totalCards={recommendations?.cards.length || 0}
             />
-          );
-        })()
-      )}
+
+            {/* Progress Indicator */}
+            <div className="flex justify-center mt-6">
+              <div className="flex gap-1">
+                {recommendations?.cards.map((_, index) => (
+                  <div
+                    key={index}
+                    className={cn(
+                      "h-2 w-2 rounded-full transition-all duration-300",
+                      index === currentCardIndex
+                        ? "bg-primary w-6"
+                        : index < currentCardIndex
+                        ? "bg-primary/60"
+                        : "bg-muted"
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Welcome State (when no preferences selected) */}
+        {!loading && !recommendations && activePreferences.categories.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-20"
+          >
+            <div className="max-w-md mx-auto space-y-6">
+              <div className="w-20 h-20 mx-auto bg-gradient-primary rounded-full flex items-center justify-center mb-6">
+                <Heart className="h-10 w-10 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+                Find Your Perfect Date
+              </h2>
+              <p className="text-muted-foreground leading-relaxed">
+                Discover amazing local experiences tailored to your preferences. From cozy coffee dates to elegant dinners.
+              </p>
+              <Button
+                size="lg"
+                className="bg-gradient-primary hover:opacity-90 text-white font-semibold px-8"
+                onClick={() => setShowPreferences(true)}
+              >
+                <Sparkles className="h-5 w-5 mr-2" />
+                Get Started
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </div>
 
       {/* Preferences Sheet */}
       <PreferencesSheet
         isOpen={showPreferences}
         onClose={() => setShowPreferences(false)}
+        measurementSystem={measurementSystem}
         activePreferences={activePreferences}
         onPreferencesUpdate={handlePreferencesUpdate}
       />
