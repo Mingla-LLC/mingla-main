@@ -263,28 +263,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
     return <EmptyState />;
   }
   return <div className="space-y-6">
-      {/* Results Summary */}
-      <motion.div initial={{
-      opacity: 0,
-      y: -10
-    }} animate={{
-      opacity: 1,
-      y: 0
-    }} className="flex items-center justify-between">
-        <div>
-          
-        </div>
-        
-        <div className="flex gap-2">
-          {onAdjustFilters && (
-            <Button onClick={onAdjustFilters} variant="outline" size="sm">
-              <Sliders className="h-4 w-4 mr-2" />
-              Adjust Filters
-            </Button>
-          )}
-        </div>
-      </motion.div>
-
       {/* Single Card Display */}
       <div className="flex justify-center">
         <AnimatePresence mode="wait">

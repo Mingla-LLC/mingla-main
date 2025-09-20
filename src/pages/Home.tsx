@@ -19,7 +19,7 @@ import { RecommendationsGrid } from '@/components/RecommendationsGrid';
 import { convertPreferencesToRequest } from '@/utils/preferencesConverter';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import type { RecommendationCard as CardType } from '@/types/recommendations';
-import minglaLogo from '@/assets/mingla-logo.png';
+import minglaLogo from '@/assets/mingla-logo-new.png';
 import { cn } from '@/lib/utils';
 
 interface ActivePreferences {
@@ -136,35 +136,59 @@ const Home = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex flex-col">
       {/* Header */}
-      <div className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
-        <div className="px-6 py-4">
+      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-lg border-b border-border/50">
+        <div className="px-6 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="bg-background/80 backdrop-blur-sm border-primary/20">
-                <RefreshCw className="h-4 w-4" />
+            {/* Left side - Controls */}
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="hover:bg-primary/10"
+                onClick={() => setShowPreferences(true)}
+                data-testid="preferences-button"
+              >
+                <Sliders className="h-4 w-4 mr-2" />
+                Filters
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowPreferences(true)} className="bg-background/80 backdrop-blur-sm border-primary/20" data-testid="preferences-button">
-                <Sliders className="h-4 w-4" />
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="hover:bg-primary/10"
+              >
+                <RefreshCw className="h-4 w-4" />
               </Button>
             </div>
             
-            <HeaderControls 
-              showNotifications={false}
-              onToggleNotifications={() => {}}
-              onShowPreferences={() => setShowPreferences(true)}
-              currentSession={currentSession} 
-              availableSessions={availableSessions} 
-              isInSolo={isInSolo} 
-              onSwitchToSolo={switchToSolo} 
-              onSwitchToCollaborative={switchToCollaborative} 
-              onCreateSession={handleCreateSession} 
-              pendingInvites={pendingInvites} 
-              sentSessions={availableSessions.filter(session => session.invitedBy === user?.id && (session.status === 'pending' || session.status === 'dormant'))} 
-              onAcceptInvite={handleAcceptInvite} 
-              onDeclineInvite={handleDeclineInvite} 
-              onCancelSession={handleCancelSession} 
-              loading={sessionLoading} 
-            />
+            {/* Center - Logo */}
+            <div className="flex items-center">
+              <img 
+                src={minglaLogo} 
+                alt="Mingla" 
+                className="h-8 w-auto"
+              />
+            </div>
+            
+            {/* Right side - Session Controls */}
+            <div className="flex items-center">
+              <HeaderControls 
+                showNotifications={false}
+                onToggleNotifications={() => {}}
+                onShowPreferences={() => setShowPreferences(true)}
+                currentSession={currentSession} 
+                availableSessions={availableSessions} 
+                isInSolo={isInSolo} 
+                onSwitchToSolo={switchToSolo} 
+                onSwitchToCollaborative={switchToCollaborative} 
+                onCreateSession={handleCreateSession} 
+                pendingInvites={pendingInvites} 
+                sentSessions={availableSessions.filter(session => session.invitedBy === user?.id && (session.status === 'pending' || session.status === 'dormant'))} 
+                onAcceptInvite={handleAcceptInvite} 
+                onDeclineInvite={handleDeclineInvite} 
+                onCancelSession={handleCancelSession} 
+                loading={sessionLoading} 
+              />
+            </div>
           </div>
         </div>
       </div>
