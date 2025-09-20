@@ -169,8 +169,8 @@ const Home = () => {
         </div>
       </div>
 
-      {/* Recommendations Grid - Always show when we have location data */}
-      {recommendationsRequest && (latitude || longitude) ? (
+      {/* Recommendations Grid - Always show when we have preferences */}
+      {recommendationsRequest && !locationLoading ? (
         <div className="flex-1 px-6 py-6" data-testid="recommendations-grid">
           <RecommendationsGrid 
             preferences={recommendationsRequest} 
@@ -185,7 +185,9 @@ const Home = () => {
         <div className="flex-1 flex items-center justify-center px-6 py-6">
           <div className="text-center space-y-4">
             <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <p className="text-muted-foreground">Finding amazing experiences near you...</p>
+            <p className="text-muted-foreground">
+              {locationError ? "Setting up your experience..." : "Finding amazing experiences near you..."}
+            </p>
             <Button 
               variant="outline" 
               onClick={() => setShowPreferences(true)}
