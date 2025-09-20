@@ -13,7 +13,6 @@ import { createSession } from '@/api/sessions';
 interface CreateSessionDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
   prefilledParticipants?: string[];
   prefilledSessionName?: string;
 }
@@ -21,7 +20,6 @@ interface CreateSessionDialogProps {
 export const CreateSessionDialog = ({
   isOpen,
   onClose,
-  onCreateSession,
   prefilledParticipants = [],
   prefilledSessionName = ''
 }: CreateSessionDialogProps) => {
@@ -140,7 +138,7 @@ export const CreateSessionDialog = ({
       
       const apiPromise = createSession({
         name: sessionName.trim(),
-        participants: selectedParticipants
+        participantIds: selectedParticipants
       });
       
       const result = await Promise.race([apiPromise, timeoutPromise]);

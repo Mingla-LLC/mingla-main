@@ -41,34 +41,10 @@ serve(async (req) => {
   }
 
   const startTime = Date.now();
-  const url = new URL(req.url);
-  
-  // Handle feedback endpoint
-  if (req.method === 'POST' && url.pathname.endsWith('/feedback')) {
-    return handleFeedback(req);
-  }
-
   console.log('🎯 Recommendations endpoint called');
 
   try {
-    // Handle cursor pagination for GET requests
-    const cursor = url.searchParams.get('cursor');
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '25'), 50);
-    
-    let preferences: RecommendationsRequest;
-    if (req.method === 'GET') {
-      // For GET requests, preferences should be in query params or use defaults
-      preferences = {
-        budget: { min: 10, max: 100, perPerson: true },
-        categories: ['stroll', 'sip'],
-        timeWindow: { kind: 'Now' },
-        travel: { mode: 'DRIVING', constraint: { type: 'TIME', maxMinutes: 30 } },
-        origin: { lat: 37.7749, lng: -122.4194 }, // Default SF
-        units: 'metric'
-      };
-    } else {
-      preferences = await req.json();
-    }
+    const preferences: RecommendationsRequest = await req.json();
     console.log('📝 Received preferences:', JSON.stringify(preferences, null, 2));
 
     // Validate required fields
@@ -146,13 +122,8 @@ serve(async (req) => {
     // Convert to final card format
     const cards = await convertToCards(topCandidates, preferences);
 
-    // Add cursor pagination metadata
-    const startIndex = cursor ? parseInt(cursor) || 0 : 0;
-    const paginatedCards = cards.slice(startIndex, startIndex + limit);
-    const nextCursor = startIndex + limit < cards.length ? (startIndex + limit).toString() : null;
-
     const response = {
-      cards: paginatedCards,
+      cards,
       meta: {
         totalResults: allCandidates.length,
         processingTimeMs: Date.now() - startTime,
@@ -160,9 +131,7 @@ serve(async (req) => {
           googlePlaces: places.status === 'fulfilled' ? places.value.length : 0,
           eventbrite: events.status === 'fulfilled' ? events.value.length : 0
         },
-        llmUsed,
-        cursorNext: nextCursor,
-        hasMore: nextCursor !== null
+        llmUsed
       }
     };
 
@@ -180,9 +149,7 @@ serve(async (req) => {
         totalResults: 0,
         processingTimeMs: Date.now() - startTime,
         sources: { googlePlaces: 0, eventbrite: 0 },
-        llmUsed: false,
-        cursorNext: null,
-        hasMore: false
+        llmUsed: false
       }
     }), {
       status: 500,
@@ -190,46 +157,6 @@ serve(async (req) => {
     });
   }
 });
-
-// Feedback handler for learning system
-async function handleFeedback(req: Request) {
-  try {
-    const { cardId, decision, prefsHash, rank } = await req.json();
-    const idempotencyKey = req.headers.get('Idempotency-Key');
-    
-    console.log('🎯 Feedback received:', { cardId, decision, rank, idempotencyKey });
-    
-    // Simple learning logic - in production, this would update user preferences
-    const learningUpdate = {
-      cardId,
-      decision,
-      timestamp: new Date().toISOString(),
-      prefsHash,
-      rank,
-      processed: true
-    };
-    
-    // Here you could update user preference weights, embeddings, etc.
-    // For now, just acknowledge the feedback
-    
-    return new Response(JSON.stringify({
-      ok: true,
-      learned: learningUpdate
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-    
-  } catch (error) {
-    console.error('❌ Error processing feedback:', error);
-    return new Response(JSON.stringify({
-      error: error.message,
-      ok: false
-    }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
-}
 
 async function fetchGooglePlaces(preferences: RecommendationsRequest): Promise<any[]> {
   if (!GOOGLE_API_KEY) {

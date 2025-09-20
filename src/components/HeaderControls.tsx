@@ -1,52 +1,45 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { 
-  Bell, 
-  Users, 
-  User, 
-  Settings2,
-  UserPlus
-} from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { SessionModeSwitch } from '@/components/SessionModeSwitch';
-import { CollaborationInviteManager } from '@/components/CollaborationInviteManager';
-import type { CollaborationSession, SessionInvite } from '@/hooks/useSessionManagement';
+import { Bell, Users, User, Plus, Shield } from 'lucide-react';
+import { CollaborationInviteManager } from './CollaborationInviteManager';
+import { SessionModeSwitch } from './SessionModeSwitch';
 import { useUserRole } from '@/hooks/useUserRole';
+import type { SessionInvite, CollaborationSession } from '@/hooks/useSessionManagement';
 
 interface HeaderControlsProps {
+  // Session props
   currentSession: CollaborationSession | null;
   availableSessions: CollaborationSession[];
-  pendingInvites: SessionInvite[];
-  sentSessions: CollaborationSession[];
   isInSolo: boolean;
-  loading: boolean;
   onSwitchToSolo: () => void;
   onSwitchToCollaborative: (sessionId: string) => void;
   onCreateSession: (participants: string[], sessionName: string) => Promise<void>;
-  onAcceptInvite: (inviteId: string) => Promise<void>;
-  onDeclineInvite: (inviteId: string) => Promise<void>;
-  onRevokeInvite: (inviteId: string) => Promise<void>;
+  
+  // Invite props
+  pendingInvites: SessionInvite[];
+  sentSessions: CollaborationSession[];
+  onAcceptInvite: (inviteId: string) => void;
+  onDeclineInvite: (inviteId: string) => void;
+  onCancelSession: (sessionId: string) => void;
+  
+  loading?: boolean;
 }
 
 export const HeaderControls: React.FC<HeaderControlsProps> = ({
   currentSession,
   availableSessions,
-  pendingInvites,
-  sentSessions,
   isInSolo,
-  loading,
   onSwitchToSolo,
   onSwitchToCollaborative,
   onCreateSession,
+  pendingInvites,
+  sentSessions,
   onAcceptInvite,
   onDeclineInvite,
-  onRevokeInvite
+  onCancelSession,
+  loading = false
 }) => {
   const [invitePopoverOpen, setInvitePopoverOpen] = useState(false);
   const [sessionPopoverOpen, setSessionPopoverOpen] = useState(false);
@@ -54,7 +47,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
 
   const totalNotifications = pendingInvites.length;
   const pendingSentSessions = sentSessions.filter(session => 
-    session.status === 'pending'
+    session.status === 'pending' || session.status === 'dormant'
   );
 
   return (
@@ -62,34 +55,42 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
       {/* Collaboration Invites */}
       <Popover open={invitePopoverOpen} onOpenChange={setInvitePopoverOpen}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="sm" className="relative">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="relative bg-background/80 backdrop-blur-sm"
+          >
             <Bell className="h-4 w-4" />
             {totalNotifications > 0 && (
               <Badge 
                 variant="destructive" 
-                className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
               >
                 {totalNotifications}
               </Badge>
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-96 p-0" align="end">
+        <PopoverContent className="w-[420px] p-0" align="end">
           <CollaborationInviteManager
             pendingInvites={pendingInvites}
-            sentSessions={pendingSentSessions}
+            sentSessions={sentSessions}
             onAcceptInvite={onAcceptInvite}
             onDeclineInvite={onDeclineInvite}
-            onRevokeInvite={onRevokeInvite}
+            onCancelSession={onCancelSession}
             loading={loading}
           />
         </PopoverContent>
       </Popover>
 
-      {/* Session Mode Switch */}
+      {/* Session Mode */}
       <Popover open={sessionPopoverOpen} onOpenChange={setSessionPopoverOpen}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="bg-background/80 backdrop-blur-sm"
+          >
             {isInSolo ? (
               <>
                 <User className="h-4 w-4 mr-1" />
@@ -103,7 +104,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
             )}
             {currentSession && (
               <Badge variant="secondary" className="ml-2 px-1 text-xs">
-                {currentSession.members.length}
+                {currentSession.participants.length}
               </Badge>
             )}
           </Button>
@@ -120,12 +121,28 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
           />
         </PopoverContent>
       </Popover>
-
+      
+      {/* Admin Panel Access */}
       {isAdmin && (
-        <Button variant="ghost" size="sm">
-          <Settings2 className="h-4 w-4" />
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/20 text-orange-600"
+          onClick={() => window.open('/admin', '_blank')}
+        >
+          <Shield className="h-4 w-4" />
         </Button>
       )}
+
+      {/* Quick create session */}
+      <Button 
+        variant="outline" 
+        size="sm" 
+        className="bg-primary/10 hover:bg-primary/20 border-primary/20"
+        onClick={() => setSessionPopoverOpen(true)}
+      >
+        <Plus className="h-4 w-4" />
+      </Button>
     </div>
   );
 };

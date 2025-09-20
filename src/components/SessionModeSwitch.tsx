@@ -29,7 +29,7 @@ export const SessionModeSwitch: React.FC<SessionModeSwitchProps> = ({
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   const activeSessions = availableSessions.filter(s => s.status === 'active');
-  const waitingSessions = availableSessions.filter(s => s.status === 'pending');
+  const waitingSessions = availableSessions.filter(s => s.status === 'dormant');
 
   return (
     <>
@@ -66,19 +66,14 @@ export const SessionModeSwitch: React.FC<SessionModeSwitchProps> = ({
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex -space-x-1">
-                  {currentSession.members.slice(0, 3).map((member) => (
-                    <Avatar key={member.userId} className="h-6 w-6 border-2 border-background">
-                      <AvatarImage src={member.profile.avatarUrl} />
+                  {currentSession.participants.map((participant) => (
+                    <Avatar key={participant.id} className="h-6 w-6 border-2 border-background">
+                      <AvatarImage src={participant.avatar} />
                       <AvatarFallback className="text-xs bg-primary/20 text-primary">
-                        {(member.profile.firstName?.[0] || member.profile.username?.[0] || 'U').toUpperCase()}
+                        {participant.name.charAt(0)}
                       </AvatarFallback>
                     </Avatar>
                   ))}
-                  {currentSession.members.length > 3 && (
-                    <div className="h-6 w-6 bg-muted border-2 border-background rounded-full flex items-center justify-center">
-                      <span className="text-xs">+{currentSession.members.length - 3}</span>
-                    </div>
-                  )}
                 </div>
                 <Button
                   size="sm"
@@ -126,22 +121,17 @@ export const SessionModeSwitch: React.FC<SessionModeSwitchProps> = ({
                       <p className="font-medium text-sm">{session.name}</p>
                       <div className="flex items-center gap-2">
                         <div className="flex -space-x-1">
-                          {session.members.slice(0, 3).map((member) => (
-                            <Avatar key={member.userId} className="h-5 w-5 border border-background">
-                              <AvatarImage src={member.profile.avatarUrl} />
+                          {session.participants.slice(0, 3).map((participant) => (
+                            <Avatar key={participant.id} className="h-5 w-5 border border-background">
+                              <AvatarImage src={participant.avatar} />
                               <AvatarFallback className="text-xs bg-muted">
-                                {(member.profile.firstName?.[0] || member.profile.username?.[0] || 'U').toUpperCase()}
+                                {participant.name.charAt(0)}
                               </AvatarFallback>
                             </Avatar>
                           ))}
-                          {session.members.length > 3 && (
-                            <div className="h-5 w-5 bg-muted border border-background rounded-full flex items-center justify-center">
-                              <span className="text-xs">+{session.members.length - 3}</span>
-                            </div>
-                          )}
                         </div>
                         <span className="text-xs text-muted-foreground">
-                          {session.members.length} collaborators
+                          {session.participants.length} collaborators
                         </span>
                       </div>
                     </div>
@@ -170,7 +160,7 @@ export const SessionModeSwitch: React.FC<SessionModeSwitchProps> = ({
                     <div className="flex-1">
                       <p className="font-medium text-sm text-muted-foreground">{session.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {session.members.filter(m => m.role === 'owner' || m.joinedAt).length}/{session.members.length} accepted
+                        {session.participants.filter(p => p.hasAccepted).length}/{session.participants.length} accepted
                       </p>
                     </div>
                     <Badge variant="outline" className="text-xs">
@@ -197,7 +187,6 @@ export const SessionModeSwitch: React.FC<SessionModeSwitchProps> = ({
       <CreateSessionDialog
         isOpen={showCreateDialog}
         onClose={() => setShowCreateDialog(false)}
-        onCreateSession={onCreateSession}
       />
     </>
   );
