@@ -82,7 +82,7 @@ const Home = () => {
   // Set premium dating defaults that trigger recommendations immediately
   const [activePreferences, setActivePreferences] = useState<ActivePreferences>(() => ({
     budgetRange: [25, 150] as [number, number],
-    categories: ['sip', 'dining', 'creative'], // Default categories to trigger recommendations
+    categories: ['stroll', 'sip', 'casual_eats', 'screen_relax', 'creative', 'play_move', 'dining', 'freestyle'], // All categories enabled
     experienceTypes: ['Romantic', 'First Date'],
     time: 'tonight',
     travel: 'drive',
@@ -109,7 +109,7 @@ const Home = () => {
       // Use default categories if none selected
       const defaultPrefs = {
         ...activePreferences,
-        categories: ['sip', 'dining', 'creative']
+        categories: ['stroll', 'sip', 'casual_eats', 'screen_relax', 'creative', 'play_move', 'dining', 'freestyle']
       };
       return convertPreferencesToRequest(defaultPrefs, latitude || undefined, longitude || undefined, measurementSystem as 'metric' | 'imperial');
     }
