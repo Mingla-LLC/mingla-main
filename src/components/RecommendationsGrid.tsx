@@ -8,7 +8,6 @@ import { AlertCircle, MapPin, RefreshCw, Sliders } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { RecommendationsRequest, RecommendationsResponse, RecommendationCard as CardType } from '@/types/recommendations';
-
 interface RecommendationsGridProps {
   preferences: RecommendationsRequest;
   fullPreferences?: any; // Full preferences from PreferencesSheet
@@ -16,7 +15,6 @@ interface RecommendationsGridProps {
   onInvite?: (card: CardType) => void;
   onSave?: (card: CardType) => void;
 }
-
 export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
   preferences,
   fullPreferences,
@@ -29,34 +27,33 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
-
   const fetchRecommendations = async () => {
     setLoading(true);
     setError(null);
-    
     try {
       console.log('🎯 Fetching recommendations with preferences:', preferences);
-      
-      const { data, error: functionError } = await supabase.functions.invoke('recommendations', {
+      const {
+        data,
+        error: functionError
+      } = await supabase.functions.invoke('recommendations', {
         body: preferences
       });
-
       if (functionError) {
         throw new Error(functionError.message || 'Failed to fetch recommendations');
       }
-
       if (data?.error) {
         throw new Error(data.error);
       }
-
       console.log('✅ Received recommendations:', data);
-      
+
       // Enhance cards with OpenAI if we have cards
       if (data?.cards && data.cards.length > 0) {
         console.log('🤖 Enhancing cards with OpenAI...');
-        
         try {
-          const { data: enhancedData, error: enhanceError } = await supabase.functions.invoke('enhance-cards', {
+          const {
+            data: enhancedData,
+            error: enhanceError
+          } = await supabase.functions.invoke('enhance-cards', {
             body: {
               cards: data.cards.map((card: CardType) => ({
                 id: card.id,
@@ -85,7 +82,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
               }
             }
           });
-
           if (enhanceError) {
             console.warn('⚠️ OpenAI enhancement failed, using original cards:', enhanceError);
             setRecommendations(data);
@@ -96,7 +92,10 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
               ...data,
               cards: data.cards.map((originalCard: CardType) => {
                 const enhanced = enhancedData.enhancedCards.find((ec: any) => ec.id === originalCard.id);
-                return enhanced ? { ...originalCard, copy: enhanced.copy } : originalCard;
+                return enhanced ? {
+                  ...originalCard,
+                  copy: enhanced.copy
+                } : originalCard;
               })
             };
             setRecommendations(enhancedRecommendations);
@@ -111,7 +110,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       } else {
         setRecommendations(data);
       }
-      
       if (data?.cards?.length === 0) {
         toast({
           title: "No matches found",
@@ -119,12 +117,10 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
           variant: "default"
         });
       }
-      
     } catch (err) {
       console.error('❌ Error fetching recommendations:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load recommendations';
       setError(errorMessage);
-      
       toast({
         title: "Error loading recommendations",
         description: errorMessage,
@@ -141,27 +137,23 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       fetchRecommendations();
     }
   }, [JSON.stringify(preferences)]);
-
   const handleRetry = () => {
     fetchRecommendations();
   };
-
   const handleLike = (card: CardType) => {
     if (onSave) {
       onSave(card);
     } else {
       toast({
         title: "Saved!",
-        description: `Saved ${card.title} for later`,
+        description: `Saved ${card.title} for later`
       });
     }
     moveToNextCard();
   };
-
   const handleDislike = (card: CardType) => {
     moveToNextCard();
   };
-
   const moveToNextCard = () => {
     if (recommendations && currentCardIndex < recommendations.cards.length - 1) {
       setCurrentCardIndex(prev => prev + 1);
@@ -170,25 +162,23 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       // All cards viewed
       toast({
         title: "That's all for now!",
-        description: "You've seen all recommendations. Try adjusting your filters for more options.",
+        description: "You've seen all recommendations. Try adjusting your filters for more options."
       });
     }
   };
-
   const handleCardInvite = (card: CardType) => {
     if (onInvite) {
       onInvite(card);
     } else {
       toast({
         title: "Invite sent!",
-        description: `Invited friends to ${card.title}`,
+        description: `Invited friends to ${card.title}`
       });
     }
   };
 
   // Loading skeleton
-  const LoadingSkeleton = () => (
-    <div className="flex items-center justify-center py-12">
+  const LoadingSkeleton = () => <div className="flex items-center justify-center py-12">
       <Card className="w-full max-w-sm mx-auto overflow-hidden">
         <div className="text-center pt-4 pb-2">
           <Skeleton className="h-4 w-16 mx-auto" />
@@ -212,16 +202,16 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
+    </div>;
 
   // Error state
-  const ErrorState = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="text-center py-12"
-    >
+  const ErrorState = () => <motion.div initial={{
+    opacity: 0,
+    y: 20
+  }} animate={{
+    opacity: 1,
+    y: 0
+  }} className="text-center py-12">
       <Card className="max-w-md mx-auto">
         <CardContent className="p-8">
           <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
@@ -232,26 +222,23 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again
             </Button>
-            {onAdjustFilters && (
-              <Button onClick={onAdjustFilters} variant="default">
+            {onAdjustFilters && <Button onClick={onAdjustFilters} variant="default">
                 <Sliders className="h-4 w-4 mr-2" />
                 Adjust Filters
-              </Button>
-            )}
+              </Button>}
           </div>
         </CardContent>
       </Card>
-    </motion.div>
-  );
+    </motion.div>;
 
   // Empty state
-  const EmptyState = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="text-center py-12"
-      data-testid="empty-state"
-    >
+  const EmptyState = () => <motion.div initial={{
+    opacity: 0,
+    y: 20
+  }} animate={{
+    opacity: 1,
+    y: 0
+  }} className="text-center py-12" data-testid="empty-state">
       <Card className="max-w-md mx-auto">
         <CardContent className="p-8">
           <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -259,80 +246,47 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
           <p className="text-muted-foreground mb-6">
             We couldn't find any recommendations matching your preferences. Try adjusting your filters or expanding your search area.
           </p>
-          {onAdjustFilters && (
-            <Button onClick={onAdjustFilters}>
+          {onAdjustFilters && <Button onClick={onAdjustFilters}>
               <Sliders className="h-4 w-4 mr-2" />
               Adjust Filters
-            </Button>
-          )}
+            </Button>}
         </CardContent>
       </Card>
-    </motion.div>
-  );
-
+    </motion.div>;
   if (loading) {
     return <LoadingSkeleton />;
   }
-
   if (error) {
     return <ErrorState />;
   }
-
   if (!recommendations || recommendations.cards.length === 0) {
     return <EmptyState />;
   }
-
-  return (
-    <div className="space-y-6">
+  return <div className="space-y-6">
       {/* Results Summary */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
+      <motion.div initial={{
+      opacity: 0,
+      y: -10
+    }} animate={{
+      opacity: 1,
+      y: 0
+    }} className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold">
-            Perfect matches for you
-          </h2>
-          {recommendations.meta && (
-            <p className="text-sm text-muted-foreground">
-              Found {recommendations.cards.length} recommendations • 
-              {recommendations.meta.sources.googlePlaces} places • 
-              {recommendations.meta.sources.eventbrite} events
-              {recommendations.meta.llmUsed && ' • AI enhanced'}
-            </p>
-          )}
+          
+          {recommendations.meta}
         </div>
         
         <div className="flex gap-2">
-          <Button onClick={handleRetry} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-          {onAdjustFilters && (
-            <Button onClick={onAdjustFilters} variant="outline" size="sm">
-              <Sliders className="h-4 w-4 mr-2" />
-              Filters
-            </Button>
-          )}
+          
+          {onAdjustFilters}
         </div>
       </motion.div>
 
       {/* Single Card Display */}
       <div className="flex justify-center">
         <AnimatePresence mode="wait">
-          <SingleCardDisplay
-            key={recommendations.cards[currentCardIndex].id}
-            card={recommendations.cards[currentCardIndex]}
-            onLike={handleLike}
-            onDislike={handleDislike}
-            onInvite={handleCardInvite}
-            hasNext={currentCardIndex < recommendations.cards.length - 1}
-            cardNumber={currentCardIndex + 1}
-            totalCards={recommendations.cards.length}
-          />
+          <SingleCardDisplay key={recommendations.cards[currentCardIndex].id} card={recommendations.cards[currentCardIndex]} onLike={handleLike} onDislike={handleDislike} onInvite={handleCardInvite} hasNext={currentCardIndex < recommendations.cards.length - 1} cardNumber={currentCardIndex + 1} totalCards={recommendations.cards.length} />
         </AnimatePresence>
       </div>
-    </div>
-  );
+    </div>;
 };

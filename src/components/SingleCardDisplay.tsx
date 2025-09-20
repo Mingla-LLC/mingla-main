@@ -95,9 +95,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
               <Badge className={`text-xs font-medium ${getCategoryColor(card.category)}`}>
                 {card.category.replace('_', ' & ')}
               </Badge>
-              <Badge variant="secondary" className="text-xs font-medium bg-black/50 text-white">
-                {getPriceDisplay(card.priceLevel)}
-              </Badge>
+              
             </div>
 
             {/* Rating */}
