@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { RecommendationCard } from './RecommendationCard';
+import { SingleCardDisplay } from './SingleCardDisplay';
 import { AlertCircle, MapPin, RefreshCw, Sliders } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -27,6 +27,8 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
   const [recommendations, setRecommendations] = useState<RecommendationsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
 
   const fetchRecommendations = async () => {
     setLoading(true);
@@ -144,11 +146,39 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
     fetchRecommendations();
   };
 
+  const handleLike = (card: CardType) => {
+    if (onSave) {
+      onSave(card);
+    } else {
+      toast({
+        title: "Saved!",
+        description: `Saved ${card.title} for later`,
+      });
+    }
+    moveToNextCard();
+  };
+
+  const handleDislike = (card: CardType) => {
+    moveToNextCard();
+  };
+
+  const moveToNextCard = () => {
+    if (recommendations && currentCardIndex < recommendations.cards.length - 1) {
+      setCurrentCardIndex(prev => prev + 1);
+      setExpandedCard(null); // Collapse expanded state for new card
+    } else {
+      // All cards viewed
+      toast({
+        title: "That's all for now!",
+        description: "You've seen all recommendations. Try adjusting your filters for more options.",
+      });
+    }
+  };
+
   const handleCardInvite = (card: CardType) => {
     if (onInvite) {
       onInvite(card);
     } else {
-      // Default invite behavior - could integrate with collaboration system
       toast({
         title: "Invite sent!",
         description: `Invited friends to ${card.title}`,
@@ -156,38 +186,32 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
     }
   };
 
-  const handleCardSave = (card: CardType) => {
-    if (onSave) {
-      onSave(card);
-    } else {
-      // Default save behavior - could integrate with saves system
-      toast({
-        title: "Saved!",
-        description: `Saved ${card.title} for later`,
-      });
-    }
-  };
-
   // Loading skeleton
   const LoadingSkeleton = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <Card key={index} className="overflow-hidden">
-          <Skeleton className="aspect-video w-full" />
-          <CardContent className="p-4 space-y-3">
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-3/4" />
-              <Skeleton className="h-4 w-full" />
-            </div>
+    <div className="flex items-center justify-center py-12">
+      <Card className="w-full max-w-sm mx-auto overflow-hidden">
+        <div className="text-center pt-4 pb-2">
+          <Skeleton className="h-4 w-16 mx-auto" />
+        </div>
+        <div className="px-4">
+          <Skeleton className="aspect-[4/3] w-full rounded-2xl" />
+        </div>
+        <CardContent className="p-6 space-y-4">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-3/4" />
+            <Skeleton className="h-4 w-full" />
+          </div>
+          <div className="p-4 bg-muted rounded-xl space-y-2">
+            <Skeleton className="h-5 w-full" />
             <Skeleton className="h-4 w-2/3" />
-            <div className="flex gap-2">
-              <Skeleton className="h-8 flex-1" />
-              <Skeleton className="h-8 w-8" />
-              <Skeleton className="h-8 w-8" />
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+          </div>
+          <div className="flex gap-3">
+            <Skeleton className="flex-1 h-14 rounded-2xl" />
+            <Skeleton className="h-14 w-14 rounded-2xl" />
+            <Skeleton className="flex-1 h-14 rounded-2xl" />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
@@ -268,11 +292,11 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       >
         <div>
           <h2 className="text-xl font-semibold">
-            Found {recommendations.cards.length} recommendations
+            Perfect matches for you
           </h2>
           {recommendations.meta && (
             <p className="text-sm text-muted-foreground">
-              Loaded in {recommendations.meta.processingTimeMs}ms • 
+              Found {recommendations.cards.length} recommendations • 
               {recommendations.meta.sources.googlePlaces} places • 
               {recommendations.meta.sources.eventbrite} events
               {recommendations.meta.llmUsed && ' • AI enhanced'}
@@ -294,23 +318,21 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
         </div>
       </motion.div>
 
-      {/* Cards Grid */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          layout
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-        >
-          {recommendations.cards.map((card, index) => (
-            <RecommendationCard
-              key={card.id}
-              card={card}
-              index={index}
-              onInvite={handleCardInvite}
-              onSave={handleCardSave}
-            />
-          ))}
-        </motion.div>
-      </AnimatePresence>
+      {/* Single Card Display */}
+      <div className="flex justify-center">
+        <AnimatePresence mode="wait">
+          <SingleCardDisplay
+            key={recommendations.cards[currentCardIndex].id}
+            card={recommendations.cards[currentCardIndex]}
+            onLike={handleLike}
+            onDislike={handleDislike}
+            onInvite={handleCardInvite}
+            hasNext={currentCardIndex < recommendations.cards.length - 1}
+            cardNumber={currentCardIndex + 1}
+            totalCards={recommendations.cards.length}
+          />
+        </AnimatePresence>
+      </div>
     </div>
   );
 };
