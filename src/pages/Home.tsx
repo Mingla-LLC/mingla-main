@@ -1,16 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { 
   MapPin, 
   RefreshCw,
   Sliders,
-  Bell,
-  User,
   UserPlus
 } from 'lucide-react';
+import { HeaderControls } from '@/components/HeaderControls';
 import { SessionInviteNotifications } from '@/components/SessionInviteNotifications';
 import SingleCardResults from '@/components/SingleCardResults';
 import { PreferencesSheet } from '@/components/PreferencesSheet';
@@ -21,6 +19,7 @@ import { useSessionManagement } from '@/hooks/useSessionManagement';
 import { convertPreferencesToRequest } from '@/utils/preferencesConverter';
 import type { RecommendationCard } from '@/types/recommendations';
 import { toast } from '@/hooks/use-toast';
+import minglaLogo from '@/assets/mingla-logo-new.png';
 
 const Home = () => {
   const { user, preferences } = useAppStore();
@@ -90,11 +89,20 @@ const Home = () => {
     );
   }, [preferences, latitude, longitude, profile?.measurement_system]);
 
-  const handleInvite = (card: RecommendationCard) => {
+  const handleInvite = async (card: RecommendationCard) => {
+    if (isInSolo) {
+      toast({
+        title: "Create a collaboration",
+        description: "Switch to collaborative mode to invite friends to activities",
+      });
+      return;
+    }
+    
+    // TODO: Implement invite to activity functionality
     console.log('Invite to card:', card);
     toast({
-      title: "Invitation Feature",
-      description: "Collaboration invites will be implemented here",
+      title: "Invite Sent",
+      description: `Invited collaborators to "${card.title}"`,
     });
   };
 
@@ -115,35 +123,14 @@ const Home = () => {
     });
   };
 
-  const handleNotifications = () => {
-    console.log('Opening notifications...');
-    toast({
-      title: "Notifications",
-      description: "Notification center will be implemented here",
-    });
-  };
-
-  const handleProfile = () => {
-    console.log('Opening profile...');
-    toast({
-      title: "Profile",
-      description: "Profile settings will be implemented here",
-    });
-  };
-
-  const handleInviteUsers = () => {
-    console.log('Opening user invitation...');
-    toast({
-      title: "Invite Friends",
-      description: "Friend invitation system will be implemented here",
-    });
-  };
-
   const handlePreferencesUpdate = (newPreferences: any) => {
     console.log('Updating preferences:', newPreferences);
-    // Here you would update the preferences in the store
+    // Update preferences in the store - fix method name
+    const { setPreferences } = useAppStore.getState();
+    setPreferences(newPreferences);
+    
     toast({
-      title: "Preferences Updated",
+      title: "Preferences Updated", 
       description: "Your preferences have been saved successfully",
     });
     setIsPreferencesOpen(false);
@@ -203,42 +190,49 @@ const Home = () => {
           </div>
 
           {/* Center Logo */}
-          <div className="text-2xl font-bold text-primary">
-            Mingla
+          <div className="flex items-center justify-center">
+            <img 
+              src={minglaLogo} 
+              alt="Mingla" 
+              className="h-8 w-auto"
+            />
           </div>
 
           {/* Right Controls */}
           <div className="flex items-center gap-2">
+            <HeaderControls
+              currentSession={currentSession}
+              availableSessions={availableSessions}
+              pendingInvites={pendingInvites || []}
+              sentSessions={availableSessions.filter(s => s.createdBy === user?.id)}
+              isInSolo={isInSolo}
+              loading={sessionLoading}
+              onSwitchToSolo={switchToSolo}
+              onSwitchToCollaborative={switchToCollaborative}
+              onCreateSession={async (participants: string[], sessionName: string) => {
+                await createCollaborativeSession(participants, sessionName);
+              }}
+              onAcceptInvite={async (inviteId: string) => {
+                await acceptInvite(inviteId);
+              }}
+              onDeclineInvite={async (inviteId: string) => {
+                await declineInvite(inviteId);
+              }}
+              onRevokeInvite={async (inviteId: string) => {
+                await revokeInvite(inviteId);
+              }}
+            />
             <Button 
               variant="ghost" 
               size="sm" 
               className="rounded-full w-12 h-12"
-              onClick={handleNotifications}
-              title="Notifications"
-            >
-              <Bell className="h-5 w-5" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="rounded-full w-12 h-12"
-              onClick={handleProfile}
-              title="Profile"
-            >
-              <User className="h-5 w-5" />
-            </Button>
-            <Badge 
-              variant="secondary" 
-              className="px-3 py-1 rounded-full cursor-pointer"
-              onClick={() => toast({ title: "Mode", description: "Session mode switching coming soon" })}
-            >
-              Solo
-            </Badge>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="rounded-full w-12 h-12"
-              onClick={handleInviteUsers}
+              onClick={() => {
+                // TODO: Open friend invitation dialog
+                toast({
+                  title: "Invite Friends",
+                  description: "Friend invitation system coming soon",
+                });
+              }}
               title="Invite friends"
             >
               <UserPlus className="h-5 w-5" />
