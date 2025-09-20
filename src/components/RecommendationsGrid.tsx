@@ -272,13 +272,18 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       y: 0
     }} className="flex items-center justify-between">
         <div>
-          
-          {recommendations.meta}
+          <p className="text-sm text-muted-foreground">
+            Found {recommendations.meta?.totalResults || 0} recommendations
+          </p>
         </div>
         
         <div className="flex gap-2">
-          
-          {onAdjustFilters}
+          {onAdjustFilters && (
+            <Button onClick={onAdjustFilters} variant="outline" size="sm">
+              <Sliders className="h-4 w-4 mr-2" />
+              Adjust Filters
+            </Button>
+          )}
         </div>
       </motion.div>
 
