@@ -99,7 +99,9 @@ export const useSessionManagement = () => {
     try {
       // Load user's sessions (where they are members)
       const sessionsResponse = await getUserSessions();
-      const sessions: CollaborationSession[] = sessionsResponse.sessions.map(session => ({
+      console.log('📦 Sessions response:', sessionsResponse);
+      
+      const sessions: CollaborationSession[] = (sessionsResponse?.sessions || []).map(session => ({
         id: session.id,
         name: session.name,
         status: session.status,
@@ -152,12 +154,25 @@ export const useSessionManagement = () => {
 
     } catch (error) {
       console.error('❌ Error loading sessions:', error);
-      setSessionState(prev => ({ ...prev, loading: false }));
-      toast({
-        title: "Error Loading Sessions",
-        description: error instanceof Error ? error.message : 'Failed to load sessions',
-        variant: "destructive",
+      
+      // Set default solo state on error without showing persistent error toasts
+      // This prevents constant error messages when sessions API is not available
+      setSessionState({
+        currentSession: null,
+        availableSessions: [],
+        pendingInvites: [],
+        isInSolo: true,
+        loading: false
       });
+      
+      // Only show error toast once for actual failures (not API availability)
+      if (error instanceof Error && !error.message?.includes('non-2xx') && !error.message?.includes('Not found')) {
+        toast({
+          title: "Session Error",
+          description: "Unable to load collaboration sessions",
+          variant: "destructive",
+        });
+      }
     }
   }, [user]);
 

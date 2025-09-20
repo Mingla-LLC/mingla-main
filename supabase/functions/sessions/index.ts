@@ -33,12 +33,13 @@ serve(async (req) => {
     }
 
     const url = new URL(req.url)
-    const path = url.pathname
     const method = req.method
+    
+  console.log(`🔍 Sessions API called: ${method} ${url.pathname}, search: ${url.search}`)
 
-    // GET /sessions?scope=mine - Get sessions where user is a member
-    if (method === 'GET' && path === '/sessions') {
-      const scope = url.searchParams.get('scope')
+  // GET / - Get sessions where user is a member (default endpoint)
+  if (method === 'GET') {
+      const scope = url.searchParams.get('scope') || 'mine' // Default to 'mine' if no scope provided
       
       if (scope === 'mine') {
         const { data: sessions, error } = await supabase
@@ -114,10 +115,16 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
+      
+      // Default response for GET requests without valid scope
+      return new Response(
+        JSON.stringify({ sessions: [] }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    // POST /sessions - Create new session
-    if (method === 'POST' && path === '/sessions') {
+    // POST /sessions or POST / - Create new session
+    if (method === 'POST') {
       const body = await req.json()
       const { name, participants = [] } = body
 
@@ -181,9 +188,9 @@ serve(async (req) => {
       )
     }
 
-    // DELETE /sessions/:id - Delete session (owner only)
-    if (method === 'DELETE' && path.startsWith('/sessions/')) {
-      const sessionId = path.split('/')[2]
+    // DELETE /?sessionId=xxx - Delete session (owner only)  
+    if (method === 'DELETE') {
+      const sessionId = url.searchParams.get('sessionId')
       
       if (!sessionId) {
         return new Response(
@@ -236,8 +243,16 @@ serve(async (req) => {
       })
     }
 
+    // Return 404 for unhandled routes
     return new Response(
-      JSON.stringify({ error: 'Not found' }),
+      JSON.stringify({ 
+        error: 'Route not found',
+        available_routes: {
+          'GET /': 'Get user sessions (add ?scope=mine)',
+          'POST /': 'Create new session',
+          'DELETE /': 'Delete session (add ?sessionId=xxx)'
+        }
+      }),
       { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 

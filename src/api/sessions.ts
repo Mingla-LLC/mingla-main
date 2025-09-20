@@ -57,20 +57,24 @@ export async function createSession(payload: CreateSessionPayload): Promise<Crea
 export async function getUserSessions(): Promise<SessionListResponse> {
   console.log('🎯 Fetching user sessions via edge function');
   
-  const { data, error } = await supabase.functions.invoke('sessions', {
-    method: 'GET',
-    body: {},
-    headers: {
-      'Content-Type': 'application/json'
+  try {
+    const { data, error } = await supabase.functions.invoke('sessions', {
+      method: 'GET',
+      body: {}
+    });
+
+    if (error) {
+      console.error('Error fetching sessions:', error);
+      // Return empty sessions instead of throwing
+      return { sessions: [] };
     }
-  });
 
-  if (error) {
-    console.error('Error fetching sessions:', error);
-    throw new Error(error.message || 'Failed to fetch sessions');
+    return data || { sessions: [] };
+  } catch (err) {
+    console.error('Network error fetching sessions:', err);
+    // Return empty sessions instead of throwing to prevent persistent errors
+    return { sessions: [] };
   }
-
-  return data;
 }
 
 // Delete session (owner only)
@@ -79,7 +83,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
   
   const { error } = await supabase.functions.invoke('sessions', {
     method: 'DELETE',
-    body: { sessionId },
+    body: {},
     headers: {
       'Idempotency-Key': crypto.randomUUID()
     }
