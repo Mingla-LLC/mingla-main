@@ -9,6 +9,11 @@ import { useUserRole } from '@/hooks/useUserRole';
 import type { SessionInvite, CollaborationSession } from '@/hooks/useSessionManagement';
 
 interface HeaderControlsProps {
+  // UI props
+  showNotifications: boolean;
+  onToggleNotifications: () => void;
+  onShowPreferences: () => void;
+  
   // Session props
   currentSession: CollaborationSession | null;
   availableSessions: CollaborationSession[];
@@ -19,7 +24,6 @@ interface HeaderControlsProps {
   
   // Invite props
   pendingInvites: SessionInvite[];
-  sentSessions: CollaborationSession[];
   onAcceptInvite: (inviteId: string) => void;
   onDeclineInvite: (inviteId: string) => void;
   onCancelSession: (sessionId: string) => void;
@@ -28,6 +32,9 @@ interface HeaderControlsProps {
 }
 
 export const HeaderControls: React.FC<HeaderControlsProps> = ({
+  showNotifications,
+  onToggleNotifications,
+  onShowPreferences,
   currentSession,
   availableSessions,
   isInSolo,
@@ -35,7 +42,6 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
   onSwitchToCollaborative,
   onCreateSession,
   pendingInvites,
-  sentSessions,
   onAcceptInvite,
   onDeclineInvite,
   onCancelSession,
@@ -46,9 +52,6 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
   const { isAdmin } = useUserRole();
 
   const totalNotifications = pendingInvites.length;
-  const pendingSentSessions = sentSessions.filter(session => 
-    session.status === 'pending' || session.status === 'dormant'
-  );
 
   return (
     <div className="flex items-center gap-2">
@@ -74,7 +77,7 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
         <PopoverContent className="w-[420px] p-0" align="end">
           <CollaborationInviteManager
             pendingInvites={pendingInvites}
-            sentSessions={sentSessions}
+            sentSessions={[]}
             onAcceptInvite={onAcceptInvite}
             onDeclineInvite={onDeclineInvite}
             onCancelSession={onCancelSession}
