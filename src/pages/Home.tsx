@@ -13,16 +13,19 @@ import {
 } from 'lucide-react';
 import { SessionInviteNotifications } from '@/components/SessionInviteNotifications';
 import SingleCardResults from '@/components/SingleCardResults';
+import { PreferencesSheet } from '@/components/PreferencesSheet';
 import { useAppStore, type Preferences } from '@/store/appStore';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useSessionManagement } from '@/hooks/useSessionManagement';
 import { convertPreferencesToRequest } from '@/utils/preferencesConverter';
 import type { RecommendationCard } from '@/types/recommendations';
+import { toast } from '@/hooks/use-toast';
 
 const Home = () => {
   const { user, preferences } = useAppStore();
   const { profile } = useUserProfile();
+  const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   
   const { 
     latitude,
@@ -89,13 +92,74 @@ const Home = () => {
 
   const handleInvite = (card: RecommendationCard) => {
     console.log('Invite to card:', card);
-    // Handle invitation logic
+    toast({
+      title: "Invitation Feature",
+      description: "Collaboration invites will be implemented here",
+    });
   };
 
   const handleSave = (card: RecommendationCard) => {
     console.log('Save card:', card);
-    // Handle save logic
+    toast({
+      title: "Saved",
+      description: `"${card.title}" has been saved to your collection`,
+    });
   };
+
+  const handleRefresh = () => {
+    console.log('Refreshing recommendations...');
+    getCurrentLocation();
+    toast({
+      title: "Refreshed",
+      description: "Getting new recommendations based on your current location",
+    });
+  };
+
+  const handleNotifications = () => {
+    console.log('Opening notifications...');
+    toast({
+      title: "Notifications",
+      description: "Notification center will be implemented here",
+    });
+  };
+
+  const handleProfile = () => {
+    console.log('Opening profile...');
+    toast({
+      title: "Profile",
+      description: "Profile settings will be implemented here",
+    });
+  };
+
+  const handleInviteUsers = () => {
+    console.log('Opening user invitation...');
+    toast({
+      title: "Invite Friends",
+      description: "Friend invitation system will be implemented here",
+    });
+  };
+
+  const handlePreferencesUpdate = (newPreferences: any) => {
+    console.log('Updating preferences:', newPreferences);
+    // Here you would update the preferences in the store
+    toast({
+      title: "Preferences Updated",
+      description: "Your preferences have been saved successfully",
+    });
+    setIsPreferencesOpen(false);
+  };
+
+  // Listen for custom preference events
+  useEffect(() => {
+    const handleOpenPreferences = () => {
+      setIsPreferencesOpen(true);
+    };
+
+    document.addEventListener('open-preferences', handleOpenPreferences);
+    return () => {
+      document.removeEventListener('open-preferences', handleOpenPreferences);
+    };
+  }, []);
 
   return (
     <Layout>
@@ -118,16 +182,21 @@ const Home = () => {
         <div className="flex items-center justify-between p-4 border-b bg-background/95 backdrop-blur-sm">
           {/* Left Controls */}
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="rounded-full w-12 h-12">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="rounded-full w-12 h-12"
+              onClick={handleRefresh}
+              title="Refresh recommendations"
+            >
               <RefreshCw className="h-5 w-5" />
             </Button>
             <Button 
               variant="ghost" 
               size="sm" 
               className="rounded-full w-12 h-12"
-              onClick={() => {
-                document.dispatchEvent(new CustomEvent('open-preferences'));
-              }}
+              onClick={() => setIsPreferencesOpen(true)}
+              title="Open preferences"
             >
               <Sliders className="h-5 w-5" />
             </Button>
@@ -140,16 +209,38 @@ const Home = () => {
 
           {/* Right Controls */}
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="rounded-full w-12 h-12">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="rounded-full w-12 h-12"
+              onClick={handleNotifications}
+              title="Notifications"
+            >
               <Bell className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="sm" className="rounded-full w-12 h-12">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="rounded-full w-12 h-12"
+              onClick={handleProfile}
+              title="Profile"
+            >
               <User className="h-5 w-5" />
             </Button>
-            <Badge variant="secondary" className="px-3 py-1 rounded-full">
+            <Badge 
+              variant="secondary" 
+              className="px-3 py-1 rounded-full cursor-pointer"
+              onClick={() => toast({ title: "Mode", description: "Session mode switching coming soon" })}
+            >
               Solo
             </Badge>
-            <Button variant="ghost" size="sm" className="rounded-full w-12 h-12">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="rounded-full w-12 h-12"
+              onClick={handleInviteUsers}
+              title="Invite friends"
+            >
               <UserPlus className="h-5 w-5" />
             </Button>
           </div>
@@ -174,9 +265,7 @@ const Home = () => {
                   <p className="text-muted-foreground mb-6">
                     Tell us what you're looking for to get personalized recommendations
                   </p>
-                  <Button onClick={() => {
-                    document.dispatchEvent(new CustomEvent('open-preferences'));
-                  }}>
+                  <Button onClick={() => setIsPreferencesOpen(true)}>
                     Set Preferences
                   </Button>
                 </CardContent>
@@ -184,6 +273,14 @@ const Home = () => {
             )}
           </div>
         </div>
+
+        {/* Preferences Sheet */}
+        <PreferencesSheet
+          isOpen={isPreferencesOpen}
+          onClose={() => setIsPreferencesOpen(false)}
+          measurementSystem={profile?.measurement_system || 'metric'}
+          onPreferencesUpdate={handlePreferencesUpdate}
+        />
       </div>
     </Layout>
   );
