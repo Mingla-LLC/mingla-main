@@ -47,7 +47,7 @@ const Home = () => {
     revokeInvite
   } = sessionManagement;
 
-  const { currentSession, availableSessions, isInSolo, pendingInvites, loading: sessionLoading } = sessionState;
+  const { currentSession, availableSessions, isInSolo, pendingInvites = [], loading: sessionLoading = false } = sessionState || {};
 
   // Convert store preferences to converter format
   const convertStorePrefsToConverterFormat = (storePrefs: Preferences) => {
@@ -101,7 +101,7 @@ const Home = () => {
     <Layout>
       <div className="min-h-screen bg-background flex flex-col">
         {/* Session Invites Notification */}
-        {pendingInvites.length > 0 && (
+        {pendingInvites && pendingInvites.length > 0 && (
           <div className="p-4">
             <SessionInviteNotifications
               invites={pendingInvites}
