@@ -7,18 +7,28 @@ import { TripCardExpanded } from '@/components/TripCardExpanded';
 import { BoardSelectionDialog } from '@/components/BoardSelectionDialog';
 import { NewBoardDialog } from '@/components/NewBoardDialog';
 import { SavedTripCard } from '@/components/SavedTripCard';
-
-// Mock data removed - will be replaced with real user saves from Supabase
+import { useSavedExperiences } from '@/hooks/useSavedExperiences';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const Saved = () => {
   const [selectedTrips, setSelectedTrips] = useState<string[]>([]);
   const [expandedTrip, setExpandedTrip] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [trips, setTrips] = useState<any[]>([]); // Will be loaded from real user saves
   const [isBoardSelectionOpen, setIsBoardSelectionOpen] = useState(false);
   const [isNewBoardDialogOpen, setIsNewBoardDialogOpen] = useState(false);
   const [selectedTripForBoard, setSelectedTripForBoard] = useState<string | null>(null);
   const [boards, setBoards] = useState<any[]>([]); // Will be loaded from real boards
+
+  // Use the saved experiences hook
+  const { 
+    savedExperiences, 
+    loading, 
+    error, 
+    savedCount, 
+    acceptedCount,
+    updateExperienceStatus,
+    deleteSavedExperience
+  } = useSavedExperiences();
 
   const handleAddToBoard = (tripId: string) => {
     setSelectedTripForBoard(tripId);
@@ -70,29 +80,50 @@ const Saved = () => {
     );
   };
 
-  const handleAcceptTrip = (tripId: string) => {
-    setTrips(prev => prev.map(trip => 
-      trip.id === tripId 
-        ? { ...trip, status: 'accepted', scheduledDate: new Date().toISOString().split('T')[0] }
-        : trip
-    ));
+  const handleAcceptTrip = async (tripId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    await updateExperienceStatus(tripId, 'accepted', today);
   };
 
-  const handleRevokeTrip = (tripId: string) => {
-    setTrips(prev => prev.map(trip => 
-      trip.id === tripId 
-        ? { ...trip, status: 'saved', scheduledDate: null }
-        : trip
-    ));
+  const handleRevokeTrip = async (tripId: string) => {
+    await updateExperienceStatus(tripId, 'saved');
   };
 
-  const handleRemoveTrip = (tripId: string) => {
-    setTrips(prev => prev.filter(trip => trip.id !== tripId));
+  const handleRemoveTrip = async (tripId: string) => {
+    await deleteSavedExperience(tripId);
   };
 
-  const expandedTripData = trips.find(trip => trip.id === expandedTrip);
-  const acceptedTrips = trips.filter(trip => trip.status === 'accepted');
-  const activeSavedTrips = trips.filter(trip => trip.status === 'saved');
+  const expandedTripData = savedExperiences.find(trip => trip.id === expandedTrip);
+  const acceptedTrips = savedExperiences.filter(trip => trip.status === 'accepted');
+  const activeSavedTrips = savedExperiences.filter(trip => trip.status === 'saved');
+
+  // Transform saved experience to trip format for compatibility
+  const transformExperienceToTrip = (exp: any) => ({
+    id: exp.id,
+    title: exp.title,
+    image: exp.image_url || '/api/placeholder/400/225',
+    cost: exp.estimated_cost_per_person || 0,
+    duration: `${exp.duration_minutes || 90} min`,
+    travelTime: exp.eta_minutes ? `${exp.eta_minutes} min` : '15 min',
+    badges: [
+      exp.category?.replace('_', ' & ') || 'Experience',
+      `${'$'.repeat(exp.price_level || 1)}`,
+    ],
+    whyItFits: exp.one_liner || 'Great local experience',
+    location: exp.address || 'Address available',
+    city: exp.address ? exp.address.split(',')[1]?.trim() : undefined,
+    category: exp.category,
+    perfectFor: [exp.tip || 'Perfect for exploring'],
+    status: exp.status,
+    scheduledDate: exp.scheduled_date,
+    savedDate: exp.created_at ? new Date(exp.created_at).toLocaleDateString() : undefined,
+    // Additional fields for expanded view
+    lat: exp.location_lat,
+    lng: exp.location_lng,
+    latitude: exp.location_lat,
+    longitude: exp.location_lng,
+    address: exp.address
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -109,12 +140,41 @@ const Saved = () => {
           </Button>
         </div>
         <p className="text-muted-foreground">
-          {activeSavedTrips.length} experiences saved • {acceptedTrips.length} accepted
+          {savedCount} experiences saved • {acceptedCount} accepted
         </p>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="px-6 space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="p-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="w-12 h-12 rounded-lg" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+                <div className="flex gap-2">
+                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-8 w-16" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <div className="px-6 py-12 text-center">
+          <div className="text-destructive mb-2">Error loading saved experiences</div>
+          <p className="text-muted-foreground text-sm">{error}</p>
+        </div>
+      )}
+
       {/* Calendar View */}
-      {viewMode === 'calendar' && (
+      {!loading && !error && viewMode === 'calendar' && (
         <div className="px-6 space-y-4">
           <h2 className="text-lg font-semibold">Accepted Experiences</h2>
           {acceptedTrips.map((trip) => (
@@ -126,7 +186,7 @@ const Saved = () => {
                 <div className="flex-1">
                   <h3 className="font-semibold text-sm">{trip.title}</h3>
                   <p className="text-xs text-muted-foreground">
-                    {trip.scheduledDate && new Date(trip.scheduledDate).toLocaleDateString()}
+                    {trip.scheduled_date && new Date(trip.scheduled_date).toLocaleDateString()}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -154,12 +214,12 @@ const Saved = () => {
       )}
 
       {/* List View */}
-      {viewMode === 'list' && (
+      {!loading && !error && viewMode === 'list' && (
         <div className="px-6 space-y-4">
           {activeSavedTrips.map((trip) => (
             <SavedTripCard
               key={trip.id}
-              trip={trip}
+              trip={transformExperienceToTrip(trip)}
               onFinalize={handleAcceptTrip}
               onAddToBoard={handleAddToBoard}
               onDelete={handleRemoveTrip}
@@ -170,10 +230,23 @@ const Saved = () => {
         </div>
       )}
 
+      {/* Empty State */}
+      {!loading && !error && activeSavedTrips.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+            <Calendar className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-semibold mb-2">No saved experiences yet</h3>
+          <p className="text-muted-foreground mb-4">
+            Start exploring and save experiences you love on the Home tab!
+          </p>
+        </div>
+      )}
+
       {/* Expanded Trip Card */}
       {expandedTripData && (
         <TripCardExpanded
-          trip={expandedTripData}
+          trip={transformExperienceToTrip(expandedTripData)}
           isOpen={!!expandedTrip}
           onClose={() => setExpandedTrip(null)}
           onAccept={() => {
@@ -201,7 +274,7 @@ const Saved = () => {
           setIsNewBoardDialogOpen(true);
         }}
         boards={boards}
-        tripTitle={trips.find(t => t.id === selectedTripForBoard)?.title || ''}
+        tripTitle={savedExperiences.find(t => t.id === selectedTripForBoard)?.title || ''}
       />
 
       {/* New Board Dialog */}
@@ -213,17 +286,6 @@ const Saved = () => {
         }}
         onCreateBoard={handleCreateNewBoard}
       />
-
-      {/* Empty State */}
-      <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-          <Calendar className="h-8 w-8 text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-semibold mb-2">No saved experiences yet</h3>
-        <p className="text-muted-foreground mb-4">
-          Start exploring and save experiences you love on the Home tab!
-        </p>
-      </div>
 
     </div>
   );

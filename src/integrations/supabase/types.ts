@@ -71,6 +71,32 @@ export type Database = {
         }
         Relationships: []
       }
+      collaboration_boards: {
+        Row: {
+          created_at: string
+          id: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collaboration_boards_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "collaboration_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       collaboration_invites: {
         Row: {
           created_at: string
@@ -115,6 +141,13 @@ export type Database = {
             columns: ["invited_user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collaboration_invites_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "collaboration_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -505,6 +538,102 @@ export type Database = {
         }
         Relationships: []
       }
+      saved_experiences: {
+        Row: {
+          address: string | null
+          card_id: string
+          category: string
+          created_at: string | null
+          distance_text: string | null
+          duration_minutes: number | null
+          estimated_cost_per_person: number | null
+          eta_minutes: number | null
+          event_id: string | null
+          id: string
+          image_url: string | null
+          location_lat: number | null
+          location_lng: number | null
+          maps_deep_link: string | null
+          one_liner: string | null
+          place_id: string | null
+          price_level: number | null
+          rating: number | null
+          review_count: number | null
+          route_mode: string | null
+          scheduled_date: string | null
+          source_provider: string | null
+          start_time: string | null
+          status: string | null
+          subtitle: string | null
+          tip: string | null
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          card_id: string
+          category: string
+          created_at?: string | null
+          distance_text?: string | null
+          duration_minutes?: number | null
+          estimated_cost_per_person?: number | null
+          eta_minutes?: number | null
+          event_id?: string | null
+          id?: string
+          image_url?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
+          maps_deep_link?: string | null
+          one_liner?: string | null
+          place_id?: string | null
+          price_level?: number | null
+          rating?: number | null
+          review_count?: number | null
+          route_mode?: string | null
+          scheduled_date?: string | null
+          source_provider?: string | null
+          start_time?: string | null
+          status?: string | null
+          subtitle?: string | null
+          tip?: string | null
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          card_id?: string
+          category?: string
+          created_at?: string | null
+          distance_text?: string | null
+          duration_minutes?: number | null
+          estimated_cost_per_person?: number | null
+          eta_minutes?: number | null
+          event_id?: string | null
+          id?: string
+          image_url?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
+          maps_deep_link?: string | null
+          one_liner?: string | null
+          place_id?: string | null
+          price_level?: number | null
+          rating?: number | null
+          review_count?: number | null
+          route_mode?: string | null
+          scheduled_date?: string | null
+          source_provider?: string | null
+          start_time?: string | null
+          status?: string | null
+          subtitle?: string | null
+          tip?: string | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       saves: {
         Row: {
           created_at: string | null
@@ -540,6 +669,35 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_members: {
+        Row: {
+          joined_at: string
+          role: string
+          session_id: string
+          user_id: string
+        }
+        Insert: {
+          joined_at?: string
+          role: string
+          session_id: string
+          user_id: string
+        }
+        Update: {
+          joined_at?: string
+          role?: string
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_members_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "collaboration_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -615,6 +773,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_delete_session: {
+        Args: { session_id: string; user_id: string }
+        Returns: boolean
+      }
       can_manage_content: {
         Args: { _user_id: string }
         Returns: boolean

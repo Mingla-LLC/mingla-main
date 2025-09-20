@@ -125,12 +125,82 @@ const Home = () => {
     });
   };
   
-  const handleCardSave = (card: CardType) => {
-    // Integrate with existing saves system
-    toast({
-      title: "Saved!",
-      description: `Saved ${card.title} for later`
-    });
+  const handleCardSave = async (card: CardType) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to save experiences",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Check if already saved
+      const { data: existing } = await supabase
+        .from('saved_experiences')
+        .select('id')
+        .eq('card_id', card.id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (existing) {
+        toast({
+          title: "Already saved",
+          description: `${card.title} is already in your saved experiences`,
+          variant: "default"
+        });
+        return;
+      }
+
+      const saveData = {
+        user_id: user.id,
+        card_id: card.id,
+        title: card.title,
+        subtitle: card.subtitle,
+        category: card.category,
+        price_level: card.priceLevel,
+        estimated_cost_per_person: card.estimatedCostPerPerson,
+        start_time: card.startTime,
+        duration_minutes: card.durationMinutes,
+        image_url: card.imageUrl,
+        address: card.address,
+        location_lat: card.location?.lat,
+        location_lng: card.location?.lng,
+        route_mode: card.route?.mode,
+        eta_minutes: card.route?.etaMinutes,
+        distance_text: card.route?.distanceText,
+        maps_deep_link: card.route?.mapsDeepLink,
+        source_provider: card.source?.provider,
+        place_id: card.source?.placeId,
+        event_id: card.source?.eventId,
+        one_liner: card.copy?.oneLiner,
+        tip: card.copy?.tip,
+        rating: card.rating,
+        review_count: card.reviewCount
+      };
+
+      const { error: insertError } = await supabase
+        .from('saved_experiences')
+        .insert([saveData]);
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      toast({
+        title: "Saved!",
+        description: `${card.title} has been saved to your collection`
+      });
+    } catch (err) {
+      console.error('Error saving experience:', err);
+      toast({
+        title: "Save failed",
+        description: err instanceof Error ? err.message : 'Failed to save experience',
+        variant: "destructive"
+      });
+    }
   };
 
   return (
