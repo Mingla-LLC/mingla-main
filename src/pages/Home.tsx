@@ -208,34 +208,34 @@ const Home = () => {
       {/* Header */}
       <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-lg border-b border-border/50">
         {/* Logo Section */}
-        <div className="px-6 pt-6 pb-4 text-center">
+        <div className="px-4 pt-4 pb-3 text-center">
           <img 
             src={minglaLogo} 
             alt="Mingla" 
-            className="h-12 mx-auto mb-2"
+            className="h-8 sm:h-10 mx-auto"
           />
         </div>
         
         {/* Controls Section */}
-        <div className="px-6 pb-4">
-          <div className="flex items-center justify-between">
+        <div className="px-3 sm:px-6 pb-3">
+          <div className="flex items-center justify-between gap-2">
             {/* Left side - Controls */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <Button 
                 variant="outline" 
-                size="lg" 
-                className="h-12 w-12 rounded-2xl border-2 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
+                size="sm"
+                className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl border border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
               >
-                <RefreshCw className="h-5 w-5" />
+                <RefreshCw className="h-4 w-4" />
               </Button>
               <Button 
                 variant="outline" 
-                size="lg" 
-                className="h-12 w-12 rounded-2xl border-2 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
+                size="sm"
+                className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl border border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
                 onClick={() => setShowPreferences(true)}
                 data-testid="preferences-button"
               >
-                <Sliders className="h-5 w-5" />
+                <Sliders className="h-4 w-4" />
               </Button>
             </div>
             

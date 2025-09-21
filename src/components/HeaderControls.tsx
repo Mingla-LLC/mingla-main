@@ -56,22 +56,22 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
   const totalNotifications = pendingInvites.length;
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-1.5 sm:gap-2">
       {/* Notifications Bell */}
       <Popover open={invitePopoverOpen} onOpenChange={setInvitePopoverOpen}>
         <PopoverTrigger asChild>
           <Button 
             variant="outline" 
-            size="lg" 
-            className="h-12 w-12 rounded-2xl border-2 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200 relative"
+            size="sm"
+            className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl border border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200 relative"
           >
-            <Bell className="h-5 w-5" />
+            <Bell className="h-4 w-4" />
             {totalNotifications > 0 && (
               <Badge 
                 variant="destructive" 
-                className="absolute -top-1 -right-1 h-4 w-4 rounded-full p-0 flex items-center justify-center text-xs"
+                className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full p-0 flex items-center justify-center text-xs"
               >
-                {totalNotifications}
+                {totalNotifications > 9 ? '9+' : totalNotifications}
               </Badge>
             )}
           </Button>
@@ -93,22 +93,22 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
         <PopoverTrigger asChild>
           <Button 
             variant="outline" 
-            size="lg" 
-            className="h-12 px-4 rounded-2xl border-2 border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200 flex items-center gap-2"
+            size="sm"
+            className="h-9 px-2 sm:px-3 rounded-xl border border-primary/20 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200 flex items-center gap-1 sm:gap-1.5"
           >
             {isInSolo ? (
               <>
-                <User className="h-5 w-5" />
-                <span className="font-semibold">Solo</span>
+                <User className="h-4 w-4" />
+                <span className="text-xs sm:text-sm font-medium hidden xs:inline">Solo</span>
               </>
             ) : (
               <>
-                <Users className="h-5 w-5" />
-                <span className="font-semibold">Team</span>
+                <Users className="h-4 w-4" />
+                <span className="text-xs sm:text-sm font-medium hidden xs:inline">Team</span>
               </>
             )}
             {currentSession && (
-              <Badge variant="secondary" className="ml-1 px-1.5 text-xs">
+              <Badge variant="secondary" className="ml-0.5 px-1 text-xs h-4 min-w-4">
                 {currentSession.participants.length}
               </Badge>
             )}
@@ -131,22 +131,22 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
       {isAdmin && (
         <Button 
           variant="outline" 
-          size="lg" 
-          className="h-12 w-12 rounded-2xl bg-orange-500/10 hover:bg-orange-500/20 border-2 border-orange-500/20 text-orange-600 transition-all duration-200"
+          size="sm"
+          className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 text-orange-600 transition-all duration-200"
           onClick={() => window.open('/admin', '_blank')}
         >
-          <Shield className="h-5 w-5" />
+          <Shield className="h-4 w-4" />
         </Button>
       )}
 
       {/* Create Session Button */}
       <Button 
         variant="outline" 
-        size="lg" 
-        className="h-12 w-12 rounded-2xl border-2 border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary transition-all duration-200"
+        size="sm"
+        className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary transition-all duration-200"
         onClick={() => setSessionPopoverOpen(true)}
       >
-        <Plus className="h-5 w-5" />
+        <Plus className="h-4 w-4" />
       </Button>
     </div>
   );
