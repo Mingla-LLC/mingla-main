@@ -13,11 +13,13 @@ import { useMobileFeatures } from './MobileFeaturesProvider';
 import { useAppStore } from '../store/appStore';
 import { ExperienceCard } from './ExperienceCard';
 import { TinderCardStack } from './TinderCardStack';
+import { DetailedExperienceCard } from './DetailedExperienceCard';
 import { aiReasoningService, AIRecommendation } from '../services/aiReasoningService';
 import { experienceService } from '../services/experienceService';
 
 interface AIRecommendationEngineProps {
   onExperienceSelect?: (experience: any) => void;
+  onCardIndexChange?: (currentIndex: number, totalCount: number) => void;
   context?: 'home' | 'explore' | 'activity' | 'custom';
   customFilters?: {
     categories?: string[];
@@ -29,10 +31,12 @@ interface AIRecommendationEngineProps {
 
 export const AIRecommendationEngine: React.FC<AIRecommendationEngineProps> = ({
   onExperienceSelect,
+  onCardIndexChange,
   context = 'home',
   customFilters,
 }) => {
   const [recommendations, setRecommendations] = useState<AIRecommendation[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +44,13 @@ export const AIRecommendationEngine: React.FC<AIRecommendationEngineProps> = ({
   
   const { user, preferences } = useAppStore();
   const { currentLocation, getCurrentLocation } = useMobileFeatures();
+
+  // Notify parent component of card index changes
+  useEffect(() => {
+    if (onCardIndexChange && recommendations.length > 0) {
+      onCardIndexChange(currentIndex + 1, recommendations.length); // +1 because we display 1-based index
+    }
+  }, [currentIndex, recommendations.length, onCardIndexChange]);
 
   const loadRecommendations = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -84,6 +95,7 @@ export const AIRecommendationEngine: React.FC<AIRecommendationEngineProps> = ({
       // If AI recommendations are available and not empty, use them
       if (aiRecommendations && aiRecommendations.length > 0) {
         setRecommendations(aiRecommendations);
+        setCurrentIndex(0); // Reset to first recommendation
         setLastUpdated(new Date());
         console.log(`Loaded ${aiRecommendations.length} AI recommendations`);
       } else {
@@ -108,6 +120,7 @@ export const AIRecommendationEngine: React.FC<AIRecommendationEngineProps> = ({
         }));
         
         setRecommendations(fallbackRecommendations);
+        setCurrentIndex(0); // Reset to first recommendation
         setLastUpdated(new Date());
         console.log(`Loaded ${fallbackRecommendations.length} fallback recommendations`);
       }
@@ -211,6 +224,110 @@ export const AIRecommendationEngine: React.FC<AIRecommendationEngineProps> = ({
     );
   }
 
+  // For home context, just render the detailed card
+  if (context === 'home') {
+    if (loading && !refreshing) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Analyzing your preferences...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.errorContainer}>
+          <Ionicons name="warning-outline" size={48} color="#FF9500" />
+          <Text style={styles.errorTitle}>Unable to load recommendations</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => loadRecommendations()}
+          >
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (recommendations.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <Ionicons name="compass-outline" size={48} color="#ccc" />
+          <Text style={styles.emptyStateTitle}>No recommendations yet</Text>
+          <Text style={styles.emptyStateText}>
+            We're analyzing your preferences to find the best experiences for you
+          </Text>
+        </View>
+      );
+    }
+
+    // Check if we have a current recommendation
+    if (currentIndex >= recommendations.length) {
+      return (
+        <View style={styles.container}>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No more recommendations</Text>
+            <Text style={styles.emptySubtitle}>Pull to refresh for more experiences</Text>
+          </View>
+        </View>
+      );
+    }
+
+    // Show the current recommendation as a detailed card
+    const currentRecommendation = recommendations[currentIndex];
+    
+    const handleLike = () => {
+      console.log('Liked:', currentRecommendation.experience.title, 'Current index:', currentIndex);
+      onExperienceSelect?.(currentRecommendation.experience);
+      // Move to next recommendation
+      setCurrentIndex(prev => {
+        const nextIndex = prev + 1;
+        console.log('Moving to next index:', nextIndex, 'Total recommendations:', recommendations.length);
+        // If we're near the end, load more recommendations
+        if (nextIndex >= recommendations.length - 2) {
+          loadRecommendations(true);
+        }
+        return nextIndex;
+      });
+    };
+
+    const handleDislike = () => {
+      console.log('Disliked:', currentRecommendation.experience.title, 'Current index:', currentIndex);
+      // Move to next recommendation
+      setCurrentIndex(prev => {
+        const nextIndex = prev + 1;
+        console.log('Moving to next index:', nextIndex, 'Total recommendations:', recommendations.length);
+        // If we're near the end, load more recommendations
+        if (nextIndex >= recommendations.length - 2) {
+          loadRecommendations(true);
+        }
+        return nextIndex;
+      });
+    };
+
+    const handleViewDetails = () => {
+      console.log('View details:', currentRecommendation.experience.title);
+      onExperienceSelect?.(currentRecommendation.experience);
+    };
+
+    return (
+      <DetailedExperienceCard
+        key={`${currentRecommendation.experience.id}-${currentIndex}`}
+        experience={currentRecommendation.experience}
+        currentImageIndex={3}
+        totalImages={25}
+        currentCardIndex={currentIndex + 1}
+        totalCards={recommendations.length}
+        onLike={handleLike}
+        onDislike={handleDislike}
+        onViewDetails={handleViewDetails}
+      />
+    );
+  }
+
+  // For other contexts, use the original layout
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -335,6 +452,24 @@ const styles = StyleSheet.create({
   lastUpdated: {
     fontSize: 12,
     color: '#999',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
   },
   refreshButton: {
     padding: 8,

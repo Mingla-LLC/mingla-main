@@ -58,6 +58,10 @@ export const useExperiences = (filters?: ExperienceFilters) => {
     setError(null);
 
     try {
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       const response = await fetch('https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/places', {
         method: 'POST',
         headers: {
@@ -68,19 +72,28 @@ export const useExperiences = (filters?: ExperienceFilters) => {
           lat,
           lng,
           radiusMeters: 5000,
-          category_slug: categorySlug,
+          category_slug: categorySlug || 'stroll',
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        throw new Error('Failed to fetch nearby places');
+        console.warn('Places API not available, falling back to database experiences');
+        // Fallback to database experiences instead of throwing error
+        await fetchExperiences();
+        return;
       }
 
       const result = await response.json();
       
-      if (result.results && result.results.length > 0) {
+      // Handle both array response and object with results property
+      const places = Array.isArray(result) ? result : (result.results || []);
+      
+      if (places.length > 0) {
         // Convert places to experiences format
-        const newExperiences: Experience[] = result.results.map((place: any) => ({
+        const newExperiences: Experience[] = places.map((place: any) => ({
           id: place.id,
           title: place.title,
           category: place.category,
@@ -99,14 +112,23 @@ export const useExperiences = (filters?: ExperienceFilters) => {
         }));
 
         setExperiences(prev => [...prev, ...newExperiences]);
+      } else {
+        console.log('No nearby places found, falling back to database experiences');
+        await fetchExperiences();
       }
     } catch (err: any) {
-      setError(err.message);
-      console.error('Error fetching nearby places:', err);
+      console.warn('Error fetching nearby places, falling back to database experiences:', err.message);
+      // Instead of setting error, fallback to database experiences
+      try {
+        await fetchExperiences();
+      } catch (fallbackErr) {
+        console.error('Fallback also failed:', fallbackErr);
+        setError('Unable to load experiences');
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchExperiences]);
 
   const saveExperience = useCallback(async (experienceId: string, status: string = 'liked') => {
     try {

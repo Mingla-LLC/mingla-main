@@ -83,16 +83,6 @@ export default function AuthScreen() {
     }
   };
 
-  const handleBypassAuth = () => {
-    // Create a mock user for testing
-    const mockUser = {
-      id: 'test-user-id',
-      email: 'test@example.com',
-      display_name: 'Test User',
-      created_at: new Date().toISOString(),
-    };
-    setAuth(mockUser as any);
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -202,15 +192,6 @@ export default function AuthScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Bypass for Testing */}
-            <TouchableOpacity
-              style={styles.bypassButton}
-              onPress={handleBypassAuth}
-            >
-              <Text style={styles.bypassButtonText}>
-                Bypass Auth (Testing)
-              </Text>
-            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -308,15 +289,5 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontSize: 16,
     fontWeight: '500',
-  },
-  bypassButton: {
-    alignItems: 'center',
-    marginTop: 20,
-    paddingVertical: 12,
-  },
-  bypassButtonText: {
-    color: '#666',
-    fontSize: 14,
-    fontStyle: 'italic',
   },
 });

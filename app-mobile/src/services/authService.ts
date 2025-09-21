@@ -85,7 +85,17 @@ class AuthService {
   async getCurrentUser() {
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
-      if (error) throw error;
+      
+      // Handle missing session gracefully - this is normal when user is not signed in
+      if (error && error.message.includes('Auth session missing')) {
+        console.log('No active session - user not signed in');
+        return { user: null, error: null };
+      }
+      
+      if (error) {
+        console.error('Get current user error:', error);
+        return { user: null, error };
+      }
       
       if (user) {
         await this.loadUserProfile(user.id);
