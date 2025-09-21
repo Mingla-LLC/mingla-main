@@ -352,6 +352,11 @@ async function annotateWithTravel(candidates: any[], preferences: Recommendation
 
 function filterByConstraints(candidates: any[], preferences: RecommendationsRequest): any[] {
   return candidates.filter(candidate => {
+    // Category filter - ENSURE CATEGORY MATCHING
+    if (!preferences.categories.includes(candidate.category)) {
+      return false;
+    }
+
     // Travel constraint filter
     if (candidate.travel) {
       if (preferences.travel.constraint.type === 'TIME') {

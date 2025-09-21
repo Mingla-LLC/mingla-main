@@ -14,13 +14,15 @@ interface RecommendationsGridProps {
   onAdjustFilters?: () => void;
   onInvite?: (card: CardType) => void;
   onSave?: (card: CardType) => void;
+  userTimePreference?: string;
 }
 export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
   preferences,
   fullPreferences,
   onAdjustFilters,
   onInvite,
-  onSave
+  onSave,
+  userTimePreference
 }) => {
   const [recommendations, setRecommendations] = useState<RecommendationsResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -266,7 +268,17 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       {/* Single Card Display */}
       <div className="flex justify-center">
         <AnimatePresence mode="wait">
-          <SingleCardDisplay key={recommendations.cards[currentCardIndex].id} card={recommendations.cards[currentCardIndex]} onLike={handleLike} onDislike={handleDislike} onInvite={handleCardInvite} hasNext={currentCardIndex < recommendations.cards.length - 1} cardNumber={currentCardIndex + 1} totalCards={recommendations.cards.length} />
+          <SingleCardDisplay 
+            key={recommendations.cards[currentCardIndex].id} 
+            card={recommendations.cards[currentCardIndex]} 
+            onLike={handleLike} 
+            onDislike={handleDislike} 
+            onInvite={handleCardInvite} 
+            hasNext={currentCardIndex < recommendations.cards.length - 1} 
+            cardNumber={currentCardIndex + 1} 
+            totalCards={recommendations.cards.length}
+            userTimePreference={userTimePreference}
+          />
         </AnimatePresence>
       </div>
     </div>;

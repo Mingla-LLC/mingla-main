@@ -15,16 +15,41 @@ interface TimelineStep {
 interface AnimatedTimelineProps {
   card: RecommendationCard;
   isVisible: boolean;
+  userTimePreference?: string;
+  specificTime?: string;
 }
 
-export const AnimatedTimeline: React.FC<AnimatedTimelineProps> = ({ card, isVisible }) => {
+export const AnimatedTimeline: React.FC<AnimatedTimelineProps> = ({ card, isVisible, userTimePreference, specificTime }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Generate timeline steps based on card data
+  // Generate timeline steps based on card data and user preferences
   const generateTimelineSteps = (card: RecommendationCard): TimelineStep[] => {
-    const startTime = card.startTime ? new Date(card.startTime) : new Date();
+    let startTime = new Date();
+    
+    // Use user time preference if available
+    if (userTimePreference && userTimePreference !== 'now') {
+      if (userTimePreference === 'tonight') {
+        startTime.setHours(19, 0, 0, 0);
+      } else if (userTimePreference === 'this weekend') {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
+        startTime = new Date(today);
+        startTime.setDate(today.getDate() + daysUntilSaturday);
+        startTime.setHours(14, 0, 0, 0);
+      } else if (specificTime) {
+        const [hours, minutes] = specificTime.split(':').map(Number);
+        startTime.setHours(hours, minutes, 0, 0);
+      }
+    } else if (card.startTime) {
+      startTime = new Date(card.startTime);
+    }
+    
     const steps: TimelineStep[] = [];
+    
+    // Only show times if user has set a time preference
+    const showTimes = userTimePreference && userTimePreference !== 'now';
 
     // Travel to location
     if (card.route?.etaMinutes && card.route.etaMinutes > 0) {
@@ -33,7 +58,7 @@ export const AnimatedTimeline: React.FC<AnimatedTimelineProps> = ({ card, isVisi
       
       steps.push({
         id: 'travel',
-        time: travelTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        time: showTimes ? travelTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
         title: `Head to ${card.title}`,
         description: `${card.route.etaMinutes} min ${card.route.mode?.toLowerCase() || 'travel'}`,
         icon: <MapPin className="h-4 w-4" />,
@@ -44,7 +69,7 @@ export const AnimatedTimeline: React.FC<AnimatedTimelineProps> = ({ card, isVisi
     // Arrival and main activity
     steps.push({
       id: 'arrival',
-      time: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: showTimes ? startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
       title: `Arrive at ${card.title}`,
       description: card.copy?.oneLiner || 'Start your experience',
       icon: getCategoryIcon(card.category),
@@ -57,7 +82,7 @@ export const AnimatedTimeline: React.FC<AnimatedTimelineProps> = ({ card, isVisi
     
     steps.push({
       id: 'highlight',
-      time: midTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: showTimes ? midTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
       title: getHighlightTitle(card.category),
       description: card.copy?.tip || 'Enjoy the best part of your experience',
       icon: <Heart className="h-4 w-4" />,
@@ -70,7 +95,7 @@ export const AnimatedTimeline: React.FC<AnimatedTimelineProps> = ({ card, isVisi
     
     steps.push({
       id: 'end',
-      time: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: showTimes ? endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
       title: 'Experience Complete',
       description: 'Perfect time for photos and memories',
       icon: <Camera className="h-4 w-4" />,
@@ -198,13 +223,15 @@ export const AnimatedTimeline: React.FC<AnimatedTimelineProps> = ({ card, isVisi
             {/* Step content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
-                <motion.span
-                  initial={{ opacity: 0.7 }}
-                  animate={{ opacity: index <= currentStep ? 1 : 0.7 }}
-                  className="text-xs font-mono text-primary"
-                >
-                  {step.time}
-                </motion.span>
+                {step.time && (
+                  <motion.span
+                    initial={{ opacity: 0.7 }}
+                    animate={{ opacity: index <= currentStep ? 1 : 0.7 }}
+                    className="text-xs font-mono text-primary"
+                  >
+                    {step.time}
+                  </motion.span>
+                )}
                 {index === currentStep && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0 }}

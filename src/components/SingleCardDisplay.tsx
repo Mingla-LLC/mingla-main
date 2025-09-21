@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { AnimatedTimeline } from '@/components/AnimatedTimeline';
+import { TrafficHeatmap } from '@/components/TrafficHeatmap';
 import type { RecommendationCard as CardType } from '@/types/recommendations';
 interface SingleCardDisplayProps {
   card: CardType;
@@ -14,6 +15,8 @@ interface SingleCardDisplayProps {
   hasNext: boolean;
   cardNumber: number;
   totalCards: number;
+  userTimePreference?: string;
+  specificTime?: string;
 }
 export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
   card,
@@ -22,7 +25,9 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
   onInvite,
   hasNext,
   cardNumber,
-  totalCards
+  totalCards,
+  userTimePreference,
+  specificTime
 }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
@@ -157,7 +162,15 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
               }} className="overflow-hidden">
                     <div className="pt-4 space-y-4">
                       {/* Animated Timeline */}
-                      <AnimatedTimeline card={card} isVisible={isExpanded} />
+                      <AnimatedTimeline 
+                        card={card} 
+                        isVisible={isExpanded} 
+                        userTimePreference={userTimePreference}
+                        specificTime={specificTime}
+                      />
+                      
+                      {/* Traffic Heatmap */}
+                      <TrafficHeatmap card={card} />
                       
                       <div className="bg-accent/5 rounded-xl p-4 space-y-4">
                         {/* Metadata Grid */}
@@ -168,7 +181,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
                           </div>
                           <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">
                             <DollarSign className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                            <span className="text-xs">${card.estimatedCostPerPerson}/person</span>
+                            <span className="text-xs">{card.estimatedCostPerPerson}/person</span>
                           </div>
                           {card.reviewCount && <>
                               <div className="flex items-center gap-2 p-2 bg-background/50 rounded-lg">

@@ -19,7 +19,7 @@ import { RecommendationsGrid } from '@/components/RecommendationsGrid';
 import { convertPreferencesToRequest } from '@/utils/preferencesConverter';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import type { RecommendationCard as CardType } from '@/types/recommendations';
-import minglaLogo from '@/assets/mingla-logo-new.png';
+import minglaLogo from '@/assets/mingla-logo-updated.png';
 import { cn } from '@/lib/utils';
 
 interface ActivePreferences {
@@ -207,7 +207,17 @@ const Home = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-lg border-b border-border/50">
-        <div className="px-6 py-4">
+        {/* Logo Section */}
+        <div className="px-6 pt-6 pb-4 text-center">
+          <img 
+            src={minglaLogo} 
+            alt="Mingla" 
+            className="h-12 mx-auto mb-2"
+          />
+        </div>
+        
+        {/* Controls Section */}
+        <div className="px-6 pb-4">
           <div className="flex items-center justify-between">
             {/* Left side - Controls */}
             <div className="flex items-center gap-3">
@@ -227,13 +237,6 @@ const Home = () => {
               >
                 <Sliders className="h-5 w-5" />
               </Button>
-            </div>
-            
-            {/* Center - Logo */}
-            <div className="flex items-center">
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
-                Mingla
-              </h1>
             </div>
             
             {/* Right side - Session Controls */}
@@ -268,7 +271,8 @@ const Home = () => {
             fullPreferences={activePreferences}
             onAdjustFilters={() => setShowPreferences(true)} 
             onInvite={handleCardInvite} 
-            onSave={handleCardSave} 
+            onSave={handleCardSave}
+            userTimePreference={activePreferences.time}
           />
         </div>
       ) : (
