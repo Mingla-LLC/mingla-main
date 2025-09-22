@@ -521,76 +521,298 @@ function matchesExperienceTypes(candidate: any, experienceTypes: string[]): bool
 }
 
 function scoreAndRank(candidates: any[], preferences: RecommendationsRequest): any[] {
-  const weights = {
-    rating: 0.25,
-    reviewCount: 0.15,
-    eta: 0.20,
-    budget: 0.15,
-    time: 0.10,
-    photo: 0.15
+  console.log('📈 Starting advanced scoring for', candidates.length, 'candidates');
+  
+  // Category synonyms for tag overlap scoring
+  const categoryKeywords = {
+    'play_move': ['bowling', 'climbing', 'dance', 'skating', 'kayak', 'hike', 'pickleball', 'arcade', 'trampoline', 'mini golf', 'go kart', 'axe throwing', 'laser tag', 'escape room', 'basketball', 'tennis', 'badminton', 'gym', 'sports', 'recreation'],
+    'dining': ['tasting menu', 'prix fixe', 'chef counter', 'omakase', 'wine pairing', 'fine dining', 'restaurant', 'steakhouse', 'seafood'],
+    'sip': ['cocktail', 'wine', 'brewery', 'bar', 'coffee', 'tea', 'speakeasy'],
+    'creative': ['pottery', 'painting', 'workshop', 'art', 'gallery', 'museum', 'craft'],
+    'screen_relax': ['cinema', 'movie', 'theater', 'spa', 'massage'],
+    'stroll': ['park', 'garden', 'trail', 'scenic', 'walk', 'botanical'],
+    'casual_eats': ['pizza', 'burger', 'taco', 'food truck', 'deli', 'cafe']
   };
 
   candidates.forEach(candidate => {
     let score = 0;
+    const candidateName = candidate.name.toLowerCase();
+    const candidateAddress = (candidate.address || '').toLowerCase();
+    const candidateTypes = candidate.placeTypes || [];
 
-    // Rating score (0-1)
-    if (candidate.rating) {
-      score += weights.rating * (candidate.rating / 5.0);
+    // 1. CATEGORY MATCH (3.0 weight)
+    const categoryMatch = preferences.categories.includes(candidate.category) ? 1 : 0;
+    score += 3.0 * categoryMatch;
+
+    // 2. EXPERIENCE MATCH (2.0 weight) 
+    let experienceMatch = 0;
+    if (preferences.experienceTypes?.length) {
+      experienceMatch = preferences.experienceTypes.some(expType => 
+        matchesExperienceTypeForScoring(candidate, expType)
+      ) ? 1 : 0;
+    }
+    score += 2.0 * experienceMatch;
+
+    // 3. TAG OVERLAP (1.6 weight) - using name/address text matching
+    const keywords = categoryKeywords[candidate.category] || [];
+    const tagOverlap = keywords.filter(keyword => 
+      candidateName.includes(keyword) || 
+      candidateAddress.includes(keyword) ||
+      candidateTypes.some(type => type.includes(keyword.replace(' ', '_')))
+    ).length / Math.max(keywords.length, 1);
+    score += 1.6 * tagOverlap;
+
+    // 4. EMBEDDING SIMILARITY (1.3 weight) - approximate with text matching
+    const queryTerms = [...preferences.categories, ...(preferences.experienceTypes || [])];
+    const textSimilarity = queryTerms.filter(term => 
+      candidateName.includes(term) || candidateAddress.includes(term)
+    ).length / Math.max(queryTerms.length, 1);
+    score += 1.3 * textSimilarity;
+
+    // 5. POPULARITY (0.6 weight) - using rating and review count
+    let popularity = 0;
+    if (candidate.rating && candidate.reviewCount) {
+      // Normalize: rating (0-1) * log of reviews (0-1)
+      const ratingScore = candidate.rating / 5.0;
+      const reviewScore = Math.min(Math.log10(candidate.reviewCount + 1) / 4, 1);
+      popularity = (ratingScore + reviewScore) / 2;
+    }
+    score += 0.6 * popularity;
+
+    // 6. QUALITY (0.4 weight) - data completeness
+    let quality = 0;
+    const hasImage = candidate.imageUrl ? 0.25 : 0;
+    const hasRating = candidate.rating ? 0.25 : 0;
+    const hasPrice = candidate.priceLevel ? 0.25 : 0;
+    const hasHours = candidate.openingHours ? 0.25 : 0;
+    quality = hasImage + hasRating + hasPrice + hasHours;
+    score += 0.4 * quality;
+
+    // 7. DISTANCE PENALTY (-0.3 weight per km beyond 5km)
+    let distancePenalty = 0;
+    if (candidate.travel?.distanceText) {
+      const distanceMatch = candidate.travel.distanceText.match(/(\d+\.?\d*)\s*km/);
+      if (distanceMatch) {
+        const distanceKm = parseFloat(distanceMatch[1]);
+        if (distanceKm > 5) {
+          distancePenalty = (distanceKm - 5) * 0.3;
+        }
+        candidate.distanceKm = distanceKm; // Store for output
+      }
+    }
+    score -= distancePenalty;
+
+    // 8. FRESHNESS (0.2 weight) - approximate with rating recency
+    const freshness = candidate.reviewCount && candidate.reviewCount > 50 ? 0.8 : 0.3;
+    score += 0.2 * freshness;
+
+    // CATEGORY BOOSTS
+    if (candidate.category === 'play_move') {
+      const playMoveBoosts = ['bowling', 'climbing', 'dance', 'skating', 'kayak', 'hike', 'pickleball', 'arcade', 'trampoline', 'mini golf', 'go kart', 'axe throwing', 'laser tag', 'escape room', 'basketball', 'tennis', 'badminton'];
+      const hasBoost = playMoveBoosts.some(activity => 
+        candidateName.includes(activity) || candidateTypes.some(type => type.includes(activity))
+      );
+      if (hasBoost) score += 0.7;
     }
 
-    // Review count score (logarithmic, 0-1)
-    if (candidate.reviewCount && candidate.reviewCount > 0) {
-      score += weights.reviewCount * Math.min(Math.log10(candidate.reviewCount) / 4, 1);
+    if (candidate.category === 'dining') {
+      const diningBoosts = ['tasting menu', 'prix fixe', 'chef counter', 'omakase', 'wine pairing', 'tasting', 'chef', 'fine dining'];
+      const hasBoost = diningBoosts.some(activity => 
+        candidateName.includes(activity) || candidateAddress.includes(activity)
+      );
+      if (hasBoost) score += 0.7;
     }
 
-    // ETA score (closer is better, 0-1)
-    if (candidate.travel?.durationMinutes) {
-      const maxTime = preferences.travel.constraint.maxMinutes || 30;
-      score += weights.eta * Math.max(0, 1 - (candidate.travel.durationMinutes / maxTime));
-    }
-
-    // Budget fit score (0-1)
-    if (candidate.estimatedCost) {
-      const budgetRange = preferences.budget.max - preferences.budget.min;
-      const costFromMin = candidate.estimatedCost - preferences.budget.min;
-      score += weights.budget * Math.max(0, 1 - Math.abs(costFromMin - budgetRange / 2) / (budgetRange / 2));
-    }
-
-    // Photo quality score
-    if (candidate.imageUrl) {
-      score += weights.photo;
-    }
-
+    // Store scoring details for debugging
     candidate.score = score;
+    candidate.scoreBreakdown = {
+      categoryMatch: 3.0 * categoryMatch,
+      experienceMatch: 2.0 * experienceMatch,
+      tagOverlap: 1.6 * tagOverlap,
+      textSimilarity: 1.3 * textSimilarity,
+      popularity: 0.6 * popularity,
+      quality: 0.4 * quality,
+      distancePenalty: -distancePenalty,
+      freshness: 0.2 * freshness
+    };
   });
 
-  return candidates.sort((a, b) => (b.score || 0) - (a.score || 0));
+  // Sort by score descending
+  const sortedCandidates = candidates.sort((a, b) => (b.score || 0) - (a.score || 0));
+  
+  console.log('🏆 Top 5 scored candidates:', sortedCandidates.slice(0, 5).map(c => ({
+    name: c.name,
+    category: c.category,
+    score: c.score?.toFixed(2),
+    breakdown: c.scoreBreakdown
+  })));
+
+  return sortedCandidates;
+}
+
+function matchesExperienceTypeForScoring(candidate: any, expType: string): boolean {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  
+  switch (expType) {
+    case 'business':
+      return candidateTypes.includes('cafe') || 
+             candidateTypes.includes('library') ||
+             candidateName.includes('hotel') ||
+             candidateName.includes('co-working') ||
+             candidateName.includes('quiet');
+    
+    case 'romantic':
+      return candidateTypes.includes('restaurant') ||
+             candidateTypes.includes('bar') ||
+             candidateName.includes('rooftop') ||
+             candidateName.includes('intimate') ||
+             (candidate.priceLevel && candidate.priceLevel >= 3);
+    
+    case 'group_fun':
+      return candidateName.includes('bowling') ||
+             candidateName.includes('arcade') ||
+             candidateName.includes('karaoke') ||
+             candidateName.includes('escape') ||
+             candidateTypes.includes('amusement_park');
+    
+    case 'solo_adventure':
+      return candidateTypes.includes('museum') ||
+             candidateTypes.includes('art_gallery') ||
+             candidateTypes.includes('park') ||
+             candidateName.includes('solo') ||
+             candidateName.includes('self-guided');
+    
+    case 'first_date':
+      return candidateTypes.includes('cafe') ||
+             candidateTypes.includes('restaurant') ||
+             (candidateName.includes('quiet') && !candidateName.includes('loud'));
+    
+    case 'friendly':
+      return !candidateName.includes('members only') &&
+             !candidateName.includes('exclusive') &&
+             !candidateTypes.includes('night_club');
+    
+    default:
+      return false;
+  }
 }
 
 function applyDiversity(candidates: any[], selectedCategories: string[]): any[] {
+  console.log('🎯 Applying Maximal Marginal Relevance diversity to top candidates');
+  
+  // Take top 40 for diversity processing
+  const topCandidates = candidates.slice(0, 40);
   const diversified: any[] = [];
+  const lambda = 0.75; // MMR parameter
+  
+  // Track diversity factors
   const categoryCount: Record<string, number> = {};
   const priceCount: Record<number, number> = {};
-
-  // Initialize counts
+  const subCategoryCount: Record<string, number> = {};
+  
+  // Initialize counters
   selectedCategories.forEach(cat => categoryCount[cat] = 0);
-
-  for (const candidate of candidates) {
-    const category = candidate.category;
-    const priceLevel = candidate.priceLevel || 1;
-
-    // Ensure we have at least one from each selected category (if available)
-    const categoryUnderRep = categoryCount[category] < 1;
-    const priceDiverse = (priceCount[priceLevel] || 0) < 3;
-
-    if (diversified.length < 20 && (categoryUnderRep || priceDiverse || diversified.length < 12)) {
-      diversified.push(candidate);
-      categoryCount[category] = (categoryCount[category] || 0) + 1;
-      priceCount[priceLevel] = (priceCount[priceLevel] || 0) + 1;
+  
+  // Add first item (highest scoring)
+  if (topCandidates.length > 0) {
+    const first = topCandidates[0];
+    diversified.push(first);
+    updateDiversityCounters(first, categoryCount, priceCount, subCategoryCount);
+  }
+  
+  // MMR selection for remaining items
+  for (let i = 1; i < topCandidates.length && diversified.length < 20; i++) {
+    let bestCandidate = null;
+    let bestMMRScore = -Infinity;
+    
+    for (const candidate of topCandidates) {
+      if (diversified.includes(candidate)) continue;
+      
+      // Relevance score (normalized to 0-1)
+      const relevanceScore = (candidate.score || 0) / Math.max(topCandidates[0].score || 1, 1);
+      
+      // Diversity score - penalize similar items
+      let diversityScore = 1.0;
+      
+      // Category diversity penalty
+      const categoryPenalty = categoryCount[candidate.category] || 0;
+      diversityScore *= Math.exp(-0.5 * categoryPenalty);
+      
+      // Price tier diversity penalty  
+      const pricePenalty = priceCount[candidate.priceLevel || 1] || 0;
+      diversityScore *= Math.exp(-0.3 * pricePenalty);
+      
+      // Sub-category diversity penalty
+      const subCategory = getSubCategory(candidate);
+      const subCategoryPenalty = subCategoryCount[subCategory] || 0;
+      diversityScore *= Math.exp(-0.4 * subCategoryPenalty);
+      
+      // MMR score: λ * relevance + (1-λ) * diversity
+      const mmrScore = lambda * relevanceScore + (1 - lambda) * diversityScore;
+      
+      if (mmrScore > bestMMRScore) {
+        bestMMRScore = mmrScore;
+        bestCandidate = candidate;
+      }
+    }
+    
+    if (bestCandidate) {
+      diversified.push(bestCandidate);
+      updateDiversityCounters(bestCandidate, categoryCount, priceCount, subCategoryCount);
     }
   }
-
+  
+  console.log('🎨 Diversity applied:', {
+    original: topCandidates.length,
+    diversified: diversified.length,
+    categorySpread: Object.keys(categoryCount).map(cat => `${cat}: ${categoryCount[cat]}`).join(', ')
+  });
+  
   return diversified;
+}
+
+function updateDiversityCounters(
+  candidate: any, 
+  categoryCount: Record<string, number>,
+  priceCount: Record<number, number>,
+  subCategoryCount: Record<string, number>
+): void {
+  categoryCount[candidate.category] = (categoryCount[candidate.category] || 0) + 1;
+  priceCount[candidate.priceLevel || 1] = (priceCount[candidate.priceLevel || 1] || 0) + 1;
+  
+  const subCategory = getSubCategory(candidate);
+  subCategoryCount[subCategory] = (subCategoryCount[subCategory] || 0) + 1;
+}
+
+function getSubCategory(candidate: any): string {
+  const name = candidate.name.toLowerCase();
+  const types = candidate.placeTypes || [];
+  
+  // Determine sub-category for better diversity
+  if (candidate.category === 'play_move') {
+    if (name.includes('bowling') || types.includes('bowling_alley')) return 'bowling';
+    if (name.includes('climb') || types.includes('climbing_gym')) return 'climbing';
+    if (name.includes('golf') || types.includes('golf_course')) return 'golf';
+    if (name.includes('gym') || types.includes('gym')) return 'gym';
+    return 'other_activity';
+  }
+  
+  if (candidate.category === 'dining') {
+    if (types.includes('fine_dining_restaurant')) return 'fine_dining';
+    if (name.includes('steakhouse') || types.includes('steakhouse')) return 'steakhouse';
+    if (name.includes('sushi') || types.includes('sushi_restaurant')) return 'sushi';
+    return 'other_dining';
+  }
+  
+  if (candidate.category === 'sip') {
+    if (name.includes('coffee') || types.includes('coffee_shop')) return 'coffee';
+    if (name.includes('wine') || types.includes('wine_bar')) return 'wine';
+    if (name.includes('brewery') || types.includes('brewery')) return 'brewery';
+    return 'other_drink';
+  }
+  
+  return candidate.category;
 }
 
 async function enrichWithLLM(candidates: any[], preferences: RecommendationsRequest): Promise<void> {
@@ -747,10 +969,33 @@ async function convertToCards(candidates: any[], preferences: RecommendationsReq
       }
     }
 
+    // Generate reason codes based on scoring factors
+    const reasonCodes: string[] = [];
+    
+    if (preferences.categories.includes(candidate.category)) {
+      reasonCodes.push(`Matches ${candidate.category.replace('_', ' ')} category`);
+    }
+    
+    if (candidate.rating && candidate.rating >= 4.0) {
+      reasonCodes.push(`Highly rated (${candidate.rating}/5)`);
+    }
+    
+    if (candidate.travel?.durationMinutes && candidate.travel.durationMinutes <= 15) {
+      reasonCodes.push(`Close by (${candidate.travel.durationMinutes} min)`);
+    }
+    
+    if (candidate.priceLevel && candidate.priceLevel <= 2) {
+      reasonCodes.push('Budget-friendly');
+    }
+
     return {
       id: candidate.id,
       title: candidate.name,
       subtitle,
+      primary_category: candidate.category,
+      distance_km: candidate.distanceKm || null,
+      price_tier: candidate.priceLevel ? priceSymbols[candidate.priceLevel - 1] : null,
+      reason_codes: reasonCodes,
       category: candidate.category,
       priceLevel: candidate.priceLevel || 1,
       estimatedCostPerPerson: candidate.estimatedCost || 25,
