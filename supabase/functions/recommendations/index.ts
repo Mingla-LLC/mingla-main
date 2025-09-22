@@ -11,40 +11,76 @@ const GOOGLE_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY');
 const EVENTBRITE_TOKEN = Deno.env.get('EVENTBRITE_TOKEN');
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 
-// Category to Google Places types mapping - EXPANDED
-const CATEGORY_TO_PLACE_TYPES: Record<string, string[]> = {
-  'stroll': [
-    'park', 'tourist_attraction', 'point_of_interest', 'natural_feature', 'zoo',
-    'aquarium', 'botanical_garden', 'amusement_park', 'campground'
-  ],
-  'sip': [
-    'bar', 'cafe', 'night_club', 'wine_bar', 'coffee_shop',
-    'tea_house', 'hookah_bar', 'brewery', 'cocktail_bar'
-  ],
-  'casual_eats': [
-    'restaurant', 'food_court', 'meal_takeaway', 'fast_food_restaurant',
-    'food_truck', 'sandwich_shop', 'pizza_restaurant', 'deli'
-  ],
-  'screen_relax': [
-    'movie_theater', 'spa', 'beauty_salon', 'massage_therapist', 'nail_salon'
-  ],
-  'creative': [
-    'art_gallery', 'museum', 'pottery_studio', 'craft_store', 'art_studio',
-    'jewelry_store', 'antique_store', 'library'
-  ],
-  'play_move': [
-    'bowling_alley', 'gym', 'sports_complex', 'recreation_center',
-    'tennis_court', 'basketball_court', 'golf_course', 'mini_golf',
-    'climbing_gym', 'skating_rink'
-  ],
-  'dining': [
-    'restaurant', 'fine_dining_restaurant', 'steakhouse', 'seafood_restaurant',
-    'italian_restaurant', 'french_restaurant', 'sushi_restaurant'
-  ],
-  'freestyle': [
-    'restaurant', 'bar', 'cafe', 'tourist_attraction', 'art_gallery',
-    'museum', 'park', 'movie_theater', 'bowling_alley', 'spa'
-  ]
+// Enhanced Category Mappings with Activity Keywords
+const CATEGORY_MAPPINGS = {
+  'play_move': {
+    places: ['bowling_alley', 'gym', 'sports_complex', 'recreation_center', 'tennis_court', 'basketball_court', 'golf_course', 'mini_golf', 'climbing_gym', 'skating_rink', 'amusement_park'],
+    keywords: ['bowling', 'climbing', 'bouldering', 'dance', 'skating', 'kayak', 'hike', 'pickleball', 'arcade', 'trampoline', 'mini golf', 'go kart', 'axe throwing', 'laser tag', 'escape room', 'basketball', 'tennis', 'badminton', 'rock climbing', 'indoor climbing'],
+    activities: ['bowling', 'climbing', 'bouldering', 'dance', 'skating', 'kayak', 'hikes', 'pickleball', 'arcades', 'trampoline', 'mini golf', 'go kart', 'axe throwing', 'laser tag', 'escape room', 'basketball', 'tennis', 'badminton']
+  },
+  'dining': {
+    places: ['restaurant', 'fine_dining_restaurant', 'steakhouse', 'seafood_restaurant', 'italian_restaurant', 'french_restaurant', 'sushi_restaurant'],
+    keywords: ['tasting menu', 'prix fixe', 'chef counter', 'omakase', 'wine pairing', 'fine dining', 'michelin', 'chef\'s table', 'degustation'],
+    activities: ['tasting menu', 'prix fixe', 'chef counter', 'omakase', 'wine pairing']
+  },
+  'screen_relax': {
+    places: ['movie_theater', 'spa', 'beauty_salon', 'massage_therapist'],
+    keywords: ['cinema', 'movie', 'indie film', 'drive in', 'theater', 'screening', 'film festival', 'documentary'],
+    activities: ['cinema', 'movie', 'indie film', 'drive in', 'theater', 'screening']
+  },
+  'creative': {
+    places: ['art_gallery', 'museum', 'pottery_studio', 'craft_store', 'art_studio', 'jewelry_store', 'library'],
+    keywords: ['pottery', 'painting', 'workshop', 'candle making', 'cooking class', 'woodworking', 'glassblowing', 'art class', 'craft workshop', 'ceramic'],
+    activities: ['pottery', 'painting', 'workshop', 'candle making', 'cooking class', 'woodworking', 'glassblowing']
+  },
+  'sip': {
+    places: ['bar', 'wine_bar', 'brewery', 'cafe', 'coffee_shop', 'tea_house'],
+    keywords: ['cocktail bar', 'wine bar', '5 star hotel bar', 'speakeasy', 'brewery', 'tea house', 'coffee roastery', 'craft cocktail', 'wine tasting'],
+    activities: ['cocktail bars', 'wine bars', '5 star hotel bars', 'speakeasy', 'brewery', 'tea house', 'coffee roastery']
+  },
+  'stroll': {
+    places: ['park', 'tourist_attraction', 'point_of_interest', 'natural_feature', 'zoo', 'aquarium', 'botanical_garden'],
+    keywords: ['scenic walking', 'scenic trail', 'walk in park', 'garden', 'promenade', 'boardwalk', 'nature walk', 'hiking trail'],
+    activities: ['scenic walking routes', 'scenic trails', 'walk in parks', 'gardens', 'promenade', 'boardwalk']
+  },
+  'casual_eats': {
+    places: ['restaurant', 'food_court', 'meal_takeaway', 'fast_food_restaurant', 'food_truck', 'sandwich_shop', 'pizza_restaurant'],
+    keywords: ['taco', 'pizza', 'burger', 'noodle', 'food truck', 'deli', 'cafe', 'casual dining', 'quick bite'],
+    activities: ['tacos', 'pizza', 'burger', 'noodles', 'food trucks', 'deli', 'cafe']
+  },
+  'freestyle': {
+    places: ['restaurant', 'bar', 'cafe', 'tourist_attraction', 'art_gallery', 'museum', 'park', 'movie_theater', 'bowling_alley', 'spa'],
+    keywords: [],
+    activities: []
+  }
+};
+
+// Experience Type Hard Filters
+const EXPERIENCE_TYPE_RULES = {
+  'business': {
+    required: ['wifi', 'quiet', 'reservation_possible', 'work_friendly', 'meeting_space'],
+    forbidden: ['strip_club', 'loud_party_only', 'nightclub', 'dance_club']
+  },
+  'romantic': {
+    required: ['romantic_ambience', 'scenic_view', 'intimate_seating', 'candle_lit', 'date_spot'],
+    forbidden: ['kid_party_only', 'sports_bar_only', 'frat_vibe', 'loud_music', 'family_restaurant']
+  },
+  'group_fun': {
+    required: ['team_based', 'capacity_group_friendly', 'easy_multi_player', 'group_activity', 'social'],
+    forbidden: ['intimate_only', 'quiet_only', 'solo_activity']
+  },
+  'solo_adventure': {
+    required: ['safe_solo', 'individual_activity', 'self_guided', 'solo_friendly'],
+    forbidden: ['requires_pairing_only', 'team_only', 'group_required']
+  },
+  'first_date': {
+    required: ['conversation_friendly', 'comfortable_seating', 'moderate_noise'],
+    forbidden: ['explicitly_rampant_loud_only', 'overly_logistical', 'long_lines', 'complex_gear', 'high_energy_only']
+  },
+  'friendly': {
+    required: [],
+    forbidden: ['date_only', 'couples_only', 'members_only', 'exclusive']
+  }
 };
 
 // LLM cache for generated copy
@@ -53,6 +89,7 @@ const llmCache = new Map<string, { oneLiner: string; tip: string; expires: numbe
 interface RecommendationsRequest {
   budget: { min: number; max: number; perPerson: boolean };
   categories: string[];
+  experienceTypes?: string[];
   timeWindow: { kind: string; start?: string; end?: string; timeOfDay?: string };
   travel: { mode: string; constraint: { type: string; maxMinutes?: number; maxDistance?: number } };
   origin: { lat: number; lng: number };
@@ -195,9 +232,12 @@ async function fetchGooglePlaces(preferences: RecommendationsRequest): Promise<a
     : 10000; // Default 10km radius
 
   for (const category of preferences.categories) {
-    const placeTypes = CATEGORY_TO_PLACE_TYPES[category] || ['tourist_attraction'];
+    const categoryMapping = CATEGORY_MAPPINGS[category];
+    if (!categoryMapping) continue;
     
-    for (const placeType of placeTypes.slice(0, 3)) { // Increased from 2 to 3 types per category
+    const placeTypes = categoryMapping.places || ['tourist_attraction'];
+    
+    for (const placeType of placeTypes.slice(0, 3)) {
       try {
         const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${placeType}&key=${GOOGLE_API_KEY}`;
         
@@ -223,7 +263,9 @@ async function fetchGooglePlaces(preferences: RecommendationsRequest): Promise<a
               : null,
             placeId: place.place_id,
             openingHours: place.opening_hours,
-            source: 'google_places'
+            source: 'google_places',
+            description: '', // Will be used for activity matching
+            placeTypes: place.types || []
           }));
           
           allPlaces.push(...places);
@@ -351,49 +393,131 @@ async function annotateWithTravel(candidates: any[], preferences: Recommendation
 }
 
 function filterByConstraints(candidates: any[], preferences: RecommendationsRequest): any[] {
+  console.log('🔍 Starting advanced filtering with', candidates.length, 'candidates');
+  
   return candidates.filter(candidate => {
-    // Category filter - ENSURE CATEGORY MATCHING
-    if (!preferences.categories.includes(candidate.category)) {
+    // 1. STRICT CATEGORY FILTER - Must match expected activities
+    if (!matchesCategoryActivities(candidate, preferences.categories)) {
+      console.log(`❌ Category mismatch: ${candidate.name} (${candidate.category})`);
       return false;
     }
 
-    // Travel constraint filter
+    // 2. EXPERIENCE TYPE HARD FILTERS
+    if (preferences.experienceTypes?.length) {
+      if (!matchesExperienceTypes(candidate, preferences.experienceTypes)) {
+        console.log(`❌ Experience type mismatch: ${candidate.name}`);
+        return false;
+      }
+    }
+
+    // 3. Travel constraint filter
     if (candidate.travel) {
       if (preferences.travel.constraint.type === 'TIME') {
         const maxMinutes = preferences.travel.constraint.maxMinutes || 30;
         if (candidate.travel.durationMinutes > maxMinutes) return false;
-      } else if (preferences.travel.constraint.type === 'DISTANCE') {
-        // Distance already filtered in API calls
       }
     }
 
-    // Budget filter - IMPROVED
+    // 4. Budget filter
     const budget = preferences.budget;
     let estimatedCost = 0;
     
     if (candidate.source === 'google_places') {
-      // More realistic cost estimates with better defaults
-      const baseCosts = [10, 25, 45, 75, 150]; // $ to $$$$$
-      const priceLevel = candidate.priceLevel || 2; // Default to $$ (index 1) instead of $ (index 0)
-      estimatedCost = baseCosts[Math.min(priceLevel - 1, 4)] || 35; // Default to mid-range if no price level
+      const baseCosts = [15, 30, 50, 85, 150];
+      const priceLevel = candidate.priceLevel || 2;
+      estimatedCost = baseCosts[Math.min(priceLevel - 1, 4)] || 40;
     } else if (candidate.source === 'eventbrite') {
-      estimatedCost = candidate.price || 25; // Better default for events
+      estimatedCost = candidate.price || 30;
     }
 
     const perPersonCost = budget.perPerson ? estimatedCost : estimatedCost / 2;
     
-    // Allow more flexibility - only filter if costs are way outside budget
-    const budgetBuffer = (budget.max - budget.min) * 0.3; // 30% buffer
-    const minWithBuffer = Math.max(0, budget.min - budgetBuffer);
-    const maxWithBuffer = budget.max + budgetBuffer;
-    
-    if (perPersonCost < minWithBuffer || perPersonCost > maxWithBuffer) return false;
+    // Stricter budget filtering
+    if (perPersonCost < budget.min || perPersonCost > budget.max) return false;
 
-    // Store estimated cost for later use
     candidate.estimatedCost = Math.round(perPersonCost);
-
     return true;
   });
+}
+
+function matchesCategoryActivities(candidate: any, selectedCategories: string[]): boolean {
+  for (const category of selectedCategories) {
+    if (candidate.category !== category) continue;
+    
+    const mapping = CATEGORY_MAPPINGS[category];
+    if (!mapping) continue;
+    
+    // For freestyle, allow everything
+    if (category === 'freestyle') return true;
+    
+    // Check if place name or description contains expected activities
+    const candidateName = candidate.name.toLowerCase();
+    const candidateDesc = (candidate.description || '').toLowerCase();
+    const candidateTypes = candidate.placeTypes || [];
+    
+    // Must match at least one expected activity keyword or place type
+    const hasMatchingKeyword = mapping.keywords.some(keyword => 
+      candidateName.includes(keyword.toLowerCase()) || 
+      candidateDesc.includes(keyword.toLowerCase())
+    );
+    
+    const hasMatchingPlaceType = mapping.places.some(placeType => 
+      candidateTypes.includes(placeType)
+    );
+    
+    if (hasMatchingKeyword || hasMatchingPlaceType) return true;
+  }
+  
+  return false;
+}
+
+function matchesExperienceTypes(candidate: any, experienceTypes: string[]): boolean {
+  for (const expType of experienceTypes) {
+    const rules = EXPERIENCE_TYPE_RULES[expType];
+    if (!rules) continue;
+    
+    const candidateName = candidate.name.toLowerCase();
+    const candidateDesc = (candidate.description || '').toLowerCase();
+    const candidateTypes = candidate.placeTypes || [];
+    
+    // Check forbidden attributes
+    const hasForbidden = rules.forbidden.some(attr => 
+      candidateName.includes(attr) || 
+      candidateDesc.includes(attr) ||
+      candidateTypes.some(type => type.includes(attr))
+    );
+    
+    if (hasForbidden) return false;
+    
+    // For business/romantic/etc, check if has required attributes
+    if (rules.required.length > 0) {
+      const hasRequired = rules.required.some(attr => 
+        candidateName.includes(attr) || 
+        candidateDesc.includes(attr) ||
+        candidateTypes.some(type => type.includes(attr)) ||
+        // Special business logic
+        (expType === 'business' && (
+          candidateTypes.includes('cafe') || 
+          candidateTypes.includes('library') ||
+          candidateName.includes('hotel') ||
+          candidateName.includes('co-working') ||
+          candidateName.includes('quiet')
+        )) ||
+        // Special romantic logic  
+        (expType === 'romantic' && (
+          candidateTypes.includes('restaurant') ||
+          candidateTypes.includes('bar') ||
+          candidateName.includes('rooftop') ||
+          candidateName.includes('intimate') ||
+          candidate.priceLevel >= 3
+        ))
+      );
+      
+      if (!hasRequired) return false;
+    }
+  }
+  
+  return true;
 }
 
 function scoreAndRank(candidates: any[], preferences: RecommendationsRequest): any[] {

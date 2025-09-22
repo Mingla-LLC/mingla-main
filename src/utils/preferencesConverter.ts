@@ -59,6 +59,7 @@ export const convertPreferencesToRequest = (
       perPerson: true
     },
     categories: preferences.categories,
+    experienceTypes: preferences.experienceTypes || [],
     timeWindow,
     travel: {
       mode: travelMode,

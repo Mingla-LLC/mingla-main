@@ -7,6 +7,7 @@ export interface RecommendationsRequest {
     perPerson: boolean;
   };
   categories: string[];
+  experienceTypes?: string[];
   timeWindow: {
     kind: 'Now' | 'Tonight' | 'ThisWeekend' | 'Custom';
     start?: string | null;
