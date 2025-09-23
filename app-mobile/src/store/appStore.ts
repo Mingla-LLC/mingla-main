@@ -20,6 +20,9 @@ interface AppState {
   pendingInvites: CollaborationInvite[];
   isInSolo: boolean;
   
+  // Recommendations state
+  currentCardIndex: number;
+  
   // Actions
   setAuth: (user: User | null) => void;
   setProfile: (profile: User | null) => void;
@@ -39,6 +42,9 @@ interface AppState {
   setPendingInvites: (invites: CollaborationInvite[]) => void;
   setIsInSolo: (isInSolo: boolean) => void;
   
+  // Recommendations actions
+  setCurrentCardIndex: (index: number) => void;
+  
   // Utilities
   clearUserData: () => void;
 }
@@ -57,6 +63,7 @@ export const useAppStore = create<AppState>()(
       availableSessions: [],
       pendingInvites: [],
       isInSolo: true,
+      currentCardIndex: 0,
 
       // Auth actions
       setAuth: (user) => {
@@ -116,6 +123,9 @@ export const useAppStore = create<AppState>()(
       setAvailableSessions: (availableSessions) => set({ availableSessions }),
       setPendingInvites: (pendingInvites) => set({ pendingInvites }),
       setIsInSolo: (isInSolo) => set({ isInSolo }),
+      
+      // Recommendations actions
+      setCurrentCardIndex: (currentCardIndex) => set({ currentCardIndex }),
 
       // Utilities
       clearUserData: () => set({
@@ -128,7 +138,8 @@ export const useAppStore = create<AppState>()(
         currentSession: null,
         availableSessions: [],
         pendingInvites: [],
-        isInSolo: true
+        isInSolo: true,
+        currentCardIndex: 0
       }),
     }),
     {
@@ -142,7 +153,8 @@ export const useAppStore = create<AppState>()(
         saves: state.saves,
         boards: state.boards,
         currentSession: state.currentSession,
-        isInSolo: state.isInSolo
+        isInSolo: state.isInSolo,
+        currentCardIndex: state.currentCardIndex
       }),
     }
   )

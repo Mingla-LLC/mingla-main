@@ -10,7 +10,7 @@ import { useNavigation } from '@react-navigation/native';
 
 // Import screens
 import HomeScreen from './src/screens/HomeScreen';
-import ConnectionsScreen from './src/screens/ConnectionsScreenTest';
+import ConnectionsScreen from './src/screens/ConnectionsScreen';
 import ActivityScreen from './src/screens/ActivityScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ProfileSettingsScreen from './src/screens/ProfileSettingsScreen';

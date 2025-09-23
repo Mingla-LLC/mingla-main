@@ -1,0 +1,865 @@
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  Linking,
+  Alert,
+  ScrollView,
+  Dimensions,
+  Animated,
+} from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import { Ionicons } from '@expo/vector-icons';
+import { RecommendationCard } from '../types';
+
+interface SingleCardDisplayProps {
+  card: RecommendationCard;
+  onLike: (card: RecommendationCard) => void;
+  onDislike: (card: RecommendationCard) => void;
+  onInvite: (card: RecommendationCard) => void;
+  hasNext: boolean;
+  cardNumber: number;
+  totalCards: number;
+  userTimePreference?: string;
+  specificTime?: string;
+}
+
+export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
+  card,
+  onLike,
+  onDislike,
+  onInvite,
+  hasNext,
+  cardNumber,
+  totalCards,
+  userTimePreference,
+  specificTime
+}) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Swipe animation values
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  
+  // Button animation values
+  const likeButtonScale = useRef(new Animated.Value(1)).current;
+  const dislikeButtonScale = useRef(new Animated.Value(1)).current;
+  
+  // Get screen dimensions for responsive design
+  const screenHeight = Dimensions.get('window').height;
+  const screenWidth = Dimensions.get('window').width;
+  
+  // Calculate responsive values based on screen size
+  const isSmallScreen = screenHeight < 700;
+  const isLargeScreen = screenHeight > 900;
+  
+  // Dynamic padding and sizing
+  const contentPadding = isSmallScreen ? 16 : 24;
+  const actionButtonHeight = isSmallScreen ? 45 : 50;
+  const titleFontSize = isSmallScreen ? 20 : 22;
+  const subtitleFontSize = isSmallScreen ? 13 : 14;
+
+  // Reset overlay state when card changes
+  useEffect(() => {
+    setSwipeDirection(null);
+    setIsAnimating(false);
+    // Reset animation values
+    translateX.setValue(0);
+    translateY.setValue(0);
+    rotate.setValue(0);
+    scale.setValue(1);
+    likeButtonScale.setValue(1);
+    dislikeButtonScale.setValue(1);
+  }, [card.id]);
+
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+  };
+
+  const handleImageError = () => {
+    setImageFailed(true);
+    setImageLoaded(true);
+  };
+
+  // Swipe gesture handlers
+  const handleSwipeGesture = (event: any) => {
+    const { translationX, translationY, velocityX, velocityY } = event.nativeEvent;
+    
+    // Calculate rotation based on horizontal movement
+    const rotationValue = translationX / 10;
+    rotate.setValue(rotationValue);
+    
+    // Update position
+    translateX.setValue(translationX);
+    translateY.setValue(translationY);
+    
+    // Add slight scale effect during swipe
+    const scaleValue = 1 - Math.abs(translationX) / 1000;
+    scale.setValue(Math.max(0.95, scaleValue));
+    
+    // Show visual feedback for swipe direction
+    if (translationX > 50) {
+      setSwipeDirection('right');
+    } else if (translationX < -50) {
+      setSwipeDirection('left');
+    } else {
+      setSwipeDirection(null);
+    }
+  };
+
+  const handleSwipeEnd = (event: any) => {
+    const { translationX, translationY, velocityX, velocityY } = event.nativeEvent;
+    
+    // Reset swipe direction
+    setSwipeDirection(null);
+    
+    // Determine if it's a valid swipe based on distance and velocity
+    const swipeThreshold = screenWidth * 0.3; // 30% of screen width
+    const velocityThreshold = 500;
+    
+    const isSwipeRight = translationX > swipeThreshold || velocityX > velocityThreshold;
+    const isSwipeLeft = translationX < -swipeThreshold || velocityX < -velocityThreshold;
+    
+    if (isSwipeRight) {
+      // Swipe right = Like
+      animateSwipeOut('right', () => onLike(card));
+    } else if (isSwipeLeft) {
+      // Swipe left = Dislike
+      animateSwipeOut('left', () => onDislike(card));
+    } else {
+      // Return to center
+      animateReturnToCenter();
+    }
+  };
+
+  const animateSwipeOut = (direction: 'left' | 'right', callback: () => void) => {
+    const exitX = direction === 'right' ? screenWidth : -screenWidth;
+    const rotationValue = direction === 'right' ? 30 : -30;
+    
+    Animated.parallel([
+      Animated.timing(translateX, {
+        toValue: exitX,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: -50,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(rotate, {
+        toValue: rotationValue,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 0.8,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      callback();
+      // Reset values for next card
+      translateX.setValue(0);
+      translateY.setValue(0);
+      rotate.setValue(0);
+      scale.setValue(1);
+    });
+  };
+
+  const animateReturnToCenter = () => {
+    Animated.parallel([
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.spring(rotate, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+    ]).start();
+  };
+
+  // Button-triggered animations that match swipe behavior
+  const handleButtonLike = () => {
+    if (isAnimating) return;
+    setIsAnimating(true);
+    setSwipeDirection('right');
+    
+    // Button press animation
+    Animated.sequence([
+      Animated.timing(likeButtonScale, {
+        toValue: 0.9,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(likeButtonScale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    // Small delay to show button press feedback
+    setTimeout(() => {
+      animateSwipeOut('right', () => {
+        onLike(card);
+        setIsAnimating(false);
+      });
+    }, 50);
+  };
+
+  const handleButtonDislike = () => {
+    if (isAnimating) return;
+    setIsAnimating(true);
+    setSwipeDirection('left');
+    
+    // Button press animation
+    Animated.sequence([
+      Animated.timing(dislikeButtonScale, {
+        toValue: 0.9,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(dislikeButtonScale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    // Small delay to show button press feedback
+    setTimeout(() => {
+      animateSwipeOut('left', () => {
+        onDislike(card);
+        setIsAnimating(false);
+      });
+    }, 50);
+  };
+
+  const handleViewRoute = async () => {
+    try {
+      const supported = await Linking.canOpenURL(card.route.mapsDeepLink);
+      if (supported) {
+        await Linking.openURL(card.route.mapsDeepLink);
+      } else {
+        Alert.alert('Error', 'Cannot open maps app');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to open maps');
+    }
+  };
+
+  // Price level indicators
+  const getPriceDisplay = (level: number) => {
+    const symbols = ['$', '$$', '$$$', '$$$$', '$$$$$'];
+    return symbols[level - 1] || '$';
+  };
+
+  // Category color mapping
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      'stroll': '#10B981',
+      'sip': '#8B5CF6',
+      'casual_eats': '#F59E0B',
+      'screen_relax': '#3B82F6',
+      'creative': '#EC4899',
+      'play_move': '#EF4444',
+      'dining': '#EAB308',
+      'freestyle': '#6B7280'
+    };
+    return colors[category] || '#6B7280';
+  };
+
+  const formatDuration = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
+  };
+
+  return (
+    <View style={styles.container}>
+      <PanGestureHandler
+        onGestureEvent={handleSwipeGesture}
+        onHandlerStateChange={(event) => {
+          if (event.nativeEvent.state === State.END) {
+            handleSwipeEnd(event);
+          }
+        }}
+      >
+        <Animated.View 
+          style={[
+            styles.card,
+            {
+              transform: [
+                { translateX },
+                { translateY },
+                { rotate: rotate.interpolate({
+                  inputRange: [-30, 0, 30],
+                  outputRange: ['-30deg', '0deg', '30deg'],
+                }) },
+                { scale },
+              ],
+            },
+          ]}
+        >
+        {/* Card Counter */}
+        <View style={styles.counterContainer}>
+          <Text style={styles.counterText}>
+            {cardNumber} of {totalCards}
+          </Text>
+        </View>
+
+        {/* Swipe Feedback Overlays */}
+        {swipeDirection && (
+          <View style={[
+            styles.swipeOverlay,
+            swipeDirection === 'right' ? styles.swipeOverlayRight : styles.swipeOverlayLeft
+          ]}>
+            <View style={[
+              styles.swipeIndicator,
+              swipeDirection === 'right' ? styles.swipeIndicatorRight : styles.swipeIndicatorLeft
+            ]}>
+              <Ionicons 
+                name={swipeDirection === 'right' ? 'heart' : 'close'} 
+                size={isAnimating ? 32 : 48} 
+                color={swipeDirection === 'right' ? '#10B981' : '#EF4444'} 
+              />
+              <Text style={[
+                styles.swipeText,
+                swipeDirection === 'right' ? styles.swipeTextRight : styles.swipeTextLeft,
+                isAnimating && styles.swipeTextSmall
+              ]}>
+                {swipeDirection === 'right' ? 'LIKE' : 'PASS'}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Image Section */}
+        <View style={styles.imageContainer}>
+          {!imageLoaded && !imageFailed && (
+            <View style={styles.imagePlaceholder} />
+          )}
+          
+          {!imageFailed ? (
+            <Image
+              source={{ uri: card.imageUrl }}
+              style={[styles.image, { opacity: imageLoaded ? 1 : 0 }]}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.imageFallback}>
+              <Ionicons name="location-outline" size={48} color="#9CA3AF" />
+            </View>
+          )}
+
+          {/* Overlays */}
+          <View style={styles.overlayTop}>
+            <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(card.category) }]}>
+              <Text style={styles.categoryText}>
+                {card.category.replace('_', ' & ')}
+              </Text>
+            </View>
+          </View>
+
+          {/* Rating */}
+          {card.rating && (
+            <View style={styles.ratingContainer}>
+              <Ionicons name="star" size={12} color="#FCD34D" />
+              <Text style={styles.ratingText}>{card.rating.toFixed(1)}</Text>
+            </View>
+          )}
+
+          {/* Travel Info Overlay */}
+          <View style={styles.travelInfoContainer}>
+            <Ionicons name="navigate-outline" size={12} color="white" />
+            <Text style={styles.travelInfoText}>
+              {card.route.etaMinutes}m • {card.route.distanceText}
+            </Text>
+          </View>
+        </View>
+
+        <ScrollView 
+          style={styles.content}
+          contentContainerStyle={[
+            styles.contentContainer,
+            {
+              padding: contentPadding,
+              paddingBottom: actionButtonHeight + 40, // Dynamic padding for action buttons
+            }
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Title and Subtitle */}
+          <View style={styles.titleSection}>
+            <Text style={[styles.title, { fontSize: titleFontSize }]}>{card.title}</Text>
+            <Text style={[styles.subtitle, { fontSize: subtitleFontSize }]}>{card.subtitle}</Text>
+          </View>
+
+          {/* LLM Generated Copy */}
+          <View style={styles.copySection}>
+            <Text style={styles.oneLiner}>{card.copy.oneLiner}</Text>
+            <View style={styles.tipContainer}>
+              <Ionicons name="chatbubble-outline" size={16} color="#6B7280" />
+              <Text style={styles.tipText}>{card.copy.tip}</Text>
+            </View>
+          </View>
+
+          {/* Expandable Details */}
+          <TouchableOpacity
+            style={styles.expandButton}
+            onPress={() => setIsExpanded(!isExpanded)}
+          >
+            <Text style={styles.expandButtonText}>View Details</Text>
+            <Ionicons
+              name={isExpanded ? "chevron-up" : "chevron-down"}
+              size={16}
+              color="#6B7280"
+            />
+          </TouchableOpacity>
+
+          {isExpanded && (
+            <View style={styles.expandedContent}>
+              {/* Metadata Grid */}
+              <View style={styles.metadataGrid}>
+                <View style={styles.metadataItem}>
+                  <Ionicons name="time-outline" size={16} color="#6B7280" />
+                  <Text style={styles.metadataText}>{formatDuration(card.durationMinutes)}</Text>
+                </View>
+                <View style={styles.metadataItem}>
+                  <Ionicons name="cash-outline" size={16} color="#6B7280" />
+                  <Text style={styles.metadataText}>${card.estimatedCostPerPerson}/person</Text>
+                </View>
+                {card.reviewCount && (
+                  <>
+                    <View style={styles.metadataItem}>
+                      <Ionicons name="people-outline" size={16} color="#6B7280" />
+                      <Text style={styles.metadataText}>
+                        {card.reviewCount > 1000 ? `${(card.reviewCount / 1000).toFixed(1)}k` : card.reviewCount} reviews
+                      </Text>
+                    </View>
+                    <View style={styles.metadataItem}>
+                      <Ionicons name="star-outline" size={16} color="#6B7280" />
+                      <Text style={styles.metadataText}>{card.rating?.toFixed(1)}/5.0</Text>
+                    </View>
+                  </>
+                )}
+              </View>
+
+              {/* Address */}
+              <View style={styles.addressContainer}>
+                <Ionicons name="location-outline" size={16} color="#6B7280" />
+                <Text style={styles.addressText}>{card.address}</Text>
+              </View>
+
+              {/* View Route Button */}
+              <TouchableOpacity style={styles.routeButton} onPress={handleViewRoute}>
+                <Ionicons name="open-outline" size={16} color="#007AFF" />
+                <Text style={styles.routeButtonText}>Open in Maps</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+
+        {/* Action Buttons - Always visible at bottom */}
+        <View style={[
+          styles.actionButtonsContainer,
+          {
+            paddingHorizontal: contentPadding,
+            paddingVertical: isSmallScreen ? 8 : 12,
+          }
+        ]}>
+          <View style={styles.actionButtons}>
+            {/* Dislike Button */}
+            <TouchableOpacity
+              style={[
+                styles.dislikeButton,
+                { height: actionButtonHeight },
+                isAnimating && swipeDirection === 'left' && styles.buttonPressed
+              ]}
+              onPress={handleButtonDislike}
+              disabled={isAnimating}
+            >
+              <Animated.View style={{ transform: [{ scale: dislikeButtonScale }] }}>
+                <Ionicons 
+                  name="close" 
+                  size={isSmallScreen ? 20 : 24} 
+                  color={isAnimating && swipeDirection === 'left' ? "#FFFFFF" : "#EF4444"} 
+                />
+              </Animated.View>
+            </TouchableOpacity>
+
+            {/* Like Button */}
+            <TouchableOpacity
+              style={[
+                styles.likeButton,
+                { height: actionButtonHeight },
+                isAnimating && swipeDirection === 'right' && styles.buttonPressed
+              ]}
+              onPress={handleButtonLike}
+              disabled={isAnimating}
+            >
+              <Animated.View style={{ transform: [{ scale: likeButtonScale }] }}>
+                <Ionicons 
+                  name="heart" 
+                  size={isSmallScreen ? 20 : 24} 
+                  color={isAnimating && swipeDirection === 'right' ? "#FFFFFF" : "#10B981"} 
+                />
+              </Animated.View>
+            </TouchableOpacity>
+          </View>
+
+          {/* Next Card Hint */}
+          {hasNext && (
+            <Text style={styles.nextHint}>
+              Swipe or tap ❤️/✕ to see the next recommendation
+            </Text>
+          )}
+        </View>
+        </Animated.View>
+      </PanGestureHandler>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  card: {
+    flex: 1,
+    backgroundColor: 'white',
+    overflow: 'hidden',
+    maxHeight: '100%',
+  },
+  counterContainer: {
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  counterText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  imageContainer: {
+    position: 'relative',
+    aspectRatio: 4/3,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  imagePlaceholder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#E5E7EB',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  imageFallback: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  overlayTop: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  categoryBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  categoryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'white',
+  },
+  ratingContainer: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  ratingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'white',
+  },
+  travelInfoContainer: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  travelInfoText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'white',
+  },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    flexGrow: 1,
+  },
+  titleSection: {
+    marginBottom: 12,
+  },
+  title: {
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 6,
+    lineHeight: 26,
+  },
+  subtitle: {
+    color: '#6B7280',
+    lineHeight: 18,
+  },
+  copySection: {
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  oneLiner: {
+    fontSize: 15,
+    color: '#1F2937',
+    lineHeight: 22,
+    marginBottom: 8,
+  },
+  tipContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  tipText: {
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 18,
+    flex: 1,
+  },
+  expandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  expandButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  expandedContent: {
+    marginBottom: 16,
+  },
+  metadataGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 16,
+  },
+  metadataItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+    flex: 1,
+    minWidth: '45%',
+  },
+  metadataText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  addressContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#F3F4F6',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  addressText: {
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 16,
+    flex: 1,
+  },
+  routeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EBF8FF',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    gap: 8,
+  },
+  routeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  actionButtonsContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dislikeButton: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 50,
+  },
+  likeButton: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#BBF7D0',
+    backgroundColor: '#F0FDF4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 50,
+  },
+  nextHint: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 6,
+    paddingTop: 4,
+  },
+  // Swipe feedback styles
+  swipeOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    pointerEvents: 'none', // Allow touch events to pass through when not actively swiping
+  },
+  swipeOverlayRight: {
+    backgroundColor: 'rgba(16, 185, 129, 0.05)',
+  },
+  swipeOverlayLeft: {
+    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+  },
+  swipeIndicator: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 4,
+  },
+  swipeIndicatorRight: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderColor: '#10B981',
+  },
+  swipeIndicatorLeft: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: '#EF4444',
+  },
+  swipeText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginTop: 8,
+  },
+  swipeTextRight: {
+    color: '#10B981',
+  },
+  swipeTextLeft: {
+    color: '#EF4444',
+  },
+  swipeTextSmall: {
+    fontSize: 18,
+  },
+  // Button pressed state during animation
+  buttonPressed: {
+    transform: [{ scale: 0.95 }],
+    opacity: 0.8,
+  },
+});

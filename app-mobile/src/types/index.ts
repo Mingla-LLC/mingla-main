@@ -15,6 +15,160 @@ export interface User {
   created_at: string;
 }
 
+// Lovable recommendation types
+export interface RecommendationsRequest {
+  budget: {
+    min: number;
+    max: number;
+    perPerson: boolean;
+  };
+  categories: string[];
+  experienceTypes?: string[];
+  timeWindow: {
+    kind: 'Now' | 'Tonight' | 'ThisWeekend' | 'Custom';
+    start?: string | null;
+    end?: string | null;
+    timeOfDay?: string;
+  };
+  travel: {
+    mode: 'WALKING' | 'DRIVING' | 'TRANSIT';
+    constraint: {
+      type: 'TIME' | 'DISTANCE';
+      maxMinutes?: number;
+      maxDistance?: number;
+    };
+  };
+  origin: {
+    lat: number;
+    lng: number;
+  };
+  units: 'metric' | 'imperial';
+}
+
+export interface RecommendationCard {
+  id: string;
+  title: string;
+  subtitle: string;
+  category: string;
+  priceLevel: number;
+  estimatedCostPerPerson: number;
+  startTime: string;
+  durationMinutes: number;
+  imageUrl: string;
+  address: string;
+  location: {
+    lat: number;
+    lng: number;
+  };
+  route: {
+    mode: 'WALKING' | 'DRIVING' | 'TRANSIT';
+    etaMinutes: number;
+    distanceText: string;
+    mapsDeepLink: string;
+  };
+  source: {
+    provider: 'google_places' | 'eventbrite';
+    placeId?: string;
+    eventId?: string;
+  };
+  copy: {
+    oneLiner: string;
+    tip: string;
+  };
+  actions: {
+    invite: boolean;
+    save: boolean;
+    share: boolean;
+  };
+  rating?: number;
+  reviewCount?: number;
+  openingHours?: {
+    isOpen: boolean;
+    openNow: boolean;
+    periods?: Array<{
+      open: { day: number; time: string };
+      close: { day: number; time: string };
+    }>;
+  };
+}
+
+export interface RecommendationsResponse {
+  cards: RecommendationCard[];
+  meta?: {
+    totalResults: number;
+    processingTimeMs: number;
+    sources: {
+      googlePlaces: number;
+      eventbrite: number;
+    };
+    llmUsed: boolean;
+  };
+}
+
+// Lovable session management types
+export interface CollaborationSession {
+  id: string;
+  name: string;
+  participants: Array<{
+    id: string;
+    name: string;
+    username: string;
+    avatar: string;
+    hasAccepted: boolean;
+  }>;
+  createdAt: string;
+  isActive: boolean;
+  boardId?: string;
+  status: 'pending' | 'active' | 'dormant';
+  invitedBy: string;
+  inviterProfile?: {
+    id: string;
+    name: string;
+    username: string;
+    avatar?: string;
+  };
+}
+
+export interface SessionInvite {
+  id: string;
+  sessionId: string;
+  sessionName: string;
+  invitedBy: {
+    id: string;
+    name: string;
+    username: string;
+    avatar?: string;
+  };
+  message?: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+  createdAt: string;
+}
+
+export interface SessionState {
+  currentSession: CollaborationSession | null;
+  availableSessions: CollaborationSession[];
+  pendingInvites: SessionInvite[];
+  isInSolo: boolean;
+  loading: boolean;
+}
+
+// Preferences types for Lovable compatibility
+export interface ActivePreferences {
+  budgetRange: [number, number];
+  categories: string[];
+  experienceTypes: string[];
+  time: string;
+  travel: string;
+  travelConstraint: 'time' | 'distance';
+  travelTime: number;
+  travelDistance: number;
+  location: string;
+  customLocation: string;
+  custom_lat: number | null;
+  custom_lng: number | null;
+  groupSize: number;
+}
+
 export interface Preferences {
   profile_id: string;
   mode: string;

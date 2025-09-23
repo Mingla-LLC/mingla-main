@@ -3,7 +3,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import { enhancedLocationService, LocationData } from '../services/enhancedLocationService';
 import { enhancedNotificationService } from '../services/enhancedNotificationService';
 import { cameraService } from '../services/cameraService';
-import { aiReasoningService } from '../services/aiReasoningService';
+// Removed aiReasoningService import - using RecommendationsGrid instead
 import { useAppStore } from '../store/appStore';
 
 interface MobileFeaturesContextType {
@@ -26,9 +26,7 @@ interface MobileFeaturesContextType {
   pickFromLibrary: (options?: any) => Promise<any>;
   uploadImage: (uri: string, fileName?: string) => Promise<string | null>;
   
-  // AI
-  getAIRecommendations: (request?: any) => Promise<any[]>;
-  getWeatherAwareRecommendations: (lat: number, lng: number, preferences?: any) => Promise<any[]>;
+  // AI methods removed - using RecommendationsGrid instead
   
   // Status
   isInitialized: boolean;
@@ -126,10 +124,9 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
       onLocationUpdate: (update) => {
         setCurrentLocation(update.location);
         
-        // If significant change, update AI recommendations
+        // If significant change, log it
         if (update.isSignificantChange) {
           console.log('Significant location change detected');
-          // You could trigger AI recommendation refresh here
         }
       },
     });
@@ -211,23 +208,7 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
     }
   };
 
-  const getAIRecommendations = async (request?: any) => {
-    try {
-      return await aiReasoningService.getAIRecommendations(request || {});
-    } catch (error) {
-      console.error('Error getting AI recommendations:', error);
-      return [];
-    }
-  };
-
-  const getWeatherAwareRecommendations = async (lat: number, lng: number, preferences?: any) => {
-    try {
-      return await aiReasoningService.getWeatherAwareRecommendations(lat, lng, preferences);
-    } catch (error) {
-      console.error('Error getting weather-aware recommendations:', error);
-      return [];
-    }
-  };
+  // AI service methods removed - using RecommendationsGrid instead
 
   const value: MobileFeaturesContextType = {
     // Location
@@ -249,9 +230,7 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
     pickFromLibrary,
     uploadImage,
     
-    // AI
-    getAIRecommendations,
-    getWeatherAwareRecommendations,
+    // AI methods removed - using RecommendationsGrid instead
     
     // Status
     isInitialized,

@@ -42,38 +42,101 @@ export const useFriends = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get friends with profile information
+      // Get friends
       const { data: friendsData, error } = await supabase
         .from('friends')
-        .select(`
-          *,
-          friend:friend_user_id (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .eq('user_id', user.id)
         .eq('status', 'accepted');
 
       if (error) throw error;
 
-      // Transform the data to match our interface
-      const transformedFriends: Friend[] = friendsData?.map(friend => ({
-        id: friend.id,
-        user_id: friend.user_id,
-        friend_user_id: friend.friend_user_id,
-        username: friend.friend?.username || 'Unknown',
-        display_name: friend.friend?.display_name,
-        first_name: friend.friend?.first_name,
-        last_name: friend.friend?.last_name,
-        avatar_url: friend.friend?.avatar_url,
-        status: friend.status,
-        created_at: friend.created_at,
-      })) || [];
+      // Get profile information for each friend
+      const transformedFriends: Friend[] = [];
+      for (const friend of friendsData || []) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, username, first_name, last_name, avatar_url')
+          .eq('id', friend.friend_user_id)
+          .single();
+
+        // If profile doesn't exist, create a basic one
+        if (profileError && profileError.code === 'PGRST116') {
+          console.log('Profile not found for user:', friend.friend_user_id, 'creating basic profile');
+          
+          // Create a basic profile for this user
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              id: friend.friend_user_id,
+              username: `user_${friend.friend_user_id.substring(0, 8)}`,
+            })
+            .select('id, username, first_name, last_name, avatar_url')
+            .single();
+
+          if (createError) {
+            console.error('Error creating profile:', createError);
+            // Use fallback data
+            transformedFriends.push({
+              id: friend.id,
+              user_id: friend.user_id,
+              friend_user_id: friend.friend_user_id,
+              username: `user_${friend.friend_user_id.substring(0, 8)}`,
+              display_name: null,
+              first_name: null,
+              last_name: null,
+              avatar_url: null,
+              status: friend.status,
+              created_at: friend.created_at,
+            });
+          } else {
+            transformedFriends.push({
+              id: friend.id,
+              user_id: friend.user_id,
+              friend_user_id: friend.friend_user_id,
+              username: newProfile?.username || 'Unknown',
+              display_name: newProfile?.first_name && newProfile?.last_name 
+                ? `${newProfile.first_name} ${newProfile.last_name}` 
+                : newProfile?.username,
+              first_name: newProfile?.first_name,
+              last_name: newProfile?.last_name,
+              avatar_url: newProfile?.avatar_url,
+              status: friend.status,
+              created_at: friend.created_at,
+            });
+          }
+        } else if (profileError) {
+          console.error('Error fetching profile:', profileError);
+          // Use fallback data
+          transformedFriends.push({
+            id: friend.id,
+            user_id: friend.user_id,
+            friend_user_id: friend.friend_user_id,
+            username: `user_${friend.friend_user_id.substring(0, 8)}`,
+            display_name: null,
+            first_name: null,
+            last_name: null,
+            avatar_url: null,
+            status: friend.status,
+            created_at: friend.created_at,
+          });
+        } else {
+          transformedFriends.push({
+            id: friend.id,
+            user_id: friend.user_id,
+            friend_user_id: friend.friend_user_id,
+            username: profileData?.username || 'Unknown',
+            display_name: profileData?.first_name && profileData?.last_name 
+              ? `${profileData.first_name} ${profileData.last_name}` 
+              : profileData?.username,
+            first_name: profileData?.first_name,
+            last_name: profileData?.last_name,
+            avatar_url: profileData?.avatar_url,
+            status: friend.status,
+            created_at: friend.created_at,
+          });
+        }
+      }
 
       setFriends(transformedFriends);
     } catch (error) {
@@ -92,17 +155,7 @@ export const useFriends = () => {
       // Get incoming friend requests
       const { data: incomingRequests, error: incomingError } = await supabase
         .from('friend_requests')
-        .select(`
-          *,
-          sender:sender_id (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .eq('receiver_id', user.id)
         .eq('status', 'pending');
 
@@ -111,55 +164,128 @@ export const useFriends = () => {
       // Get outgoing friend requests
       const { data: outgoingRequests, error: outgoingError } = await supabase
         .from('friend_requests')
-        .select(`
-          *,
-          receiver:receiver_id (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .eq('sender_id', user.id)
         .eq('status', 'pending');
 
       if (outgoingError) throw outgoingError;
 
       // Transform the data
-      const transformedRequests: FriendRequest[] = [
-        ...(incomingRequests?.map(req => ({
-          id: req.id,
-          sender_id: req.sender_id,
-          receiver_id: req.receiver_id,
-          sender: {
-            username: req.sender?.username || 'Unknown',
-            display_name: req.sender?.display_name,
-            first_name: req.sender?.first_name,
-            last_name: req.sender?.last_name,
-            avatar_url: req.sender?.avatar_url,
-          },
-          status: req.status,
-          created_at: req.created_at,
-          type: 'incoming' as const,
-        })) || []),
-        ...(outgoingRequests?.map(req => ({
-          id: req.id,
-          sender_id: req.sender_id,
-          receiver_id: req.receiver_id,
-          sender: {
-            username: req.receiver?.username || 'Unknown',
-            display_name: req.receiver?.display_name,
-            first_name: req.receiver?.first_name,
-            last_name: req.receiver?.last_name,
-            avatar_url: req.receiver?.avatar_url,
-          },
-          status: req.status,
-          created_at: req.created_at,
-          type: 'outgoing' as const,
-        })) || []),
-      ];
+      const transformedRequests: FriendRequest[] = [];
+
+      // Process incoming requests
+      for (const request of incomingRequests || []) {
+        const { data: senderProfile, error: senderError } = await supabase
+          .from('profiles')
+          .select('id, username, first_name, last_name, avatar_url')
+          .eq('id', request.sender_id)
+          .single();
+
+        // If profile doesn't exist, create a basic one
+        if (senderError && senderError.code === 'PGRST116') {
+          const { data: newProfile } = await supabase
+            .from('profiles')
+            .insert({
+              id: request.sender_id,
+              username: `user_${request.sender_id.substring(0, 8)}`,
+            })
+            .select('id, username, first_name, last_name, avatar_url')
+            .single();
+
+          transformedRequests.push({
+            id: request.id,
+            sender_id: request.sender_id,
+            receiver_id: request.receiver_id,
+            sender: {
+              username: newProfile?.username || `user_${request.sender_id.substring(0, 8)}`,
+              display_name: newProfile?.first_name && newProfile?.last_name 
+                ? `${newProfile.first_name} ${newProfile.last_name}` 
+                : newProfile?.username,
+              first_name: newProfile?.first_name,
+              last_name: newProfile?.last_name,
+              avatar_url: newProfile?.avatar_url,
+            },
+            status: request.status,
+            created_at: request.created_at,
+            type: 'incoming' as const,
+          });
+        } else {
+          transformedRequests.push({
+            id: request.id,
+            sender_id: request.sender_id,
+            receiver_id: request.receiver_id,
+            sender: {
+              username: senderProfile?.username || `user_${request.sender_id.substring(0, 8)}`,
+              display_name: senderProfile?.first_name && senderProfile?.last_name 
+                ? `${senderProfile.first_name} ${senderProfile.last_name}` 
+                : senderProfile?.username,
+              first_name: senderProfile?.first_name,
+              last_name: senderProfile?.last_name,
+              avatar_url: senderProfile?.avatar_url,
+            },
+            status: request.status,
+            created_at: request.created_at,
+            type: 'incoming' as const,
+          });
+        }
+      }
+
+      // Process outgoing requests
+      for (const request of outgoingRequests || []) {
+        const { data: receiverProfile, error: receiverError } = await supabase
+          .from('profiles')
+          .select('id, username, first_name, last_name, avatar_url')
+          .eq('id', request.receiver_id)
+          .single();
+
+        // If profile doesn't exist, create a basic one
+        if (receiverError && receiverError.code === 'PGRST116') {
+          const { data: newProfile } = await supabase
+            .from('profiles')
+            .insert({
+              id: request.receiver_id,
+              username: `user_${request.receiver_id.substring(0, 8)}`,
+            })
+            .select('id, username, first_name, last_name, avatar_url')
+            .single();
+
+          transformedRequests.push({
+            id: request.id,
+            sender_id: request.sender_id,
+            receiver_id: request.receiver_id,
+            sender: {
+              username: newProfile?.username || `user_${request.receiver_id.substring(0, 8)}`,
+              display_name: newProfile?.first_name && newProfile?.last_name 
+                ? `${newProfile.first_name} ${newProfile.last_name}` 
+                : newProfile?.username,
+              first_name: newProfile?.first_name,
+              last_name: newProfile?.last_name,
+              avatar_url: newProfile?.avatar_url,
+            },
+            status: request.status,
+            created_at: request.created_at,
+            type: 'outgoing' as const,
+          });
+        } else {
+          transformedRequests.push({
+            id: request.id,
+            sender_id: request.sender_id,
+            receiver_id: request.receiver_id,
+            sender: {
+              username: receiverProfile?.username || `user_${request.receiver_id.substring(0, 8)}`,
+              display_name: receiverProfile?.first_name && receiverProfile?.last_name 
+                ? `${receiverProfile.first_name} ${receiverProfile.last_name}` 
+                : receiverProfile?.username,
+              first_name: receiverProfile?.first_name,
+              last_name: receiverProfile?.last_name,
+              avatar_url: receiverProfile?.avatar_url,
+            },
+            status: request.status,
+            created_at: request.created_at,
+            type: 'outgoing' as const,
+          });
+        }
+      }
 
       setFriendRequests(transformedRequests);
     } catch (error) {

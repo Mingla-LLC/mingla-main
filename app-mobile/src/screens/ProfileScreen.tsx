@@ -16,7 +16,7 @@ import { useAppStore } from '../store/appStore';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigation } from '../contexts/NavigationContext';
-import { useNavigation as useReactNavigation } from '@react-navigation/native';
+import { useNavigation as useReactNavigation, useFocusEffect } from '@react-navigation/native';
 import { useBoards } from '../hooks/useBoards';
 import { useSaves } from '../hooks/useSaves';
 import { supabase } from '../services/supabase';
@@ -40,10 +40,19 @@ export default function ProfileScreen() {
     { id: '3', name: 'Gym', address: 'Belltown' },
   ];
 
+  // Refresh profile data when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user?.id) {
+        refreshProfile();
+      }
+    }, [user?.id, refreshProfile])
+  );
+
   const onRefresh = async () => {
     setRefreshing(true);
-    // Simulate loading
-    setTimeout(() => setRefreshing(false), 1000);
+    await refreshProfile();
+    setRefreshing(false);
   };
 
   const handleSignOut = async () => {
@@ -86,10 +95,23 @@ export default function ProfileScreen() {
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
-            <Image
-              source={{ uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face' }}
-              style={styles.avatar}
-            />
+            {user?.avatar_url ? (
+              <Image
+                source={{ uri: user.avatar_url }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.avatarFallbackText}>
+                  {user?.first_name && user?.last_name 
+                    ? `${user.first_name[0]}${user.last_name[0]}`.toUpperCase()
+                    : user?.username 
+                      ? user.username[0].toUpperCase()
+                      : user?.email?.[0].toUpperCase() || 'U'
+                  }
+                </Text>
+              </View>
+            )}
           </View>
           <View style={styles.profileInfo}>
             <Text style={styles.displayName}>
@@ -243,6 +265,19 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
+  },
+  avatarFallback: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FF6B35',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarFallbackText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
   },
   profileInfo: {
     flex: 1,

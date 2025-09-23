@@ -47,20 +47,28 @@ export const useMessages = () => {
       if (!user) return;
 
       // Get conversations where user is a participant
+      // First, get conversation IDs where the user is a participant
+      const { data: participantData, error: participantError } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('user_id', user.id);
+
+      if (participantError) throw participantError;
+
+      if (!participantData || participantData.length === 0) {
+        setConversations([]);
+        return;
+      }
+
+      const conversationIds = participantData.map(p => p.conversation_id);
+
+      // Then get conversations with their messages
       const { data: conversationsData, error } = await supabase
         .from('conversations')
         .select(`
           *,
           participants:conversation_participants (
-            user_id,
-            user:user_id (
-              id,
-              username,
-              display_name,
-              first_name,
-              last_name,
-              avatar_url
-            )
+            user_id
           ),
           messages:messages (
             id,
@@ -71,51 +79,78 @@ export const useMessages = () => {
             file_url,
             file_name,
             file_size,
-            created_at,
-            is_read,
-            sender:sender_id (
-              username,
-              display_name,
-              first_name,
-              last_name
-            )
+            created_at
           )
         `)
-        .contains('participants', [{ user_id: user.id }])
+        .in('id', conversationIds)
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
 
       // Transform the data
-      const transformedConversations: Conversation[] = conversationsData?.map(conv => {
-        const participants = conv.participants?.map(p => ({
-          id: p.user_id,
-          username: p.user?.username || 'Unknown',
-          display_name: p.user?.display_name,
-          first_name: p.user?.first_name,
-          last_name: p.user?.last_name,
-          avatar_url: p.user?.avatar_url,
-          is_online: false, // We'll implement online status later
-        })) || [];
+      const transformedConversations: Conversation[] = [];
+      
+      for (const conv of conversationsData || []) {
+        // Fetch profile data for participants
+        const participants = [];
+        for (const p of conv.participants || []) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('id, username, first_name, last_name, avatar_url')
+            .eq('id', p.user_id)
+            .single();
 
-        const messages = conv.messages?.map(msg => ({
-          id: msg.id,
-          conversation_id: msg.conversation_id,
-          sender_id: msg.sender_id,
-          content: msg.content,
-          message_type: msg.message_type,
-          file_url: msg.file_url,
-          file_name: msg.file_name,
-          file_size: msg.file_size,
-          created_at: msg.created_at,
-          sender_name: msg.sender?.display_name || msg.sender?.username || 'Unknown',
-          is_read: msg.is_read,
-        })) || [];
+          participants.push({
+            id: p.user_id,
+            username: profileData?.username || 'Unknown',
+            display_name: profileData?.first_name && profileData?.last_name 
+              ? `${profileData.first_name} ${profileData.last_name}` 
+              : profileData?.username,
+            first_name: profileData?.first_name,
+            last_name: profileData?.last_name,
+            avatar_url: profileData?.avatar_url,
+            is_online: false, // We'll implement online status later
+          });
+        }
+
+        // Fetch profile data for message senders and read status
+        const messages = [];
+        for (const msg of conv.messages || []) {
+          const { data: senderProfile } = await supabase
+            .from('profiles')
+            .select('username, first_name, last_name')
+            .eq('id', msg.sender_id)
+            .single();
+
+          // Check if message has been read by current user
+          const { data: readStatus } = await supabase
+            .from('message_reads')
+            .select('id')
+            .eq('message_id', msg.id)
+            .eq('user_id', user.id)
+            .single();
+
+          messages.push({
+            id: msg.id,
+            conversation_id: msg.conversation_id,
+            sender_id: msg.sender_id,
+            content: msg.content,
+            message_type: msg.message_type,
+            file_url: msg.file_url,
+            file_name: msg.file_name,
+            file_size: msg.file_size,
+            created_at: msg.created_at,
+            sender_name: (senderProfile?.first_name && senderProfile?.last_name 
+              ? `${senderProfile.first_name} ${senderProfile.last_name}` 
+              : senderProfile?.username) || 'Unknown',
+            is_read: !!readStatus,
+          });
+        }
 
         const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
         const unreadCount = messages.filter(msg => !msg.is_read && msg.sender_id !== user.id).length;
 
-        return {
+        transformedConversations.push({
           id: conv.id,
           created_by: conv.created_by,
           created_at: conv.created_at,
@@ -123,8 +158,8 @@ export const useMessages = () => {
           last_message: lastMessage,
           unread_count: unreadCount,
           messages,
-        };
-      }) || [];
+        });
+      }
 
       setConversations(transformedConversations);
     } catch (error) {
@@ -142,33 +177,45 @@ export const useMessages = () => {
 
       const { data: messagesData, error } = await supabase
         .from('messages')
-        .select(`
-          *,
-          sender:sender_id (
-            username,
-            display_name,
-            first_name,
-            last_name
-          )
-        `)
+        .select('*')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
 
-      const transformedMessages: Message[] = messagesData?.map(msg => ({
-        id: msg.id,
-        conversation_id: msg.conversation_id,
-        sender_id: msg.sender_id,
-        content: msg.content,
-        message_type: msg.message_type,
-        file_url: msg.file_url,
-        file_name: msg.file_name,
-        file_size: msg.file_size,
-        created_at: msg.created_at,
-        sender_name: msg.sender?.display_name || msg.sender?.username || 'Unknown',
-        is_read: msg.is_read,
-      })) || [];
+      // Transform messages with profile data and read status
+      const transformedMessages: Message[] = [];
+      for (const msg of messagesData || []) {
+        const { data: senderProfile } = await supabase
+          .from('profiles')
+          .select('username, first_name, last_name')
+          .eq('id', msg.sender_id)
+          .single();
+
+        // Check if message has been read by current user
+        const { data: readStatus } = await supabase
+          .from('message_reads')
+          .select('id')
+          .eq('message_id', msg.id)
+          .eq('user_id', user.id)
+          .single();
+
+        transformedMessages.push({
+          id: msg.id,
+          conversation_id: msg.conversation_id,
+          sender_id: msg.sender_id,
+          content: msg.content,
+          message_type: msg.message_type,
+          file_url: msg.file_url,
+          file_name: msg.file_name,
+          file_size: msg.file_size,
+          created_at: msg.created_at,
+          sender_name: (senderProfile?.first_name && senderProfile?.last_name 
+            ? `${senderProfile.first_name} ${senderProfile.last_name}` 
+            : senderProfile?.username) || 'Unknown',
+          is_read: !!readStatus,
+        });
+      }
 
       // Update the conversation with the loaded messages
       setConversations(prev => prev.map(conv => 
@@ -177,13 +224,23 @@ export const useMessages = () => {
           : conv
       ));
 
-      // Mark messages as read
-      await supabase
+      // Mark messages as read by inserting into message_reads table
+      const { data: unreadMessages } = await supabase
         .from('messages')
-        .update({ is_read: true })
+        .select('id')
         .eq('conversation_id', conversationId)
-        .eq('sender_id', '!=', user.id)
-        .eq('is_read', false);
+        .neq('sender_id', user.id);
+
+      if (unreadMessages && unreadMessages.length > 0) {
+        const readRecords = unreadMessages.map(msg => ({
+          message_id: msg.id,
+          user_id: user.id,
+        }));
+
+        await supabase
+          .from('message_reads')
+          .upsert(readRecords, { onConflict: 'message_id,user_id' });
+      }
 
     } catch (error) {
       console.error('Error loading messages:', error);
@@ -207,20 +264,18 @@ export const useMessages = () => {
           file_url: fileUrl,
           file_name: fileName,
           file_size: fileSize,
-          is_read: false,
         })
-        .select(`
-          *,
-          sender:sender_id (
-            username,
-            display_name,
-            first_name,
-            last_name
-          )
-        `)
+        .select('*')
         .single();
 
       if (error) throw error;
+
+      // Get sender profile for the new message
+      const { data: senderProfile } = await supabase
+        .from('profiles')
+        .select('username, first_name, last_name')
+        .eq('id', messageData.sender_id)
+        .single();
 
       const newMessage: Message = {
         id: messageData.id,
@@ -232,8 +287,10 @@ export const useMessages = () => {
         file_name: messageData.file_name,
         file_size: messageData.file_size,
         created_at: messageData.created_at,
-        sender_name: messageData.sender?.display_name || messageData.sender?.username || 'Unknown',
-        is_read: messageData.is_read,
+        sender_name: (senderProfile?.first_name && senderProfile?.last_name 
+          ? `${senderProfile.first_name} ${senderProfile.last_name}` 
+          : senderProfile?.username) || 'Unknown',
+        is_read: true, // Messages sent by the current user are considered read
       };
 
       // Update conversations with the new message
