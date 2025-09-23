@@ -14,6 +14,7 @@ import ConnectionsScreen from './src/screens/ConnectionsScreenTest';
 import ActivityScreen from './src/screens/ActivityScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ProfileSettingsScreen from './src/screens/ProfileSettingsScreen';
+import AccountSettingsScreen from './src/screens/AccountSettingsScreen';
 import AuthScreen from './src/screens/AuthScreen';
 
 // Import components
@@ -38,6 +39,7 @@ function ProfileStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="ProfileMain" component={ProfileScreen} />
       <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
+      <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
     </Stack.Navigator>
   );
 }

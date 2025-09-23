@@ -181,7 +181,10 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => navigation.navigate('AccountSettings')}
+          >
             <View style={styles.menuItemLeft}>
               <Ionicons name="settings-outline" size={20} color="#666" />
               <Text style={styles.menuItemText}>Account Settings</Text>
