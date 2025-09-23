@@ -14,6 +14,7 @@ import { useRoute } from '@react-navigation/native';
 import { useAppStore } from '../store/appStore';
 import { useBoards } from '../hooks/useBoards';
 import { useEnhancedBoards, BoardWithDetails } from '../hooks/useEnhancedBoards';
+import { useSaves } from '../hooks/useSaves';
 import { EnhancedBoardModal } from '../components/EnhancedBoardModal';
 import { BoardCollaboration } from '../components/BoardCollaboration';
 import { useSessionManagement } from '../hooks/useSessionManagement';
@@ -32,10 +33,11 @@ export default function ActivityScreen() {
   const [savedExperiences, setSavedExperiences] = useState<Record<string, Experience>>({});
   const [loadingSavedExperiences, setLoadingSavedExperiences] = useState(false);
   
-  const { user, saves, currentSession, isInSolo } = useAppStore();
+  const { user, currentSession, isInSolo } = useAppStore();
   const { openCreateSessionModal, openCreateBoardModal } = useNavigation();
   
   const { boards, loading: boardsLoading, fetchBoards, createBoard } = useBoards();
+  const { saves, fetchSaves } = useSaves();
   const { 
     boards: enhancedBoards, 
     loading: enhancedBoardsLoading, 
@@ -75,17 +77,22 @@ export default function ActivityScreen() {
     try {
       await Promise.all([
         fetchBoards(),
+        fetchSaves(),
         loadUserSessions(),
-        loadSavedExperiences(),
       ]);
     } catch (error) {
       console.error('Error loading activity data:', error);
     }
-  }, [fetchBoards, loadUserSessions, loadSavedExperiences]);
+  }, [fetchBoards, fetchSaves, loadUserSessions]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Load saved experiences when saves data changes
+  useEffect(() => {
+    loadSavedExperiences();
+  }, [loadSavedExperiences]);
 
   // Update active tab when route parameters change
   useEffect(() => {

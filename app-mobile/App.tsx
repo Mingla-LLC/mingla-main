@@ -15,6 +15,8 @@ import ActivityScreen from './src/screens/ActivityScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import ProfileSettingsScreen from './src/screens/ProfileSettingsScreen';
 import AccountSettingsScreen from './src/screens/AccountSettingsScreen';
+import SavedExperiencesScreen from './src/screens/SavedExperiencesScreen';
+import BoardsScreen from './src/screens/BoardsScreen';
 import AuthScreen from './src/screens/AuthScreen';
 
 // Import components
@@ -40,6 +42,8 @@ function ProfileStack() {
       <Stack.Screen name="ProfileMain" component={ProfileScreen} />
       <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
       <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
+      <Stack.Screen name="SavedExperiences" component={SavedExperiencesScreen} />
+      <Stack.Screen name="Boards" component={BoardsScreen} />
     </Stack.Navigator>
   );
 }
@@ -49,7 +53,7 @@ function MainTabsWithNavigation() {
   
   return (
     <>
-      <NavigationProvider navigation={navigation}>
+      <NavigationProvider navigation={navigation as any}>
         <MainTabs />
         <SessionSwitcher />
         <CreateSessionModal />

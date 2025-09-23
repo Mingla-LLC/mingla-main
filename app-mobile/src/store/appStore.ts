@@ -12,6 +12,7 @@ interface AppState {
   profile: User | null;
   preferences: Preferences | null;
   saves: Save[];
+  boards: Board[];
   
   // Session state
   currentSession: CollaborationSession | null;
@@ -27,6 +28,10 @@ interface AppState {
   addSave: (save: Save) => void;
   removeSave: (experienceId: string) => void;
   updateSave: (experienceId: string, updates: Partial<Save>) => void;
+  setBoards: (boards: Board[]) => void;
+  addBoard: (board: Board) => void;
+  removeBoard: (boardId: string) => void;
+  updateBoard: (boardId: string, updates: Partial<Board>) => void;
   
   // Session actions
   setCurrentSession: (session: CollaborationSession | null) => void;
@@ -47,6 +52,7 @@ export const useAppStore = create<AppState>()(
       profile: null,
       preferences: null,
       saves: [],
+      boards: [],
       currentSession: null,
       availableSessions: [],
       pendingInvites: [],
@@ -87,6 +93,24 @@ export const useAppStore = create<AppState>()(
         )
       })),
 
+      setBoards: (boards) => set({ boards }),
+      
+      addBoard: (board) => set((state) => ({
+        boards: [...state.boards, board]
+      })),
+      
+      removeBoard: (boardId) => set((state) => ({
+        boards: state.boards.filter(board => board.id !== boardId)
+      })),
+      
+      updateBoard: (boardId, updates) => set((state) => ({
+        boards: state.boards.map(board => 
+          board.id === boardId 
+            ? { ...board, ...updates }
+            : board
+        )
+      })),
+
       // Session actions
       setCurrentSession: (currentSession) => set({ currentSession }),
       setAvailableSessions: (availableSessions) => set({ availableSessions }),
@@ -100,6 +124,7 @@ export const useAppStore = create<AppState>()(
         profile: null,
         preferences: null,
         saves: [],
+        boards: [],
         currentSession: null,
         availableSessions: [],
         pendingInvites: [],
@@ -115,6 +140,7 @@ export const useAppStore = create<AppState>()(
         profile: state.profile,
         preferences: state.preferences,
         saves: state.saves,
+        boards: state.boards,
         currentSession: state.currentSession,
         isInSolo: state.isInSolo
       }),

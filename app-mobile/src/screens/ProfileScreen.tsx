@@ -17,14 +17,18 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useNavigation as useReactNavigation } from '@react-navigation/native';
+import { useBoards } from '../hooks/useBoards';
+import { useSaves } from '../hooks/useSaves';
 import { supabase } from '../services/supabase';
 
 export default function ProfileScreen() {
-  const { user, preferences, saves, boards } = useAppStore();
+  const { user, preferences } = useAppStore();
   const { profile, updateProfile, refreshProfile } = useUserProfile();
   const { signOut } = useAuth();
   const { openPreferencesModal } = useNavigation();
   const navigation = useReactNavigation();
+  const { boards } = useBoards();
+  const { saves } = useSaves();
   
   const [refreshing, setRefreshing] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -106,14 +110,20 @@ export default function ProfileScreen() {
 
         {/* Stats Grid */}
         <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>12</Text>
+          <TouchableOpacity 
+            style={styles.statCard}
+            onPress={() => navigation.navigate('SavedExperiences')}
+          >
+            <Text style={styles.statNumber}>{saves.length}</Text>
             <Text style={styles.statLabel}>Experiences Saved</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>3</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.statCard}
+            onPress={() => navigation.navigate('Boards')}
+          >
+            <Text style={styles.statNumber}>{boards.length}</Text>
             <Text style={styles.statLabel}>Boards Created</Text>
-          </View>
+          </TouchableOpacity>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>8</Text>
             <Text style={styles.statLabel}>Collaborations</Text>
