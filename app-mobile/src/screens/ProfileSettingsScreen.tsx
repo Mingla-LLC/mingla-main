@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,22 +12,38 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '../store/appStore';
+import { useUserProfile } from '../hooks/useUserProfile';
+import { cameraService } from '../services/cameraService';
 
 interface ProfileSettingsScreenProps {
   navigation?: any;
 }
 
 export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScreenProps) {
-  const { user, profile, updateProfile } = useAppStore();
+  const { user } = useAppStore();
+  const { profile, loading, error, updateProfile, uploadAvatar, refreshProfile } = useUserProfile();
   
   const [formData, setFormData] = useState({
-    firstName: profile?.first_name || '',
-    lastName: profile?.last_name || '',
-    username: profile?.username || user?.email?.split('@')[0] || 'Test',
-    email: user?.email || 'hi@sethogieva.com',
+    firstName: '',
+    lastName: '',
+    username: '',
+    email: '',
   });
 
-  const [loading, setLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+
+  // Initialize form data when profile loads
+  useEffect(() => {
+    if (profile) {
+      setFormData({
+        firstName: profile.first_name || '',
+        lastName: profile.last_name || '',
+        username: profile.username || user?.email?.split('@')[0] || '',
+        email: user?.email || '',
+      });
+    }
+  }, [profile, user]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -37,14 +53,21 @@ export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScr
   };
 
   const handleSaveChanges = async () => {
-    setLoading(true);
+    if (!user?.id) {
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+
+    setIsSaving(true);
     try {
-      // In a real app, this would update the profile in the database
-      console.log('Saving profile changes:', formData);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      const updates = {
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        username: formData.username,
+        display_name: `${formData.firstName} ${formData.lastName}`.trim(),
+      };
+
+      await updateProfile(updates);
       Alert.alert('Success', 'Profile updated successfully!');
       
       // Navigate back
@@ -52,9 +75,10 @@ export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScr
         navigation.goBack();
       }
     } catch (error) {
+      console.error('Error updating profile:', error);
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     } finally {
-      setLoading(false);
+      setIsSaving(false);
     }
   };
 
@@ -63,11 +87,60 @@ export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScr
       'Upload Photo',
       'Choose an option',
       [
-        { text: 'Camera', onPress: () => console.log('Open camera') },
-        { text: 'Photo Library', onPress: () => console.log('Open photo library') },
+        { text: 'Camera', onPress: () => handleImagePicker('camera') },
+        { text: 'Photo Library', onPress: () => handleImagePicker('library') },
         { text: 'Cancel', style: 'cancel' },
       ]
     );
+  };
+
+  const handleImagePicker = async (source: 'camera' | 'library') => {
+    if (!user?.id) {
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+
+    setAvatarLoading(true);
+    try {
+      let result;
+      
+      if (source === 'camera') {
+        result = await cameraService.takePhoto({
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+      } else {
+        result = await cameraService.pickImage({
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+      }
+
+      if (result && !result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        
+        // Convert to File object for upload
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+
+        // Upload to Supabase
+        const uploadResult = await uploadAvatar(file);
+        
+        if (uploadResult) {
+          Alert.alert('Success', 'Profile photo updated successfully!');
+          // Refresh profile to get updated avatar URL
+          await refreshProfile();
+        }
+      }
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      Alert.alert('Error', 'Failed to upload photo. Please try again.');
+    } finally {
+      setAvatarLoading(false);
+    }
   };
 
   const goBack = () => {
@@ -75,6 +148,25 @@ export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScr
       navigation.goBack();
     }
   };
+
+  // Show loading state while profile is loading
+  if (loading && !profile) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={goBack}>
+            <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Profile Settings</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <Ionicons name="hourglass" size={48} color="#666" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -94,14 +186,22 @@ export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScr
           <View style={styles.photoContainer}>
             <View style={styles.avatarContainer}>
               <Image
-                source={{ uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face' }}
+                source={{ 
+                  uri: profile?.avatar_url || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face' 
+                }}
                 style={styles.avatar}
+                defaultSource={{ uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face' }}
               />
               <TouchableOpacity 
-                style={styles.cameraButton}
+                style={[styles.cameraButton, avatarLoading && styles.cameraButtonDisabled]}
                 onPress={handleProfilePhotoUpload}
+                disabled={avatarLoading}
               >
-                <Ionicons name="camera" size={16} color="#1a1a1a" />
+                {avatarLoading ? (
+                  <Ionicons name="hourglass" size={16} color="#666" />
+                ) : (
+                  <Ionicons name="camera" size={16} color="#1a1a1a" />
+                )}
               </TouchableOpacity>
             </View>
             <Text style={styles.photoInstruction}>
@@ -169,13 +269,13 @@ export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScr
       {/* Save Changes Button */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity 
-          style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+          style={[styles.saveButton, (isSaving || loading) && styles.saveButtonDisabled]}
           onPress={handleSaveChanges}
-          disabled={loading}
+          disabled={isSaving || loading}
         >
           <Ionicons name="save" size={20} color="#fff" />
           <Text style={styles.saveButtonText}>
-            {loading ? 'Saving...' : 'Save Changes'}
+            {isSaving ? 'Saving...' : 'Save Changes'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -259,6 +359,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  cameraButtonDisabled: {
+    backgroundColor: '#f0f0f0',
+    opacity: 0.6,
+  },
   photoInstruction: {
     fontSize: 14,
     color: '#666',
@@ -325,5 +429,17 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 16,
+    textAlign: 'center',
   },
 });

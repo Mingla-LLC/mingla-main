@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '../store/appStore';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { useAuth } from '../hooks/useAuth';
+import { authService } from '../services/authService';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useNavigation as useReactNavigation, useFocusEffect } from '@react-navigation/native';
 import { useBoards } from '../hooks/useBoards';
@@ -56,6 +57,7 @@ export default function ProfileScreen() {
   };
 
   const handleSignOut = async () => {
+    console.log('Sign out button pressed');
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -65,9 +67,26 @@ export default function ProfileScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            const { error } = await signOut();
-            if (error) {
-              Alert.alert('Error', error.message);
+            console.log('User confirmed sign out');
+            try {
+              // Try authService signOut first
+              const { error } = await authService.signOut();
+              if (error) {
+                console.error('AuthService sign out error:', error);
+                // Fallback to useAuth signOut
+                const { error: hookError } = await signOut();
+                if (hookError) {
+                  console.error('Hook sign out error:', hookError);
+                  Alert.alert('Error', hookError.message);
+                } else {
+                  console.log('Hook sign out successful');
+                }
+              } else {
+                console.log('AuthService sign out successful');
+              }
+            } catch (err) {
+              console.error('Sign out exception:', err);
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
             }
           },
         },
@@ -95,18 +114,18 @@ export default function ProfileScreen() {
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
-            {user?.avatar_url ? (
+            {profile?.avatar_url ? (
               <Image
-                source={{ uri: user.avatar_url }}
+                source={{ uri: profile.avatar_url }}
                 style={styles.avatar}
               />
             ) : (
               <View style={styles.avatarFallback}>
                 <Text style={styles.avatarFallbackText}>
-                  {user?.first_name && user?.last_name 
-                    ? `${user.first_name[0]}${user.last_name[0]}`.toUpperCase()
-                    : user?.username 
-                      ? user.username[0].toUpperCase()
+                  {profile?.first_name && profile?.last_name 
+                    ? `${profile.first_name[0]}${profile.last_name[0]}`.toUpperCase()
+                    : profile?.username 
+                      ? profile.username[0].toUpperCase()
                       : user?.email?.[0].toUpperCase() || 'U'
                   }
                 </Text>
@@ -115,13 +134,13 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.profileInfo}>
             <Text style={styles.displayName}>
-              {profile?.display_name || user?.email?.split('@')[0] || 'Test'}
+              {profile?.display_name || `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim() || user?.email?.split('@')[0] || 'User'}
             </Text>
             <Text style={styles.email}>
-              {user?.email || 'hi@sethogieva.com'}
+              {user?.email || ''}
             </Text>
             <Text style={styles.username}>
-              @{profile?.username || user?.email?.split('@')[0] || 'Test'}
+              @{profile?.username || user?.email?.split('@')[0] || 'user'}
             </Text>
             <TouchableOpacity style={styles.locationButton}>
               <Ionicons name="location-outline" size={16} color="#666" />
@@ -231,7 +250,12 @@ export default function ProfileScreen() {
             <Text style={styles.menuItemText}>Terms of Service</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.menuItem} onPress={handleSignOut}>
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            onPress={handleSignOut}
+            activeOpacity={0.7}
+            testID="sign-out-button"
+          >
             <View style={styles.menuItemLeft}>
               <Ionicons name="arrow-forward" size={20} color="#FF3B30" />
               <Text style={[styles.menuItemText, styles.signOutText]}>Sign Out</Text>

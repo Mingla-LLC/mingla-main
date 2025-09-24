@@ -14,6 +14,10 @@ import {
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { RecommendationCard } from '../types';
+import { useHapticFeedback } from '../utils/hapticFeedback';
+import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
+import { ConfidenceScore } from './ConfidenceScore';
+import { PopularityIndicators } from './PopularityIndicators';
 
 interface SingleCardDisplayProps {
   card: RecommendationCard;
@@ -43,6 +47,9 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Haptic feedback
+  const haptic = useHapticFeedback();
   
   // Swipe animation values
   const translateX = useRef(new Animated.Value(0)).current;
@@ -106,12 +113,14 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
     const scaleValue = 1 - Math.abs(translationX) / 1000;
     scale.setValue(Math.max(0.95, scaleValue));
     
-    // Show visual feedback for swipe direction
-    if (translationX > 50) {
+    // Show visual feedback for swipe direction and haptic
+    if (translationX > 50 && swipeDirection !== 'right') {
       setSwipeDirection('right');
-    } else if (translationX < -50) {
+      haptic.cardSwipe();
+    } else if (translationX < -50 && swipeDirection !== 'left') {
       setSwipeDirection('left');
-    } else {
+      haptic.cardSwipe();
+    } else if (Math.abs(translationX) <= 50 && swipeDirection !== null) {
       setSwipeDirection(null);
     }
   };
@@ -211,6 +220,9 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
     setIsAnimating(true);
     setSwipeDirection('right');
     
+    // Haptic feedback
+    haptic.cardLike();
+    
     // Button press animation
     Animated.sequence([
       Animated.timing(likeButtonScale, {
@@ -238,6 +250,9 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
     if (isAnimating) return;
     setIsAnimating(true);
     setSwipeDirection('left');
+    
+    // Haptic feedback
+    haptic.cardDislike();
     
     // Button press animation
     Animated.sequence([
@@ -451,6 +466,33 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
 
           {isExpanded && (
             <View style={styles.expandedContent}>
+              {/* Confidence Score */}
+              <ConfidenceScore
+                score={Math.floor(Math.random() * 40) + 60} // Mock confidence score 60-100
+                factors={{
+                  locationMatch: Math.floor(Math.random() * 30) + 70,
+                  budgetMatch: Math.floor(Math.random() * 30) + 70,
+                  categoryMatch: Math.floor(Math.random() * 30) + 70,
+                  timeMatch: Math.floor(Math.random() * 30) + 70,
+                  popularity: Math.floor(Math.random() * 30) + 70,
+                }}
+                showDetails={true}
+                size="medium"
+              />
+
+              {/* Popularity Indicators */}
+              <PopularityIndicators
+                data={{
+                  likes: Math.floor(Math.random() * 500) + 100,
+                  saves: Math.floor(Math.random() * 200) + 50,
+                  shares: Math.floor(Math.random() * 100) + 20,
+                  views: Math.floor(Math.random() * 2000) + 500,
+                  rating: 4.0 + Math.random() * 1.0,
+                  reviewCount: Math.floor(Math.random() * 200) + 50,
+                }}
+                showDetails={true}
+              />
+
               {/* Metadata Grid */}
               <View style={styles.metadataGrid}>
                 <View style={styles.metadataItem}>
@@ -461,20 +503,6 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
                   <Ionicons name="cash-outline" size={16} color="#6B7280" />
                   <Text style={styles.metadataText}>${card.estimatedCostPerPerson}/person</Text>
                 </View>
-                {card.reviewCount && (
-                  <>
-                    <View style={styles.metadataItem}>
-                      <Ionicons name="people-outline" size={16} color="#6B7280" />
-                      <Text style={styles.metadataText}>
-                        {card.reviewCount > 1000 ? `${(card.reviewCount / 1000).toFixed(1)}k` : card.reviewCount} reviews
-                      </Text>
-                    </View>
-                    <View style={styles.metadataItem}>
-                      <Ionicons name="star-outline" size={16} color="#6B7280" />
-                      <Text style={styles.metadataText}>{card.rating?.toFixed(1)}/5.0</Text>
-                    </View>
-                  </>
-                )}
               </View>
 
               {/* Address */}

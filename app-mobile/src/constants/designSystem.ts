@@ -1,0 +1,253 @@
+// Design System Constants for Mingla App
+// Phase 1: Foundation & Core Polish
+
+export const spacing = {
+  xs: 4,    // 4px
+  sm: 8,    // 8px  
+  md: 16,   // 16px
+  lg: 24,   // 24px
+  xl: 32,   // 32px
+  xxl: 48,  // 48px
+} as const;
+
+export const radius = {
+  sm: 8,    // 8px
+  md: 12,   // 12px
+  lg: 16,   // 16px
+  xl: 24,   // 24px
+  full: 999, // Full rounded
+} as const;
+
+export const shadows = {
+  sm: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  md: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  lg: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  xl: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.1,
+    shadowRadius: 25,
+    elevation: 12,
+  },
+} as const;
+
+export const typography = {
+  xs: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  sm: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  md: {
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  lg: {
+    fontSize: 18,
+    lineHeight: 28,
+  },
+  xl: {
+    fontSize: 20,
+    lineHeight: 32,
+  },
+  xxl: {
+    fontSize: 24,
+    lineHeight: 36,
+  },
+  xxxl: {
+    fontSize: 32,
+    lineHeight: 48,
+  },
+} as const;
+
+export const fontWeights = {
+  regular: '400' as const,
+  medium: '500' as const,
+  semibold: '600' as const,
+  bold: '700' as const,
+} as const;
+
+export const colors = {
+  // Primary Brand Colors
+  primary: {
+    50: '#eff6ff',
+    100: '#dbeafe',
+    200: '#bfdbfe',
+    300: '#93c5fd',
+    400: '#60a5fa',
+    500: '#3b82f6',
+    600: '#2563eb',
+    700: '#1d4ed8',
+    800: '#1e40af',
+    900: '#1e3a8a',
+  },
+  
+  // Semantic Colors
+  success: {
+    50: '#f0fdf4',
+    100: '#dcfce7',
+    200: '#bbf7d0',
+    300: '#86efac',
+    400: '#4ade80',
+    500: '#22c55e',
+    600: '#16a34a',
+    700: '#15803d',
+    800: '#166534',
+    900: '#14532d',
+  },
+  
+  warning: {
+    50: '#fffbeb',
+    100: '#fef3c7',
+    200: '#fde68a',
+    300: '#fcd34d',
+    400: '#fbbf24',
+    500: '#f59e0b',
+    600: '#d97706',
+    700: '#b45309',
+    800: '#92400e',
+    900: '#78350f',
+  },
+  
+  error: {
+    50: '#fef2f2',
+    100: '#fee2e2',
+    200: '#fecaca',
+    300: '#fca5a5',
+    400: '#f87171',
+    500: '#ef4444',
+    600: '#dc2626',
+    700: '#b91c1c',
+    800: '#991b1b',
+    900: '#7f1d1d',
+  },
+  
+  // Neutral Colors
+  gray: {
+    50: '#f9fafb',
+    100: '#f3f4f6',
+    200: '#e5e7eb',
+    300: '#d1d5db',
+    400: '#9ca3af',
+    500: '#6b7280',
+    600: '#4b5563',
+    700: '#374151',
+    800: '#1f2937',
+    900: '#111827',
+  },
+  
+  // Background Colors
+  background: {
+    primary: '#ffffff',
+    secondary: '#f9fafb',
+    tertiary: '#f3f4f6',
+  },
+  
+  // Text Colors
+  text: {
+    primary: '#111827',
+    secondary: '#4b5563',
+    tertiary: '#6b7280',
+    inverse: '#ffffff',
+  },
+} as const;
+
+export const animations = {
+  // Duration in milliseconds
+  duration: {
+    fast: 150,
+    normal: 300,
+    slow: 500,
+  },
+  
+  // Easing curves
+  easing: {
+    easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    easeOut: 'cubic-bezier(0, 0, 0.2, 1)',
+    easeIn: 'cubic-bezier(0.4, 0, 1, 1)',
+  },
+} as const;
+
+// Touch target minimum size for accessibility
+export const touchTargets = {
+  minimum: 44, // 44px minimum touch target
+  comfortable: 48, // 48px comfortable touch target
+  large: 56, // 56px large touch target
+} as const;
+
+// Export commonly used combinations
+export const commonStyles = {
+  // Card styles
+  card: {
+    backgroundColor: colors.background.primary,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    ...shadows.md,
+  },
+  
+  // Button styles
+  button: {
+    minHeight: touchTargets.comfortable,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  
+  // Input styles
+  input: {
+    minHeight: touchTargets.comfortable,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    backgroundColor: colors.background.primary,
+  },
+  
+  // Text styles
+  heading: {
+    ...typography.xl,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+  },
+  
+  subheading: {
+    ...typography.lg,
+    fontWeight: fontWeights.medium,
+    color: colors.text.primary,
+  },
+  
+  body: {
+    ...typography.md,
+    fontWeight: fontWeights.regular,
+    color: colors.text.secondary,
+  },
+  
+  caption: {
+    ...typography.sm,
+    fontWeight: fontWeights.regular,
+    color: colors.text.tertiary,
+  },
+} as const;

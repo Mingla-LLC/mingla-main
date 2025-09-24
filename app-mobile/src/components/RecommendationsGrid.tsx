@@ -3,15 +3,17 @@ import {
   View,
   Text,
   StyleSheet,
-  ActivityIndicator,
-  TouchableOpacity,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../services/supabase';
 import { RecommendationsRequest, RecommendationsResponse, RecommendationCard } from '../types';
 import { SingleCardDisplay } from './SingleCardDisplay';
 import { useAppStore } from '../store/appStore';
+import { RecommendationSkeletonCard } from './SkeletonCard';
+import { RecommendationsErrorState, NoRecommendationsState } from './ErrorState';
+import { LoadingSpinner } from './SuccessAnimation';
+import { CardStackPreview } from './CardStackPreview';
+import { spacing, colors, typography, fontWeights, commonStyles } from '../constants/designSystem';
 
 interface RecommendationsGridProps {
   preferences: RecommendationsRequest;
@@ -203,9 +205,12 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Finding amazing experiences...</Text>
-        <Text style={styles.loadingSubtext}>This may take a moment</Text>
+        <RecommendationSkeletonCard />
+        <View style={styles.loadingContent}>
+          <LoadingSpinner size={32} color={colors.primary[500]} />
+          <Text style={styles.loadingText}>Finding amazing experiences...</Text>
+          <Text style={styles.loadingSubtext}>This may take a moment</Text>
+        </View>
       </View>
     );
   }
@@ -213,58 +218,31 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
   // Error state
   if (error) {
     return (
-      <View style={styles.errorContainer}>
-        <Ionicons name="warning-outline" size={48} color="#FF9500" />
-        <Text style={styles.errorTitle}>Unable to load recommendations</Text>
-        <Text style={styles.errorText}>{error}</Text>
-        <View style={styles.errorActions}>
-          <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
-            <Ionicons name="refresh" size={16} color="white" />
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-          {onAdjustFilters && (
-            <TouchableOpacity style={styles.adjustButton} onPress={onAdjustFilters}>
-              <Ionicons name="options" size={16} color="#007AFF" />
-              <Text style={styles.adjustButtonText}>Adjust Filters</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+      <RecommendationsErrorState onRetry={handleRetry} />
     );
   }
 
   // Empty state
   if (!recommendations || recommendations.cards.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="location-outline" size={48} color="#9CA3AF" />
-        <Text style={styles.emptyTitle}>No matches found</Text>
-        <Text style={styles.emptyText}>
-          We couldn't find any recommendations matching your preferences. Try adjusting your filters or expanding your search area.
-        </Text>
-        {onAdjustFilters && (
-          <TouchableOpacity style={styles.adjustButton} onPress={onAdjustFilters}>
-            <Ionicons name="options" size={16} color="#007AFF" />
-            <Text style={styles.adjustButtonText}>Adjust Filters</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      <NoRecommendationsState onRefresh={onAdjustFilters} />
     );
   }
 
   // Safety check: ensure currentCardIndex doesn't exceed available cards
   const safeCardIndex = Math.min(currentCardIndex, recommendations.cards.length - 1);
   
-  // Main content - Single Card Display
+  // Main content - Card Stack Preview
   return (
     <View style={styles.container}>
-      <SingleCardDisplay 
-        card={recommendations.cards[safeCardIndex]} 
-        onLike={handleLike} 
-        onDislike={handleDislike} 
-        onInvite={handleCardInvite} 
-        hasNext={safeCardIndex < recommendations.cards.length - 1} 
-        cardNumber={safeCardIndex + 1} 
+      <CardStackPreview
+        currentCard={recommendations.cards[safeCardIndex]}
+        nextCard={safeCardIndex < recommendations.cards.length - 1 ? recommendations.cards[safeCardIndex + 1] : undefined}
+        onLike={handleLike}
+        onDislike={handleDislike}
+        onInvite={handleCardInvite}
+        hasNext={safeCardIndex < recommendations.cards.length - 1}
+        cardNumber={safeCardIndex + 1}
         totalCards={recommendations.cards.length}
         userTimePreference={userTimePreference}
       />
@@ -280,96 +258,23 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: spacing.xl,
+  },
+  loadingContent: {
+    alignItems: 'center',
+    marginTop: spacing.lg,
   },
   loadingText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginTop: 16,
-    marginBottom: 8,
+    ...typography.lg,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
   },
   loadingSubtext: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.sm,
+    color: colors.text.secondary,
     textAlign: 'center',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 32,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  errorActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  retryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  adjustButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  adjustButtonText: {
-    color: '#007AFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 32,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
   },
 });

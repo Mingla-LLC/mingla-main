@@ -13,6 +13,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { categories } from '../constants/categories';
 import { formatCurrency } from '../utils/currency';
 import { ActivePreferences } from '../types';
+import { useHapticFeedback } from '../utils/hapticFeedback';
+import { spacing, colors, typography, fontWeights, radius, shadows, commonStyles } from '../constants/designSystem';
+import { PreferencePresets } from './PreferencePresets';
 
 interface PreferencesSheetProps {
   isOpen: boolean;
@@ -43,6 +46,8 @@ export const PreferencesSheet: React.FC<PreferencesSheetProps> = ({
   },
   onPreferencesUpdate
 }) => {
+  // Haptic feedback
+  const haptic = useHapticFeedback();
   const [preferences, setPreferences] = useState<ActivePreferences>(activePreferences);
   const [customLocation, setCustomLocation] = useState(activePreferences?.customLocation || '');
   const [customLat, setCustomLat] = useState<number | null>(activePreferences?.custom_lat || null);
@@ -56,6 +61,9 @@ export const PreferencesSheet: React.FC<PreferencesSheetProps> = ({
   
 
   const handleSave = () => {
+    // Haptic feedback
+    haptic.save();
+    
     const minBudgetNum = parseFloat(minBudget) || 0;
     const maxBudgetNum = parseFloat(maxBudget) || 0;
     const travelTimeNum = parseFloat(travelTime) || 15;
@@ -275,6 +283,31 @@ export const PreferencesSheet: React.FC<PreferencesSheetProps> = ({
           </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Quick Presets */}
+          <PreferencePresets
+            onPresetSelect={(preset) => {
+              // Update preferences with preset values
+              const updatedPreferences = {
+                ...preferences,
+                ...preset.preferences,
+              };
+              setPreferences(updatedPreferences);
+              
+              // Update individual state values
+              if (preset.preferences.budgetRange) {
+                setMinBudget(preset.preferences.budgetRange[0].toString());
+                setMaxBudget(preset.preferences.budgetRange[1].toString());
+              }
+              if (preset.preferences.travelTime) {
+                setTravelTime(preset.preferences.travelTime.toString());
+              }
+              if (preset.preferences.travelDistance) {
+                setTravelDistance(preset.preferences.travelDistance.toString());
+              }
+            }}
+            currentPreferences={preferences}
+          />
+
           {/* Group Size */}
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>

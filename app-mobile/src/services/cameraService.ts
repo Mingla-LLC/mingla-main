@@ -32,16 +32,7 @@ class CameraService {
       const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
       
       if (cameraStatus !== 'granted') {
-        Alert.alert(
-          'Camera Permission Required',
-          'Mingla needs camera access to capture photos for your experiences.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Settings', onPress: () => {
-              console.log('Please enable camera permissions in device settings');
-            }}
-          ]
-        );
+        console.log('Camera permission not granted - continuing without camera features');
         return false;
       }
 

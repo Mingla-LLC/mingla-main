@@ -42,6 +42,8 @@ interface MobileFeaturesProviderProps {
 export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ children }) => {
   const { user } = useAppStore();
   
+  console.log('MobileFeaturesProvider: Component mounted');
+  
   // State
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [isLocationTracking, setIsLocationTracking] = useState(false);
@@ -53,7 +55,19 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
 
   // Initialize mobile features
   useEffect(() => {
-    initializeMobileFeatures();
+    // Add a timeout to prevent indefinite blocking
+    const timeoutId = setTimeout(() => {
+      if (!isInitialized) {
+        console.log('Mobile features initialization timeout - forcing completion');
+        setIsInitialized(true);
+      }
+    }, 5000); // 5 second timeout
+
+    initializeMobileFeatures().finally(() => {
+      clearTimeout(timeoutId);
+    });
+
+    return () => clearTimeout(timeoutId);
   }, []);
 
   // Handle app state changes
@@ -83,31 +97,65 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
 
   const initializeMobileFeatures = async () => {
     try {
+      console.log('MobileFeaturesProvider: Starting initialization...');
       setInitializationError(null);
       
-      // Initialize location service
-      const locationPermission = await enhancedLocationService.requestPermissions();
-      setLocationPermissionGranted(locationPermission);
-      
-      if (locationPermission) {
-        const location = await enhancedLocationService.getCurrentLocation();
-        setCurrentLocation(location);
-      }
+      // Initialize services in parallel and don't block on failures
+      const initPromises = [
+        // Initialize location service
+        enhancedLocationService.requestPermissions()
+          .then(permission => {
+            setLocationPermissionGranted(permission);
+            if (permission) {
+              return enhancedLocationService.getCurrentLocation()
+                .then(location => {
+                  setCurrentLocation(location);
+                  return true;
+                })
+                .catch(error => {
+                  console.log('Location fetch failed:', error);
+                  return false;
+                });
+            }
+            return false;
+          })
+          .catch(error => {
+            console.log('Location permission failed:', error);
+            return false;
+          }),
 
-      // Initialize notification service
-      const notificationPermission = await enhancedNotificationService.initialize();
-      setNotificationPermissionGranted(notificationPermission);
+        // Initialize notification service
+        enhancedNotificationService.initialize()
+          .then(permission => {
+            setNotificationPermissionGranted(permission);
+            return permission;
+          })
+          .catch(error => {
+            console.log('Notification initialization failed:', error);
+            return false;
+          }),
 
-      // Initialize camera service
-      const cameraPermission = await cameraService.initialize();
-      setCameraPermissionGranted(cameraPermission);
+        // Initialize camera service
+        cameraService.initialize()
+          .then(permission => {
+            setCameraPermissionGranted(permission);
+            return permission;
+          })
+          .catch(error => {
+            console.log('Camera initialization failed:', error);
+            return false;
+          })
+      ];
+
+      // Wait for all initializations to complete (or fail)
+      await Promise.allSettled(initPromises);
 
       setIsInitialized(true);
-      console.log('Mobile features initialized successfully');
+      console.log('MobileFeaturesProvider: Initialization completed successfully');
     } catch (error: any) {
       console.error('Error initializing mobile features:', error);
       setInitializationError(error.message);
-      setIsInitialized(true); // Still mark as initialized to prevent blocking
+      setIsInitialized(true); // Always mark as initialized to prevent blocking
     }
   };
 

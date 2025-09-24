@@ -52,11 +52,11 @@ class EnhancedNotificationService {
         } catch (tokenError) {
           console.log('Could not get Expo push token:', tokenError);
           // Continue without push notifications for now
-          return false;
+          this.expoPushToken = null;
         }
       } else {
-        console.log('Must use physical device for push notifications');
-        return false;
+        console.log('Running on simulator - push notifications not available, but continuing...');
+        this.expoPushToken = null;
       }
 
       // Configure notification channel for Android
@@ -96,7 +96,13 @@ class EnhancedNotificationService {
   async registerForPushNotifications(userId: string): Promise<boolean> {
     try {
       const initialized = await this.initialize();
-      if (!initialized || !this.expoPushToken) return false;
+      if (!initialized) return false;
+      
+      // If no push token (e.g., running on simulator), return true to allow app to continue
+      if (!this.expoPushToken) {
+        console.log('No push token available (simulator or error), but allowing app to continue');
+        return true;
+      }
 
       // Store push token in Supabase
       const { error } = await supabase

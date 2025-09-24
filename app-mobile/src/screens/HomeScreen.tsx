@@ -16,6 +16,7 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import { RecommendationsGrid } from '../components/RecommendationsGrid';
 import { HeaderControls } from '../components/HeaderControls';
 import { PreferencesSheet } from '../components/PreferencesSheet';
+import { ToastProvider } from '../components/ToastManager';
 import { convertPreferencesToRequest } from '../utils/preferencesConverter';
 import { ActivePreferences, RecommendationCard } from '../types';
 import { supabase } from '../services/supabase';
@@ -161,6 +162,8 @@ export default function HomeScreen() {
     useAppStore.getState().setCurrentCardIndex(0);
   };
 
+
+
   // Refresh recommendations when screen comes into focus
   useFocusEffect(
     useCallback(() => {
@@ -171,7 +174,8 @@ export default function HomeScreen() {
 
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ToastProvider>
+      <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
@@ -251,7 +255,8 @@ export default function HomeScreen() {
         activePreferences={activePreferences}
         onPreferencesUpdate={handlePreferencesUpdate}
       />
-    </SafeAreaView>
+      </SafeAreaView>
+    </ToastProvider>
   );
 }
 
