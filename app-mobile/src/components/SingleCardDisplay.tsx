@@ -18,6 +18,9 @@ import { useHapticFeedback } from '../utils/hapticFeedback';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
 import { ConfidenceScore } from './ConfidenceScore';
 import { PopularityIndicators } from './PopularityIndicators';
+import { userInteractionService } from '../services/userInteractionService';
+import { formatToOneDecimal } from '../utils/numberFormatter';
+import { getReadableCategoryName } from '../utils/categoryUtils';
 
 interface SingleCardDisplayProps {
   card: RecommendationCard;
@@ -47,6 +50,8 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [viewStartTime, setViewStartTime] = useState<number>(Date.now());
+  const [trackViewEnd, setTrackViewEnd] = useState<(() => void) | null>(null);
   
   // Haptic feedback
   const haptic = useHapticFeedback();
@@ -57,9 +62,6 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
   const rotate = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(1)).current;
   
-  // Button animation values
-  const likeButtonScale = useRef(new Animated.Value(1)).current;
-  const dislikeButtonScale = useRef(new Animated.Value(1)).current;
   
   // Get screen dimensions for responsive design
   const screenHeight = Dimensions.get('window').height;
@@ -75,17 +77,32 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
   const titleFontSize = isSmallScreen ? 20 : 22;
   const subtitleFontSize = isSmallScreen ? 13 : 14;
 
-  // Reset overlay state when card changes
+  // Reset overlay state when card changes and track view
   useEffect(() => {
     setSwipeDirection(null);
     setIsAnimating(false);
+    setViewStartTime(Date.now());
+    
     // Reset animation values
     translateX.setValue(0);
     translateY.setValue(0);
     rotate.setValue(0);
     scale.setValue(1);
-    likeButtonScale.setValue(1);
-    dislikeButtonScale.setValue(1);
+
+    // Track card view
+    const trackView = async () => {
+      const endTrackView = await userInteractionService.trackCardView(card.id, card, Date.now());
+      setTrackViewEnd(() => endTrackView);
+    };
+    
+    trackView();
+
+    // Cleanup: end view tracking when card changes
+    return () => {
+      if (trackViewEnd) {
+        trackViewEnd();
+      }
+    };
   }, [card.id]);
 
   const handleImageLoad = () => {
@@ -140,9 +157,11 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
     
     if (isSwipeRight) {
       // Swipe right = Like
+      userInteractionService.trackSwipe(card.id, 'right', card, { velocity: velocityX, distance: translationX });
       animateSwipeOut('right', () => onLike(card));
     } else if (isSwipeLeft) {
       // Swipe left = Dislike
+      userInteractionService.trackSwipe(card.id, 'left', card, { velocity: velocityX, distance: translationX });
       animateSwipeOut('left', () => onDislike(card));
     } else {
       // Return to center
@@ -223,19 +242,6 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
     // Haptic feedback
     haptic.cardLike();
     
-    // Button press animation
-    Animated.sequence([
-      Animated.timing(likeButtonScale, {
-        toValue: 0.9,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(likeButtonScale, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
     
     // Small delay to show button press feedback
     setTimeout(() => {
@@ -254,19 +260,6 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
     // Haptic feedback
     haptic.cardDislike();
     
-    // Button press animation
-    Animated.sequence([
-      Animated.timing(dislikeButtonScale, {
-        toValue: 0.9,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(dislikeButtonScale, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
     
     // Small delay to show button press feedback
     setTimeout(() => {
@@ -296,20 +289,6 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
     return symbols[level - 1] || '$';
   };
 
-  // Category color mapping
-  const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      'stroll': '#10B981',
-      'sip': '#8B5CF6',
-      'casual_eats': '#F59E0B',
-      'screen_relax': '#3B82F6',
-      'creative': '#EC4899',
-      'play_move': '#EF4444',
-      'dining': '#EAB308',
-      'freestyle': '#6B7280'
-    };
-    return colors[category] || '#6B7280';
-  };
 
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60);
@@ -401,18 +380,13 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
 
           {/* Overlays */}
           <View style={styles.overlayTop}>
-            <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(card.category) }]}>
-              <Text style={styles.categoryText}>
-                {card.category.replace('_', ' & ')}
-              </Text>
-            </View>
           </View>
 
           {/* Rating */}
           {card.rating && (
             <View style={styles.ratingContainer}>
               <Ionicons name="star" size={12} color="#FCD34D" />
-              <Text style={styles.ratingText}>{card.rating.toFixed(1)}</Text>
+              <Text style={styles.ratingText}>{formatToOneDecimal(card.rating)}</Text>
             </View>
           )}
 
@@ -520,61 +494,14 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
           )}
         </ScrollView>
 
-        {/* Action Buttons - Always visible at bottom */}
-        <View style={[
-          styles.actionButtonsContainer,
-          {
-            paddingHorizontal: contentPadding,
-            paddingVertical: isSmallScreen ? 8 : 12,
-          }
-        ]}>
-          <View style={styles.actionButtons}>
-            {/* Dislike Button */}
-            <TouchableOpacity
-              style={[
-                styles.dislikeButton,
-                { height: actionButtonHeight },
-                isAnimating && swipeDirection === 'left' && styles.buttonPressed
-              ]}
-              onPress={handleButtonDislike}
-              disabled={isAnimating}
-            >
-              <Animated.View style={{ transform: [{ scale: dislikeButtonScale }] }}>
-                <Ionicons 
-                  name="close" 
-                  size={isSmallScreen ? 20 : 24} 
-                  color={isAnimating && swipeDirection === 'left' ? "#FFFFFF" : "#EF4444"} 
-                />
-              </Animated.View>
-            </TouchableOpacity>
-
-            {/* Like Button */}
-            <TouchableOpacity
-              style={[
-                styles.likeButton,
-                { height: actionButtonHeight },
-                isAnimating && swipeDirection === 'right' && styles.buttonPressed
-              ]}
-              onPress={handleButtonLike}
-              disabled={isAnimating}
-            >
-              <Animated.View style={{ transform: [{ scale: likeButtonScale }] }}>
-                <Ionicons 
-                  name="heart" 
-                  size={isSmallScreen ? 20 : 24} 
-                  color={isAnimating && swipeDirection === 'right' ? "#FFFFFF" : "#10B981"} 
-                />
-              </Animated.View>
-            </TouchableOpacity>
-          </View>
-
-          {/* Next Card Hint */}
-          {hasNext && (
+        {/* Next Card Hint */}
+        {hasNext && (
+          <View style={styles.hintContainer}>
             <Text style={styles.nextHint}>
-              Swipe or tap ❤️/✕ to see the next recommendation
+              Swipe to see the next recommendation
             </Text>
-          )}
-        </View>
+          </View>
+        )}
         </Animated.View>
       </PanGestureHandler>
     </View>
@@ -590,6 +517,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     overflow: 'hidden',
     maxHeight: '100%',
+    marginBottom: 0,
   },
   counterContainer: {
     alignItems: 'center',
@@ -635,16 +563,6 @@ const styles = StyleSheet.create({
     left: 12,
     flexDirection: 'row',
     gap: 8,
-  },
-  categoryBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  categoryText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: 'white',
   },
   ratingContainer: {
     position: 'absolute',
@@ -791,45 +709,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#007AFF',
   },
-  actionButtonsContainer: {
+  hintContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 8,
     backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  dislikeButton: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#FECACA',
-    backgroundColor: '#FEF2F2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: 50,
-  },
-  likeButton: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#BBF7D0',
-    backgroundColor: '#F0FDF4',
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: 50,
   },
   nextHint: {
     textAlign: 'center',

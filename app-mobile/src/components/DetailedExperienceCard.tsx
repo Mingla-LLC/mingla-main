@@ -10,6 +10,7 @@ import {
   PanResponder,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { getReadableCategoryName, getCategoryIcon, getCategoryColor } from '../utils/categoryUtils';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -28,6 +29,10 @@ interface DetailedExperienceCardProps {
     meta?: {
       rating?: number;
       reviews?: number;
+    };
+    copy?: {
+      oneLiner: string;
+      tip: string;
     };
   };
   currentImageIndex?: number;
@@ -60,8 +65,8 @@ export const DetailedExperienceCard: React.FC<DetailedExperienceCardProps> = ({
         return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
       },
       onPanResponderGrant: () => {
-        translateX.setOffset(translateX._value);
-        translateY.setOffset(translateY._value);
+        translateX.setOffset(0);
+        translateY.setOffset(0);
         translateX.setValue(0);
         translateY.setValue(0);
       },
@@ -237,11 +242,6 @@ export const DetailedExperienceCard: React.FC<DetailedExperienceCardProps> = ({
           <Text style={styles.imageGalleryText}>{currentCardIndex} of {totalCards}</Text>
         </View>
 
-        {/* Category Badge */}
-        <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(experience.category) }]}>
-          <Ionicons name={getCategoryIcon(experience.category)} size={12} color="white" />
-          <Text style={styles.categoryText}>{experience.category}</Text>
-        </View>
 
         {/* Rating Badge */}
         <View style={styles.ratingBadge}>
@@ -262,18 +262,20 @@ export const DetailedExperienceCard: React.FC<DetailedExperienceCardProps> = ({
         <View style={styles.titleSection}>
           <Text style={styles.title}>{experience.title}</Text>
           <Text style={styles.subtitle}>
-            {experience.category} · {formatPrice(experience.price_min, experience.price_max)} · {formatDuration(experience.duration_min)} driving
+            {getReadableCategoryName(experience.category)} · {formatPrice(experience.price_min, experience.price_max)} · {formatDuration(experience.duration_min)} driving
           </Text>
         </View>
 
         {/* Description Box */}
         <View style={styles.descriptionBox}>
           <Text style={styles.descriptionText}>
-            Handpicked {experience.category.toLowerCase()} experience at {experience.title}.
+            {experience.copy?.oneLiner || `Handpicked ${getReadableCategoryName(experience.category).toLowerCase()} experience at ${experience.title}.`}
           </Text>
           <View style={styles.curationInfo}>
             <Ionicons name="chatbubble" size={14} color="#666" />
-            <Text style={styles.curationText}>Curated for your 25-150 budget and preferences</Text>
+            <Text style={styles.curationText}>
+              {experience.copy?.tip || 'Curated for your 25-150 budget and preferences'}
+            </Text>
           </View>
         </View>
 
@@ -284,15 +286,6 @@ export const DetailedExperienceCard: React.FC<DetailedExperienceCardProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Action Buttons */}
-      <View style={styles.actionButtons}>
-        <TouchableOpacity style={styles.dislikeButton} onPress={onDislike}>
-          <Ionicons name="close" size={24} color="white" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.likeButton} onPress={onLike}>
-          <Ionicons name="heart" size={24} color="white" />
-        </TouchableOpacity>
-      </View>
     </Animated.View>
   );
 };
@@ -322,22 +315,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   imageGalleryText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  categoryBadge: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  categoryText: {
     color: 'white',
     fontSize: 12,
     fontWeight: '600',
@@ -426,40 +403,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#007AFF',
     fontWeight: '600',
-  },
-  actionButtons: {
-    position: 'absolute',
-    bottom: 20,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 40,
-  },
-  dislikeButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#FF3B30',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  likeButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#34C759',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
   },
 });

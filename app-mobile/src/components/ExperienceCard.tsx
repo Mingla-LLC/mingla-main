@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Experience } from '../types';
 import { useExperiences } from '../hooks/useExperiences';
 import { useAppStore } from '../store/appStore';
+import { getReadableCategoryName } from '../utils/categoryUtils';
 
 interface ExperienceCardProps {
   experience: Experience;
@@ -103,9 +104,6 @@ export const ExperienceCard: React.FC<ExperienceCardProps> = ({
             />
           </TouchableOpacity>
         )}
-        <View style={styles.categoryBadge}>
-          <Text style={styles.categoryText}>{experience.category}</Text>
-        </View>
       </View>
 
       <View style={styles.content}>
@@ -181,20 +179,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
     borderRadius: 20,
     padding: 8,
-  },
-  categoryBadge: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  categoryText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
   },
   content: {
     padding: 16,

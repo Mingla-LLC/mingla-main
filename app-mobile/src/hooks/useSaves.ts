@@ -1,9 +1,41 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
-import { Save } from '../types';
+
+export interface SavedExperience {
+  id: string;
+  user_id: string;
+  card_id: string;
+  title: string;
+  subtitle?: string;
+  category: string;
+  price_level: number;
+  estimated_cost_per_person: number;
+  start_time?: string;
+  duration_minutes?: number;
+  image_url?: string;
+  address?: string;
+  location_lat?: number;
+  location_lng?: number;
+  route_mode?: string;
+  eta_minutes?: number;
+  distance_text?: string;
+  maps_deep_link?: string;
+  source_provider?: string;
+  place_id?: string;
+  event_id?: string;
+  one_liner?: string;
+  tip?: string;
+  rating?: number;
+  review_count?: number;
+  status: string;
+  scheduled_date?: string;
+  save_type: 'experience' | 'recommendation';
+  created_at: string;
+  updated_at: string;
+}
 
 export const useSaves = () => {
-  const [saves, setSaves] = useState<Save[]>([]);
+  const [saves, setSaves] = useState<SavedExperience[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,11 +47,11 @@ export const useSaves = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      // Fetch saves for the current user
+      // Fetch saved experiences for the current user
       const { data, error } = await supabase
-        .from('saves')
+        .from('saved_experiences')
         .select('*')
-        .eq('profile_id', user.id)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -41,13 +73,34 @@ export const useSaves = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
+      // For traditional experiences, we need to get the experience details first
+      const { data: experience } = await supabase
+        .from('experiences')
+        .select('*')
+        .eq('id', experienceId)
+        .single();
+
+      if (!experience) {
+        throw new Error('Experience not found');
+      }
+
       const { data, error } = await supabase
-        .from('saves')
+        .from('saved_experiences')
         .insert({
-          profile_id: user.id,
-          experience_id: experienceId,
+          user_id: user.id,
+          card_id: experienceId,
+          title: experience.title,
+          category: experience.category,
+          price_level: 1,
+          estimated_cost_per_person: experience.price_min || 0,
+          duration_minutes: experience.duration_min || 60,
+          image_url: experience.image_url,
+          location_lat: experience.lat,
+          location_lng: experience.lng,
+          place_id: experience.place_id,
           status,
-          scheduled_at: scheduledAt,
+          scheduled_date: scheduledAt,
+          save_type: 'experience'
         })
         .select()
         .single();
@@ -66,7 +119,7 @@ export const useSaves = () => {
     }
   }, [fetchSaves]);
 
-  const updateSave = useCallback(async (experienceId: string, updates: Partial<Save>) => {
+  const updateSave = useCallback(async (cardId: string, updates: Partial<SavedExperience>) => {
     setLoading(true);
     setError(null);
 
@@ -75,10 +128,10 @@ export const useSaves = () => {
       if (!user) throw new Error('User not authenticated');
 
       const { data, error } = await supabase
-        .from('saves')
+        .from('saved_experiences')
         .update(updates)
-        .eq('profile_id', user.id)
-        .eq('experience_id', experienceId)
+        .eq('user_id', user.id)
+        .eq('card_id', cardId)
         .select()
         .single();
 
@@ -96,7 +149,7 @@ export const useSaves = () => {
     }
   }, [fetchSaves]);
 
-  const removeSave = useCallback(async (experienceId: string) => {
+  const removeSave = useCallback(async (cardId: string) => {
     setLoading(true);
     setError(null);
 
@@ -105,10 +158,10 @@ export const useSaves = () => {
       if (!user) throw new Error('User not authenticated');
 
       const { error } = await supabase
-        .from('saves')
+        .from('saved_experiences')
         .delete()
-        .eq('profile_id', user.id)
-        .eq('experience_id', experienceId);
+        .eq('user_id', user.id)
+        .eq('card_id', cardId);
 
       if (error) throw error;
 
@@ -127,13 +180,13 @@ export const useSaves = () => {
   // Set up real-time subscriptions
   useEffect(() => {
     const savesChannel = supabase
-      .channel('saves_changes')
+      .channel('saved_experiences_changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'saves',
+          table: 'saved_experiences',
         },
         () => {
           fetchSaves();

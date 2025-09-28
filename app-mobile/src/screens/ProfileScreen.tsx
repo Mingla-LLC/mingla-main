@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Switch,
   Image,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +21,12 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useNavigation as useReactNavigation, useFocusEffect } from '@react-navigation/native';
 import { useBoards } from '../hooks/useBoards';
 import { useSaves } from '../hooks/useSaves';
+import { useEnhancedProfile } from '../hooks/useEnhancedProfile';
 import { supabase } from '../services/supabase';
+import { enhancedLocationTrackingService } from '../services/enhancedLocationTrackingService';
+import { geocodingService } from '../services/geocodingService';
+import { GamifiedHistory } from '../components/GamifiedHistory';
+import { PrivacyControls } from '../components/PrivacyControls';
 
 export default function ProfileScreen() {
   const { user, preferences } = useAppStore();
@@ -30,10 +36,21 @@ export default function ProfileScreen() {
   const navigation = useReactNavigation();
   const { boards } = useBoards();
   const { saves } = useSaves();
+  const { 
+    gamifiedData, 
+    loading: gamifiedLoading, 
+    loadGamifiedData, 
+    checkMilestones,
+    backfillActivityHistory
+  } = useEnhancedProfile();
   
   const [refreshing, setRefreshing] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  
+  const [currentLocationName, setCurrentLocationName] = useState<string>('Getting location...');
+  const [locationLoading, setLocationLoading] = useState(true);
+  const [showGamifiedHistory, setShowGamifiedHistory] = useState(false);
+  const [showPrivacyControls, setShowPrivacyControls] = useState(false);
+
   // Demo data for saved locations
   const savedLocations = [
     { id: '1', name: 'Home', address: 'Capitol Hill' },
@@ -41,18 +58,48 @@ export default function ProfileScreen() {
     { id: '3', name: 'Gym', address: 'Belltown' },
   ];
 
+  // Fetch current location
+  const fetchCurrentLocation = async () => {
+    try {
+      setLocationLoading(true);
+      const location = await enhancedLocationTrackingService.getCurrentLocation();
+      
+      if (location) {
+        const geocodingResult = await geocodingService.reverseGeocode(location.latitude, location.longitude);
+        const locationName = geocodingResult.formattedAddress || 
+                            `${geocodingResult.city || ''}, ${geocodingResult.state || ''}`.replace(/^,\s*|,\s*$/g, '') ||
+                            'Current location';
+        setCurrentLocationName(locationName);
+      } else {
+        setCurrentLocationName('Location unavailable');
+      }
+    } catch (error) {
+      console.error('Error fetching location:', error);
+      setCurrentLocationName('Location unavailable');
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
   // Refresh profile data when screen is focused
   useFocusEffect(
     React.useCallback(() => {
       if (user?.id) {
         refreshProfile();
+        fetchCurrentLocation();
+        loadGamifiedData(user.id);
+        checkMilestones(user.id);
       }
-    }, [user?.id, refreshProfile])
+    }, [user?.id, refreshProfile, loadGamifiedData, checkMilestones])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
     await refreshProfile();
+    if (user?.id) {
+      await loadGamifiedData(user.id);
+      await checkMilestones(user.id);
+    }
     setRefreshing(false);
   };
 
@@ -142,9 +189,11 @@ export default function ProfileScreen() {
             <Text style={styles.username}>
               @{profile?.username || user?.email?.split('@')[0] || 'user'}
             </Text>
-            <TouchableOpacity style={styles.locationButton}>
+            <TouchableOpacity style={styles.locationButton} onPress={fetchCurrentLocation}>
               <Ionicons name="location-outline" size={16} color="#666" />
-              <Text style={styles.locationText}>Location unavailable</Text>
+              <Text style={styles.locationText}>
+                {locationLoading ? 'Getting location...' : currentLocationName}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -166,14 +215,87 @@ export default function ProfileScreen() {
             <Text style={styles.statLabel}>Boards Created</Text>
           </TouchableOpacity>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>8</Text>
+            <Text style={styles.statNumber}>
+              {gamifiedData?.achievements.totalCollaborations || 0}
+            </Text>
             <Text style={styles.statLabel}>Collaborations</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>45</Text>
+            <Text style={styles.statNumber}>
+              {gamifiedData?.achievements.totalPlaces || 0}
+            </Text>
             <Text style={styles.statLabel}>Places Visited</Text>
           </View>
         </View>
+
+        {/* Gamified History Section */}
+        {gamifiedData && (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleContainer}>
+                <Ionicons name="trophy" size={20} color="#FF9500" />
+                <Text style={styles.sectionTitle}>Your Journey</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.viewAllButton} 
+                onPress={() => setShowGamifiedHistory(true)}
+              >
+                <Text style={styles.viewAllButtonText}>View All</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {/* Quick Stats */}
+            <View style={styles.quickStats}>
+              <View style={styles.quickStatItem}>
+                <Text style={styles.quickStatNumber}>
+                  {gamifiedData.monthlyStats.totalExperiences}
+                </Text>
+                <Text style={styles.quickStatLabel}>This Month</Text>
+              </View>
+              <View style={styles.quickStatItem}>
+                <Text style={styles.quickStatNumber}>
+                  {gamifiedData.achievements.streakDays}
+                </Text>
+                <Text style={styles.quickStatLabel}>Day Streak</Text>
+              </View>
+              <View style={styles.quickStatItem}>
+                <Text style={styles.quickStatNumber}>
+                  {gamifiedData.badges.length}
+                </Text>
+                <Text style={styles.quickStatLabel}>Badges</Text>
+              </View>
+            </View>
+
+                    {/* Top Vibes */}
+                    {gamifiedData.vibes.length > 0 && (
+                      <View style={styles.topVibes}>
+                        <Text style={styles.topVibesTitle}>Your Vibes</Text>
+                        <View style={styles.vibesList}>
+                          {gamifiedData.vibes.slice(0, 3).map((vibe, index) => (
+                            <View key={vibe.id} style={styles.vibeItem}>
+                              <Text style={styles.vibeCategory}>
+                                {vibe.category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                              </Text>
+                              <Text style={styles.vibePercentage}>{vibe.percentage.toFixed(0)}%</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Backfill Button for Testing */}
+                    <TouchableOpacity
+                      style={styles.backfillButton}
+                      onPress={() => {
+                        if (user?.id) {
+                          backfillActivityHistory(user.id);
+                        }
+                      }}
+                    >
+                      <Text style={styles.backfillButtonText}>🔄 Sync Your Data</Text>
+                    </TouchableOpacity>
+          </View>
+        )}
 
         {/* Saved Locations */}
         <View style={styles.sectionCard}>
@@ -242,6 +364,16 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
           
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => setShowPrivacyControls(true)}
+          >
+            <View style={styles.menuItemLeft}>
+              <Ionicons name="shield-outline" size={20} color="#666" />
+              <Text style={styles.menuItemText}>Privacy Controls</Text>
+            </View>
+          </TouchableOpacity>
+          
           <TouchableOpacity style={styles.menuItem}>
             <Text style={styles.menuItemText}>Privacy Policy</Text>
           </TouchableOpacity>
@@ -263,6 +395,63 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Gamified History Modal */}
+      <Modal
+        visible={showGamifiedHistory && !!gamifiedData}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowGamifiedHistory(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Your Journey</Text>
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => setShowGamifiedHistory(false)}
+            >
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.modalContent}>
+            {gamifiedData ? (
+              <GamifiedHistory 
+                gamifiedData={gamifiedData}
+                onViewDetails={(type, data) => {
+                  console.log('View details:', type, data);
+                }}
+              />
+            ) : (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <Text style={{ fontSize: 16, color: '#666' }}>Loading gamified data...</Text>
+              </View>
+            )}
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Privacy Controls Modal */}
+      <Modal
+        visible={showPrivacyControls}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowPrivacyControls(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Privacy Controls</Text>
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => setShowPrivacyControls(false)}
+            >
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.modalContent}>
+            <PrivacyControls onClose={() => setShowPrivacyControls(false)} />
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -466,5 +655,120 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     color: '#FF3B30',
+  },
+  // Enhanced Profile Styles
+  quickStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+  },
+  quickStatItem: {
+    alignItems: 'center',
+  },
+  quickStatNumber: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FF9500',
+    marginBottom: 4,
+  },
+  quickStatLabel: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+  },
+  topVibes: {
+    marginTop: 12,
+  },
+  topVibesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 8,
+  },
+  vibesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  vibeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  vibeCategory: {
+    fontSize: 12,
+    color: '#1a1a1a',
+    marginRight: 4,
+  },
+  vibePercentage: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF9500',
+  },
+  viewAllButton: {
+    backgroundColor: '#FF9500',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  viewAllButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Modal Styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  modalContent: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+  },
+  closeButton: {
+    padding: 8,
+  },
+  backfillButton: {
+    backgroundColor: '#FF9500',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  backfillButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

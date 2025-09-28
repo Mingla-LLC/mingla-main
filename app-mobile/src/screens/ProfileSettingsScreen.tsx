@@ -28,6 +28,7 @@ export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScr
     lastName: '',
     username: '',
     email: '',
+    bio: '',
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -41,6 +42,7 @@ export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScr
         lastName: profile.last_name || '',
         username: profile.username || user?.email?.split('@')[0] || '',
         email: user?.email || '',
+        bio: profile.bio || '',
       });
     }
   }, [profile, user]);
@@ -65,6 +67,7 @@ export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScr
         last_name: formData.lastName,
         username: formData.username,
         display_name: `${formData.firstName} ${formData.lastName}`.trim(),
+        bio: formData.bio,
       };
 
       await updateProfile(updates);
@@ -251,6 +254,24 @@ export default function ProfileSettingsScreen({ navigation }: ProfileSettingsScr
             </Text>
           </View>
 
+          {/* Bio Field */}
+          <View style={styles.fieldContainer}>
+            <Text style={styles.fieldLabel}>Bio</Text>
+            <TextInput
+              style={[styles.textInput, styles.bioInput]}
+              placeholder="Tell us about yourself..."
+              placeholderTextColor="#999"
+              value={formData.bio}
+              onChangeText={(value) => handleInputChange('bio', value)}
+              multiline
+              numberOfLines={3}
+              maxLength={160}
+            />
+            <Text style={styles.helperText}>
+              A short description about yourself (optional)
+            </Text>
+          </View>
+
           {/* Email Field */}
           <View style={styles.fieldContainer}>
             <Text style={styles.fieldLabel}>Email</Text>
@@ -399,6 +420,10 @@ const styles = StyleSheet.create({
   disabledInput: {
     backgroundColor: '#f0f0f0',
     color: '#666',
+  },
+  bioInput: {
+    height: 80,
+    textAlignVertical: 'top',
   },
   helperText: {
     fontSize: 14,

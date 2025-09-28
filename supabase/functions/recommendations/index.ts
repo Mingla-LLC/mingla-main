@@ -55,31 +55,117 @@ const CATEGORY_MAPPINGS = {
   }
 };
 
-// Experience Type Hard Filters
-const EXPERIENCE_TYPE_RULES = {
-  'business': {
-    required: ['wifi', 'quiet', 'reservation_possible', 'work_friendly', 'meeting_space'],
-    forbidden: ['strip_club', 'loud_party_only', 'nightclub', 'dance_club']
+// Enhanced Experience Type System with Structured Attributes
+const EXPERIENCE_TYPE_ATTRIBUTES = {
+  atmosphere: {
+    noise_level: ['quiet', 'moderate', 'loud', 'very_loud'],
+    lighting: ['dim', 'soft', 'bright', 'natural'],
+    privacy: ['intimate', 'semi_private', 'open', 'public'],
+    ambience: ['romantic', 'casual', 'upscale', 'cozy', 'energetic', 'relaxed']
   },
+  practicalities: {
+    price_tier: ['budget', 'moderate', 'upscale', 'luxury'],
+    parking: ['free', 'paid', 'valet', 'street', 'none'],
+    wifi: ['free', 'paid', 'none'],
+    reservation_required: ['required', 'recommended', 'not_needed']
+  },
+  activity_style: {
+    team_based: ['yes', 'no', 'optional'],
+    competitive: ['yes', 'no', 'optional'],
+    kid_friendly: ['yes', 'no', 'adults_only'],
+    solo_safe: ['yes', 'no', 'group_recommended']
+  },
+  special_vibes: {
+    scenic_view: ['yes', 'no'],
+    candlelight: ['yes', 'no'],
+    live_music: ['yes', 'no', 'occasional'],
+    novelty: ['high', 'medium', 'low', 'none']
+  }
+};
+
+// Deterministic Rules - Hard Gates
+const EXPERIENCE_TYPE_RULES = {
   'romantic': {
-    required: ['romantic_ambience', 'scenic_view', 'intimate_seating', 'candle_lit', 'date_spot'],
-    forbidden: ['kid_party_only', 'sports_bar_only', 'frat_vibe', 'loud_music', 'family_restaurant']
+    required: ['romantic_ambience', 'intimate_seating', 'scenic_view', 'candlelight', 'date_spot'],
+    forbidden: ['kid_party_only', 'sports_bar_only', 'frat_vibe', 'loud_music', 'family_restaurant', 'strip_club'],
+    min_score: 0.65
+  },
+  'first_date': {
+    required: ['conversation_friendly', 'comfortable_seating', 'moderate_noise', 'easy_parking'],
+    forbidden: ['explicitly_loud_only', 'overly_logistical', 'long_lines', 'complex_gear', 'high_energy_only'],
+    min_score: 0.60
+  },
+  'business': {
+    required: ['wifi', 'quiet', 'reservation_possible', 'work_friendly', 'professional_setting'],
+    forbidden: ['strip_club', 'loud_party_only', 'nightclub', 'dance_club', 'sports_bar_only'],
+    min_score: 0.70
   },
   'group_fun': {
-    required: ['team_based', 'capacity_group_friendly', 'easy_multi_player', 'group_activity', 'social'],
-    forbidden: ['intimate_only', 'quiet_only', 'solo_activity']
+    required: ['team_based', 'capacity_group_friendly', 'multiplayer', 'group_activity', 'social'],
+    forbidden: ['intimate_only', 'quiet_only', 'solo_activity', 'couples_only'],
+    min_score: 0.65
   },
   'solo_adventure': {
     required: ['safe_solo', 'individual_activity', 'self_guided', 'solo_friendly'],
-    forbidden: ['requires_pairing_only', 'team_only', 'group_required']
-  },
-  'first_date': {
-    required: ['conversation_friendly', 'comfortable_seating', 'moderate_noise'],
-    forbidden: ['explicitly_rampant_loud_only', 'overly_logistical', 'long_lines', 'complex_gear', 'high_energy_only']
+    forbidden: ['requires_pairing_only', 'team_only', 'group_required', 'unsafe_solo'],
+    min_score: 0.60
   },
   'friendly': {
-    required: [],
-    forbidden: ['date_only', 'couples_only', 'members_only', 'exclusive']
+    required: ['casual', 'budget_friendly', 'easy_meetup'],
+    forbidden: ['date_only', 'couples_only', 'members_only', 'exclusive', 'upscale_only'],
+    min_score: 0.50
+  }
+};
+
+// Feature-Based Scoring Recipes
+const EXPERIENCE_TYPE_SCORING = {
+  'romantic': {
+    ambience: 0.25,
+    privacy: 0.20,
+    photo_moments: 0.15,
+    service_quality: 0.15,
+    scenic_view: 0.10,
+    candlelight: 0.10,
+    intimate_seating: 0.05
+  },
+  'first_date': {
+    conversation_friendly: 0.30,
+    moderate_price: 0.20,
+    no_heavy_logistics: 0.15,
+    comfortable_seating: 0.15,
+    easy_parking: 0.10,
+    moderate_noise: 0.10
+  },
+  'business': {
+    quiet_clarity: 0.25,
+    wifi: 0.20,
+    professional_setting: 0.20,
+    reservations: 0.15,
+    work_friendly: 0.10,
+    meeting_space: 0.10
+  },
+  'group_fun': {
+    capacity: 0.25,
+    team_based: 0.20,
+    celebratory_energy: 0.15,
+    multiplayer: 0.15,
+    social: 0.10,
+    group_activity: 0.10,
+    easy_multiplayer: 0.05
+  },
+  'friendly': {
+    casual: 0.30,
+    budget_friendly: 0.25,
+    easy_meetup: 0.20,
+    social: 0.15,
+    accessible: 0.10
+  },
+  'solo_adventure': {
+    safe: 0.30,
+    individual_activity: 0.25,
+    introspective_value: 0.20,
+    self_guided: 0.15,
+    solo_friendly: 0.10
   }
 };
 
@@ -94,6 +180,7 @@ interface RecommendationsRequest {
   travel: { mode: string; constraint: { type: string; maxMinutes?: number; maxDistance?: number } };
   origin: { lat: number; lng: number };
   units: string;
+  groupSize?: number; // New group size field
 }
 
 serve(async (req) => {
@@ -239,6 +326,7 @@ async function fetchGooglePlaces(preferences: RecommendationsRequest): Promise<a
     
     for (const placeType of placeTypes.slice(0, 3)) {
       try {
+        // Enhanced Google Places API call with group size considerations
         const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${placeType}&key=${GOOGLE_API_KEY}`;
         
         const response = await fetch(url);
@@ -346,6 +434,8 @@ async function fetchEventbriteEvents(preferences: RecommendationsRequest): Promi
       startTime: event.start.utc,
       endTime: event.end.utc,
       price: event.ticket_availability?.minimum_ticket_price?.major_value || 0,
+      // Group size considerations: Eventbrite provides capacity data
+      maxCapacity: event.capacity || null, // For group size filtering
       imageUrl: event.logo?.url || null,
       eventId: event.id,
       source: 'eventbrite'
@@ -392,6 +482,366 @@ async function annotateWithTravel(candidates: any[], preferences: Recommendation
   return candidates;
 }
 
+// Group Size Scoring Function
+function calculateGroupSizeScore(candidate: any, groupSize: number): number {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  const candidateAddress = (candidate.address || '').toLowerCase();
+  
+  // Solo activities (groupSize = 1)
+  if (groupSize === 1) {
+    const soloKeywords = ['museum', 'library', 'gallery', 'exhibit', 'workshop', 'class', 'trail', 'hiking', 'walking', 'solo', 'individual'];
+    const soloTypes = ['museum', 'library', 'art_gallery', 'park', 'hiking_area'];
+    
+    const soloMatch = soloKeywords.some(keyword => 
+      candidateName.includes(keyword) || candidateAddress.includes(keyword)
+    ) || soloTypes.some(type => candidateTypes.includes(type));
+    
+    return soloMatch ? 1.0 : 0.3;
+  }
+  
+  // Couple activities (groupSize = 2)
+  if (groupSize === 2) {
+    const coupleKeywords = ['romantic', 'intimate', 'cozy', 'date', 'couple', 'dinner', 'wine', 'rooftop', 'lounge', 'candlelit'];
+    const coupleTypes = ['restaurant', 'bar', 'lounge', 'wine_bar', 'rooftop_bar', 'romantic_spot'];
+    
+    const coupleMatch = coupleKeywords.some(keyword => 
+      candidateName.includes(keyword) || candidateAddress.includes(keyword)
+    ) || coupleTypes.some(type => candidateTypes.includes(type));
+    
+    return coupleMatch ? 1.0 : 0.5;
+  }
+  
+  // Small group activities (3-6 people)
+  if (groupSize >= 3 && groupSize <= 6) {
+    const smallGroupKeywords = ['karaoke', 'escape', 'trivia', 'game', 'arcade', 'bowling', 'mini_golf', 'group', 'team', 'social'];
+    const smallGroupTypes = ['entertainment', 'recreation', 'game_center', 'bowling_alley', 'karaoke_bar', 'arcade'];
+    
+    const smallGroupMatch = smallGroupKeywords.some(keyword => 
+      candidateName.includes(keyword) || candidateAddress.includes(keyword)
+    ) || smallGroupTypes.some(type => candidateTypes.includes(type));
+    
+    return smallGroupMatch ? 1.0 : 0.6;
+  }
+  
+  // Large group activities (7+ people)
+  if (groupSize >= 7) {
+    const largeGroupKeywords = ['brewery', 'festival', 'event', 'venue', 'hall', 'convention', 'party', 'celebration', 'group_friendly'];
+    const largeGroupTypes = ['brewery', 'event_venue', 'convention_center', 'festival_grounds', 'large_venue', 'group_venue'];
+    
+    const largeGroupMatch = largeGroupKeywords.some(keyword => 
+      candidateName.includes(keyword) || candidateAddress.includes(keyword)
+    ) || largeGroupTypes.some(type => candidateTypes.includes(type));
+    
+    return largeGroupMatch ? 1.0 : 0.4;
+  }
+  
+  return 0.5; // Default score
+}
+
+// Enhanced Experience Type Badge System
+function calculateExperienceTypeBadges(candidate: any): { badges: string[], reasonCodes: Record<string, string> } {
+  const badges: string[] = [];
+  const reasonCodes: Record<string, string> = {};
+  
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  const candidateAddress = (candidate.address || '').toLowerCase();
+  
+  // Check each experience type
+  for (const [type, rules] of Object.entries(EXPERIENCE_TYPE_RULES)) {
+    const score = calculateExperienceTypeScore(candidate, type);
+    const hasRequired = checkRequiredAttributes(candidate, rules.required);
+    const hasForbidden = checkForbiddenAttributes(candidate, rules.forbidden);
+    
+    if (score >= rules.min_score && hasRequired && !hasForbidden) {
+      badges.push(type);
+      reasonCodes[type] = generateReasonCode(candidate, type, score);
+    }
+  }
+  
+  return { badges, reasonCodes };
+}
+
+function calculateExperienceTypeScore(candidate: any, type: string): number {
+  const scoring = EXPERIENCE_TYPE_SCORING[type];
+  if (!scoring) return 0;
+  
+  let totalScore = 0;
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  const candidateAddress = (candidate.address || '').toLowerCase();
+  
+  // Calculate weighted score based on features
+  for (const [feature, weight] of Object.entries(scoring)) {
+    const featureScore = calculateFeatureScore(candidate, feature, type);
+    totalScore += featureScore * weight;
+  }
+  
+  return Math.min(1.0, totalScore);
+}
+
+function calculateFeatureScore(candidate: any, feature: string, type: string): number {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  const candidateAddress = (candidate.address || '').toLowerCase();
+  
+  // Feature-specific scoring logic
+  switch (feature) {
+    case 'ambience':
+      return checkAmbienceFeatures(candidate, type);
+    case 'privacy':
+      return checkPrivacyFeatures(candidate, type);
+    case 'conversation_friendly':
+      return checkConversationFeatures(candidate);
+    case 'wifi':
+      return checkWifiFeatures(candidate);
+    case 'capacity':
+      return checkCapacityFeatures(candidate);
+    case 'safe':
+      return checkSafetyFeatures(candidate);
+    default:
+      return 0.5; // Default score
+  }
+}
+
+function checkAmbienceFeatures(candidate: any, type: string): number {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  
+  if (type === 'romantic') {
+    const romanticKeywords = ['romantic', 'intimate', 'cozy', 'candlelit', 'scenic', 'sunset', 'rooftop', 'wine'];
+    const romanticTypes = ['restaurant', 'bar', 'lounge', 'wine_bar', 'rooftop_bar'];
+    
+    const keywordMatch = romanticKeywords.some(keyword => candidateName.includes(keyword));
+    const typeMatch = romanticTypes.some(type => candidateTypes.includes(type));
+    
+    return (keywordMatch ? 0.7 : 0.3) + (typeMatch ? 0.3 : 0);
+  }
+  
+  return 0.5;
+}
+
+function checkPrivacyFeatures(candidate: any, type: string): number {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  
+  if (type === 'romantic') {
+    const intimateKeywords = ['booth', 'private', 'intimate', 'corner', 'quiet'];
+    const intimateTypes = ['restaurant', 'lounge', 'wine_bar'];
+    
+    const keywordMatch = intimateKeywords.some(keyword => candidateName.includes(keyword));
+    const typeMatch = intimateTypes.some(type => candidateTypes.includes(type));
+    
+    return (keywordMatch ? 0.8 : 0.4) + (typeMatch ? 0.2 : 0);
+  }
+  
+  return 0.5;
+}
+
+function checkConversationFeatures(candidate: any): number {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  
+  const conversationKeywords = ['quiet', 'cozy', 'intimate', 'conversation', 'table'];
+  const conversationTypes = ['restaurant', 'cafe', 'lounge', 'bar'];
+  
+  const keywordMatch = conversationKeywords.some(keyword => candidateName.includes(keyword));
+  const typeMatch = conversationTypes.some(type => candidateTypes.includes(type));
+  
+  return (keywordMatch ? 0.7 : 0.3) + (typeMatch ? 0.3 : 0);
+}
+
+function checkWifiFeatures(candidate: any): number {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  
+  const wifiKeywords = ['wifi', 'internet', 'coworking', 'laptop', 'work'];
+  const wifiTypes = ['cafe', 'restaurant', 'coworking_space', 'library'];
+  
+  const keywordMatch = wifiKeywords.some(keyword => candidateName.includes(keyword));
+  const typeMatch = wifiTypes.some(type => candidateTypes.includes(type));
+  
+  return (keywordMatch ? 0.9 : 0.1) + (typeMatch ? 0.1 : 0);
+}
+
+function checkCapacityFeatures(candidate: any): number {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  
+  const capacityKeywords = ['group', 'party', 'large', 'venue', 'hall', 'space'];
+  const capacityTypes = ['entertainment', 'recreation', 'event_venue', 'convention_center'];
+  
+  const keywordMatch = capacityKeywords.some(keyword => candidateName.includes(keyword));
+  const typeMatch = capacityTypes.some(type => candidateTypes.includes(type));
+  
+  return (keywordMatch ? 0.8 : 0.2) + (typeMatch ? 0.2 : 0);
+}
+
+function checkSafetyFeatures(candidate: any): number {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  
+  const safeKeywords = ['safe', 'secure', 'well_lit', 'public', 'monitored'];
+  const safeTypes = ['museum', 'library', 'park', 'gallery', 'cafe'];
+  
+  const keywordMatch = safeKeywords.some(keyword => candidateName.includes(keyword));
+  const typeMatch = safeTypes.some(type => candidateTypes.includes(type));
+  
+  return (keywordMatch ? 0.8 : 0.2) + (typeMatch ? 0.2 : 0);
+}
+
+function checkRequiredAttributes(candidate: any, required: string[]): boolean {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  const candidateAddress = (candidate.address || '').toLowerCase();
+  
+  return required.some(attr => {
+    const attrKeywords = getAttributeKeywords(attr);
+    return attrKeywords.some(keyword => 
+      candidateName.includes(keyword) || 
+      candidateAddress.includes(keyword) ||
+      candidateTypes.some(type => type.includes(keyword))
+    );
+  });
+}
+
+function checkForbiddenAttributes(candidate: any, forbidden: string[]): boolean {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  const candidateAddress = (candidate.address || '').toLowerCase();
+  
+  return forbidden.some(attr => {
+    const attrKeywords = getAttributeKeywords(attr);
+    return attrKeywords.some(keyword => 
+      candidateName.includes(keyword) || 
+      candidateAddress.includes(keyword) ||
+      candidateTypes.some(type => type.includes(keyword))
+    );
+  });
+}
+
+function getAttributeKeywords(attribute: string): string[] {
+  const attributeMap: Record<string, string[]> = {
+    'romantic_ambience': ['romantic', 'intimate', 'cozy', 'candlelit'],
+    'intimate_seating': ['booth', 'corner', 'private', 'intimate'],
+    'scenic_view': ['view', 'scenic', 'sunset', 'rooftop', 'terrace'],
+    'candlelight': ['candle', 'candlelit', 'dim', 'soft'],
+    'date_spot': ['date', 'romantic', 'couple'],
+    'conversation_friendly': ['quiet', 'cozy', 'intimate', 'table'],
+    'comfortable_seating': ['comfortable', 'seating', 'chair', 'booth'],
+    'moderate_noise': ['quiet', 'moderate', 'calm'],
+    'easy_parking': ['parking', 'valet', 'street'],
+    'wifi': ['wifi', 'internet', 'wireless'],
+    'quiet': ['quiet', 'silent', 'peaceful'],
+    'reservation_possible': ['reservation', 'booking', 'reserve'],
+    'work_friendly': ['work', 'laptop', 'business', 'meeting'],
+    'professional_setting': ['professional', 'business', 'corporate'],
+    'team_based': ['team', 'group', 'multiplayer', 'collaborative'],
+    'capacity_group_friendly': ['group', 'party', 'large', 'venue'],
+    'multiplayer': ['multiplayer', 'multi', 'group', 'team'],
+    'group_activity': ['group', 'team', 'social', 'activity'],
+    'social': ['social', 'party', 'group', 'community'],
+    'safe_solo': ['safe', 'secure', 'public', 'monitored'],
+    'individual_activity': ['individual', 'solo', 'personal', 'self'],
+    'self_guided': ['self', 'guided', 'tour', 'walk'],
+    'solo_friendly': ['solo', 'individual', 'personal'],
+    'casual': ['casual', 'relaxed', 'informal', 'easy'],
+    'budget_friendly': ['budget', 'affordable', 'cheap', 'inexpensive'],
+    'easy_meetup': ['easy', 'meetup', 'accessible', 'convenient']
+  };
+  
+  return attributeMap[attribute] || [attribute];
+}
+
+function generateReasonCode(candidate: any, type: string, score: number): string {
+  const candidateName = candidate.name.toLowerCase();
+  const candidateTypes = candidate.placeTypes || [];
+  const candidateAddress = (candidate.address || '').toLowerCase();
+  
+  const reasons: string[] = [];
+  
+  // Generate specific reason codes based on type and features
+  switch (type) {
+    case 'romantic':
+      if (candidateName.includes('candle') || candidateName.includes('candlelit')) {
+        reasons.push('candlelit atmosphere');
+      }
+      if (candidateName.includes('rooftop') || candidateName.includes('view')) {
+        reasons.push('scenic view');
+      }
+      if (candidateTypes.includes('restaurant') || candidateTypes.includes('wine_bar')) {
+        reasons.push('intimate dining');
+      }
+      if (candidateName.includes('booth') || candidateName.includes('private')) {
+        reasons.push('private seating');
+      }
+      break;
+      
+    case 'first_date':
+      if (candidateName.includes('quiet') || candidateName.includes('cozy')) {
+        reasons.push('quiet conversation-friendly');
+      }
+      if (candidate.rating && candidate.rating >= 4.0) {
+        reasons.push('highly rated');
+      }
+      if (candidateName.includes('parking') || candidateAddress.includes('parking')) {
+        reasons.push('easy parking');
+      }
+      break;
+      
+    case 'business':
+      if (candidateName.includes('wifi') || candidateName.includes('internet')) {
+        reasons.push('Wi-Fi available');
+      }
+      if (candidateName.includes('quiet') || candidateName.includes('private')) {
+        reasons.push('quiet professional setting');
+      }
+      if (candidateName.includes('meeting') || candidateName.includes('conference')) {
+        reasons.push('meeting space');
+      }
+      break;
+      
+    case 'group_fun':
+      if (candidateName.includes('bowling') || candidateName.includes('arcade')) {
+        reasons.push('multiplayer activities');
+      }
+      if (candidateName.includes('karaoke') || candidateName.includes('trivia')) {
+        reasons.push('group entertainment');
+      }
+      if (candidateName.includes('party') || candidateName.includes('celebration')) {
+        reasons.push('celebratory vibe');
+      }
+      break;
+      
+    case 'solo_adventure':
+      if (candidateTypes.includes('museum') || candidateTypes.includes('gallery')) {
+        reasons.push('self-paced exploration');
+      }
+      if (candidateName.includes('trail') || candidateName.includes('hiking')) {
+        reasons.push('safe solo activity');
+      }
+      if (candidateName.includes('library') || candidateName.includes('quiet')) {
+        reasons.push('introspective space');
+      }
+      break;
+      
+    case 'friendly':
+      if (candidateName.includes('casual') || candidateName.includes('relaxed')) {
+        reasons.push('casual atmosphere');
+      }
+      if (candidate.rating && candidate.rating >= 4.0) {
+        reasons.push('highly rated');
+      }
+      if (candidateName.includes('budget') || candidateName.includes('affordable')) {
+        reasons.push('budget-friendly');
+      }
+      break;
+  }
+  
+  return reasons.length > 0 ? reasons.join(', ') : `${type} suitable venue`;
+}
+
 function filterByConstraints(candidates: any[], preferences: RecommendationsRequest): any[] {
   console.log('🔍 Starting advanced filtering with', candidates.length, 'candidates');
   
@@ -418,22 +868,59 @@ function filterByConstraints(candidates: any[], preferences: RecommendationsRequ
       }
     }
 
-    // 4. Budget filter
+    // 4. Enhanced Budget Filter with Group Size Scaling
     const budget = preferences.budget;
     let estimatedCost = 0;
     
     if (candidate.source === 'google_places') {
-      const baseCosts = [15, 30, 50, 85, 150];
+      // Enhanced Google Maps price level mapping
+      const priceLevelMapping = {
+        1: { min: 10, max: 25, avg: 17 },    // $ = Budget
+        2: { min: 25, max: 50, avg: 37 },    // $$ = Moderate  
+        3: { min: 50, max: 100, avg: 75 },   // $$$ = Expensive
+        4: { min: 100, max: 200, avg: 150 }  // $$$$ = Very Expensive
+      };
+      
       const priceLevel = candidate.priceLevel || 2;
-      estimatedCost = baseCosts[Math.min(priceLevel - 1, 4)] || 40;
+      const priceInfo = priceLevelMapping[priceLevel] || priceLevelMapping[2];
+      estimatedCost = priceInfo.avg;
+      
+      // Store price range for better filtering
+      candidate.priceRange = [priceInfo.min, priceInfo.max];
     } else if (candidate.source === 'eventbrite') {
-      estimatedCost = candidate.price || 30;
+      // Enhanced Eventbrite price handling
+      if (candidate.price) {
+        estimatedCost = candidate.price;
+      } else if (candidate.priceRange) {
+        estimatedCost = (candidate.priceRange.min + candidate.priceRange.max) / 2;
+      } else {
+        estimatedCost = 30; // Default fallback
+      }
     }
 
     const perPersonCost = budget.perPerson ? estimatedCost : estimatedCost / 2;
     
-    // Stricter budget filtering
-    if (perPersonCost < budget.min || perPersonCost > budget.max) return false;
+    // Group size scaling for total budget consideration
+    const groupSize = preferences.groupSize || 2;
+    const totalCost = perPersonCost * groupSize;
+    
+    // Enhanced budget filtering with fallback logic
+    if (perPersonCost < budget.min || perPersonCost > budget.max) {
+      // Check if we can expand the range slightly (±15%)
+      const expandedMin = budget.min * 0.85;
+      const expandedMax = budget.max * 1.15;
+      
+      if (perPersonCost < expandedMin || perPersonCost > expandedMax) {
+        return false;
+      }
+      
+      // Mark as near-miss for graceful handling
+      candidate.budgetNearMiss = {
+        originalRange: [budget.min, budget.max],
+        actualCost: perPersonCost,
+        expansion: true
+      };
+    }
 
     candidate.estimatedCost = Math.round(perPersonCost);
     return true;
@@ -544,14 +1031,28 @@ function scoreAndRank(candidates: any[], preferences: RecommendationsRequest): a
     const categoryMatch = preferences.categories.includes(candidate.category) ? 1 : 0;
     score += 3.0 * categoryMatch;
 
-    // 2. EXPERIENCE MATCH (2.0 weight) 
+    // 2. EXPERIENCE TYPE BADGE MATCH (2.5 weight) - Enhanced badge system
     let experienceMatch = 0;
     if (preferences.experienceTypes?.length) {
+      // Calculate badges for this candidate
+      const { badges, reasonCodes } = calculateExperienceTypeBadges(candidate);
+      candidate.badges = badges;
+      candidate.reasonCodes = reasonCodes;
+      
+      // Check if any of the user's preferred experience types match the candidate's badges
       experienceMatch = preferences.experienceTypes.some(expType => 
-        matchesExperienceTypeForScoring(candidate, expType)
+        badges.includes(expType.toLowerCase())
       ) ? 1 : 0;
+      
+      // Bonus for multiple matching badges
+      const matchingBadges = preferences.experienceTypes.filter(expType => 
+        badges.includes(expType.toLowerCase())
+      ).length;
+      if (matchingBadges > 1) {
+        experienceMatch += 0.2; // Bonus for multiple badge matches
+      }
     }
-    score += 2.0 * experienceMatch;
+    score += 2.5 * experienceMatch;
 
     // 3. TAG OVERLAP (1.6 weight) - using name/address text matching
     const keywords = categoryKeywords[candidate.category] || [];
@@ -579,7 +1080,14 @@ function scoreAndRank(candidates: any[], preferences: RecommendationsRequest): a
     }
     score += 0.6 * popularity;
 
-    // 6. QUALITY (0.4 weight) - data completeness
+    // 6. GROUP SIZE MATCH (1.2 weight) - venue suitability for group size
+    let groupSizeScore = 0;
+    if (preferences.groupSize) {
+      groupSizeScore = calculateGroupSizeScore(candidate, preferences.groupSize);
+    }
+    score += 1.2 * groupSizeScore;
+
+    // 7. QUALITY (0.4 weight) - data completeness
     let quality = 0;
     const hasImage = candidate.imageUrl ? 0.25 : 0;
     const hasRating = candidate.rating ? 0.25 : 0;
@@ -832,7 +1340,7 @@ async function enrichWithLLM(candidates: any[], preferences: RecommendationsRequ
     }
 
     try {
-      const prompt = `Generate engaging copy for this ${candidate.source === 'eventbrite' ? 'event' : 'place'}:
+      const prompt = `Generate personalized, engaging copy for this ${candidate.source === 'eventbrite' ? 'event' : 'place'}:
 
 Name: ${candidate.name}
 Category: ${candidate.category}
@@ -845,14 +1353,17 @@ User preferences: ${preferences.categories.join(', ')}, Budget: $${preferences.b
 
 Respond with JSON only:
 {
-  "oneLiner": "engaging description (max 14 words)",
-  "tip": "helpful tip for visitors (max 18 words)"
+  "oneLiner": "personalized description that speaks directly to the user (max 14 words)",
+  "tip": "specific, actionable tip tailored to this place and user preferences (max 18 words)"
 }
 
 Guidelines:
+- Write as if speaking directly to the user
+- Use "you" and "your" to make it personal
+- Reference the specific place name and location
 - No hallucinated facts about hours, prices, or availability
 - No promises about what will be available
-- Focus on atmosphere and experience
+- Focus on atmosphere, experience, and why this place is perfect for them
 - Be concise and compelling`;
 
       const controller = new AbortController();
@@ -914,19 +1425,19 @@ function addFallbackCopy(candidates: any[]): void {
 
 function addFallbackCopyForCandidate(candidate: any): void {
   const categoryDescriptions: Record<string, { oneLiner: string; tip: string }> = {
-    'stroll': { oneLiner: 'Perfect spot for a leisurely walk', tip: 'Best visited during golden hour' },
-    'sip': { oneLiner: 'Cozy atmosphere for drinks and conversation', tip: 'Check their happy hour specials' },
-    'casual_eats': { oneLiner: 'Delicious casual dining experience', tip: 'Try their most popular dish' },
-    'screen_relax': { oneLiner: 'Great place to unwind and relax', tip: 'Book ahead for peak times' },
-    'creative': { oneLiner: 'Inspiring space for creative exploration', tip: 'Perfect for art enthusiasts' },
-    'play_move': { oneLiner: 'Active fun for all skill levels', tip: 'Wear comfortable clothing' },
-    'dining': { oneLiner: 'Memorable fine dining experience', tip: 'Make reservations in advance' },
-    'freestyle': { oneLiner: 'Highly rated local favorite', tip: 'Check their current offerings' }
+    'stroll': { oneLiner: 'Perfect spot for your leisurely walk', tip: 'You\'ll love the golden hour views here' },
+    'sip': { oneLiner: 'Cozy atmosphere you\'ll enjoy for drinks', tip: 'Ask about their happy hour specials' },
+    'casual_eats': { oneLiner: 'Delicious casual dining you\'ll love', tip: 'Don\'t miss their most popular dish' },
+    'screen_relax': { oneLiner: 'Perfect place for you to unwind', tip: 'Book ahead to secure your spot' },
+    'creative': { oneLiner: 'Inspiring creative space you\'ll adore', tip: 'Perfect match for your artistic side' },
+    'play_move': { oneLiner: 'Active fun that\'s perfect for you', tip: 'Wear comfortable clothes for best experience' },
+    'dining': { oneLiner: 'Memorable dining experience awaits you', tip: 'Reserve ahead for your special evening' },
+    'freestyle': { oneLiner: 'Highly rated local gem you\'ll discover', tip: 'Check their latest offerings before visiting' }
   };
 
   const defaults = categoryDescriptions[candidate.category] || {
-    oneLiner: 'Popular local destination',
-    tip: 'Check ahead for hours and availability'
+    oneLiner: 'Amazing local destination perfect for you',
+    tip: 'Handpicked to match your style and preferences'
   };
 
   candidate.copy = defaults;
@@ -1016,8 +1527,8 @@ async function convertToCards(candidates: any[], preferences: RecommendationsReq
         eventId: candidate.eventId
       },
       copy: candidate.copy || {
-        oneLiner: 'Great local experience',
-        tip: 'Check ahead for current details'
+        oneLiner: `Perfect ${candidate.category.replace('_', ' ')} spot you'll love`,
+        tip: `Handpicked for your preferences and budget`
       },
       actions: {
         invite: true,

@@ -1,3 +1,5 @@
+import { formatCoordinates } from '../utils/numberFormatter';
+
 interface GeocodingResult {
   city?: string;
   state?: string;
@@ -13,7 +15,7 @@ class GeocodingService {
   async reverseGeocode(latitude: number, longitude: number): Promise<GeocodingResult> {
     try {
       // Create cache key
-      const cacheKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+      const cacheKey = `${formatCoordinates(latitude)},${formatCoordinates(longitude)}`;
       
       // Check cache first
       const cached = this.cache.get(cacheKey);
@@ -70,7 +72,7 @@ class GeocodingService {
       console.error('Geocoding error:', error);
       return {
         error: 'Unable to determine location name',
-        formattedAddress: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+        formattedAddress: `${formatCoordinates(latitude)}, ${formatCoordinates(longitude)}`,
       };
     }
   }
@@ -219,7 +221,7 @@ class GeocodingService {
       const result = await this.reverseGeocode(latitude, longitude);
       
       if (result.error) {
-        return result.formattedAddress || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+        return result.formattedAddress || `${formatCoordinates(latitude)}, ${formatCoordinates(longitude)}`;
       }
 
       // Return the most specific location name available
@@ -236,7 +238,7 @@ class GeocodingService {
       }
     } catch (error) {
       console.error('Error getting location name:', error);
-      return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+      return `${formatCoordinates(latitude)}, ${formatCoordinates(longitude)}`;
     }
   }
 

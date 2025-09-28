@@ -29,12 +29,17 @@ export const convertPreferencesToRequest = (
   if (preferences.location === 'current' && currentLat && currentLng) {
     originLat = currentLat;
     originLng = currentLng;
+    console.log('📍 Using current location:', originLat, originLng);
   } else if (preferences.location === 'custom' && preferences.custom_lat && preferences.custom_lng) {
     originLat = preferences.custom_lat;
     originLng = preferences.custom_lng;
+    console.log('📍 Using custom location:', originLat, originLng);
   } else if (preferences.custom_lat && preferences.custom_lng) {
     originLat = preferences.custom_lat;
     originLng = preferences.custom_lng;
+    console.log('📍 Using fallback custom location:', originLat, originLng);
+  } else {
+    console.log('📍 Using default location (Cary, NC):', originLat, originLng);
   }
 
   // Convert time preference to time window

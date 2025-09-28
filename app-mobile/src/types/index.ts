@@ -6,12 +6,18 @@ export interface User {
   first_name?: string;
   last_name?: string;
   avatar_url?: string;
+  bio?: string;
   currency?: string;
   measurement_system?: string;
   share_location?: boolean;
   share_budget?: boolean;
   share_categories?: boolean;
   share_date_time?: boolean;
+  visibility_mode?: 'public' | 'friends' | 'private';
+  show_activity?: boolean;
+  show_saved_experiences?: boolean;
+  show_location?: boolean;
+  show_preferences?: boolean;
   created_at: string;
 }
 
@@ -51,7 +57,7 @@ export interface RecommendationCard {
   subtitle: string;
   category: string;
   priceLevel: number;
-  estimatedCostPerPerson: number;
+  estimatedCostPerPerson: number | string;
   startTime: string;
   durationMinutes: number;
   imageUrl: string;
@@ -258,4 +264,83 @@ export interface CollaborationInvite {
   message?: string;
   created_at: string;
   updated_at: string;
+}
+
+// Enhanced Profile Features Types
+export interface UserActivityHistory {
+  id: string;
+  user_id: string;
+  activity_type: 'view' | 'like' | 'dislike' | 'save' | 'unsave' | 'share' | 'schedule' | 'unschedule' |
+                'click_details' | 'swipe_left' | 'swipe_right' | 'tap' |
+                'experience_saved' | 'experience_liked' | 'experience_disliked' | 
+                'board_created' | 'board_shared' | 'collaboration_joined' |
+                'place_visited' | 'recommendation_viewed' | 'session_created';
+  activity_data: Record<string, any>;
+  category?: string;
+  location_context: Record<string, any>;
+  created_at: string;
+}
+
+export interface UserStats {
+  id: string;
+  user_id: string;
+  stat_type: string;
+  stat_value: Record<string, any>;
+  period_start: string;
+  period_end: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserVibes {
+  id: string;
+  user_id: string;
+  category: string;
+  percentage: number;
+  activity_count: number;
+  period_start: string;
+  period_end: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SavedExperiencePrivacy {
+  id: string;
+  user_id: string;
+  experience_id: string;
+  is_public: boolean;
+  visible_to_friends: boolean;
+  show_in_activity: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserTimeline {
+  id: string;
+  user_id: string;
+  event_type: 'first_experience' | 'milestone_reached' | 'category_master' | 
+             'explorer_badge' | 'social_butterfly' | 'local_expert';
+  event_data: Record<string, any>;
+  badge_earned?: string;
+  created_at: string;
+}
+
+export interface ProfileGamifiedData {
+  monthlyStats: {
+    totalExperiences: number;
+    categoryBreakdown: Record<string, number>;
+    placesVisited: number;
+    collaborationsJoined: number;
+  };
+  vibes: UserVibes[];
+  timeline: UserTimeline[];
+  recentActivity: UserActivityHistory[];
+  badges: string[];
+  achievements: {
+    totalExperiences: number;
+    totalPlaces: number;
+    totalCollaborations: number;
+    streakDays: number;
+    favoriteCategory: string;
+  };
 }

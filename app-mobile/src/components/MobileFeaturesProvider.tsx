@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { enhancedLocationService, LocationData } from '../services/enhancedLocationService';
+import { enhancedLocationTrackingService } from '../services/enhancedLocationTrackingService';
 import { enhancedNotificationService } from '../services/enhancedNotificationService';
+import { smartNotificationService } from '../services/smartNotificationService';
 import { cameraService } from '../services/cameraService';
 // Removed aiReasoningService import - using RecommendationsGrid instead
 import { useAppStore } from '../store/appStore';
@@ -135,6 +137,17 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
             return false;
           }),
 
+        // Initialize smart notification service (if user is logged in)
+        user ? smartNotificationService.initializeUser(user.id)
+          .then(() => {
+            console.log('Smart notification service initialized');
+            return true;
+          })
+          .catch(error => {
+            console.log('Smart notification initialization failed:', error);
+            return false;
+          }) : Promise.resolve(false),
+
         // Initialize camera service
         cameraService.initialize()
           .then(permission => {
@@ -143,6 +156,27 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
           })
           .catch(error => {
             console.log('Camera initialization failed:', error);
+            return false;
+          }),
+
+        // Initialize enhanced location tracking service
+        enhancedLocationTrackingService.requestPermissions()
+          .then(permission => {
+            if (permission) {
+              return enhancedLocationTrackingService.startLocationTracking()
+                .then(success => {
+                  console.log('Enhanced location tracking started:', success);
+                  return success;
+                })
+                .catch(error => {
+                  console.log('Enhanced location tracking failed:', error);
+                  return false;
+                });
+            }
+            return false;
+          })
+          .catch(error => {
+            console.log('Enhanced location tracking permission failed:', error);
             return false;
           })
       ];

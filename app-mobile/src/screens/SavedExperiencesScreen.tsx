@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '../store/appStore';
 import { useSaves } from '../hooks/useSaves';
 import { experienceService } from '../services/experienceService';
+import { supabase } from '../services/supabase';
 
 interface SavedExperiencesScreenProps {
   navigation?: any;
@@ -26,63 +27,60 @@ export default function SavedExperiencesScreen({ navigation }: SavedExperiencesS
 
   // Load experience details for saved experiences
   const loadExperienceDetails = async () => {
-    if (saves.length === 0) {
-      setSavedExperiences([]);
-      return;
-    }
-
     setLoadingExperiences(true);
     try {
-      const experienceIds = saves.map(save => save.experience_id);
-      const experiences = await experienceService.fetchAllExperiences();
-      
-      // Create a map of experience_id to experience details
-      const experienceMap: Record<string, any> = {};
-      experiences.forEach(experience => {
-        if (experienceIds.includes(experience.id)) {
-          experienceMap[experience.id] = experience;
-        }
-      });
-      
-      // Convert saves to display format with real experience data
-      const experiencesWithDetails = saves.map(save => {
-        const experience = experienceMap[save.experience_id];
-        return {
-          id: save.experience_id,
-          title: experience?.title || 'Unknown Experience',
-          category: experience?.category || 'General',
-          location: experience?.place_id ? 'Location Available' : 'Location TBD',
-          price: experience ? `$${experience.price_min}-${experience.price_max}` : 'Price TBD',
-          status: save.status,
-          savedAt: save.created_at,
-          scheduledFor: save.scheduled_at,
-          description: experience?.description,
-        };
-      });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setSavedExperiences([]);
+        return;
+      }
+
+      // Fetch from saved_experiences table only
+      const { data: savedExperiences, error } = await supabase
+        .from('saved_experiences')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching saved experiences:', error);
+        setSavedExperiences([]);
+        return;
+      }
+
+      const experiencesWithDetails: any[] = [];
+
+      // Process saved experiences
+      if (savedExperiences && savedExperiences.length > 0) {
+        savedExperiences.forEach(savedExp => {
+          experiencesWithDetails.push({
+            id: savedExp.card_id,
+            title: savedExp.title,
+            category: savedExp.category,
+            location: savedExp.address || (savedExp.place_id ? 'Location Available' : 'Location TBD'),
+            price: `$${savedExp.estimated_cost_per_person}`,
+            status: savedExp.status,
+            savedAt: savedExp.created_at,
+            scheduledFor: savedExp.scheduled_date,
+            description: savedExp.one_liner || savedExp.tip,
+            saveType: savedExp.save_type
+          });
+        });
+      }
       
       setSavedExperiences(experiencesWithDetails);
     } catch (error) {
       console.error('Error loading experience details:', error);
-      // Fallback to basic save data if experience loading fails
-      setSavedExperiences(saves.map(save => ({
-        id: save.experience_id,
-        title: 'Experience',
-        category: 'General',
-        location: 'Location TBD',
-        price: 'Price TBD',
-        status: save.status,
-        savedAt: save.created_at,
-        scheduledFor: save.scheduled_at,
-      })));
+      setSavedExperiences([]);
     } finally {
       setLoadingExperiences(false);
     }
   };
 
-  // Load experience details when saves change
+  // Load experience details on mount
   useEffect(() => {
     loadExperienceDetails();
-  }, [saves]);
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);

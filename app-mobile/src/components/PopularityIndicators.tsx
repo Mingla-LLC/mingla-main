@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
+import { formatDecimal, formatToOneDecimal } from '../utils/numberFormatter';
 
 interface PopularityData {
   likes: number;
@@ -80,10 +81,10 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) {
-      return `${(num / 1000000).toFixed(1)}M`;
+      return `${formatDecimal(num / 1000000)}M`;
     }
     if (num >= 1000) {
-      return `${(num / 1000).toFixed(1)}K`;
+      return `${formatDecimal(num / 1000)}K`;
     }
     return num.toString();
   };
@@ -241,7 +242,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
             ))}
           </View>
           <Text style={styles.ratingValue}>
-            {data.rating.toFixed(1)}
+            {formatToOneDecimal(data.rating)}
           </Text>
         </View>
         

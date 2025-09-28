@@ -140,6 +140,7 @@ const styles = StyleSheet.create({
   nextCardWrapper: {
     flex: 1,
     margin: spacing.md,
+    marginBottom: 0,
     borderRadius: radius.xl,
     overflow: 'hidden',
     ...shadows.md,

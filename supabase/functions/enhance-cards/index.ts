@@ -182,7 +182,7 @@ Format: Return only valid JSON with "oneLiner" and "tip" fields.`;
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              model: 'gpt-4.1-2025-04-14',
+              model: 'gpt-4o-mini',
               messages: [
                 { 
                   role: 'system', 
@@ -214,16 +214,16 @@ Format: Return only valid JSON with "oneLiner" and "tip" fields.`;
             const tipMatch = content.match(/"tip":\s*"([^"]+)"/);
             
             enhancedCopy = {
-              oneLiner: oneLinearMatch ? oneLinearMatch[1] : `Curated ${card.category.toLowerCase()} experience at ${card.title}`,
-              tip: tipMatch ? tipMatch[1] : `Tailored for your group, budget around $${card.estimatedCostPerPerson} per person`
+              oneLiner: oneLinearMatch ? oneLinearMatch[1] : `Perfect ${card.category.replace('_', ' ').toLowerCase()} spot you'll love`,
+              tip: tipMatch ? tipMatch[1] : `Handpicked for you - around $${card.estimatedCostPerPerson} per person`
             };
           }
 
           return {
             ...card,
             copy: {
-              oneLiner: enhancedCopy.oneLiner || `Premium ${card.category.toLowerCase()} experience awaits`,
-              tip: enhancedCopy.tip || `Perfect for your preferences, around $${card.estimatedCostPerPerson} per person`
+              oneLiner: enhancedCopy.oneLiner || `Perfect ${card.category.replace('_', ' ').toLowerCase()} spot you'll love`,
+              tip: enhancedCopy.tip || `Handpicked for you - around $${card.estimatedCostPerPerson} per person`
             }
           };
 
@@ -236,8 +236,8 @@ Format: Return only valid JSON with "oneLiner" and "tip" fields.`;
           return {
             ...card,
             copy: {
-              oneLiner: `Handpicked ${card.category.toLowerCase()} ${groupContext} at ${card.title}`,
-              tip: `Curated for your ${preferences.budget.min}-${preferences.budget.max} budget and preferences`
+              oneLiner: `Perfect ${card.category.replace('_', ' ').toLowerCase()} ${groupContext} you'll love`,
+              tip: `Handpicked for your $${preferences.budget.min}-${preferences.budget.max} budget and style`
             }
           };
         }
