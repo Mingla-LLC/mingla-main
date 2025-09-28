@@ -487,7 +487,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
 
               {/* View Route Button */}
               <TouchableOpacity style={styles.routeButton} onPress={handleViewRoute}>
-                <Ionicons name="open-outline" size={16} color="#007AFF" />
+                <Ionicons name="open-outline" size={16} color="#FF6B35" />
                 <Text style={styles.routeButtonText}>Open in Maps</Text>
               </TouchableOpacity>
             </View>
@@ -701,13 +701,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: '#FF6B35',
     gap: 8,
   },
   routeButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   hintContainer: {
     position: 'absolute',

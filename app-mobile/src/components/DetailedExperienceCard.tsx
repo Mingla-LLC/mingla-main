@@ -188,7 +188,7 @@ export const DetailedExperienceCard: React.FC<DetailedExperienceCardProps> = ({
       case 'creative':
         return '#AF52DE';
       case 'play_move':
-        return '#007AFF';
+        return '#FF6B35';
       default:
         return '#FF3B30';
     }
@@ -282,7 +282,7 @@ export const DetailedExperienceCard: React.FC<DetailedExperienceCardProps> = ({
         {/* View Details Link */}
         <TouchableOpacity style={styles.viewDetailsButton} onPress={onViewDetails}>
           <Text style={styles.viewDetailsText}>View Details</Text>
-          <Ionicons name="chevron-down" size={16} color="#007AFF" />
+          <Ionicons name="chevron-down" size={16} color="#FF6B35" />
         </TouchableOpacity>
       </View>
 
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
   },
   viewDetailsText: {
     fontSize: 16,
-    color: '#007AFF',
+    color: '#FF6B35',
     fontWeight: '600',
   },
 });

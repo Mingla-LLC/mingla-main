@@ -418,7 +418,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={[styles.preferencesButton, { marginTop: 10, backgroundColor: '#007AFF' }]}
+              style={[styles.preferencesButton, { marginTop: 10, backgroundColor: '#FF6B35' }]}
               onPress={async () => {
                 console.log('🔄 Manually refreshing location...');
                 try {

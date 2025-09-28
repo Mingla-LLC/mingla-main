@@ -729,19 +729,19 @@ export default function ConnectionsScreen() {
                 setShowShareCardModal(true);
               }}
             >
-              <Ionicons name="card" size={20} color="#007AFF" />
+              <Ionicons name="card" size={20} color="#FF6B35" />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.messageActionButton}
               onPress={() => handleVoteOnBoard('sample-board-id')}
             >
-              <Ionicons name="checkmark-circle" size={20} color="#007AFF" />
+              <Ionicons name="checkmark-circle" size={20} color="#FF6B35" />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.messageActionButton}
               onPress={() => Alert.alert('Coming Soon', 'Photo sharing feature coming soon!')}
             >
-              <Ionicons name="camera" size={20} color="#007AFF" />
+              <Ionicons name="camera" size={20} color="#FF6B35" />
             </TouchableOpacity>
           </View>
           <View style={styles.messageInputRow}>
@@ -881,20 +881,20 @@ export default function ConnectionsScreen() {
                   style={styles.addFriendButton}
                   onPress={() => setShowAddFriendModal(true)}
                 >
-                  <Ionicons name="person-add" size={20} color="#007AFF" />
+                  <Ionicons name="person-add" size={20} color="#FF6B35" />
                   <Text style={styles.addFriendText}>Add Friend</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.qrButton}
                   onPress={() => setShowQRModal(true)}
                 >
-                  <Ionicons name="qr-code" size={20} color="#007AFF" />
+                  <Ionicons name="qr-code" size={20} color="#FF6B35" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.inviteButton}
                   onPress={() => setShowInviteModal(true)}
                 >
-                  <Ionicons name="link" size={20} color="#007AFF" />
+                  <Ionicons name="link" size={20} color="#FF6B35" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1018,7 +1018,7 @@ export default function ConnectionsScreen() {
                           }
                         }}
                       >
-                        <Ionicons name="chatbubble-outline" size={16} color="#007AFF" />
+                        <Ionicons name="chatbubble-outline" size={16} color="#FF6B35" />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.moreButton}
@@ -1045,14 +1045,14 @@ export default function ConnectionsScreen() {
                   style={styles.createGroupButton}
                   onPress={() => setShowCreateGroupModal(true)}
                 >
-                  <Ionicons name="people" size={16} color="#007AFF" />
+                  <Ionicons name="people" size={16} color="#FF6B35" />
                   <Text style={styles.createGroupText}>Create Group</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.shareCardButton}
                   onPress={() => setShowShareCardModal(true)}
                 >
-                  <Ionicons name="card" size={16} color="#007AFF" />
+                  <Ionicons name="card" size={16} color="#FF6B35" />
                   <Text style={styles.shareCardText}>Share Card</Text>
                 </TouchableOpacity>
               </View>
@@ -1218,7 +1218,7 @@ export default function ConnectionsScreen() {
               <Text style={styles.qrText}>Scan this QR code to add you as a friend</Text>
               {/* TODO: Add actual QR code generation */}
               <View style={styles.qrPlaceholder}>
-                <Ionicons name="qr-code" size={100} color="#007AFF" />
+                <Ionicons name="qr-code" size={100} color="#FF6B35" />
               </View>
               <Text style={styles.qrUsername}>@{user?.username}</Text>
             </View>
@@ -1372,7 +1372,7 @@ export default function ConnectionsScreen() {
                             </Text>
                           )}
                         </View>
-                        <Ionicons name="share" size={20} color="#007AFF" />
+                        <Ionicons name="share" size={20} color="#FF6B35" />
                       </TouchableOpacity>
                     ))
                   )}
@@ -1436,7 +1436,7 @@ export default function ConnectionsScreen() {
                         <Text style={styles.memberUsername}>@{friend.username}</Text>
                       </View>
                       {selectedGroupMembers.includes(friend.friend_user_id) && (
-                        <Ionicons name="checkmark-circle" size={20} color="#007AFF" />
+                        <Ionicons name="checkmark-circle" size={20} color="#FF6B35" />
                       )}
                     </TouchableOpacity>
                   ))}
@@ -1491,7 +1491,7 @@ export default function ConnectionsScreen() {
                     }}
                   >
                     <View style={styles.smartActionIcon}>
-                      <Ionicons name="people" size={24} color="#007AFF" />
+                      <Ionicons name="people" size={24} color="#FF6B35" />
                     </View>
                     <View style={styles.smartActionContent}>
                       <Text style={styles.smartActionTitle}>Invite to Board</Text>
@@ -1599,7 +1599,7 @@ export default function ConnectionsScreen() {
                             </Text>
                           </View>
                         </View>
-                        <Ionicons name="arrow-forward" size={20} color="#007AFF" />
+                        <Ionicons name="arrow-forward" size={20} color="#FF6B35" />
                       </TouchableOpacity>
                     ))
                   )}
@@ -1713,7 +1713,7 @@ export default function ConnectionsScreen() {
                               </Text>
                             )}
                           </View>
-                          <Ionicons name="share" size={20} color="#007AFF" />
+                          <Ionicons name="share" size={20} color="#FF6B35" />
                         </TouchableOpacity>
                       );
                     })
@@ -1962,7 +1962,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   unreadBadge: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -2048,7 +2048,7 @@ const styles = StyleSheet.create({
   },
   myMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
   },
   theirMessage: {
     alignSelf: 'flex-start',
@@ -2089,7 +2089,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   sendButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -2120,7 +2120,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 16,
     fontWeight: '600',
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   qrButton: {
     backgroundColor: '#f0f8ff',
@@ -2178,7 +2178,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   addButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     padding: 8,
     borderRadius: 6,
   },
@@ -2260,7 +2260,7 @@ const styles = StyleSheet.create({
   qrUsername: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   inviteContainer: {
     alignItems: 'center',
@@ -2273,7 +2273,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   copyButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
@@ -2360,7 +2360,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   modalAddButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -2396,7 +2396,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     fontSize: 12,
     fontWeight: '600',
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   shareCardButton: {
     flexDirection: 'row',
@@ -2410,7 +2410,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     fontSize: 12,
     fontWeight: '600',
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   messageInputActions: {
     flexDirection: 'row',
@@ -2514,7 +2514,7 @@ const styles = StyleSheet.create({
   },
   selectedMember: {
     backgroundColor: '#e3f2fd',
-    borderColor: '#007AFF',
+    borderColor: '#FF6B35',
   },
   memberInfo: {
     flex: 1,
@@ -2530,7 +2530,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   createGroupSubmitButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -2715,7 +2715,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   undoButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 4,

@@ -1038,7 +1038,7 @@ export const PreferencesSheet: React.FC<PreferencesSheetProps> = ({
           {/* Enhanced Travel Constraint */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="location" size={20} color="#007AFF" />
+              <Ionicons name="location" size={20} color="#FF6B35" />
               <Text style={styles.sectionTitle}>Travel Constraint</Text>
             </View>
             <Text style={styles.sectionDescription}>
@@ -1172,7 +1172,7 @@ export const PreferencesSheet: React.FC<PreferencesSheetProps> = ({
           {/* Enhanced Starting Location */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="location" size={20} color="#007AFF" />
+              <Ionicons name="location" size={20} color="#FF6B35" />
               <Text style={styles.sectionTitle}>Starting Location</Text>
             </View>
             <Text style={styles.sectionDescription}>
@@ -2716,7 +2716,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#007AFF',
+    borderColor: '#FF6B35',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2724,7 +2724,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
   },
   travelConstraintLabel: {
     fontSize: 16,
@@ -2732,7 +2732,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   travelConstraintLabelActive: {
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   travelConstraintLabelInactive: {
     color: '#1a1a1a',
@@ -2743,7 +2743,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   travelConstraintDescriptionActive: {
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   travelConstraintDescriptionInactive: {
     color: '#666',
@@ -2754,7 +2754,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   travelConstraintMicrocopyActive: {
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   travelConstraintMicrocopyInactive: {
     color: '#999',
@@ -2767,7 +2767,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
     borderRadius: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#007AFF',
+    borderLeftColor: '#FF6B35',
   },
   constraintValueTitle: {
     fontSize: 14,
@@ -2821,16 +2821,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   suggestedDefaultButton: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: '#fff3e0',
     borderRadius: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#2196F3',
+    borderColor: '#FF6B35',
   },
   suggestedDefaultText: {
     fontSize: 11,
-    color: '#1976d2',
+    color: '#FF6B35',
     fontWeight: '500',
   },
 
@@ -2916,7 +2916,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#007AFF',
+    borderColor: '#FF6B35',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2924,7 +2924,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
   },
   startingLocationLabel: {
     fontSize: 16,
@@ -2932,7 +2932,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   startingLocationLabelActive: {
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   startingLocationLabelInactive: {
     color: '#1a1a1a',
@@ -2943,7 +2943,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   startingLocationDescriptionActive: {
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   startingLocationDescriptionInactive: {
     color: '#666',
@@ -2954,7 +2954,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   startingLocationMicrocopyActive: {
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   startingLocationMicrocopyInactive: {
     color: '#999',
@@ -3003,20 +3003,20 @@ const styles = StyleSheet.create({
   locationSearchContainer: {
     marginTop: 16,
     padding: 16,
-    backgroundColor: '#e3f2fd',
+    backgroundColor: '#fff3e0',
     borderRadius: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#2196F3',
+    borderLeftColor: '#FF6B35',
   },
   locationSearchTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1976d2',
+    color: '#FF6B35',
     marginBottom: 8,
   },
   locationSearchDescription: {
     fontSize: 12,
-    color: '#1976d2',
+    color: '#FF6B35',
     lineHeight: 16,
     marginBottom: 16,
   },
@@ -3047,7 +3047,7 @@ const styles = StyleSheet.create({
   searchSuggestionsTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#1976d2',
+    color: '#FF6B35',
     marginBottom: 8,
   },
   searchSuggestionItem: {
@@ -3063,7 +3063,7 @@ const styles = StyleSheet.create({
   },
   searchSuggestionText: {
     fontSize: 12,
-    color: '#1976d2',
+    color: '#FF6B35',
     marginLeft: 8,
   },
 

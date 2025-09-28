@@ -498,7 +498,7 @@ export default function ActivityScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>My Boards</Text>
         <TouchableOpacity style={styles.createBoardCard} onPress={handleCreateBoard}>
-          <Ionicons name="add-circle" size={24} color="#007AFF" />
+          <Ionicons name="add-circle" size={24} color="#FF6B35" />
           <Text style={styles.createBoardText}>Create New Board</Text>
         </TouchableOpacity>
         
@@ -510,7 +510,7 @@ export default function ActivityScreen() {
               onPress={() => handleBoardSelect(board as any)}
             >
               <View style={styles.boardHeader}>
-                <Ionicons name="grid-outline" size={24} color="#007AFF" />
+                <Ionicons name="grid-outline" size={24} color="#FF6B35" />
                 <Text style={styles.boardTitle}>{board.name}</Text>
               </View>
               <Text style={styles.boardDescription}>
@@ -554,7 +554,7 @@ export default function ActivityScreen() {
             <View key={session.id} style={styles.sessionCard}>
               <View style={styles.sessionContent}>
                 <View style={styles.sessionHeader}>
-                  <Ionicons name="people" size={20} color="#007AFF" />
+                  <Ionicons name="people" size={20} color="#FF6B35" />
                   <Text style={styles.sessionTitle}>{session.name}</Text>
                 </View>
                 <Text style={styles.sessionStatus}>
@@ -596,7 +596,7 @@ export default function ActivityScreen() {
           <Ionicons 
             name="heart-outline" 
             size={18} 
-            color={savedSubTab === 'experiences' ? '#007AFF' : '#666'} 
+            color={savedSubTab === 'experiences' ? '#FF6B35' : '#666'} 
           />
           <Text style={[
             styles.subTabText, 
@@ -612,7 +612,7 @@ export default function ActivityScreen() {
           <Ionicons 
             name="calendar-outline" 
             size={18} 
-            color={savedSubTab === 'scheduled' ? '#007AFF' : '#666'} 
+            color={savedSubTab === 'scheduled' ? '#FF6B35' : '#666'} 
           />
           <Text style={[
             styles.subTabText, 
@@ -665,7 +665,7 @@ export default function ActivityScreen() {
                     style={styles.scheduleButton}
                     onPress={() => scheduleExperience(experienceId)}
                   >
-                    <Ionicons name="calendar-outline" size={16} color="#007AFF" />
+                    <Ionicons name="calendar-outline" size={16} color="#FF6B35" />
                     <Text style={styles.scheduleButtonText}>Schedule</Text>
                   </TouchableOpacity>
                 )}
@@ -692,7 +692,7 @@ export default function ActivityScreen() {
             scheduledActivities.map((activity) => (
               <View key={activity.id} style={styles.activityCard}>
                 <View style={styles.activityHeader}>
-                  <Ionicons name="calendar" size={20} color="#007AFF" />
+                  <Ionicons name="calendar" size={20} color="#FF6B35" />
                   <Text style={styles.activityTitle}>{activity.title}</Text>
                   <View style={styles.activityStatus}>
                     <Text style={styles.statusText}>{activity.status}</Text>
@@ -816,7 +816,7 @@ export default function ActivityScreen() {
                           style={styles.voteButton}
                           onPress={() => voteOnCard(card.id, selectedBoard.id, 'up')}
                         >
-                          <Ionicons name="thumbs-up-outline" size={16} color="#007AFF" />
+                          <Ionicons name="thumbs-up-outline" size={16} color="#FF6B35" />
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.voteButton}
@@ -955,7 +955,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   activeTab: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
   },
   tabText: {
     fontSize: 16,
@@ -990,7 +990,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   activeSubTab: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
   },
   subTabText: {
     fontSize: 14,
@@ -1027,7 +1027,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     marginLeft: 12,
-    color: '#007AFF',
+    color: '#FF6B35',
   },
   emptyState: {
     backgroundColor: 'white',
@@ -1204,7 +1204,7 @@ const styles = StyleSheet.create({
   },
   scheduleButtonText: {
     fontSize: 14,
-    color: '#007AFF',
+    color: '#FF6B35',
     fontWeight: '500',
     marginLeft: 4,
   },
@@ -1267,7 +1267,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   emptyStateButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -1304,7 +1304,7 @@ const styles = StyleSheet.create({
   },
   createButtonText: {
     fontSize: 16,
-    color: '#007AFF',
+    color: '#FF6B35',
     fontWeight: '500',
   },
   modalContent: {
@@ -1432,7 +1432,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
   },
   datePickerScheduleButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FF6B35',
   },
   datePickerCancelButtonText: {
     fontSize: 16,

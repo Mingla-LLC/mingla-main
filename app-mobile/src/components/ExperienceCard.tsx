@@ -136,7 +136,7 @@ export const ExperienceCard: React.FC<ExperienceCardProps> = ({
           <View style={styles.actions}>
             <TouchableOpacity style={styles.actionButton}>
               <Text style={styles.actionButtonText}>View Details</Text>
-              <Ionicons name="chevron-forward" size={16} color="#007AFF" />
+              <Ionicons name="chevron-forward" size={16} color="#FF6B35" />
             </TouchableOpacity>
           </View>
         )}
@@ -222,6 +222,6 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#007AFF',
+    color: '#FF6B35',
   },
 });

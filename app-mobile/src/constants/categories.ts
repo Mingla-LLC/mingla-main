@@ -200,7 +200,7 @@ export const categories: Category[] = [
       fallbackBehavior: 'If no dedicated screenings nearby, reframe broader entertainment options via OpenAI: "Closest match: small comedy show at a café tonight."'
     },
     ux: {
-      activeColor: '#2196F3',
+      activeColor: '#FF6B35',
       subcategories: ['Movies', 'Theater', 'Comedy', 'Drive-in', 'Watch Parties', 'Special Screenings'],
       contextualPreview: 'Indie cinema screening an award-winning film at 7pm.'
     },
@@ -1163,7 +1163,7 @@ export const getQuickLocationShortcuts = () => {
       label: 'Work',
       icon: '🏢',
       description: 'Your saved work address',
-      color: '#2196F3'
+      color: '#FF6B35'
     },
     {
       id: 'gps',
