@@ -312,3 +312,245 @@ BEGIN
         ALTER TABLE public.experiences ADD CONSTRAINT experiences_place_id_key UNIQUE (place_id);
     END IF;
 END $$;
+
+-- 6. UNDO SYSTEM INFRASTRUCTURE
+-- Create undo_actions table for system-wide undo functionality
+CREATE TABLE IF NOT EXISTS public.undo_actions (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    data JSONB NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    description TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Create indexes for undo_actions performance
+CREATE INDEX IF NOT EXISTS idx_undo_actions_user_id ON public.undo_actions(user_id);
+CREATE INDEX IF NOT EXISTS idx_undo_actions_type ON public.undo_actions(type);
+CREATE INDEX IF NOT EXISTS idx_undo_actions_expires_at ON public.undo_actions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_undo_actions_timestamp ON public.undo_actions(timestamp);
+
+-- Add soft delete columns to existing tables for undo functionality
+ALTER TABLE public.friends ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.boards ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ALTER TABLE public.board_cards ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMPTZ;
+
+-- Create preference_history table for tracking preference changes
+CREATE TABLE IF NOT EXISTS public.preference_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    preference_id UUID NOT NULL,
+    old_data JSONB NOT NULL,
+    new_data JSONB NOT NULL,
+    change_type TEXT NOT NULL, -- 'create', 'update', 'delete'
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Create indexes for preference_history
+CREATE INDEX IF NOT EXISTS idx_preference_history_user_id ON public.preference_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_preference_history_preference_id ON public.preference_history(preference_id);
+CREATE INDEX IF NOT EXISTS idx_preference_history_created_at ON public.preference_history(created_at);
+
+-- Function to clean up expired undo actions
+CREATE OR REPLACE FUNCTION public.cleanup_expired_undo_actions()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    DELETE FROM public.undo_actions 
+    WHERE expires_at < NOW();
+END;
+$$;
+
+-- Function to create preference history entry
+CREATE OR REPLACE FUNCTION public.create_preference_history()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    -- Insert history record for preference changes
+    INSERT INTO public.preference_history (
+        user_id,
+        preference_id,
+        old_data,
+        new_data,
+        change_type
+    ) VALUES (
+        NEW.user_id,
+        NEW.id,
+        CASE 
+            WHEN TG_OP = 'INSERT' THEN '{}'::jsonb
+            ELSE to_jsonb(OLD)
+        END,
+        to_jsonb(NEW),
+        TG_OP
+    );
+    
+    RETURN NEW;
+END;
+$$;
+
+-- Create trigger for preference history
+DROP TRIGGER IF EXISTS trigger_preference_history ON public.preferences;
+CREATE TRIGGER trigger_preference_history
+    AFTER INSERT OR UPDATE OR DELETE ON public.preferences
+    FOR EACH ROW
+    EXECUTE FUNCTION public.create_preference_history();
+
+-- Function to get available undo actions for user
+CREATE OR REPLACE FUNCTION public.get_undo_actions(p_user_id UUID)
+RETURNS TABLE (
+    id TEXT,
+    type TEXT,
+    data JSONB,
+    action_timestamp TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    description TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        ua.id,
+        ua.type,
+        ua.data,
+        ua.timestamp as action_timestamp,
+        ua.expires_at,
+        ua.description
+    FROM public.undo_actions ua
+    WHERE ua.user_id = p_user_id
+    AND ua.expires_at > NOW()
+    ORDER BY ua.timestamp DESC;
+END;
+$$;
+
+-- Function to execute undo action
+CREATE OR REPLACE FUNCTION public.execute_undo_action(p_undo_id TEXT, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    undo_record RECORD;
+    success BOOLEAN := FALSE;
+BEGIN
+    -- Get the undo action
+    SELECT * INTO undo_record
+    FROM public.undo_actions
+    WHERE id = p_undo_id
+    AND user_id = p_user_id
+    AND expires_at > NOW();
+    
+    IF NOT FOUND THEN
+        RETURN FALSE;
+    END IF;
+    
+    -- Execute undo based on type
+    CASE undo_record.type
+        WHEN 'friend_removal' THEN
+            -- Restore friend relationship
+            UPDATE public.friends
+            SET deleted_at = NULL, updated_at = NOW()
+            WHERE id = (undo_record.data->>'friendId')::UUID;
+            success := TRUE;
+            
+        WHEN 'message_unsend' THEN
+            -- Restore message
+            UPDATE public.messages
+            SET deleted_at = NULL, updated_at = NOW()
+            WHERE id = (undo_record.data->>'messageId')::UUID;
+            success := TRUE;
+            
+        WHEN 'vote_undo' THEN
+            -- Remove vote
+            DELETE FROM public.board_votes
+            WHERE id = (undo_record.data->>'voteId')::UUID;
+            success := TRUE;
+            
+        WHEN 'finalize_undo' THEN
+            -- Move card back to open state
+            UPDATE public.board_cards
+            SET status = 'open', finalized_at = NULL, updated_at = NOW()
+            WHERE id = (undo_record.data->>'cardId')::UUID;
+            success := TRUE;
+            
+        WHEN 'board_archive' THEN
+            -- Restore board
+            UPDATE public.boards
+            SET archived_at = NULL, updated_at = NOW()
+            WHERE id = (undo_record.data->>'boardId')::UUID;
+            success := TRUE;
+            
+        WHEN 'save_undo' THEN
+            -- Remove save
+            DELETE FROM public.saves
+            WHERE id = (undo_record.data->>'saveId')::UUID;
+            success := TRUE;
+            
+        WHEN 'schedule_undo' THEN
+            -- Move back to saved state
+            UPDATE public.scheduled_activities
+            SET status = 'saved', scheduled_date = NULL, updated_at = NOW()
+            WHERE id = (undo_record.data->>'scheduleId')::UUID;
+            success := TRUE;
+            
+        WHEN 'preference_rollback' THEN
+            -- Restore original preferences
+            UPDATE public.preferences
+            SET 
+                categories = (undo_record.data->'originalData'->>'categories')::TEXT[],
+                budget = (undo_record.data->'originalData'->'budget')::JSONB,
+                travel = (undo_record.data->'originalData'->>'travel')::TEXT,
+                experience_types = (undo_record.data->'originalData'->>'experience_types')::TEXT[],
+                updated_at = NOW()
+            WHERE id = (undo_record.data->>'preferenceId')::UUID;
+            success := TRUE;
+            
+        ELSE
+            success := FALSE;
+    END CASE;
+    
+    -- Remove the undo action if successful
+    IF success THEN
+        DELETE FROM public.undo_actions WHERE id = p_undo_id;
+    END IF;
+    
+    RETURN success;
+END;
+$$;
+
+-- RLS Policies for undo_actions
+ALTER TABLE public.undo_actions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own undo actions" ON public.undo_actions
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own undo actions" ON public.undo_actions
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own undo actions" ON public.undo_actions
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- RLS Policies for preference_history
+ALTER TABLE public.preference_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own preference history" ON public.preference_history
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "System can insert preference history" ON public.preference_history
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Grant necessary permissions
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON public.undo_actions TO anon, authenticated;
+GRANT ALL ON public.preference_history TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_undo_actions(UUID) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.execute_undo_action(TEXT, UUID) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.cleanup_expired_undo_actions() TO anon, authenticated;
