@@ -1,180 +1,336 @@
-"use client";
-
 import * as React from "react";
-import { Text } from "react-native";
-import * as SelectPrimitive from "@radix-ui/react-select@2.1.6";
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-} from "lucide-react@0.487.0";
+import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Modal } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
 import { cn } from "./utils";
 
-function Select({
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />;
+interface SelectProps {
+  value?: string;
+  onValueChange?: (value: string) => void;
+  children: React.ReactNode;
 }
 
-function SelectGroup({
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.Group>) {
-  return <SelectPrimitive.Group data-slot="select-group" {...props} />;
+function Select({ value, onValueChange, children, ...props }: SelectProps) {
+  return (
+    <View {...props}>
+      {children}
+    </View>
+  );
 }
 
-function SelectValue({
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.Value>) {
-  return <SelectPrimitive.Value data-slot="select-value" {...props} />;
+interface SelectGroupProps {
+  children: React.ReactNode;
+}
+
+function SelectGroup({ children, ...props }: SelectGroupProps) {
+  return (
+    <View {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface SelectValueProps {
+  placeholder?: string;
+  children?: React.ReactNode;
+}
+
+function SelectValue({ placeholder, children, ...props }: SelectValueProps) {
+  return (
+    <Text {...props}>
+      {children || placeholder}
+    </Text>
+  );
+}
+
+interface SelectTriggerProps {
+  style?: any;
+  size?: "sm" | "default";
+  children: React.ReactNode;
+  onPress?: () => void;
+  disabled?: boolean;
 }
 
 function SelectTrigger({
-  className,
+  style,
   size = "default",
   children,
+  onPress,
+  disabled = false,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
-  size?: "sm" | "default";
-}) {
+}: SelectTriggerProps) {
   return (
-    <SelectPrimitive.Trigger
-      data-slot="select-trigger"
-      data-size={size}
-      className={cn(
-        "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-full items-center justify-between gap-2 rounded-md border bg-input-background px-3 py-2 text-sm whitespace-nowrap transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+    <TouchableOpacity
+      style={[
+        styles.selectTrigger,
+        size === "sm" ? styles.selectTriggerSm : styles.selectTriggerDefault,
+        disabled && styles.selectTriggerDisabled,
+        style
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
     >
-      {children}
-      <SelectPrimitive.Icon asChild>
-        <ChevronDownIcon className="size-4 opacity-50" />
-      </SelectPrimitive.Icon>
-    </SelectPrimitive.Trigger>
+      <View style={styles.selectTriggerContent}>
+        {children}
+        <Ionicons 
+          name="chevron-down" 
+          size={16} 
+          color="#6b7280" 
+          style={styles.selectTriggerIcon}
+        />
+      </View>
+    </TouchableOpacity>
   );
+}
+
+interface SelectContentProps {
+  style?: any;
+  children: React.ReactNode;
+  position?: "popper" | "item-aligned";
+  visible?: boolean;
+  onClose?: () => void;
 }
 
 function SelectContent({
-  className,
+  style,
   children,
   position = "popper",
+  visible = false,
+  onClose,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+}: SelectContentProps) {
   return (
-    <SelectPrimitive.Portal>
-      <SelectPrimitive.Content
-        data-slot="select-content"
-        className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 max-h-(--radix-select-content-available-height) min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border shadow-md",
-          position === "popper" &&
-            "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
-          className,
-        )}
-        position={position}
-        {...props}
-      >
-        <SelectScrollUpButton />
-        <SelectPrimitive.Viewport
-          className={cn(
-            "p-1",
-            position === "popper" &&
-              "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1",
-          )}
-        >
-          {children}
-        </SelectPrimitive.Viewport>
-        <SelectScrollDownButton />
-      </SelectPrimitive.Content>
-    </SelectPrimitive.Portal>
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+      {...props}
+    >
+      <View style={styles.selectOverlay}>
+        <View style={[styles.selectContent, style]}>
+          <ScrollView style={styles.selectViewport}>
+            {children}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
-function SelectLabel({
-  className,
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.Label>) {
+interface SelectLabelProps {
+  style?: any;
+  children: React.ReactNode;
+}
+
+function SelectLabel({ style, children, ...props }: SelectLabelProps) {
   return (
-    <SelectPrimitive.Label
-      data-slot="select-label"
-      className={cn("text-muted-foreground px-2 py-1.5 text-xs", className)}
+    <Text
+      style={[styles.selectLabel, style]}
       {...props}
-    />
+    >
+      {children}
+    </Text>
   );
+}
+
+interface SelectItemProps {
+  style?: any;
+  children: React.ReactNode;
+  value: string;
+  onPress?: () => void;
+  selected?: boolean;
+  disabled?: boolean;
 }
 
 function SelectItem({
-  className,
+  style,
   children,
+  value,
+  onPress,
+  selected = false,
+  disabled = false,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Item>) {
+}: SelectItemProps) {
   return (
-    <SelectPrimitive.Item
-      data-slot="select-item"
-      className={cn(
-        "focus:bg-accent focus:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
-        className,
-      )}
+    <TouchableOpacity
+      style={[
+        styles.selectItem,
+        selected && styles.selectItemSelected,
+        disabled && styles.selectItemDisabled,
+        style
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
     >
-      <Text className="absolute right-2 flex size-3.5 items-center justify-center">
-        <SelectPrimitive.ItemIndicator>
-          <CheckIcon className="size-4" />
-        </SelectPrimitive.ItemIndicator>
-      </Text>
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-    </SelectPrimitive.Item>
+      <View style={styles.selectItemContent}>
+        <Text style={styles.selectItemText}>{children}</Text>
+        {selected && (
+          <Ionicons 
+            name="checkmark" 
+            size={16} 
+            color="#059669" 
+            style={styles.selectItemIcon}
+          />
+        )}
+      </View>
+    </TouchableOpacity>
   );
 }
 
-function SelectSeparator({
-  className,
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.Separator>) {
+interface SelectSeparatorProps {
+  style?: any;
+}
+
+function SelectSeparator({ style, ...props }: SelectSeparatorProps) {
   return (
-    <SelectPrimitive.Separator
-      data-slot="select-separator"
-      className={cn("bg-border pointer-events-none -mx-1 my-1 h-px", className)}
+    <View
+      style={[styles.selectSeparator, style]}
       {...props}
     />
   );
 }
 
-function SelectScrollUpButton({
-  className,
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.ScrollUpButton>) {
+interface SelectScrollUpButtonProps {
+  style?: any;
+  onPress?: () => void;
+}
+
+function SelectScrollUpButton({ style, onPress, ...props }: SelectScrollUpButtonProps) {
   return (
-    <SelectPrimitive.ScrollUpButton
-      data-slot="select-scroll-up-button"
-      className={cn(
-        "flex cursor-default items-center justify-center py-1",
-        className,
-      )}
+    <TouchableOpacity
+      style={[styles.selectScrollButton, style]}
+      onPress={onPress}
+      activeOpacity={0.7}
       {...props}
     >
-      <ChevronUpIcon className="size-4" />
-    </SelectPrimitive.ScrollUpButton>
+      <Ionicons name="chevron-up" size={16} color="#6b7280" />
+    </TouchableOpacity>
   );
 }
 
-function SelectScrollDownButton({
-  className,
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.ScrollDownButton>) {
+interface SelectScrollDownButtonProps {
+  style?: any;
+  onPress?: () => void;
+}
+
+function SelectScrollDownButton({ style, onPress, ...props }: SelectScrollDownButtonProps) {
   return (
-    <SelectPrimitive.ScrollDownButton
-      data-slot="select-scroll-down-button"
-      className={cn(
-        "flex cursor-default items-center justify-center py-1",
-        className,
-      )}
+    <TouchableOpacity
+      style={[styles.selectScrollButton, style]}
+      onPress={onPress}
+      activeOpacity={0.7}
       {...props}
     >
-      <ChevronDownIcon className="size-4" />
-    </SelectPrimitive.ScrollDownButton>
+      <Ionicons name="chevron-down" size={16} color="#6b7280" />
+    </TouchableOpacity>
   );
 }
+
+const styles = StyleSheet.create({
+  selectTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  selectTriggerDefault: {
+    height: 36,
+  },
+  selectTriggerSm: {
+    height: 32,
+  },
+  selectTriggerDisabled: {
+    opacity: 0.5,
+  },
+  selectTriggerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
+  },
+  selectTriggerIcon: {
+    marginLeft: 8,
+  },
+  selectOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+    maxHeight: 300,
+    minWidth: 200,
+  },
+  selectViewport: {
+    padding: 4,
+  },
+  selectLabel: {
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: '500',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  selectItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+    marginVertical: 1,
+  },
+  selectItemSelected: {
+    backgroundColor: '#f3f4f6',
+  },
+  selectItemDisabled: {
+    opacity: 0.5,
+  },
+  selectItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
+  },
+  selectItemText: {
+    fontSize: 14,
+    color: '#111827',
+    flex: 1,
+  },
+  selectItemIcon: {
+    marginLeft: 8,
+  },
+  selectSeparator: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+    marginHorizontal: 4,
+    marginVertical: 4,
+  },
+  selectScrollButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+});
 
 export {
   Select,

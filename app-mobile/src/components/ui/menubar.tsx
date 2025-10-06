@@ -1,261 +1,479 @@
-"use client";
-
 import * as React from "react";
-import { Text } from "react-native";
-import * as MenubarPrimitive from "@radix-ui/react-menubar@1.1.6";
-import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react@0.487.0";
+import { Text, View, TouchableOpacity, StyleSheet, Modal } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
-import { cn } from "./utils";
+interface MenubarProps {
+  children: React.ReactNode;
+  style?: any;
+}
 
-function Menubar({
-  className,
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.Root>) {
+function Menubar({ children, style, ...props }: MenubarProps) {
   return (
-    <MenubarPrimitive.Root
-      data-slot="menubar"
-      className={cn(
-        "bg-background flex h-9 items-center gap-1 rounded-md border p-1 shadow-xs",
-        className,
-      )}
+    <View style={[styles.menubar, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface MenubarMenuProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function MenubarMenu({ children, style, ...props }: MenubarMenuProps) {
+  return (
+    <View style={[styles.menu, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface MenubarGroupProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function MenubarGroup({ children, style, ...props }: MenubarGroupProps) {
+  return (
+    <View style={[styles.group, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface MenubarPortalProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function MenubarPortal({ children, style, ...props }: MenubarPortalProps) {
+  return (
+    <View style={[styles.portal, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface MenubarRadioGroupProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function MenubarRadioGroup({ children, style, ...props }: MenubarRadioGroupProps) {
+  return (
+    <View style={[styles.radioGroup, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface MenubarTriggerProps {
+  children: React.ReactNode;
+  onPress?: () => void;
+  style?: any;
+}
+
+function MenubarTrigger({ children, onPress, style, ...props }: MenubarTriggerProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.trigger, style]}
+      onPress={onPress}
+      activeOpacity={0.7}
       {...props}
-    />
+    >
+      {children}
+    </TouchableOpacity>
   );
 }
 
-function MenubarMenu({
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.Menu>) {
-  return <MenubarPrimitive.Menu data-slot="menubar-menu" {...props} />;
+interface MenubarContentProps {
+  children: React.ReactNode;
+  style?: any;
 }
 
-function MenubarGroup({
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.Group>) {
-  return <MenubarPrimitive.Group data-slot="menubar-group" {...props} />;
-}
-
-function MenubarPortal({
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.Portal>) {
-  return <MenubarPrimitive.Portal data-slot="menubar-portal" {...props} />;
-}
-
-function MenubarRadioGroup({
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.RadioGroup>) {
+function MenubarContent({ children, style, ...props }: MenubarContentProps) {
   return (
-    <MenubarPrimitive.RadioGroup data-slot="menubar-radio-group" {...props} />
+    <View style={[styles.content, style]} {...props}>
+      {children}
+    </View>
   );
 }
 
-function MenubarTrigger({
-  className,
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.Trigger>) {
-  return (
-    <MenubarPrimitive.Trigger
-      data-slot="menubar-trigger"
-      className={cn(
-        "focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground flex items-center rounded-sm px-2 py-1 text-sm font-medium outline-hidden select-none",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function MenubarContent({
-  className,
-  align = "start",
-  alignOffset = -4,
-  sideOffset = 8,
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.Content>) {
-  return (
-    <MenubarPortal>
-      <MenubarPrimitive.Content
-        data-slot="menubar-content"
-        align={align}
-        alignOffset={alignOffset}
-        sideOffset={sideOffset}
-        className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[12rem] origin-(--radix-menubar-content-transform-origin) overflow-hidden rounded-md border p-1 shadow-md",
-          className,
-        )}
-        {...props}
-      />
-    </MenubarPortal>
-  );
+interface MenubarItemProps {
+  children: React.ReactNode;
+  onPress?: () => void;
+  inset?: boolean;
+  variant?: "default" | "destructive";
+  disabled?: boolean;
+  style?: any;
 }
 
 function MenubarItem({
-  className,
-  inset,
+  children,
+  onPress,
+  inset = false,
   variant = "default",
+  disabled = false,
+  style,
   ...props
-}: React.ComponentProps<typeof MenubarPrimitive.Item> & {
-  inset?: boolean;
-  variant?: "default" | "destructive";
-}) {
+}: MenubarItemProps) {
   return (
-    <MenubarPrimitive.Item
-      data-slot="menubar-item"
-      data-inset={inset}
-      data-variant={variant}
-      className={cn(
-        "focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+    <TouchableOpacity
+      style={[
+        styles.item,
+        inset && styles.inset,
+        variant === "destructive" && styles.destructive,
+        disabled && styles.disabled,
+        style,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
-    />
+    >
+      {children}
+    </TouchableOpacity>
   );
+}
+
+interface MenubarCheckboxItemProps {
+  children: React.ReactNode;
+  checked?: boolean;
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: any;
 }
 
 function MenubarCheckboxItem({
-  className,
   children,
-  checked,
+  checked = false,
+  onPress,
+  disabled = false,
+  style,
   ...props
-}: React.ComponentProps<typeof MenubarPrimitive.CheckboxItem>) {
+}: MenubarCheckboxItemProps) {
   return (
-    <MenubarPrimitive.CheckboxItem
-      data-slot="menubar-checkbox-item"
-      className={cn(
-        "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-xs py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
-      checked={checked}
+    <TouchableOpacity
+      style={[
+        styles.checkboxItem,
+        disabled && styles.disabled,
+        style,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
     >
-      <Text className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
-        <MenubarPrimitive.ItemIndicator>
-          <CheckIcon className="size-4" />
-        </MenubarPrimitive.ItemIndicator>
-      </Text>
+      <View style={styles.checkboxIndicator}>
+        {checked && (
+          <Ionicons name="checkmark" size={16} color="#eb7825" />
+        )}
+      </View>
       {children}
-    </MenubarPrimitive.CheckboxItem>
+    </TouchableOpacity>
   );
+}
+
+interface MenubarRadioItemProps {
+  children: React.ReactNode;
+  selected?: boolean;
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: any;
 }
 
 function MenubarRadioItem({
-  className,
   children,
+  selected = false,
+  onPress,
+  disabled = false,
+  style,
   ...props
-}: React.ComponentProps<typeof MenubarPrimitive.RadioItem>) {
+}: MenubarRadioItemProps) {
   return (
-    <MenubarPrimitive.RadioItem
-      data-slot="menubar-radio-item"
-      className={cn(
-        "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-xs py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+    <TouchableOpacity
+      style={[
+        styles.radioItem,
+        disabled && styles.disabled,
+        style,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
     >
-      <Text className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
-        <MenubarPrimitive.ItemIndicator>
-          <CircleIcon className="size-2 fill-current" />
-        </MenubarPrimitive.ItemIndicator>
-      </Text>
+      <View style={styles.radioIndicator}>
+        {selected && (
+          <View style={styles.radioSelected} />
+        )}
+      </View>
       {children}
-    </MenubarPrimitive.RadioItem>
+    </TouchableOpacity>
   );
+}
+
+interface MenubarLabelProps {
+  children: React.ReactNode;
+  inset?: boolean;
+  style?: any;
 }
 
 function MenubarLabel({
-  className,
-  inset,
+  children,
+  inset = false,
+  style,
   ...props
-}: React.ComponentProps<typeof MenubarPrimitive.Label> & {
-  inset?: boolean;
-}) {
-  return (
-    <MenubarPrimitive.Label
-      data-slot="menubar-label"
-      data-inset={inset}
-      className={cn(
-        "px-2 py-1.5 text-sm font-medium data-[inset]:pl-8",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function MenubarSeparator({
-  className,
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.Separator>) {
-  return (
-    <MenubarPrimitive.Separator
-      data-slot="menubar-separator"
-      className={cn("bg-border -mx-1 my-1 h-px", className)}
-      {...props}
-    />
-  );
-}
-
-function MenubarShortcut({
-  className,
-  ...props
-}: React.ComponentProps<"span">) {
+}: MenubarLabelProps) {
   return (
     <Text
-      data-slot="menubar-shortcut"
-      className={cn(
-        "text-muted-foreground ml-auto text-xs tracking-widest",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function MenubarSub({
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.Sub>) {
-  return <MenubarPrimitive.Sub data-slot="menubar-sub" {...props} />;
-}
-
-function MenubarSubTrigger({
-  className,
-  inset,
-  children,
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.SubTrigger> & {
-  inset?: boolean;
-}) {
-  return (
-    <MenubarPrimitive.SubTrigger
-      data-slot="menubar-sub-trigger"
-      data-inset={inset}
-      className={cn(
-        "focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-none select-none data-[inset]:pl-8",
-        className,
-      )}
+      style={[
+        styles.label,
+        inset && styles.inset,
+        style,
+      ]}
       {...props}
     >
       {children}
-      <ChevronRightIcon className="ml-auto h-4 w-4" />
-    </MenubarPrimitive.SubTrigger>
+    </Text>
   );
 }
 
-function MenubarSubContent({
-  className,
-  ...props
-}: React.ComponentProps<typeof MenubarPrimitive.SubContent>) {
+interface MenubarSeparatorProps {
+  style?: any;
+}
+
+function MenubarSeparator({ style, ...props }: MenubarSeparatorProps) {
   return (
-    <MenubarPrimitive.SubContent
-      data-slot="menubar-sub-content"
-      className={cn(
-        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] origin-(--radix-menubar-content-transform-origin) overflow-hidden rounded-md border p-1 shadow-lg",
-        className,
-      )}
-      {...props}
-    />
+    <View style={[styles.separator, style]} {...props} />
   );
 }
+
+interface MenubarShortcutProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function MenubarShortcut({ children, style, ...props }: MenubarShortcutProps) {
+  return (
+    <Text style={[styles.shortcut, style]} {...props}>
+      {children}
+    </Text>
+  );
+}
+
+interface MenubarSubProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function MenubarSub({ children, style, ...props }: MenubarSubProps) {
+  return (
+    <View style={[styles.sub, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface MenubarSubTriggerProps {
+  children: React.ReactNode;
+  onPress?: () => void;
+  inset?: boolean;
+  style?: any;
+}
+
+function MenubarSubTrigger({
+  children,
+  onPress,
+  inset = false,
+  style,
+  ...props
+}: MenubarSubTriggerProps) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.subTrigger,
+        inset && styles.inset,
+        style,
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      {...props}
+    >
+      {children}
+      <Ionicons name="chevron-forward" size={16} color="#6b7280" style={styles.chevronIcon} />
+    </TouchableOpacity>
+  );
+}
+
+interface MenubarSubContentProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function MenubarSubContent({ children, style, ...props }: MenubarSubContentProps) {
+  return (
+    <View style={[styles.subContent, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  menubar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 36,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 4,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  menu: {
+    flex: 1,
+  },
+  group: {
+    flex: 1,
+  },
+  portal: {
+    flex: 1,
+  },
+  radioGroup: {
+    flex: 1,
+  },
+  trigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    gap: 4,
+  },
+  content: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+    minWidth: 192,
+  },
+  item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+    gap: 8,
+  },
+  inset: {
+    paddingLeft: 32,
+  },
+  destructive: {
+    color: '#dc2626',
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+  checkboxItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+    gap: 8,
+    paddingLeft: 32,
+  },
+  checkboxIndicator: {
+    position: 'absolute',
+    left: 8,
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+    gap: 8,
+    paddingLeft: 32,
+  },
+  radioIndicator: {
+    position: 'absolute',
+    left: 8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioSelected: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#eb7825',
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+    marginHorizontal: 4,
+    marginVertical: 4,
+  },
+  shortcut: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginLeft: 'auto',
+    letterSpacing: 1,
+  },
+  sub: {
+    flex: 1,
+  },
+  subTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+  },
+  chevronIcon: {
+    marginLeft: 'auto',
+  },
+  subContent: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+    minWidth: 128,
+  },
+});
 
 export {
   Menubar,

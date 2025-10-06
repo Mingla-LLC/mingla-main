@@ -1,75 +1,220 @@
-"use client";
-
 import * as React from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react@0.487.0";
-import { DayPicker } from "react-day-picker@8.10.1";
+import { Text, View, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
-import { cn } from "./utils";
-import { buttonVariants } from "./button";
+interface CalendarProps {
+  selected?: Date;
+  onSelect?: (date: Date) => void;
+  mode?: "single" | "range";
+  style?: any;
+}
 
 function Calendar({
-  className,
-  classNames,
-  showOutsideDays = true,
+  selected,
+  onSelect,
+  mode = "single",
+  style,
   ...props
-}: React.ComponentProps<typeof DayPicker>) {
+}: CalendarProps) {
+  const [currentMonth, setCurrentMonth] = React.useState(new Date());
+  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(selected);
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    const days = [];
+    
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(null);
+    }
+    
+    // Add days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(new Date(year, month, day));
+    }
+    
+    return days;
+  };
+
+  const handleDateSelect = (date: Date) => {
+    setSelectedDate(date);
+    onSelect?.(date);
+  };
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const newMonth = new Date(currentMonth);
+    if (direction === 'prev') {
+      newMonth.setMonth(newMonth.getMonth() - 1);
+    } else {
+      newMonth.setMonth(newMonth.getMonth() + 1);
+    }
+    setCurrentMonth(newMonth);
+  };
+
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.toDateString() === today.toDateString();
+  };
+
+  const isSelected = (date: Date) => {
+    if (!selectedDate) return false;
+    return date.toDateString() === selectedDate.toDateString();
+  };
+
+  const days = getDaysInMonth(currentMonth);
+
   return (
-    <DayPicker
-      showOutsideDays={showOutsideDays}
-      className={cn("p-3", className)}
-      classNames={{
-        months: "flex flex-col sm:flex-row gap-2",
-        month: "flex flex-col gap-4",
-        caption: "flex justify-center pt-1 relative items-center w-full",
-        caption_label: "text-sm font-medium",
-        nav: "flex items-center gap-1",
-        nav_button: cn(
-          buttonVariants({ variant: "outline" }),
-          "size-7 bg-transparent p-0 opacity-50 hover:opacity-100",
-        ),
-        nav_button_previous: "absolute left-1",
-        nav_button_next: "absolute right-1",
-        table: "w-full border-collapse space-x-1",
-        head_row: "flex",
-        head_cell:
-          "text-muted-foreground rounded-md w-8 font-normal text-[0.8rem]",
-        row: "flex w-full mt-2",
-        cell: cn(
-          "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent [&:has([aria-selected].day-range-end)]:rounded-r-md",
-          props.mode === "range"
-            ? "[&:has(>.day-range-end)]:rounded-r-md [&:has(>.day-range-start)]:rounded-l-md first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md"
-            : "[&:has([aria-selected])]:rounded-md",
-        ),
-        day: cn(
-          buttonVariants({ variant: "ghost" }),
-          "size-8 p-0 font-normal aria-selected:opacity-100",
-        ),
-        day_range_start:
-          "day-range-start aria-selected:bg-primary aria-selected:text-primary-foreground",
-        day_range_end:
-          "day-range-end aria-selected:bg-primary aria-selected:text-primary-foreground",
-        day_selected:
-          "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-        day_today: "bg-accent text-accent-foreground",
-        day_outside:
-          "day-outside text-muted-foreground aria-selected:text-muted-foreground",
-        day_disabled: "text-muted-foreground opacity-50",
-        day_range_middle:
-          "aria-selected:bg-accent aria-selected:text-accent-foreground",
-        day_hidden: "invisible",
-        ...classNames,
-      }}
-      components={{
-        IconLeft: ({ className, ...props }) => (
-          <ChevronLeft className={cn("size-4", className)} {...props} />
-        ),
-        IconRight: ({ className, ...props }) => (
-          <ChevronRight className={cn("size-4", className)} {...props} />
-        ),
-      }}
-      {...props}
-    />
+    <View style={[styles.calendar, style]} {...props}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.navButton}
+          onPress={() => navigateMonth('prev')}
+        >
+          <Ionicons name="chevron-back" size={16} color="#6b7280" />
+        </TouchableOpacity>
+        
+        <Text style={styles.monthYear}>
+          {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+        </Text>
+        
+        <TouchableOpacity
+          style={styles.navButton}
+          onPress={() => navigateMonth('next')}
+        >
+          <Ionicons name="chevron-forward" size={16} color="#6b7280" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Day names */}
+      <View style={styles.dayNames}>
+        {dayNames.map((dayName) => (
+          <Text key={dayName} style={styles.dayName}>
+            {dayName}
+          </Text>
+        ))}
+      </View>
+
+      {/* Calendar grid */}
+      <View style={styles.calendarGrid}>
+        {days.map((day, index) => {
+          if (!day) {
+            return <View key={index} style={styles.dayCell} />;
+          }
+
+          const isTodayDate = isToday(day);
+          const isSelectedDate = isSelected(day);
+
+          return (
+            <TouchableOpacity
+              key={day.toISOString()}
+              style={[
+                styles.dayCell,
+                isTodayDate && styles.todayCell,
+                isSelectedDate && styles.selectedCell,
+              ]}
+              onPress={() => handleDateSelect(day)}
+            >
+              <Text
+                style={[
+                  styles.dayText,
+                  isTodayDate && styles.todayText,
+                  isSelectedDate && styles.selectedText,
+                ]}
+              >
+                {day.getDate()}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  calendar: {
+    padding: 12,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  navButton: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 4,
+    backgroundColor: 'transparent',
+  },
+  monthYear: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  dayNames: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  dayName: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6b7280',
+    paddingVertical: 8,
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  dayCell: {
+    width: '14.28%',
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  todayCell: {
+    backgroundColor: '#f3f4f6',
+  },
+  selectedCell: {
+    backgroundColor: '#eb7825',
+  },
+  dayText: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '400',
+  },
+  todayText: {
+    color: '#111827',
+    fontWeight: '600',
+  },
+  selectedText: {
+    color: 'white',
+    fontWeight: '600',
+  },
+});
 
 export { Calendar };

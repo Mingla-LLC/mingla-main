@@ -52,6 +52,7 @@ export default function App() {
     shareData,
     setShareData,
     currentMode,
+    setIsAuthenticated,
     preSelectedFriend,
     setPreSelectedFriend,
     activeSessionData,
@@ -766,9 +767,16 @@ export default function App() {
 
   // Show onboarding flow if user hasn't completed it
   if (!hasCompletedOnboarding) {
+    const handleNavigateToSignUp = () => {
+      setIsAuthenticated(false);
+    };
+
     return (
       <ErrorBoundary>
-        <OnboardingFlow onComplete={handleOnboardingComplete} />
+        <OnboardingFlow 
+          onComplete={handleOnboardingComplete} 
+          onNavigateToSignUp={handleNavigateToSignUp}
+        />
       </ErrorBoundary>
     );
   }

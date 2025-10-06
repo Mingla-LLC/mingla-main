@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity } from 'react-native';
-import { X, UserCheck, UserX, Check, Users } from 'lucide-react';
+import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface FriendRequest {
   id: string;
@@ -78,99 +78,104 @@ export default function FriendRequestsModal({ isOpen, onClose }: FriendRequestsM
   if (!isOpen) return null;
 
   return (
-    <View className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <View className="bg-white rounded-2xl w-full max-w-md mx-auto shadow-2xl max-h-[80vh] flex flex-col">
+    <Modal
+      visible={isOpen}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
         {/* Header */}
-        <View className="flex items-center justify-between p-6 border-b border-gray-100">
-          <View className="flex items-center gap-3">
-            <View className="w-10 h-10 bg-[#eb7825] rounded-xl flex items-center justify-center">
-              <UserCheck className="w-5 h-5 text-white" />
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerIcon}>
+              <Ionicons name="people" size={20} color="white" />
             </View>
             <View>
-              <Text className="font-semibold text-gray-900">Friend Requests</Text>
-              <Text className="text-sm text-gray-600">{requests.length} pending requests</Text>
+              <Text style={styles.headerTitle}>Friend Requests</Text>
+              <Text style={styles.headerSubtitle}>{requests.length} pending requests</Text>
             </View>
           </View>
           <TouchableOpacity 
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+            onPress={onClose}
+            style={styles.closeButton}
           >
-            <X className="w-5 h-5 text-gray-500" />
+            <Ionicons name="close" size={20} color="#6b7280" />
           </TouchableOpacity>
         </View>
 
         {/* Content */}
-        <View className="flex-1 overflow-y-auto">
+        <ScrollView style={styles.content}>
           {requests.length === 0 ? (
-            <View className="p-8 text-center">
-              <View className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Users className="w-8 h-8 text-gray-400" />
+            <View style={styles.emptyState}>
+              <View style={styles.emptyStateIcon}>
+                <Ionicons name="people" size={32} color="#9ca3af" />
               </View>
-              <Text className="font-medium text-gray-900 mb-2">No Friend Requests</Text>
-              <Text className="text-sm text-gray-600">
+              <Text style={styles.emptyStateTitle}>No Friend Requests</Text>
+              <Text style={styles.emptyStateText}>
                 You're all caught up! New friend requests will appear here.
               </Text>
             </View>
           ) : (
-            <View className="p-4 space-y-3">
+            <View style={styles.requestsList}>
               {requests.map((request) => {
                 const status = processedRequests[request.id];
                 
                 return (
                   <View 
                     key={request.id}
-                    className={`bg-gray-50 border border-gray-200 rounded-xl p-4 transition-all duration-300 ${
-                      status === 'accepted' ? 'bg-green-50 border-green-200' : 
-                      status === 'declined' ? 'bg-red-50 border-red-200' : ''
-                    }`}
+                    style={[
+                      styles.requestItem,
+                      status === 'accepted' && styles.requestItemAccepted,
+                      status === 'declined' && styles.requestItemDeclined
+                    ]}
                   >
-                    <View className="flex items-center gap-4">
+                    <View style={styles.requestContent}>
                       {/* Avatar */}
-                      <View className="relative flex-shrink-0">
-                        <View className="w-12 h-12 bg-gradient-to-br from-[#eb7825] to-[#d6691f] rounded-full flex items-center justify-center">
-                          <Text className="text-white font-medium">
+                      <View style={styles.avatarContainer}>
+                        <View style={styles.avatar}>
+                          <Text style={styles.avatarText}>
                             {request.name.split(' ').map(n => n[0]).join('')}
                           </Text>
                         </View>
                       </View>
                       
                       {/* User Info */}
-                      <View className="flex-1 min-w-0">
-                        <Text className="font-semibold text-gray-900 truncate">{request.name}</Text>
-                        <Text className="text-sm text-gray-600 truncate">@{request.username}</Text>
+                      <View style={styles.userInfo}>
+                        <Text style={styles.userName}>{request.name}</Text>
+                        <Text style={styles.userUsername}>@{request.username}</Text>
                         {request.mutualFriends > 0 && (
-                          <Text className="text-xs text-gray-500">{request.mutualFriends} mutual friends</Text>
+                          <Text style={styles.mutualFriends}>{request.mutualFriends} mutual friends</Text>
                         )}
-                        <Text className="text-xs text-gray-400">{request.requestedAt}</Text>
+                        <Text style={styles.requestTime}>{request.requestedAt}</Text>
                       </View>
 
                       {/* Action Buttons */}
-                      <View className="flex items-center gap-2 flex-shrink-0">
+                      <View style={styles.actionButtons}>
                         {status === 'accepted' ? (
-                          <View className="flex items-center gap-2 text-green-700 bg-green-100 px-3 py-2 rounded-lg">
-                            <Check className="w-4 h-4" />
-                            <Text className="text-sm font-medium">Accepted</Text>
+                          <View style={styles.statusAccepted}>
+                            <Ionicons name="checkmark" size={16} color="#059669" />
+                            <Text style={styles.statusText}>Accepted</Text>
                           </View>
                         ) : status === 'declined' ? (
-                          <View className="flex items-center gap-2 text-red-700 bg-red-100 px-3 py-2 rounded-lg">
-                            <X className="w-4 h-4" />
-                            <Text className="text-sm font-medium">Declined</Text>
+                          <View style={styles.statusDeclined}>
+                            <Ionicons name="close" size={16} color="#dc2626" />
+                            <Text style={styles.statusText}>Declined</Text>
                           </View>
                         ) : (
                           <>
                             <TouchableOpacity
-                              onClick={() => handleDeclineRequest(request.id)}
-                              className="p-2 bg-gray-200 hover:bg-red-100 hover:text-red-600 rounded-lg transition-colors"
-                              title="Decline"
+                              onPress={() => handleDeclineRequest(request.id)}
+                              style={styles.declineButton}
                             >
-                              <UserX className="w-4 h-4" />
+                              <Ionicons name="person-remove" size={16} color="#6b7280" />
                             </TouchableOpacity>
                             <TouchableOpacity
-                              onClick={() => handleAcceptRequest(request.id)}
-                              className="p-2 bg-[#eb7825] hover:bg-[#d6691f] text-white rounded-lg transition-colors"
-                              title="Accept"
+                              onPress={() => handleAcceptRequest(request.id)}
+                              style={styles.acceptButton}
                             >
-                              <UserCheck className="w-4 h-4" />
+                              <Ionicons name="person-add" size={16} color="white" />
                             </TouchableOpacity>
                           </>
                         )}
@@ -181,15 +186,213 @@ export default function FriendRequestsModal({ isOpen, onClose }: FriendRequestsM
               })}
             </View>
           )}
-        </View>
+        </ScrollView>
 
         {/* Footer */}
         {requests.length > 0 && (
-          <View className="p-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
-
+          <View style={styles.footer}>
+            {/* Footer content can be added here if needed */}
           </View>
         )}
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIcon: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#eb7825',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 12,
+  },
+  content: {
+    flex: 1,
+  },
+  emptyState: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  emptyStateIcon: {
+    width: 64,
+    height: 64,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  requestsList: {
+    padding: 16,
+    gap: 12,
+  },
+  requestItem: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 16,
+  },
+  requestItemAccepted: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
+  },
+  requestItemDeclined: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  requestContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  avatarContainer: {
+    flexShrink: 0,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    backgroundColor: '#eb7825',
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: 'white',
+    fontWeight: '500',
+    fontSize: 16,
+  },
+  userInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  userUsername: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  mutualFriends: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  requestTime: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
+  statusAccepted: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  statusDeclined: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#059669',
+  },
+  declineButton: {
+    padding: 8,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptButton: {
+    padding: 8,
+    backgroundColor: '#eb7825',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footer: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    backgroundColor: '#f9fafb',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+});

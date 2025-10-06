@@ -1,45 +1,123 @@
-"use client";
-
 import * as React from "react";
-import * as RadioGroupPrimitive from "@radix-ui/react-radio-group@1.2.3";
-import { CircleIcon } from "lucide-react@0.487.0";
+import { Text, View, TouchableOpacity, StyleSheet } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
 import { cn } from "./utils";
 
+interface RadioGroupProps {
+  style?: any;
+  value?: string;
+  onValueChange?: (value: string) => void;
+  children: React.ReactNode;
+}
+
 function RadioGroup({
-  className,
+  style,
+  value,
+  onValueChange,
+  children,
   ...props
-}: React.ComponentProps<typeof RadioGroupPrimitive.Root>) {
+}: RadioGroupProps) {
   return (
-    <RadioGroupPrimitive.Root
-      data-slot="radio-group"
-      className={cn("grid gap-3", className)}
+    <View
+      style={[styles.radioGroup, style]}
       {...props}
-    />
+    >
+      {children}
+    </View>
   );
 }
 
+interface RadioGroupItemProps {
+  style?: any;
+  value: string;
+  onPress?: () => void;
+  selected?: boolean;
+  disabled?: boolean;
+}
+
 function RadioGroupItem({
-  className,
+  style,
+  value,
+  onPress,
+  selected = false,
+  disabled = false,
   ...props
-}: React.ComponentProps<typeof RadioGroupPrimitive.Item>) {
+}: RadioGroupItemProps) {
   return (
-    <RadioGroupPrimitive.Item
-      data-slot="radio-group-item"
-      className={cn(
-        "border-input text-primary focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 aspect-square size-4 shrink-0 rounded-full border shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
+    <TouchableOpacity
+      style={[
+        styles.radioGroupItem,
+        selected && styles.radioGroupItemSelected,
+        disabled && styles.radioGroupItemDisabled,
+        style
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
     >
-      <RadioGroupPrimitive.Indicator
-        data-slot="radio-group-indicator"
-        className="relative flex items-center justify-center"
-      >
-        <CircleIcon className="fill-primary absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2" />
-      </RadioGroupPrimitive.Indicator>
-    </RadioGroupPrimitive.Item>
+      <View style={styles.radioGroupItemIndicator}>
+        {selected && (
+          <View style={styles.radioGroupItemDot}>
+            <Ionicons 
+              name="radio-button-on" 
+              size={16} 
+              color="#059669" 
+            />
+          </View>
+        )}
+        {!selected && (
+          <View style={styles.radioGroupItemEmpty}>
+            <Ionicons 
+              name="radio-button-off" 
+              size={16} 
+              color="#6b7280" 
+            />
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 }
+
+const styles = StyleSheet.create({
+  radioGroup: {
+    flexDirection: 'column',
+    gap: 12,
+  },
+  radioGroupItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 4,
+  },
+  radioGroupItemSelected: {
+    backgroundColor: '#f0f9ff',
+  },
+  radioGroupItemDisabled: {
+    opacity: 0.5,
+  },
+  radioGroupItemIndicator: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  radioGroupItemDot: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioGroupItemEmpty: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 export { RadioGroup, RadioGroupItem };

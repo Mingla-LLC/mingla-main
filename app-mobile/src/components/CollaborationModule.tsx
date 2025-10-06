@@ -1,11 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TextInput } from 'react-native';
-import { 
-  X, Plus, Users, Send, Check, Clock, AlertCircle, 
-  ChevronRight, ChevronLeft, UserPlus, Settings, 
-  MessageSquare, Calendar, Star, ArrowRight, Trash2,
-  User, UserCheck, UserX, Timer, Zap
-} from 'lucide-react';
+import { Text, View, TextInput, TouchableOpacity, StyleSheet, ScrollView, Modal } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Friend {
   id: string;
@@ -331,34 +326,42 @@ export default function CollaborationModule({
     const pendingSessions = [...mockPendingSessions, ...actualPendingBoards];
 
     return (
-      <View className="space-y-6">
+      <View style={styles.sessionsContainer}>
         {/* Current Mode */}
-        <View className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-100 rounded-2xl p-4">
-          <View className="flex items-center justify-between">
+        <View style={styles.currentModeCard}>
+          <View style={styles.currentModeHeader}>
             <View>
-              <Text className="font-semibold text-gray-900">Current Mode</Text>
-              <Text className="text-sm text-gray-600">
+              <Text style={styles.currentModeTitle}>Current Mode</Text>
+              <Text style={styles.currentModeDescription}>
                 {currentMode === 'solo' ? 'Solo discovery mode' : `Collaborating in "${currentMode}"`}
               </Text>
             </View>
-            <View className={`px-3 py-1 rounded-full text-sm font-medium ${
-              currentMode === 'solo' 
-                ? 'bg-blue-100 text-blue-700' 
-                : 'bg-[#eb7825] text-white'
-            }`}>
-              {currentMode === 'solo' ? 'Solo' : 'Collaboration'}
+            <View style={[
+              styles.modeBadge,
+              currentMode === 'solo' ? styles.modeBadgeSolo : styles.modeBadgeCollaboration
+            ]}>
+              <Text style={[
+                styles.modeBadgeText,
+                currentMode === 'solo' ? styles.modeBadgeTextSolo : styles.modeBadgeTextCollaboration
+              ]}>
+                {currentMode === 'solo' ? 'Solo' : 'Collaboration'}
+              </Text>
             </View>
           </View>
           <TouchableOpacity 
-            onClick={() => onModeChange('solo')}
+            onPress={() => onModeChange('solo')}
             disabled={currentMode === 'solo'}
-            className={`mt-3 w-full py-2 px-4 rounded-xl font-medium text-sm transition-all duration-200 ${
-              currentMode === 'solo'
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 shadow-sm hover:shadow-md'
-            }`}
+            style={[
+              styles.switchModeButton,
+              currentMode === 'solo' && styles.switchModeButtonDisabled
+            ]}
           >
-            {currentMode === 'solo' ? '✓ Solo Mode Active' : 'Switch to Solo Mode →'}
+            <Text style={[
+              styles.switchModeButtonText,
+              currentMode === 'solo' && styles.switchModeButtonTextDisabled
+            ]}>
+              {currentMode === 'solo' ? '✓ Solo Mode Active' : 'Switch to Solo Mode →'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -934,66 +937,236 @@ export default function CollaborationModule({
   };
 
   return (
-    <View className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4">
-      <View className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[90vh] overflow-hidden">
+    <Modal
+      visible={isOpen}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
         {/* Header */}
-        <header className="flex items-center justify-between p-6 border-b border-gray-100">
+        <View style={styles.header}>
           <View>
-            <Text className="text-xl font-bold text-gray-900">Collaboration</Text>
-            <Text className="text-sm text-gray-600">Discover experiences together</Text>
+            <Text style={styles.headerTitle}>Collaboration</Text>
+            <Text style={styles.headerSubtitle}>Discover experiences together</Text>
           </View>
           <TouchableOpacity 
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            onPress={onClose}
+            style={styles.closeButton}
           >
-            <X className="w-5 h-5 text-gray-600" />
+            <Ionicons name="close" size={20} color="#6b7280" />
           </TouchableOpacity>
-        </header>
+        </View>
 
         {/* Tabs */}
-        <View className="flex bg-gray-50 p-1 mx-6 mt-4 rounded-xl">
+        <View style={styles.tabsContainer}>
           <TouchableOpacity
-            onClick={() => setActiveTab('sessions')}
-            className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm transition-all ${
-              activeTab === 'sessions'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600'
-            }`}
+            onPress={() => setActiveTab('sessions')}
+            style={[
+              styles.tab,
+              activeTab === 'sessions' && styles.tabActive
+            ]}
           >
-            Sessions
+            <Text style={[
+              styles.tabText,
+              activeTab === 'sessions' && styles.tabTextActive
+            ]}>
+              Sessions
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onClick={() => setActiveTab('invites')}
-            className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm transition-all relative ${
-              activeTab === 'invites'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600'
-            }`}
+            onPress={() => setActiveTab('invites')}
+            style={[
+              styles.tab,
+              activeTab === 'invites' && styles.tabActive
+            ]}
           >
-            Invites
+            <Text style={[
+              styles.tabText,
+              activeTab === 'invites' && styles.tabTextActive
+            ]}>
+              Invites
+            </Text>
             {(mockReceivedInvites.length > 0 || mockSentInvites.length > 0) && (
-              <View className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
+              <View style={styles.notificationDot} />
             )}
           </TouchableOpacity>
           <TouchableOpacity
-            onClick={() => setActiveTab('create')}
-            className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm transition-all ${
-              activeTab === 'create'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600'
-            }`}
+            onPress={() => setActiveTab('create')}
+            style={[
+              styles.tab,
+              activeTab === 'create' && styles.tabActive
+            ]}
           >
-            Create
+            <Text style={[
+              styles.tabText,
+              activeTab === 'create' && styles.tabTextActive
+            ]}>
+              Create
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Content */}
-        <View className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+        <ScrollView style={styles.content}>
           {activeTab === 'sessions' && renderSessionsTab()}
           {activeTab === 'invites' && renderInvitesTab()}
           {activeTab === 'create' && renderCreateTab()}
+        </ScrollView>
         </View>
       </View>
-    </View>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    width: '100%',
+    maxHeight: '90%',
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#f9fafb',
+    padding: 4,
+    marginHorizontal: 24,
+    marginTop: 16,
+    borderRadius: 12,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  tabActive: {
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  tabTextActive: {
+    color: '#111827',
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    backgroundColor: '#ef4444',
+    borderRadius: 4,
+  },
+  content: {
+    padding: 24,
+    flex: 1,
+  },
+  sessionsContainer: {
+    gap: 24,
+  },
+  currentModeCard: {
+    backgroundColor: '#fef3e2',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 16,
+    padding: 16,
+  },
+  currentModeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  currentModeTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  currentModeDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  modeBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  modeBadgeSolo: {
+    backgroundColor: '#dbeafe',
+  },
+  modeBadgeCollaboration: {
+    backgroundColor: '#eb7825',
+  },
+  modeBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  modeBadgeTextSolo: {
+    color: '#1d4ed8',
+  },
+  modeBadgeTextCollaboration: {
+    color: 'white',
+  },
+  switchModeButton: {
+    marginTop: 12,
+    width: '100%',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+  },
+  switchModeButtonDisabled: {
+    backgroundColor: '#f3f4f6',
+  },
+  switchModeButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  switchModeButtonTextDisabled: {
+    color: '#9ca3af',
+  },
+});

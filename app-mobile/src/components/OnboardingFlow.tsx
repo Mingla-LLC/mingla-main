@@ -5,9 +5,10 @@ import minglaLogo from '../../assets/6850c6540f4158618f67e1fdd72281118b419a35.pn
 
 interface OnboardingFlowProps {
   onComplete: (onboardingData: any) => void;
+  onNavigateToSignUp?: () => void;
 }
 
-const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
+const OnboardingFlow = ({ onComplete, onNavigateToSignUp }: OnboardingFlowProps) => {
   const [currentStep, setCurrentStep] = useState(0);
 
   const styles = StyleSheet.create({
@@ -51,6 +52,18 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       borderRadius: 4,
       marginHorizontal: 24,
       marginVertical: 16,
+    },
+    progressBarContainer: {
+      width: '100%',
+      backgroundColor: '#e5e7eb',
+      borderRadius: 4,
+      height: 8,
+      marginBottom: 32,
+    },
+    progressBarFill: {
+      height: 8,
+      backgroundColor: '#eb7825',
+      borderRadius: 4,
     },
     progressFill: {
       height: 8,
@@ -950,10 +963,12 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   }, [updateOnboardingData]);
 
   const renderProgressBar = () => (
-    <View className="w-full bg-gray-200 rounded-full h-2 mb-8">
+    <View style={styles.progressBarContainer}>
       <View 
-        className="h-2 rounded-full transition-all duration-500 ease-out"
-        style={{ backgroundColor: '#eb7825', width: `${((currentStep + 1) / totalSteps) * 100}%` }}
+        style={[
+          styles.progressBarFill,
+          { width: `${((currentStep + 1) / totalSteps) * 100}%` }
+        ]}
       />
     </View>
   );
@@ -1067,7 +1082,10 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                   <Text style={styles.googleButtonText}>Continue with Google</Text>
                 </TouchableOpacity>
                 
-                <TouchableOpacity style={styles.emailButton}>
+                <TouchableOpacity 
+                  style={styles.emailButton}
+                  onPress={onNavigateToSignUp}
+                >
                   <Ionicons name="mail" size={20} color="#6b7280" />
                   <Text style={styles.emailButtonText}>Continue with Email</Text>
                 </TouchableOpacity>

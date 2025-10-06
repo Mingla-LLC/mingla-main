@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, Image } from 'react-native';
-import { QrCode, Download, Copy, Check } from 'lucide-react';
+import { Text, View, TouchableOpacity, Image, StyleSheet, Alert, Clipboard } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { formatCurrency } from './utils/formatters';
 
 interface PurchaseQRCodeProps {
@@ -36,72 +36,13 @@ export default function PurchaseQRCode({ entry, accountPreferences }: PurchaseQR
   // Generate QR code content as JSON string
   const qrContent = JSON.stringify(purchaseData);
 
-  // Simple QR code placeholder (in a real app, you'd use a QR code library)
-  const generateQRCodeDataURL = (content: string) => {
-    // This is a placeholder - in production you'd use a library like 'qrcode' or similar
-    // For now, we'll create a visual representation
-    const size = 200;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    
-    if (ctx) {
-      // Draw background
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, size, size);
-      
-      // Draw border
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(10, 10, size - 20, size - 20);
-      
-      // Draw grid pattern to simulate QR code
-      ctx.fillStyle = '#000000';
-      for (let i = 0; i < 15; i++) {
-        for (let j = 0; j < 15; j++) {
-          if (Math.random() > 0.5) {
-            const cellSize = (size - 20) / 15;
-            ctx.fillRect(10 + i * cellSize, 10 + j * cellSize, cellSize, cellSize);
-          }
-        }
-      }
-      
-      // Draw corner markers
-      const cornerSize = 30;
-      ctx.fillStyle = '#000000';
-      // Top-left
-      ctx.fillRect(10, 10, cornerSize, cornerSize);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(20, 20, cornerSize - 20, cornerSize - 20);
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(25, 25, cornerSize - 30, cornerSize - 30);
-      
-      // Top-right
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(size - 40, 10, cornerSize, cornerSize);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(size - 30, 20, cornerSize - 20, cornerSize - 20);
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(size - 25, 25, cornerSize - 30, cornerSize - 30);
-      
-      // Bottom-left
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(10, size - 40, cornerSize, cornerSize);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(20, size - 30, cornerSize - 20, cornerSize - 20);
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(25, size - 25, cornerSize - 30, cornerSize - 30);
-    }
-    
-    return canvas.toDataURL();
-  };
-
-  const qrCodeDataURL = generateQRCodeDataURL(qrContent);
+  // For React Native, we'll use a placeholder QR code image
+  // In production, you'd use a library like 'react-native-qrcode-svg' or similar
+  const qrCodeDataURL = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZiIvPgogIDxyZWN0IHg9IjEwIiB5PSIxMCIgd2lkdGg9IjE4MCIgaGVpZ2h0PSIxODAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLXdpZHRoPSIyIi8+CiAgPHJlY3QgeD0iMjAiIHk9IjIwIiB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSIzNSIgeT0iMzUiIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgZmlsbD0iI2ZmZiIvPgogIDxyZWN0IHg9IjQwIiB5PSI0MCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBmaWxsPSIjMDAwIi8+CiAgPHJlY3QgeD0iMTUwIiB5PSIyMCIgd2lkdGg9IjMwIiBoZWlnaHQ9IjMwIiBmaWxsPSIjMDAwIi8+CiAgPHJlY3QgeD0iMTY1IiB5PSIzNSIgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIiBmaWxsPSIjZmZmIi8+CiAgPHJlY3QgeD0iMTcwIiB5PSI0MCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBmaWxsPSIjMDAwIi8+CiAgPHJlY3QgeD0iMjAiIHk9IjE1MCIgd2lkdGg9IjMwIiBoZWlnaHQ9IjMwIiBmaWxsPSIjMDAwIi8+CiAgPHJlY3QgeD0iMzUiIHk9IjE2NSIgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIiBmaWxsPSIjZmZmIi8+CiAgPHJlY3QgeD0iNDAiIHk9IjE3MCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBmaWxsPSIjMDAwIi8+CiAgPHJlY3QgeD0iNjAiIHk9IjYwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSI4MCIgeT0iNjAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iIzAwMCIvPgogIDxyZWN0IHg9IjEwMCIgeT0iNjAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iIzAwMCIvPgogIDxyZWN0IHg9IjEyMCIgeT0iNjAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iIzAwMCIvPgogIDxyZWN0IHg9IjE0MCIgeT0iNjAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iIzAwMCIvPgogIDxyZWN0IHg9IjYwIiB5PSI4MCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBmaWxsPSIjMDAwIi8+CiAgPHJlY3QgeD0iODAiIHk9IjgwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSIxMDAiIHk9IjgwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSIxMjAiIHk9IjgwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSIxNDAiIHk9IjgwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSI2MCIgeT0iMTAwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSI4MCIgeT0iMTAwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSIxMDAiIHk9IjEwMCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBmaWxsPSIjMDAwIi8+CiAgPHJlY3QgeD0iMTIwIiB5PSIxMDAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iIzAwMCIvPgogIDxyZWN0IHg9IjE0MCIgeT0iMTAwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSI2MCIgeT0iMTIwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSI4MCIgeT0iMTIwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSIxMDAiIHk9IjEyMCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBmaWxsPSIjMDAwIi8+CiAgPHJlY3QgeD0iMTIwIiB5PSIxMjAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iIzAwMCIvPgogIDxyZWN0IHg9IjE0MCIgeT0iMTIwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSI2MCIgeT0iMTQwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSI4MCIgeT0iMTQwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KICA8cmVjdCB4PSIxMDAiIHk9IjE0MCIgd2lkdGg9IjEwIiBoZWlnaHQ9IjEwIiBmaWxsPSIjMDAwIi8+CiAgPHJlY3QgeD0iMTIwIiB5PSIxNDAiIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgZmlsbD0iIzAwMCIvPgogIDxyZWN0IHg9IjE0MCIgeT0iMTQwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMDAiLz4KPC9zdmc+';
 
   const handleCopyPurchaseID = async () => {
     try {
-      await navigator.clipboard.writeText(purchaseData.purchaseId);
+      await Clipboard.setString(purchaseData.purchaseId);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -110,51 +51,53 @@ export default function PurchaseQRCode({ entry, accountPreferences }: PurchaseQR
   };
 
   const handleDownloadQR = () => {
-    const link = document.createElement('a');
-    link.download = `mingla-purchase-qr-${purchaseData.purchaseId}.png`;
-    link.href = qrCodeDataURL;
-    link.click();
+    Alert.alert(
+      'Download QR Code',
+      'QR code download functionality would be implemented here. In a real app, you would save the QR code to the device\'s photo library.',
+      [{ text: 'OK' }]
+    );
   };
 
   return (
-    <View className="space-y-4">
+    <View style={styles.container}>
       {/* Header */}
-      <View className="text-center">
-        <View className="w-10 h-10 bg-gradient-to-br from-[#FF7043] to-[#FF5722] rounded-full flex items-center justify-center mx-auto mb-2">
-          <QrCode className="w-5 h-5 text-white" />
+      <View style={styles.header}>
+        <View style={styles.iconContainer}>
+          <Ionicons name="qr-code" size={20} color="white" />
         </View>
-        <Text className="font-semibold text-gray-900 mb-1">Purchase Verification</Text>
-        <Text className="text-sm text-gray-600">Scan at venue for instant verification</Text>
+        <Text style={styles.title}>Purchase Verification</Text>
+        <Text style={styles.subtitle}>Scan at venue for instant verification</Text>
       </View>
 
       {/* QR Code */}
-      <View className="flex justify-center">
-        <View className="bg-white p-3 rounded-lg border-2 border-gray-200 shadow-sm">
+      <View style={styles.qrCodeContainer}>
+        <View style={styles.qrCodeWrapper}>
           <Image 
             source={{ uri: qrCodeDataURL }} 
-            style={{ width: 160, height: 160, alignSelf: 'center' }}
+            style={styles.qrCode}
           />
         </View>
       </View>
 
       {/* Purchase Details */}
-      <View className="bg-gray-50 rounded-lg p-3 space-y-2">
+      <View style={styles.detailsContainer}>
         {/* Purchase ID */}
-        <View>
-          <Text className="text-gray-500 font-medium text-sm mb-1">Purchase ID</Text>
-          <View className="flex items-center gap-2">
-            <code className="flex-1 text-xs bg-white px-2 py-1 rounded border font-mono">
-              {purchaseData.purchaseId}
-            </code>
+        <View style={styles.purchaseIdSection}>
+          <Text style={styles.purchaseIdLabel}>Purchase ID</Text>
+          <View style={styles.purchaseIdRow}>
+            <View style={styles.purchaseIdCode}>
+              <Text style={styles.purchaseIdText}>
+                {purchaseData.purchaseId}
+              </Text>
+            </View>
             <TouchableOpacity
-              onClick={handleCopyPurchaseID}
-              className="p-1.5 text-gray-500 hover:text-[#eb7825] hover:bg-[#eb7825]/5 rounded transition-colors"
-              title="Copy Purchase ID"
+              onPress={handleCopyPurchaseID}
+              style={styles.copyButton}
             >
               {copied ? (
-                <Check className="w-4 h-4 text-green-500" />
+                <Ionicons name="checkmark" size={16} color="#10b981" />
               ) : (
-                <Copy className="w-4 h-4" />
+                <Ionicons name="copy" size={16} color="#6b7280" />
               )}
             </TouchableOpacity>
           </View>
@@ -162,15 +105,119 @@ export default function PurchaseQRCode({ entry, accountPreferences }: PurchaseQR
       </View>
 
       {/* Actions */}
-      <View className="flex gap-3">
+      <View style={styles.actionsContainer}>
         <TouchableOpacity
-          onClick={handleDownloadQR}
-          className="flex-1 flex items-center justify-center gap-2 bg-[#eb7825] text-white py-2.5 px-4 rounded-lg hover:bg-[#d6691f] transition-colors"
+          onPress={handleDownloadQR}
+          style={styles.downloadButton}
         >
-          <Download className="w-4 h-4" />
-          Download QR Code
+          <Ionicons name="download" size={16} color="white" />
+          <Text style={styles.downloadButtonText}>Download QR Code</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    gap: 16,
+  },
+  header: {
+    alignItems: 'center',
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#FF7043',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  title: {
+    fontWeight: '600',
+    color: '#111827',
+    fontSize: 18,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  qrCodeContainer: {
+    alignItems: 'center',
+  },
+  qrCodeWrapper: {
+    backgroundColor: 'white',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  qrCode: {
+    width: 160,
+    height: 160,
+    alignSelf: 'center',
+  },
+  detailsContainer: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    padding: 12,
+    gap: 8,
+  },
+  purchaseIdSection: {
+    gap: 4,
+  },
+  purchaseIdLabel: {
+    color: '#6b7280',
+    fontWeight: '500',
+    fontSize: 14,
+  },
+  purchaseIdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  purchaseIdCode: {
+    flex: 1,
+    backgroundColor: 'white',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  purchaseIdText: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+    color: '#374151',
+  },
+  copyButton: {
+    padding: 6,
+    borderRadius: 4,
+  },
+  actionsContainer: {
+    gap: 12,
+  },
+  downloadButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#eb7825',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  downloadButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+});

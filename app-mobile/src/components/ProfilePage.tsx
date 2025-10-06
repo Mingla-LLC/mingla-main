@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Text, View, TouchableOpacity } from 'react-native';
-import { 
-  MapPin, Eye, Calendar, Users, Trophy, Target, Bell, 
-  Settings, Shield, LogOut, ChevronRight, FileText,
-  Star, TrendingUp, Award, Sparkles, Camera, Navigation, HelpCircle
-} from 'lucide-react';
+import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import profileImage from '../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
@@ -148,9 +144,9 @@ export default function ProfilePage({
   ];
 
   const journeyStats = [
-    { label: 'This Month', value: '1', icon: Calendar },
-    { label: 'Day Streak', value: '95', icon: TrendingUp },
-    { label: 'Badges', value: '95', icon: Award }
+    { label: 'This Month', value: '1', icon: 'calendar' },
+    { label: 'Day Streak', value: '95', icon: 'trending-up' },
+    { label: 'Badges', value: '95', icon: 'trophy' }
   ];
 
   const vibes = [
@@ -161,13 +157,13 @@ export default function ProfilePage({
 
   const settingsItems = [
     { 
-      icon: Settings, 
+      icon: 'settings', 
       label: 'Profile Settings', 
       description: 'Edit your name, username, and profile photo',
       onClick: () => onNavigateToProfileSettings?.() 
     },
     { 
-      icon: Shield, 
+      icon: 'shield', 
       label: 'Account Settings', 
       description: 'Currency, measurements, and account lifecycle',
       onClick: () => onNavigateToAccountSettings?.() 
@@ -177,13 +173,13 @@ export default function ProfilePage({
 
   const legalItems = [
     { 
-      icon: Shield, 
+      icon: 'shield', 
       label: 'Privacy Policy', 
       description: 'How we collect, use, and protect your information',
       onClick: () => onNavigateToPrivacyPolicy?.() 
     },
     { 
-      icon: FileText, 
+      icon: 'document-text', 
       label: 'Terms of Service', 
       description: 'Terms and conditions for using Mingla',
       onClick: () => onNavigateToTermsOfService?.() 
@@ -191,83 +187,86 @@ export default function ProfilePage({
   ];
 
   return (
-    <View className="h-screen bg-gray-50 overflow-y-auto pb-20">
-      <View className="max-w-sm mx-auto bg-white min-h-screen">
+    <ScrollView style={styles.container}>
+      <View style={styles.content}>
         {/* Header */}
-        <View className="relative pt-12 pb-6 px-6 bg-gradient-to-br from-orange-50 to-amber-50">
-          <View className="text-center">
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
             {/* Profile Image */}
-            <View className="relative w-20 h-20 mx-auto mb-4">
+            <View style={styles.profileImageContainer}>
               <ImageWithFallback
-                src={profileImageSrc}
-                alt="Profile"
-                className="w-full h-full rounded-full object-cover border-4 border-white shadow-lg"
+                source={{ uri: profileImageSrc }}
+                style={styles.profileImage}
               />
-              <View className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 border-2 border-white rounded-full"></View>
+              <View style={styles.onlineIndicator}></View>
             </View>
             
             {/* User Info */}
-            <Text className="text-xl font-bold text-gray-900 mb-1">{userIdentity.firstName} {userIdentity.lastName}</Text>
-            <Text className="text-sm text-gray-600 mb-3">@{userIdentity.username}</Text>
+            <Text style={styles.userName}>{userIdentity.firstName} {userIdentity.lastName}</Text>
+            <Text style={styles.username}>@{userIdentity.username}</Text>
             
             {/* Location */}
-            <View className="flex items-center justify-center gap-1 text-sm text-gray-500">
-              <MapPin className={`w-4 h-4 ${isLoadingLocation ? 'animate-pulse' : ''}`} />
-              <Text className={isLoadingLocation ? 'animate-pulse' : ''}>{currentLocation}</Text>
+            <View style={styles.locationContainer}>
+              <Ionicons name="location" size={16} color="#6b7280" />
+              <Text style={styles.locationText}>{currentLocation}</Text>
               <TouchableOpacity
-                onClick={updateLocation}
+                onPress={updateLocation}
                 disabled={isLoadingLocation}
-                className="ml-1 p-1 hover:bg-white hover:bg-opacity-50 rounded-full transition-colors disabled:opacity-50"
-                title="Update location"
+                style={styles.locationButton}
               >
-                <Navigation className={`w-3 h-3 text-gray-400 hover:text-[#eb7825] ${isLoadingLocation ? 'animate-spin' : ''}`} />
+                <Ionicons name="refresh" size={12} color="#6b7280" />
               </TouchableOpacity>
             </View>
           </View>
         </View>
 
         {/* Stats Grid */}
-        <View className="px-6 py-6">
-          <View className="grid grid-cols-2 gap-4">
+        <View style={styles.statsContainer}>
+          <View style={styles.statsGrid}>
             {stats.map((stat, index) => (
               <TouchableOpacity
                 key={index}
-                onClick={stat.onClick}
-                className={`${stat.bgColor} rounded-2xl p-4 text-center border border-gray-100 hover:scale-105 hover:shadow-md transition-all duration-200 active:scale-95`}
+                onPress={stat.onClick}
+                style={[styles.statCard, { backgroundColor: stat.value > 0 ? '#fef3e2' : '#f9fafb' }]}
               >
-                <View className={`text-2xl font-bold ${stat.color} mb-1`}>
+                <Text style={[styles.statValue, { color: stat.value > 0 ? '#eb7825' : '#6b7280' }]}>
                   {stat.value}
-                </View>
-                <View className="text-xs text-gray-600 leading-tight">
+                </Text>
+                <Text style={styles.statLabel}>
                   {stat.label}
-                </View>
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
         {/* Your Journey */}
-        <View className="px-6 pb-6">
+        <View style={styles.section}>
 
         </View>
 
         {/* Your Vibes */}
-        <View className="px-6 pb-6">
-          <View className="bg-white rounded-2xl border border-gray-200 p-4">
-            <Text className="font-bold text-gray-900 mb-4">Your Vibes</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Your Vibes</Text>
             
-            <View className="space-y-3">
+            <View style={styles.vibesContainer}>
               {vibes.map((vibe, index) => (
-                <View key={index} className="flex items-center justify-between">
-                  <Text className="text-sm text-gray-700 flex-1">{vibe.label}</Text>
-                  <View className="flex items-center gap-2 flex-1">
-                    <View className="flex-1 bg-gray-200 rounded-full h-2">
+                <View key={index} style={styles.vibeItem}>
+                  <Text style={styles.vibeLabel}>{vibe.label}</Text>
+                  <View style={styles.vibeProgressContainer}>
+                    <View style={styles.vibeProgressBar}>
                       <View 
-                        className={`${vibe.color} h-2 rounded-full transition-all duration-300`}
-                        style={{ width: `${vibe.percentage}%` }}
+                        style={[
+                          styles.vibeProgressFill,
+                          { 
+                            width: `${vibe.percentage}%`,
+                            backgroundColor: index === 0 ? '#eb7825' : index === 1 ? '#d6691f' : '#f08849'
+                          }
+                        ]}
                       />
                     </View>
-                    <Text className="text-sm font-medium text-[#eb7825] w-8 text-right">
+                    <Text style={styles.vibePercentage}>
                       {vibe.percentage}%
                     </Text>
                   </View>
@@ -278,67 +277,66 @@ export default function ProfilePage({
         </View>
 
         {/* Notifications */}
-        <View className="px-6 pb-6">
-          <View className="bg-white rounded-2xl border border-gray-200 p-4">
-            <View className="flex items-center justify-between mb-3">
-              <View className="flex items-center gap-2">
-                <Bell className="w-5 h-5 text-[#eb7825]" />
-                <Text className="font-bold text-gray-900">Notifications</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionCard}>
+            <View style={styles.notificationHeader}>
+              <View style={styles.notificationTitleContainer}>
+                <Ionicons name="notifications" size={20} color="#eb7825" />
+                <Text style={styles.sectionTitle}>Notifications</Text>
               </View>
               <TouchableOpacity
-                onClick={() => handleNotificationsToggle(!notificationsEnabled)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ${
-                  notificationsEnabled ? 'bg-[#eb7825]' : 'bg-gray-300'
-                }`}
+                onPress={() => handleNotificationsToggle(!notificationsEnabled)}
+                style={[styles.toggle, { backgroundColor: notificationsEnabled ? '#eb7825' : '#d1d5db' }]}
               >
                 <View
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
-                    notificationsEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
+                  style={[
+                    styles.toggleThumb,
+                    { transform: [{ translateX: notificationsEnabled ? 20 : 2 }] }
+                  ]}
                 />
               </TouchableOpacity>
             </View>
-            <Text className="text-sm text-gray-600 leading-relaxed">
+            <Text style={styles.notificationDescription}>
               Get notified about collaboration invites, board activities (likes, RSVPs, discussions, lock-ins), and important actions like being tagged in discussions or activity confirmations
             </Text>
           </View>
         </View>
 
         {/* Settings */}
-        <View className="px-6 pb-6">
-          <View className="space-y-3">
+        <View style={styles.section}>
+          <View style={styles.settingsContainer}>
             {settingsItems.map((item, index) => (
               <TouchableOpacity
                 key={index}
-                onClick={item.onClick}
-                className="w-full bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-3 hover:bg-gray-50 transition-colors"
+                onPress={item.onClick}
+                style={styles.settingsItem}
               >
-                <View className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <item.icon className="w-5 h-5 text-gray-600" />
+                <View style={styles.settingsIconContainer}>
+                  <Ionicons name={item.icon as any} size={20} color="#6b7280" />
                 </View>
-                <View className="flex-1 text-left">
-                  <Text className="font-medium text-gray-900">{item.label}</Text>
-                  <Text className="text-xs text-gray-500 mt-0.5">{item.description}</Text>
+                <View style={styles.settingsContent}>
+                  <Text style={styles.settingsLabel}>{item.label}</Text>
+                  <Text style={styles.settingsDescription}>{item.description}</Text>
                 </View>
-                <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
         {/* Connection Settings */}
-        <View className="px-6 pb-6">
-          <Text className="text-sm font-medium text-gray-500 mb-3 px-2">Connection Settings</Text>
-          <View className="space-y-3">
+        <View style={styles.section}>
+          <Text style={styles.sectionSubtitle}>Connection Settings</Text>
+          <View style={styles.connectionSettingsContainer}>
             {/* Blocked Users */}
-            <View className="w-full bg-white rounded-2xl border border-gray-200 p-4">
-              <View className="flex items-center gap-3 mb-3">
-                <View className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Shield className="w-5 h-5 text-gray-600" />
+            <View style={styles.blockedUsersCard}>
+              <View style={styles.blockedUsersHeader}>
+                <View style={styles.blockedUsersIconContainer}>
+                  <Ionicons name="shield" size={20} color="#6b7280" />
                 </View>
-                <View className="flex-1">
-                  <Text className="font-medium text-gray-900">Blocked Users</Text>
-                  <Text className="text-xs text-gray-500 mt-0.5">
+                <View style={styles.blockedUsersInfo}>
+                  <Text style={styles.blockedUsersTitle}>Blocked Users</Text>
+                  <Text style={styles.blockedUsersCount}>
                     {blockedUsers.length === 0 ? 'No blocked users' : `${blockedUsers.length} user${blockedUsers.length === 1 ? '' : 's'} blocked`}
                   </Text>
                 </View>
@@ -346,25 +344,25 @@ export default function ProfilePage({
               
               {/* Blocked Users List */}
               {blockedUsers.length > 0 && (
-                <View className="space-y-3 mt-3 pt-3 border-t border-gray-100">
+                <View style={styles.blockedUsersList}>
                   {blockedUsers.map((user) => (
-                    <View key={user.id} className="flex items-center justify-between">
-                      <View className="flex items-center gap-3">
-                        <View className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                          <Text className="text-xs font-medium text-gray-600">
+                    <View key={user.id} style={styles.blockedUserItem}>
+                      <View style={styles.blockedUserInfo}>
+                        <View style={styles.blockedUserAvatar}>
+                          <Text style={styles.blockedUserAvatarText}>
                             {user.name.split(' ').map((n: string) => n[0]).join('')}
                           </Text>
                         </View>
                         <View>
-                          <Text className="text-sm font-medium text-gray-900">{user.name}</Text>
-                          <Text className="text-xs text-gray-500">@{user.username}</Text>
+                          <Text style={styles.blockedUserName}>{user.name}</Text>
+                          <Text style={styles.blockedUserUsername}>@{user.username}</Text>
                         </View>
                       </View>
                       <TouchableOpacity
-                        onClick={() => onUnblockUser?.(user)}
-                        className="px-3 py-1 text-xs bg-[#eb7825] text-white rounded-full hover:bg-[#d6691f] transition-colors"
+                        onPress={() => onUnblockUser?.(user)}
+                        style={styles.unblockButton}
                       >
-                        Unblock
+                        <Text style={styles.unblockButtonText}>Unblock</Text>
                       </TouchableOpacity>
                     </View>
                   ))}
@@ -375,41 +373,410 @@ export default function ProfilePage({
         </View>
 
         {/* Legal & Privacy */}
-        <View className="px-6 pb-6">
-          <Text className="text-sm font-medium text-gray-500 mb-3 px-2">Legal & Privacy</Text>
-          <View className="space-y-3">
+        <View style={styles.section}>
+          <Text style={styles.sectionSubtitle}>Legal & Privacy</Text>
+          <View style={styles.legalContainer}>
             {legalItems.map((item, index) => (
               <TouchableOpacity
                 key={index}
-                onClick={item.onClick}
-                className="w-full bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-3 hover:bg-gray-50 transition-colors"
+                onPress={item.onClick}
+                style={styles.legalItem}
               >
-                <View className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <item.icon className="w-5 h-5 text-gray-600" />
+                <View style={styles.legalIconContainer}>
+                  <Ionicons name={item.icon as any} size={20} color="#6b7280" />
                 </View>
-                <View className="flex-1 text-left">
-                  <Text className="font-medium text-gray-900">{item.label}</Text>
-                  <Text className="text-xs text-gray-500 mt-0.5">{item.description}</Text>
+                <View style={styles.legalContent}>
+                  <Text style={styles.legalLabel}>{item.label}</Text>
+                  <Text style={styles.legalDescription}>{item.description}</Text>
                 </View>
-                <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-
-
         {/* Sign Out */}
-        <View className="px-6 pb-8">
+        <View style={styles.signOutSection}>
           <TouchableOpacity
-            onClick={onSignOut}
-            className="w-full bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 py-3 px-4 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+            onPress={onSignOut}
+            style={styles.signOutButton}
           >
-            <LogOut className="w-4 h-4" />
-            Sign Out
+            <Ionicons name="log-out" size={16} color="#dc2626" />
+            <Text style={styles.signOutText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+  },
+  content: {
+    flex: 1,
+    maxWidth: 400,
+    alignSelf: 'center',
+    backgroundColor: 'white',
+    minHeight: '100%',
+  },
+  header: {
+    paddingTop: 48,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
+    backgroundColor: '#fef3e2',
+  },
+  headerContent: {
+    alignItems: 'center',
+  },
+  profileImageContainer: {
+    position: 'relative',
+    width: 80,
+    height: 80,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  profileImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 40,
+    borderWidth: 4,
+    borderColor: 'white',
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 24,
+    height: 24,
+    backgroundColor: '#10b981',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  userName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  username: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 12,
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  locationText: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  locationButton: {
+    marginLeft: 4,
+    padding: 4,
+    borderRadius: 12,
+  },
+  statsContainer: {
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  statCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#fef3e2',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#f3f4f6',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#eb7825',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  section: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  sectionCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 16,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+    marginBottom: 12,
+    paddingHorizontal: 8,
+  },
+  vibesContainer: {
+    gap: 12,
+  },
+  vibeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  vibeLabel: {
+    fontSize: 14,
+    color: '#374151',
+    flex: 1,
+  },
+  vibeProgressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  vibeProgressBar: {
+    flex: 1,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 4,
+    height: 8,
+  },
+  vibeProgressFill: {
+    height: 8,
+    borderRadius: 4,
+  },
+  vibePercentage: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#eb7825',
+    width: 32,
+    textAlign: 'right',
+  },
+  notificationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  notificationTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notificationDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+    lineHeight: 20,
+  },
+  toggle: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    padding: 2,
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    backgroundColor: 'white',
+    borderRadius: 10,
+  },
+  settingsContainer: {
+    gap: 12,
+  },
+  settingsItem: {
+    width: '100%',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  settingsIconContainer: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsContent: {
+    flex: 1,
+  },
+  settingsLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  settingsDescription: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  connectionSettingsContainer: {
+    gap: 12,
+  },
+  blockedUsersCard: {
+    width: '100%',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 16,
+  },
+  blockedUsersHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  blockedUsersIconContainer: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  blockedUsersInfo: {
+    flex: 1,
+  },
+  blockedUsersTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  blockedUsersCount: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  blockedUsersList: {
+    gap: 12,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  blockedUserItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  blockedUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  blockedUserAvatar: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  blockedUserAvatarText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  blockedUserName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  blockedUserUsername: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  unblockButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    backgroundColor: '#eb7825',
+    borderRadius: 12,
+  },
+  unblockButtonText: {
+    fontSize: 12,
+    color: 'white',
+  },
+  legalContainer: {
+    gap: 12,
+  },
+  legalItem: {
+    width: '100%',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  legalIconContainer: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  legalContent: {
+    flex: 1,
+  },
+  legalLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  legalDescription: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  signOutSection: {
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+  },
+  signOutButton: {
+    width: '100%',
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  signOutText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#dc2626',
+  },
+});

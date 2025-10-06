@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput } from 'react-native';
-import { X, UserPlus, Mail, AtSign, Send, Check, AlertCircle, Clock, UserX } from 'lucide-react';
+import { Text, View, TouchableOpacity, TextInput, StyleSheet, Modal, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface AddFriendModalProps {
   isOpen: boolean;
@@ -125,81 +125,90 @@ export default function AddFriendModal({ isOpen, onClose }: AddFriendModalProps)
     setIsLoading(false);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !isLoading) {
-      if (!searchResult) {
-        handleSearch();
-      } else if (!requestSent) {
-        handleSendRequest();
-      }
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
-    <View className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <View className="bg-white rounded-2xl w-full max-w-md mx-auto shadow-2xl">
+    <Modal
+      visible={isOpen}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={handleClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
         {/* Header */}
-        <View className="p-6 border-b border-gray-100">
-          <View className="flex items-center justify-between mb-4">
-            <View className="flex items-center gap-3">
-              <View className="w-10 h-10 bg-[#eb7825] rounded-xl flex items-center justify-center">
-                {activeTab === 'add' ? (
-                  <UserPlus className="w-5 h-5 text-white" />
-                ) : (
-                  <Clock className="w-5 h-5 text-white" />
-                )}
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerLeft}>
+              <View style={styles.headerIcon}>
+                <Ionicons 
+                  name={activeTab === 'add' ? 'person-add' : 'time'} 
+                  size={20} 
+                  color="white" 
+                />
               </View>
               <View>
-                <Text className="font-semibold text-gray-900">
+                <Text style={styles.headerTitle}>
                   {activeTab === 'add' ? 'Add Friend' : 'Sent Requests'}
                 </Text>
-                <Text className="text-sm text-gray-600">
+                <Text style={styles.headerSubtitle}>
                   {activeTab === 'add' ? 'Send a friend request' : 'Manage pending requests'}
                 </Text>
               </View>
             </View>
             <TouchableOpacity 
-              onClick={handleClose}
-              className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+              onPress={handleClose}
+              style={styles.closeButton}
             >
-              <X className="w-5 h-5 text-gray-500" />
+              <Ionicons name="close" size={20} color="#6b7280" />
             </TouchableOpacity>
           </View>
 
           {/* Tabs */}
-          <View className="flex bg-gray-100 rounded-xl p-1">
+          <View style={styles.tabsContainer}>
             <TouchableOpacity
-              onClick={() => {
+              onPress={() => {
                 setActiveTab('add');
                 setSearchInput('');
                 setSearchResult(null);
                 setRequestSent(false);
                 setError('');
               }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg transition-all ${
-                activeTab === 'add' 
-                  ? 'bg-white text-[#eb7825] shadow-sm' 
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              style={[
+                styles.tab,
+                activeTab === 'add' && styles.tabActive
+              ]}
             >
-              <UserPlus className="w-4 h-4" />
-              <Text className="font-medium">Add Friend</Text>
+              <Ionicons 
+                name="person-add" 
+                size={16} 
+                color={activeTab === 'add' ? '#eb7825' : '#6b7280'} 
+              />
+              <Text style={[
+                styles.tabText,
+                activeTab === 'add' && styles.tabTextActive
+              ]}>Add Friend</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onClick={() => setActiveTab('sent')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg transition-all relative ${
-                activeTab === 'sent' 
-                  ? 'bg-white text-[#eb7825] shadow-sm' 
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              onPress={() => setActiveTab('sent')}
+              style={[
+                styles.tab,
+                activeTab === 'sent' && styles.tabActive,
+                { position: 'relative' }
+              ]}
             >
-              <Clock className="w-4 h-4" />
-              <Text className="font-medium">Sent</Text>
+              <Ionicons 
+                name="time" 
+                size={16} 
+                color={activeTab === 'sent' ? '#eb7825' : '#6b7280'} 
+              />
+              <Text style={[
+                styles.tabText,
+                activeTab === 'sent' && styles.tabTextActive
+              ]}>Sent</Text>
               {sentRequests.length > 0 && (
-                <View className="absolute -top-1 -right-1 w-5 h-5 bg-[#eb7825] rounded-full flex items-center justify-center">
-                  <Text className="text-xs text-white font-medium">{sentRequests.length}</Text>
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>{sentRequests.length}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -207,44 +216,34 @@ export default function AddFriendModal({ isOpen, onClose }: AddFriendModalProps)
         </View>
 
         {/* Content */}
-        <View className="p-6">
+        <ScrollView style={styles.content}>
           {activeTab === 'add' ? (
-            <View className="space-y-6">
+            <View style={styles.addTabContent}>
               {/* Search Input */}
-              <View className="space-y-2">
-                <Text style={{ color: '#374151', fontWeight: '500', fontSize: 14 }}>
+              <View style={styles.searchSection}>
+                <Text style={styles.searchLabel}>
                   Username or Email
                 </Text>
-                <View className="relative">
-                  <View className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center">
-                    {searchInput.includes('@') ? (
-                      <Mail className="w-4 h-4 text-gray-400" />
-                    ) : (
-                      <AtSign className="w-4 h-4 text-gray-400" />
-                    )}
+                <View style={styles.searchInputContainer}>
+                  <View style={styles.searchInputIcon}>
+                    <Ionicons 
+                      name={searchInput.includes('@') ? 'mail' : 'at'} 
+                      size={16} 
+                      color="#9ca3af" 
+                    />
                   </View>
                   <TextInput
                     value={searchInput}
                     onChangeText={setSearchInput}
                     placeholder="Enter username or email..."
-                    style={{
-                      width: '100%',
-                      paddingLeft: 40,
-                      paddingRight: 16,
-                      paddingVertical: 12,
-                      borderWidth: 1,
-                      borderColor: '#e5e7eb',
-                      borderRadius: 12,
-                      fontSize: 16,
-                      backgroundColor: 'white'
-                    }}
+                    style={styles.searchInput}
                     editable={!isLoading}
                   />
                 </View>
                 {error && (
-                  <View className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    <Text>{error}</Text>
+                  <View style={styles.errorContainer}>
+                    <Ionicons name="alert-circle" size={16} color="#dc2626" />
+                    <Text style={styles.errorText}>{error}</Text>
                   </View>
                 )}
               </View>
@@ -252,19 +251,22 @@ export default function AddFriendModal({ isOpen, onClose }: AddFriendModalProps)
               {/* Search Button */}
               {!searchResult && (
                 <TouchableOpacity
-                  onClick={handleSearch}
+                  onPress={handleSearch}
                   disabled={!searchInput.trim() || isLoading}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-[#eb7825] hover:bg-[#d6691f] disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl transition-colors"
+                  style={[
+                    styles.searchButton,
+                    (!searchInput.trim() || isLoading) && styles.searchButtonDisabled
+                  ]}
                 >
                   {isLoading ? (
                     <>
-                      <View className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <Text>Searching...</Text>
+                      <View style={styles.loadingSpinner} />
+                      <Text style={styles.searchButtonText}>Searching...</Text>
                     </>
                   ) : (
                     <>
-                      <UserPlus className="w-4 h-4" />
-                      <Text>Search User</Text>
+                      <Ionicons name="person-add" size={16} color="white" />
+                      <Text style={styles.searchButtonText}>Search User</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -272,42 +274,47 @@ export default function AddFriendModal({ isOpen, onClose }: AddFriendModalProps)
 
               {/* Search Result */}
               {searchResult && (
-                <View className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-4">
-                  <View className="flex items-center gap-3">
-                    <View className="w-12 h-12 bg-gradient-to-br from-[#eb7825] to-[#d6691f] rounded-full flex items-center justify-center">
-                      <Text className="text-white font-medium">
+                <View style={styles.searchResult}>
+                  <View style={styles.searchResultHeader}>
+                    <View style={styles.searchResultAvatar}>
+                      <Text style={styles.searchResultAvatarText}>
                         {searchResult.name.split(' ').map((n: string) => n[0]).join('')}
                       </Text>
                     </View>
-                    <View className="flex-1">
-                      <Text className="font-semibold text-gray-900">{searchResult.name}</Text>
-                      <Text className="text-sm text-gray-600">@{searchResult.username}</Text>
+                    <View style={styles.searchResultInfo}>
+                      <Text style={styles.searchResultName}>{searchResult.name}</Text>
+                      <Text style={styles.searchResultUsername}>@{searchResult.username}</Text>
                       {searchResult.mutualFriends > 0 && (
-                        <Text className="text-xs text-gray-500">{searchResult.mutualFriends} mutual friends</Text>
+                        <Text style={styles.searchResultMutual}>
+                          {searchResult.mutualFriends} mutual friends
+                        </Text>
                       )}
                     </View>
                   </View>
 
                   {requestSent ? (
-                    <View className="flex items-center justify-center gap-2 py-3 bg-green-50 text-green-700 rounded-lg">
-                      <Check className="w-4 h-4" />
-                      <Text className="font-medium">Friend request sent!</Text>
+                    <View style={styles.successMessage}>
+                      <Ionicons name="checkmark" size={16} color="#059669" />
+                      <Text style={styles.successText}>Friend request sent!</Text>
                     </View>
                   ) : (
                     <TouchableOpacity
-                      onClick={handleSendRequest}
+                      onPress={handleSendRequest}
                       disabled={isLoading}
-                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-[#eb7825] hover:bg-[#d6691f] disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl transition-colors"
+                      style={[
+                        styles.sendButton,
+                        isLoading && styles.sendButtonDisabled
+                      ]}
                     >
                       {isLoading ? (
                         <>
-                          <View className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <Text>Sending...</Text>
+                          <View style={styles.loadingSpinner} />
+                          <Text style={styles.sendButtonText}>Sending...</Text>
                         </>
                       ) : (
                         <>
-                          <Send className="w-4 h-4" />
-                          <Text>Send Friend Request</Text>
+                          <Ionicons name="send" size={16} color="white" />
+                          <Text style={styles.sendButtonText}>Send Friend Request</Text>
                         </>
                       )}
                     </TouchableOpacity>
@@ -316,86 +323,458 @@ export default function AddFriendModal({ isOpen, onClose }: AddFriendModalProps)
               )}
 
               {/* Tips */}
-              <View className="bg-orange-50 border border-[#eb7825]/20 rounded-xl p-4">
-                <Text className="font-medium text-[#eb7825] mb-2">Tips:</Text>
-                <ul className="text-sm text-gray-700 space-y-1">
-                  <li>• Enter their exact username (e.g., @johndoe)</li>
-                  <li>• Or use their email address</li>
-                  <li>• Make sure the spelling is correct</li>
-                </ul>
+              <View style={styles.tipsContainer}>
+                <Text style={styles.tipsTitle}>Tips:</Text>
+                <View style={styles.tipsList}>
+                  <Text style={styles.tipItem}>• Enter their exact username (e.g., @johndoe)</Text>
+                  <Text style={styles.tipItem}>• Or use their email address</Text>
+                  <Text style={styles.tipItem}>• Make sure the spelling is correct</Text>
+                </View>
               </View>
             </View>
           ) : (
-            <View className="space-y-4">
+            <View style={styles.sentTabContent}>
               {/* Sent Requests List */}
               {sentRequests.length === 0 ? (
-                <View className="text-center py-12">
-                  <View className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Clock className="w-8 h-8 text-gray-400" />
+                <View style={styles.emptyState}>
+                  <View style={styles.emptyStateIcon}>
+                    <Ionicons name="time" size={32} color="#9ca3af" />
                   </View>
-                  <Text className="font-medium text-gray-900 mb-2">No Sent Requests</Text>
-                  <Text className="text-sm text-gray-600 mb-6">
+                  <Text style={styles.emptyStateTitle}>No Sent Requests</Text>
+                  <Text style={styles.emptyStateText}>
                     You haven't sent any friend requests yet.
                   </Text>
                   <TouchableOpacity
-                    onClick={() => setActiveTab('add')}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#eb7825] hover:bg-[#d6691f] text-white rounded-xl transition-colors"
+                    onPress={() => setActiveTab('add')}
+                    style={styles.emptyStateButton}
                   >
-                    <UserPlus className="w-4 h-4" />
-                    <Text>Add Friends</Text>
+                    <Ionicons name="person-add" size={16} color="white" />
+                    <Text style={styles.emptyStateButtonText}>Add Friends</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
-                <>
-                  <View className="space-y-3">
-                    {sentRequests.map((request) => (
-                      <View
-                        key={request.id}
-                        className="bg-gray-50 border border-gray-200 rounded-xl p-4"
-                      >
-                        <View className="flex items-center gap-3">
-                          <View className="w-12 h-12 bg-gradient-to-br from-[#eb7825] to-[#d6691f] rounded-full flex items-center justify-center">
-                            <Text className="text-white font-medium">
-                              {request.user.name.split(' ').map((n: string) => n[0]).join('')}
-                            </Text>
-                          </View>
-                          <View className="flex-1">
-                            <Text className="font-semibold text-gray-900">{request.user.name}</Text>
-                            <Text className="text-sm text-gray-600">@{request.user.username}</Text>
-                            <View className="flex items-center gap-3 mt-1">
-                              <Text className="text-xs text-gray-500">
-                                Sent {formatTimeAgo(request.sentAt)}
-                              </Text>
-                              {request.user.mutualFriends > 0 && (
-                                <>
-                                  <Text className="text-xs text-gray-300">•</Text>
-                                  <Text className="text-xs text-gray-500">
-                                    {request.user.mutualFriends} mutual friends
-                                  </Text>
-                                </>
-                              )}
-                            </View>
-                          </View>
-                          <TouchableOpacity
-                            onClick={() => handleUnsendRequest(request.id)}
-                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Unsend request"
-                          >
-                            <UserX className="w-4 h-4" />
-                          </TouchableOpacity>
+                <View style={styles.sentRequestsList}>
+                  {sentRequests.map((request) => (
+                    <View key={request.id} style={styles.sentRequestItem}>
+                      <View style={styles.sentRequestHeader}>
+                        <View style={styles.sentRequestAvatar}>
+                          <Text style={styles.sentRequestAvatarText}>
+                            {request.user.name.split(' ').map((n: string) => n[0]).join('')}
+                          </Text>
                         </View>
+                        <View style={styles.sentRequestInfo}>
+                          <Text style={styles.sentRequestName}>{request.user.name}</Text>
+                          <Text style={styles.sentRequestUsername}>@{request.user.username}</Text>
+                          <View style={styles.sentRequestMeta}>
+                            <Text style={styles.sentRequestTime}>
+                              Sent {formatTimeAgo(request.sentAt)}
+                            </Text>
+                            {request.user.mutualFriends > 0 && (
+                              <>
+                                <Text style={styles.sentRequestSeparator}>•</Text>
+                                <Text style={styles.sentRequestMutual}>
+                                  {request.user.mutualFriends} mutual friends
+                                </Text>
+                              </>
+                            )}
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => handleUnsendRequest(request.id)}
+                          style={styles.unsendButton}
+                        >
+                          <Ionicons name="person-remove" size={16} color="#6b7280" />
+                        </TouchableOpacity>
                       </View>
-                    ))}
-                  </View>
-
-                  {/* Info */}
-
-                </>
+                    </View>
+                  ))}
+                </View>
               )}
             </View>
           )}
+        </ScrollView>
         </View>
       </View>
-    </View>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  header: {
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIcon: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#eb7825',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 12,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  tabActive: {
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  tabTextActive: {
+    color: '#eb7825',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    backgroundColor: '#eb7825',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadgeText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '500',
+  },
+  content: {
+    padding: 24,
+  },
+  addTabContent: {
+    gap: 24,
+  },
+  searchSection: {
+    gap: 8,
+  },
+  searchLabel: {
+    color: '#374151',
+    fontWeight: '500',
+    fontSize: 14,
+  },
+  searchInputContainer: {
+    position: 'relative',
+  },
+  searchInputIcon: {
+    position: 'absolute',
+    left: 12,
+    top: '50%',
+    transform: [{ translateY: -8 }],
+    zIndex: 1,
+  },
+  searchInput: {
+    width: '100%',
+    paddingLeft: 40,
+    paddingRight: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#dc2626',
+  },
+  searchButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#eb7825',
+    borderRadius: 12,
+  },
+  searchButtonDisabled: {
+    backgroundColor: '#d1d5db',
+  },
+  searchButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  loadingSpinner: {
+    width: 16,
+    height: 16,
+    borderWidth: 2,
+    borderColor: 'white',
+    borderTopColor: 'transparent',
+    borderRadius: 8,
+  },
+  searchResult: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 16,
+    gap: 16,
+  },
+  searchResultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  searchResultAvatar: {
+    width: 48,
+    height: 48,
+    backgroundColor: '#eb7825',
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchResultAvatarText: {
+    color: 'white',
+    fontWeight: '500',
+    fontSize: 16,
+  },
+  searchResultInfo: {
+    flex: 1,
+  },
+  searchResultName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  searchResultUsername: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  searchResultMutual: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  successMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    backgroundColor: '#f0fdf4',
+    borderRadius: 8,
+  },
+  successText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#059669',
+  },
+  sendButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#eb7825',
+    borderRadius: 12,
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#d1d5db',
+  },
+  sendButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  tipsContainer: {
+    backgroundColor: '#fef3e2',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 12,
+    padding: 16,
+  },
+  tipsTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#eb7825',
+    marginBottom: 8,
+  },
+  tipsList: {
+    gap: 4,
+  },
+  tipItem: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  sentTabContent: {
+    gap: 16,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  emptyStateIcon: {
+    width: 64,
+    height: 64,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  emptyStateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#eb7825',
+    borderRadius: 12,
+  },
+  emptyStateButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  sentRequestsList: {
+    gap: 12,
+  },
+  sentRequestItem: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 16,
+  },
+  sentRequestHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sentRequestAvatar: {
+    width: 48,
+    height: 48,
+    backgroundColor: '#eb7825',
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sentRequestAvatarText: {
+    color: 'white',
+    fontWeight: '500',
+    fontSize: 16,
+  },
+  sentRequestInfo: {
+    flex: 1,
+  },
+  sentRequestName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  sentRequestUsername: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  sentRequestMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  sentRequestTime: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  sentRequestSeparator: {
+    fontSize: 12,
+    color: '#d1d5db',
+  },
+  sentRequestMutual: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  unsendButton: {
+    padding: 8,
+    borderRadius: 8,
+  },
+});

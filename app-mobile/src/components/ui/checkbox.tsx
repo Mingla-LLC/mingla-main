@@ -1,32 +1,93 @@
-"use client";
-
 import * as React from "react";
-import * as CheckboxPrimitive from "@radix-ui/react-checkbox@1.1.4";
-import { CheckIcon } from "lucide-react@0.487.0";
+import { View, TouchableOpacity, StyleSheet } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
-import { cn } from "./utils";
+interface CheckboxProps {
+  checked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
+  style?: any;
+  size?: 'sm' | 'md' | 'lg';
+}
 
 function Checkbox({
-  className,
+  checked = false,
+  onCheckedChange,
+  disabled = false,
+  style,
+  size = 'md',
   ...props
-}: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+}: CheckboxProps) {
+  const handlePress = () => {
+    if (!disabled && onCheckedChange) {
+      onCheckedChange(!checked);
+    }
+  };
+
+  const getSizeStyles = () => {
+    switch (size) {
+      case 'sm':
+        return { width: 16, height: 16, iconSize: 10 };
+      case 'lg':
+        return { width: 24, height: 24, iconSize: 16 };
+      default:
+        return { width: 20, height: 20, iconSize: 12 };
+    }
+  };
+
+  const sizeStyles = getSizeStyles();
+
   return (
-    <CheckboxPrimitive.Root
-      data-slot="checkbox"
-      className={cn(
-        "peer border bg-input-background dark:bg-input/30 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:data-[state=checked]:bg-primary data-[state=checked]:border-primary focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive size-4 shrink-0 rounded-[4px] border shadow-xs transition-shadow outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
+    <TouchableOpacity
+      style={[
+        styles.checkbox,
+        {
+          width: sizeStyles.width,
+          height: sizeStyles.height,
+        },
+        checked && styles.checked,
+        disabled && styles.disabled,
+        style,
+      ]}
+      onPress={handlePress}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
     >
-      <CheckboxPrimitive.Indicator
-        data-slot="checkbox-indicator"
-        className="flex items-center justify-center text-current transition-none"
-      >
-        <CheckIcon className="size-3.5" />
-      </CheckboxPrimitive.Indicator>
-    </CheckboxPrimitive.Root>
+      {checked && (
+        <Ionicons
+          name="checkmark"
+          size={sizeStyles.iconSize}
+          color={checked ? 'white' : '#6b7280'}
+        />
+      )}
+    </TouchableOpacity>
   );
 }
+
+const styles = StyleSheet.create({
+  checkbox: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#ffffff',
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  checked: {
+    backgroundColor: '#eb7825',
+    borderColor: '#eb7825',
+  },
+  disabled: {
+    opacity: 0.5,
+    backgroundColor: '#f9fafb',
+    borderColor: '#e5e7eb',
+  },
+});
 
 export { Checkbox };

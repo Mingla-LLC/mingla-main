@@ -1,67 +1,197 @@
-"use client";
-
 import * as React from "react";
-import { Text, View } from "react-native";
-import * as AccordionPrimitive from "@radix-ui/react-accordion@1.2.3";
-import { ChevronDownIcon } from "lucide-react@0.487.0";
+import { Text, View, TouchableOpacity, StyleSheet, Animated } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
-import { cn } from "./utils";
+interface AccordionProps {
+  children: React.ReactNode;
+  type?: "single" | "multiple";
+  collapsible?: boolean;
+  value?: string | string[];
+  onValueChange?: (value: string | string[]) => void;
+}
 
 function Accordion({
+  children,
+  type = "single",
+  collapsible = true,
+  value,
+  onValueChange,
   ...props
-}: React.ComponentProps<typeof AccordionPrimitive.Root>) {
-  return <AccordionPrimitive.Root data-slot="accordion" {...props} />;
+}: AccordionProps) {
+  const [openItems, setOpenItems] = React.useState<string[]>(
+    Array.isArray(value) ? value : value ? [value] : []
+  );
+
+  const handleValueChange = (itemValue: string) => {
+    if (type === "single") {
+      const newValue = openItems.includes(itemValue) ? [] : [itemValue];
+      setOpenItems(newValue);
+      onValueChange?.(newValue[0] || "");
+    } else {
+      const newValue = openItems.includes(itemValue)
+        ? openItems.filter(item => item !== itemValue)
+        : [...openItems, itemValue];
+      setOpenItems(newValue);
+      onValueChange?.(newValue);
+    }
+  };
+
+  return (
+    <View style={styles.accordion}>
+      {React.Children.map(children, (child) => {
+        if (React.isValidElement(child) && child.props && typeof child.props === 'object' && 'value' in child.props) {
+          const childProps = child.props as { value: string; [key: string]: any };
+          return React.cloneElement(child, {
+            ...childProps,
+            isOpen: openItems.includes(childProps.value),
+            onToggle: () => handleValueChange(childProps.value),
+          } as any);
+        }
+        return child;
+      })}
+    </View>
+  );
+}
+
+interface AccordionItemProps {
+  children: React.ReactNode;
+  value: string;
+  style?: any;
 }
 
 function AccordionItem({
-  className,
+  children,
+  value,
+  style,
   ...props
-}: React.ComponentProps<typeof AccordionPrimitive.Item>) {
+}: AccordionItemProps) {
   return (
-    <AccordionPrimitive.Item
-      data-slot="accordion-item"
-      className={cn("border-b last:border-b-0", className)}
-      {...props}
-    />
+    <View style={[styles.accordionItem, style]} {...props}>
+      {children}
+    </View>
   );
+}
+
+interface AccordionTriggerProps {
+  children: React.ReactNode;
+  isOpen?: boolean;
+  onToggle?: () => void;
+  style?: any;
 }
 
 function AccordionTrigger({
-  className,
   children,
+  isOpen = false,
+  onToggle,
+  style,
   ...props
-}: React.ComponentProps<typeof AccordionPrimitive.Trigger>) {
+}: AccordionTriggerProps) {
+  const rotateValue = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    Animated.timing(rotateValue, {
+      toValue: isOpen ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [isOpen, rotateValue]);
+
+  const rotate = rotateValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+
   return (
-    <AccordionPrimitive.Header className="flex">
-      <AccordionPrimitive.Trigger
-        data-slot="accordion-trigger"
-        className={cn(
-          "focus-visible:border-ring focus-visible:ring-ring/50 flex flex-1 items-start justify-between gap-4 rounded-md py-4 text-left text-sm font-medium transition-all outline-none hover:underline focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 [&[data-state=open]>svg]:rotate-180",
-          className,
-        )}
-        {...props}
-      >
+    <TouchableOpacity
+      style={[styles.accordionTrigger, style]}
+      onPress={onToggle}
+      {...props}
+    >
+      <View style={styles.accordionTriggerContent}>
         {children}
-        <ChevronDownIcon className="text-muted-foreground pointer-events-none size-4 shrink-0 translate-y-0.5 transition-transform duration-200" />
-      </AccordionPrimitive.Trigger>
-    </AccordionPrimitive.Header>
+        <Animated.View style={{ transform: [{ rotate }] }}>
+          <Ionicons name="chevron-down" size={16} color="#6b7280" />
+        </Animated.View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
+interface AccordionContentProps {
+  children: React.ReactNode;
+  isOpen?: boolean;
+  style?: any;
+}
+
 function AccordionContent({
-  className,
   children,
+  isOpen = false,
+  style,
   ...props
-}: React.ComponentProps<typeof AccordionPrimitive.Content>) {
+}: AccordionContentProps) {
+  const heightValue = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    Animated.timing(heightValue, {
+      toValue: isOpen ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [isOpen, heightValue]);
+
   return (
-    <AccordionPrimitive.Content
-      data-slot="accordion-content"
-      className="data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down overflow-hidden text-sm"
+    <Animated.View
+      style={[
+        styles.accordionContent,
+        {
+          maxHeight: heightValue.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 1000], // Adjust based on content
+          }),
+          opacity: heightValue,
+        },
+        style,
+      ]}
       {...props}
     >
-      <View className={cn("pt-0 pb-4", className)}>{children}</View>
-    </AccordionPrimitive.Content>
+      <View style={styles.accordionContentInner}>
+        {children}
+      </View>
+    </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  accordion: {
+    width: '100%',
+  },
+  accordionItem: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  accordionTrigger: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 0,
+    backgroundColor: 'transparent',
+  },
+  accordionTriggerContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  accordionContent: {
+    overflow: 'hidden',
+  },
+  accordionContentInner: {
+    paddingTop: 0,
+    paddingBottom: 16,
+  },
+});
 
 export { Accordion, AccordionItem, AccordionTrigger, AccordionContent };

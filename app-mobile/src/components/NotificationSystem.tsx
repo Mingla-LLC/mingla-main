@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Text, View, TouchableOpacity } from 'react-native';
-import { X, Check, Users, Clock, Heart, MessageCircle, Calendar, Lock, Bell, Tag, Sparkles } from 'lucide-react';
+import { Text, View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Notification {
   id: string;
@@ -41,7 +41,7 @@ export default function NotificationSystem({ notifications, onDismiss }: Notific
   if (notifications.length === 0) return null;
 
   return (
-    <View className="fixed top-4 right-4 z-[60] space-y-3 max-w-sm pointer-events-none">
+    <View style={styles.container}>
       {notifications.map(notification => (
         <NotificationCard 
           key={notification.id} 
@@ -55,140 +55,183 @@ export default function NotificationSystem({ notifications, onDismiss }: Notific
 
 function NotificationCard({ notification, onDismiss }: { notification: Notification; onDismiss: () => void }) {
   const [isVisible, setIsVisible] = useState(false);
+  const slideAnim = new Animated.Value(300);
+  const opacityAnim = new Animated.Value(0);
 
   useEffect(() => {
     // Trigger enter animation
-    setTimeout(() => setIsVisible(true), 50);
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
   const handleDismiss = () => {
-    setIsVisible(false);
-    setTimeout(onDismiss, 200);
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: 300,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      onDismiss();
+    });
   };
 
   const getIcon = () => {
+    const iconProps = { size: 20, color: '#eb7825' };
+    
     switch (notification.type) {
       case 'invite':
-        return <Users className="w-5 h-5 text-[#eb7825]" />;
+        return <Ionicons name="people" {...iconProps} />;
       case 'join':
-        return <Users className="w-5 h-5 text-[#eb7825]" />;
+        return <Ionicons name="people" {...iconProps} />;
       case 'success':
-        return <Check className="w-5 h-5 text-[#eb7825]" />;
+        return <Ionicons name="checkmark" {...iconProps} />;
       case 'board_activity':
-        if (notification.activityType === 'like') return <Heart className="w-5 h-5 text-[#eb7825] fill-[#eb7825]" />;
-        if (notification.activityType === 'rsvp') return <Calendar className="w-5 h-5 text-[#eb7825]" />;
-        if (notification.activityType === 'discussion') return <MessageCircle className="w-5 h-5 text-[#eb7825]" />;
-        if (notification.activityType === 'lock_in') return <Lock className="w-5 h-5 text-[#eb7825]" />;
-        return <Bell className="w-5 h-5 text-[#eb7825]" />;
+        if (notification.activityType === 'like') return <Ionicons name="heart" {...iconProps} />;
+        if (notification.activityType === 'rsvp') return <Ionicons name="calendar" {...iconProps} />;
+        if (notification.activityType === 'discussion') return <Ionicons name="chatbubble" {...iconProps} />;
+        if (notification.activityType === 'lock_in') return <Ionicons name="lock-closed" {...iconProps} />;
+        return <Ionicons name="notifications" {...iconProps} />;
       case 'discussion_tag':
-        return <Tag className="w-5 h-5 text-[#eb7825]" />;
+        return <Ionicons name="pricetag" {...iconProps} />;
       case 'lock_in':
-        return <Lock className="w-5 h-5 text-[#eb7825]" />;
+        return <Ionicons name="lock-closed" {...iconProps} />;
       case 'rsvp':
-        return <Calendar className="w-5 h-5 text-[#eb7825]" />;
+        return <Ionicons name="calendar" {...iconProps} />;
       default:
-        return <Bell className="w-5 h-5 text-[#eb7825]" />;
+        return <Ionicons name="notifications" {...iconProps} />;
     }
   };
 
-  const getBackgroundGradient = () => {
+  const getBackgroundStyle = () => {
     switch (notification.type) {
       case 'success':
-        return 'bg-gradient-to-r from-[#FF7043] to-[#FF5722]';
+        return styles.successBackground;
       case 'invite':
       case 'join':
-        return 'bg-gradient-to-r from-[#eb7825] to-[#FF7043]';
+        return styles.inviteBackground;
       default:
-        return 'bg-white';
+        return styles.defaultBackground;
     }
   };
 
-  const getTextColor = () => {
-    switch (notification.type) {
-      case 'success':
-      case 'invite':
-      case 'join':
-        return 'text-white';
-      default:
-        return 'text-gray-900';
-    }
-  };
-
-  const getSecondaryTextColor = () => {
+  const getTextStyle = () => {
     switch (notification.type) {
       case 'success':
       case 'invite':
       case 'join':
-        return 'text-white/90';
+        return styles.whiteText;
       default:
-        return 'text-gray-600';
+        return styles.darkText;
+    }
+  };
+
+  const getSecondaryTextStyle = () => {
+    switch (notification.type) {
+      case 'success':
+      case 'invite':
+      case 'join':
+        return styles.whiteSecondaryText;
+      default:
+        return styles.graySecondaryText;
     }
   };
 
   return (
-    <View 
-      className={`transform transition-all duration-500 ease-out pointer-events-auto ${
-        isVisible 
-          ? 'translate-x-0 opacity-100 scale-100' 
-          : 'translate-x-full opacity-0 scale-95'
-      }`}
+    <Animated.View 
+      style={[
+        styles.notificationCard,
+        {
+          transform: [{ translateX: slideAnim }],
+          opacity: opacityAnim,
+        }
+      ]}
     >
-      <View className={`${getBackgroundGradient()} rounded-2xl border ${
-        notification.type === 'success' || notification.type === 'invite' || notification.type === 'join' 
-          ? 'border-white/20' 
-          : 'border-gray-200'
-      } shadow-2xl backdrop-blur-sm p-5 min-w-[340px] relative overflow-hidden`}>
+      <View style={[styles.notificationContainer, getBackgroundStyle()]}>
         
         {/* Sparkle decoration for success notifications */}
         {notification.type === 'success' && (
-          <View className="absolute top-2 right-2 opacity-30">
-            <Sparkles className="w-4 h-4 text-white animate-pulse" />
+          <View style={styles.sparkleContainer}>
+            <Ionicons name="sparkles" size={16} color="white" />
           </View>
         )}
         
-        {/* Subtle gradient overlay for premium feel */}
-        <View className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
-        
-        <View className="flex items-start gap-4 relative">
-          <View className={`flex-shrink-0 mt-0.5 p-2 rounded-xl ${
-            notification.type === 'success' || notification.type === 'invite' || notification.type === 'join'
-              ? 'bg-white/20 backdrop-blur-sm'
-              : 'bg-orange-50'
-          }`}>
+        <View style={styles.notificationContent}>
+          <View style={[
+            styles.iconContainer,
+            (notification.type === 'success' || notification.type === 'invite' || notification.type === 'join')
+              ? styles.iconContainerSuccess
+              : styles.iconContainerDefault
+          ]}>
             {getIcon()}
           </View>
           
-          <View className="flex-1 min-w-0">
-            <Text className={`font-semibold ${getTextColor()} mb-1.5`}>{notification.title}</Text>
-            <Text className={`text-sm ${getSecondaryTextColor()} leading-relaxed`}>{notification.message}</Text>
+          <View style={styles.textContainer}>
+            <Text style={[styles.title, getTextStyle()]}>{notification.title}</Text>
+            <Text style={[styles.message, getSecondaryTextStyle()]}>{notification.message}</Text>
             
             {(notification.sessionName || notification.boardName) && (
-              <View className={`mt-3 px-3 py-1.5 rounded-xl text-xs font-medium inline-block ${
-                notification.type === 'success' || notification.type === 'invite' || notification.type === 'join'
-                  ? 'bg-white/20 text-white backdrop-blur-sm'
-                  : 'bg-orange-50 text-[#eb7825]'
-              }`}>
-                "{notification.sessionName || notification.boardName}"
+              <View style={[
+                styles.sessionTag,
+                (notification.type === 'success' || notification.type === 'invite' || notification.type === 'join')
+                  ? styles.sessionTagSuccess
+                  : styles.sessionTagDefault
+              ]}>
+                <Text style={[
+                  styles.sessionTagText,
+                  (notification.type === 'success' || notification.type === 'invite' || notification.type === 'join')
+                    ? styles.sessionTagTextSuccess
+                    : styles.sessionTagTextDefault
+                ]}>
+                  "{notification.sessionName || notification.boardName}"
+                </Text>
               </View>
             )}
 
             {notification.actions && notification.actions.length > 0 && (
-              <View className="flex gap-2 mt-4">
+              <View style={styles.actionsContainer}>
                 {notification.actions.map((action, index) => (
                   <TouchableOpacity
                     key={index}
-                    onClick={action.action}
-                    className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105 ${
+                    onPress={action.action}
+                    style={[
+                      styles.actionButton,
                       action.variant === 'primary'
-                        ? notification.type === 'success' || notification.type === 'invite' || notification.type === 'join'
-                          ? 'bg-white text-[#eb7825] hover:bg-white/90 shadow-lg'
-                          : 'bg-[#eb7825] text-white hover:bg-[#d6691f] shadow-lg'
-                        : notification.type === 'success' || notification.type === 'invite' || notification.type === 'join'
-                          ? 'bg-white/20 text-white hover:bg-white/30 backdrop-blur-sm'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                        ? (notification.type === 'success' || notification.type === 'invite' || notification.type === 'join')
+                          ? styles.primaryActionSuccess
+                          : styles.primaryActionDefault
+                        : (notification.type === 'success' || notification.type === 'invite' || notification.type === 'join')
+                          ? styles.secondaryActionSuccess
+                          : styles.secondaryActionDefault
+                    ]}
                   >
-                    {action.label}
+                    <Text style={[
+                      styles.actionButtonText,
+                      action.variant === 'primary'
+                        ? (notification.type === 'success' || notification.type === 'invite' || notification.type === 'join')
+                          ? styles.primaryActionTextSuccess
+                          : styles.primaryActionTextDefault
+                        : (notification.type === 'success' || notification.type === 'invite' || notification.type === 'join')
+                          ? styles.secondaryActionTextSuccess
+                          : styles.secondaryActionTextDefault
+                    ]}>
+                      {action.label}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -196,17 +239,186 @@ function NotificationCard({ notification, onDismiss }: { notification: Notificat
           </View>
 
           <TouchableOpacity 
-            onClick={handleDismiss}
-            className={`flex-shrink-0 p-2 rounded-xl transition-all duration-200 hover:scale-110 ${
-              notification.type === 'success' || notification.type === 'invite' || notification.type === 'join'
-                ? 'hover:bg-white/20 text-white/80 hover:text-white'
-                : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
-            }`}
+            onPress={handleDismiss}
+            style={[
+              styles.dismissButton,
+              (notification.type === 'success' || notification.type === 'invite' || notification.type === 'join')
+                ? styles.dismissButtonSuccess
+                : styles.dismissButtonDefault
+            ]}
           >
-            <X className="w-4 h-4" />
+            <Ionicons 
+              name="close" 
+              size={16} 
+              color={(notification.type === 'success' || notification.type === 'invite' || notification.type === 'join') ? 'rgba(255, 255, 255, 0.8)' : '#9ca3af'} 
+            />
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 60,
+    maxWidth: 340,
+    gap: 12,
+  },
+  notificationCard: {
+    // Animation styles handled by Animated.View
+  },
+  notificationContainer: {
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+    padding: 20,
+    minWidth: 340,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  successBackground: {
+    backgroundColor: '#FF7043',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  inviteBackground: {
+    backgroundColor: '#eb7825',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  defaultBackground: {
+    backgroundColor: 'white',
+    borderColor: '#e5e7eb',
+  },
+  sparkleContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    opacity: 0.3,
+  },
+  notificationContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  iconContainer: {
+    flexShrink: 0,
+    marginTop: 2,
+    padding: 8,
+    borderRadius: 12,
+  },
+  iconContainerSuccess: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  iconContainerDefault: {
+    backgroundColor: '#fef3e2',
+  },
+  textContainer: {
+    flex: 1,
+    minWidth: 0,
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  whiteText: {
+    color: 'white',
+  },
+  darkText: {
+    color: '#111827',
+  },
+  message: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  whiteSecondaryText: {
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  graySecondaryText: {
+    color: '#6b7280',
+  },
+  sessionTag: {
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  sessionTagSuccess: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  sessionTagDefault: {
+    backgroundColor: '#fef3e2',
+  },
+  sessionTagText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  sessionTagTextSuccess: {
+    color: 'white',
+  },
+  sessionTagTextDefault: {
+    color: '#eb7825',
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 16,
+  },
+  actionButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  primaryActionSuccess: {
+    backgroundColor: 'white',
+  },
+  primaryActionDefault: {
+    backgroundColor: '#eb7825',
+  },
+  secondaryActionSuccess: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  secondaryActionDefault: {
+    backgroundColor: '#f3f4f6',
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  primaryActionTextSuccess: {
+    color: '#eb7825',
+  },
+  primaryActionTextDefault: {
+    color: 'white',
+  },
+  secondaryActionTextSuccess: {
+    color: 'white',
+  },
+  secondaryActionTextDefault: {
+    color: '#374151',
+  },
+  dismissButton: {
+    flexShrink: 0,
+    padding: 8,
+    borderRadius: 12,
+  },
+  dismissButtonSuccess: {
+    // No background for success notifications
+  },
+  dismissButtonDefault: {
+    // No background for default notifications
+  },
+});

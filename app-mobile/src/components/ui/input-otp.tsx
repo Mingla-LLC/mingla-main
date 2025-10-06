@@ -1,78 +1,189 @@
-"use client";
-
 import * as React from "react";
-import { Text, View } from "react-native";
-import { OTPInput, OTPInputContext } from "input-otp@1.4.2";
-import { MinusIcon } from "lucide-react@0.487.0";
+import { Text, View, TextInput, StyleSheet, TouchableOpacity } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
-import { cn } from "./utils";
+interface InputOTPProps {
+  value?: string;
+  onChange?: (value: string) => void;
+  maxLength?: number;
+  disabled?: boolean;
+  style?: any;
+  containerStyle?: any;
+}
 
 function InputOTP({
-  className,
-  containerClassName,
+  value = "",
+  onChange,
+  maxLength = 6,
+  disabled = false,
+  style,
+  containerStyle,
   ...props
-}: React.ComponentProps<typeof OTPInput> & {
-  containerClassName?: string;
-}) {
+}: InputOTPProps) {
+  const [otpValue, setOtpValue] = React.useState(value);
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const inputRefs = React.useRef<(TextInput | null)[]>([]);
+
+  React.useEffect(() => {
+    setOtpValue(value);
+  }, [value]);
+
+  const handleTextChange = (text: string, index: number) => {
+    const newValue = otpValue.split('');
+    newValue[index] = text;
+    const updatedValue = newValue.join('');
+    
+    setOtpValue(updatedValue);
+    onChange?.(updatedValue);
+
+    // Auto-focus next input
+    if (text && index < maxLength - 1) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyPress = (key: string, index: number) => {
+    if (key === 'Backspace' && !otpValue[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleFocus = (index: number) => {
+    setActiveIndex(index);
+  };
+
   return (
-    <OTPInput
-      data-slot="input-otp"
-      containerClassName={cn(
-        "flex items-center gap-2 has-disabled:opacity-50",
-        containerClassName,
-      )}
-      className={cn("disabled:cursor-not-allowed", className)}
-      {...props}
-    />
+    <View style={[styles.container, containerStyle]} {...props}>
+      {Array.from({ length: maxLength }, (_, index) => (
+        <InputOTPSlot
+          key={index}
+          index={index}
+          value={otpValue[index] || ''}
+          onChangeText={(text) => handleTextChange(text, index)}
+          onKeyPress={(key) => handleKeyPress(key, index)}
+          onFocus={() => handleFocus(index)}
+          isActive={activeIndex === index}
+          disabled={disabled}
+          style={style}
+        />
+      ))}
+    </View>
   );
 }
 
-function InputOTPGroup({ className, ...props }: React.ComponentProps<"div">) {
+interface InputOTPGroupProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function InputOTPGroup({ children, style, ...props }: InputOTPGroupProps) {
   return (
-    <View
-      data-slot="input-otp-group"
-      className={cn("flex items-center gap-1", className)}
-      {...props}
-    />
+    <View style={[styles.group, style]} {...props}>
+      {children}
+    </View>
   );
+}
+
+interface InputOTPSlotProps {
+  index: number;
+  value: string;
+  onChangeText: (text: string) => void;
+  onKeyPress: (key: string) => void;
+  onFocus: () => void;
+  isActive: boolean;
+  disabled?: boolean;
+  style?: any;
 }
 
 function InputOTPSlot({
   index,
-  className,
+  value,
+  onChangeText,
+  onKeyPress,
+  onFocus,
+  isActive,
+  disabled = false,
+  style,
   ...props
-}: React.ComponentProps<"div"> & {
-  index: number;
-}) {
-  const inputOTPContext = React.useContext(OTPInputContext);
-  const { char, hasFakeCaret, isActive } = inputOTPContext?.slots[index] ?? {};
-
+}: InputOTPSlotProps) {
   return (
-    <View
-      data-slot="input-otp-slot"
-      data-active={isActive}
-      className={cn(
-        "data-[active=true]:border-ring data-[active=true]:ring-ring/50 data-[active=true]:aria-invalid:ring-destructive/20 dark:data-[active=true]:aria-invalid:ring-destructive/40 aria-invalid:border-destructive data-[active=true]:aria-invalid:border-destructive dark:bg-input/30 border-input relative flex h-9 w-9 items-center justify-center border-y border-r text-sm bg-input-background transition-all outline-none first:rounded-l-md first:border-l last:rounded-r-md data-[active=true]:z-10 data-[active=true]:ring-[3px]",
-        className,
-      )}
+    <TextInput
+      style={[
+        styles.slot,
+        isActive && styles.activeSlot,
+        disabled && styles.disabledSlot,
+        style,
+      ]}
+      value={value}
+      onChangeText={onChangeText}
+      onKeyPress={({ nativeEvent }) => onKeyPress(nativeEvent.key)}
+      onFocus={onFocus}
+      maxLength={1}
+      keyboardType="numeric"
+      textAlign="center"
+      editable={!disabled}
+      selectTextOnFocus
       {...props}
-    >
-      {char}
-      {hasFakeCaret && (
-        <View className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <View className="animate-caret-blink bg-foreground h-4 w-px duration-1000" />
-        </View>
-      )}
+    />
+  );
+}
+
+interface InputOTPSeparatorProps {
+  style?: any;
+}
+
+function InputOTPSeparator({ style, ...props }: InputOTPSeparatorProps) {
+  return (
+    <View style={[styles.separator, style]} {...props}>
+      <Ionicons name="remove" size={16} color="#6b7280" />
     </View>
   );
 }
 
-function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
-  return (
-    <View data-slot="input-otp-separator" role="separator" {...props}>
-      <MinusIcon />
-    </View>
-  );
-}
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  group: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  slot: {
+    width: 36,
+    height: 36,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    backgroundColor: '#f9fafb',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activeSlot: {
+    borderColor: '#eb7825',
+    borderWidth: 2,
+    backgroundColor: '#fff',
+    shadowColor: '#eb7825',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  disabledSlot: {
+    opacity: 0.5,
+    backgroundColor: '#f3f4f6',
+  },
+  separator: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+});
 
 export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator };

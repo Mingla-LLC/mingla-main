@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput } from 'react-native';
-import { X, Search, MessageSquare, Users } from 'lucide-react';
+import { Text, View, TouchableOpacity, TextInput, StyleSheet, Modal, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
 interface Friend {
@@ -35,107 +35,273 @@ export default function FriendSelectionModal({
   );
 
   return (
-    <View className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <View className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col">
-        {/* Header */}
-        <View className="flex items-center justify-between p-6 border-b border-gray-100">
-          <View>
-            <Text className="text-xl font-semibold text-gray-900">Start New Conversation</Text>
-            <Text className="text-sm text-gray-600">Choose a friend to message</Text>
+    <Modal
+      visible={isOpen}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.overlay}>
+        <View style={styles.modalContainer}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.headerTitle}>Start New Conversation</Text>
+              <Text style={styles.headerSubtitle}>Choose a friend to message</Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={16} color="#6b7280" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onClick={onClose}
-            className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors"
-          >
-            <X className="w-4 h-4 text-gray-600" />
-          </TouchableOpacity>
-        </View>
 
         {/* Search */}
-        <View className="p-4 border-b border-gray-100">
-          <View className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputContainer}>
+            <Ionicons name="search" size={16} color="#9ca3af" style={styles.searchIcon} />
             <TextInput
               placeholder="Search friends..."
               value={searchQuery}
               onChangeText={setSearchQuery}
-              style={{
-                width: '100%',
-                paddingLeft: 40,
-                paddingRight: 16,
-                paddingVertical: 8,
-                backgroundColor: '#f9fafb',
-                borderWidth: 1,
-                borderColor: '#e5e7eb',
-                borderRadius: 8,
-                fontSize: 16
-              }}
+              style={styles.searchInput}
             />
           </View>
         </View>
 
         {/* Friends List */}
-        <View className="flex-1 overflow-y-auto p-4">
+        <ScrollView style={styles.friendsList}>
           {filteredFriends.length === 0 ? (
-            <View className="text-center py-8">
-              <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <Text className="text-gray-500">
+            <View style={styles.emptyState}>
+              <Ionicons name="people" size={48} color="#d1d5db" />
+              <Text style={styles.emptyStateText}>
                 {searchQuery ? 'No friends found' : 'No friends available'}
               </Text>
-              <Text className="text-sm text-gray-400 mt-1">
+              <Text style={styles.emptyStateSubtext}>
                 {searchQuery ? 'Try a different search term' : 'Add friends to start messaging'}
               </Text>
             </View>
           ) : (
-            <View className="space-y-2">
+            <View style={styles.friendsContainer}>
               {filteredFriends.map((friend) => (
                 <TouchableOpacity
                   key={friend.id}
-                  onClick={() => onSelectFriend(friend)}
-                  className="w-full flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-[#eb7825]/10 hover:border-[#eb7825] border border-transparent transition-all duration-200 group"
+                  onPress={() => onSelectFriend(friend)}
+                  style={styles.friendItem}
                 >
-                  <View className="relative">
+                  <View style={styles.avatarContainer}>
                     {friend.avatar ? (
                       <ImageWithFallback
-                        src={friend.avatar}
-                        alt={friend.name}
-                        className="w-10 h-10 rounded-full object-cover"
+                        source={{ uri: friend.avatar }}
+                        style={styles.avatar}
                       />
                     ) : (
-                      <View className="w-10 h-10 bg-gradient-to-br from-[#eb7825] to-[#d6691f] rounded-full flex items-center justify-center">
-                        <Text className="text-white font-medium text-sm">
+                      <View style={styles.avatarPlaceholder}>
+                        <Text style={styles.avatarText}>
                           {friend.name.split(' ').map(n => n[0]).join('')}
                         </Text>
                       </View>
                     )}
                     {friend.isOnline && (
-                      <View className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+                      <View style={styles.onlineIndicator} />
                     )}
                   </View>
                   
-                  <View className="flex-1 text-left">
-                    <Text className="font-medium text-gray-900 group-hover:text-[#eb7825] transition-colors">
+                  <View style={styles.friendInfo}>
+                    <Text style={styles.friendName}>
                       {friend.name}
                     </Text>
-                    <Text className="text-sm text-gray-600">@{friend.username}</Text>
+                    <Text style={styles.friendUsername}>@{friend.username}</Text>
                   </View>
 
-                  <View className="w-8 h-8 bg-[#eb7825]/10 group-hover:bg-[#eb7825] rounded-lg flex items-center justify-center transition-colors">
-                    <MessageSquare className="w-4 h-4 text-[#eb7825] group-hover:text-white" />
+                  <View style={styles.messageButton}>
+                    <Ionicons name="chatbubble" size={16} color="#eb7825" />
                   </View>
                 </TouchableOpacity>
               ))}
             </View>
           )}
-        </View>
+        </ScrollView>
 
         {/* Footer */}
-        <View className="p-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
-          <Text className="text-xs text-gray-500 text-center">
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
             Only direct one-on-one conversations are supported
           </Text>
         </View>
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    flexDirection: 'column',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchContainer: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  searchInputContainer: {
+    position: 'relative',
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    zIndex: 1,
+  },
+  searchInput: {
+    width: '100%',
+    paddingLeft: 40,
+    paddingRight: 16,
+    paddingVertical: 12,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    fontSize: 16,
+    color: '#111827',
+  },
+  friendsList: {
+    flex: 1,
+    padding: 16,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#6b7280',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#9ca3af',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  friendsContainer: {
+    gap: 8,
+  },
+  friendItem: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  avatarPlaceholder: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#eb7825',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: 'white',
+    fontWeight: '500',
+    fontSize: 14,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    backgroundColor: '#10b981',
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  friendInfo: {
+    flex: 1,
+  },
+  friendName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  friendUsername: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  messageButton: {
+    width: 32,
+    height: 32,
+    backgroundColor: 'rgba(235, 120, 37, 0.1)',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footer: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    backgroundColor: '#f9fafb',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  footerText: {
+    fontSize: 12,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+});

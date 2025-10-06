@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity } from 'react-native';
-import { X, Crown, UserMinus, Shield, ShieldCheck, Users, AlertTriangle } from 'lucide-react';
+import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Participant {
   id: string;
@@ -90,93 +90,96 @@ export default function BoardMemberManagementModal({
   };
 
   return (
-    <View className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <View className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+    <Modal
+      visible={isOpen}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
         {/* Header */}
-        <View className="p-6 border-b border-gray-100 flex-shrink-0">
-          <View className="flex items-center justify-between">
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
             <View>
-              <Text className="text-xl font-semibold text-gray-900">Manage Board</Text>
-              <Text className="text-sm text-gray-600 mt-1">{board.name}</Text>
+              <Text style={styles.headerTitle}>Manage Board</Text>
+              <Text style={styles.headerSubtitle}>{board.name}</Text>
             </View>
             <TouchableOpacity
-              onClick={onClose}
-              className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors"
+              onPress={onClose}
+              style={styles.closeButton}
             >
-              <X className="w-4 h-4 text-gray-600" />
+              <Ionicons name="close" size={16} color="#6b7280" />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Members List */}
-        <View className="flex-1 overflow-y-auto p-6">
-          <View className="space-y-4">
+        <ScrollView style={styles.membersList}>
+          <View style={styles.membersContainer}>
             {board.participants.map((participant) => {
               const isAdmin = board.admins.includes(participant.id);
               const isCreator = board.creatorId === participant.id;
               const isCurrentUser = participant.id === board.currentUserId;
               
               return (
-                <View key={participant.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                  <View className="flex items-center gap-3">
-                    <View className="w-10 h-10 bg-gradient-to-br from-[#FF7043] to-[#FF5722] rounded-full flex items-center justify-center">
-                      <Text className="text-white font-semibold text-sm">
+                <View key={participant.id} style={styles.memberItem}>
+                  <View style={styles.memberInfo}>
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberAvatarText}>
                         {participant.name.charAt(0).toUpperCase()}
                       </Text>
                     </View>
-                    <View>
-                      <View className="flex items-center gap-2">
-                        <Text className="font-medium text-gray-900">
+                    <View style={styles.memberDetails}>
+                      <View style={styles.memberNameRow}>
+                        <Text style={styles.memberName}>
                           {participant.name}
                           {isCurrentUser && ' (You)'}
                         </Text>
                         {isCreator && (
-                          <View className="flex items-center gap-1 bg-[#eb7825] text-white px-2 py-0.5 rounded-full text-xs">
-                            <Crown className="w-3 h-3" />
-                            Creator
+                          <View style={styles.creatorBadge}>
+                            <Ionicons name="star" size={12} color="white" />
+                            <Text style={styles.badgeText}>Creator</Text>
                           </View>
                         )}
                         {isAdmin && !isCreator && (
-                          <View className="flex items-center gap-1 bg-[#eb7825] text-white px-2 py-0.5 rounded-full text-xs">
-                            <Shield className="w-3 h-3" />
-                            Admin
+                          <View style={styles.adminBadge}>
+                            <Ionicons name="shield" size={12} color="white" />
+                            <Text style={styles.badgeText}>Admin</Text>
                           </View>
                         )}
                       </View>
-                      <Text className="text-xs text-gray-500 capitalize">{participant.status}</Text>
+                      <Text style={styles.memberStatus}>{participant.status}</Text>
                     </View>
                   </View>
 
                   {/* Action buttons - only show if current user is admin and it's not themselves */}
                   {isCurrentUserAdmin && !isCurrentUser && (
-                    <View className="flex items-center gap-2">
+                    <View style={styles.actionButtons}>
                       {!isAdmin && (
                         <TouchableOpacity
-                          onClick={() => handlePromoteToAdmin(participant.id)}
-                          className="w-8 h-8 bg-[#eb7825]/10 hover:bg-[#eb7825]/20 text-[#eb7825] rounded-lg flex items-center justify-center transition-colors"
-                          title="Promote to Admin"
+                          onPress={() => handlePromoteToAdmin(participant.id)}
+                          style={styles.promoteButton}
                         >
-                          <ShieldCheck className="w-4 h-4" />
+                          <Ionicons name="shield-checkmark" size={16} color="#eb7825" />
                         </TouchableOpacity>
                       )}
                       
                       {isAdmin && !isCreator && (
                         <TouchableOpacity
-                          onClick={() => handleDemoteFromAdmin(participant.id)}
-                          className="w-8 h-8 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg flex items-center justify-center transition-colors"
-                          title="Remove Admin"
+                          onPress={() => handleDemoteFromAdmin(participant.id)}
+                          style={styles.demoteButton}
                         >
-                          <Shield className="w-4 h-4" />
+                          <Ionicons name="shield" size={16} color="#6b7280" />
                         </TouchableOpacity>
                       )}
                       
                       {!isCreator && (
                         <TouchableOpacity
-                          onClick={() => handleRemoveMember(participant.id)}
-                          className="w-8 h-8 bg-[#eb7825]/10 hover:bg-[#eb7825]/20 text-[#eb7825] rounded-lg flex items-center justify-center transition-colors"
-                          title="Remove Member"
+                          onPress={() => handleRemoveMember(participant.id)}
+                          style={styles.removeButton}
                         >
-                          <UserMinus className="w-4 h-4" />
+                          <Ionicons name="person-remove" size={16} color="#eb7825" />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -187,100 +190,100 @@ export default function BoardMemberManagementModal({
           </View>
 
           {/* Board info */}
-          <View className="mt-6 p-4 bg-[#eb7825]/10 rounded-xl">
-            <View className="flex items-center gap-2 mb-2">
-              <Users className="w-4 h-4 text-[#eb7825]" />
-              <Text className="font-medium text-[#d6691f]">Board Info</Text>
+          <View style={styles.boardInfo}>
+            <View style={styles.boardInfoHeader}>
+              <Ionicons name="people" size={16} color="#eb7825" />
+              <Text style={styles.boardInfoTitle}>Board Info</Text>
             </View>
-            <View className="space-y-1 text-sm text-[#eb7825]">
-              <Text>Total Members: {board.participants.length}</Text>
-              <Text>Admins: {board.admins.length}</Text>
+            <View style={styles.boardInfoContent}>
+              <Text style={styles.boardInfoText}>Total Members: {board.participants.length}</Text>
+              <Text style={styles.boardInfoText}>Admins: {board.admins.length}</Text>
               {board.participants.length <= 2 && (
-                <View className="flex items-center gap-2 mt-2 p-2 bg-amber-100 rounded-lg">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  <Text className="text-xs text-amber-700">
+                <View style={styles.warningBox}>
+                  <Ionicons name="warning" size={16} color="#d97706" />
+                  <Text style={styles.warningText}>
                     Board will be deleted if any member leaves (minimum 2 members required)
                   </Text>
                 </View>
               )}
             </View>
           </View>
-        </View>
+        </ScrollView>
 
         {/* Actions */}
-        <View className="p-6 border-t border-gray-100 flex-shrink-0">
+        <View style={styles.actions}>
           {confirmAction ? (
-            <View className="space-y-3">
+            <View style={styles.confirmContainer}>
               {confirmAction.type === 'remove' && (
-                <View className="p-3 bg-red-50 rounded-xl">
-                  <Text className="text-sm text-red-700 mb-3">
-                    Remove <strong>{confirmAction.participantName}</strong> from this board?
+                <View style={styles.removeConfirm}>
+                  <Text style={styles.confirmText}>
+                    Remove <Text style={styles.confirmBold}>{confirmAction.participantName}</Text> from this board?
                   </Text>
-                  <View className="flex gap-2">
+                  <View style={styles.confirmButtons}>
                     <TouchableOpacity
-                      onClick={() => handleRemoveMember(confirmAction.participantId!)}
-                      className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 transition-colors"
+                      onPress={() => handleRemoveMember(confirmAction.participantId!)}
+                      style={styles.confirmButton}
                     >
-                      Remove Member
+                      <Text style={styles.confirmButtonText}>Remove Member</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onClick={() => setConfirmAction(null)}
-                      className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                      onPress={() => setConfirmAction(null)}
+                      style={styles.cancelConfirmButton}
                     >
-                      Cancel
+                      <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               )}
 
               {confirmAction.type === 'demote' && (
-                <View className="p-3 bg-amber-50 rounded-xl">
-                  <Text className="text-sm text-amber-700 mb-3">
-                    Remove admin privileges from <strong>{confirmAction.participantName}</strong>?
+                <View style={styles.demoteConfirm}>
+                  <Text style={styles.demoteConfirmText}>
+                    Remove admin privileges from <Text style={styles.confirmBold}>{confirmAction.participantName}</Text>?
                   </Text>
-                  <View className="flex gap-2">
+                  <View style={styles.confirmButtons}>
                     <TouchableOpacity
-                      onClick={() => handleDemoteFromAdmin(confirmAction.participantId!)}
-                      className="flex-1 bg-amber-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-amber-700 transition-colors"
+                      onPress={() => handleDemoteFromAdmin(confirmAction.participantId!)}
+                      style={styles.demoteConfirmButton}
                     >
-                      Remove Admin
+                      <Text style={styles.demoteButtonText}>Remove Admin</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onClick={() => setConfirmAction(null)}
-                      className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                      onPress={() => setConfirmAction(null)}
+                      style={styles.cancelConfirmButton}
                     >
-                      Cancel
+                      <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               )}
 
               {confirmAction.type === 'leave' && (
-                <View className="p-3 bg-red-50 rounded-xl">
-                  <Text className="text-sm text-red-700 mb-2">
-                    <strong>Leave this board?</strong>
+                <View style={styles.leaveConfirm}>
+                  <Text style={styles.leaveConfirmTitle}>
+                    <Text style={styles.confirmBold}>Leave this board?</Text>
                   </Text>
-                  <View className="text-xs text-red-600 mb-3 space-y-1">
+                  <View style={styles.leaveConfirmDetails}>
                     {isCurrentUserAdmin && board.admins.length === 1 && board.participants.length > 2 && (
-                      <Text>• Another member will be randomly assigned as admin</Text>
+                      <Text style={styles.leaveConfirmDetail}>• Another member will be randomly assigned as admin</Text>
                     )}
                     {board.participants.length <= 2 && (
-                      <Text>• Board will be permanently deleted (less than 2 members remaining)</Text>
+                      <Text style={styles.leaveConfirmDetail}>• Board will be permanently deleted (less than 2 members remaining)</Text>
                     )}
-                    <Text>• This action cannot be undone</Text>
+                    <Text style={styles.leaveConfirmDetail}>• This action cannot be undone</Text>
                   </View>
-                  <View className="flex gap-2">
+                  <View style={styles.confirmButtons}>
                     <TouchableOpacity
-                      onClick={handleLeaveBoard}
-                      className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-red-700 transition-colors"
+                      onPress={handleLeaveBoard}
+                      style={styles.leaveButton}
                     >
-                      Leave Board
+                      <Text style={styles.leaveButtonText}>Leave Board</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onClick={() => setConfirmAction(null)}
-                      className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                      onPress={() => setConfirmAction(null)}
+                      style={styles.cancelConfirmButton}
                     >
-                      Cancel
+                      <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -288,15 +291,333 @@ export default function BoardMemberManagementModal({
             </View>
           ) : (
             <TouchableOpacity
-              onClick={handleLeaveBoard}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 border-2 border-red-200 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-colors"
+              onPress={handleLeaveBoard}
+              style={styles.leaveBoardButton}
             >
-              <UserMinus className="w-4 h-4" />
-              Leave Board
+              <Ionicons name="person-remove" size={16} color="#dc2626" />
+              <Text style={styles.leaveBoardButtonText}>Leave Board</Text>
             </TouchableOpacity>
           )}
         </View>
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  header: {
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  membersList: {
+    flex: 1,
+    padding: 24,
+  },
+  membersContainer: {
+    gap: 16,
+  },
+  memberItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+  },
+  memberInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  memberAvatar: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#eb7825',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberAvatarText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  memberDetails: {
+    flex: 1,
+  },
+  memberNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memberName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  creatorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eb7825',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  adminBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eb7825',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  badgeText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '500',
+  },
+  memberStatus: {
+    fontSize: 12,
+    color: '#6b7280',
+    textTransform: 'capitalize',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  promoteButton: {
+    width: 32,
+    height: 32,
+    backgroundColor: 'rgba(235, 120, 37, 0.1)',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  demoteButton: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeButton: {
+    width: 32,
+    height: 32,
+    backgroundColor: 'rgba(235, 120, 37, 0.1)',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  boardInfo: {
+    marginTop: 24,
+    padding: 16,
+    backgroundColor: 'rgba(235, 120, 37, 0.1)',
+    borderRadius: 12,
+  },
+  boardInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  boardInfoTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#d6691f',
+  },
+  boardInfoContent: {
+    gap: 4,
+  },
+  boardInfoText: {
+    fontSize: 14,
+    color: '#eb7825',
+  },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#fef3c7',
+    borderRadius: 8,
+  },
+  warningText: {
+    fontSize: 12,
+    color: '#d97706',
+    flex: 1,
+  },
+  actions: {
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  confirmContainer: {
+    gap: 12,
+  },
+  removeConfirm: {
+    padding: 12,
+    backgroundColor: '#fef2f2',
+    borderRadius: 12,
+  },
+  confirmText: {
+    fontSize: 14,
+    color: '#dc2626',
+    marginBottom: 12,
+  },
+  confirmBold: {
+    fontWeight: '600',
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  confirmButton: {
+    flex: 1,
+    backgroundColor: '#dc2626',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'white',
+  },
+  cancelConfirmButton: {
+    flex: 1,
+    backgroundColor: '#e5e7eb',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelConfirmButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  demoteConfirm: {
+    padding: 12,
+    backgroundColor: '#fef3c7',
+    borderRadius: 12,
+  },
+  demoteConfirmText: {
+    fontSize: 14,
+    color: '#d97706',
+    marginBottom: 12,
+  },
+  demoteConfirmButton: {
+    flex: 1,
+    backgroundColor: '#d97706',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  demoteButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'white',
+  },
+  leaveConfirm: {
+    padding: 12,
+    backgroundColor: '#fef2f2',
+    borderRadius: 12,
+  },
+  leaveConfirmTitle: {
+    fontSize: 14,
+    color: '#dc2626',
+    marginBottom: 8,
+  },
+  leaveConfirmDetails: {
+    gap: 4,
+    marginBottom: 12,
+  },
+  leaveConfirmDetail: {
+    fontSize: 12,
+    color: '#dc2626',
+  },
+  leaveButton: {
+    flex: 1,
+    backgroundColor: '#dc2626',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leaveButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'white',
+  },
+  leaveBoardButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 2,
+    borderColor: '#fecaca',
+    borderRadius: 12,
+  },
+  leaveBoardButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#dc2626',
+  },
+});

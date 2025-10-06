@@ -1,11 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Text, View, TouchableOpacity, TextInput } from 'react-native';
-import { 
-  ArrowLeft, Send, Paperclip, Image, Video, FileText, 
-  Smile, MoreHorizontal, Phone, VideoIcon, X, Download,
-  Play, Pause, Volume2, VolumeX, MessageSquare, Users,
-  Plus, Bookmark, UserMinus, Shield, Flag
-} from 'lucide-react';
+import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView, Image, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import CollaborationModule from './CollaborationModule';
 
@@ -72,66 +67,28 @@ export default function MessageInterface({
 }: MessageInterfaceProps) {
   const [newMessage, setNewMessage] = useState('');
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFile, setSelectedFile] = useState<any>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
   const [showBoardSelection, setShowBoardSelection] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showCollaboration, setShowCollaboration] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const attachmentMenuRef = useRef<HTMLDivElement>(null);
-  const moreOptionsMenuRef = useRef<HTMLDivElement>(null);
+  const [selectedBoards, setSelectedBoards] = useState<string[]>([]);
+  const messagesEndRef = useRef<ScrollView>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollToEnd({ animated: true });
   }, [messages]);
-
-  // Clean up preview URL when component unmounts
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
-
-  // Close attachment menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showAttachmentMenu && attachmentMenuRef.current && !attachmentMenuRef.current.contains(event.target as Node)) {
-        setShowAttachmentMenu(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showAttachmentMenu]);
-
-  // Close more options menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showMoreOptionsMenu && moreOptionsMenuRef.current && !moreOptionsMenuRef.current.contains(event.target as Node)) {
-        setShowMoreOptionsMenu(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showMoreOptionsMenu]);
 
   const handleSendMessage = () => {
     if (newMessage.trim() || selectedFile) {
       if (selectedFile) {
-        const fileType = selectedFile.type.startsWith('image/') ? 'image' :
-                        selectedFile.type.startsWith('video/') ? 'video' : 'file';
+        const fileType = selectedFile.type?.startsWith('image/') ? 'image' :
+                        selectedFile.type?.startsWith('video/') ? 'video' : 'file';
         onSendMessage(newMessage.trim() || selectedFile.name, fileType, selectedFile);
         setSelectedFile(null);
-        if (previewUrl) {
-          URL.revokeObjectURL(previewUrl);
-          setPreviewUrl('');
-        }
+        setPreviewUrl('');
       } else {
         onSendMessage(newMessage.trim(), 'text');
       }
@@ -140,33 +97,19 @@ export default function MessageInterface({
   };
 
   const handleFileSelect = (type: 'image' | 'video' | 'file') => {
-    const accept = type === 'image' ? 'image/*' : 
-                  type === 'video' ? 'video/*' : '*/*';
-    
-    if (fileInputRef.current) {
-      fileInputRef.current.accept = accept;
-      fileInputRef.current.click();
-    }
+    // In React Native, file selection would be handled by a native file picker
+    // For now, we'll show an alert to indicate this functionality
+    Alert.alert(
+      'File Selection',
+      `File selection for ${type} will be implemented with a native file picker`,
+      [{ text: 'OK' }]
+    );
     setShowAttachmentMenu(false);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-        const url = URL.createObjectURL(file);
-        setPreviewUrl(url);
-      }
-    }
   };
 
   const handleRemoveFile = () => {
     setSelectedFile(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl('');
-    }
+    setPreviewUrl('');
   };
 
   const formatFileSize = (bytes: number) => {
@@ -284,176 +227,171 @@ export default function MessageInterface({
     const isMe = message.isMe;
     
     return (
-      <View key={message.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} mb-4`}>
-        <View className={`max-w-[70%] ${isMe ? 'order-2' : 'order-1'}`}>
-          <View className={`p-3 rounded-2xl ${
-            isMe 
-              ? 'bg-[#eb7825] text-white' 
-              : 'bg-gray-100 text-gray-900'
-          }`}>
-            {message.type === 'text' && (
-              <Text className="break-words">{message.content}</Text>
-            )}
-            
-            {message.type === 'image' && (
-              <View>
-                {message.content && message.content !== message.fileName && (
-                  <Text className="mb-2 break-words">{message.content}</Text>
-                )}
-                <ImageWithFallback
-                  src={message.fileUrl || ''}
-                  alt="Shared image"
-                  className="rounded-lg max-w-full h-auto"
-                />
-              </View>
-            )}
-            
-            {message.type === 'video' && (
-              <View>
-                {message.content && message.content !== message.fileName && (
-                  <Text className="mb-2 break-words">{message.content}</Text>
-                )}
-                <video
-                  controls
-                  className="rounded-lg max-w-full h-auto"
-                  src={message.fileUrl}
-                >
-                  Your browser does not support video playback.
-                </video>
-              </View>
-            )}
-            
-            {message.type === 'file' && (
-              <View>
-                {message.content && message.content !== message.fileName && (
-                  <Text className="mb-2 break-words">{message.content}</Text>
-                )}
-                <View className={`flex items-center gap-3 p-2 rounded-lg ${
-                  isMe ? 'bg-white/20' : 'bg-white'
-                }`}>
-                  <View className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    isMe ? 'bg-white/30' : 'bg-[#eb7825]/10'
-                  }`}>
-                    <FileText className={`w-4 h-4 ${isMe ? 'text-white' : 'text-[#eb7825]'}`} />
-                  </View>
-                  <View className="flex-1 min-w-0">
-                    <Text className={`font-medium truncate ${isMe ? 'text-white' : 'text-gray-900'}`}>
-                      {message.fileName}
-                    </Text>
-                    <Text className={`text-xs ${isMe ? 'text-white/70' : 'text-gray-500'}`}>
-                      {message.fileSize}
-                    </Text>
-                  </View>
-                  <Download className={`w-4 h-4 ${isMe ? 'text-white' : 'text-gray-600'}`} />
-                </View>
-              </View>
-            )}
-          </View>
+      <View key={message.id} style={[styles.messageContainer, isMe ? styles.messageContainerRight : styles.messageContainerLeft]}>
+        <View style={[styles.messageBubble, isMe ? styles.messageBubbleRight : styles.messageBubbleLeft]}>
+          {message.type === 'text' && (
+            <Text style={[styles.messageText, isMe ? styles.messageTextRight : styles.messageTextLeft]}>
+              {message.content}
+            </Text>
+          )}
           
-          <Text className={`text-xs text-gray-500 mt-1 ${isMe ? 'text-right' : 'text-left'}`}>
-            {formatTimestamp(message.timestamp)}
-          </Text>
+          {message.type === 'image' && (
+            <View>
+              {message.content && message.content !== message.fileName && (
+                <Text style={[styles.messageText, isMe ? styles.messageTextRight : styles.messageTextLeft, styles.messageCaption]}>
+                  {message.content}
+                </Text>
+              )}
+              <ImageWithFallback
+                source={{ uri: message.fileUrl || '' }}
+                style={styles.messageImage}
+              />
+            </View>
+          )}
+          
+          {message.type === 'video' && (
+            <View>
+              {message.content && message.content !== message.fileName && (
+                <Text style={[styles.messageText, isMe ? styles.messageTextRight : styles.messageTextLeft, styles.messageCaption]}>
+                  {message.content}
+                </Text>
+              )}
+              <View style={styles.videoPlaceholder}>
+                <Ionicons name="play-circle" size={48} color={isMe ? 'white' : '#eb7825'} />
+                <Text style={[styles.videoText, isMe ? styles.videoTextRight : styles.videoTextLeft]}>
+                  Video message
+                </Text>
+              </View>
+            </View>
+          )}
+          
+          {message.type === 'file' && (
+            <View>
+              {message.content && message.content !== message.fileName && (
+                <Text style={[styles.messageText, isMe ? styles.messageTextRight : styles.messageTextLeft, styles.messageCaption]}>
+                  {message.content}
+                </Text>
+              )}
+              <View style={[styles.fileContainer, isMe ? styles.fileContainerRight : styles.fileContainerLeft]}>
+                <View style={[styles.fileIcon, isMe ? styles.fileIconRight : styles.fileIconLeft]}>
+                  <Ionicons name="document-text" size={16} color={isMe ? 'white' : '#eb7825'} />
+                </View>
+                <View style={styles.fileInfo}>
+                  <Text style={[styles.fileName, isMe ? styles.fileNameRight : styles.fileNameLeft]}>
+                    {message.fileName}
+                  </Text>
+                  <Text style={[styles.fileSize, isMe ? styles.fileSizeRight : styles.fileSizeLeft]}>
+                    {message.fileSize}
+                  </Text>
+                </View>
+                <Ionicons name="download" size={16} color={isMe ? 'white' : '#6b7280'} />
+              </View>
+            </View>
+          )}
         </View>
+        
+        <Text style={[styles.messageTimestamp, isMe ? styles.messageTimestampRight : styles.messageTimestampLeft]}>
+          {formatTimestamp(message.timestamp)}
+        </Text>
       </View>
     );
   };
 
   return (
-    <View className="fixed inset-0 bg-white flex flex-col z-[100]">
+    <View style={styles.container}>
       {/* Header */}
-      <View className="bg-white border-b border-gray-200 px-4 py-4 flex items-center gap-3 flex-shrink-0 safe-area-inset-top">
+      <View style={styles.header}>
         <TouchableOpacity
-          onClick={onBack}
-          className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors"
+          onPress={onBack}
+          style={styles.backButton}
         >
-          <ArrowLeft className="w-4 h-4 text-gray-600" />
+          <Ionicons name="arrow-back" size={16} color="#6b7280" />
         </TouchableOpacity>
         
-        <View className="relative">
+        <View style={styles.avatarContainer}>
           {friend.avatar ? (
             <ImageWithFallback
-              src={friend.avatar}
-              alt={friend.name}
-              className="w-10 h-10 rounded-full object-cover"
+              source={{ uri: friend.avatar }}
+              style={styles.avatar}
             />
           ) : (
-            <View className="w-10 h-10 bg-gradient-to-br from-[#eb7825] to-[#d6691f] rounded-full flex items-center justify-center">
-              <Text className="text-white font-medium text-sm">
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarText}>
                 {friend.name.split(' ').map(n => n[0]).join('')}
               </Text>
             </View>
           )}
           {friend.isOnline && (
-            <View className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+            <View style={styles.onlineIndicator} />
           )}
         </View>
         
-        <View className="flex-1">
-          <Text className="font-medium text-gray-900">{friend.name}</Text>
-          <Text className="text-sm text-gray-600">
+        <View style={styles.userInfo}>
+          <Text style={styles.userName}>{friend.name}</Text>
+          <Text style={styles.userStatus}>
             {friend.isOnline ? 'Online' : `Last seen ${friend.lastSeen || 'recently'}`}
           </Text>
         </View>
         
-        <View className="flex items-center gap-2">
-          <TouchableOpacity className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors">
-            <Phone className="w-4 h-4 text-gray-600" />
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="call" size={16} color="#6b7280" />
           </TouchableOpacity>
-          <TouchableOpacity className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors">
-            <VideoIcon className="w-4 h-4 text-gray-600" />
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="videocam" size={16} color="#6b7280" />
           </TouchableOpacity>
-          <View className="relative" ref={moreOptionsMenuRef}>
+          <View style={styles.moreOptionsContainer}>
             <TouchableOpacity 
-              onClick={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
-              className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors"
+              onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
+              style={styles.actionButton}
             >
-              <MoreHorizontal className="w-4 h-4 text-gray-600" />
+              <Ionicons name="ellipsis-horizontal" size={16} color="#6b7280" />
             </TouchableOpacity>
             
             {showMoreOptionsMenu && (
-              <View className="absolute top-10 right-0 bg-white border border-gray-200 rounded-xl shadow-lg py-2 min-w-[220px] z-20">
+              <View style={styles.moreOptionsMenu}>
                 <TouchableOpacity
-                  onClick={handleSendCollabInvite}
-                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-orange-50 hover:text-[#eb7825] flex items-center gap-3 transition-colors"
+                  onPress={handleSendCollabInvite}
+                  style={styles.menuItem}
                 >
-                  <Plus className="w-4 h-4" />
-                  Send Collaboration Invite
+                  <Ionicons name="add" size={16} color="#6b7280" />
+                  <Text style={styles.menuItemText}>Send Collaboration Invite</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onClick={handleAddToBoard}
-                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-orange-50 hover:text-[#eb7825] flex items-center gap-3 transition-colors"
+                  onPress={handleAddToBoard}
+                  style={styles.menuItem}
                 >
-                  <Users className="w-4 h-4" />
-                  Add to Board
+                  <Ionicons name="people" size={16} color="#6b7280" />
+                  <Text style={styles.menuItemText}>Add to Board</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onClick={handleShareSavedCard}
-                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-orange-50 hover:text-[#eb7825] flex items-center gap-3 transition-colors"
+                  onPress={handleShareSavedCard}
+                  style={styles.menuItem}
                 >
-                  <Bookmark className="w-4 h-4" />
-                  Share Saved Card
+                  <Ionicons name="bookmark" size={16} color="#6b7280" />
+                  <Text style={styles.menuItemText}>Share Saved Card</Text>
                 </TouchableOpacity>
-                <View className="border-t border-gray-200 my-2"></View>
+                <View style={styles.menuDivider} />
                 <TouchableOpacity
-                  onClick={handleRemoveFriend}
-                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 flex items-center gap-3 transition-colors"
+                  onPress={handleRemoveFriend}
+                  style={styles.menuItemDanger}
                 >
-                  <UserMinus className="w-4 h-4" />
-                  Remove Friend
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onClick={handleBlockUser}
-                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 flex items-center gap-3 transition-colors"
-                >
-                  <Shield className="w-4 h-4" />
-                  Block User
+                  <Ionicons name="person-remove" size={16} color="#dc2626" />
+                  <Text style={styles.menuItemTextDanger}>Remove Friend</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onClick={handleReportUser}
-                  className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 flex items-center gap-3 transition-colors"
+                  onPress={handleBlockUser}
+                  style={styles.menuItemDanger}
                 >
-                  <Flag className="w-4 h-4" />
-                  Report User
+                  <Ionicons name="shield" size={16} color="#dc2626" />
+                  <Text style={styles.menuItemTextDanger}>Block User</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleReportUser}
+                  style={styles.menuItemDanger}
+                >
+                  <Ionicons name="flag" size={16} color="#dc2626" />
+                  <Text style={styles.menuItemTextDanger}>Report User</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -462,114 +400,108 @@ export default function MessageInterface({
       </View>
 
       {/* Messages */}
-      <View className="flex-1 overflow-y-auto p-4">
+      <ScrollView style={styles.messagesContainer} ref={messagesEndRef}>
         {messages.length === 0 ? (
-          <View className="flex-1 flex items-center justify-center">
-            <View className="text-center">
-              <View className="w-16 h-16 bg-[#eb7825]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="w-8 h-8 text-[#eb7825]" />
-              </View>
-              <Text className="font-medium text-gray-900 mb-2">Start your conversation</Text>
-              <Text className="text-sm text-gray-600">Send a message to {friend.name}</Text>
+          <View style={styles.emptyState}>
+            <View style={styles.emptyStateIcon}>
+              <Ionicons name="chatbubble" size={32} color="#eb7825" />
             </View>
+            <Text style={styles.emptyStateTitle}>Start your conversation</Text>
+            <Text style={styles.emptyStateText}>Send a message to {friend.name}</Text>
           </View>
         ) : (
-          <View>
+          <View style={styles.messagesList}>
             {messages.map(renderMessage)}
-            <View ref={messagesEndRef} />
           </View>
         )}
-      </View>
+      </ScrollView>
 
       {/* File Preview */}
       {selectedFile && (
-        <View className="border-t border-gray-200 p-4 bg-gray-50">
-          <View className="flex items-center gap-3 bg-white p-3 rounded-lg border">
-            {previewUrl && selectedFile.type.startsWith('image/') && (
+        <View style={styles.filePreview}>
+          <View style={styles.filePreviewContent}>
+            {previewUrl && selectedFile.type?.startsWith('image/') && (
               <ImageWithFallback
-                src={previewUrl}
-                alt="Preview"
-                className="w-12 h-12 rounded-lg object-cover"
+                source={{ uri: previewUrl }}
+                style={styles.filePreviewImage}
               />
             )}
-            {previewUrl && selectedFile.type.startsWith('video/') && (
-              <video
-                src={previewUrl}
-                className="w-12 h-12 rounded-lg object-cover"
-                muted
-              />
+            {previewUrl && selectedFile.type?.startsWith('video/') && (
+              <View style={styles.filePreviewVideo}>
+                <Ionicons name="play-circle" size={24} color="#eb7825" />
+              </View>
             )}
             {!previewUrl && (
-              <View className="w-12 h-12 bg-[#eb7825]/10 rounded-lg flex items-center justify-center">
-                <FileText className="w-6 h-6 text-[#eb7825]" />
+              <View style={styles.filePreviewIcon}>
+                <Ionicons name="document-text" size={24} color="#eb7825" />
               </View>
             )}
             
-            <View className="flex-1 min-w-0">
-              <Text className="font-medium text-gray-900 truncate">{selectedFile.name}</Text>
-              <Text className="text-sm text-gray-500">{formatFileSize(selectedFile.size)}</Text>
+            <View style={styles.filePreviewInfo}>
+              <Text style={styles.filePreviewName}>{selectedFile.name}</Text>
+              <Text style={styles.filePreviewSize}>{formatFileSize(selectedFile.size)}</Text>
             </View>
             
             <TouchableOpacity
-              onClick={handleRemoveFile}
-              className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center hover:bg-gray-300 transition-colors"
+              onPress={handleRemoveFile}
+              style={styles.removeFileButton}
             >
-              <X className="w-3 h-3 text-gray-600" />
+              <Ionicons name="close" size={12} color="#6b7280" />
             </TouchableOpacity>
           </View>
         </View>
       )}
 
       {/* Input Area */}
-      <View className="border-t border-gray-200 p-4 bg-white flex-shrink-0 safe-area-inset-bottom">
-        <View className="flex items-end gap-3">
+      <View style={styles.inputArea}>
+        <View style={styles.inputContainer}>
           {/* Attachment Menu */}
-          <View className="relative" ref={attachmentMenuRef}>
+          <View style={styles.attachmentContainer}>
             <TouchableOpacity
-              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-              className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors flex-shrink-0"
+              onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
+              style={styles.attachmentButton}
             >
-              <Paperclip className="w-5 h-5 text-gray-600" />
+              <Ionicons name="attach" size={20} color="#6b7280" />
             </TouchableOpacity>
             
             {showAttachmentMenu && (
-              <View className="absolute bottom-12 left-0 bg-white border border-gray-200 rounded-xl shadow-lg p-2 min-w-[200px] z-10">
+              <View style={styles.attachmentMenu}>
                 <TouchableOpacity
-                  onClick={() => handleFileSelect('image')}
-                  className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                  onPress={() => handleFileSelect('image')}
+                  style={styles.attachmentMenuItem}
                 >
-                  <View className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Image className="w-4 h-4 text-blue-600" />
+                  <View style={styles.attachmentMenuIcon}>
+                    <Ionicons name="image" size={16} color="#3b82f6" />
                   </View>
-                  <View className="text-left">
-                    <Text className="font-medium text-gray-900">Photo</Text>
-                    <Text className="text-xs text-gray-500">Share an image</Text>
+                  <View>
+                    <Text style={styles.attachmentMenuTitle}>Photo</Text>
+                    <Text style={styles.attachmentMenuSubtitle}>Share an image</Text>
                   </View>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
-                  onClick={() => handleFileSelect('video')}
-                  className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                  onPress={() => handleFileSelect('video')}
+                  style={styles.attachmentMenuItem}
                 >
-                  <View className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <Video className="w-4 h-4 text-purple-600" />
+                  <View style={styles.attachmentMenuIcon}>
+                    <Ionicons name="videocam" size={16} color="#8b5cf6" />
                   </View>
-                  <View className="text-left">
-                    <Text className="font-medium text-gray-900">Video</Text>
-                    <Text className="text-xs text-gray-500">Share a video</Text>
+                  <View>
+                    <Text style={styles.attachmentMenuTitle}>Video</Text>
+                    <Text style={styles.attachmentMenuSubtitle}>Share a video</Text>
                   </View>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
-                  onClick={() => handleFileSelect('file')}
-                  className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                  onPress={() => handleFileSelect('file')}
+                  style={styles.attachmentMenuItem}
                 >
-                  <View className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                    <FileText className="w-4 h-4 text-green-600" />
+                  <View style={styles.attachmentMenuIcon}>
+                    <Ionicons name="document-text" size={16} color="#10b981" />
                   </View>
-                  <View className="text-left">
-                    <Text className="font-medium text-gray-900">Document</Text>
-                    <Text className="text-xs text-gray-500">Share a file</Text>
+                  <View>
+                    <Text style={styles.attachmentMenuTitle}>Document</Text>
+                    <Text style={styles.attachmentMenuSubtitle}>Share a file</Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -577,31 +509,24 @@ export default function MessageInterface({
           </View>
 
           {/* Message Input */}
-          <View className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 min-h-[44px] flex items-center">
-            <textarea
+          <View style={styles.messageInputContainer}>
+            <TextInput
               value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
+              onChangeText={setNewMessage}
               placeholder={selectedFile ? "Add a caption..." : "Type a message..."}
-              className="w-full bg-transparent resize-none outline-none placeholder-gray-500 max-h-20 text-gray-900 text-base leading-normal"
-              rows={1}
-              style={{ minHeight: '20px', height: 'auto' }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              autoFocus
+              style={styles.messageInput}
+              multiline
+              maxLength={1000}
             />
           </View>
 
           {/* Send Button */}
           <TouchableOpacity
-            onClick={handleSendMessage}
+            onPress={handleSendMessage}
             disabled={!newMessage.trim() && !selectedFile}
-            className="w-10 h-10 bg-[#eb7825] rounded-full flex items-center justify-center hover:bg-[#d6691f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+            style={[styles.sendButton, (!newMessage.trim() && !selectedFile) && styles.sendButtonDisabled]}
           >
-            <Send className="w-5 h-5 text-white" />
+            <Ionicons name="send" size={20} color="white" />
           </TouchableOpacity>
         </View>
       </View>
@@ -611,23 +536,23 @@ export default function MessageInterface({
 
       {/* Board Selection Modal */}
       {showBoardSelection && (
-        <View className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <View className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">
-            <View className="flex items-center justify-between mb-4">
-              <Text className="text-lg font-semibold text-gray-900">Add to Board</Text>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add to Board</Text>
               <TouchableOpacity
-                onClick={() => setShowBoardSelection(false)}
-                className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors"
+                onPress={() => setShowBoardSelection(false)}
+                style={styles.modalCloseButton}
               >
-                <X className="w-3 h-3 text-gray-600" />
+                <Ionicons name="close" size={12} color="#6b7280" />
               </TouchableOpacity>
             </View>
             
-            <Text className="text-sm text-gray-600 mb-4">
+            <Text style={styles.modalSubtitle}>
               Select collaboration boards to add {friend.name} to:
             </Text>
             
-            <View className="space-y-3 mb-6">
+            <ScrollView style={styles.boardList}>
               {boardsSessions.map((board) => (
                 <TouchableOpacity
                   key={board.id}
@@ -639,59 +564,33 @@ export default function MessageInterface({
                       setSelectedBoards(prev => [...prev, board.id]);
                     }
                   }}
-                  style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    gap: 12, 
-                    padding: 12, 
-                    borderWidth: 1, 
-                    borderColor: '#e5e7eb', 
-                    borderRadius: 12,
-                    backgroundColor: selectedBoards.includes(board.id) ? '#fef3f2' : 'transparent'
-                  }}
+                  style={[styles.boardItem, selectedBoards.includes(board.id) && styles.boardItemSelected]}
                 >
-                  <View style={{ 
-                    width: 16, 
-                    height: 16, 
-                    borderWidth: 2, 
-                    borderColor: selectedBoards.includes(board.id) ? '#eb7825' : '#d1d5db',
-                    borderRadius: 4,
-                    backgroundColor: selectedBoards.includes(board.id) ? '#eb7825' : 'transparent',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
+                  <View style={[styles.checkbox, selectedBoards.includes(board.id) && styles.checkboxSelected]}>
                     {selectedBoards.includes(board.id) && (
                       <Ionicons name="checkmark" size={12} color="white" />
                     )}
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: '500', color: '#111827' }}>{board.name}</Text>
-                    <Text style={{ fontSize: 12, color: '#6b7280' }}>{board.participants?.length || 0} participants</Text>
+                  <View style={styles.boardInfo}>
+                    <Text style={styles.boardName}>{board.name}</Text>
+                    <Text style={styles.boardParticipants}>{board.participants?.length || 0} participants</Text>
                   </View>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
             
-            <View id="board-selection" className="flex gap-3">
+            <View style={styles.modalActions}>
               <TouchableOpacity
-                onClick={() => setShowBoardSelection(false)}
-                className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
+                onPress={() => setShowBoardSelection(false)}
+                style={styles.cancelButton}
               >
-                Cancel
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onClick={() => {
-                  const checkboxes = document.querySelectorAll('#board-selection input[type="checkbox"]:checked') as NodeListOf<HTMLInputElement>;
-                  const selectedBoardIds = Array.from(checkboxes).map(cb => 
-                    boardsSessions.find(board => 
-                      cb.closest('label')?.querySelector('h4')?.textContent === board.name
-                    )?.id
-                  ).filter(Boolean) as string[];
-                  handleBoardSelection(selectedBoardIds);
-                }}
-                className="flex-1 py-3 px-4 bg-[#eb7825] text-white rounded-xl hover:bg-[#d6691f] transition-colors"
+                onPress={() => handleBoardSelection(selectedBoards)}
+                style={styles.confirmButton}
               >
-                Add to Board
+                <Text style={styles.confirmButtonText}>Add to Board</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -700,25 +599,25 @@ export default function MessageInterface({
 
       {/* Local Notifications */}
       {notifications.length > 0 && (
-        <View className="fixed top-20 left-4 right-4 z-50 space-y-2">
+        <View style={styles.notificationsContainer}>
           {notifications.map((notification) => (
             <View
               key={notification.id}
-              className="bg-white border border-gray-200 rounded-xl p-4 shadow-lg flex items-start gap-3 animate-in slide-in-from-top duration-300"
+              style={styles.notification}
             >
-              <View className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
-                notification.type === 'success' ? 'bg-green-500' :
-                notification.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
-              }`} />
-              <View className="flex-1 min-w-0">
-                <Text className="font-medium text-gray-900 text-sm">{notification.title}</Text>
-                <Text className="text-sm text-gray-600 mt-1">{notification.message}</Text>
+              <View style={[styles.notificationIndicator, {
+                backgroundColor: notification.type === 'success' ? '#10b981' :
+                                notification.type === 'error' ? '#ef4444' : '#3b82f6'
+              }]} />
+              <View style={styles.notificationContent}>
+                <Text style={styles.notificationTitle}>{notification.title}</Text>
+                <Text style={styles.notificationMessage}>{notification.message}</Text>
               </View>
               <TouchableOpacity
-                onClick={() => dismissNotification(notification.id)}
-                className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors flex-shrink-0"
+                onPress={() => dismissNotification(notification.id)}
+                style={styles.dismissButton}
               >
-                <X className="w-3 h-3 text-gray-600" />
+                <Ionicons name="close" size={12} color="#6b7280" />
               </TouchableOpacity>
             </View>
           ))}
@@ -731,13 +630,608 @@ export default function MessageInterface({
         onClose={() => setShowCollaboration(false)}
         currentMode={currentMode}
         onModeChange={onModeChange || (() => {})}
-        preSelectedFriend={friend}
+        preSelectedFriend={{...friend, status: 'online'}}
         boardsSessions={boardsSessions}
         onUpdateBoardSession={onUpdateBoardSession || (() => {})}
         onCreateSession={onCreateSession || (() => {})}
         onNavigateToBoard={onNavigateToBoard || (() => {})}
-        availableFriends={availableFriends}
+        availableFriends={availableFriends.map(f => ({...f, status: 'online'}))}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 12,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  avatarPlaceholder: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#eb7825',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: 'white',
+    fontWeight: '500',
+    fontSize: 14,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    backgroundColor: '#10b981',
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  userStatus: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionButton: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreOptionsContainer: {
+    position: 'relative',
+  },
+  moreOptionsMenu: {
+    position: 'absolute',
+    top: 40,
+    right: 0,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+    paddingVertical: 8,
+    minWidth: 220,
+    zIndex: 20,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  menuItemDanger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  menuItemText: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  menuItemTextDanger: {
+    fontSize: 14,
+    color: '#dc2626',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+    marginVertical: 8,
+  },
+  messagesContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateIcon: {
+    width: 64,
+    height: 64,
+    backgroundColor: '#fef3e2',
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  messagesList: {
+    gap: 16,
+  },
+  messageContainer: {
+    marginBottom: 16,
+  },
+  messageContainerLeft: {
+    alignItems: 'flex-start',
+  },
+  messageContainerRight: {
+    alignItems: 'flex-end',
+  },
+  messageBubble: {
+    padding: 12,
+    borderRadius: 16,
+    maxWidth: '70%',
+  },
+  messageBubbleLeft: {
+    backgroundColor: '#f3f4f6',
+  },
+  messageBubbleRight: {
+    backgroundColor: '#eb7825',
+  },
+  messageText: {
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  messageTextLeft: {
+    color: '#111827',
+  },
+  messageTextRight: {
+    color: 'white',
+  },
+  messageCaption: {
+    marginBottom: 8,
+  },
+  messageImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 8,
+  },
+  videoPlaceholder: {
+    width: 200,
+    height: 150,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoText: {
+    fontSize: 14,
+    marginTop: 8,
+  },
+  videoTextLeft: {
+    color: '#6b7280',
+  },
+  videoTextRight: {
+    color: 'white',
+  },
+  fileContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 8,
+    borderRadius: 8,
+  },
+  fileContainerLeft: {
+    backgroundColor: 'white',
+  },
+  fileContainerRight: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  fileIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fileIconLeft: {
+    backgroundColor: '#fef3e2',
+  },
+  fileIconRight: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  fileInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fileName: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  fileNameLeft: {
+    color: '#111827',
+  },
+  fileNameRight: {
+    color: 'white',
+  },
+  fileSize: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  fileSizeLeft: {
+    color: '#6b7280',
+  },
+  fileSizeRight: {
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  messageTimestamp: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 4,
+  },
+  messageTimestampLeft: {
+    textAlign: 'left',
+  },
+  messageTimestampRight: {
+    textAlign: 'right',
+  },
+  filePreview: {
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    padding: 16,
+    backgroundColor: '#f9fafb',
+  },
+  filePreviewContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'white',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  filePreviewImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+  },
+  filePreviewVideo: {
+    width: 48,
+    height: 48,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filePreviewIcon: {
+    width: 48,
+    height: 48,
+    backgroundColor: '#fef3e2',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filePreviewInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  filePreviewName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  filePreviewSize: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  removeFileButton: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inputArea: {
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    padding: 16,
+    backgroundColor: 'white',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 12,
+  },
+  attachmentContainer: {
+    position: 'relative',
+  },
+  attachmentButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentMenu: {
+    position: 'absolute',
+    bottom: 50,
+    left: 0,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+    padding: 8,
+    minWidth: 200,
+    zIndex: 10,
+  },
+  attachmentMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 8,
+  },
+  attachmentMenuIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentMenuTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  attachmentMenuSubtitle: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  messageInputContainer: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  messageInput: {
+    fontSize: 16,
+    color: '#111827',
+    maxHeight: 80,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#eb7825',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    zIndex: 50,
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  modalCloseButton: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 16,
+  },
+  boardList: {
+    marginBottom: 24,
+  },
+  boardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  boardItemSelected: {
+    backgroundColor: '#fef3f2',
+    borderColor: '#fecaca',
+  },
+  checkbox: {
+    width: 16,
+    height: 16,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: '#eb7825',
+    borderColor: '#eb7825',
+  },
+  boardInfo: {
+    flex: 1,
+  },
+  boardName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  boardParticipants: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  confirmButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#eb7825',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  confirmButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'white',
+  },
+  notificationsContainer: {
+    position: 'absolute',
+    top: 80,
+    left: 16,
+    right: 16,
+    zIndex: 50,
+    gap: 8,
+  },
+  notification: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  notificationIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 8,
+    flexShrink: 0,
+  },
+  notificationContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  notificationTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  notificationMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  dismissButton: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+});

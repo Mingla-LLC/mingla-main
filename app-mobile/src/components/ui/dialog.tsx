@@ -1,126 +1,227 @@
-"use client";
-
 import * as React from "react";
-import { Text, View } from "react-native";
-import * as DialogPrimitive from "@radix-ui/react-dialog@1.1.6";
-import { XIcon } from "lucide-react@0.487.0";
+import { Text, View, TouchableOpacity, StyleSheet, Modal } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
-import { cn } from "./utils";
-
-function Dialog({
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+interface DialogProps {
+  children: React.ReactNode;
+  style?: any;
 }
 
-function DialogTrigger({
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
-}
-
-function DialogPortal({
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Portal>) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />;
-}
-
-function DialogClose({
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Close>) {
-  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
-}
-
-function DialogOverlay({
-  className,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+function Dialog({ children, style, ...props }: DialogProps) {
   return (
-    <DialogPrimitive.Overlay
-      data-slot="dialog-overlay"
-      className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
-        className,
-      )}
-      {...props}
-    />
+    <View style={[styles.dialog, style]} {...props}>
+      {children}
+    </View>
   );
 }
 
-function DialogContent({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+interface DialogTriggerProps {
+  children: React.ReactNode;
+  onPress?: () => void;
+  style?: any;
+}
+
+function DialogTrigger({ children, onPress, style, ...props }: DialogTriggerProps) {
   return (
-    <DialogPortal data-slot="dialog-portal">
+    <TouchableOpacity
+      style={[styles.trigger, style]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      {...props}
+    >
+      {children}
+    </TouchableOpacity>
+  );
+}
+
+interface DialogPortalProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function DialogPortal({ children, style, ...props }: DialogPortalProps) {
+  return (
+    <View style={[styles.portal, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface DialogCloseProps {
+  onPress?: () => void;
+  style?: any;
+}
+
+function DialogClose({ onPress, style, ...props }: DialogCloseProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.close, style]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      {...props}
+    >
+      <Ionicons name="close" size={16} color="#6b7280" />
+    </TouchableOpacity>
+  );
+}
+
+interface DialogOverlayProps {
+  style?: any;
+}
+
+function DialogOverlay({ style, ...props }: DialogOverlayProps) {
+  return (
+    <View style={[styles.overlay, style]} {...props} />
+  );
+}
+
+interface DialogContentProps {
+  children: React.ReactNode;
+  onClose?: () => void;
+  style?: any;
+}
+
+function DialogContent({ children, onClose, style, ...props }: DialogContentProps) {
+  return (
+    <Modal
+      visible={true}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+      {...props}
+    >
       <DialogOverlay />
-      <DialogPrimitive.Content
-        data-slot="dialog-content"
-        className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
-          className,
-        )}
-        {...props}
-      >
+      <View style={[styles.content, style]}>
         {children}
-        <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
-          <XIcon />
-          <Text className="sr-only">Close</Text>
-        </DialogPrimitive.Close>
-      </DialogPrimitive.Content>
-    </DialogPortal>
+        <DialogClose onPress={onClose} />
+      </View>
+    </Modal>
   );
 }
 
-function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+interface DialogHeaderProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function DialogHeader({ children, style, ...props }: DialogHeaderProps) {
   return (
-    <View
-      data-slot="dialog-header"
-      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
-      {...props}
-    />
+    <View style={[styles.header, style]} {...props}>
+      {children}
+    </View>
   );
 }
 
-function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
+interface DialogFooterProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function DialogFooter({ children, style, ...props }: DialogFooterProps) {
   return (
-    <View
-      data-slot="dialog-footer"
-      className={cn(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
-        className,
-      )}
-      {...props}
-    />
+    <View style={[styles.footer, style]} {...props}>
+      {children}
+    </View>
   );
 }
 
-function DialogTitle({
-  className,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Title>) {
+interface DialogTitleProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function DialogTitle({ children, style, ...props }: DialogTitleProps) {
   return (
-    <DialogPrimitive.Title
-      data-slot="dialog-title"
-      className={cn("text-lg leading-none font-semibold", className)}
-      {...props}
-    />
+    <Text style={[styles.title, style]} {...props}>
+      {children}
+    </Text>
   );
 }
 
-function DialogDescription({
-  className,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Description>) {
+interface DialogDescriptionProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function DialogDescription({ children, style, ...props }: DialogDescriptionProps) {
   return (
-    <DialogPrimitive.Description
-      data-slot="dialog-description"
-      className={cn("text-muted-foreground text-sm", className)}
-      {...props}
-    />
+    <Text style={[styles.description, style]} {...props}>
+      {children}
+    </Text>
   );
 }
+
+const styles = StyleSheet.create({
+  dialog: {
+    flex: 1,
+  },
+  trigger: {
+    flex: 1,
+  },
+  portal: {
+    flex: 1,
+  },
+  close: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 50,
+  },
+  content: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -150 }, { translateY: -150 }],
+    width: '90%',
+    maxWidth: 400,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 51,
+  },
+  header: {
+    flexDirection: 'column',
+    gap: 8,
+    marginBottom: 16,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  description: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+});
 
 export {
   Dialog,

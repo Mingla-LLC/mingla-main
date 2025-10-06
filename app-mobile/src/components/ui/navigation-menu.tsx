@@ -1,160 +1,315 @@
 import * as React from "react";
-import { Text, View } from "react-native";
-import * as NavigationMenuPrimitive from "@radix-ui/react-navigation-menu@1.2.5";
-import { cva } from "class-variance-authority@0.7.1";
-import { ChevronDownIcon } from "lucide-react@0.487.0";
+import { Text, View, TouchableOpacity, StyleSheet, Modal } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
 import { cn } from "./utils";
 
+interface NavigationMenuProps {
+  style?: any;
+  children: React.ReactNode;
+  viewport?: boolean;
+}
+
 function NavigationMenu({
-  className,
+  style,
   children,
   viewport = true,
   ...props
-}: React.ComponentProps<typeof NavigationMenuPrimitive.Root> & {
-  viewport?: boolean;
-}) {
+}: NavigationMenuProps) {
   return (
-    <NavigationMenuPrimitive.Root
-      data-slot="navigation-menu"
-      data-viewport={viewport}
-      className={cn(
-        "group/navigation-menu relative flex max-w-max flex-1 items-center justify-center",
-        className,
-      )}
+    <View
+      style={[styles.navigationMenu, style]}
       {...props}
     >
       {children}
-      {viewport && <NavigationMenuViewport />}
-    </NavigationMenuPrimitive.Root>
-  );
-}
-
-function NavigationMenuList({
-  className,
-  ...props
-}: React.ComponentProps<typeof NavigationMenuPrimitive.List>) {
-  return (
-    <NavigationMenuPrimitive.List
-      data-slot="navigation-menu-list"
-      className={cn(
-        "group flex flex-1 list-none items-center justify-center gap-1",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function NavigationMenuItem({
-  className,
-  ...props
-}: React.ComponentProps<typeof NavigationMenuPrimitive.Item>) {
-  return (
-    <NavigationMenuPrimitive.Item
-      data-slot="navigation-menu-item"
-      className={cn("relative", className)}
-      {...props}
-    />
-  );
-}
-
-const navigationMenuTriggerStyle = cva(
-  "group inline-flex h-9 w-max items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 data-[state=open]:hover:bg-accent data-[state=open]:text-accent-foreground data-[state=open]:focus:bg-accent data-[state=open]:bg-accent/50 focus-visible:ring-ring/50 outline-none transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1",
-);
-
-function NavigationMenuTrigger({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<typeof NavigationMenuPrimitive.Trigger>) {
-  return (
-    <NavigationMenuPrimitive.Trigger
-      data-slot="navigation-menu-trigger"
-      className={cn(navigationMenuTriggerStyle(), "group", className)}
-      {...props}
-    >
-      {children}{" "}
-      <ChevronDownIcon
-        className="relative top-[1px] ml-1 size-3 transition duration-300 group-data-[state=open]:rotate-180"
-        aria-hidden="true"
-      />
-    </NavigationMenuPrimitive.Trigger>
-  );
-}
-
-function NavigationMenuContent({
-  className,
-  ...props
-}: React.ComponentProps<typeof NavigationMenuPrimitive.Content>) {
-  return (
-    <NavigationMenuPrimitive.Content
-      data-slot="navigation-menu-content"
-      className={cn(
-        "data-[motion^=from-]:animate-in data-[motion^=to-]:animate-out data-[motion^=from-]:fade-in data-[motion^=to-]:fade-out data-[motion=from-end]:slide-in-from-right-52 data-[motion=from-start]:slide-in-from-left-52 data-[motion=to-end]:slide-out-to-right-52 data-[motion=to-start]:slide-out-to-left-52 top-0 left-0 w-full p-2 pr-2.5 md:absolute md:w-auto",
-        "group-data-[viewport=false]/navigation-menu:bg-popover group-data-[viewport=false]/navigation-menu:text-popover-foreground group-data-[viewport=false]/navigation-menu:data-[state=open]:animate-in group-data-[viewport=false]/navigation-menu:data-[state=closed]:animate-out group-data-[viewport=false]/navigation-menu:data-[state=closed]:zoom-out-95 group-data-[viewport=false]/navigation-menu:data-[state=open]:zoom-in-95 group-data-[viewport=false]/navigation-menu:data-[state=open]:fade-in-0 group-data-[viewport=false]/navigation-menu:data-[state=closed]:fade-out-0 group-data-[viewport=false]/navigation-menu:top-full group-data-[viewport=false]/navigation-menu:mt-1.5 group-data-[viewport=false]/navigation-menu:overflow-hidden group-data-[viewport=false]/navigation-menu:rounded-md group-data-[viewport=false]/navigation-menu:border group-data-[viewport=false]/navigation-menu:shadow group-data-[viewport=false]/navigation-menu:duration-200 **:data-[slot=navigation-menu-link]:focus:ring-0 **:data-[slot=navigation-menu-link]:focus:outline-none",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function NavigationMenuViewport({
-  className,
-  ...props
-}: React.ComponentProps<typeof NavigationMenuPrimitive.Viewport>) {
-  return (
-    <View
-      className={cn(
-        "absolute top-full left-0 isolate z-50 flex justify-center",
-      )}
-    >
-      <NavigationMenuPrimitive.Viewport
-        data-slot="navigation-menu-viewport"
-        className={cn(
-          "origin-top-center bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-90 relative mt-1.5 h-[var(--radix-navigation-menu-viewport-height)] w-full overflow-hidden rounded-md border shadow md:w-[var(--radix-navigation-menu-viewport-width)]",
-          className,
-        )}
-        {...props}
-      />
+      {viewport && <NavigationMenuViewport><View /></NavigationMenuViewport>}
     </View>
   );
 }
 
-function NavigationMenuLink({
-  className,
-  ...props
-}: React.ComponentProps<typeof NavigationMenuPrimitive.Link>) {
+interface NavigationMenuListProps {
+  style?: any;
+  children: React.ReactNode;
+}
+
+function NavigationMenuList({ style, children, ...props }: NavigationMenuListProps) {
   return (
-    <NavigationMenuPrimitive.Link
-      data-slot="navigation-menu-link"
-      className={cn(
-        "data-[active=true]:focus:bg-accent data-[active=true]:hover:bg-accent data-[active=true]:bg-accent/50 data-[active=true]:text-accent-foreground hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-ring/50 [&_svg:not([class*='text-'])]:text-muted-foreground flex flex-col gap-1 rounded-sm p-2 text-sm transition-all outline-none focus-visible:ring-[3px] focus-visible:outline-1 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+    <View
+      style={[styles.navigationMenuList, style]}
       {...props}
-    />
+    >
+      {children}
+    </View>
   );
 }
 
-function NavigationMenuIndicator({
-  className,
-  ...props
-}: React.ComponentProps<typeof NavigationMenuPrimitive.Indicator>) {
+interface NavigationMenuItemProps {
+  style?: any;
+  children: React.ReactNode;
+}
+
+function NavigationMenuItem({ style, children, ...props }: NavigationMenuItemProps) {
   return (
-    <NavigationMenuPrimitive.Indicator
-      data-slot="navigation-menu-indicator"
-      className={cn(
-        "data-[state=visible]:animate-in data-[state=hidden]:animate-out data-[state=hidden]:fade-out data-[state=visible]:fade-in top-full z-[1] flex h-1.5 items-end justify-center overflow-hidden",
-        className,
-      )}
+    <View
+      style={[styles.navigationMenuItem, style]}
       {...props}
     >
-      <View className="bg-border relative top-[60%] h-2 w-2 rotate-45 rounded-tl-sm shadow-md" />
-    </NavigationMenuPrimitive.Indicator>
+      {children}
+    </View>
   );
 }
+
+interface NavigationMenuTriggerProps {
+  style?: any;
+  children: React.ReactNode;
+  onPress?: () => void;
+  isOpen?: boolean;
+}
+
+function NavigationMenuTrigger({
+  style,
+  children,
+  onPress,
+  isOpen = false,
+  ...props
+}: NavigationMenuTriggerProps) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.navigationMenuTrigger,
+        isOpen && styles.navigationMenuTriggerOpen,
+        style
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      {...props}
+    >
+      <Text style={styles.navigationMenuTriggerText}>{children}</Text>
+      <Ionicons 
+        name="chevron-down" 
+        size={12} 
+        color="#374151"
+        style={[
+          styles.navigationMenuTriggerIcon,
+          isOpen && styles.navigationMenuTriggerIconOpen
+        ]}
+      />
+    </TouchableOpacity>
+  );
+}
+
+interface NavigationMenuContentProps {
+  style?: any;
+  children: React.ReactNode;
+  visible?: boolean;
+  onClose?: () => void;
+}
+
+function NavigationMenuContent({
+  style,
+  children,
+  visible = false,
+  onClose,
+  ...props
+}: NavigationMenuContentProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+      {...props}
+    >
+      <View style={styles.navigationMenuContentOverlay}>
+        <View style={[styles.navigationMenuContent, style]}>
+          {children}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+interface NavigationMenuViewportProps {
+  style?: any;
+  children: React.ReactNode;
+}
+
+function NavigationMenuViewport({ style, children, ...props }: NavigationMenuViewportProps) {
+  return (
+    <View
+      style={[styles.navigationMenuViewport, style]}
+      {...props}
+    >
+      {children}
+    </View>
+  );
+}
+
+interface NavigationMenuLinkProps {
+  style?: any;
+  children: React.ReactNode;
+  onPress?: () => void;
+  isActive?: boolean;
+}
+
+function NavigationMenuLink({
+  style,
+  children,
+  onPress,
+  isActive = false,
+  ...props
+}: NavigationMenuLinkProps) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.navigationMenuLink,
+        isActive && styles.navigationMenuLinkActive,
+        style
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      {...props}
+    >
+      {children}
+    </TouchableOpacity>
+  );
+}
+
+interface NavigationMenuIndicatorProps {
+  style?: any;
+  visible?: boolean;
+}
+
+function NavigationMenuIndicator({
+  style,
+  visible = false,
+  ...props
+}: NavigationMenuIndicatorProps) {
+  return (
+    <View
+      style={[
+        styles.navigationMenuIndicator,
+        visible && styles.navigationMenuIndicatorVisible,
+        style
+      ]}
+      {...props}
+    >
+      <View style={styles.navigationMenuIndicatorArrow} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  navigationMenu: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    maxWidth: '100%',
+  },
+  navigationMenuList: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    gap: 4,
+  },
+  navigationMenuItem: {
+    position: 'relative',
+  },
+  navigationMenuTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 36,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  navigationMenuTriggerOpen: {
+    backgroundColor: '#f3f4f6',
+    borderColor: '#d1d5db',
+  },
+  navigationMenuTriggerText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  navigationMenuTriggerIcon: {
+    marginLeft: 4,
+    transform: [{ rotate: '0deg' }],
+  },
+  navigationMenuTriggerIconOpen: {
+    transform: [{ rotate: '180deg' }],
+  },
+  navigationMenuContentOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navigationMenuContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+    padding: 8,
+    minWidth: 200,
+    maxWidth: '90%',
+  },
+  navigationMenuViewport: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    zIndex: 50,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  navigationMenuLink: {
+    flexDirection: 'column',
+    gap: 4,
+    padding: 8,
+    borderRadius: 4,
+    backgroundColor: 'transparent',
+  },
+  navigationMenuLinkActive: {
+    backgroundColor: '#f3f4f6',
+  },
+  navigationMenuIndicator: {
+    position: 'absolute',
+    top: '100%',
+    left: '50%',
+    zIndex: 1,
+    height: 6,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+    opacity: 0,
+  },
+  navigationMenuIndicatorVisible: {
+    opacity: 1,
+  },
+  navigationMenuIndicatorArrow: {
+    width: 8,
+    height: 8,
+    backgroundColor: '#e5e7eb',
+    transform: [{ rotate: '45deg' }],
+    borderRadius: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+});
 
 export {
   NavigationMenu,
@@ -165,5 +320,4 @@ export {
   NavigationMenuLink,
   NavigationMenuIndicator,
   NavigationMenuViewport,
-  navigationMenuTriggerStyle,
 };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput } from 'react-native';
-import { ArrowLeft, Camera, User, Edit3, Check, X } from 'lucide-react';
+import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import profileImage from '../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
 
@@ -93,52 +93,57 @@ export default function ProfileSettings({
   };
 
   return (
-    <View className="min-h-full bg-gray-50">
+    <View style={styles.container}>
       {/* Header */}
-      <View className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
-        <View className="flex items-center gap-3">
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
           <TouchableOpacity
-            onClick={onNavigateBack}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            onPress={onNavigateBack}
+            style={styles.backButton}
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <Ionicons name="arrow-back" size={20} color="#6b7280" />
           </TouchableOpacity>
-          <Text className="text-xl font-semibold text-gray-900">Profile Settings</Text>
+          <Text style={styles.headerTitle}>Profile Settings</Text>
         </View>
       </View>
 
       {/* Content */}
-      <View className="p-4 space-y-6">
+      <ScrollView style={styles.content}>
         {/* Profile Photo Section */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-6">
-          <Text className="font-semibold text-gray-900 mb-4">Profile Photo</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Profile Photo</Text>
           
-          <View className="flex items-center gap-4">
-            <View className="relative">
+          <View style={styles.profilePhotoContainer}>
+            <View style={styles.avatarContainer}>
               <TouchableOpacity
-                onClick={handleAvatarChange}
-                className="relative w-20 h-20 group"
+                onPress={handleAvatarChange}
+                style={styles.avatarButton}
               >
                 <ImageWithFallback
-                  src={profileImageSrc}
-                  alt="Profile"
-                  className="w-full h-full rounded-full object-cover border-4 border-gray-200 transition-opacity group-hover:opacity-80"
+                  source={{ uri: profileImageSrc }}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: 50,
+                    borderWidth: 4,
+                    borderColor: '#e5e7eb'
+                  }}
                 />
                 {/* Camera overlay */}
-                <View className="absolute inset-0 rounded-full bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-                  <Camera className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                <View style={styles.cameraOverlay}>
+                  <Ionicons name="camera" size={24} color="white" />
                 </View>
               </TouchableOpacity>
             </View>
             
-            <View className="flex-1">
+            <View style={styles.photoActions}>
               <TouchableOpacity
-                onClick={handleAvatarChange}
-                className="bg-[#eb7825] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#d6691f] transition-colors"
+                onPress={handleAvatarChange}
+                style={styles.changePhotoButton}
               >
-                Change Photo
+                <Text style={styles.changePhotoButtonText}>Change Photo</Text>
               </TouchableOpacity>
-              <Text className="text-sm text-gray-500 mt-2">
+              <Text style={styles.photoHint}>
                 Upload a new profile photo. Changes are saved automatically.
               </Text>
             </View>
@@ -146,12 +151,12 @@ export default function ProfileSettings({
         </View>
 
         {/* Personal Information */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-6">
-          <Text className="font-semibold text-gray-900 mb-4">Personal Information</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Personal Information</Text>
           
-          <View className="space-y-4">
+          <View style={styles.formFields}>
             {/* First Name */}
-            <View className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
+            <View style={styles.formField}>
               <View className="flex-1">
                 <Text style={{ color: '#374151', fontWeight: '500', fontSize: 14, marginBottom: 4 }}>
                   First Name
@@ -177,13 +182,13 @@ export default function ProfileSettings({
                       onClick={() => handleSaveField('firstName')}
                       className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                     >
-                      <Check className="w-4 h-4" />
+                      <Ionicons name="checkmark" size={16} color="#10b981" />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onClick={handleCancelEdit}
                       className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
-                      <X className="w-4 h-4" />
+                      <Ionicons name="close" size={16} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
                 ) : (
@@ -193,7 +198,7 @@ export default function ProfileSettings({
                       onClick={() => handleEditField('firstName')}
                       className="p-2 text-gray-400 hover:text-[#eb7825] hover:bg-orange-50 rounded-lg transition-colors"
                     >
-                      <Edit3 className="w-4 h-4" />
+                      <Ionicons name="create" size={16} color="#6b7280" />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -227,13 +232,13 @@ export default function ProfileSettings({
                       onClick={() => handleSaveField('lastName')}
                       className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                     >
-                      <Check className="w-4 h-4" />
+                      <Ionicons name="checkmark" size={16} color="#10b981" />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onClick={handleCancelEdit}
                       className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
-                      <X className="w-4 h-4" />
+                      <Ionicons name="close" size={16} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
                 ) : (
@@ -243,7 +248,7 @@ export default function ProfileSettings({
                       onClick={() => handleEditField('lastName')}
                       className="p-2 text-gray-400 hover:text-[#eb7825] hover:bg-orange-50 rounded-lg transition-colors"
                     >
-                      <Edit3 className="w-4 h-4" />
+                      <Ionicons name="create" size={16} color="#6b7280" />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -281,13 +286,13 @@ export default function ProfileSettings({
                       onClick={() => handleSaveField('username')}
                       className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                     >
-                      <Check className="w-4 h-4" />
+                      <Ionicons name="checkmark" size={16} color="#10b981" />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onClick={handleCancelEdit}
                       className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
-                      <X className="w-4 h-4" />
+                      <Ionicons name="close" size={16} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
                 ) : (
@@ -297,7 +302,7 @@ export default function ProfileSettings({
                       onClick={() => handleEditField('username')}
                       className="p-2 text-gray-400 hover:text-[#eb7825] hover:bg-orange-50 rounded-lg transition-colors"
                     >
-                      <Edit3 className="w-4 h-4" />
+                      <Ionicons name="create" size={16} color="#6b7280" />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -310,9 +315,158 @@ export default function ProfileSettings({
             </View>
           </View>
         </View>
-
-
-      </View>
+      </ScrollView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+  },
+  header: {
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 20,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  content: {
+    flex: 1,
+    padding: 16,
+  },
+  section: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 24,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 16,
+  },
+  profilePhotoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  avatarButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    overflow: 'hidden',
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoActions: {
+    flex: 1,
+  },
+  changePhotoButton: {
+    backgroundColor: '#eb7825',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  changePhotoButtonText: {
+    color: 'white',
+    fontWeight: '500',
+  },
+  photoHint: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 8,
+  },
+  formFields: {
+    gap: 16,
+  },
+  formField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  fieldLabel: {
+    color: '#374151',
+    fontWeight: '500',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  fieldValue: {
+    fontSize: 16,
+    color: '#111827',
+  },
+  editButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#f3f4f6',
+  },
+  inputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  textInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    fontSize: 16,
+    color: '#111827',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  saveButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#10b981',
+  },
+  cancelButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#ef4444',
+  },
+  editButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#f3f4f6',
+  },
+});

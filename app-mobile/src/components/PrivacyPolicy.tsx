@@ -1,6 +1,6 @@
 import React from 'react';
-import { Text, View, TouchableOpacity } from 'react-native';
-import { ArrowLeft, Shield } from 'lucide-react';
+import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Linking } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface PrivacyPolicyProps {
   onNavigateBack: () => void;
@@ -8,193 +8,366 @@ interface PrivacyPolicyProps {
 
 export default function PrivacyPolicy({ onNavigateBack }: PrivacyPolicyProps) {
   return (
-    <View className="h-full bg-gray-50 flex flex-col overflow-hidden">
+    <View style={styles.container}>
       {/* Header */}
-      <View className="bg-white border-b border-gray-200 px-4 py-4 flex-shrink-0">
-        <View className="flex items-center gap-3">
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
           <TouchableOpacity
-            onClick={onNavigateBack}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            onPress={onNavigateBack}
+            style={styles.backButton}
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <Ionicons name="arrow-back" size={20} color="#6b7280" />
           </TouchableOpacity>
-          <View className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-[#eb7825]" />
-            <Text className="text-xl font-semibold text-gray-900">Privacy Policy</Text>
+          <View style={styles.titleContainer}>
+            <Ionicons name="shield" size={20} color="#eb7825" />
+            <Text style={styles.title}>Privacy Policy</Text>
           </View>
         </View>
       </View>
 
       {/* Content */}
-      <View className="flex-1 overflow-y-auto">
-        <View className="max-w-4xl mx-auto p-6 bg-white m-4 rounded-2xl border border-gray-200">
-        <View className="space-y-6">
+      <ScrollView style={styles.content}>
+        <View style={styles.contentContainer}>
+          <View style={styles.contentInner}>
           {/* Header */}
-          <View className="text-center border-b border-gray-200 pb-6">
-            <Text className="text-2xl font-bold text-gray-900 mb-2">📜 Mingla Privacy Policy</Text>
-            <Text className="text-sm text-gray-600">
-              <strong>Effective Date:</strong> 27th September 2025
+          <View style={styles.policyHeader}>
+            <Text style={styles.policyTitle}>📜 Mingla Privacy Policy</Text>
+            <Text style={styles.effectiveDate}>
+              <Text style={styles.boldText}>Effective Date:</Text> 27th September 2025
             </Text>
           </View>
 
           {/* Introduction */}
-          <View className="space-y-4">
-            <Text className="text-gray-700 leading-relaxed">
+          <View style={styles.section}>
+            <Text style={styles.introText}>
               Mingla ("we," "our," "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and protect your information when you use the Mingla mobile application and related services ("Services").
             </Text>
           </View>
 
           {/* Section 1 */}
-          <View className="space-y-4">
-            <Text className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Text className="bg-[#eb7825] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">1</Text>
-              Information We Collect
-            </Text>
-            <View className="space-y-3 pl-8">
-              <View>
-                <Text className="font-medium text-gray-900 mb-1">Personal Information You Provide:</Text>
-                <Text className="text-gray-700">When you create an account, update your profile, connect with friends, or interact with features, we may collect your name, username, profile photo, location, email address, preferences, and communications.</Text>
+          <View style={styles.section}>
+            <View style={styles.sectionTitle}>
+              <View style={styles.sectionNumber}>
+                <Text style={styles.sectionNumberText}>1</Text>
               </View>
-              <View>
-                <Text className="font-medium text-gray-900 mb-1">Automatically Collected Information:</Text>
-                <Text className="text-gray-700">We may collect device information, IP addresses, geolocation data, and usage patterns to operate and improve the app.</Text>
+              <Text style={styles.sectionTitleText}>Information We Collect</Text>
+            </View>
+            <View style={styles.sectionContent}>
+              <View style={styles.subsection}>
+                <Text style={styles.subsectionTitle}>Personal Information You Provide:</Text>
+                <Text style={styles.subsectionText}>When you create an account, update your profile, connect with friends, or interact with features, we may collect your name, username, profile photo, location, email address, preferences, and communications.</Text>
               </View>
-              <View>
-                <Text className="font-medium text-gray-900 mb-1">Activity Data:</Text>
-                <Text className="text-gray-700">Cards liked, boards created, RSVPs, calendar entries, messages, and interactions within Mingla.</Text>
+              <View style={styles.subsection}>
+                <Text style={styles.subsectionTitle}>Automatically Collected Information:</Text>
+                <Text style={styles.subsectionText}>We may collect device information, IP addresses, geolocation data, and usage patterns to operate and improve the app.</Text>
+              </View>
+              <View style={styles.subsection}>
+                <Text style={styles.subsectionTitle}>Activity Data:</Text>
+                <Text style={styles.subsectionText}>Cards liked, boards created, RSVPs, calendar entries, messages, and interactions within Mingla.</Text>
               </View>
             </View>
           </View>
 
           {/* Section 2 */}
-          <View className="space-y-4">
-            <Text className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Text className="bg-[#eb7825] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">2</Text>
-              How We Use Information
-            </Text>
-            <View className="pl-8">
-              <Text className="text-gray-700 mb-2">We use information to:</Text>
-              <ul className="space-y-1 text-gray-700">
-                <li>• Provide, personalize, and improve the Services.</li>
-                <li>• Enable collaboration, messaging, and activity planning.</li>
-                <li>• Show location-based recommendations.</li>
-                <li>• Deliver notifications, updates, and communications.</li>
-                <li>• Ensure security, detect fraud, and comply with legal obligations.</li>
-              </ul>
+          <View style={styles.section}>
+            <View style={styles.sectionTitle}>
+              <View style={styles.sectionNumber}>
+                <Text style={styles.sectionNumberText}>2</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>How We Use Information</Text>
+            </View>
+            <View style={styles.sectionContent}>
+              <Text style={styles.sectionText}>We use information to:</Text>
+              <View style={styles.listContainer}>
+                <Text style={styles.listItem}>• Provide, personalize, and improve the Services.</Text>
+                <Text style={styles.listItem}>• Enable collaboration, messaging, and activity planning.</Text>
+                <Text style={styles.listItem}>• Show location-based recommendations.</Text>
+                <Text style={styles.listItem}>• Deliver notifications, updates, and communications.</Text>
+                <Text style={styles.listItem}>• Ensure security, detect fraud, and comply with legal obligations.</Text>
+              </View>
             </View>
           </View>
 
           {/* Section 3 */}
-          <View className="space-y-4">
-            <Text className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Text className="bg-[#eb7825] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">3</Text>
-              Sharing of Information
-            </Text>
-            <View className="pl-8">
-              <Text className="text-gray-700 mb-2">We may share information:</Text>
-              <ul className="space-y-1 text-gray-700">
-                <li>• <strong>With other users:</strong> As necessary to enable collaboration, boards, invitations, and messaging.</li>
-                <li>• <strong>With service providers:</strong> For hosting, analytics, and app functionality.</li>
-                <li>• <strong>For legal reasons:</strong> To comply with applicable law, enforce our Terms of Service, or protect the rights and safety of Mingla and its users.</li>
-                <li>• <strong>In case of business transfer:</strong> If Mingla is acquired, merged, or undergoes reorganization.</li>
-              </ul>
+          <View style={styles.section}>
+            <View style={styles.sectionTitle}>
+              <View style={styles.sectionNumber}>
+                <Text style={styles.sectionNumberText}>3</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>Sharing of Information</Text>
+            </View>
+            <View style={styles.sectionContent}>
+              <Text style={styles.sectionText}>We may share information:</Text>
+              <View style={styles.listContainer}>
+                <Text style={styles.listItem}>• <Text style={styles.boldText}>With other users:</Text> As necessary to enable collaboration, boards, invitations, and messaging.</Text>
+                <Text style={styles.listItem}>• <Text style={styles.boldText}>With service providers:</Text> For hosting, analytics, and app functionality.</Text>
+                <Text style={styles.listItem}>• <Text style={styles.boldText}>For legal reasons:</Text> To comply with applicable law, enforce our Terms of Service, or protect the rights and safety of Mingla and its users.</Text>
+                <Text style={styles.listItem}>• <Text style={styles.boldText}>In case of business transfer:</Text> If Mingla is acquired, merged, or undergoes reorganization.</Text>
+              </View>
             </View>
           </View>
 
           {/* Section 4 */}
-          <View className="space-y-4">
-            <Text className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Text className="bg-[#eb7825] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">4</Text>
-              Data Retention
-            </Text>
-            <View className="pl-8">
-              <Text className="text-gray-700">We retain information for as long as your account is active or as needed to provide Services. You may request account deletion, after which we will delete your data except where retention is required by law.</Text>
+          <View style={styles.section}>
+            <View style={styles.sectionTitle}>
+              <View style={styles.sectionNumber}>
+                <Text style={styles.sectionNumberText}>4</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>Data Retention</Text>
+            </View>
+            <View style={styles.sectionContent}>
+              <Text style={styles.sectionText}>We retain information for as long as your account is active or as needed to provide Services. You may request account deletion, after which we will delete your data except where retention is required by law.</Text>
             </View>
           </View>
 
           {/* Section 5 */}
-          <View className="space-y-4">
-            <Text className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Text className="bg-[#eb7825] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">5</Text>
-              Your Choices
-            </Text>
-            <View className="pl-8">
-              <ul className="space-y-1 text-gray-700">
-                <li>• You can edit your profile, settings, and preferences at any time.</li>
-                <li>• You may opt in/out of notifications.</li>
-                <li>• You can delete your account permanently in Account Settings.</li>
-              </ul>
+          <View style={styles.section}>
+            <View style={styles.sectionTitle}>
+              <View style={styles.sectionNumber}>
+                <Text style={styles.sectionNumberText}>5</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>Your Choices</Text>
+            </View>
+            <View style={styles.sectionContent}>
+              <View style={styles.listContainer}>
+                <Text style={styles.listItem}>• You can edit your profile, settings, and preferences at any time.</Text>
+                <Text style={styles.listItem}>• You may opt in/out of notifications.</Text>
+                <Text style={styles.listItem}>• You can delete your account permanently in Account Settings.</Text>
+              </View>
             </View>
           </View>
 
           {/* Section 6 */}
-          <View className="space-y-4">
-            <Text className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Text className="bg-[#eb7825] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">6</Text>
-              Children's Privacy
-            </Text>
-            <View className="pl-8">
-              <Text className="text-gray-700">Mingla is not intended for children under 13. We do not knowingly collect data from children under 13.</Text>
+          <View style={styles.section}>
+            <View style={styles.sectionTitle}>
+              <View style={styles.sectionNumber}>
+                <Text style={styles.sectionNumberText}>6</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>Children's Privacy</Text>
+            </View>
+            <View style={styles.sectionContent}>
+              <Text style={styles.sectionText}>Mingla is not intended for children under 13. We do not knowingly collect data from children under 13.</Text>
             </View>
           </View>
 
           {/* Section 7 */}
-          <View className="space-y-4">
-            <Text className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Text className="bg-[#eb7825] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">7</Text>
-              Security
-            </Text>
-            <View className="pl-8">
-              <Text className="text-gray-700">We implement safeguards to protect your information, but no system is 100% secure.</Text>
+          <View style={styles.section}>
+            <View style={styles.sectionTitle}>
+              <View style={styles.sectionNumber}>
+                <Text style={styles.sectionNumberText}>7</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>Security</Text>
+            </View>
+            <View style={styles.sectionContent}>
+              <Text style={styles.sectionText}>We implement safeguards to protect your information, but no system is 100% secure.</Text>
             </View>
           </View>
 
           {/* Section 8 */}
-          <View className="space-y-4">
-            <Text className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Text className="bg-[#eb7825] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">8</Text>
-              Your Rights
-            </Text>
-            <View className="pl-8">
-              <Text className="text-gray-700">Depending on your state, you may have privacy rights under laws like the California Consumer Privacy Act (CCPA). These may include the right to access, delete, or opt out of certain data uses.</Text>
+          <View style={styles.section}>
+            <View style={styles.sectionTitle}>
+              <View style={styles.sectionNumber}>
+                <Text style={styles.sectionNumberText}>8</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>Your Rights</Text>
+            </View>
+            <View style={styles.sectionContent}>
+              <Text style={styles.sectionText}>Depending on your state, you may have privacy rights under laws like the California Consumer Privacy Act (CCPA). These may include the right to access, delete, or opt out of certain data uses.</Text>
             </View>
           </View>
 
           {/* Section 9 */}
-          <View className="space-y-4">
-            <Text className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Text className="bg-[#eb7825] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">9</Text>
-              Updates to Policy
-            </Text>
-            <View className="pl-8">
-              <Text className="text-gray-700">We may update this policy periodically. Continued use of Mingla constitutes acceptance of the updated policy.</Text>
+          <View style={styles.section}>
+            <View style={styles.sectionTitle}>
+              <View style={styles.sectionNumber}>
+                <Text style={styles.sectionNumberText}>9</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>Updates to Policy</Text>
+            </View>
+            <View style={styles.sectionContent}>
+              <Text style={styles.sectionText}>We may update this policy periodically. Continued use of Mingla constitutes acceptance of the updated policy.</Text>
             </View>
           </View>
 
           {/* Section 10 */}
-          <View className="space-y-4">
-            <Text className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Text className="bg-[#eb7825] text-white rounded-full w-6 h-6 flex items-center justify-center text-sm">10</Text>
-              Contact Us
-            </Text>
-            <View className="pl-8">
-              <Text className="text-gray-700">
-                For questions, contact: <a href="mailto:privacy@mingla.app" className="text-[#eb7825] hover:underline">privacy@mingla.app</a>
+          <View style={styles.section}>
+            <View style={styles.sectionTitle}>
+              <View style={styles.sectionNumber}>
+                <Text style={styles.sectionNumberText}>10</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>Contact Us</Text>
+            </View>
+            <View style={styles.sectionContent}>
+              <Text style={styles.sectionText}>
+                For questions, contact: <Text style={styles.linkText} onPress={() => Linking.openURL('mailto:privacy@mingla.app')}>privacy@mingla.app</Text>
               </Text>
             </View>
           </View>
 
           {/* Footer */}
-          <View className="border-t border-gray-200 pt-6 mt-8">
-            <View className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-              <Text className="text-sm text-orange-700">
-                <strong>Last Updated:</strong> September 27, 2025. This policy is automatically updated to reflect the most current version. By continuing to use Mingla, you agree to the terms outlined above.
+          <View style={styles.footer}>
+            <View style={styles.footerContainer}>
+              <Text style={styles.footerText}>
+                <Text style={styles.boldText}>Last Updated:</Text> September 27, 2025. This policy is automatically updated to reflect the most current version. By continuing to use Mingla, you agree to the terms outlined above.
               </Text>
             </View>
           </View>
+          </View>
         </View>
-        </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+  },
+  header: {
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 20,
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    maxWidth: 800,
+    alignSelf: 'center',
+    padding: 24,
+    backgroundColor: 'white',
+    margin: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  contentInner: {
+    gap: 24,
+  },
+  policyHeader: {
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    paddingBottom: 24,
+  },
+  policyTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  effectiveDate: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  boldText: {
+    fontWeight: 'bold',
+  },
+  section: {
+    gap: 16,
+  },
+  sectionTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionNumber: {
+    backgroundColor: '#eb7825',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionNumberText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  sectionTitleText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  sectionContent: {
+    paddingLeft: 32,
+  },
+  sectionText: {
+    color: '#374151',
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 8,
+  },
+  introText: {
+    color: '#374151',
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  subsection: {
+    marginBottom: 12,
+  },
+  subsectionTitle: {
+    fontWeight: '500',
+    color: '#111827',
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  subsectionText: {
+    color: '#374151',
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  listContainer: {
+    gap: 4,
+  },
+  listItem: {
+    color: '#374151',
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  linkText: {
+    color: '#eb7825',
+    textDecorationLine: 'underline',
+  },
+  footer: {
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingTop: 24,
+    marginTop: 32,
+  },
+  footerContainer: {
+    backgroundColor: '#fef3e2',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 8,
+    padding: 16,
+  },
+  footerText: {
+    fontSize: 14,
+    color: '#ea580c',
+    lineHeight: 20,
+  },
+});

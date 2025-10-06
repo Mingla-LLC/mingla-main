@@ -1,238 +1,446 @@
-"use client";
-
 import * as React from "react";
-import { Text } from "react-native";
-import * as ContextMenuPrimitive from "@radix-ui/react-context-menu@2.2.6";
-import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react@0.487.0";
+import { Text, View, TouchableOpacity, StyleSheet, Modal } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
-import { cn } from "./utils";
-
-function ContextMenu({
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
-  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />;
+interface ContextMenuProps {
+  children: React.ReactNode;
+  style?: any;
 }
 
-function ContextMenuTrigger({
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.Trigger>) {
+function ContextMenu({ children, style, ...props }: ContextMenuProps) {
   return (
-    <ContextMenuPrimitive.Trigger data-slot="context-menu-trigger" {...props} />
+    <View style={[styles.contextMenu, style]} {...props}>
+      {children}
+    </View>
   );
 }
 
-function ContextMenuGroup({
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.Group>) {
-  return (
-    <ContextMenuPrimitive.Group data-slot="context-menu-group" {...props} />
-  );
+interface ContextMenuTriggerProps {
+  children: React.ReactNode;
+  onPress?: () => void;
+  style?: any;
 }
 
-function ContextMenuPortal({
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.Portal>) {
+function ContextMenuTrigger({ children, onPress, style, ...props }: ContextMenuTriggerProps) {
   return (
-    <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {...props} />
-  );
-}
-
-function ContextMenuSub({
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.Sub>) {
-  return <ContextMenuPrimitive.Sub data-slot="context-menu-sub" {...props} />;
-}
-
-function ContextMenuRadioGroup({
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.RadioGroup>) {
-  return (
-    <ContextMenuPrimitive.RadioGroup
-      data-slot="context-menu-radio-group"
+    <TouchableOpacity
+      style={[styles.trigger, style]}
+      onPress={onPress}
+      activeOpacity={0.7}
       {...props}
-    />
+    >
+      {children}
+    </TouchableOpacity>
   );
+}
+
+interface ContextMenuGroupProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function ContextMenuGroup({ children, style, ...props }: ContextMenuGroupProps) {
+  return (
+    <View style={[styles.group, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface ContextMenuPortalProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function ContextMenuPortal({ children, style, ...props }: ContextMenuPortalProps) {
+  return (
+    <View style={[styles.portal, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface ContextMenuSubProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function ContextMenuSub({ children, style, ...props }: ContextMenuSubProps) {
+  return (
+    <View style={[styles.sub, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface ContextMenuRadioGroupProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function ContextMenuRadioGroup({ children, style, ...props }: ContextMenuRadioGroupProps) {
+  return (
+    <View style={[styles.radioGroup, style]} {...props}>
+      {children}
+    </View>
+  );
+}
+
+interface ContextMenuSubTriggerProps {
+  children: React.ReactNode;
+  onPress?: () => void;
+  inset?: boolean;
+  style?: any;
 }
 
 function ContextMenuSubTrigger({
-  className,
-  inset,
   children,
+  onPress,
+  inset = false,
+  style,
   ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.SubTrigger> & {
-  inset?: boolean;
-}) {
+}: ContextMenuSubTriggerProps) {
   return (
-    <ContextMenuPrimitive.SubTrigger
-      data-slot="context-menu-sub-trigger"
-      data-inset={inset}
-      className={cn(
-        "focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+    <TouchableOpacity
+      style={[
+        styles.subTrigger,
+        inset && styles.inset,
+        style,
+      ]}
+      onPress={onPress}
+      activeOpacity={0.7}
       {...props}
     >
       {children}
-      <ChevronRightIcon className="ml-auto" />
-    </ContextMenuPrimitive.SubTrigger>
+      <Ionicons name="chevron-forward" size={16} color="#6b7280" style={styles.chevronIcon} />
+    </TouchableOpacity>
   );
 }
 
-function ContextMenuSubContent({
-  className,
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.SubContent>) {
+interface ContextMenuSubContentProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function ContextMenuSubContent({ children, style, ...props }: ContextMenuSubContentProps) {
   return (
-    <ContextMenuPrimitive.SubContent
-      data-slot="context-menu-sub-content"
-      className={cn(
-        "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] origin-(--radix-context-menu-content-transform-origin) overflow-hidden rounded-md border p-1 shadow-lg",
-        className,
-      )}
-      {...props}
-    />
+    <View style={[styles.subContent, style]} {...props}>
+      {children}
+    </View>
   );
 }
 
-function ContextMenuContent({
-  className,
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
+interface ContextMenuContentProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function ContextMenuContent({ children, style, ...props }: ContextMenuContentProps) {
   return (
-    <ContextMenuPrimitive.Portal>
-      <ContextMenuPrimitive.Content
-        data-slot="context-menu-content"
-        className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-context-menu-content-available-height) min-w-[8rem] origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border p-1 shadow-md",
-          className,
-        )}
-        {...props}
-      />
-    </ContextMenuPrimitive.Portal>
+    <View style={[styles.content, style]} {...props}>
+      {children}
+    </View>
   );
+}
+
+interface ContextMenuItemProps {
+  children: React.ReactNode;
+  onPress?: () => void;
+  inset?: boolean;
+  variant?: "default" | "destructive";
+  disabled?: boolean;
+  style?: any;
 }
 
 function ContextMenuItem({
-  className,
-  inset,
+  children,
+  onPress,
+  inset = false,
   variant = "default",
+  disabled = false,
+  style,
   ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.Item> & {
-  inset?: boolean;
-  variant?: "default" | "destructive";
-}) {
+}: ContextMenuItemProps) {
   return (
-    <ContextMenuPrimitive.Item
-      data-slot="context-menu-item"
-      data-inset={inset}
-      data-variant={variant}
-      className={cn(
-        "focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+    <TouchableOpacity
+      style={[
+        styles.item,
+        inset && styles.inset,
+        variant === "destructive" && styles.destructive,
+        disabled && styles.disabled,
+        style,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
-    />
+    >
+      {children}
+    </TouchableOpacity>
   );
+}
+
+interface ContextMenuCheckboxItemProps {
+  children: React.ReactNode;
+  checked?: boolean;
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: any;
 }
 
 function ContextMenuCheckboxItem({
-  className,
   children,
-  checked,
+  checked = false,
+  onPress,
+  disabled = false,
+  style,
   ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.CheckboxItem>) {
+}: ContextMenuCheckboxItemProps) {
   return (
-    <ContextMenuPrimitive.CheckboxItem
-      data-slot="context-menu-checkbox-item"
-      className={cn(
-        "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
-      checked={checked}
+    <TouchableOpacity
+      style={[
+        styles.checkboxItem,
+        disabled && styles.disabled,
+        style,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
     >
-      <Text className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
-        <ContextMenuPrimitive.ItemIndicator>
-          <CheckIcon className="size-4" />
-        </ContextMenuPrimitive.ItemIndicator>
-      </Text>
+      <View style={styles.checkboxIndicator}>
+        {checked && (
+          <Ionicons name="checkmark" size={16} color="#eb7825" />
+        )}
+      </View>
       {children}
-    </ContextMenuPrimitive.CheckboxItem>
+    </TouchableOpacity>
   );
+}
+
+interface ContextMenuRadioItemProps {
+  children: React.ReactNode;
+  selected?: boolean;
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: any;
 }
 
 function ContextMenuRadioItem({
-  className,
   children,
+  selected = false,
+  onPress,
+  disabled = false,
+  style,
   ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.RadioItem>) {
+}: ContextMenuRadioItemProps) {
   return (
-    <ContextMenuPrimitive.RadioItem
-      data-slot="context-menu-radio-item"
-      className={cn(
-        "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+    <TouchableOpacity
+      style={[
+        styles.radioItem,
+        disabled && styles.disabled,
+        style,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
       {...props}
     >
-      <Text className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
-        <ContextMenuPrimitive.ItemIndicator>
-          <CircleIcon className="size-2 fill-current" />
-        </ContextMenuPrimitive.ItemIndicator>
-      </Text>
+      <View style={styles.radioIndicator}>
+        {selected && (
+          <View style={styles.radioSelected} />
+        )}
+      </View>
       {children}
-    </ContextMenuPrimitive.RadioItem>
+    </TouchableOpacity>
   );
+}
+
+interface ContextMenuLabelProps {
+  children: React.ReactNode;
+  inset?: boolean;
+  style?: any;
 }
 
 function ContextMenuLabel({
-  className,
-  inset,
+  children,
+  inset = false,
+  style,
   ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.Label> & {
-  inset?: boolean;
-}) {
-  return (
-    <ContextMenuPrimitive.Label
-      data-slot="context-menu-label"
-      data-inset={inset}
-      className={cn(
-        "text-foreground px-2 py-1.5 text-sm font-medium data-[inset]:pl-8",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function ContextMenuSeparator({
-  className,
-  ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.Separator>) {
-  return (
-    <ContextMenuPrimitive.Separator
-      data-slot="context-menu-separator"
-      className={cn("bg-border -mx-1 my-1 h-px", className)}
-      {...props}
-    />
-  );
-}
-
-function ContextMenuShortcut({
-  className,
-  ...props
-}: React.ComponentProps<"span">) {
+}: ContextMenuLabelProps) {
   return (
     <Text
-      data-slot="context-menu-shortcut"
-      className={cn(
-        "text-muted-foreground ml-auto text-xs tracking-widest",
-        className,
-      )}
+      style={[
+        styles.label,
+        inset && styles.inset,
+        style,
+      ]}
       {...props}
-    />
+    >
+      {children}
+    </Text>
   );
 }
+
+interface ContextMenuSeparatorProps {
+  style?: any;
+}
+
+function ContextMenuSeparator({ style, ...props }: ContextMenuSeparatorProps) {
+  return (
+    <View style={[styles.separator, style]} {...props} />
+  );
+}
+
+interface ContextMenuShortcutProps {
+  children: React.ReactNode;
+  style?: any;
+}
+
+function ContextMenuShortcut({ children, style, ...props }: ContextMenuShortcutProps) {
+  return (
+    <Text style={[styles.shortcut, style]} {...props}>
+      {children}
+    </Text>
+  );
+}
+
+const styles = StyleSheet.create({
+  contextMenu: {
+    flex: 1,
+  },
+  trigger: {
+    flex: 1,
+  },
+  group: {
+    flex: 1,
+  },
+  portal: {
+    flex: 1,
+  },
+  sub: {
+    flex: 1,
+  },
+  radioGroup: {
+    flex: 1,
+  },
+  subTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+  },
+  chevronIcon: {
+    marginLeft: 'auto',
+  },
+  subContent: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+    minWidth: 128,
+  },
+  content: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+    minWidth: 128,
+    maxHeight: 300,
+  },
+  item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+    gap: 8,
+  },
+  inset: {
+    paddingLeft: 32,
+  },
+  destructive: {
+    color: '#dc2626',
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+  checkboxItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+    gap: 8,
+    paddingLeft: 32,
+  },
+  checkboxIndicator: {
+    position: 'absolute',
+    left: 8,
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+    gap: 8,
+    paddingLeft: 32,
+  },
+  radioIndicator: {
+    position: 'absolute',
+    left: 8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioSelected: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#eb7825',
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+    marginHorizontal: 4,
+    marginVertical: 4,
+  },
+  shortcut: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginLeft: 'auto',
+    letterSpacing: 1,
+  },
+});
 
 export {
   ContextMenu,

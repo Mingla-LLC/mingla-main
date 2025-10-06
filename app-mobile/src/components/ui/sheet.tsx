@@ -1,132 +1,284 @@
-"use client";
-
 import * as React from "react";
-import { Text, View } from "react-native";
-import * as SheetPrimitive from "@radix-ui/react-dialog@1.1.6";
-import { XIcon } from "lucide-react@0.487.0";
+import { Text, View, TouchableOpacity, Modal, StyleSheet, Animated, Dimensions } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
 
 import { cn } from "./utils";
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />;
+interface SheetProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children: React.ReactNode;
 }
 
-function SheetTrigger({
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
-  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />;
-}
-
-function SheetClose({
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Close>) {
-  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />;
-}
-
-function SheetPortal({
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Portal>) {
-  return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
-}
-
-function SheetOverlay({
-  className,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Overlay>) {
+function Sheet({ open, onOpenChange, children, ...props }: SheetProps) {
   return (
-    <SheetPrimitive.Overlay
-      data-slot="sheet-overlay"
-      className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
-        className,
-      )}
+    <Modal
+      visible={open || false}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => onOpenChange?.(false)}
+      {...props}
+    >
+      {children}
+    </Modal>
+  );
+}
+
+interface SheetTriggerProps {
+  onPress?: () => void;
+  children: React.ReactNode;
+}
+
+function SheetTrigger({ onPress, children, ...props }: SheetTriggerProps) {
+  return (
+    <TouchableOpacity onPress={onPress} {...props}>
+      {children}
+    </TouchableOpacity>
+  );
+}
+
+interface SheetCloseProps {
+  onPress?: () => void;
+  children: React.ReactNode;
+}
+
+function SheetClose({ onPress, children, ...props }: SheetCloseProps) {
+  return (
+    <TouchableOpacity onPress={onPress} {...props}>
+      {children}
+    </TouchableOpacity>
+  );
+}
+
+function SheetPortal({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+
+interface SheetOverlayProps {
+  style?: any;
+  onPress?: () => void;
+}
+
+function SheetOverlay({ style, onPress, ...props }: SheetOverlayProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.sheetOverlay, style]}
+      onPress={onPress}
+      activeOpacity={1}
       {...props}
     />
   );
 }
 
+interface SheetContentProps {
+  style?: any;
+  children: React.ReactNode;
+  side?: "top" | "right" | "bottom" | "left";
+  onClose?: () => void;
+}
+
 function SheetContent({
-  className,
+  style,
   children,
   side = "right",
+  onClose,
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Content> & {
-  side?: "top" | "right" | "bottom" | "left";
-}) {
+}: SheetContentProps) {
+  const screenWidth = Dimensions.get('window').width;
+  const screenHeight = Dimensions.get('window').height;
+
+  const getContentStyle = () => {
+    const baseStyle = [styles.sheetContent];
+    
+    switch (side) {
+      case "right":
+        return [...baseStyle, { 
+          right: 0, 
+          top: 0, 
+          bottom: 0, 
+          width: screenWidth * 0.75,
+          maxWidth: 400,
+          borderLeftWidth: 1,
+          borderLeftColor: '#e2e8f0'
+        }];
+      case "left":
+        return [...baseStyle, { 
+          left: 0, 
+          top: 0, 
+          bottom: 0, 
+          width: screenWidth * 0.75,
+          maxWidth: 400,
+          borderRightWidth: 1,
+          borderRightColor: '#e2e8f0'
+        }];
+      case "top":
+        return [...baseStyle, { 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          height: 'auto',
+          borderBottomWidth: 1,
+          borderBottomColor: '#e2e8f0'
+        }];
+      case "bottom":
+        return [...baseStyle, { 
+          bottom: 0, 
+          left: 0, 
+          right: 0, 
+          height: 'auto',
+          borderTopWidth: 1,
+          borderTopColor: '#e2e8f0'
+        }];
+      default:
+        return baseStyle;
+    }
+  };
+
   return (
     <SheetPortal>
-      <SheetOverlay />
-      <SheetPrimitive.Content
-        data-slot="sheet-content"
-        className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
-          side === "right" &&
-            "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm",
-          side === "left" &&
-            "data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left inset-y-0 left-0 h-full w-3/4 border-r sm:max-w-sm",
-          side === "top" &&
-            "data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top inset-x-0 top-0 h-auto border-b",
-          side === "bottom" &&
-            "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom inset-x-0 bottom-0 h-auto border-t",
-          className,
-        )}
-        {...props}
-      >
+      <SheetOverlay onPress={onClose} />
+      <View style={[getContentStyle(), style]} {...props}>
         {children}
-        <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
-          <XIcon className="size-4" />
-          <Text className="sr-only">Close</Text>
-        </SheetPrimitive.Close>
-      </SheetPrimitive.Content>
+        <TouchableOpacity 
+          style={styles.sheetClose}
+          onPress={onClose}
+        >
+          <Ionicons name="close" size={16} color="#6b7280" />
+          <Text style={styles.srOnly}>Close</Text>
+        </TouchableOpacity>
+      </View>
     </SheetPortal>
   );
 }
 
-function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
+interface SheetHeaderProps {
+  style?: any;
+  children: React.ReactNode;
+}
+
+function SheetHeader({ style, children, ...props }: SheetHeaderProps) {
   return (
     <View
-      data-slot="sheet-header"
-      className={cn("flex flex-col gap-1.5 p-4", className)}
+      style={[styles.sheetHeader, style]}
       {...props}
-    />
+    >
+      {children}
+    </View>
   );
 }
 
-function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
+interface SheetFooterProps {
+  style?: any;
+  children: React.ReactNode;
+}
+
+function SheetFooter({ style, children, ...props }: SheetFooterProps) {
   return (
     <View
-      data-slot="sheet-footer"
-      className={cn("mt-auto flex flex-col gap-2 p-4", className)}
+      style={[styles.sheetFooter, style]}
       {...props}
-    />
+    >
+      {children}
+    </View>
   );
 }
 
-function SheetTitle({
-  className,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Title>) {
+interface SheetTitleProps {
+  style?: any;
+  children: React.ReactNode;
+}
+
+function SheetTitle({ style, children, ...props }: SheetTitleProps) {
   return (
-    <SheetPrimitive.Title
-      data-slot="sheet-title"
-      className={cn("text-foreground font-semibold", className)}
+    <Text
+      style={[styles.sheetTitle, style]}
       {...props}
-    />
+    >
+      {children}
+    </Text>
   );
 }
 
-function SheetDescription({
-  className,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Description>) {
+interface SheetDescriptionProps {
+  style?: any;
+  children: React.ReactNode;
+}
+
+function SheetDescription({ style, children, ...props }: SheetDescriptionProps) {
   return (
-    <SheetPrimitive.Description
-      data-slot="sheet-description"
-      className={cn("text-muted-foreground text-sm", className)}
+    <Text
+      style={[styles.sheetDescription, style]}
       {...props}
-    />
+    >
+      {children}
+    </Text>
   );
 }
+
+const styles = StyleSheet.create({
+  sheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 50,
+  },
+  sheetContent: {
+    position: 'absolute',
+    backgroundColor: '#ffffff',
+    zIndex: 50,
+    flexDirection: 'column',
+    gap: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  sheetClose: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 32,
+    height: 32,
+    borderRadius: 4,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.7,
+  },
+  sheetHeader: {
+    flexDirection: 'column',
+    gap: 6,
+    padding: 16,
+  },
+  sheetFooter: {
+    marginTop: 'auto',
+    flexDirection: 'column',
+    gap: 8,
+    padding: 16,
+  },
+  sheetTitle: {
+    color: '#0f172a',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  sheetDescription: {
+    color: '#64748b',
+    fontSize: 14,
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    opacity: 0,
+  },
+});
 
 export {
   Sheet,

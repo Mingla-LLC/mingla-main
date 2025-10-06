@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput } from 'react-native';
-import { 
-  Heart, Users, Star, DollarSign, MapPin, Clock, Car, 
-  Train, Navigation, Calendar, Sun, Moon, TreePine, 
-  Coffee, Utensils, Monitor, Palette, Gamepad2, Dumbbell,
-  Sparkles, Music, Target, Gift, X
-} from 'lucide-react';
+import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface ExperienceType {
   id: string;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: string;
 }
 
 interface Category {
@@ -21,12 +16,12 @@ interface Category {
 }
 
 const experienceTypes: ExperienceType[] = [
-  { id: 'soloAdventure', label: 'Solo Adventure', icon: Star },
-  { id: 'firstDate', label: 'First Date', icon: Heart },
-  { id: 'romantic', label: 'Romantic', icon: Heart },
-  { id: 'friendly', label: 'Friendly', icon: Users },
-  { id: 'groupFun', label: 'Group Fun', icon: Users },
-  { id: 'business', label: 'Business', icon: Target }
+  { id: 'soloAdventure', label: 'Solo Adventure', icon: 'star' },
+  { id: 'firstDate', label: 'First Date', icon: 'heart' },
+  { id: 'romantic', label: 'Romantic', icon: 'heart' },
+  { id: 'friendly', label: 'Friendly', icon: 'people' },
+  { id: 'groupFun', label: 'Group Fun', icon: 'people' },
+  { id: 'business', label: 'Business', icon: 'target' }
 ];
 
 const budgetPresets = [
@@ -133,50 +128,54 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
     (dateOption !== 'now' && dateOption !== '' && exactTime !== '' ? 1 : 0) + // Time section (if time is set)
     (travelMode !== '' ? 1 : 0) + // Travel Mode (only if selected)
     (timeConstraint !== '' || distanceConstraint !== '' ? 1 : 0) + // Travel Constraint (only if set)
-    (useLocation !== '' ? 1 : 0); // Starting Location (only if selected)
+    (useLocation !== 'gps' ? 1 : 0); // Starting Location (only if selected)
 
   return (
-    <View className="w-full max-w-4xl mx-auto pb-24 pt-8">
+    <ScrollView style={styles.container}>
       {/* Header */}
-      <View className="relative text-center space-y-2 mb-8 px-4">
+      <View style={styles.header}>
         {/* Cancel Button */}
         {onClose && (
           <TouchableOpacity
-            onClick={onClose}
-            className="absolute left-4 top-0 p-2 hover:bg-gray-100 rounded-full transition-colors"
+            onPress={onClose}
+            style={styles.cancelButton}
           >
-            <X className="w-6 h-6 text-gray-600" />
+            <Ionicons name="close" size={24} color="#6b7280" />
           </TouchableOpacity>
         )}
-        <Text className="text-2xl sm:text-3xl font-semibold text-gray-900 text-center font-bold">Narrow your search</Text>
-
+        <Text style={styles.title}>Narrow your search</Text>
       </View>
 
-      <View className="space-y-6 px-4">
+      <View style={styles.content}>
         {/* Section 1: Experience Type */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
-          <View className="mb-4">
-            <Text className="text-lg font-semibold text-gray-900 mb-1">Experience Type</Text>
-            <Text className="text-sm text-gray-600">Date Idea / Friends / Romantic / Solo Adventure</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Experience Type</Text>
+            <Text style={styles.sectionSubtitle}>Date Idea / Friends / Romantic / Solo Adventure</Text>
           </View>
-          <View className="flex flex-wrap gap-2">
+          <View style={styles.experienceTypesContainer}>
             {experienceTypes.map((type) => {
-              const Icon = type.icon;
               const isSelected = selectedExperiences.includes(type.id);
               return (
                 <TouchableOpacity
                   key={type.id}
-                  onClick={() => handleExperienceToggle(type.id)}
-                  className={`
-                    px-4 py-2 rounded-full transition-all duration-200 flex items-center gap-2 text-sm border
-                    ${isSelected 
-                      ? 'border-[#eb7825] bg-[#eb7825] text-white shadow-md' 
-                      : 'border-gray-300 bg-white text-gray-700 hover:border-orange-300 hover:bg-orange-50'
-                    }
-                  `}
+                  onPress={() => handleExperienceToggle(type.id)}
+                  style={[
+                    styles.experienceTypeButton,
+                    isSelected ? styles.experienceTypeButtonSelected : styles.experienceTypeButtonDefault
+                  ]}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-white' : 'text-gray-500'}`} />
-                  {type.label}
+                  <Ionicons 
+                    name={type.icon as any} 
+                    size={14} 
+                    color={isSelected ? 'white' : '#6b7280'} 
+                  />
+                  <Text style={[
+                    styles.experienceTypeText,
+                    isSelected ? styles.experienceTypeTextSelected : styles.experienceTypeTextDefault
+                  ]}>
+                    {type.label}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -184,55 +183,35 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
         </View>
 
         {/* Section 2: Budget per Person */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
-          <View className="mb-4">
-            <Text className="text-lg font-semibold text-gray-900">Budget per Person</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Budget per Person</Text>
           </View>
           
           {/* Min/Max Inputs */}
-          <View className="flex gap-3 mb-4">
-            <View className="flex-1">
-              <Text style={{ color: '#6b7280', fontSize: 14, marginBottom: 8 }}>Min</Text>
-              <View className="relative">
-                <Text className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</Text>
+          <View style={styles.budgetInputsContainer}>
+            <View style={styles.budgetInputWrapper}>
+              <Text style={styles.inputLabel}>Min</Text>
+              <View style={styles.inputContainer}>
+                <Text style={styles.dollarSign}>$</Text>
                 <TextInput
                   value={budgetMin?.toString() || ''}
                   onChangeText={(text) => setBudgetMin(text ? Number(text) : '')}
                   keyboardType="numeric"
-                  style={{
-                    width: '100%',
-                    paddingLeft: 28,
-                    paddingRight: 12,
-                    paddingVertical: 12,
-                    borderWidth: 1,
-                    borderColor: '#d1d5db',
-                    borderRadius: 12,
-                    fontSize: 16,
-                    backgroundColor: 'white'
-                  }}
+                  style={styles.budgetInput}
                   placeholder="0"
                 />
               </View>
             </View>
-            <View className="flex-1">
-              <Text style={{ color: '#6b7280', fontSize: 14, marginBottom: 8 }}>Max</Text>
-              <View className="relative">
-                <Text className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</Text>
+            <View style={styles.budgetInputWrapper}>
+              <Text style={styles.inputLabel}>Max</Text>
+              <View style={styles.inputContainer}>
+                <Text style={styles.dollarSign}>$</Text>
                 <TextInput
                   value={budgetMax?.toString() || ''}
                   onChangeText={(text) => setBudgetMax(text ? Number(text) : '')}
                   keyboardType="numeric"
-                  style={{
-                    width: '100%',
-                    paddingLeft: 28,
-                    paddingRight: 12,
-                    paddingVertical: 12,
-                    borderWidth: 1,
-                    borderColor: '#d1d5db',
-                    borderRadius: 12,
-                    fontSize: 16,
-                    backgroundColor: 'white'
-                  }}
+                  style={styles.budgetInput}
                   placeholder="200"
                 />
               </View>
@@ -240,50 +219,46 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
           </View>
 
           {/* Preset Shortcuts */}
-          <View className="flex flex-wrap gap-2 mb-3">
+          <View style={styles.budgetPresetsContainer}>
             {budgetPresets.map((preset) => (
               <TouchableOpacity
                 key={preset.label}
-                onClick={() => setBudgetPreset(preset.min, preset.max)}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-full hover:border-orange-300 hover:bg-orange-50 transition-colors"
+                onPress={() => setBudgetPreset(preset.min, preset.max)}
+                style={styles.budgetPresetButton}
               >
-                {preset.label}
+                <Text style={styles.budgetPresetText}>{preset.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
-
-
-
         </View>
 
         {/* Section 3: Categories */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
-          <View className="mb-4">
-            <Text className="text-lg font-semibold text-gray-900">Categories</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Categories</Text>
           </View>
-          <View className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <View style={styles.categoriesGrid}>
             {categories.map((category) => {
               const isSelected = selectedCategories.includes(category.id);
               return (
                 <TouchableOpacity
                   key={category.id}
-                  onClick={() => handleCategoryToggle(category.id)}
-                  className={`
-                    p-4 rounded-xl border-2 transition-all duration-200 text-left
-                    ${isSelected 
-                      ? 'border-[#eb7825] bg-orange-50' 
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                    }
-                  `}
+                  onPress={() => handleCategoryToggle(category.id)}
+                  style={[
+                    styles.categoryCard,
+                    isSelected ? styles.categoryCardSelected : styles.categoryCardDefault
+                  ]}
                 >
-                  <View className="flex items-center gap-2 mb-2">
-
-                    <Text className={`font-medium ${isSelected ? 'text-orange-700' : 'text-gray-900'}`}>
+                  <View style={styles.categoryHeader}>
+                    <Text style={[
+                      styles.categoryLabel,
+                      isSelected ? styles.categoryLabelSelected : styles.categoryLabelDefault
+                    ]}>
                       {category.label}
                     </Text>
                   </View>
                   {isSelected && (
-                    <Text className="text-sm text-orange-600">{category.description}</Text>
+                    <Text style={styles.categoryDescription}>{category.description}</Text>
                   )}
                 </TouchableOpacity>
               );
@@ -292,11 +267,11 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
         </View>
 
         {/* Section 4: Date */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
-          <View className="mb-4">
-            <Text className="text-lg font-semibold text-gray-900">Date</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Date</Text>
           </View>
-          <View className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+          <View style={styles.dateOptionsGrid}>
             {[
               { id: 'now', label: 'Now' },
               { id: 'today', label: 'Today' },
@@ -305,51 +280,43 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
             ].map((option) => (
               <TouchableOpacity
                 key={option.id}
-                onClick={() => setDateOption(option.id)}
-                className={`
-                  py-3 px-4 rounded-xl transition-all duration-200 font-medium
-                  ${dateOption === option.id 
-                    ? 'bg-[#eb7825] text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }
-                `}
+                onPress={() => setDateOption(option.id)}
+                style={[
+                  styles.dateOptionButton,
+                  dateOption === option.id ? styles.dateOptionButtonSelected : styles.dateOptionButtonDefault
+                ]}
               >
-                {option.label}
+                <Text style={[
+                  styles.dateOptionText,
+                  dateOption === option.id ? styles.dateOptionTextSelected : styles.dateOptionTextDefault
+                ]}>
+                  {option.label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
           
           {/* Weekend Info */}
           {dateOption === 'weekend' && (
-            <View className="bg-gradient-to-r from-orange-50 to-amber-50 p-4 rounded-xl border border-orange-200">
-              <View className="flex items-center gap-2 mb-2">
-                <Calendar className="w-5 h-5 text-orange-600" />
-                <Text className="text-sm font-medium text-orange-800">This Weekend:</Text>
+            <View style={styles.weekendInfo}>
+              <View style={styles.weekendInfoHeader}>
+                <Ionicons name="calendar" size={20} color="#ea580c" />
+                <Text style={styles.weekendInfoTitle}>This Weekend:</Text>
               </View>
-              <Text className="text-sm text-orange-700">Automatically includes Friday, Saturday & Sunday</Text>
+              <Text style={styles.weekendInfoText}>Automatically includes Friday, Saturday & Sunday</Text>
             </View>
           )}
 
           {/* Pick a Date */}
           {dateOption === 'pick' && (
             <View>
-              <Text style={{ color: '#6b7280', fontSize: 14, marginBottom: 8 }}>Select Date</Text>
-              <View className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Text style={styles.inputLabel}>Select Date</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="calendar" size={20} color="#9ca3af" style={styles.inputIcon} />
                 <TextInput
                   value={selectedDate}
                   onChangeText={setSelectedDate}
-                  style={{
-                    width: '100%',
-                    paddingLeft: 48,
-                    paddingRight: 16,
-                    paddingVertical: 12,
-                    borderWidth: 1,
-                    borderColor: '#d1d5db',
-                    borderRadius: 12,
-                    fontSize: 16,
-                    backgroundColor: '#f9fafb'
-                  }}
+                  style={styles.dateInput}
                   placeholder="YYYY-MM-DD"
                 />
               </View>
@@ -359,15 +326,15 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
 
         {/* Section 5: Time */}
         {dateOption !== 'now' && (
-          <View className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
-            <View className="mb-4">
-              <Text className="text-lg font-semibold text-gray-900">Time</Text>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Time</Text>
             </View>
             
-            <View className="space-y-4">
+            <View style={styles.timeContainer}>
               <View>
-                <Text style={{ color: '#6b7280', fontSize: 14, marginBottom: 12 }}>Quick Select</Text>
-                <View className="grid grid-cols-3 gap-2 mb-3">
+                <Text style={styles.inputLabel}>Quick Select</Text>
+                <View style={styles.timeOptionsGrid}>
                   {(dateOption === 'today' 
                     ? ['09:00', '12:00', '15:00', '18:00', '21:00']
                     : dateOption === 'weekend'
@@ -376,89 +343,71 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
                   ).map((time) => (
                     <TouchableOpacity
                       key={time}
-                      onClick={() => setExactTime(time)}
-                      className={`
-                        py-3 px-4 rounded-lg border-2 transition-all duration-200 font-medium
-                        ${exactTime === time 
-                          ? 'border-[#eb7825] bg-orange-50 text-orange-700' 
-                          : 'border-gray-200 hover:border-gray-300 text-gray-700'
-                        }
-                      `}
+                      onPress={() => setExactTime(time)}
+                      style={[
+                        styles.timeOptionButton,
+                        exactTime === time ? styles.timeOptionButtonSelected : styles.timeOptionButtonDefault
+                      ]}
                     >
-                      {time}
+                      <Text style={[
+                        styles.timeOptionText,
+                        exactTime === time ? styles.timeOptionTextSelected : styles.timeOptionTextDefault
+                      ]}>
+                        {time}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
               
               <View>
-                <Text style={{ color: '#6b7280', fontSize: 14, marginBottom: 8 }}>Custom Time</Text>
-                <View className="relative">
-                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Text style={styles.inputLabel}>Custom Time</Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="time" size={20} color="#9ca3af" style={styles.inputIcon} />
                   <TextInput
                     value={exactTime}
                     onChangeText={setExactTime}
-                    style={{
-                      width: '100%',
-                      paddingLeft: 48,
-                      paddingRight: 16,
-                      paddingVertical: 12,
-                      borderWidth: 1,
-                      borderColor: '#d1d5db',
-                      borderRadius: 12,
-                      fontSize: 16,
-                      backgroundColor: '#f9fafb'
-                    }}
+                    style={styles.timeInput}
                     placeholder="Enter custom time"
                   />
                 </View>
               </View>
 
               {dateOption === 'today' && (
-                <Text className="text-xs text-gray-500 bg-blue-50 p-2 rounded-lg">💡 Choose any time from now until the end of today</Text>
+                <View style={styles.todayTip}>
+                  <Text style={styles.todayTipText}>💡 Choose any time from now until the end of today</Text>
+                </View>
               )}
             </View>
           </View>
         )}
 
         {/* Section 6: Travel Mode */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
-          <View className="mb-4">
-            <Text className="text-lg font-semibold text-gray-900">Travel Mode</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Travel Mode</Text>
           </View>
-          <View className="space-y-2">
+          <View style={styles.travelModesContainer}>
             {travelModes.map((mode) => (
               <TouchableOpacity 
                 key={mode.id} 
                 onPress={() => setTravelMode(mode.id)}
-                style={{ 
-                  flexDirection: 'row', 
-                  alignItems: 'center', 
-                  padding: 12, 
-                  borderRadius: 12, 
-                  borderWidth: 1, 
-                  borderColor: '#e5e7eb',
-                  backgroundColor: travelMode === mode.id ? '#fef3f2' : 'transparent'
-                }}
+                style={[
+                  styles.travelModeButton,
+                  travelMode === mode.id ? styles.travelModeButtonSelected : styles.travelModeButtonDefault
+                ]}
               >
-                <View style={{ 
-                  width: 20, 
-                  height: 20, 
-                  borderRadius: 10, 
-                  borderWidth: 2, 
-                  borderColor: travelMode === mode.id ? '#eb7825' : '#d1d5db',
-                  backgroundColor: travelMode === mode.id ? '#eb7825' : 'transparent',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: 12
-                }}>
+                <View style={[
+                  styles.radioButton,
+                  travelMode === mode.id ? styles.radioButtonSelected : styles.radioButtonDefault
+                ]}>
                   {travelMode === mode.id && (
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: 'white' }} />
+                    <View style={styles.radioButtonInner} />
                   )}
                 </View>
-                <Text style={{ fontSize: 24, marginRight: 12 }}>{mode.icon}</Text>
+                <Text style={styles.travelModeIcon}>{mode.icon}</Text>
                 <View>
-                  <Text style={{ fontWeight: '500' }}>{mode.label}</Text>
+                  <Text style={styles.travelModeLabel}>{mode.label}</Text>
                 </View>
               </TouchableOpacity>
             ))}
@@ -466,71 +415,59 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
         </View>
 
         {/* Section 7: Travel Constraint */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
-          <View className="mb-4">
-            <Text className="text-lg font-semibold text-gray-900">Travel Constraint</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Travel Constraint</Text>
           </View>
-          <View className="flex gap-2 mb-4">
+          <View style={styles.constraintTypeContainer}>
             <TouchableOpacity
-              onClick={() => setConstraintType('time')}
-              className={`
-                flex-1 py-3 px-4 rounded-xl transition-all duration-200 font-medium flex items-center justify-center gap-2
-                ${constraintType === 'time' 
-                  ? 'bg-[#eb7825] text-white' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }
-              `}
+              onPress={() => setConstraintType('time')}
+              style={[
+                styles.constraintTypeButton,
+                constraintType === 'time' ? styles.constraintTypeButtonSelected : styles.constraintTypeButtonDefault
+              ]}
             >
-              ⏱️ By Time
+              <Text style={[
+                styles.constraintTypeText,
+                constraintType === 'time' ? styles.constraintTypeTextSelected : styles.constraintTypeTextDefault
+              ]}>
+                ⏱️ By Time
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onClick={() => setConstraintType('distance')}
-              className={`
-                flex-1 py-3 px-4 rounded-xl transition-all duration-200 font-medium flex items-center justify-center gap-2
-                ${constraintType === 'distance' 
-                  ? 'bg-[#eb7825] text-white' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }
-              `}
+              onPress={() => setConstraintType('distance')}
+              style={[
+                styles.constraintTypeButton,
+                constraintType === 'distance' ? styles.constraintTypeButtonSelected : styles.constraintTypeButtonDefault
+              ]}
             >
-              📍 By Distance
+              <Text style={[
+                styles.constraintTypeText,
+                constraintType === 'distance' ? styles.constraintTypeTextSelected : styles.constraintTypeTextDefault
+              ]}>
+                📍 By Distance
+              </Text>
             </TouchableOpacity>
           </View>
           {constraintType === 'time' ? (
             <View>
-              <Text style={{ color: '#6b7280', fontSize: 14, marginBottom: 8 }}>Keep it under X minutes</Text>
+              <Text style={styles.inputLabel}>Keep it under X minutes</Text>
               <TextInput
                 value={timeConstraint?.toString() || ''}
                 onChangeText={(text) => setTimeConstraint(text ? Number(text) : '')}
                 keyboardType="numeric"
-                style={{
-                  width: '100%',
-                  padding: 12,
-                  borderWidth: 1,
-                  borderColor: '#d1d5db',
-                  borderRadius: 12,
-                  fontSize: 16,
-                  backgroundColor: 'white'
-                }}
+                style={styles.constraintInput}
                 placeholder="20"
               />
             </View>
           ) : (
             <View>
-              <Text style={{ color: '#6b7280', fontSize: 14, marginBottom: 8 }}>Keep it within X miles</Text>
+              <Text style={styles.inputLabel}>Keep it within X miles</Text>
               <TextInput
                 value={distanceConstraint?.toString() || ''}
                 onChangeText={(text) => setDistanceConstraint(text ? Number(text) : '')}
                 keyboardType="numeric"
-                style={{
-                  width: '100%',
-                  padding: 12,
-                  borderWidth: 1,
-                  borderColor: '#d1d5db',
-                  borderRadius: 12,
-                  fontSize: 16,
-                  backgroundColor: 'white'
-                }}
+                style={styles.constraintInput}
                 placeholder="5"
               />
             </View>
@@ -538,70 +475,65 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
         </View>
 
         {/* Section 8: Starting Location */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
-          <View className="mb-4">
-            <Text className="text-lg font-semibold text-gray-900">Starting Location</Text>
-            <Text className="text-sm text-gray-600">Your starting point will shape travel time & distance results.</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Starting Location</Text>
+            <Text style={styles.sectionSubtitle}>Your starting point will shape travel time & distance results.</Text>
           </View>
-          <View className="space-y-4">
-            <View className="flex gap-2">
+          <View style={styles.locationContainer}>
+            <View style={styles.locationOptionsContainer}>
               <TouchableOpacity
-                onClick={() => setUseLocation('gps')}
-                className={`
-                  flex-1 py-3 px-4 rounded-xl transition-all duration-200 font-medium
-                  ${useLocation === 'gps' 
-                    ? 'bg-[#eb7825] text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }
-                `}
+                onPress={() => setUseLocation('gps')}
+                style={[
+                  styles.locationOptionButton,
+                  useLocation === 'gps' ? styles.locationOptionButtonSelected : styles.locationOptionButtonDefault
+                ]}
               >
-                Use My Location
+                <Text style={[
+                  styles.locationOptionText,
+                  useLocation === 'gps' ? styles.locationOptionTextSelected : styles.locationOptionTextDefault
+                ]}>
+                  Use My Location
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onClick={() => setUseLocation('search')}
-                className={`
-                  flex-1 py-3 px-4 rounded-xl transition-all duration-200 font-medium
-                  ${useLocation === 'search' 
-                    ? 'bg-[#eb7825] text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }
-                `}
+                onPress={() => setUseLocation('search')}
+                style={[
+                  styles.locationOptionButton,
+                  useLocation === 'search' ? styles.locationOptionButtonSelected : styles.locationOptionButtonDefault
+                ]}
               >
-                Search for a Place
+                <Text style={[
+                  styles.locationOptionText,
+                  useLocation === 'search' ? styles.locationOptionTextSelected : styles.locationOptionTextDefault
+                ]}>
+                  Search for a Place
+                </Text>
               </TouchableOpacity>
             </View>
             {useLocation === 'search' && (
               <TextInput
                 value={searchLocation}
                 onChangeText={setSearchLocation}
-                style={{
-                  width: '100%',
-                  padding: 12,
-                  borderWidth: 1,
-                  borderColor: '#d1d5db',
-                  borderRadius: 12,
-                  fontSize: 16,
-                  backgroundColor: 'white'
-                }}
+                style={styles.searchLocationInput}
                 placeholder="Enter address or place name..."
               />
             )}
-
           </View>
         </View>
       </View>
 
-      {/* Sticky Footer */}
-      <View className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg">
-        <View className="max-w-4xl mx-auto flex gap-3">
+      {/* Footer */}
+      <View style={styles.footer}>
+        <View style={styles.footerButtonsContainer}>
           <TouchableOpacity 
-            onClick={handleApplyPreferences}
-            className="flex-1 bg-[#eb7825] text-white py-4 px-6 rounded-xl font-medium hover:bg-orange-600 transition-all duration-200 shadow-lg"
+            onPress={handleApplyPreferences}
+            style={styles.applyButton}
           >
-            Apply Preferences ({totalSelections})
+            <Text style={styles.applyButtonText}>Apply Preferences ({totalSelections})</Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            onClick={() => {
+            onPress={() => {
               setSelectedExperiences([]);
               setSelectedCategories([]);
               setBudgetMin('');
@@ -614,15 +546,483 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
               setConstraintType('time');
               setTimeConstraint('');
               setDistanceConstraint('');
-              setUseLocation('');
+              setUseLocation('gps');
               setSearchLocation('');
             }}
-            className="bg-gray-100 text-gray-700 py-4 px-6 rounded-xl font-medium hover:bg-gray-200 transition-all duration-200"
+            style={styles.resetButton}
           >
-            Reset
+            <Text style={styles.resetButtonText}>Reset</Text>
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+  },
+  header: {
+    position: 'relative',
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+  },
+  cancelButton: {
+    position: 'absolute',
+    left: 16,
+    top: 32,
+    padding: 8,
+    borderRadius: 20,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  content: {
+    paddingHorizontal: 16,
+    gap: 24,
+  },
+  section: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  sectionHeader: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  experienceTypesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  experienceTypeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  experienceTypeButtonSelected: {
+    borderColor: '#eb7825',
+    backgroundColor: '#eb7825',
+  },
+  experienceTypeButtonDefault: {
+    borderColor: '#d1d5db',
+    backgroundColor: 'white',
+  },
+  experienceTypeText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  experienceTypeTextSelected: {
+    color: 'white',
+  },
+  experienceTypeTextDefault: {
+    color: '#374151',
+  },
+  budgetInputsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  budgetInputWrapper: {
+    flex: 1,
+  },
+  inputLabel: {
+    color: '#6b7280',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  inputContainer: {
+    position: 'relative',
+  },
+  dollarSign: {
+    position: 'absolute',
+    left: 12,
+    top: '50%',
+    transform: [{ translateY: -10 }],
+    color: '#6b7280',
+    fontSize: 16,
+  },
+  budgetInput: {
+    width: '100%',
+    paddingLeft: 28,
+    paddingRight: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  budgetPresetsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  budgetPresetButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 20,
+    backgroundColor: 'white',
+  },
+  budgetPresetText: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  categoriesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  categoryCard: {
+    width: '48%',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  categoryCardSelected: {
+    borderColor: '#eb7825',
+    backgroundColor: '#fef3e2',
+  },
+  categoryCardDefault: {
+    borderColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  categoryLabel: {
+    fontWeight: '500',
+  },
+  categoryLabelSelected: {
+    color: '#ea580c',
+  },
+  categoryLabelDefault: {
+    color: '#111827',
+  },
+  categoryDescription: {
+    fontSize: 14,
+    color: '#ea580c',
+  },
+  dateOptionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  dateOptionButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    minWidth: '22%',
+  },
+  dateOptionButtonSelected: {
+    backgroundColor: '#eb7825',
+  },
+  dateOptionButtonDefault: {
+    backgroundColor: '#f3f4f6',
+  },
+  dateOptionText: {
+    fontWeight: '500',
+  },
+  dateOptionTextSelected: {
+    color: 'white',
+  },
+  dateOptionTextDefault: {
+    color: '#374151',
+  },
+  weekendInfo: {
+    backgroundColor: '#fef3e2',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  weekendInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  weekendInfoTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#ea580c',
+  },
+  weekendInfoText: {
+    fontSize: 14,
+    color: '#ea580c',
+  },
+  inputIcon: {
+    position: 'absolute',
+    left: 12,
+    top: '50%',
+    transform: [{ translateY: -10 }],
+  },
+  dateInput: {
+    width: '100%',
+    paddingLeft: 48,
+    paddingRight: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    fontSize: 16,
+    backgroundColor: '#f9fafb',
+  },
+  timeContainer: {
+    gap: 16,
+  },
+  timeOptionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  timeOptionButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    alignItems: 'center',
+    minWidth: '18%',
+  },
+  timeOptionButtonSelected: {
+    borderColor: '#eb7825',
+    backgroundColor: '#fef3e2',
+  },
+  timeOptionButtonDefault: {
+    borderColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  timeOptionText: {
+    fontWeight: '500',
+  },
+  timeOptionTextSelected: {
+    color: '#ea580c',
+  },
+  timeOptionTextDefault: {
+    color: '#374151',
+  },
+  timeInput: {
+    width: '100%',
+    paddingLeft: 48,
+    paddingRight: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    fontSize: 16,
+    backgroundColor: '#f9fafb',
+  },
+  todayTip: {
+    backgroundColor: '#dbeafe',
+    padding: 8,
+    borderRadius: 8,
+  },
+  todayTipText: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  travelModesContainer: {
+    gap: 8,
+  },
+  travelModeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  travelModeButtonSelected: {
+    backgroundColor: '#fef3e2',
+  },
+  travelModeButtonDefault: {
+    backgroundColor: 'transparent',
+  },
+  radioButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  radioButtonSelected: {
+    borderColor: '#eb7825',
+    backgroundColor: '#eb7825',
+  },
+  radioButtonDefault: {
+    borderColor: '#d1d5db',
+    backgroundColor: 'transparent',
+  },
+  radioButtonInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'white',
+  },
+  travelModeIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  travelModeLabel: {
+    fontWeight: '500',
+    color: '#111827',
+  },
+  constraintTypeContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  constraintTypeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 8,
+  },
+  constraintTypeButtonSelected: {
+    backgroundColor: '#eb7825',
+  },
+  constraintTypeButtonDefault: {
+    backgroundColor: '#f3f4f6',
+  },
+  constraintTypeText: {
+    fontWeight: '500',
+  },
+  constraintTypeTextSelected: {
+    color: 'white',
+  },
+  constraintTypeTextDefault: {
+    color: '#374151',
+  },
+  constraintInput: {
+    width: '100%',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  locationContainer: {
+    gap: 16,
+  },
+  locationOptionsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  locationOptionButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  locationOptionButtonSelected: {
+    backgroundColor: '#eb7825',
+  },
+  locationOptionButtonDefault: {
+    backgroundColor: '#f3f4f6',
+  },
+  locationOptionText: {
+    fontWeight: '500',
+  },
+  locationOptionTextSelected: {
+    color: 'white',
+  },
+  locationOptionTextDefault: {
+    color: '#374151',
+  },
+  searchLocationInput: {
+    width: '100%',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  footer: {
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  footerButtonsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  applyButton: {
+    flex: 1,
+    backgroundColor: '#eb7825',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  applyButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  resetButton: {
+    backgroundColor: '#f3f4f6',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  resetButtonText: {
+    color: '#374151',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+});

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity } from 'react-native';
-import { X, Users, Clock, Calendar, AlertCircle, Check } from 'lucide-react';
+import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Friend {
   id: string;
@@ -143,21 +143,30 @@ export default function AddToBoardModal({ isOpen, onClose, friend, onAddToBoard 
     }
   };
 
-  const getStatusColor = (status: CollaborationSession['status']) => {
+  const getStatusStyle = (status: CollaborationSession['status']) => {
     switch (status) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'archived': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'active': return styles.statusBadgeActive;
+      case 'pending': return styles.statusBadgePending;
+      case 'archived': return styles.statusBadgeArchived;
+      default: return styles.statusBadgeArchived;
+    }
+  };
+
+  const getStatusTextStyle = (status: CollaborationSession['status']) => {
+    switch (status) {
+      case 'active': return styles.statusTextActive;
+      case 'pending': return styles.statusTextPending;
+      case 'archived': return styles.statusTextArchived;
+      default: return styles.statusTextArchived;
     }
   };
 
   const getStatusIcon = (status: CollaborationSession['status']) => {
     switch (status) {
-      case 'active': return <Users className="w-3 h-3" />;
-      case 'pending': return <Clock className="w-3 h-3" />;
-      case 'archived': return <Calendar className="w-3 h-3" />;
-      default: return <AlertCircle className="w-3 h-3" />;
+      case 'active': return <Ionicons name="people" size={12} color="#059669" />;
+      case 'pending': return <Ionicons name="time" size={12} color="#d97706" />;
+      case 'archived': return <Ionicons name="calendar" size={12} color="#6b7280" />;
+      default: return <Ionicons name="alert-circle" size={12} color="#6b7280" />;
     }
   };
 
@@ -168,177 +177,483 @@ export default function AddToBoardModal({ isOpen, onClose, friend, onAddToBoard 
   );
 
   return (
-    <View className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <View className="bg-white rounded-3xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden">
+    <Modal
+      visible={isOpen}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
         {/* Header */}
-        <View className="flex items-center justify-between p-6 border-b border-gray-200">
-          <View>
-            <Text className="text-xl font-semibold text-gray-900">Add to Board</Text>
-            <Text className="text-sm text-gray-600 mt-1">
-              Add <Text className="font-medium text-[#eb7825]">{friend.name}</Text> to existing collaboration boards
-            </Text>
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <View>
+              <Text style={styles.headerTitle}>Add to Board</Text>
+              <Text style={styles.headerSubtitle}>
+                Add <Text style={styles.friendName}>{friend.name}</Text> to existing collaboration boards
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={20} color="#6b7280" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </TouchableOpacity>
         </View>
 
         {/* Content */}
-        <View className="p-6 space-y-4 max-h-96 overflow-y-auto">
+        <ScrollView style={styles.content}>
           {availableSessions.length === 0 ? (
-            <View className="text-center py-8">
-              <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <Text className="font-medium text-gray-900 mb-2">No Available Boards</Text>
-              <Text className="text-sm text-gray-600">
+            <View style={styles.emptyState}>
+              <Ionicons name="people" size={48} color="#d1d5db" />
+              <Text style={styles.emptyStateTitle}>No Available Boards</Text>
+              <Text style={styles.emptyStateText}>
                 {friend.name} is already in all your active collaboration boards, or you don't have any boards yet.
               </Text>
             </View>
           ) : (
             <>
-              <View className="flex items-center justify-between mb-4">
-                <Text className="text-sm text-gray-600">
+              <View style={styles.selectionHeader}>
+                <Text style={styles.selectionText}>
                   Select collaboration boards to add {friend.name} to:
                 </Text>
-                <View className="flex items-center gap-2">
+                <View style={styles.selectionControls}>
                   {selectedSessions.length > 0 && (
-                    <Text className="flex items-center gap-1 bg-orange-100 text-orange-800 px-2 py-1 rounded-full">
-                      <Check className="w-3 h-3" />
-                      <Text className="text-xs font-medium min-w-[1rem] text-center">{selectedSessions.length}</Text>
-                    </Text>
+                    <View style={styles.selectionBadge}>
+                      <Ionicons name="checkmark" size={12} color="#ea580c" />
+                      <Text style={styles.selectionCount}>{selectedSessions.length}</Text>
+                    </View>
                   )}
                   {availableSessions.length > 1 && (
                     <TouchableOpacity
-                      onClick={handleSelectAll}
-                      className="flex items-center gap-1 px-2 py-1 text-[#eb7825] hover:text-[#d6691f] hover:bg-orange-50 rounded-lg transition-all duration-200"
-                      title={selectedSessions.length === availableSessions.length ? 'Deselect All' : 'Select All'}
+                      onPress={handleSelectAll}
+                      style={styles.selectAllButton}
                     >
                       {selectedSessions.length === availableSessions.length ? (
-                        <X className="w-3 h-3" />
+                        <Ionicons name="close" size={12} color="#eb7825" />
                       ) : (
-                        <Check className="w-3 h-3" />
+                        <Ionicons name="checkmark" size={12} color="#eb7825" />
                       )}
-                      <Text className="text-xs font-medium">All</Text>
+                      <Text style={styles.selectAllText}>All</Text>
                     </TouchableOpacity>
                   )}
                 </View>
               </View>
               
-              <View className="space-y-3">
+              <View style={styles.sessionsList}>
                 {availableSessions.map((session) => (
-                  <View
+                  <TouchableOpacity
                     key={session.id}
-                    className={`p-4 border-2 rounded-2xl cursor-pointer transition-all duration-200 hover:shadow-md ${
-                      selectedSessions.includes(session.id)
-                        ? 'border-[#eb7825] bg-orange-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => handleSessionToggle(session.id)}
+                    style={[
+                      styles.sessionCard,
+                      selectedSessions.includes(session.id) && styles.sessionCardSelected
+                    ]}
+                    onPress={() => handleSessionToggle(session.id)}
                   >
-                    <View className="flex items-start justify-between mb-3">
-                      <View className="flex-1">
-                        <View className="flex items-center gap-2 mb-2">
-                          <Text className="font-semibold text-gray-900">{session.name}</Text>
-                          <Text className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(session.status)}`}>
+                    <View style={styles.sessionCardHeader}>
+                      <View style={styles.sessionCardContent}>
+                        <View style={styles.sessionCardTitleRow}>
+                          <Text style={styles.sessionCardName}>{session.name}</Text>
+                          <View style={[styles.statusBadge, getStatusStyle(session.status)]}>
                             {getStatusIcon(session.status)}
-                            {session.status}
-                          </Text>
+                            <Text style={[styles.statusText, getStatusTextStyle(session.status)]}>
+                              {session.status}
+                            </Text>
+                          </View>
                         </View>
                         
-                        <View className="flex items-center gap-4 text-xs text-gray-500">
-                          <Text className="flex items-center gap-1">
-                            <Users className="w-3 h-3" />
-                            {session.totalParticipants} members
-                          </Text>
-                          <Text className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {session.boardCards} cards
-                          </Text>
-                          <Text className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {session.lastActivity}
-                          </Text>
+                        <View style={styles.sessionCardMeta}>
+                          <View style={styles.metaItem}>
+                            <Ionicons name="people" size={12} color="#6b7280" />
+                            <Text style={styles.metaText}>{session.totalParticipants} members</Text>
+                          </View>
+                          <View style={styles.metaItem}>
+                            <Ionicons name="calendar" size={12} color="#6b7280" />
+                            <Text style={styles.metaText}>{session.boardCards} cards</Text>
+                          </View>
+                          <View style={styles.metaItem}>
+                            <Ionicons name="time" size={12} color="#6b7280" />
+                            <Text style={styles.metaText}>{session.lastActivity}</Text>
+                          </View>
                         </View>
                       </View>
                       
-                      <View className="flex-shrink-0 ml-3">
-                        <View className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors ${
-                          selectedSessions.includes(session.id)
-                            ? 'bg-[#eb7825] border-[#eb7825]'
-                            : 'border-gray-300 bg-white'
-                        }`}>
+                      <View style={styles.sessionCardCheckbox}>
+                        <View style={[
+                          styles.checkbox,
+                          selectedSessions.includes(session.id) && styles.checkboxSelected
+                        ]}>
                           {selectedSessions.includes(session.id) && (
-                            <Check className="w-4 h-4 text-white" />
+                            <Ionicons name="checkmark" size={16} color="white" />
                           )}
                         </View>
                       </View>
                     </View>
                     
                     {/* Participants Preview */}
-                    <View className="flex items-center gap-2">
-                      <View className="flex -space-x-2">
+                    <View style={styles.participantsPreview}>
+                      <View style={styles.participantsAvatars}>
                         {session.participants.slice(0, 3).map((participant, index) => (
                           <View
                             key={participant.id}
-                            className="w-6 h-6 bg-gradient-to-br from-orange-400 to-pink-500 rounded-full border-2 border-white flex items-center justify-center"
-                            title={participant.name}
+                            style={[styles.participantAvatar, { marginLeft: index > 0 ? -8 : 0 }]}
                           >
-                            <Text className="text-xs text-white font-medium">
+                            <Text style={styles.participantAvatarText}>
                               {participant.name.split(' ').map(n => n[0]).join('')}
                             </Text>
                           </View>
                         ))}
                         {session.participants.length > 3 && (
-                          <View className="w-6 h-6 bg-gray-300 rounded-full border-2 border-white flex items-center justify-center">
-                            <Text className="text-xs text-gray-600 font-medium">
+                          <View style={[styles.participantAvatar, styles.participantAvatarMore, { marginLeft: -8 }]}>
+                            <Text style={styles.participantAvatarMoreText}>
                               +{session.participants.length - 3}
                             </Text>
                           </View>
                         )}
                       </View>
-                      <Text className="text-xs text-gray-500">
+                      <Text style={styles.participantsLabel}>
                         Current members
                       </Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             </>
           )}
-        </View>
+        </ScrollView>
 
         {/* Footer */}
         {availableSessions.length > 0 && (
-          <View className="p-6 border-t border-gray-200 flex gap-3">
+          <View style={styles.footer}>
             <TouchableOpacity
-              onClick={onClose}
-              className="flex-1 py-3 px-4 border border-gray-300 rounded-2xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              onPress={onClose}
+              style={styles.cancelButton}
             >
-              Cancel
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onClick={handleAddToBoard}
+              onPress={handleAddToBoard}
               disabled={selectedSessions.length === 0 || isAdding}
-              className="flex-1 py-3 px-4 bg-gradient-to-r from-[#eb7825] to-[#d6691f] text-white rounded-2xl font-medium hover:shadow-lg hover:shadow-[#eb7825]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              style={[
+                styles.addButton,
+                (selectedSessions.length === 0 || isAdding) && styles.addButtonDisabled
+              ]}
             >
               {isAdding ? (
                 <>
-                  <View className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></View>
-                  Adding...
+                  <View style={styles.loadingSpinner} />
+                  <Text style={styles.addButtonText}>Adding...</Text>
                 </>
               ) : (
-                selectedSessions.length === 0
-                  ? 'Select Boards'
-                  : selectedSessions.length === 1
-                    ? 'Add to Board'
-                    : `Add to ${selectedSessions.length} Boards`
+                <Text style={styles.addButtonText}>
+                  {selectedSessions.length === 0
+                    ? 'Select Boards'
+                    : selectedSessions.length === 1
+                      ? 'Add to Board'
+                      : `Add to ${selectedSessions.length} Boards`}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
         )}
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  header: {
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  friendName: {
+    fontWeight: '500',
+    color: '#eb7825',
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+  },
+  content: {
+    padding: 24,
+    maxHeight: 384,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  selectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  selectionText: {
+    fontSize: 14,
+    color: '#6b7280',
+    flex: 1,
+  },
+  selectionControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  selectionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fed7aa',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  selectionCount: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#ea580c',
+    minWidth: 16,
+    textAlign: 'center',
+  },
+  selectAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  selectAllText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#eb7825',
+  },
+  sessionsList: {
+    gap: 12,
+  },
+  sessionCard: {
+    padding: 16,
+    borderWidth: 2,
+    borderRadius: 16,
+    borderColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  sessionCardSelected: {
+    borderColor: '#eb7825',
+    backgroundColor: '#fef3e2',
+  },
+  sessionCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sessionCardContent: {
+    flex: 1,
+  },
+  sessionCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  sessionCardName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusBadgeActive: {
+    backgroundColor: '#dcfce7',
+  },
+  statusBadgePending: {
+    backgroundColor: '#fef3c7',
+  },
+  statusBadgeArchived: {
+    backgroundColor: '#f3f4f6',
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  statusTextActive: {
+    color: '#059669',
+  },
+  statusTextPending: {
+    color: '#d97706',
+  },
+  statusTextArchived: {
+    color: '#6b7280',
+  },
+  sessionCardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  sessionCardCheckbox: {
+    marginLeft: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: '#eb7825',
+    borderColor: '#eb7825',
+  },
+  participantsPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  participantsAvatars: {
+    flexDirection: 'row',
+  },
+  participantAvatar: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#eb7825',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  participantAvatarMore: {
+    backgroundColor: '#d1d5db',
+  },
+  participantAvatarText: {
+    fontSize: 10,
+    color: 'white',
+    fontWeight: '500',
+  },
+  participantAvatarMoreText: {
+    fontSize: 10,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  participantsLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  footer: {
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  addButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#eb7825',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  addButtonDisabled: {
+    opacity: 0.5,
+  },
+  addButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: 'white',
+  },
+  loadingSpinner: {
+    width: 16,
+    height: 16,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderTopColor: 'white',
+    borderRadius: 8,
+  },
+});

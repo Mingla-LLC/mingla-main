@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity } from 'react-native';
-import { X, Check, CreditCard, Apple, Smartphone } from 'lucide-react';
+import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { formatCurrency } from './utils/formatters';
 
 interface PurchaseOption {
@@ -73,95 +73,99 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
   const renderSelectionStep = () => (
     <>
       {/* Fixed Header */}
-      <View className="sticky top-0 z-10 bg-white border-b border-gray-200 p-6">
-        <View className="flex items-center justify-between">
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
           <View>
-            <Text className="text-xl font-semibold text-gray-900">Choose Your Experience</Text>
-            <Text className="text-gray-600 mt-1">{recommendation.title}</Text>
+            <Text style={styles.headerTitle}>Choose Your Experience</Text>
+            <Text style={styles.headerSubtitle}>{recommendation.title}</Text>
           </View>
           <TouchableOpacity
-            onClick={onClose}
-            className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors"
+            onPress={onClose}
+            style={styles.closeButton}
           >
-            <X className="w-5 h-5 text-gray-600" />
+            <Ionicons name="close" size={20} color="#6b7280" />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Scrollable Content */}
-      <View className="flex-1 overflow-y-auto p-6 pt-0">
-        <View className="space-y-3 mt-6">
+      <ScrollView style={styles.content}>
+        <View style={styles.optionsContainer}>
           {recommendation.purchaseOptions.map((option: PurchaseOption) => (
-            <View
+            <TouchableOpacity
               key={option.id}
-              onClick={() => handleSelectOption(option)}
-              className={`relative p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                selectedOption?.id === option.id
-                  ? 'border-[#eb7825] bg-orange-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              } ${option.popular ? 'ring-2 ring-[#eb7825] ring-opacity-20' : ''}`}
+              onPress={() => handleSelectOption(option)}
+              style={[
+                styles.optionCard,
+                selectedOption?.id === option.id ? styles.optionCardSelected : styles.optionCardDefault,
+                option.popular ? styles.optionCardPopular : null
+              ]}
             >
               {option.popular && (
-                <View className="absolute -top-2 left-4 bg-[#eb7825] text-white px-3 py-1 rounded-full text-xs font-semibold">
-                  Most Popular
+                <View style={styles.popularBadge}>
+                  <Text style={styles.popularBadgeText}>Most Popular</Text>
                 </View>
               )}
               
-              <View className="flex items-start justify-between">
-                <View className="flex-1">
-                  <View className="flex items-center gap-2 mb-1">
-                    <Text className="font-semibold text-gray-900">{option.title}</Text>
+              <View style={styles.optionContent}>
+                <View style={styles.optionLeft}>
+                  <View style={styles.optionHeader}>
+                    <Text style={styles.optionTitle}>{option.title}</Text>
                     {selectedOption?.id === option.id && (
-                      <View className="w-5 h-5 bg-[#eb7825] rounded-full flex items-center justify-center">
-                        <Check className="w-3 h-3 text-white" />
+                      <View style={styles.selectedIndicator}>
+                        <Ionicons name="checkmark" size={12} color="white" />
                       </View>
                     )}
                   </View>
-                  <Text className="text-gray-600 text-sm mb-3">{option.description}</Text>
+                  <Text style={styles.optionDescription}>{option.description}</Text>
                   
-                  <View className="space-y-1">
+                  <View style={styles.featuresContainer}>
                     {option.includes.map((feature, index) => (
-                      <View key={index} className="flex items-center gap-2 text-sm text-gray-700">
-                        <View className="w-1 h-1 bg-[#eb7825] rounded-full"></View>
-                        <Text>{feature}</Text>
+                      <View key={index} style={styles.featureItem}>
+                        <View style={styles.featureDot} />
+                        <Text style={styles.featureText}>{feature}</Text>
                       </View>
                     ))}
                   </View>
                 </View>
                 
-                <View className="text-right">
-                  <View className="text-xl font-bold text-gray-900">
+                <View style={styles.optionRight}>
+                  <Text style={styles.optionPrice}>
                     {formatPrice(option.price)}
-                  </View>
+                  </Text>
                   {option.duration && (
-                    <View className="text-sm text-gray-500">
+                    <Text style={styles.optionDuration}>
                       {option.duration}
-                    </View>
+                    </Text>
                   )}
                   {option.savings && (
-                    <View className="text-xs text-green-600 font-medium">
+                    <Text style={styles.optionSavings}>
                       {option.savings}
-                    </View>
+                    </Text>
                   )}
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
-      </View>
+      </ScrollView>
 
       {/* Fixed Footer */}
-      <View className="sticky bottom-0 z-10 p-6 border-t border-gray-200 bg-white">
+      <View style={styles.footer}>
         <TouchableOpacity
-          onClick={handleProceedToPayment}
+          onPress={handleProceedToPayment}
           disabled={!selectedOption}
-          className={`w-full py-4 rounded-xl font-semibold transition-colors ${
-            selectedOption
-              ? 'bg-[#eb7825] hover:bg-[#d6691f] text-white'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-          }`}
+          style={[
+            styles.continueButton,
+            selectedOption ? styles.continueButtonEnabled : styles.continueButtonDisabled
+          ]}
         >
-          Continue to Payment
+          <Text style={[
+            styles.continueButtonText,
+            selectedOption ? styles.continueButtonTextEnabled : styles.continueButtonTextDisabled
+          ]}>
+            Continue to Payment
+          </Text>
         </TouchableOpacity>
       </View>
     </>
@@ -170,104 +174,102 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
   const renderPaymentStep = () => (
     <>
       {/* Fixed Header */}
-      <View className="sticky top-0 z-10 bg-white border-b border-gray-200 p-6">
-        <View className="flex items-center justify-between">
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
           <View>
-            <Text className="text-xl font-semibold text-gray-900">Complete Purchase</Text>
-            <Text className="text-gray-600 mt-1">{selectedOption?.title}</Text>
+            <Text style={styles.headerTitle}>Complete Purchase</Text>
+            <Text style={styles.headerSubtitle}>{selectedOption?.title}</Text>
           </View>
           <TouchableOpacity
-            onClick={() => setPaymentStep('selection')}
-            className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors"
+            onPress={() => setPaymentStep('selection')}
+            style={styles.closeButton}
           >
-            <X className="w-5 h-5 text-gray-600" />
+            <Ionicons name="close" size={20} color="#6b7280" />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Scrollable Content */}
-      <View className="flex-1 overflow-y-auto p-6 pt-0">
-        <View className="mt-6">
+      <ScrollView style={styles.content}>
+        <View style={styles.paymentContent}>
           {/* Order Summary */}
-          <View className="bg-gray-50 rounded-xl p-4 mb-6">
-            <Text className="font-semibold text-gray-900 mb-2">Order Summary</Text>
-            <View className="flex items-center justify-between">
-              <Text className="text-gray-700">{recommendation.title}</Text>
-              <Text className="font-semibold text-gray-900">
+          <View style={styles.orderSummary}>
+            <Text style={styles.orderSummaryTitle}>Order Summary</Text>
+            <View style={styles.orderSummaryRow}>
+              <Text style={styles.orderSummaryItem}>{recommendation.title}</Text>
+              <Text style={styles.orderSummaryPrice}>
                 {selectedOption && formatPrice(selectedOption.price)}
               </Text>
             </View>
-            <View className="flex items-center justify-between text-sm text-gray-600 mt-1">
-              <Text>{selectedOption?.title}</Text>
+            <View style={styles.orderSummaryRow}>
+              <Text style={styles.orderSummarySubItem}>{selectedOption?.title}</Text>
             </View>
           </View>
 
           {/* Payment Methods */}
-          <View className="space-y-3">
-            <Text className="font-semibold text-gray-900">Payment Method</Text>
+          <View style={styles.paymentMethodsContainer}>
+            <Text style={styles.paymentMethodsTitle}>Payment Method</Text>
             
-            <View
-              onClick={() => setPaymentMethod('apple')}
-              className={`flex items-center gap-3 p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                paymentMethod === 'apple'
-                  ? 'border-[#eb7825] bg-orange-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
+            <TouchableOpacity
+              onPress={() => setPaymentMethod('apple')}
+              style={[
+                styles.paymentMethodCard,
+                paymentMethod === 'apple' ? styles.paymentMethodCardSelected : styles.paymentMethodCardDefault
+              ]}
             >
-              <View className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-                <Apple className="w-5 h-5 text-white" />
+              <View style={styles.applePayIcon}>
+                <Ionicons name="logo-apple" size={20} color="white" />
               </View>
-              <View className="flex-1">
-                <View className="font-semibold text-gray-900">Apple Pay</View>
-                <View className="text-sm text-gray-600">Pay with Touch ID or Face ID</View>
+              <View style={styles.paymentMethodContent}>
+                <Text style={styles.paymentMethodTitle}>Apple Pay</Text>
+                <Text style={styles.paymentMethodSubtitle}>Pay with Touch ID or Face ID</Text>
               </View>
               {paymentMethod === 'apple' && (
-                <View className="w-5 h-5 bg-[#eb7825] rounded-full flex items-center justify-center">
-                  <Check className="w-3 h-3 text-white" />
+                <View style={styles.paymentMethodSelected}>
+                  <Ionicons name="checkmark" size={12} color="white" />
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
 
-            <View
-              onClick={() => setPaymentMethod('card')}
-              className={`flex items-center gap-3 p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                paymentMethod === 'card'
-                  ? 'border-[#eb7825] bg-orange-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
+            <TouchableOpacity
+              onPress={() => setPaymentMethod('card')}
+              style={[
+                styles.paymentMethodCard,
+                paymentMethod === 'card' ? styles.paymentMethodCardSelected : styles.paymentMethodCardDefault
+              ]}
             >
-              <View className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                <CreditCard className="w-5 h-5 text-white" />
+              <View style={styles.creditCardIcon}>
+                <Ionicons name="card" size={20} color="white" />
               </View>
-              <View className="flex-1">
-                <View className="font-semibold text-gray-900">Credit Card</View>
-                <View className="text-sm text-gray-600">•••• •••• •••• 4242</View>
+              <View style={styles.paymentMethodContent}>
+                <Text style={styles.paymentMethodTitle}>Credit Card</Text>
+                <Text style={styles.paymentMethodSubtitle}>•••• •••• •••• 4242</Text>
               </View>
               {paymentMethod === 'card' && (
-                <View className="w-5 h-5 bg-[#eb7825] rounded-full flex items-center justify-center">
-                  <Check className="w-3 h-3 text-white" />
+                <View style={styles.paymentMethodSelected}>
+                  <Ionicons name="checkmark" size={12} color="white" />
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </ScrollView>
 
       {/* Fixed Footer */}
-      <View className="sticky bottom-0 z-10 p-6 border-t border-gray-200 bg-white">
+      <View style={styles.footer}>
         <TouchableOpacity
-          onClick={handleProcessPayment}
-          className="w-full bg-[#eb7825] hover:bg-[#d6691f] text-white py-4 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+          onPress={handleProcessPayment}
+          style={styles.payButton}
         >
           {paymentMethod === 'apple' ? (
             <>
-              <Apple className="w-5 h-5" />
-              Pay with Apple Pay
+              <Ionicons name="logo-apple" size={20} color="white" />
+              <Text style={styles.payButtonText}>Pay with Apple Pay</Text>
             </>
           ) : (
             <>
-              <CreditCard className="w-5 h-5" />
-              Complete Purchase
+              <Ionicons name="card" size={20} color="white" />
+              <Text style={styles.payButtonText}>Complete Purchase</Text>
             </>
           )}
         </TouchableOpacity>
@@ -276,42 +278,402 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
   );
 
   const renderProcessingStep = () => (
-    <View className="p-6 text-center">
-      <View className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-        <View className="w-8 h-8 border-4 border-[#eb7825] border-t-transparent rounded-full animate-spin"></View>
+    <View style={styles.processingContainer}>
+      <View style={styles.processingSpinner}>
+        <ActivityIndicator size="large" color="#eb7825" />
       </View>
-      <Text className="text-xl font-semibold text-gray-900 mb-2">Processing Payment...</Text>
-      <Text className="text-gray-600">Please wait while we secure your booking</Text>
+      <Text style={styles.processingTitle}>Processing Payment...</Text>
+      <Text style={styles.processingSubtitle}>Please wait while we secure your booking</Text>
     </View>
   );
 
   const renderSuccessStep = () => (
-    <View className="p-6 text-center">
-      <View className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-        <Check className="w-8 h-8 text-green-600" />
+    <View style={styles.successContainer}>
+      <View style={styles.successIcon}>
+        <Ionicons name="checkmark" size={32} color="#10b981" />
       </View>
-      <Text className="text-xl font-semibold text-gray-900 mb-2">Purchase Complete!</Text>
-      <Text className="text-gray-600 mb-4">
+      <Text style={styles.successTitle}>Purchase Complete!</Text>
+      <Text style={styles.successSubtitle}>
         {recommendation.title} has been added to your calendar
       </Text>
-      <View className="bg-green-50 border border-green-200 rounded-xl p-4">
-        <View className="text-sm text-green-800">
+      <View style={styles.successMessage}>
+        <Text style={styles.successMessageText}>
           You'll receive a confirmation email shortly with all the details.
-        </View>
+        </Text>
       </View>
     </View>
   );
 
   return (
-    <View className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm">
-      <View className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[calc(100vh-6rem)] sm:max-h-[85vh] overflow-hidden shadow-2xl flex flex-col mb-20 sm:mb-0">
-        {paymentStep === 'selection' && renderSelectionStep()}
-        {paymentStep === 'payment' && renderPaymentStep()}
-        {paymentStep === 'processing' && renderProcessingStep()}
-        {paymentStep === 'success' && renderSuccessStep()}
+    <Modal
+      visible={isOpen}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          {paymentStep === 'selection' && renderSelectionStep()}
+          {paymentStep === 'payment' && renderPaymentStep()}
+          {paymentStep === 'processing' && renderProcessingStep()}
+          {paymentStep === 'success' && renderSuccessStep()}
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 };
+
+const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+    flex: 1,
+  },
+  header: {
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    flex: 1,
+  },
+  optionsContainer: {
+    padding: 24,
+    gap: 12,
+  },
+  optionCard: {
+    position: 'relative',
+    padding: 16,
+    borderWidth: 2,
+    borderRadius: 12,
+  },
+  optionCardDefault: {
+    borderColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  optionCardSelected: {
+    borderColor: '#eb7825',
+    backgroundColor: '#fef3e2',
+  },
+  optionCardPopular: {
+    borderColor: '#eb7825',
+    borderWidth: 2,
+  },
+  popularBadge: {
+    position: 'absolute',
+    top: -8,
+    left: 16,
+    backgroundColor: '#eb7825',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  popularBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  optionContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  optionLeft: {
+    flex: 1,
+  },
+  optionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  optionTitle: {
+    fontWeight: '600',
+    color: '#111827',
+    fontSize: 16,
+  },
+  selectedIndicator: {
+    width: 20,
+    height: 20,
+    backgroundColor: '#eb7825',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionDescription: {
+    color: '#6b7280',
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  featuresContainer: {
+    gap: 4,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  featureDot: {
+    width: 4,
+    height: 4,
+    backgroundColor: '#eb7825',
+    borderRadius: 2,
+  },
+  featureText: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  optionRight: {
+    alignItems: 'flex-end',
+  },
+  optionPrice: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  optionDuration: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  optionSavings: {
+    fontSize: 12,
+    color: '#10b981',
+    fontWeight: '500',
+  },
+  footer: {
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  continueButton: {
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  continueButtonEnabled: {
+    backgroundColor: '#eb7825',
+  },
+  continueButtonDisabled: {
+    backgroundColor: '#e5e7eb',
+  },
+  continueButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  continueButtonTextEnabled: {
+    color: 'white',
+  },
+  continueButtonTextDisabled: {
+    color: '#9ca3af',
+  },
+  paymentContent: {
+    padding: 24,
+  },
+  orderSummary: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  orderSummaryTitle: {
+    fontWeight: '600',
+    color: '#111827',
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  orderSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  orderSummaryItem: {
+    color: '#374151',
+    fontSize: 16,
+  },
+  orderSummaryPrice: {
+    fontWeight: '600',
+    color: '#111827',
+    fontSize: 16,
+  },
+  orderSummarySubItem: {
+    color: '#6b7280',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  paymentMethodsContainer: {
+    gap: 12,
+  },
+  paymentMethodsTitle: {
+    fontWeight: '600',
+    color: '#111827',
+    fontSize: 16,
+  },
+  paymentMethodCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderRadius: 12,
+  },
+  paymentMethodCardDefault: {
+    borderColor: '#e5e7eb',
+    backgroundColor: 'white',
+  },
+  paymentMethodCardSelected: {
+    borderColor: '#eb7825',
+    backgroundColor: '#fef3e2',
+  },
+  applePayIcon: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#000000',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creditCardIcon: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#3b82f6',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentMethodContent: {
+    flex: 1,
+  },
+  paymentMethodTitle: {
+    fontWeight: '600',
+    color: '#111827',
+    fontSize: 16,
+  },
+  paymentMethodSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  paymentMethodSelected: {
+    width: 20,
+    height: 20,
+    backgroundColor: '#eb7825',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  payButton: {
+    width: '100%',
+    backgroundColor: '#eb7825',
+    paddingVertical: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  payButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  processingContainer: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  processingSpinner: {
+    width: 64,
+    height: 64,
+    backgroundColor: '#fef3e2',
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  processingTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  processingSubtitle: {
+    color: '#6b7280',
+    fontSize: 16,
+  },
+  successContainer: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  successIcon: {
+    width: 64,
+    height: 64,
+    backgroundColor: '#dcfce7',
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  successSubtitle: {
+    color: '#6b7280',
+    fontSize: 16,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  successMessage: {
+    backgroundColor: '#dcfce7',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    borderRadius: 12,
+    padding: 16,
+  },
+  successMessageText: {
+    fontSize: 14,
+    color: '#166534',
+    textAlign: 'center',
+  },
+});
 
 export default PurchaseModal;

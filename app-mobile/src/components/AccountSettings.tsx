@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity } from 'react-native';
-import { ArrowLeft, Globe, Ruler, Trash2, AlertTriangle, Check } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
+import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface AccountSettingsProps {
   accountPreferences: {
@@ -189,75 +188,87 @@ export default function AccountSettings({
     return supportedCurrencies.find(c => c.code === selectedCurrency);
   };
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to permanently delete your Mingla account? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete Account', 
+          style: 'destructive',
+          onPress: onDeleteAccount 
+        }
+      ]
+    );
+  };
+
   return (
-    <View className="h-full bg-gray-50 flex flex-col overflow-hidden">
+    <View style={styles.container}>
       {/* Header */}
-      <View className="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
-        <View className="flex items-center gap-3">
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
           <TouchableOpacity
-            onClick={onNavigateBack}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            onPress={onNavigateBack}
+            style={styles.backButton}
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <Ionicons name="arrow-back" size={20} color="#6b7280" />
           </TouchableOpacity>
-          <Text className="text-xl font-semibold text-gray-900">Account Settings</Text>
+          <Text style={styles.headerTitle}>Account Settings</Text>
         </View>
       </View>
 
       {/* Content */}
-      <View className="flex-1 overflow-y-auto p-4 space-y-6">
+      <ScrollView style={styles.content}>
         {/* Currency Preference */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-6">
-          <View className="flex items-center gap-3 mb-4">
-            <Globe className="w-5 h-5 text-[#eb7825]" />
-            <Text className="font-semibold text-gray-900">Currency Preference</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="globe" size={20} color="#eb7825" />
+            <Text style={styles.sectionTitle}>Currency Preference</Text>
           </View>
           
-          <Text className="text-sm text-gray-600 mb-4">
+          <Text style={styles.sectionDescription}>
             Choose your preferred currency for displaying prices throughout the app. 
             All amounts are converted from USD using current exchange rates.
           </Text>
 
-          <View className="space-y-2">
-            <View className="grid grid-cols-1 gap-3 max-h-60 overflow-y-auto">
-              {supportedCurrencies.map((currency) => (
-                <TouchableOpacity
-                  key={currency.code}
-                  onClick={() => handleCurrencyChange(currency.code)}
-                  className={`flex items-center justify-between p-3 rounded-lg border transition-all ${
-                    selectedCurrency === currency.code
-                      ? 'border-[#eb7825] bg-orange-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <View className="flex items-center gap-3">
-                    <Text className="text-lg font-medium">{currency.symbol}</Text>
-                    <View className="text-left">
-                      <View className="font-medium text-gray-900">{currency.code}</View>
-                      <View className="text-sm text-gray-500">{currency.name}</View>
-                    </View>
+          <View style={styles.currencyList}>
+            {supportedCurrencies.map((currency) => (
+              <TouchableOpacity
+                key={currency.code}
+                onPress={() => handleCurrencyChange(currency.code)}
+                style={[
+                  styles.currencyItem,
+                  selectedCurrency === currency.code && styles.currencyItemSelected
+                ]}
+              >
+                <View style={styles.currencyInfo}>
+                  <Text style={styles.currencySymbol}>{currency.symbol}</Text>
+                  <View style={styles.currencyDetails}>
+                    <Text style={styles.currencyCode}>{currency.code}</Text>
+                    <Text style={styles.currencyName}>{currency.name}</Text>
                   </View>
-                  <View className="text-right">
-                    <View className="text-sm font-medium text-gray-900">
-                      Example: {formatCurrency(25, currency.code)}
-                    </View>
-                    <View className="text-xs text-gray-500">
-                      1 USD = {exchangeRates[currency.code as keyof typeof exchangeRates]} {currency.code}
-                    </View>
-                  </View>
-                  {selectedCurrency === currency.code && (
-                    <Check className="w-5 h-5 text-[#eb7825] ml-2" />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
+                </View>
+                <View style={styles.currencyExample}>
+                  <Text style={styles.currencyExampleText}>
+                    Example: {formatCurrency(25, currency.code)}
+                  </Text>
+                  <Text style={styles.currencyRate}>
+                    1 USD = {exchangeRates[currency.code as keyof typeof exchangeRates]} {currency.code}
+                  </Text>
+                </View>
+                {selectedCurrency === currency.code && (
+                  <Ionicons name="checkmark" size={20} color="#eb7825" style={styles.checkIcon} />
+                )}
+              </TouchableOpacity>
+            ))}
           </View>
 
           {selectedCurrency !== 'USD' && (
-            <View className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-              <Text className="text-sm text-[#eb7825]">
-                <strong>Selected:</strong> {getCurrentCurrency()?.name} ({getCurrentCurrency()?.symbol})
-                <br />
+            <View style={styles.infoBox}>
+              <Text style={styles.infoText}>
+                <Text style={styles.infoBold}>Selected:</Text> {getCurrentCurrency()?.name} ({getCurrentCurrency()?.symbol})
+                {'\n'}
                 Exchange rates are updated regularly and may fluctuate.
               </Text>
             </View>
@@ -265,124 +276,279 @@ export default function AccountSettings({
         </View>
 
         {/* Measurement System */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-6">
-          <View className="flex items-center gap-3 mb-4">
-            <Ruler className="w-5 h-5 text-[#eb7825]" />
-            <Text className="font-semibold text-gray-900">Measurement System</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="resize" size={20} color="#eb7825" />
+            <Text style={styles.sectionTitle}>Measurement System</Text>
           </View>
           
-          <Text className="text-sm text-gray-600 mb-4">
+          <Text style={styles.sectionDescription}>
             Choose how distances, sizes, and other measurements are displayed throughout the app.
           </Text>
 
-          <View className="space-y-3">
+          <View style={styles.measurementOptions}>
             <TouchableOpacity
-              onClick={() => handleMeasurementChange('Imperial')}
-              className={`w-full flex items-center justify-between p-4 rounded-lg border transition-all ${
-                selectedMeasurement === 'Imperial'
-                  ? 'border-[#eb7825] bg-orange-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
+              onPress={() => handleMeasurementChange('Imperial')}
+              style={[
+                styles.measurementOption,
+                selectedMeasurement === 'Imperial' && styles.measurementOptionSelected
+              ]}
             >
-              <View className="text-left">
-                <View className="font-medium text-gray-900">Imperial</View>
-                <View className="text-sm text-gray-500">Miles, feet, inches, Fahrenheit</View>
+              <View style={styles.measurementInfo}>
+                <Text style={styles.measurementTitle}>Imperial</Text>
+                <Text style={styles.measurementDescription}>Miles, feet, inches, Fahrenheit</Text>
               </View>
               {selectedMeasurement === 'Imperial' && (
-                <Check className="w-5 h-5 text-[#eb7825]" />
+                <Ionicons name="checkmark" size={20} color="#eb7825" />
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
-              onClick={() => handleMeasurementChange('Metric')}
-              className={`w-full flex items-center justify-between p-4 rounded-lg border transition-all ${
-                selectedMeasurement === 'Metric'
-                  ? 'border-[#eb7825] bg-orange-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
+              onPress={() => handleMeasurementChange('Metric')}
+              style={[
+                styles.measurementOption,
+                selectedMeasurement === 'Metric' && styles.measurementOptionSelected
+              ]}
             >
-              <View className="text-left">
-                <View className="font-medium text-gray-900">Metric</View>
-                <View className="text-sm text-gray-500">Kilometers, meters, centimeters, Celsius</View>
+              <View style={styles.measurementInfo}>
+                <Text style={styles.measurementTitle}>Metric</Text>
+                <Text style={styles.measurementDescription}>Kilometers, meters, centimeters, Celsius</Text>
               </View>
               {selectedMeasurement === 'Metric' && (
-                <Check className="w-5 h-5 text-[#eb7825]" />
+                <Ionicons name="checkmark" size={20} color="#eb7825" />
               )}
             </TouchableOpacity>
           </View>
 
-          <View className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-            <Text className="text-sm text-[#eb7825]">
-              <strong>Selected:</strong> {selectedMeasurement} system
-              <br />
+          <View style={styles.infoBox}>
+            <Text style={styles.infoText}>
+              <Text style={styles.infoBold}>Selected:</Text> {selectedMeasurement} system
+              {'\n'}
               This will apply to all distance and measurement displays in the app.
             </Text>
           </View>
         </View>
 
         {/* Account Lifecycle */}
-        <View className="bg-white rounded-2xl border border-gray-200 p-6">
-          <View className="flex items-center gap-3 mb-4">
-            <Trash2 className="w-5 h-5 text-red-500" />
-            <Text className="font-semibold text-gray-900">Delete Account</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="trash" size={20} color="#ef4444" />
+            <Text style={styles.sectionTitle}>Delete Account</Text>
           </View>
           
-          <Text className="text-sm text-gray-600 mb-4">
+          <Text style={styles.sectionDescription}>
             Permanently delete your Mingla account and all associated data.
           </Text>
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <TouchableOpacity className="w-full flex items-center justify-center gap-2 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 hover:bg-red-100 transition-colors">
-                <Trash2 className="w-4 h-4" />
-                Delete Account
-              </TouchableOpacity>
-            </AlertDialogTrigger>
-            <AlertDialogContent className="max-w-md">
-              <AlertDialogHeader>
-                <View className="flex items-center gap-3">
-                  <AlertTriangle className="w-6 h-6 text-red-500" />
-                  <AlertDialogTitle>Delete Account</AlertDialogTitle>
-                </View>
-                <AlertDialogDescription className="text-left">
-                  Are you sure you want to permanently delete your Mingla account? 
-                  
-                  <View className="mt-3 p-3 bg-red-50 rounded-lg">
-                    <Text className="text-sm text-red-700 font-medium mb-2">This will permanently remove:</Text>
-                    <ul className="text-sm text-red-600 space-y-1">
-                      <li>• Your profile and personal information</li>
-                      <li>• All saved experiences and boards</li>
-                      <li>• Your connections and collaborations</li>
-                      <li>• Calendar entries and activity history</li>
-                      <li>• All app preferences and settings</li>
-                    </ul>
-                  </View>
-                  
-                  <Text className="mt-3 text-sm font-medium text-red-700">
-                    This action cannot be undone.
-                  </Text>
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction 
-                  onClick={onDeleteAccount}
-                  className="bg-red-600 hover:bg-red-700 text-white"
-                >
-                  Delete Account
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <TouchableOpacity
+            onPress={handleDeleteAccount}
+            style={styles.deleteButton}
+          >
+            <Ionicons name="trash" size={16} color="#dc2626" />
+            <Text style={styles.deleteButtonText}>Delete Account</Text>
+          </TouchableOpacity>
 
-          <View className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-            <Text className="text-sm text-[#eb7825]">
-              <strong>Warning:</strong> Account deletion is permanent and cannot be reversed. 
+          <View style={styles.warningBox}>
+            <Text style={styles.warningText}>
+              <Text style={styles.warningBold}>Warning:</Text> Account deletion is permanent and cannot be reversed. 
               Make sure to save any important information before proceeding.
             </Text>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+  },
+  header: {
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 20,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  content: {
+    flex: 1,
+    padding: 16,
+    gap: 24,
+  },
+  section: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 24,
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  sectionDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  currencyList: {
+    gap: 8,
+  },
+  currencyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 8,
+  },
+  currencyItemSelected: {
+    borderColor: '#eb7825',
+    backgroundColor: '#fef3e2',
+  },
+  currencyInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  currencySymbol: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  currencyDetails: {
+    flex: 1,
+  },
+  currencyCode: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  currencyName: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  currencyExample: {
+    alignItems: 'flex-end',
+    marginRight: 8,
+  },
+  currencyExampleText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  currencyRate: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  checkIcon: {
+    marginLeft: 8,
+  },
+  infoBox: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#fef3e2',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 8,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#eb7825',
+    lineHeight: 20,
+  },
+  infoBold: {
+    fontWeight: '600',
+  },
+  measurementOptions: {
+    gap: 12,
+  },
+  measurementOption: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  measurementOptionSelected: {
+    borderColor: '#eb7825',
+    backgroundColor: '#fef3e2',
+  },
+  measurementInfo: {
+    flex: 1,
+  },
+  measurementTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  measurementDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  deleteButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 16,
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  deleteButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#dc2626',
+  },
+  warningBox: {
+    padding: 12,
+    backgroundColor: '#fef3e2',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 8,
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#eb7825',
+    lineHeight: 20,
+  },
+  warningBold: {
+    fontWeight: '600',
+  },
+});

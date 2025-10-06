@@ -1,11 +1,6 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput } from 'react-native';
-import { 
-  Search, UserPlus, QrCode, Link, MessageSquare, Users, 
-  MoreHorizontal, Phone, Video, Send, Plus, ArrowLeft,
-  Copy, Check, Scan, UserCheck, Zap, Star, ChevronDown, ChevronUp,
-  Bell, BellOff, X, UserMinus, Shield, Flag, Bookmark
-} from 'lucide-react';
+import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import FriendSelectionModal from './FriendSelectionModal';
 import MessageInterface from './MessageInterface';
@@ -669,49 +664,37 @@ export default function ConnectionsPage({
   }, [openDropdownId]);
 
   const renderFriendsTab = () => (
-    <View className="space-y-6">
+    <View style={styles.content}>
       {/* Search Bar */}
-      <View className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={20} color="#9ca3af" style={styles.searchIcon} />
         <TextInput
           placeholder='Search friends...'
           value={searchQuery}
           onChangeText={setSearchQuery}
-          style={{
-            width: '100%',
-            paddingLeft: 48,
-            paddingRight: 16,
-            paddingVertical: 16,
-            backgroundColor: '#f9fafb',
-            borderWidth: 1,
-            borderColor: '#e5e7eb',
-            borderRadius: 16,
-            fontSize: 16
-          }}
+          style={styles.searchInput}
         />
       </View>
 
       {/* Action Buttons */}
-      <View className="flex gap-3 justify-center">
+      <View style={styles.actionButtons}>
         <TouchableOpacity 
-          onClick={() => setShowAddFriendModal(true)}
-          className="w-14 h-14 bg-white border border-gray-200 rounded-2xl hover:border-[#eb7825] hover:shadow-lg hover:shadow-[#eb7825]/20 transition-all duration-300 group relative overflow-hidden"
+          onPress={() => setShowAddFriendModal(true)}
+          style={styles.actionButton}
           title="Add Friend"
         >
-          <View className="absolute inset-0 bg-gradient-to-br from-[#eb7825] to-[#d6691f] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></View>
-          <View className="relative w-full h-full flex items-center justify-center">
-            <UserPlus className="w-5 h-5 text-[#eb7825] group-hover:text-white transition-colors duration-300" />
+          <View style={styles.actionButtonIcon}>
+            <Ionicons name="person-add" size={20} color="#eb7825" />
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity 
-          onClick={() => setShowFriendRequests(true)}
-          className="relative w-14 h-14 bg-white border border-gray-200 rounded-2xl hover:border-[#eb7825] hover:shadow-lg hover:shadow-[#eb7825]/20 transition-all duration-300 group overflow-hidden"
+          onPress={() => setShowFriendRequests(true)}
+          style={styles.actionButton}
           title="Friend Requests"
         >
-          <View className="absolute inset-0 bg-gradient-to-br from-[#eb7825] to-[#d6691f] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></View>
-          <View className="relative w-full h-full flex items-center justify-center">
-            <UserCheck className="w-5 h-5 text-[#eb7825] group-hover:text-white transition-colors duration-300" />
+          <View style={styles.actionButtonIcon}>
+            <Ionicons name="people" size={20} color="#eb7825" />
           </View>
           {mockFriendRequests.length > 0 && (
             <View className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
@@ -721,7 +704,7 @@ export default function ConnectionsPage({
         </TouchableOpacity>
 
         <TouchableOpacity 
-          onClick={() => setShowQRCode(!showQRCode)}
+          onPress={() => setShowQRCode(!showQRCode)}
           className={`relative w-14 h-14 border rounded-2xl transition-all duration-300 group overflow-hidden ${
             showQRCode 
               ? 'bg-gradient-to-br from-[#eb7825] to-[#d6691f] border-[#eb7825] shadow-lg shadow-[#eb7825]/20'
@@ -733,24 +716,20 @@ export default function ConnectionsPage({
             <View className="absolute inset-0 bg-gradient-to-br from-[#eb7825] to-[#d6691f] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></View>
           )}
           <View className="relative w-full h-full flex items-center justify-center">
-            <QrCode className={`w-5 h-5 transition-colors duration-300 ${
-              showQRCode 
-                ? 'text-white'
-                : 'text-[#eb7825] group-hover:text-white'
-            }`} />
+            <Ionicons name="qr-code" size={20} color={showQRCode ? 'white' : '#eb7825'} />
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity 
-          onClick={handleCopyInvite}
+          onPress={handleCopyInvite}
           className="relative w-14 h-14 bg-white border border-gray-200 rounded-2xl hover:border-[#eb7825] hover:shadow-lg hover:shadow-[#eb7825]/20 transition-all duration-300 group overflow-hidden"
           title={inviteCopied ? 'Copied!' : 'Share Invite'}
         >
           <View className="absolute inset-0 bg-gradient-to-br from-[#eb7825] to-[#d6691f] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></View>
           <View className="relative w-full h-full flex items-center justify-center">
             {inviteCopied ? 
-              <Check className="w-5 h-5 text-green-600 group-hover:text-white transition-colors duration-300" /> : 
-              <Link className="w-5 h-5 text-[#eb7825] group-hover:text-white transition-colors duration-300" />
+              <Ionicons name="checkmark" size={20} color="white" /> : 
+              <Ionicons name="link" size={20} color="white" />
             }
           </View>
         </TouchableOpacity>
@@ -783,10 +762,10 @@ export default function ConnectionsPage({
         <View className="flex items-center justify-between">
           <Text className="font-semibold text-gray-900">Friends ({filteredFriends.length})</Text>
           <TouchableOpacity 
-            onClick={() => setFriendsListExpanded(!friendsListExpanded)}
+            onPress={() => setFriendsListExpanded(!friendsListExpanded)}
             className="text-gray-500 hover:text-gray-700 transition-colors"
           >
-            {friendsListExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+            {friendsListExpanded ? <Ionicons name="chevron-up" size={20} color="#6b7280" /> : <Ionicons name="chevron-down" size={20} color="#6b7280" />}
           </TouchableOpacity>
         </View>
 
@@ -854,62 +833,62 @@ export default function ConnectionsPage({
                       
                       {/* Message button */}
                       <TouchableOpacity
-                        onClick={() => handleSelectFriend(friend)}
+                        onPress={() => handleSelectFriend(friend)}
                         className="p-2 bg-[#eb7825] text-white rounded-lg hover:bg-[#d6691f] transition-colors"
                         title="Start conversation"
                       >
-                        <MessageSquare className="w-4 h-4" />
+                        <Ionicons name="chatbubble" size={16} color="#6b7280" />
                       </TouchableOpacity>
                       
                       {/* Friend dropdown menu */}
                       <View className="relative">
                         <TouchableOpacity
-                          onClick={(e) => {
+                          onPress={(e) => {
                             e.stopPropagation();
                             handleToggleDropdown(friend.id);
                           }}
                           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                         >
-                          <MoreHorizontal className="w-4 h-4 text-gray-400" />
+                          <Ionicons name="ellipsis-horizontal" size={16} color="#9ca3af" />
                         </TouchableOpacity>
                         
                         {openDropdownId === friend.id && (
                           <View className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                             <View className="py-1">
                               <TouchableOpacity
-                                onClick={() => handleSendCollabInvite(friend)}
+                                onPress={() => handleSendCollabInvite(friend)}
                                 className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-3"
                               >
-                                <Plus className="w-4 h-4 text-[#eb7825]" />
+                                <Ionicons name="add" size={16} color="#eb7825" />
                                 Send Collaboration Invite
                               </TouchableOpacity>
                               <TouchableOpacity
-                                onClick={() => handleAddToBoard(friend)}
+                                onPress={() => handleAddToBoard(friend)}
                                 className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-3"
                               >
-                                <Users className="w-4 h-4 text-blue-600" />
+                                <Ionicons name="people" size={16} color="#2563eb" />
                                 Add to Board
                               </TouchableOpacity>
                               <TouchableOpacity
-                                onClick={() => handleShareSavedCard(friend)}
+                                onPress={() => handleShareSavedCard(friend)}
                                 className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-3"
                               >
-                                <Bookmark className="w-4 h-4 text-purple-600" />
+                                <Ionicons name="bookmark" size={16} color="#9333ea" />
                                 Share Saved Card
                               </TouchableOpacity>
                               <View className="border-t border-gray-100 my-1"></View>
                               <TouchableOpacity
-                                onClick={() => handleBlockUser(friend)}
+                                onPress={() => handleBlockUser(friend)}
                                 className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-3"
                               >
-                                <Shield className="w-4 h-4" />
+                                <Ionicons name="shield" size={16} color="#ef4444" />
                                 Block User
                               </TouchableOpacity>
                               <TouchableOpacity
-                                onClick={() => handleReportUser(friend)}
+                                onPress={() => handleReportUser(friend)}
                                 className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-3"
                               >
-                                <Flag className="w-4 h-4" />
+                                <Ionicons name="flag" size={16} color="#ef4444" />
                                 Report User
                               </TouchableOpacity>
                             </View>
@@ -925,7 +904,7 @@ export default function ConnectionsPage({
           
           {!friendsListExpanded && filteredFriends.length > 3 && (
             <TouchableOpacity
-              onClick={() => setFriendsListExpanded(true)}
+              onPress={() => setFriendsListExpanded(true)}
               className="w-full py-3 text-center text-sm text-gray-500 hover:text-gray-700 border border-dashed border-gray-300 rounded-2xl hover:border-gray-400 transition-colors"
             >
               Show {filteredFriends.length - 3} more friends
@@ -961,7 +940,7 @@ export default function ConnectionsPage({
             
             {/* Search Bar */}
             <View className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Ionicons name="search" size={20} color="#9ca3af" style={{ position: 'absolute', left: 16, top: '50%', transform: [{ translateY: -10 }] }} />
               <TextInput
                 placeholder="Search conversations..."
                 value={messageSearchQuery}
@@ -982,10 +961,10 @@ export default function ConnectionsPage({
             
             {/* Start New Conversation Button */}
             <TouchableOpacity
-              onClick={handleStartNewConversation}
+              onPress={handleStartNewConversation}
               className="w-full p-3 bg-[#eb7825] text-white rounded-lg hover:bg-[#d6691f] transition-colors flex items-center justify-center gap-2"
             >
-              <Plus className="w-5 h-5" />
+              <Ionicons name="add" size={20} color="#6b7280" />
               <Text>Start New Conversation</Text>
             </TouchableOpacity>
           </View>
@@ -994,7 +973,7 @@ export default function ConnectionsPage({
           <View className="space-y-3">
             {filteredConversations.length === 0 && messageSearchQuery.trim() ? (
               <View className="text-center py-8 text-gray-500">
-                <Search className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <Ionicons name="search" size={48} color="#d1d5db" style={{ alignSelf: 'center', marginBottom: 12 }} />
                 <Text>No conversations found</Text>
                 <Text className="text-sm">Try searching with different keywords</Text>
               </View>
@@ -1002,7 +981,7 @@ export default function ConnectionsPage({
               filteredConversations.map((conversation, index) => (
               <TouchableOpacity
                 key={`conversation-${conversation.id}-${index}`}
-                onClick={() => {
+                onPress={() => {
                   const friend = conversation.participants[0];
                   if (friend) handleSelectFriend(friend);
                 }}
@@ -1055,7 +1034,7 @@ export default function ConnectionsPage({
             {/* Tab Navigation */}
             <View className="flex bg-gray-100 rounded-2xl p-1">
               <TouchableOpacity
-                onClick={() => setActiveTab('friends')}
+                onPress={() => setActiveTab('friends')}
                 className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-200 ${
                   activeTab === 'friends'
                     ? 'bg-white text-[#eb7825] shadow-sm'
@@ -1063,12 +1042,12 @@ export default function ConnectionsPage({
                 }`}
               >
                 <View className="flex items-center justify-center gap-2">
-                  <Users className="w-5 h-5" />
+                  <Ionicons name="people" size={20} color="#6b7280" />
                   Friends
                 </View>
               </TouchableOpacity>
               <TouchableOpacity
-                onClick={() => setActiveTab('messages')}
+                onPress={() => setActiveTab('messages')}
                 className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all duration-200 ${
                   activeTab === 'messages'
                     ? 'bg-white text-[#eb7825] shadow-sm'
@@ -1076,7 +1055,7 @@ export default function ConnectionsPage({
                 }`}
               >
                 <View className="flex items-center justify-center gap-2">
-                  <MessageSquare className="w-5 h-5" />
+                  <Ionicons name="chatbubble" size={20} color="#6b7280" />
                   Messages
                 </View>
               </TouchableOpacity>
@@ -1133,3 +1112,147 @@ export default function ConnectionsPage({
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+  },
+  content: {
+    padding: 16,
+    gap: 24,
+  },
+  searchContainer: {
+    position: 'relative',
+  },
+  searchInput: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#111827',
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: 16,
+    top: '50%',
+    transform: [{ translateY: -10 }],
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  actionButton: {
+    width: 56,
+    height: 56,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtonActive: {
+    borderColor: '#eb7825',
+    shadowColor: '#eb7825',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  actionButtonIcon: {
+    color: '#eb7825',
+  },
+  actionButtonIconActive: {
+    color: 'white',
+  },
+  section: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 20,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 16,
+  },
+  friendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  friendAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
+  friendInfo: {
+    flex: 1,
+  },
+  friendName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  friendStatus: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  friendActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionIcon: {
+    padding: 8,
+    borderRadius: 6,
+  },
+  dropdown: {
+    position: 'absolute',
+    right: 0,
+    top: '100%',
+    marginTop: 4,
+    width: 192,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 50,
+  },
+  dropdownItem: {
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: '#111827',
+  },
+  dropdownItemTextDanger: {
+    color: '#ef4444',
+  },
+  divider: {
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    marginVertical: 4,
+  },
+});
