@@ -1,0 +1,379 @@
+import React, { useState } from 'react';
+import { Text, View, TouchableOpacity, TextInput, StyleSheet, Modal } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+interface User {
+  id: string;
+  name: string;
+  avatar?: string;
+  isOnline?: boolean;
+  lastSeen?: string;
+}
+
+interface UserInviteModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  sessionName: string;
+  onInviteUsers: (users: User[]) => void;
+}
+
+const mockUsers: User[] = [
+  { id: '1', name: 'Sarah Chen', isOnline: true },
+  { id: '2', name: 'Alex Rivera', isOnline: true },
+  { id: '3', name: 'Jamie Park', isOnline: false, lastSeen: '2 hours ago' },
+  { id: '4', name: 'Morgan Lee', isOnline: true },
+  { id: '5', name: 'Casey Kim', isOnline: false, lastSeen: '1 day ago' },
+  { id: '6', name: 'Taylor Johnson', isOnline: false, lastSeen: '3 hours ago' },
+  { id: '7', name: 'Riley Davis', isOnline: true },
+  { id: '8', name: 'Jordan Smith', isOnline: false, lastSeen: '5 minutes ago' }
+];
+
+export default function UserInviteModal({ isOpen, onClose, sessionName, onInviteUsers }: UserInviteModalProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+
+  const filteredUsers = mockUsers.filter(user => 
+    user.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const toggleUser = (user: User) => {
+    setSelectedUsers(prev => 
+      prev.find(u => u.id === user.id)
+        ? prev.filter(u => u.id !== user.id)
+        : [...prev, user]
+    );
+  };
+
+  const handleInvite = () => {
+    if (selectedUsers.length > 0) {
+      onInviteUsers(selectedUsers);
+      setSelectedUsers([]);
+      setSearchQuery('');
+      onClose();
+    }
+  };
+
+  return (
+    <Modal
+      visible={isOpen}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.overlay}>
+        <View style={styles.modal}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.headerContent}>
+              <Text style={styles.title}>Invite to Session</Text>
+              <Text style={styles.sessionName}>"{sessionName}"</Text>
+            </View>
+            <TouchableOpacity 
+              onPress={onClose}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={20} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Search */}
+          <View style={styles.searchContainer}>
+            <View style={styles.searchWrapper}>
+              <Ionicons name="search" size={16} color="#9ca3af" style={styles.searchIcon} />
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search friends..."
+                style={styles.searchInput}
+              />
+            </View>
+          </View>
+
+          {/* Selected Users */}
+          {selectedUsers.length > 0 && (
+            <View style={styles.selectedContainer}>
+              <Text style={styles.selectedTitle}>
+                Selected ({selectedUsers.length})
+              </Text>
+              <View style={styles.selectedUsers}>
+                {selectedUsers.map(user => (
+                  <View key={user.id} style={styles.selectedUser}>
+                    <View style={styles.selectedUserAvatar}>
+                      <Text style={styles.selectedUserInitial}>{user.name[0]}</Text>
+                    </View>
+                    <Text style={styles.selectedUserName}>{user.name}</Text>
+                    <TouchableOpacity 
+                      onPress={() => toggleUser(user)}
+                      style={styles.removeUserButton}
+                    >
+                      <Ionicons name="close" size={12} color="#9ca3af" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* User List */}
+          <View style={styles.userList}>
+            {filteredUsers.map(user => {
+              const isSelected = selectedUsers.find(u => u.id === user.id);
+              return (
+                <TouchableOpacity
+                  key={user.id}
+                  onPress={() => toggleUser(user)}
+                  style={[
+                    styles.userItem,
+                    isSelected ? styles.userItemSelected : styles.userItemUnselected
+                  ]}
+                >
+                  <View style={styles.userAvatarContainer}>
+                    <View style={styles.userAvatar}>
+                      <Text style={styles.userAvatarText}>{user.name[0]}</Text>
+                    </View>
+                    {user.isOnline && (
+                      <View style={styles.onlineIndicator} />
+                    )}
+                  </View>
+                  
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName}>{user.name}</Text>
+                    <Text style={styles.userStatus}>
+                      {user.isOnline ? 'Online' : `Last seen ${user.lastSeen}`}
+                    </Text>
+                  </View>
+
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={20} color="#eb7825" />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <TouchableOpacity
+              onPress={handleInvite}
+              disabled={selectedUsers.length === 0}
+              style={[
+                styles.inviteButton,
+                selectedUsers.length === 0 ? styles.inviteButtonDisabled : styles.inviteButtonEnabled
+              ]}
+            >
+              <Ionicons name="send" size={16} color="white" />
+              <Text style={styles.inviteButtonText}>
+                Send Invite{selectedUsers.length > 1 ? 's' : ''} ({selectedUsers.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modal: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    flexDirection: 'column',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  headerContent: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  sessionName: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+  },
+  searchContainer: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  searchWrapper: {
+    position: 'relative',
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    zIndex: 1,
+  },
+  searchInput: {
+    width: '100%',
+    paddingLeft: 40,
+    paddingRight: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    backgroundColor: '#f9fafb',
+    fontSize: 16,
+  },
+  selectedContainer: {
+    padding: 16,
+    backgroundColor: '#fef3e2',
+    borderBottomWidth: 1,
+    borderBottomColor: '#fed7aa',
+  },
+  selectedTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#92400e',
+    marginBottom: 8,
+  },
+  selectedUsers: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  selectedUser: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'white',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  selectedUserAvatar: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#eb7825',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedUserInitial: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  selectedUserName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  removeUserButton: {
+    padding: 2,
+  },
+  userList: {
+    flex: 1,
+    padding: 16,
+  },
+  userItem: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 2,
+  },
+  userItemSelected: {
+    backgroundColor: '#fef3e2',
+    borderColor: '#eb7825',
+  },
+  userItemUnselected: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
+  userAvatarContainer: {
+    position: 'relative',
+  },
+  userAvatar: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#eb7825',
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  userAvatarText: {
+    color: 'white',
+    fontWeight: '500',
+    fontSize: 16,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    backgroundColor: '#10b981',
+    borderWidth: 2,
+    borderColor: 'white',
+    borderRadius: 6,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontWeight: '500',
+    color: '#111827',
+    fontSize: 16,
+  },
+  userStatus: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  footer: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  inviteButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  inviteButtonEnabled: {
+    backgroundColor: '#eb7825',
+  },
+  inviteButtonDisabled: {
+    backgroundColor: '#d1d5db',
+  },
+  inviteButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+});

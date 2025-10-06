@@ -7,10 +7,20 @@
 
 -- Add missing columns to profiles table
 ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS email TEXT,
 ADD COLUMN IF NOT EXISTS username TEXT,
 ADD COLUMN IF NOT EXISTS bio TEXT,
 ADD COLUMN IF NOT EXISTS location TEXT,
-ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}';
+ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+-- Update existing profiles to have email from auth.users if they don't have one
+UPDATE public.profiles 
+SET email = auth.users.email 
+FROM auth.users 
+WHERE public.profiles.id = auth.users.id 
+AND public.profiles.email IS NULL;
 
 -- Add missing columns to boards table
 ALTER TABLE public.boards 
@@ -529,6 +539,11 @@ $$;
 -- RLS Policies for undo_actions
 ALTER TABLE public.undo_actions ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own undo actions" ON public.undo_actions;
+DROP POLICY IF EXISTS "Users can insert their own undo actions" ON public.undo_actions;
+DROP POLICY IF EXISTS "Users can delete their own undo actions" ON public.undo_actions;
+
 CREATE POLICY "Users can view their own undo actions" ON public.undo_actions
     FOR SELECT USING (auth.uid() = user_id);
 
@@ -540,6 +555,10 @@ CREATE POLICY "Users can delete their own undo actions" ON public.undo_actions
 
 -- RLS Policies for preference_history
 ALTER TABLE public.preference_history ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own preference history" ON public.preference_history;
+DROP POLICY IF EXISTS "System can insert preference history" ON public.preference_history;
 
 CREATE POLICY "Users can view their own preference history" ON public.preference_history
     FOR SELECT USING (auth.uid() = user_id);
@@ -554,3 +573,25 @@ GRANT ALL ON public.preference_history TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_undo_actions(UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.execute_undo_action(TEXT, UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.cleanup_expired_undo_actions() TO anon, authenticated;
+
+-- ===========================================
+-- 7. CREATE TRIGGERS FOR UPDATED_AT COLUMNS
+-- ===========================================
+
+-- Create trigger to automatically update updated_at timestamp for profiles
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Drop existing trigger if it exists
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
+
+-- Create trigger for profiles table
+CREATE TRIGGER update_profiles_updated_at
+    BEFORE UPDATE ON public.profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_updated_at_column();
