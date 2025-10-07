@@ -1,25 +1,25 @@
-import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { formatCurrency } from './src/components/utils/formatters';
-import { useAppState } from './src/components/AppStateManager';
-import { useAppHandlers } from './src/components/AppHandlers';
-import HomePage from './src/components/HomePage';
-import ConnectionsPage from './src/components/ConnectionsPage';
-import ActivityPage from './src/components/ActivityPage';
-import ProfilePage from './src/components/ProfilePage';
-import ProfileSettings from './src/components/ProfileSettings';
-import AccountSettings from './src/components/AccountSettings';
-import PreferencesSheet from './src/components/PreferencesSheet';
-import CollaborationModule from './src/components/CollaborationModule';
-import CollaborationPreferences from './src/components/CollaborationPreferences';
-import NotificationSystem from './src/components/NotificationSystem';
-import ShareModal from './src/components/ShareModal';
-import PrivacyPolicy from './src/components/PrivacyPolicy';
-import TermsOfService from './src/components/TermsOfService';
-import OnboardingFlow from './src/components/OnboardingFlow';
-import SignInPage from './src/components/SignInPage';
-import ErrorBoundary from './src/components/ErrorBoundary';
+import React from 'react';
+import { SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import AccountSettings from '../src/components/AccountSettings';
+import ActivityPage from '../src/components/ActivityPage';
+import { useAppHandlers } from '../src/components/AppHandlers';
+import { useAppState } from '../src/components/AppStateManager';
+import CollaborationModule from '../src/components/CollaborationModule';
+import CollaborationPreferences from '../src/components/CollaborationPreferences';
+import ConnectionsPage from '../src/components/ConnectionsPage';
+import ErrorBoundary from '../src/components/ErrorBoundary';
+import HomePage from '../src/components/HomePage';
+import NotificationSystem from '../src/components/NotificationSystem';
+import OnboardingFlow from '../src/components/OnboardingFlow';
+import PreferencesSheet from '../src/components/PreferencesSheet';
+import PrivacyPolicy from '../src/components/PrivacyPolicy';
+import ProfilePage from '../src/components/ProfilePage';
+import ProfileSettings from '../src/components/ProfileSettings';
+import ShareModal from '../src/components/ShareModal';
+import SignInPage from '../src/components/SignInPage';
+import TermsOfService from '../src/components/TermsOfService';
+import { formatCurrency } from '../src/components/utils/formatters';
 
 
 export default function App() {

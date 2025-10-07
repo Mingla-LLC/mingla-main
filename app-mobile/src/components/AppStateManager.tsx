@@ -219,6 +219,12 @@ export function useAppState() {
               setOnboardingData(JSON.parse(dataStored));
             }
           }
+        } else {
+          // User is not authenticated, show SignInPage
+          setIsAuthenticated(false);
+          setUserRole('explorer');
+          setHasCompletedOnboarding(false);
+          setOnboardingData(null);
         }
       } catch (error) {
         console.error('Error loading auth/onboarding data:', error);
@@ -323,6 +329,34 @@ export function useAppState() {
     setUserRole(role);
     safeAsyncStorageSet('mingla_is_authenticated', true);
     safeAsyncStorageSet('mingla_user_role', role);
+    
+    // Existing users who sign in should go directly to home page
+    // Check if they have completed onboarding before
+    const checkExistingOnboarding = async () => {
+      try {
+        const onboardingStored = await AsyncStorage.getItem('mingla_onboarding_completed');
+        const dataStored = await AsyncStorage.getItem('mingla_onboarding_data');
+        
+        if (onboardingStored === 'true') {
+          // User has completed onboarding before, go directly to home
+          setHasCompletedOnboarding(true);
+          if (dataStored) {
+            setOnboardingData(JSON.parse(dataStored));
+          }
+        } else {
+          // First time user, they need to complete onboarding
+          setHasCompletedOnboarding(false);
+          setOnboardingData(null);
+        }
+      } catch (error) {
+        console.error('Error checking onboarding status:', error);
+        // Default to requiring onboarding for safety
+        setHasCompletedOnboarding(false);
+        setOnboardingData(null);
+      }
+    };
+    
+    checkExistingOnboarding();
     
     // Set user identity based on email
     const [firstName] = credentials.email.split('@')[0].split('.');

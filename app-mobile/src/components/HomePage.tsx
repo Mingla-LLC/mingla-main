@@ -38,8 +38,23 @@ export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpe
         <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity 
-            onPress={currentMode === 'solo' ? onOpenPreferences : onOpenCollabPreferences}
+            onPress={() => {
+              console.log('Settings button pressed, currentMode:', currentMode);
+              console.log('onOpenPreferences function:', typeof onOpenPreferences);
+              console.log('onOpenCollabPreferences function:', typeof onOpenCollabPreferences);
+              if (currentMode === 'solo') {
+                console.log('Calling onOpenPreferences');
+                onOpenPreferences();
+              } else {
+                console.log('Calling onOpenCollabPreferences');
+                onOpenCollabPreferences();
+              }
+            }}
             style={styles.preferencesButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            onPressIn={() => console.log('Settings button press in')}
+            onPressOut={() => console.log('Settings button press out')}
           >
             <Ionicons 
               name="options" 
@@ -124,6 +139,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    position: 'relative',
+    zIndex: 100,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -131,7 +148,7 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 2,
+    elevation: 10,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -140,8 +157,14 @@ const styles = StyleSheet.create({
   },
   preferencesButton: {
     padding: 12,
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
     borderRadius: 12,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   headerCenter: {
     flex: 1,

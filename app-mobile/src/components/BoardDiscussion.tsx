@@ -139,7 +139,7 @@ const mockBoardCards = [
     id: 'board-card-2',
     title: 'Golden Gate Park Trail',
     category: 'Take a Stroll',
-    categoryIcon: TreePine,
+    categoryIcon: 'TreePine',
     image: 'https://images.unsplash.com/photo-1739139106925-230659c867e0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxvdXRkb29yJTIwcGFyayUyMHdhbGtpbmclMjB0cmFpbHxlbnwxfHx8fDE3NTkxNzI1MTJ8MA&ixlib=rb-4.1.0&q=80&w=1080',
     images: [
       'https://images.unsplash.com/photo-1739139106925-230659c867e0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxvdXRkb29yJTIwcGFyayUyMHdhbGtpbmclMjB0cmFpbHxlbnwxfHx8fDE3NTkxNzI1MTJ8MA&ixlib=rb-4.1.0&q=80&w=1080',
@@ -177,7 +177,7 @@ const mockBoardCards = [
     id: 'board-card-3',
     title: 'Farm-to-Table Cooking Class',
     category: 'Fuel Up',
-    categoryIcon: Utensils,
+    categoryIcon: 'Utensils',
     image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb29raW5nJTIwY2xhc3N8ZW58MXx8fHwxNzU5MTcyNTI4fDA&ixlib=rb-4.1.0&q=80&w=1080',
     images: [
       'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb29raW5nJTIwY2xhc3N8ZW58MXx8fHwxNzU5MTcyNTI4fDA&ixlib=rb-4.1.0&q=80&w=1080'

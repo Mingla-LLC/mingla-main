@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { Text, View, TextInput, TouchableOpacity, StyleSheet, ScrollView, Modal } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import SessionsTab from './collaboration/SessionsTab';
+import InvitesTab from './collaboration/InvitesTab';
+import CreateTab from './collaboration/CreateTab';
 
 interface Friend {
   id: string;
   name: string;
+  username?: string;
   avatar?: string;
   status: 'online' | 'offline';
   lastActive?: string;
@@ -32,12 +36,13 @@ interface CollaborationSession {
   pendingParticipants: number;
   totalParticipants: number;
   boardCards: number;
+  admins?: string[];
 }
 
 interface CollaborationModuleProps {
   isOpen: boolean;
   onClose: () => void;
-  currentMode: 'solo' | string; // 'solo' or session name
+  currentMode: 'solo' | string;
   onModeChange: (mode: 'solo' | string) => void;
   preSelectedFriend?: Friend | null;
   boardsSessions?: any[];
@@ -97,35 +102,6 @@ const mockReceivedInvites: CollaborationInvite[] = [
   }
 ];
 
-const mockActiveSessions: CollaborationSession[] = [
-  {
-    id: 'session-1',
-    name: 'Weekend Squad',
-    status: 'active',
-    participants: [mockFriends[0], mockFriends[1]],
-    createdBy: 'me',
-    createdAt: '2 days ago',
-    lastActivity: '1h ago',
-    hasCollabPreferences: true,
-    pendingParticipants: 0,
-    totalParticipants: 3,
-    boardCards: 4
-  },
-  {
-    id: 'session-2',
-    name: 'Dinner Club',
-    status: 'pending',
-    participants: [mockFriends[3]],
-    createdBy: 'me',
-    createdAt: '1 day ago',
-    lastActivity: '5h ago',
-    hasCollabPreferences: false,
-    pendingParticipants: 1,
-    totalParticipants: 2,
-    boardCards: 0
-  }
-];
-
 export default function CollaborationModule({ 
   isOpen, 
   onClose, 
@@ -139,97 +115,30 @@ export default function CollaborationModule({
   availableFriends = []
 }: CollaborationModuleProps) {
   const [activeTab, setActiveTab] = useState<'sessions' | 'invites' | 'create'>('sessions');
-  const [createStep, setCreateStep] = useState<'details' | 'friends' | 'confirm'>('details');
-  const [newSessionName, setNewSessionName] = useState('');
-  const [selectedFriends, setSelectedFriends] = useState<Friend[]>(
-    preSelectedFriend ? [preSelectedFriend] : []
-  );
-  const [showInviteType, setShowInviteType] = useState<'sent' | 'received'>('received');
 
   // Reset create flow when tab changes
   React.useEffect(() => {
     if (activeTab !== 'create') {
-      setCreateStep('details');
-      setNewSessionName('');
-      if (!preSelectedFriend) {
-        setSelectedFriends([]);
-      }
+      // Reset create flow state if needed
     }
-  }, [activeTab, preSelectedFriend]);
+  }, [activeTab]);
 
   // Auto-navigate to create tab if pre-selected friend
   React.useEffect(() => {
     if (preSelectedFriend && isOpen) {
       setActiveTab('create');
-      setSelectedFriends([preSelectedFriend]);
     }
   }, [preSelectedFriend, isOpen]);
 
-  // Update selectedFriends when preSelectedFriend changes
-  React.useEffect(() => {
-    if (preSelectedFriend) {
-      setSelectedFriends(prev => {
-        // Only update if the preSelectedFriend is not already in the selection
-        const isAlreadySelected = prev.some(f => f.id === preSelectedFriend.id);
-        if (!isAlreadySelected) {
-          return [preSelectedFriend, ...prev.filter(f => f.id !== preSelectedFriend.id)];
-        }
-        return prev;
-      });
-    }
-  }, [preSelectedFriend]);
-
-  const handleCreateSession = () => {
-    if (!newSessionName.trim() || selectedFriends.length === 0) return;
-    
-    const newSession = {
-      id: `board-${Date.now()}`,
-      name: newSessionName,
-      type: 'group-hangout',
-      description: `Collaborative session with ${selectedFriends.map(f => f.name).join(', ')}`,
-      participants: [
-        { id: 'you', name: 'You', status: 'online' },
-        ...selectedFriends.map(friend => ({
-          id: friend.id,
-          name: friend.name,
-          status: friend.status || 'offline'
-        }))
-      ],
-      status: 'active',
-      cardsCount: 0,
-      createdAt: 'Just now',
-      unreadMessages: 0,
-      lastActivity: 'Just now',
-      icon: 'Users',
-      gradient: 'from-blue-500 to-indigo-500',
-      creatorId: 'you',
-      admins: ['you'],
-      currentUserId: 'you'
-    };
-    
-    if (onCreateSession) {
-      onCreateSession(newSession);
-    }
-    
-    // Switch to the new session
-    onModeChange(newSessionName);
-    
-    console.log('Creating session:', newSession);
-    onClose();
-  };
-
   const handleAcceptInvite = (inviteId: string) => {
-    // TODO: Implement invite acceptance
     console.log('Accepting invite:', inviteId);
   };
 
   const handleDeclineInvite = (inviteId: string) => {
-    // TODO: Implement invite decline
     console.log('Declining invite:', inviteId);
   };
 
   const handleCancelInvite = (inviteId: string) => {
-    // TODO: Implement invite cancellation
     console.log('Canceling invite:', inviteId);
   };
 
@@ -239,702 +148,144 @@ export default function CollaborationModule({
   };
 
   const handleLeaveSession = (sessionId: string) => {
-    // TODO: Implement leave session logic
     console.log('Leaving session:', sessionId);
     if (currentMode !== 'solo') {
       onModeChange('solo');
     }
   };
 
-  const handleAddFriendToSession = (session: CollaborationSession) => {
-    // Set up for adding friends to existing session
-    setPreSelectedFriend(null);
-    setNewSessionName(session.name + ' (Adding Friends)');
-    setSelectedFriends([]);
-    setCreateStep('friends');
+  const handleCreateSession = (sessionData: any) => {
+    if (onCreateSession) {
+      onCreateSession(sessionData);
+    }
+    
+    // Switch to the new session
+    onModeChange(sessionData.name);
+    console.log('Creating session:', sessionData);
+    onClose();
+  };
+
+  const handleStartCollaboration = () => {
     setActiveTab('create');
   };
 
-  const toggleFriendSelection = (friend: Friend) => {
-    setSelectedFriends(prev => {
-      const isSelected = prev.some(f => f.id === friend.id);
-      if (isSelected) {
-        return prev.filter(f => f.id !== friend.id);
-      } else {
-        return [...prev, friend];
-      }
-    });
-  };
+  // Process sessions data
+  const activeSessions = boardsSessions.filter(board => 
+    board.status === 'active' || board.status === 'voting' || board.status === 'locked'
+  );
+  
+  const mockPendingSessions = [
+    {
+      id: 'pending-mock-1',
+      name: 'Wine & Paint Night',
+      type: 'creative-date',
+      description: 'Waiting for friends to accept invites',
+      participants: [
+        { id: 'you', name: 'You', status: 'accepted' },
+        { id: 'alex', name: 'Alex Rivera', status: 'pending', invitedAt: '2 hours ago' },
+        { id: 'jamie', name: 'Jamie Park', status: 'pending', invitedAt: '1 hour ago' }
+      ],
+      status: 'pending',
+      pendingInvites: 2,
+      cardsCount: 0,
+      createdAt: '3 hours ago',
+      unreadMessages: 0,
+      lastActivity: '3 hours ago',
+      icon: 'Palette',
+      gradient: 'from-purple-500 to-pink-500',
+      creatorId: 'you',
+      admins: ['you'],
+      currentUserId: 'you'
+    }
+  ];
+  
+  const actualPendingBoards = boardsSessions.filter(board => board.status === 'pending');
+  const pendingSessions = [...mockPendingSessions, ...actualPendingBoards];
+
+  const styles = StyleSheet.create({
+    modalContainer: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    modalContent: {
+      backgroundColor: 'white',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      width: '100%',
+      maxHeight: '90%',
+      overflow: 'hidden',
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 24,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f3f4f6',
+    },
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: '#111827',
+    },
+    headerSubtitle: {
+      fontSize: 14,
+      color: '#6b7280',
+      marginTop: 2,
+    },
+    closeButton: {
+      padding: 8,
+      borderRadius: 20,
+    },
+    tabsContainer: {
+      flexDirection: 'row',
+      backgroundColor: '#f9fafb',
+      padding: 4,
+      marginHorizontal: 24,
+      marginTop: 16,
+      borderRadius: 12,
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      alignItems: 'center',
+      position: 'relative',
+    },
+    tabActive: {
+      backgroundColor: 'white',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    tabText: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: '#6b7280',
+    },
+    tabTextActive: {
+      color: '#111827',
+    },
+    notificationDot: {
+      position: 'absolute',
+      top: -2,
+      right: -2,
+      width: 8,
+      height: 8,
+      backgroundColor: '#ef4444',
+      borderRadius: 4,
+    },
+    content: {
+      padding: 24,
+      flex: 1,
+    },
+  });
 
   if (!isOpen) return null;
-
-  const renderSessionsTab = () => {
-    // Convert boards to sessions format - only active/voting/locked boards are active sessions
-    const activeSessions = boardsSessions.filter(board => board.status === 'active' || board.status === 'voting' || board.status === 'locked');
-    
-    // Mock pending sessions for demo purposes (separate from pending boards)
-    const mockPendingSessions = [
-      {
-        id: 'pending-mock-1',
-        name: 'Wine & Paint Night',
-        type: 'creative-date',
-        description: 'Waiting for friends to accept invites',
-        participants: [
-          { id: 'you', name: 'You', status: 'accepted' },
-          { id: 'alex', name: 'Alex Rivera', status: 'pending', invitedAt: '2 hours ago' },
-          { id: 'jamie', name: 'Jamie Park', status: 'pending', invitedAt: '1 hour ago' }
-        ],
-        status: 'pending',
-        pendingInvites: 2,
-        cardsCount: 0,
-        createdAt: '3 hours ago',
-        unreadMessages: 0,
-        lastActivity: '3 hours ago',
-        icon: 'Palette',
-        gradient: 'from-purple-500 to-pink-500',
-        creatorId: 'you',
-        admins: ['you'],
-        currentUserId: 'you'
-      },
-      {
-        id: 'pending-mock-2',
-        name: 'Hiking Adventure Club',
-        type: 'outdoor-fitness',
-        description: 'Setting up for weekend exploration',
-        participants: [
-          { id: 'morgan', name: 'Morgan Lee', status: 'accepted' },
-          { id: 'you', name: 'You', status: 'pending', invitedAt: '6 hours ago' },
-          { id: 'taylor', name: 'Taylor Kim', status: 'pending', invitedAt: '5 hours ago' },
-          { id: 'sam', name: 'Sam Wilson', status: 'accepted' }
-        ],
-        status: 'pending',
-        pendingInvites: 2,
-        cardsCount: 1,
-        createdAt: '8 hours ago',
-        unreadMessages: 2,
-        lastActivity: '2 hours ago',
-        icon: 'Mountain',
-        gradient: 'from-green-500 to-emerald-500',
-        creatorId: 'morgan',
-        admins: ['morgan'],
-        currentUserId: 'you'
-      }
-    ];
-    
-    // Combine actual pending boards with mock pending sessions
-    const actualPendingBoards = boardsSessions.filter(board => board.status === 'pending');
-    const pendingSessions = [...mockPendingSessions, ...actualPendingBoards];
-
-    return (
-      <View style={styles.sessionsContainer}>
-        {/* Current Mode */}
-        <View style={styles.currentModeCard}>
-          <View style={styles.currentModeHeader}>
-            <View>
-              <Text style={styles.currentModeTitle}>Current Mode</Text>
-              <Text style={styles.currentModeDescription}>
-                {currentMode === 'solo' ? 'Solo discovery mode' : `Collaborating in "${currentMode}"`}
-              </Text>
-            </View>
-            <View style={[
-              styles.modeBadge,
-              currentMode === 'solo' ? styles.modeBadgeSolo : styles.modeBadgeCollaboration
-            ]}>
-              <Text style={[
-                styles.modeBadgeText,
-                currentMode === 'solo' ? styles.modeBadgeTextSolo : styles.modeBadgeTextCollaboration
-              ]}>
-                {currentMode === 'solo' ? 'Solo' : 'Collaboration'}
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity 
-            onPress={() => onModeChange('solo')}
-            disabled={currentMode === 'solo'}
-            style={[
-              styles.switchModeButton,
-              currentMode === 'solo' && styles.switchModeButtonDisabled
-            ]}
-          >
-            <Text style={[
-              styles.switchModeButtonText,
-              currentMode === 'solo' && styles.switchModeButtonTextDisabled
-            ]}>
-              {currentMode === 'solo' ? '✓ Solo Mode Active' : 'Switch to Solo Mode →'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Active Sessions */}
-        {activeSessions.length > 0 && (
-          <View>
-            <Text className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <Zap className="w-5 h-5 text-[#eb7825]" />
-              Active Sessions ({activeSessions.length})
-            </Text>
-            <View className="space-y-3">
-              {activeSessions.map((session) => (
-                <View key={session.id} className="bg-white border border-gray-200 rounded-2xl p-4">
-                  <View className="mb-3">
-                    <View className="flex items-center justify-between mb-2">
-                      <Text className="font-semibold text-gray-900">{session.name}</Text>
-                      <View className={`w-3 h-3 rounded-full ${
-                        session.status === 'active' ? 'bg-green-500' : session.status === 'voting' ? 'bg-yellow-500' : 'bg-gray-400'
-                      }`} />
-                    </View>
-                    <View className="flex items-center gap-4 text-sm text-gray-600 mb-2">
-                      <Text>{session.participants.length} people</Text>
-                      <Text>{session.cardsCount} cards</Text>
-                    </View>
-                    <View className="text-[#eb7825] text-xs">
-                      Active {session.lastActivity}
-                    </View>
-                  </View>
-
-                  <View className="mb-4">
-                    <View className="flex items-center gap-2 mb-2">
-                      <Users className="w-4 h-4 text-[#eb7825]" />
-                      <Text className="text-sm font-medium text-gray-700">Collaborating Users</Text>
-                    </View>
-                    <View className="flex flex-wrap gap-3">
-                      {session.participants.slice(0, 5).map((participant, i) => {
-                        const isAdmin = session.admins && session.admins.includes(participant.id);
-                        const isCurrentUser = participant.id === 'you';
-                        return (
-                          <View key={participant.id} className="relative group">
-                            <TouchableOpacity
-                              onClick={() => {
-                                // Handle showing name tooltip - needs state management
-                                console.log('Show name for:', participant.name);
-                              }}
-                              className="relative w-10 h-10 bg-gradient-to-br from-[#eb7825] to-[#d6691f] rounded-full flex items-center justify-center transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-[#eb7825]/50"
-                            >
-                              <Text className="text-white font-bold">
-                                {participant.name[0]}
-                              </Text>
-                              {isAdmin && (
-                                <View className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center">
-                                  <Text className="text-xs">👑</Text>
-                                </View>
-                              )}
-                            </TouchableOpacity>
-                            
-                            {/* Name tooltip - would need state to show/hide */}
-                            <View className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                              {participant.name}
-                              {isAdmin && ' (Admin)'}
-                              {isCurrentUser && ' (You)'}
-                            </View>
-
-                            {/* Kick button for admin - only show if current user is admin and this isn't current user */}
-                            {session.adminId === 'current-user' && !isCurrentUser && (
-                              <TouchableOpacity
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  // Handle kick user - needs function outside this element
-                                  console.log('Kick user:', participant.name);
-                                }}
-                                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 hidden group-hover:flex"
-                              >
-                                <X className="w-3 h-3 text-white" />
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                        );
-                      })}
-                      
-                      {/* Current user avatar */}
-                      <View className="relative group">
-                        <View className="w-10 h-10 bg-gradient-to-br from-[#eb7825] to-[#d6691f] rounded-full flex items-center justify-center ring-2 ring-[#eb7825]/30">
-                          <Text className="text-white font-bold">Y</Text>
-                          {session.admins && session.admins.includes('you') && (
-                            <View className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center">
-                              <Text className="text-xs">👑</Text>
-                            </View>
-                          )}
-                        </View>
-                        <View className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                          You{session.admins && session.admins.includes('you') && ' (Admin)'}
-                        </View>
-                      </View>
-
-                      {session.participants.length > 4 && (
-                        <View className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-                          <Text className="text-gray-600 text-xs font-medium">+{session.participants.length - 4}</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-
-                  <View className="flex gap-2">
-                    <TouchableOpacity 
-                      onClick={() => handleJoinSession(session.id, session.name)}
-                      className={`flex-1 py-2 px-4 rounded-xl font-medium text-sm transition-colors ${
-                        currentMode === session.name
-                          ? 'bg-[#eb7825] text-white'
-                          : 'bg-orange-50 text-[#eb7825] hover:bg-orange-100'
-                      }`}
-                    >
-                      {currentMode === session.name ? 'Current Session' : 'Join Session'}
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      onClick={() => {
-                        if (onNavigateToBoard) {
-                          onNavigateToBoard(session, 'discussion');
-                        }
-                      }}
-                      className="px-3 py-2 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
-                    >
-                      <MessageSquare className="w-4 h-4 text-gray-600" />
-                    </TouchableOpacity>
-                  </View>
-
-                  {!session.hasCollabPreferences && (
-                    <View className="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                      <View className="flex items-center gap-2 text-yellow-700 text-sm">
-                        <AlertCircle className="w-4 h-4" />
-                        <Text>Set preferences for this session - separate from solo mode</Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Pending Sessions */}
-        {pendingSessions.length > 0 && (
-          <View>
-            <Text className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <Timer className="w-5 h-5 text-yellow-600" />
-              Pending Sessions ({pendingSessions.length})
-            </Text>
-            <View className="space-y-3">
-              {pendingSessions.map((session) => (
-                <View key={session.id} className="bg-white border border-gray-200 rounded-2xl p-4">
-                  <View className="flex items-center justify-between mb-3">
-                    <View>
-                      <Text className="font-semibold text-gray-900">{session.name}</Text>
-                      <View className="flex items-center gap-4 text-sm text-gray-600">
-                        <Text>{session.participants.length} members</Text>
-                        <Text>Created {session.createdAt}</Text>
-                      </View>
-                    </View>
-                    <View className="w-3 h-3 rounded-full bg-yellow-500" />
-                  </View>
-
-                  <View className="flex gap-2">
-                    <TouchableOpacity 
-                      onClick={() => handleLeaveSession(session.id)}
-                      className="flex-1 border border-red-200 text-red-600 py-2 px-4 rounded-xl font-medium text-sm hover:bg-red-50 transition-colors"
-                    >
-                      Cancel Session
-                    </TouchableOpacity>
-                    <TouchableOpacity className="px-3 py-2 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
-                      <Users className="w-4 h-4 text-gray-600" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Empty State */}
-        {activeSessions.length === 0 && pendingSessions.length === 0 && (
-          <View className="text-center py-8">
-            <View className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Users className="w-8 h-8 text-gray-400" />
-            </View>
-            <Text className="font-semibold text-gray-900 mb-2">No Active Sessions</Text>
-            <Text className="text-gray-600 mb-4">Start collaborating with friends to discover experiences together</Text>
-            <TouchableOpacity 
-              onClick={() => setActiveTab('create')}
-              className="bg-[#eb7825] text-white py-2 px-6 rounded-xl font-semibold hover:bg-[#d6691f] transition-colors"
-            >
-              Start Collaboration
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderInvitesTab = () => {
-    const sentInvites = mockSentInvites.filter(i => i.status === 'pending');
-    const receivedInvites = mockReceivedInvites.filter(i => i.status === 'pending');
-
-    return (
-      <View className="space-y-4">
-        {/* Invite Type Tabs */}
-        <View className="flex bg-gray-100 rounded-xl p-1">
-          <TouchableOpacity
-            onClick={() => setShowInviteType('received')}
-            className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm transition-all ${
-              showInviteType === 'received'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600'
-            }`}
-          >
-            Received ({receivedInvites.length})
-          </TouchableOpacity>
-          <TouchableOpacity
-            onClick={() => setShowInviteType('sent')}
-            className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm transition-all ${
-              showInviteType === 'sent'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600'
-            }`}
-          >
-            Sent ({sentInvites.length})
-          </TouchableOpacity>
-        </View>
-
-        {/* Received Invites */}
-        {showInviteType === 'received' && (
-          <View className="space-y-3">
-            {receivedInvites.length > 0 ? (
-              receivedInvites.map((invite) => (
-                <View key={invite.id} className="bg-white border border-gray-200 rounded-2xl p-4">
-                  <View className="flex items-center gap-3 mb-3">
-                    <View className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
-                      <Text className="text-white font-semibold">
-                        {invite.fromUser.name[0]}
-                      </Text>
-                    </View>
-                    <View className="flex-1">
-                      <Text className="font-semibold text-gray-900">{invite.sessionName}</Text>
-                      <Text className="text-sm text-gray-600">
-                        Invited by {invite.fromUser.name} • {invite.createdAt}
-                      </Text>
-                    </View>
-                    <View className="w-3 h-3 bg-blue-500 rounded-full" />
-                  </View>
-
-                  <View className="flex gap-2">
-                    <TouchableOpacity 
-                      onClick={() => handleAcceptInvite(invite.id)}
-                      className="flex-1 bg-[#eb7825] text-white py-2 px-4 rounded-xl font-medium text-sm hover:bg-[#d6691f] transition-colors"
-                    >
-                      Accept
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      onClick={() => handleDeclineInvite(invite.id)}
-                      className="flex-1 border border-gray-200 text-gray-700 py-2 px-4 rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors"
-                    >
-                      Decline
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
-            ) : (
-              <View className="text-center py-8">
-                <View className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-3">
-                  <UserCheck className="w-6 h-6 text-gray-400" />
-                </View>
-                <Text className="text-gray-600">No pending invites</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Sent Invites */}
-        {showInviteType === 'sent' && (
-          <View className="space-y-3">
-            {sentInvites.length > 0 ? (
-              sentInvites.map((invite) => (
-                <View key={invite.id} className="bg-white border border-gray-200 rounded-2xl p-4">
-                  <View className="flex items-center gap-3 mb-3">
-                    <View className="w-10 h-10 bg-gradient-to-br from-orange-400 to-pink-500 rounded-full flex items-center justify-center">
-                      <Text className="text-white font-semibold">
-                        {invite.toUser.name[0]}
-                      </Text>
-                    </View>
-                    <View className="flex-1">
-                      <Text className="font-semibold text-gray-900">{invite.sessionName}</Text>
-                      <Text className="text-sm text-gray-600">
-                        Sent to {invite.toUser.name} • {invite.createdAt}
-                      </Text>
-                    </View>
-                    <View className="flex items-center gap-1 text-xs text-gray-500">
-                      <Clock className="w-3 h-3" />
-                      <Text>{invite.expiresAt}</Text>
-                    </View>
-                  </View>
-
-                  <TouchableOpacity 
-                    onClick={() => handleCancelInvite(invite.id)}
-                    className="w-full border border-red-200 text-red-600 py-2 px-4 rounded-xl font-medium text-sm hover:bg-red-50 transition-colors"
-                  >
-                    Cancel Invite
-                  </TouchableOpacity>
-                </View>
-              ))
-            ) : (
-              <View className="text-center py-8">
-                <View className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-3">
-                  <Send className="w-6 h-6 text-gray-400" />
-                </View>
-                <Text className="text-gray-600">No sent invites</Text>
-              </View>
-            )}
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderCreateTab = () => {
-    if (createStep === 'details') {
-      return (
-        <View className="space-y-6">
-          <View>
-            <Text className="font-bold text-gray-900 mb-2">Session Details</Text>
-            <Text className="text-sm text-gray-600 mb-4">
-              Give your collaboration session a memorable name
-            </Text>
-            
-            <View className="space-y-4">
-              <View>
-                <Text style={{ color: '#374151', fontWeight: '500', fontSize: 14, marginBottom: 8 }}>
-                  Session Name
-                </Text>
-                <TextInput
-                  value={newSessionName}
-                  onChangeText={setNewSessionName}
-                  placeholder="e.g., Weekend Adventure Squad"
-                  style={{
-                    width: '100%',
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    borderWidth: 1,
-                    borderColor: '#e5e7eb',
-                    borderRadius: 12,
-                    fontSize: 16,
-                    backgroundColor: 'white'
-                  }}
-                />
-              </View>
-            </View>
-          </View>
-
-          {preSelectedFriend && (
-            <View className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <Text className="font-medium text-blue-900 mb-2">Pre-selected Friend</Text>
-              <View className="flex items-center gap-3">
-                <View className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
-                  <Text className="text-white text-sm font-semibold">
-                    {preSelectedFriend.name[0]}
-                  </Text>
-                </View>
-                <Text className="text-blue-800 font-medium flex-1">{preSelectedFriend.name}</Text>
-                <TouchableOpacity 
-                  onClick={() => {
-                    setSelectedFriends(prev => prev.filter(f => f.id !== preSelectedFriend.id));
-                  }}
-                  className="w-6 h-6 hover:bg-blue-200 rounded-full flex items-center justify-center transition-colors"
-                  title="Remove from selection"
-                >
-                  <X className="w-4 h-4 text-blue-700 hover:text-red-600" />
-                </TouchableOpacity>
-              </View>
-              <Text className="text-xs text-blue-700 mt-2">You can remove this friend or add more friends in the next step</Text>
-            </View>
-          )}
-
-          <TouchableOpacity
-            onClick={() => setCreateStep('friends')}
-            disabled={!newSessionName.trim()}
-            className="w-full bg-[#eb7825] text-white py-3 px-6 rounded-xl font-semibold hover:bg-[#d6691f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Continue
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (createStep === 'friends') {
-      return (
-        <View className="space-y-6">
-          <View className="flex items-center gap-3">
-            <TouchableOpacity 
-              onClick={() => setCreateStep('details')}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-            >
-              <ChevronLeft className="w-5 h-5 text-gray-600" />
-            </TouchableOpacity>
-            <View>
-              <Text className="font-bold text-gray-900">Select Friends</Text>
-              <Text className="text-sm text-gray-600">
-                Choose friends to invite to "{newSessionName}"
-                {preSelectedFriend && " • You can modify your selection below"}
-              </Text>
-            </View>
-          </View>
-
-          {/* Selected Friends */}
-          {selectedFriends.length > 0 && (
-            <View className="bg-orange-50 border border-orange-100 rounded-xl p-4">
-              <Text className="font-medium text-gray-900 mb-3">
-                Selected Friends ({selectedFriends.length})
-              </Text>
-              <View className="flex flex-wrap gap-2">
-                {selectedFriends.map((friend) => (
-                  <View 
-                    key={friend.id}
-                    className="flex items-center gap-2 bg-white border border-orange-200 rounded-full px-3 py-1"
-                  >
-                    <View className="w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
-                      <Text className="text-white text-xs font-semibold">
-                        {friend.name[0]}
-                      </Text>
-                    </View>
-                    <Text className="text-sm font-medium text-gray-700">{friend.name}</Text>
-                    <TouchableOpacity 
-                      onClick={() => toggleFriendSelection(friend)}
-                      className="w-4 h-4 hover:bg-red-100 rounded-full flex items-center justify-center"
-                    >
-                      <X className="w-3 h-3 text-gray-500 hover:text-red-600" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Friends List */}
-          <View className="space-y-2">
-            <Text className="font-medium text-gray-900">Available Friends</Text>
-            {/* Use availableFriends if provided, otherwise fall back to mockFriends */}
-            {(() => {
-              const baseFriends = availableFriends.length > 0 ? availableFriends : mockFriends;
-              const allFriends = [...baseFriends];
-              
-              // If there's a preSelectedFriend and it's not in the base friends, add it to the beginning
-              if (preSelectedFriend && !baseFriends.some(f => f.id === preSelectedFriend.id)) {
-                allFriends.unshift(preSelectedFriend);
-              }
-              
-              return allFriends.map((friend) => {
-                const isSelected = selectedFriends.some(f => f.id === friend.id);
-                const isPreSelected = preSelectedFriend?.id === friend.id;
-                return (
-                  <TouchableOpacity
-                    key={friend.id}
-                    onClick={() => toggleFriendSelection(friend)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
-                      isSelected
-                        ? 'border-[#eb7825] bg-orange-50'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <View className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
-                      <Text className="text-white font-semibold">
-                        {friend.name[0]}
-                      </Text>
-                    </View>
-                    <View className="flex-1 text-left">
-                      <View className="flex items-center gap-2">
-                        <Text className="font-medium text-gray-900">{friend.name}</Text>
-                        {isPreSelected && (
-                          <Text className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                            Pre-selected
-                          </Text>
-                        )}
-                      </View>
-                      <View className="flex items-center gap-2 text-sm text-gray-600">
-                        <Text>@{(friend.username || friend.name.toLowerCase().replace(' ', ''))}</Text>
-                      </View>
-                    </View>
-                    {isSelected && (
-                      <Check className="w-5 h-5 text-[#eb7825]" />
-                    )}
-                  </TouchableOpacity>
-                );
-              });
-            })()}
-          </View>
-
-          <TouchableOpacity
-            onClick={() => setCreateStep('confirm')}
-            disabled={selectedFriends.length === 0}
-            className="w-full bg-[#eb7825] text-white py-3 px-6 rounded-xl font-semibold hover:bg-[#d6691f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Continue ({selectedFriends.length} selected)
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (createStep === 'confirm') {
-      return (
-        <View className="space-y-6">
-          <View className="flex items-center gap-3">
-            <TouchableOpacity 
-              onClick={() => setCreateStep('friends')}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-            >
-              <ChevronLeft className="w-5 h-5 text-gray-600" />
-            </TouchableOpacity>
-            <View>
-              <Text className="font-bold text-gray-900">Confirm & Send</Text>
-              <Text className="text-sm text-gray-600">
-                Review your collaboration session details
-              </Text>
-            </View>
-          </View>
-
-          <View className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4">
-            <View>
-              <Text className="font-semibold text-gray-900 mb-1">Session Name</Text>
-              <Text className="text-gray-700">{newSessionName}</Text>
-            </View>
-
-            <View>
-              <Text className="font-semibold text-gray-900 mb-3">
-                Inviting {selectedFriends.length} friend{selectedFriends.length !== 1 ? 's' : ''}
-              </Text>
-              <View className="space-y-2">
-                {selectedFriends.map((friend) => (
-                  <View key={friend.id} className="flex items-center gap-3">
-                    <View className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
-                      <Text className="text-white text-sm font-semibold">
-                        {friend.name[0]}
-                      </Text>
-                    </View>
-                    <Text className="font-medium text-gray-700">{friend.name}</Text>
-                    <View className={`w-2 h-2 rounded-full ${
-                      friend.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
-                    }`} />
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-
-          <View className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <View className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-              <View className="text-sm text-blue-800">
-                <Text className="font-medium mb-1">Next Steps</Text>
-                <Text>
-                  Once all friends accept, you'll need to set collaboration preferences together before you can start swiping.
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            onClick={handleCreateSession}
-            className="w-full bg-[#eb7825] text-white py-3 px-6 rounded-xl font-semibold hover:bg-[#d6691f] transition-colors"
-          >
-            Send Invites
-          </TouchableOpacity>
-        </View>
-      );
-    }
-  };
 
   return (
     <Modal
@@ -945,228 +296,102 @@ export default function CollaborationModule({
     >
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>Collaboration</Text>
-            <Text style={styles.headerSubtitle}>Discover experiences together</Text>
+          {/* Header */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.headerTitle}>Collaboration</Text>
+              <Text style={styles.headerSubtitle}>Discover experiences together</Text>
+            </View>
+            <TouchableOpacity 
+              onPress={onClose}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={20} color="#6b7280" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity 
-            onPress={onClose}
-            style={styles.closeButton}
-          >
-            <Ionicons name="close" size={20} color="#6b7280" />
-          </TouchableOpacity>
-        </View>
 
-        {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity
-            onPress={() => setActiveTab('sessions')}
-            style={[
-              styles.tab,
-              activeTab === 'sessions' && styles.tabActive
-            ]}
-          >
-            <Text style={[
-              styles.tabText,
-              activeTab === 'sessions' && styles.tabTextActive
-            ]}>
-              Sessions
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setActiveTab('invites')}
-            style={[
-              styles.tab,
-              activeTab === 'invites' && styles.tabActive
-            ]}
-          >
-            <Text style={[
-              styles.tabText,
-              activeTab === 'invites' && styles.tabTextActive
-            ]}>
-              Invites
-            </Text>
-            {(mockReceivedInvites.length > 0 || mockSentInvites.length > 0) && (
-              <View style={styles.notificationDot} />
+          {/* Tabs */}
+          <View style={styles.tabsContainer}>
+            <TouchableOpacity
+              onPress={() => setActiveTab('sessions')}
+              style={[
+                styles.tab,
+                activeTab === 'sessions' && styles.tabActive
+              ]}
+            >
+              <Text style={[
+                styles.tabText,
+                activeTab === 'sessions' && styles.tabTextActive
+              ]}>
+                Sessions
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setActiveTab('invites')}
+              style={[
+                styles.tab,
+                activeTab === 'invites' && styles.tabActive
+              ]}
+            >
+              <Text style={[
+                styles.tabText,
+                activeTab === 'invites' && styles.tabTextActive
+              ]}>
+                Invites
+              </Text>
+              {(mockReceivedInvites.length > 0 || mockSentInvites.length > 0) && (
+                <View style={styles.notificationDot} />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setActiveTab('create')}
+              style={[
+                styles.tab,
+                activeTab === 'create' && styles.tabActive
+              ]}
+            >
+              <Text style={[
+                styles.tabText,
+                activeTab === 'create' && styles.tabTextActive
+              ]}>
+                Create
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Content */}
+          <ScrollView style={styles.content}>
+            {activeTab === 'sessions' && (
+              <SessionsTab
+                currentMode={currentMode}
+                onModeChange={onModeChange}
+                onJoinSession={handleJoinSession}
+                onLeaveSession={handleLeaveSession}
+                onNavigateToBoard={onNavigateToBoard}
+                onStartCollaboration={handleStartCollaboration}
+                activeSessions={activeSessions}
+                pendingSessions={pendingSessions}
+              />
             )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setActiveTab('create')}
-            style={[
-              styles.tab,
-              activeTab === 'create' && styles.tabActive
-            ]}
-          >
-            <Text style={[
-              styles.tabText,
-              activeTab === 'create' && styles.tabTextActive
-            ]}>
-              Create
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Content */}
-        <ScrollView style={styles.content}>
-          {activeTab === 'sessions' && renderSessionsTab()}
-          {activeTab === 'invites' && renderInvitesTab()}
-          {activeTab === 'create' && renderCreateTab()}
-        </ScrollView>
+            {activeTab === 'invites' && (
+              <InvitesTab
+                sentInvites={mockSentInvites}
+                receivedInvites={mockReceivedInvites}
+                onAcceptInvite={handleAcceptInvite}
+                onDeclineInvite={handleDeclineInvite}
+                onCancelInvite={handleCancelInvite}
+              />
+            )}
+            {activeTab === 'create' && (
+              <CreateTab
+                preSelectedFriend={preSelectedFriend}
+                availableFriends={availableFriends}
+                onCreateSession={handleCreateSession}
+              />
+            )}
+          </ScrollView>
         </View>
       </View>
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    width: '100%',
-    maxHeight: '90%',
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  closeButton: {
-    padding: 8,
-    borderRadius: 20,
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#f9fafb',
-    padding: 4,
-    marginHorizontal: 24,
-    marginTop: 16,
-    borderRadius: 12,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  tabActive: {
-    backgroundColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6b7280',
-  },
-  tabTextActive: {
-    color: '#111827',
-  },
-  notificationDot: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 8,
-    height: 8,
-    backgroundColor: '#ef4444',
-    borderRadius: 4,
-  },
-  content: {
-    padding: 24,
-    flex: 1,
-  },
-  sessionsContainer: {
-    gap: 24,
-  },
-  currentModeCard: {
-    backgroundColor: '#fef3e2',
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-    borderRadius: 16,
-    padding: 16,
-  },
-  currentModeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  currentModeTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  currentModeDescription: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  modeBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  modeBadgeSolo: {
-    backgroundColor: '#dbeafe',
-  },
-  modeBadgeCollaboration: {
-    backgroundColor: '#eb7825',
-  },
-  modeBadgeText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  modeBadgeTextSolo: {
-    color: '#1d4ed8',
-  },
-  modeBadgeTextCollaboration: {
-    color: 'white',
-  },
-  switchModeButton: {
-    marginTop: 12,
-    width: '100%',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    alignItems: 'center',
-  },
-  switchModeButtonDisabled: {
-    backgroundColor: '#f3f4f6',
-  },
-  switchModeButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  switchModeButtonTextDisabled: {
-    color: '#9ca3af',
-  },
-});
