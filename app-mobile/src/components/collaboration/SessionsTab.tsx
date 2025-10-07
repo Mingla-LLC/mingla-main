@@ -38,96 +38,174 @@ interface SessionsTabProps {
   pendingSessions: CollaborationSession[];
 }
 
-const SessionsTab = ({
-  currentMode,
-  onModeChange,
-  onJoinSession,
-  onLeaveSession,
-  onNavigateToBoard,
-  onStartCollaboration,
-  activeSessions,
-  pendingSessions
-}: SessionsTabProps) => {
-  const styles = StyleSheet.create({
+// Move styles outside the component
+const styles = StyleSheet.create({
     sessionsContainer: {
-      gap: 24,
+      gap: 16,
     },
-    currentModeCard: {
-      backgroundColor: '#fef3e2',
-      borderWidth: 1,
-      borderColor: '#fed7aa',
-      borderRadius: 16,
+    collaboratingUsersSection: {
+      backgroundColor: 'white',
+      borderRadius: 12,
       padding: 16,
+      marginBottom: 16,
     },
-    currentModeHeader: {
+    collaboratingUsersHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      gap: 8,
+      marginBottom: 12,
     },
-    currentModeTitle: {
+    collaboratingUsersTitle: {
       fontSize: 16,
       fontWeight: '600',
       color: '#111827',
     },
-    currentModeDescription: {
-      fontSize: 14,
-      color: '#6b7280',
-      marginTop: 2,
+    avatarsContainer: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 16,
     },
-    modeBadge: {
-      paddingHorizontal: 12,
-      paddingVertical: 4,
-      borderRadius: 12,
-    },
-    modeBadgeSolo: {
-      backgroundColor: '#dbeafe',
-    },
-    modeBadgeCollaboration: {
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       backgroundColor: '#eb7825',
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
     },
-    modeBadgeText: {
-      fontSize: 12,
-      fontWeight: '500',
-    },
-    modeBadgeTextSolo: {
-      color: '#1d4ed8',
-    },
-    modeBadgeTextCollaboration: {
+    avatarText: {
       color: 'white',
+      fontSize: 16,
+      fontWeight: '600',
     },
-    switchModeButton: {
-      marginTop: 12,
-      width: '100%',
-      paddingVertical: 8,
+    avatarBadge: {
+      position: 'absolute',
+      top: -2,
+      right: -2,
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: '#fbbf24',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    joinSessionContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    joinSessionButton: {
+      flex: 1,
+      backgroundColor: '#eb7825',
+      paddingVertical: 12,
       paddingHorizontal: 16,
-      borderRadius: 12,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    joinSessionButtonText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    chatButton: {
+      width: 40,
+      height: 40,
       backgroundColor: 'white',
       borderWidth: 1,
       borderColor: '#e5e7eb',
+      borderRadius: 8,
       alignItems: 'center',
+      justifyContent: 'center',
     },
-    switchModeButtonDisabled: {
-      backgroundColor: '#f3f4f6',
+    infoBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#fef3e2',
+      padding: 12,
+      borderRadius: 8,
+      marginBottom: 16,
+      gap: 8,
     },
-    switchModeButtonText: {
+    infoBannerText: {
+      flex: 1,
       fontSize: 14,
-      fontWeight: '500',
-      color: '#374151',
+      color: '#d97706',
     },
-    switchModeButtonTextDisabled: {
-      color: '#9ca3af',
-    },
-    activeSessionsTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: '#111827',
-      marginBottom: 12,
+    pendingSessionsHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
+      marginBottom: 12,
     },
-    sessionsList: {
+    pendingSessionsTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: '#111827',
+    },
+    pendingSessionsList: {
       gap: 12,
+    },
+    pendingSessionCard: {
+      backgroundColor: 'white',
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: '#e5e7eb',
+    },
+    pendingSessionHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    pendingSessionInfo: {
+      flex: 1,
+    },
+    pendingSessionName: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#111827',
+      marginBottom: 4,
+    },
+    pendingSessionDetails: {
+      fontSize: 14,
+      color: '#6b7280',
+    },
+    pendingSessionNotification: {
+      marginLeft: 8,
+    },
+    notificationDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: '#fbbf24',
+    },
+    pendingSessionActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    cancelButton: {
+      flex: 1,
+      backgroundColor: '#ef4444',
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    cancelButtonText: {
+      color: 'white',
+      fontSize: 14,
+      fontWeight: '500',
+    },
+    membersButton: {
+      width: 40,
+      height: 40,
+      backgroundColor: '#f3f4f6',
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     emptyState: {
       alignItems: 'center',
@@ -156,7 +234,7 @@ const SessionsTab = ({
     },
     startCollaborationButton: {
       backgroundColor: '#eb7825',
-      paddingVertical: 8,
+      paddingVertical: 12,
       paddingHorizontal: 24,
       borderRadius: 12,
     },
@@ -165,88 +243,77 @@ const SessionsTab = ({
       fontSize: 16,
       fontWeight: '600',
     },
-    pendingSessionsTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: '#111827',
-      marginBottom: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    pendingSessionsList: {
-      gap: 12,
-    },
   });
+
+const SessionsTab = ({
+  currentMode,
+  onModeChange,
+  onJoinSession,
+  onLeaveSession,
+  onNavigateToBoard,
+  onStartCollaboration,
+  activeSessions,
+  pendingSessions
+}: SessionsTabProps) => {
+  // Debug logging
+  console.log('SessionsTab - Active sessions:', activeSessions.length, activeSessions);
+  console.log('SessionsTab - Pending sessions:', pendingSessions.length, pendingSessions);
 
   return (
     <View style={styles.sessionsContainer}>
-      {/* Current Mode */}
-      <View style={styles.currentModeCard}>
-        <View style={styles.currentModeHeader}>
-          <View>
-            <Text style={styles.currentModeTitle}>Current Mode</Text>
-            <Text style={styles.currentModeDescription}>
-              {currentMode === 'solo' ? 'Solo discovery mode' : `Collaborating in "${currentMode}"`}
-            </Text>
+      {/* Debug: Add a visible indicator */}
+      <Text style={{color: 'red', fontSize: 12, marginBottom: 8}}>SessionsTab Content Loaded</Text>
+      {/* Collaborating Users Section */}
+      <View style={styles.collaboratingUsersSection}>
+        <View style={styles.collaboratingUsersHeader}>
+          <Ionicons name="people" size={20} color="#6b7280" />
+          <Text style={styles.collaboratingUsersTitle}>Collaborating Users</Text>
+        </View>
+        
+        <View style={styles.avatarsContainer}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>Y</Text>
+            <View style={styles.avatarBadge}>
+              <Ionicons name="people" size={8} color="white" />
+            </View>
           </View>
-          <View style={[
-            styles.modeBadge,
-            currentMode === 'solo' ? styles.modeBadgeSolo : styles.modeBadgeCollaboration
-          ]}>
-            <Text style={[
-              styles.modeBadgeText,
-              currentMode === 'solo' ? styles.modeBadgeTextSolo : styles.modeBadgeTextCollaboration
-            ]}>
-              {currentMode === 'solo' ? 'Solo' : 'Collaboration'}
-            </Text>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>M</Text>
+          </View>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>R</Text>
+          </View>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>Y</Text>
+            <View style={styles.avatarBadge}>
+              <Ionicons name="people" size={8} color="white" />
+            </View>
           </View>
         </View>
-        <TouchableOpacity 
-          onPress={() => onModeChange('solo')}
-          disabled={currentMode === 'solo'}
-          style={[
-            styles.switchModeButton,
-            currentMode === 'solo' && styles.switchModeButtonDisabled
-          ]}
-        >
-          <Text style={[
-            styles.switchModeButtonText,
-            currentMode === 'solo' && styles.switchModeButtonTextDisabled
-          ]}>
-            {currentMode === 'solo' ? '✓ Solo Mode Active' : 'Switch to Solo Mode →'}
-          </Text>
-        </TouchableOpacity>
+        
+        <View style={styles.joinSessionContainer}>
+          <TouchableOpacity style={styles.joinSessionButton}>
+            <Text style={styles.joinSessionButtonText}>Join Session</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.chatButton}>
+            <Ionicons name="chatbubble" size={20} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Active Sessions */}
-      {activeSessions.length > 0 && (
-        <View>
-          <Text style={styles.activeSessionsTitle}>
-            <Ionicons name="flash" size={20} color="#eb7825" />
-            Active Sessions ({activeSessions.length})
-          </Text>
-          <View style={styles.sessionsList}>
-            {activeSessions.map((session) => (
-              <SessionCard
-                key={session.id}
-                session={session}
-                currentMode={currentMode}
-                onJoinSession={onJoinSession}
-                onNavigateToBoard={onNavigateToBoard}
-              />
-            ))}
-          </View>
-        </View>
-      )}
+      {/* Information Banner */}
+      <View style={styles.infoBanner}>
+        <Ionicons name="information-circle" size={16} color="#d97706" />
+        <Text style={styles.infoBannerText}>Set preferences for this session - separate from solo mode</Text>
+      </View>
 
       {/* Pending Sessions */}
       {pendingSessions.length > 0 && (
         <View>
-          <Text style={styles.pendingSessionsTitle}>
+          <View style={styles.pendingSessionsHeader}>
             <Ionicons name="time" size={20} color="#d97706" />
-            Pending Sessions ({pendingSessions.length})
-          </Text>
+            <Text style={styles.pendingSessionsTitle}>Pending Sessions ({pendingSessions.length})</Text>
+          </View>
           <View style={styles.pendingSessionsList}>
             {pendingSessions.map((session) => (
               <PendingSessionCard
@@ -279,16 +346,36 @@ const SessionsTab = ({
   );
 };
 
-// SessionCard component would be imported from a separate file
-const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }: any) => {
-  // This would be a separate component file
-  return null;
-};
 
-// PendingSessionCard component would be imported from a separate file  
+// PendingSessionCard component
 const PendingSessionCard = ({ session, onLeaveSession }: any) => {
-  // This would be a separate component file
-  return null;
+  return (
+    <View style={styles.pendingSessionCard}>
+      <View style={styles.pendingSessionHeader}>
+        <View style={styles.pendingSessionInfo}>
+          <Text style={styles.pendingSessionName}>{session.name}</Text>
+          <Text style={styles.pendingSessionDetails}>
+            {session.participants?.length || 0} members • Created {session.createdAt || '3 hours ago'}
+          </Text>
+        </View>
+        <View style={styles.pendingSessionNotification}>
+          <View style={styles.notificationDot} />
+        </View>
+      </View>
+      
+      <View style={styles.pendingSessionActions}>
+        <TouchableOpacity 
+          style={styles.cancelButton}
+          onPress={() => onLeaveSession(session.id)}
+        >
+          <Text style={styles.cancelButtonText}>Cancel Session</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.membersButton}>
+          <Ionicons name="people" size={16} color="#6b7280" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 };
 
 export default SessionsTab;

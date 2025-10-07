@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import AccountSettings from '../src/components/AccountSettings';
+import AccountSettings from '../src/components/profile/AccountSettings';
 import ActivityPage from '../src/components/ActivityPage';
 import { useAppHandlers } from '../src/components/AppHandlers';
 import { useAppState } from '../src/components/AppStateManager';
@@ -13,12 +13,12 @@ import HomePage from '../src/components/HomePage';
 import NotificationSystem from '../src/components/NotificationSystem';
 import OnboardingFlow from '../src/components/OnboardingFlow';
 import PreferencesSheet from '../src/components/PreferencesSheet';
-import PrivacyPolicy from '../src/components/PrivacyPolicy';
+import PrivacyPolicy from '../src/components/profile/PrivacyPolicy';
 import ProfilePage from '../src/components/ProfilePage';
-import ProfileSettings from '../src/components/ProfileSettings';
+import ProfileSettings from '../src/components/profile/ProfileSettings';
 import ShareModal from '../src/components/ShareModal';
 import SignInPage from '../src/components/SignInPage';
-import TermsOfService from '../src/components/TermsOfService';
+import TermsOfService from '../src/components/profile/TermsOfService';
 import { formatCurrency } from '../src/components/utils/formatters';
 
 
@@ -623,6 +623,7 @@ export default function App() {
               });
             }}
             removedCardIds={removedCardIds}
+            onResetCards={() => setRemovedCardIds([])}
             generateNewMockCard={generateNewMockCard}
             onboardingData={onboardingData}
           />

@@ -21,7 +21,7 @@ const experienceTypes: ExperienceType[] = [
   { id: 'romantic', label: 'Romantic', icon: 'heart' },
   { id: 'friendly', label: 'Friendly', icon: 'people' },
   { id: 'groupFun', label: 'Group Fun', icon: 'people' },
-  { id: 'business', label: 'Business', icon: 'target' }
+  { id: 'business', label: 'Business', icon: 'briefcase' }
 ];
 
 const budgetPresets = [
@@ -32,15 +32,15 @@ const budgetPresets = [
 ];
 
 const categories: Category[] = [
-  { id: 'stroll', label: 'Take a Stroll', description: 'Parks, neighborhoods, scenic walks' },
+  { id: 'stroll', label: 'Take a Stroll', emoji: '🚶‍♀️🌳', description: 'Parks, neighborhoods, scenic walks' },
   { id: 'sipChill', label: 'Sip & Chill', emoji: '🍹☕🍷', description: 'Cafes, bars, lounges' },
-  { id: 'casualEats', label: 'Casual Eats', description: 'Food trucks, casual dining, markets' },
-  { id: 'screenRelax', label: 'Screen & Relax', description: 'Movies, shows, gaming' },
-  { id: 'creative', label: 'Creative & Hands-On', description: 'Art classes, workshops, DIY' },
-  { id: 'playMove', label: 'Play & Move', description: 'Sports, games, active fun' },
-  { id: 'diningExp', label: 'Dining Experiences', description: 'Fine dining, food tours, tastings' },
-  { id: 'wellness', label: 'Wellness Dates', description: 'Spa, yoga, meditation, nature' },
-  { id: 'freestyle', label: 'Freestyle', description: 'Unique, spontaneous experiences' }
+  { id: 'casualEats', label: 'Casual Eats', emoji: '🍔🌮🍕', description: 'Food trucks, casual dining, markets' },
+  { id: 'screenRelax', label: 'Screen & Relax', emoji: '🎬🎮📺', description: 'Movies, shows, gaming' },
+  { id: 'creative', label: 'Creative & Hands-On', emoji: '🎨✂️🖌️', description: 'Art classes, workshops, DIY' },
+  { id: 'playMove', label: 'Play & Move', emoji: '⚽🏃‍♀️🎾', description: 'Sports, games, active fun' },
+  { id: 'diningExp', label: 'Dining Experiences', emoji: '🍽️🍷🥂', description: 'Fine dining, food tours, tastings' },
+  { id: 'wellness', label: 'Wellness Dates', emoji: '🧘‍♀️🌸💆‍♀️', description: 'Spa, yoga, meditation, nature' },
+  { id: 'freestyle', label: 'Freestyle', emoji: '✨🎲🎪', description: 'Unique, spontaneous experiences' }
 ];
 
 const travelModes = [
@@ -59,9 +59,13 @@ const timeSlots = [
 interface PreferencesSheetProps {
   onClose?: () => void;
   onSave?: (preferences: any) => void;
+  accountPreferences?: {
+    currency: string;
+    measurementSystem: 'Metric' | 'Imperial';
+  };
 }
 
-export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetProps) {
+export default function PreferencesSheet({ onClose, onSave, accountPreferences }: PreferencesSheetProps) {
   const [selectedExperiences, setSelectedExperiences] = useState<string[]>([]);
   const [budgetMin, setBudgetMin] = useState<number | ''>('');
   const [budgetMax, setBudgetMax] = useState<number | ''>('');
@@ -250,6 +254,7 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
                   ]}
                 >
                   <View style={styles.categoryHeader}>
+                    <Text style={styles.categoryEmoji}>{category.emoji}</Text>
                     <Text style={[
                       styles.categoryLabel,
                       isSelected ? styles.categoryLabelSelected : styles.categoryLabelDefault
@@ -273,10 +278,10 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
           </View>
           <View style={styles.dateOptionsGrid}>
             {[
-              { id: 'now', label: 'Now' },
-              { id: 'today', label: 'Today' },
-              { id: 'weekend', label: 'This Weekend' },
-              { id: 'pick', label: 'Pick a Date' }
+              { id: 'now', label: 'Now', icon: '⚡', description: 'Right away' },
+              { id: 'today', label: 'Today', icon: '📅', description: 'This evening' },
+              { id: 'weekend', label: 'This Weekend', icon: '🎉', description: 'Fri-Sun' },
+              { id: 'pick', label: 'Pick a Date', icon: '📆', description: 'Custom date' }
             ].map((option) => (
               <TouchableOpacity
                 key={option.id}
@@ -286,11 +291,18 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
                   dateOption === option.id ? styles.dateOptionButtonSelected : styles.dateOptionButtonDefault
                 ]}
               >
+                <Text style={styles.dateOptionIcon}>{option.icon}</Text>
                 <Text style={[
                   styles.dateOptionText,
                   dateOption === option.id ? styles.dateOptionTextSelected : styles.dateOptionTextDefault
                 ]}>
                   {option.label}
+                </Text>
+                <Text style={[
+                  styles.dateOptionDescription,
+                  dateOption === option.id ? styles.dateOptionDescriptionSelected : styles.dateOptionDescriptionDefault
+                ]}>
+                  {option.description}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -309,16 +321,39 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
 
           {/* Pick a Date */}
           {dateOption === 'pick' && (
-            <View>
+            <View style={styles.customDateContainer}>
               <Text style={styles.inputLabel}>Select Date</Text>
-              <View style={styles.inputContainer}>
+              <View style={styles.dateInputContainer}>
                 <Ionicons name="calendar" size={20} color="#9ca3af" style={styles.inputIcon} />
                 <TextInput
                   value={selectedDate}
                   onChangeText={setSelectedDate}
                   style={styles.dateInput}
                   placeholder="YYYY-MM-DD"
+                  keyboardType="numeric"
                 />
+              </View>
+              <View style={styles.dateSuggestions}>
+                <Text style={styles.suggestionLabel}>Quick suggestions:</Text>
+                <View style={styles.suggestionButtons}>
+                  {[
+                    { label: 'Tomorrow', days: 1 },
+                    { label: 'Next Week', days: 7 },
+                    { label: 'Next Month', days: 30 }
+                  ].map((suggestion) => (
+                    <TouchableOpacity
+                      key={suggestion.label}
+                      onPress={() => {
+                        const futureDate = new Date();
+                        futureDate.setDate(futureDate.getDate() + suggestion.days);
+                        setSelectedDate(futureDate.toISOString().split('T')[0]);
+                      }}
+                      style={styles.suggestionButton}
+                    >
+                      <Text style={styles.suggestionButtonText}>{suggestion.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
             </View>
           )}
@@ -332,44 +367,54 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
             </View>
             
             <View style={styles.timeContainer}>
-              <View>
-                <Text style={styles.inputLabel}>Quick Select</Text>
-                <View style={styles.timeOptionsGrid}>
-                  {(dateOption === 'today' 
-                    ? ['09:00', '12:00', '15:00', '18:00', '21:00']
-                    : dateOption === 'weekend'
-                    ? ['10:00', '14:00', '17:00', '19:00', '22:00']
-                    : ['09:00', '12:00', '15:00', '18:00', '21:00']
-                  ).map((time) => (
-                    <TouchableOpacity
-                      key={time}
-                      onPress={() => setExactTime(time)}
-                      style={[
-                        styles.timeOptionButton,
-                        exactTime === time ? styles.timeOptionButtonSelected : styles.timeOptionButtonDefault
-                      ]}
-                    >
-                      <Text style={[
-                        styles.timeOptionText,
-                        exactTime === time ? styles.timeOptionTextSelected : styles.timeOptionTextDefault
-                      ]}>
-                        {time}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-              
-              <View>
+              <View style={styles.customTimeContainer}>
                 <Text style={styles.inputLabel}>Custom Time</Text>
-                <View style={styles.inputContainer}>
+                <View style={styles.timeInputContainer}>
                   <Ionicons name="time" size={20} color="#9ca3af" style={styles.inputIcon} />
                   <TextInput
                     value={exactTime}
                     onChangeText={setExactTime}
                     style={styles.timeInput}
-                    placeholder="Enter custom time"
+                    placeholder="HH:MM"
+                    keyboardType="numeric"
+                    maxLength={5}
                   />
+                </View>
+                
+                <View style={styles.timeSuggestions}>
+                  <Text style={styles.suggestionLabel}>Popular times:</Text>
+                  <View style={styles.timeSuggestionButtons}>
+                    {[
+                      { time: '08:00', label: 'Early Morning' },
+                      { time: '11:00', label: 'Late Morning' },
+                      { time: '13:00', label: 'Afternoon' },
+                      { time: '16:00', label: 'Late Afternoon' },
+                      { time: '20:00', label: 'Evening' },
+                      { time: '23:00', label: 'Late Night' }
+                    ].map((suggestion) => (
+                      <TouchableOpacity
+                        key={suggestion.time}
+                        onPress={() => setExactTime(suggestion.time)}
+                        style={[
+                          styles.timeSuggestionButton,
+                          exactTime === suggestion.time ? styles.timeSuggestionButtonSelected : styles.timeSuggestionButtonDefault
+                        ]}
+                      >
+                        <Text style={[
+                          styles.timeSuggestionButtonText,
+                          exactTime === suggestion.time ? styles.timeSuggestionButtonTextSelected : styles.timeSuggestionButtonTextDefault
+                        ]}>
+                          {suggestion.time}
+                        </Text>
+                        <Text style={[
+                          styles.timeSuggestionButtonLabel,
+                          exactTime === suggestion.time ? styles.timeSuggestionButtonLabelSelected : styles.timeSuggestionButtonLabelDefault
+                        ]}>
+                          {suggestion.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
               </View>
 
@@ -406,9 +451,7 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
                   )}
                 </View>
                 <Text style={styles.travelModeIcon}>{mode.icon}</Text>
-                <View>
-                  <Text style={styles.travelModeLabel}>{mode.label}</Text>
-                </View>
+                <Text style={styles.travelModeLabel}>{mode.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -450,7 +493,7 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
             </TouchableOpacity>
           </View>
           {constraintType === 'time' ? (
-            <View>
+            <View style={styles.constraintInputContainer}>
               <Text style={styles.inputLabel}>Keep it under X minutes</Text>
               <TextInput
                 value={timeConstraint?.toString() || ''}
@@ -461,7 +504,7 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
               />
             </View>
           ) : (
-            <View>
+            <View style={styles.constraintInputContainer}>
               <Text style={styles.inputLabel}>Keep it within X miles</Text>
               <TextInput
                 value={distanceConstraint?.toString() || ''}
@@ -512,12 +555,14 @@ export default function PreferencesSheet({ onClose, onSave }: PreferencesSheetPr
               </TouchableOpacity>
             </View>
             {useLocation === 'search' && (
-              <TextInput
-                value={searchLocation}
-                onChangeText={setSearchLocation}
-                style={styles.searchLocationInput}
-                placeholder="Enter address or place name..."
-              />
+              <View style={styles.searchLocationContainer}>
+                <TextInput
+                  value={searchLocation}
+                  onChangeText={setSearchLocation}
+                  style={styles.searchLocationInput}
+                  placeholder="Enter address or place name..."
+                />
+              </View>
             )}
           </View>
         </View>
@@ -703,10 +748,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   categoryCard: {
-    width: '48%',
+    width: '100%',
     padding: 16,
     borderRadius: 12,
     borderWidth: 2,
+    marginBottom: 12,
   },
   categoryCardSelected: {
     borderColor: '#eb7825',
@@ -719,11 +765,18 @@ const styles = StyleSheet.create({
   categoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
     marginBottom: 8,
   },
+  categoryEmoji: {
+    fontSize: 24,
+    marginRight: 8,
+  },
   categoryLabel: {
+    fontSize: 16,
     fontWeight: '500',
+    flex: 1,
+    flexWrap: 'wrap',
   },
   categoryLabelSelected: {
     color: '#ea580c',
@@ -738,16 +791,18 @@ const styles = StyleSheet.create({
   dateOptionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 12,
     marginBottom: 16,
   },
   dateOptionButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: 'center',
     minWidth: '22%',
+    minHeight: 80,
+    justifyContent: 'center',
   },
   dateOptionButtonSelected: {
     backgroundColor: '#eb7825',
@@ -763,6 +818,60 @@ const styles = StyleSheet.create({
   },
   dateOptionTextDefault: {
     color: '#374151',
+  },
+  dateOptionIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  dateOptionDescription: {
+    fontSize: 12,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  dateOptionDescriptionSelected: {
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  dateOptionDescriptionDefault: {
+    color: '#6b7280',
+  },
+  customDateContainer: {
+    marginTop: 16,
+  },
+  dateInputContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  dateSuggestions: {
+    backgroundColor: '#f8f9fa',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  suggestionLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  suggestionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  suggestionButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+  },
+  suggestionButtonText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '500',
   },
   weekendInfo: {
     backgroundColor: '#fef3e2',
@@ -804,38 +913,64 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
   },
   timeContainer: {
-    gap: 16,
+    gap: 20,
   },
-  timeOptionsGrid: {
+  customTimeContainer: {
+    marginTop: 16,
+  },
+  timeInputContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  timeSuggestions: {
+    backgroundColor: '#f8f9fa',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  timeSuggestionButtons: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 12,
   },
-  timeOptionButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+  timeSuggestionButton: {
+    flex: 1,
+    minWidth: '30%',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 8,
-    borderWidth: 2,
+    borderWidth: 1,
     alignItems: 'center',
-    minWidth: '18%',
   },
-  timeOptionButtonSelected: {
+  timeSuggestionButtonSelected: {
+    backgroundColor: '#eb7825',
     borderColor: '#eb7825',
-    backgroundColor: '#fef3e2',
   },
-  timeOptionButtonDefault: {
-    borderColor: '#e5e7eb',
+  timeSuggestionButtonDefault: {
     backgroundColor: 'white',
+    borderColor: '#d1d5db',
   },
-  timeOptionText: {
-    fontWeight: '500',
+  timeSuggestionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
-  timeOptionTextSelected: {
-    color: '#ea580c',
+  timeSuggestionButtonTextSelected: {
+    color: 'white',
   },
-  timeOptionTextDefault: {
+  timeSuggestionButtonTextDefault: {
     color: '#374151',
+  },
+  timeSuggestionButtonLabel: {
+    fontSize: 10,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  timeSuggestionButtonLabelSelected: {
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  timeSuggestionButtonLabelDefault: {
+    color: '#6b7280',
   },
   timeInput: {
     width: '100%',
@@ -933,6 +1068,9 @@ const styles = StyleSheet.create({
   constraintTypeTextDefault: {
     color: '#374151',
   },
+  constraintInputContainer: {
+    marginTop: 16,
+  },
   constraintInput: {
     width: '100%',
     padding: 12,
@@ -941,6 +1079,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     fontSize: 16,
     backgroundColor: 'white',
+  },
+  searchLocationContainer: {
+    marginTop: 16,
   },
   locationContainer: {
     gap: 16,

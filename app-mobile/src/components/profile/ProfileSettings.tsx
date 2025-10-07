@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ImageWithFallback } from './figma/ImageWithFallback';
-import profileImage from '../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
+import { ImageWithFallback } from '../figma/ImageWithFallback';
+import profileImage from '../../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
 
 interface ProfileSettingsProps {
   userIdentity: {

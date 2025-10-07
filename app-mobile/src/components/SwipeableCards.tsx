@@ -55,6 +55,7 @@ interface SwipeableCardsProps {
   onShareCard?: (card: any) => void;
   onPurchaseComplete?: (experienceData: any, purchaseOption: any) => void;
   removedCardIds?: string[];
+  onResetCards?: () => void;
   generateNewMockCard?: () => any;
   onboardingData?: any;
 }
@@ -169,6 +170,7 @@ export default function SwipeableCards({
   onShareCard, 
   onPurchaseComplete, 
   removedCardIds = [], 
+  onResetCards,
   generateNewMockCard, 
   onboardingData 
 }: SwipeableCardsProps) {
@@ -176,42 +178,86 @@ export default function SwipeableCards({
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
+  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [touchStart, setTouchStart] = useState({ x: 0, y: 0 });
 
   const availableRecommendations = mockRecommendations.filter(rec => 
     !removedCards.has(rec.id) && !removedCardIds.includes(rec.id)
   );
 
   const currentRec = availableRecommendations[currentCardIndex];
+  
+  // Debug logging
+  console.log('Available cards:', availableRecommendations.length);
+  console.log('Current card index:', currentCardIndex);
+  console.log('Current card:', currentRec?.title);
+  
 
-  const panResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => {
-      setIsDragging(true);
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      setDragOffset({ x: gestureState.dx, y: gestureState.dy });
-    },
-    onPanResponderRelease: (evt, gestureState) => {
-      setIsDragging(false);
-      
-      if (Math.abs(gestureState.dx) > 100) {
-        // Swipe left or right
-        handleSwipe(gestureState.dx > 0 ? 'right' : 'left');
-      } else {
-        // Reset position
-        setDragOffset({ x: 0, y: 0 });
-      }
-    },
-  });
+  const handleTouchStart = (event: any) => {
+    console.log('Touch started!');
+    const { pageX, pageY } = event.nativeEvent;
+    setTouchStart({ x: pageX, y: pageY });
+    setIsDragging(true);
+    setSwipeDirection(null);
+  };
+
+  const handleTouchMove = (event: any) => {
+    if (!isDragging) return;
+    
+    const { pageX, pageY } = event.nativeEvent;
+    const deltaX = pageX - touchStart.x;
+    const deltaY = pageY - touchStart.y;
+    
+    console.log('Touch move:', deltaX);
+    setDragOffset({ x: deltaX, y: deltaY });
+    
+    // Set swipe direction for visual feedback
+    if (deltaX > 30) {
+      setSwipeDirection('right');
+    } else if (deltaX < -30) {
+      setSwipeDirection('left');
+    } else {
+      setSwipeDirection(null);
+    }
+  };
+
+  const handleTouchEnd = (event: any) => {
+    if (!isDragging) return;
+    
+    const { pageX } = event.nativeEvent;
+    const deltaX = pageX - touchStart.x;
+    
+    console.log('Touch ended:', deltaX);
+    setIsDragging(false);
+    setSwipeDirection(null);
+    
+    if (Math.abs(deltaX) > 100) {
+      // Swipe left or right
+      handleSwipe(deltaX > 0 ? 'right' : 'left');
+    } else {
+      // Reset position
+      setDragOffset({ x: 0, y: 0 });
+    }
+  };
 
   const handleSwipe = (direction: 'left' | 'right') => {
+    console.log('Handling swipe:', direction, 'for card:', currentRec?.title);
+    
     if (direction === 'right' && onCardLike) {
       onCardLike(currentRec);
     }
     
-    setRemovedCards(prev => new Set([...prev, currentRec.id]));
-    setCurrentCardIndex(prev => prev + 1);
+    // Add card to removed cards
+    setRemovedCards(prev => {
+      const newSet = new Set([...prev, currentRec.id]);
+      console.log('Removed cards updated:', Array.from(newSet));
+      return newSet;
+    });
+    
+    // Don't increment card index - let the filtering handle it
+    // The next card will automatically become availableRecommendations[0]
+    setCurrentCardIndex(0);
+    
     setDragOffset({ x: 0, y: 0 });
   };
 
@@ -239,8 +285,19 @@ export default function SwipeableCards({
             You've reviewed all available recommendations. Check back later for more personalized suggestions!
           </Text>
           <TouchableOpacity 
-            onPress={() => setRemovedCards(new Set())}
+            onPress={() => {
+              console.log('Start Over button pressed!');
+              setRemovedCards(new Set());
+              setCurrentCardIndex(0);
+              setDragOffset({ x: 0, y: 0 });
+              setIsDragging(false);
+              setSwipeDirection(null);
+              setTouchStart({ x: 0, y: 0 });
+              onResetCards?.();
+            }}
             style={styles.startOverButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Text style={styles.startOverButtonText}>Start Over</Text>
           </TouchableOpacity>
@@ -271,8 +328,28 @@ export default function SwipeableCards({
               ]
             }
           ]}
-          {...panResponder.panHandlers}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
+          {/* Swipe Direction Overlays */}
+          {swipeDirection === 'right' && (
+            <View style={styles.swipeOverlayRight}>
+              <View style={styles.swipeIndicator}>
+                <Ionicons name="heart" size={40} color="#4ade80" />
+                <Text style={styles.swipeText}>YES</Text>
+              </View>
+            </View>
+          )}
+          
+          {swipeDirection === 'left' && (
+            <View style={styles.swipeOverlayLeft}>
+              <View style={styles.swipeIndicator}>
+                <Ionicons name="close" size={40} color="#ef4444" />
+                <Text style={styles.swipeText}>NO</Text>
+              </View>
+            </View>
+          )}
           {/* Card Image */}
           <View style={styles.imageContainer}>
             <Image
@@ -300,20 +377,20 @@ export default function SwipeableCards({
               </View>
             </View>
             
-            {/* Action Buttons */}
+            {/* Action Buttons - Temporarily disabled for swipe testing */}
             <View style={styles.actionButtons}>
-              <TouchableOpacity style={styles.buyButton} onPress={handleBuyNow}>
+              <View style={styles.buyButton}>
                 <Ionicons name="bag" size={20} color="white" />
                 <Text style={styles.buyButtonText}>Buy Now</Text>
-              </TouchableOpacity>
+              </View>
               
               <View style={styles.rightButtons}>
-                <TouchableOpacity style={styles.actionButton}>
+                <View style={styles.actionButton}>
                   <Ionicons name="chevron-down" size={20} color="white" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
+                </View>
+                <View style={styles.actionButton}>
                   <Ionicons name="share" size={20} color="white" />
-                </TouchableOpacity>
+                </View>
               </View>
             </View>
           </View>
@@ -342,6 +419,18 @@ export default function SwipeableCards({
                   <Text style={styles.tagText}>{tag}</Text>
                 </View>
               ))}
+            </View>
+          </View>
+          
+          {/* Swipe Instructions */}
+          <View style={styles.swipeInstructions}>
+            <View style={styles.swipeInstruction}>
+              <Ionicons name="arrow-back" size={16} color="#ef4444" />
+              <Text style={styles.swipeInstructionText}>Swipe left for NO</Text>
+            </View>
+            <View style={styles.swipeInstruction}>
+              <Text style={styles.swipeInstructionText}>Swipe right for YES</Text>
+              <Ionicons name="arrow-forward" size={16} color="#4ade80" />
             </View>
           </View>
         </View>
@@ -420,7 +509,7 @@ const styles = StyleSheet.create({
   },
   titleOverlay: {
     position: 'absolute',
-    bottom: 0,
+    bottom: 80,
     left: 0,
     right: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -446,12 +535,13 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     position: 'absolute',
-    bottom: 24,
-    left: 24,
-    right: 24,
+    bottom: 0,
+    left: 5,
+    right: 25,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    zIndex: 10,
   },
   buyButton: {
     flexDirection: 'row',
@@ -579,5 +669,66 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  swipeOverlayRight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+    borderWidth: 4,
+    borderColor: '#4ade80',
+    borderRadius: 16,
+    zIndex: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  swipeOverlayLeft: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 4,
+    borderColor: '#ef4444',
+    borderRadius: 16,
+    zIndex: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  swipeIndicator: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swipeText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+    marginTop: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  swipeInstructions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  swipeInstruction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  swipeInstructionText: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '500',
   },
 });

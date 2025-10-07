@@ -26,7 +26,7 @@ import { supabase } from '../services/supabase';
 import { enhancedLocationTrackingService } from '../services/enhancedLocationTrackingService';
 import { geocodingService } from '../services/geocodingService';
 import { GamifiedHistory } from '../components/GamifiedHistory';
-import { PrivacyControls } from '../components/PrivacyControls';
+import { PrivacyControls } from '../components/profile/PrivacyControls';
 
 export default function ProfileScreen() {
   const { user, preferences } = useAppStore();

@@ -1,8 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Text, View, TouchableOpacity, StyleSheet, Image, SafeAreaView, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ImageWithFallback } from './figma/ImageWithFallback';
-import PreferencesSheet from './PreferencesSheet';
 import SwipeableCards from './SwipeableCards';
 import minglaLogo from '../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png';
 
@@ -24,11 +22,12 @@ interface HomePageProps {
   onShareCard?: (card: any) => void;
   onPurchaseComplete?: (experienceData: any, purchaseOption: any) => void;
   removedCardIds?: string[];
+  onResetCards?: () => void;
   generateNewMockCard?: () => any;
   onboardingData?: any;
 }
 
-export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpenCollabPreferences, currentMode, userPreferences, accountPreferences, onAddToCalendar, savedCards, onSaveCard, onShareCard, onPurchaseComplete, removedCardIds, generateNewMockCard, onboardingData }: HomePageProps) {
+export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpenCollabPreferences, currentMode, userPreferences, accountPreferences, onAddToCalendar, savedCards, onSaveCard, onShareCard, onPurchaseComplete, removedCardIds, onResetCards, generateNewMockCard, onboardingData }: HomePageProps) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -39,27 +38,22 @@ export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpe
         <View style={styles.headerLeft}>
           <TouchableOpacity 
             onPress={() => {
-              console.log('Settings button pressed, currentMode:', currentMode);
-              console.log('onOpenPreferences function:', typeof onOpenPreferences);
-              console.log('onOpenCollabPreferences function:', typeof onOpenCollabPreferences);
+              console.log('Settings button clicked!');
               if (currentMode === 'solo') {
-                console.log('Calling onOpenPreferences');
                 onOpenPreferences();
               } else {
-                console.log('Calling onOpenCollabPreferences');
-                onOpenCollabPreferences();
+                onOpenCollabPreferences?.();
               }
             }}
             style={styles.preferencesButton}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            onPressIn={() => console.log('Settings button press in')}
-            onPressOut={() => console.log('Settings button press out')}
+            activeOpacity={0.6}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            disabled={false}
           >
             <Ionicons 
               name="options" 
-              size={20} 
-              color={currentMode === 'solo' ? '#374151' : '#eb7825'} 
+              size={24} 
+              color={currentMode === 'solo' ? '#1f2937' : '#ea580c'} 
             />
           </TouchableOpacity>
         </View>
@@ -110,6 +104,7 @@ export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpe
           onShareCard={onShareCard}
           onPurchaseComplete={onPurchaseComplete}
           removedCardIds={removedCardIds}
+          onResetCards={onResetCards}
           generateNewMockCard={generateNewMockCard}
           onboardingData={onboardingData}
         />
@@ -157,14 +152,23 @@ const styles = StyleSheet.create({
   },
   preferencesButton: {
     padding: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: '#f8f9fa',
     borderRadius: 12,
     minWidth: 44,
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 101,
   },
   headerCenter: {
     flex: 1,

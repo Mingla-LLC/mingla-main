@@ -174,6 +174,10 @@ export default function CollaborationModule({
     board.status === 'active' || board.status === 'voting' || board.status === 'locked'
   );
   
+  // Debug logging
+  console.log('CollaborationModule - boardsSessions:', boardsSessions);
+  console.log('CollaborationModule - activeSessions:', activeSessions);
+  
   const mockPendingSessions = [
     {
       id: 'pending-mock-1',
@@ -213,8 +217,8 @@ export default function CollaborationModule({
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
       width: '100%',
-      maxHeight: '90%',
-      overflow: 'hidden',
+      maxHeight: '95%',
+      minHeight: '90%',
     },
     header: {
       flexDirection: 'row',
@@ -280,8 +284,8 @@ export default function CollaborationModule({
       borderRadius: 4,
     },
     content: {
-      padding: 24,
       flex: 1,
+      padding: 24,
     },
   });
 
@@ -360,7 +364,11 @@ export default function CollaborationModule({
           </View>
 
           {/* Content */}
-          <ScrollView style={styles.content}>
+          <ScrollView 
+            style={styles.content}
+            showsVerticalScrollIndicator={true}
+            bounces={true}
+          >
             {activeTab === 'sessions' && (
               <SessionsTab
                 currentMode={currentMode}

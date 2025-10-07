@@ -14,9 +14,9 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAppStore } from '../store/appStore';
-import { useEnhancedProfile } from '../hooks/useEnhancedProfile';
-import { SavedExperiencePrivacy } from '../types';
+import { useAppStore } from '../../store/appStore';
+import { useEnhancedProfile } from '../../hooks/useEnhancedProfile';
+import { SavedExperiencePrivacy } from '../../types';
 
 interface PrivacyControlsProps {
   onClose?: () => void;

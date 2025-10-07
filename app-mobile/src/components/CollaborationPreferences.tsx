@@ -29,7 +29,7 @@ const experienceTypes: ExperienceType[] = [
   { id: 'romantic', label: 'Romantic', icon: 'heart' },
   { id: 'friendly', label: 'Friendly', icon: 'people' },
   { id: 'groupFun', label: 'Group Fun', icon: 'people' },
-  { id: 'business', label: 'Business', icon: 'target' }
+  { id: 'business', label: 'Business', icon: 'briefcase' }
 ];
 
 const budgetPresets = [
@@ -40,15 +40,15 @@ const budgetPresets = [
 ];
 
 const categories: Category[] = [
-  { id: 'stroll', label: 'Take a Stroll', description: 'Parks, neighborhoods, scenic walks' },
+  { id: 'stroll', label: 'Take a Stroll', emoji: '🚶‍♀️🌳', description: 'Parks, neighborhoods, scenic walks' },
   { id: 'sipChill', label: 'Sip & Chill', emoji: '🍹☕🍷', description: 'Cafes, bars, lounges' },
-  { id: 'casualEats', label: 'Casual Eats', description: 'Food trucks, casual dining, markets' },
-  { id: 'screenRelax', label: 'Screen & Relax', description: 'Movies, shows, gaming' },
-  { id: 'creative', label: 'Creative & Hands-On', description: 'Art classes, workshops, DIY' },
-  { id: 'playMove', label: 'Play & Move', description: 'Sports, games, active fun' },
-  { id: 'diningExp', label: 'Dining Experiences', description: 'Fine dining, food tours, tastings' },
-  { id: 'wellness', label: 'Wellness Dates', description: 'Spa, yoga, meditation, nature' },
-  { id: 'freestyle', label: 'Freestyle', description: 'Unique, spontaneous experiences' }
+  { id: 'casualEats', label: 'Casual Eats', emoji: '🍔🌮🍕', description: 'Food trucks, casual dining, markets' },
+  { id: 'screenRelax', label: 'Screen & Relax', emoji: '🎬🎮📺', description: 'Movies, shows, gaming' },
+  { id: 'creative', label: 'Creative & Hands-On', emoji: '🎨✂️🖌️', description: 'Art classes, workshops, DIY' },
+  { id: 'playMove', label: 'Play & Move', emoji: '⚽🏃‍♀️🎾', description: 'Sports, games, active fun' },
+  { id: 'diningExp', label: 'Dining Experiences', emoji: '🍽️🍷🥂', description: 'Fine dining, food tours, tastings' },
+  { id: 'wellness', label: 'Wellness Dates', emoji: '🧘‍♀️🌸💆‍♀️', description: 'Spa, yoga, meditation, nature' },
+  { id: 'freestyle', label: 'Freestyle', emoji: '✨🎲🎪', description: 'Unique, spontaneous experiences' }
 ];
 
 const travelModes = [
@@ -265,6 +265,7 @@ export default function CollaborationPreferences({
                         ]}
                       >
                         <View style={styles.categoryHeader}>
+                          <Text style={styles.categoryEmoji}>{category.emoji}</Text>
                           <Text style={[
                             styles.categoryTitle,
                             isSelected && styles.categoryTitleSelected
@@ -742,12 +743,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   categoryCard: {
-    width: '48%',
+    width: '100%',
     padding: 16,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#e5e7eb',
     backgroundColor: 'white',
+    marginBottom: 12,
   },
   categoryCardSelected: {
     borderColor: '#eb7825',
@@ -756,13 +758,19 @@ const styles = StyleSheet.create({
   categoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
     marginBottom: 8,
+  },
+  categoryEmoji: {
+    fontSize: 24,
+    marginRight: 8,
   },
   categoryTitle: {
     fontSize: 16,
     fontWeight: '500',
     color: '#111827',
+    flex: 1,
+    flexWrap: 'wrap',
   },
   categoryTitleSelected: {
     color: '#d97706',
