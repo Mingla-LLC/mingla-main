@@ -73,7 +73,9 @@ export default function FriendCard({
                 onPress={() => onSelectFriend(friend)}
                 style={styles.messageButton}
               >
-                <Ionicons name="chatbubble" size={16} color="#6b7280" />
+                <View style={styles.iconContainer}>
+                  <Ionicons name="chatbubble" size={16} color="#6b7280" />
+                </View>
               </TouchableOpacity>
               
               {/* Friend dropdown menu */}
@@ -85,7 +87,9 @@ export default function FriendCard({
                   }}
                   style={styles.dropdownButton}
                 >
-                  <Ionicons name="ellipsis-horizontal" size={16} color="#9ca3af" />
+                  <View style={styles.iconContainer}>
+                    <Ionicons name="ellipsis-horizontal" size={16} color="#9ca3af" />
+                  </View>
                 </TouchableOpacity>
                 
                 {openDropdownId === friend.id && (
@@ -95,37 +99,47 @@ export default function FriendCard({
                         onPress={() => onSendCollabInvite(friend)}
                         style={styles.dropdownItem}
                       >
-                        <Ionicons name="add" size={16} color="#eb7825" />
-                        <Text style={styles.dropdownItemText}>Send Collaboration Invite</Text>
+                        <View style={styles.dropdownItemContent}>
+                          <Ionicons name="add" size={16} color="#eb7825" />
+                          <Text style={styles.dropdownItemText}>Send Collaboration Invite</Text>
+                        </View>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => onAddToBoard(friend)}
                         style={styles.dropdownItem}
                       >
-                        <Ionicons name="people" size={16} color="#2563eb" />
-                        <Text style={styles.dropdownItemText}>Add to Board</Text>
+                        <View style={styles.dropdownItemContent}>
+                          <Ionicons name="people" size={16} color="#2563eb" />
+                          <Text style={styles.dropdownItemText}>Add to Board</Text>
+                        </View>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => onShareSavedCard(friend)}
                         style={styles.dropdownItem}
                       >
-                        <Ionicons name="bookmark" size={16} color="#9333ea" />
-                        <Text style={styles.dropdownItemText}>Share Saved Card</Text>
+                        <View style={styles.dropdownItemContent}>
+                          <Ionicons name="bookmark" size={16} color="#9333ea" />
+                          <Text style={styles.dropdownItemText}>Share Saved Card</Text>
+                        </View>
                       </TouchableOpacity>
                       <View style={styles.divider} />
                       <TouchableOpacity
                         onPress={() => onBlockUser(friend)}
                         style={styles.dropdownItem}
                       >
-                        <Ionicons name="shield" size={16} color="#ef4444" />
-                        <Text style={[styles.dropdownItemText, styles.dangerText]}>Block User</Text>
+                        <View style={styles.dropdownItemContent}>
+                          <Ionicons name="shield" size={16} color="#ef4444" />
+                          <Text style={[styles.dropdownItemText, styles.dangerText]}>Block User</Text>
+                        </View>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => onReportUser(friend)}
                         style={styles.dropdownItem}
                       >
-                        <Ionicons name="flag" size={16} color="#ef4444" />
-                        <Text style={[styles.dropdownItemText, styles.dangerText]}>Report User</Text>
+                        <View style={styles.dropdownItemContent}>
+                          <Ionicons name="flag" size={16} color="#ef4444" />
+                          <Text style={[styles.dropdownItemText, styles.dangerText]}>Report User</Text>
+                        </View>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -273,5 +287,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#f3f4f6',
     marginVertical: 4,
+  },
+  iconContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 });

@@ -25,7 +25,7 @@ const mockUsers: User[] = [
   { id: '5', name: 'Casey Kim', isOnline: false, lastSeen: '1 day ago' },
   { id: '6', name: 'Taylor Johnson', isOnline: false, lastSeen: '3 hours ago' },
   { id: '7', name: 'Riley Davis', isOnline: true },
-  { id: '8', name: 'Jordan Smith', isOnline: false, lastSeen: '5 minutes ago' }
+  { id: '8', name: 'Alex Chen', isOnline: false, lastSeen: '5 minutes ago' }
 ];
 
 export default function UserInviteModal({ isOpen, onClose, sessionName, onInviteUsers }: UserInviteModalProps) {

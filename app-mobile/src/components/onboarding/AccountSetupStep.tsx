@@ -6,9 +6,14 @@ interface AccountSetupStepProps {
   onNext: () => void;
   onBack: () => void;
   onNavigateToSignUp?: () => void;
+  userProfile?: {
+    name: string;
+    email: string;
+    profileImage?: string | null;
+  };
 }
 
-const AccountSetupStep = ({ onNext, onBack, onNavigateToSignUp }: AccountSetupStepProps) => {
+const AccountSetupStep = ({ onNext, onBack, onNavigateToSignUp, userProfile }: AccountSetupStepProps) => {
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -241,11 +246,13 @@ const AccountSetupStep = ({ onNext, onBack, onNavigateToSignUp }: AccountSetupSt
         <View style={styles.profileCard}>
           <View style={styles.profileInfo}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>J</Text>
+              <Text style={styles.avatarText}>
+                {userProfile?.name?.charAt(0)?.toUpperCase() || 'U'}
+              </Text>
             </View>
             <View style={styles.profileDetails}>
-              <Text style={styles.profileName}>Jordan Smith</Text>
-              <Text style={styles.profileEmail}>jordan.smith@email.com</Text>
+              <Text style={styles.profileName}>{userProfile?.name || 'User'}</Text>
+              <Text style={styles.profileEmail}>{userProfile?.email || 'user@email.com'}</Text>
             </View>
           </View>
         </View>

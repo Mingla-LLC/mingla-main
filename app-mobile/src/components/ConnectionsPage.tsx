@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Friend, createMockConversations, createMockMessages, mockFriendRequests } from '../data/mockConnections';
+import { Friend, Conversation, Message } from '../services/connectionsService';
+import { ConnectionsService } from '../services/connectionsService';
 import FriendsTab from './connections/FriendsTab';
 import MessagesTab from './connections/MessagesTab';
 import FriendSelectionModal from './FriendSelectionModal';
@@ -9,6 +10,7 @@ import AddFriendModal from './AddFriendModal';
 import FriendRequestsModal from './FriendRequestsModal';
 import AddToBoardModal from './AddToBoardModal';
 import ReportUserModal from './ReportUserModal';
+import { useAuthSimple } from '../hooks/useAuthSimple';
 
 interface ConnectionsPageProps {
   onSendCollabInvite?: (friend: any) => void;
@@ -24,7 +26,7 @@ interface ConnectionsPageProps {
   onUpdateBoardSession?: (updatedBoard: any) => void;
   onCreateSession?: (newSession: any) => void;
   onNavigateToBoard?: (board: any, discussionTab?: string) => void;
-  friendsList?: Friend[];
+  friendsList?: any[];
 }
 
 export default function ConnectionsPageRefactored({ 
@@ -43,10 +45,57 @@ export default function ConnectionsPageRefactored({
   onNavigateToBoard,
   friendsList = []
 }: ConnectionsPageProps) {
+  const { user } = useAuthSimple();
   const [activeTab, setActiveTab] = useState<'friends' | 'messages'>('friends');
   const [showQRCode, setShowQRCode] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
   
+  // Real data state
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [friendRequests, setFriendRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Fetch real data from Supabase
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user?.id) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Fetch friends, conversations, and friend requests in parallel
+        const [friendsData, conversationsData, requestsData] = await Promise.all([
+          ConnectionsService.getFriends(user.id),
+          ConnectionsService.getConversations(user.id),
+          ConnectionsService.getFriendRequests(user.id)
+        ]);
+
+        setFriends(friendsData);
+        setConversations(conversationsData);
+        setFriendRequests(requestsData);
+
+        console.log('Loaded connections data:', {
+          friends: friendsData.length,
+          conversations: conversationsData.length,
+          requests: requestsData.length
+        });
+      } catch (err) {
+        console.error('Error fetching connections data:', err);
+        setError('Failed to load connections data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user?.id]);
+
   // Messaging state
   const [showFriendSelection, setShowFriendSelection] = useState(false);
   const [activeChat, setActiveChat] = useState<Friend | null>(null);
@@ -60,14 +109,9 @@ export default function ConnectionsPageRefactored({
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedUserToReport, setSelectedUserToReport] = useState<Friend | null>(null);
 
-  // Use friendsList from props, fallback to mockFriends for backwards compatibility
-  const currentFriends = friendsList.length > 0 ? friendsList : [];
-
-  // Create conversations based on current friends
-  const mockConversations = createMockConversations(currentFriends);
-
-  // Mock conversations with realistic chat history
-  const [conversations, setConversations] = useState<{[friendId: string]: any[]}>(createMockMessages);
+  // Use real data from Supabase, fallback to props for backwards compatibility
+  const currentFriends = friends.length > 0 ? friends : friendsList;
+  const currentConversations = conversations;
 
   const handleCopyInvite = () => {
     // In React Native, you would use Clipboard from @react-native-clipboard/clipboard
@@ -221,6 +265,44 @@ export default function ConnectionsPageRefactored({
     setSelectedUserToReport(null);
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Connections</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading connections...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Connections</Text>
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => {
+              setError(null);
+              setLoading(true);
+              // Retry logic would go here
+            }}
+          >
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <>
       <View style={styles.container}>
@@ -286,11 +368,11 @@ export default function ConnectionsPageRefactored({
                 onCopyInvite={handleCopyInvite}
                 showQRCode={showQRCode}
                 inviteCopied={inviteCopied}
-                friendRequestsCount={mockFriendRequests.length}
+                friendRequestsCount={friendRequests.length}
               />
             ) : (
               <MessagesTab
-                conversations={mockConversations}
+                conversations={currentConversations}
                 onSelectFriend={handleSelectFriend}
                 onStartNewConversation={handleStartNewConversation}
                 onBackFromMessage={handleBackFromMessage}
@@ -328,7 +410,7 @@ export default function ConnectionsPageRefactored({
       <FriendRequestsModal
         isOpen={showFriendRequests}
         onClose={() => setShowFriendRequests(false)}
-        requests={mockFriendRequests}
+        requests={friendRequests}
       />
 
       <AddToBoardModal
@@ -411,5 +493,39 @@ const styles = StyleSheet.create({
   },
   tabContentContainer: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#ef4444',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#eb7825',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });

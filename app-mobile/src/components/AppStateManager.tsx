@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuthSimple } from '../hooks/useAuthSimple';
+import { useAppStore } from '../store/appStore';
 
 // Default data constants moved to separate module to prevent re-creation
 const DEFAULT_FRIENDS = [
@@ -135,16 +137,26 @@ const safeAsyncStorageSet = async (key: string, value: any) => {
 };
 
 export function useAppState() {
+  // Supabase authentication
+  const { user, loading: authLoading, signIn, signUp, signOut } = useAuthSimple();
+  const { profile } = useAppStore();
+  
   // Onboarding state
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [onboardingData, setOnboardingData] = useState(null);
   const [isLoadingOnboarding, setIsLoadingOnboarding] = useState(true);
+  const [showOnboardingFlow, setShowOnboardingFlow] = useState(false);
+  const [showSignUpForm, setShowSignUpForm] = useState(false);
 
   // UI state
   const [currentPage, setCurrentPage] = useState<'home' | 'connections' | 'activity' | 'profile' | 'profile-settings' | 'account-settings' | 'privacy-policy' | 'terms-of-service'>('home');
   const [showPreferences, setShowPreferences] = useState(false);
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [showCollabPreferences, setShowCollabPreferences] = useState(false);
+  const [showTermsOfService, setShowTermsOfService] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
   const [currentMode, setCurrentMode] = useState<'solo' | string>('solo');
@@ -165,10 +177,12 @@ export function useAppState() {
   } | null>(null);
   
   const [userIdentity, setUserIdentity] = useState({
-    firstName: 'Jordan',
-    lastName: 'Smith',
-    username: 'jordansmith',
-    profileImage: null
+    firstName: '',
+    lastName: '',
+    username: '',
+    profileImage: null as string | null,
+    email: '',
+    id: ''
   });
 
   const [accountPreferences, setAccountPreferences] = useState({
@@ -193,53 +207,121 @@ export function useAppState() {
 
 
 
-  // Authentication state
-  const [isAuthenticated, setIsAuthenticated] = useState(false); // Will be updated from AsyncStorage in useEffect
-  const [userRole, setUserRole] = useState('explorer'); // Will be updated from AsyncStorage in useEffect
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-
-  // Load authentication and onboarding data on component mount
+  // Authentication state - now using Supabase authentication
+  const isAuthenticated = !!user; // Use Supabase user state
+  const userRole = 'explorer'; // Default role, can be extended later
+  
+  // Add timeout to prevent infinite loading
+  const [authTimeout, setAuthTimeout] = useState(false);
   useEffect(() => {
-    const loadAuthData = async () => {
+    const timer = setTimeout(() => {
+      console.log('Auth loading timeout - forcing loading to false');
+      setAuthTimeout(true);
+    }, 5000); // 5 second timeout - reduced for faster response
+    
+    return () => clearTimeout(timer);
+  }, []);
+  
+  // Force loading to false after timeout or if authLoading is false
+  const isLoadingAuth = authLoading && !authTimeout;
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('AppStateManager auth state:', {
+      user: !!user,
+      profile: !!profile,
+      authLoading,
+      authTimeout,
+      isLoadingAuth,
+      isAuthenticated
+    });
+  }, [user, profile, authLoading, authTimeout, isLoadingAuth, isAuthenticated]);
+
+  // Load onboarding data on component mount (authentication handled by Supabase)
+  useEffect(() => {
+    const loadOnboardingData = async () => {
       try {
-        const authStored = await AsyncStorage.getItem('mingla_is_authenticated');
-        const roleStored = await AsyncStorage.getItem('mingla_user_role');
         const onboardingStored = await AsyncStorage.getItem('mingla_onboarding_completed');
         const dataStored = await AsyncStorage.getItem('mingla_onboarding_data');
         
-        if (authStored === 'true') {
-          setIsAuthenticated(true);
-          if (roleStored) {
-            setUserRole(roleStored);
-          }
-          
-          if (onboardingStored === 'true') {
-            setHasCompletedOnboarding(true);
-            if (dataStored) {
-              setOnboardingData(JSON.parse(dataStored));
-            }
+        if (onboardingStored === 'true') {
+          setHasCompletedOnboarding(true);
+          if (dataStored) {
+            setOnboardingData(JSON.parse(dataStored));
           }
         } else {
-          // User is not authenticated, show SignInPage
-          setIsAuthenticated(false);
-          setUserRole('explorer');
           setHasCompletedOnboarding(false);
           setOnboardingData(null);
         }
       } catch (error) {
-        console.error('Error loading auth/onboarding data:', error);
-        setIsAuthenticated(false);
-        setUserRole('explorer');
+        console.error('Error loading onboarding data:', error);
         setHasCompletedOnboarding(false);
         setOnboardingData(null);
       } finally {
-        setIsLoadingAuth(false);
         setIsLoadingOnboarding(false);
       }
     };
     
-    loadAuthData();
+    loadOnboardingData();
   }, []);
+
+  // Update userIdentity when Supabase authentication changes
+  useEffect(() => {
+    console.log('Auth effect triggered:', { user: !!user, profile: !!profile, userEmail: user?.email });
+    
+    if (user && profile) {
+      console.log('Updating userIdentity from Supabase:', { 
+        userEmail: user.email, 
+        profileFirstName: profile.first_name,
+        profileLastName: profile.last_name,
+        profileUsername: profile.username,
+        profileImage: profile.avatar_url,
+        fullProfile: profile
+      });
+      console.log('Raw profile object keys:', Object.keys(profile));
+      console.log('Raw profile object values:', profile);
+      
+      // Use the actual first_name and last_name fields from the profile
+      const updatedIdentity = {
+        firstName: profile.first_name || user.email?.split('@')[0] || 'User',
+        lastName: profile.last_name || '',
+        username: profile.username || user.email?.split('@')[0] || 'user',
+        profileImage: profile.avatar_url || null,
+        email: user.email || '',
+        id: user.id
+      };
+      
+      console.log('Setting userIdentity to:', updatedIdentity);
+      console.log('Profile fields check:', {
+        'profile.first_name': profile.first_name,
+        'profile.last_name': profile.last_name,
+        'profile.avatar_url': profile.avatar_url,
+        'profile.username': profile.username
+      });
+      console.log('Full profile object:', profile);
+      console.log('Profile keys:', Object.keys(profile));
+      setUserIdentity(updatedIdentity);
+      safeAsyncStorageSet('mingla_user_identity', updatedIdentity);
+    } else if (user && !profile) {
+      // User is authenticated but no profile yet - use basic info from user
+      console.log('User authenticated but no profile, using basic info');
+      const emailName = user.email?.split('@')[0] || 'User';
+      const updatedIdentity = {
+        firstName: emailName,
+        lastName: '',
+        username: emailName,
+        profileImage: null,
+        email: user.email || '',
+        id: user.id
+      };
+      
+      console.log('Setting userIdentity to (no profile):', updatedIdentity);
+      setUserIdentity(updatedIdentity);
+      safeAsyncStorageSet('mingla_user_identity', updatedIdentity);
+    } else {
+      console.log('No user or profile data available');
+    }
+  }, [user, profile]);
 
   // Load other data from AsyncStorage
   useEffect(() => {
@@ -258,10 +340,12 @@ export function useAppState() {
         ] = await Promise.all([
           safeAsyncStorageGet('mingla_notifications_enabled', true),
           safeAsyncStorageGet('mingla_user_identity', {
-            firstName: 'Jordan',
-            lastName: 'Smith',
-            username: 'jordansmith',
-            profileImage: null
+            firstName: '',
+            lastName: '',
+            username: '',
+            profileImage: null,
+            email: '',
+            id: ''
           }),
           safeAsyncStorageGet('mingla_account_preferences', {
             currency: 'USD',
@@ -276,7 +360,10 @@ export function useAppState() {
         ]);
 
         setNotificationsEnabled(notificationsEnabledData);
-        setUserIdentity(userIdentityData);
+        // Only set userIdentity from storage if we don't have Supabase data yet
+        if (!user || !profile) {
+          setUserIdentity(userIdentityData);
+        }
         setAccountPreferences(accountPreferencesData);
         setCalendarEntries(calendarEntriesData);
         setSavedCards(savedCardsData);
@@ -310,9 +397,61 @@ export function useAppState() {
     }));
   };
 
-  const handleUserIdentityUpdate = (updatedIdentity: any) => {
-    setUserIdentity(updatedIdentity);
-    safeAsyncStorageSet('mingla_user_identity', updatedIdentity);
+  const handleUserIdentityUpdate = async (updatedIdentity: any) => {
+    try {
+      // Update local state first
+      setUserIdentity(updatedIdentity);
+      safeAsyncStorageSet('mingla_user_identity', updatedIdentity);
+      
+      // Update Supabase profile if user is authenticated
+      if (user?.id) {
+        const { supabase } = await import('../services/supabase');
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            first_name: updatedIdentity.firstName,
+            last_name: updatedIdentity.lastName,
+            username: updatedIdentity.username,
+            avatar_url: updatedIdentity.profileImage,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+          
+        if (error) {
+          console.error('Error updating profile in Supabase:', error);
+          // Show error notification
+          setNotifications(prev => [...prev, {
+            id: `profile-update-error-${Date.now()}`,
+            type: 'error' as const,
+            title: 'Profile Update Failed',
+            message: 'Failed to update profile. Please try again.',
+            autoHide: true,
+            duration: 3000
+          }]);
+        } else {
+          console.log('Profile updated successfully in Supabase');
+          // Show success notification
+          setNotifications(prev => [...prev, {
+            id: `profile-update-success-${Date.now()}`,
+            type: 'success' as const,
+            title: 'Profile Updated',
+            message: 'Your profile has been updated successfully.',
+            autoHide: true,
+            duration: 2000
+          }]);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating user identity:', error);
+      setNotifications(prev => [...prev, {
+        id: `profile-update-error-${Date.now()}`,
+        type: 'error' as const,
+        title: 'Profile Update Failed',
+        message: 'Failed to update profile. Please try again.',
+        autoHide: true,
+        duration: 3000
+      }]);
+    }
   };
 
   const handleAccountPreferencesUpdate = (updatedPreferences: any) => {
@@ -320,106 +459,130 @@ export function useAppState() {
     safeAsyncStorageSet('mingla_account_preferences', updatedPreferences);
   };
 
-  // Authentication handlers
-  const handleSignIn = (credentials: { email: string; password: string }, role: 'explorer' | 'curator') => {
-    // In a real app, this would validate credentials with a server
-    console.log('Sign in:', { email: credentials.email, role });
+  // Authentication handlers - now using Supabase
+  const handleSignIn = async (credentials: { email: string; password: string }, role: 'explorer' | 'curator') => {
+    console.log('Sign in requested:', { email: credentials.email, role });
     
-    setIsAuthenticated(true);
-    setUserRole(role);
-    safeAsyncStorageSet('mingla_is_authenticated', true);
-    safeAsyncStorageSet('mingla_user_role', role);
-    
-    // Existing users who sign in should go directly to home page
-    // Check if they have completed onboarding before
-    const checkExistingOnboarding = async () => {
-      try {
-        const onboardingStored = await AsyncStorage.getItem('mingla_onboarding_completed');
-        const dataStored = await AsyncStorage.getItem('mingla_onboarding_data');
-        
-        if (onboardingStored === 'true') {
-          // User has completed onboarding before, go directly to home
-          setHasCompletedOnboarding(true);
-          if (dataStored) {
-            setOnboardingData(JSON.parse(dataStored));
-          }
-        } else {
-          // First time user, they need to complete onboarding
-          setHasCompletedOnboarding(false);
-          setOnboardingData(null);
-        }
-      } catch (error) {
-        console.error('Error checking onboarding status:', error);
-        // Default to requiring onboarding for safety
-        setHasCompletedOnboarding(false);
-        setOnboardingData(null);
+    try {
+      // Use the signIn function from useAuthSimple
+      const { data, error } = await signIn(credentials.email, credentials.password);
+      
+      if (error) {
+        console.error('Sign in error:', error);
+        // TODO: Show error message to user
+        alert(`Sign in failed: ${error.message}`);
+        return;
       }
-    };
-    
-    checkExistingOnboarding();
-    
-    // Set user identity based on email
-    const [firstName] = credentials.email.split('@')[0].split('.');
-    const updatedIdentity = {
-      firstName: firstName.charAt(0).toUpperCase() + firstName.slice(1) || 'User',
-      lastName: role === 'curator' ? 'Curator' : 'Explorer',
-      username: credentials.email.split('@')[0],
-      profileImage: null,
-      role: role
-    };
-    setUserIdentity(updatedIdentity);
-    safeAsyncStorageSet('mingla_user_identity', updatedIdentity);
+      
+      if (data?.user) {
+        console.log('Sign in successful:', data.user.email);
+        // The useAuthSimple hook will automatically update the user state
+        // and the app will re-render with the authenticated user
+      }
+    } catch (error) {
+      console.error('Sign in failed:', error);
+    }
   };
 
-  const handleSignUp = (userData: { email: string; password: string; name: string; organization?: string }, role: 'explorer' | 'curator') => {
-    // In a real app, this would create account on server
-    console.log('Sign up:', { ...userData, role });
+  const handleSignUp = async (userData: { email: string; password: string; name: string; organization?: string }, role: 'explorer' | 'curator') => {
+    console.log('Sign up requested:', { ...userData, role });
     
-    setIsAuthenticated(true);
-    setUserRole(role);
-    safeAsyncStorageSet('mingla_is_authenticated', true);
-    safeAsyncStorageSet('mingla_user_role', role);
-    
-    // New users should go through onboarding (especially explorers)
-    setHasCompletedOnboarding(false);
-    setOnboardingData(null);
-    safeAsyncStorageSet('mingla_onboarding_completed', 'false');
-    AsyncStorage.removeItem('mingla_onboarding_data');
-    
-    // Set user identity from sign up data
-    const [firstName, ...lastNameParts] = userData.name.split(' ');
-    const updatedIdentity = {
-      firstName: firstName || 'User',
-      lastName: lastNameParts.join(' ') || (role === 'curator' ? 'Curator' : 'Explorer'),
-      username: userData.email.split('@')[0],
-      profileImage: null,
-      role: role,
-      organization: userData.organization
-    };
-    setUserIdentity(updatedIdentity);
-    safeAsyncStorageSet('mingla_user_identity', updatedIdentity);
+    try {
+      // Use the signUp function from useAuthSimple
+      const result = await signUp(userData.email, userData.password, userData.name);
+      if (!result) {
+        console.error('Sign up failed: No result returned');
+        alert('Sign up failed: No result returned');
+        return;
+      }
+      const { data, error } = result;
+      
+      if (error) {
+        console.error('Sign up error:', error);
+        // TODO: Show error message to user
+        alert(`Sign up failed: ${error.message}`);
+        return;
+      }
+      
+      if (data?.user) {
+        console.log('Sign up successful:', data.user.email);
+        
+        // Create user profile in the profiles table
+        const { supabase } = await import('../services/supabase');
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user.id,
+            email: data.user.email,
+            display_name: userData.name,
+            first_name: userData.name.split(' ')[0] || '',
+            last_name: userData.name.split(' ').slice(1).join(' ') || '',
+            username: userData.email.split('@')[0],
+          });
+        
+        if (profileError) {
+          console.error('Error creating profile:', profileError);
+        } else {
+          console.log('Profile created successfully');
+        }
+        
+        // The useAuthSimple hook will automatically update the user state
+        // and the app will re-render with the authenticated user
+      }
+    } catch (error) {
+      console.error('Sign up failed:', error);
+    }
   };
 
-  const handleSignOut = () => {
-    setIsAuthenticated(false);
-    setUserRole('explorer');
-    setHasCompletedOnboarding(false);
-    setOnboardingData(null);
+  const handleSignOut = async () => {
+    console.log('Sign out requested');
     
-    // Clear all stored data
-    AsyncStorage.clear();
+    try {
+      // Clear all user data from the store immediately
+      console.log('Clearing all user data from store...');
+      const { useAppStore } = await import('../store/appStore');
+      console.log('useAppStore imported successfully');
+      const store = useAppStore.getState();
+      console.log('Store state retrieved:', !!store);
+      console.log('clearUserData function:', typeof store.clearUserData);
+      store.clearUserData();
+      console.log('clearUserData called successfully');
+    } catch (error) {
+      console.error('Error clearing store data:', error);
+    }
     
-    console.log('User signed out and all data cleared');
+    // Also clear local state
+    console.log('Clearing local authentication state...');
+    setUserIdentity({
+      firstName: '',
+      lastName: '',
+      username: '',
+      profileImage: null,
+      email: '',
+      id: ''
+    });
+    console.log('Local state cleared');
+    
+    // Try Supabase sign out in background (non-blocking)
+    try {
+      console.log('Attempting Supabase sign out in background...');
+      await signOut();
+      console.log('Background Supabase signOut completed');
+    } catch (error) {
+      console.log('Background Supabase sign out failed (non-critical):', (error as Error).message);
+    }
+    
+    console.log('Sign out completed - user should be redirected to sign-in page');
   };
 
   return {
-    // Authentication State
+    // Authentication State (now using Supabase)
     isAuthenticated,
-    setIsAuthenticated,
     userRole,
-    setUserRole,
     isLoadingAuth,
-    setIsLoadingAuth,
+    authTimeout,
+    user,
+    profile,
     
     // Onboarding State
     hasCompletedOnboarding,
@@ -428,6 +591,10 @@ export function useAppState() {
     setOnboardingData,
     isLoadingOnboarding,
     setIsLoadingOnboarding,
+    showOnboardingFlow,
+    setShowOnboardingFlow,
+    showSignUpForm,
+    setShowSignUpForm,
     currentPage,
     setCurrentPage,
     showPreferences,
@@ -436,6 +603,14 @@ export function useAppState() {
     setShowCollaboration,
     showCollabPreferences,
     setShowCollabPreferences,
+    showTermsOfService,
+    setShowTermsOfService,
+    showPrivacyPolicy,
+    setShowPrivacyPolicy,
+    showAccountSettings,
+    setShowAccountSettings,
+    showProfileSettings,
+    setShowProfileSettings,
     showShareModal,
     setShowShareModal,
     shareData,

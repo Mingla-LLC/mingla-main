@@ -6,6 +6,16 @@ import { User } from '../types';
 export const useAuthSimple = () => {
   const [loading, setLoading] = useState(true);
   const { user, setAuth, setProfile, clearUserData } = useAppStore();
+  
+  // Add timeout to prevent infinite loading
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      console.log('useAuthSimple timeout - forcing loading to false');
+      setLoading(false);
+    }, 8000); // 8 second timeout
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -16,6 +26,7 @@ export const useAuthSimple = () => {
         
         // Get initial session
         const { data: { session }, error } = await supabase.auth.getSession();
+        console.log('Session result:', { session: !!session, error });
         
         if (error) {
           console.error('Error getting session:', error);
@@ -39,9 +50,63 @@ export const useAuthSimple = () => {
 
             if (profileError) {
               console.error('Error loading profile:', profileError);
+              console.error('Profile error details:', {
+                code: profileError.code,
+                message: profileError.message,
+                details: profileError.details,
+                hint: profileError.hint
+              });
+              
+              // Debug: Check what's in the database
+              try {
+                const { debugProfileData } = await import('../debug/profile-debug');
+                await debugProfileData(session.user.id);
+              } catch (debugError) {
+                console.error('Debug error:', debugError);
+              }
+              
+              // If profile doesn't exist, create one
+              if (profileError.code === 'PGRST116') {
+                console.log('Profile not found, creating new profile...');
+                try {
+                  const emailName = session.user.email?.split('@')[0] || 'User';
+                  const { data: newProfile, error: createError } = await supabase
+                    .from('profiles')
+                    .insert({
+                      id: session.user.id,
+                      email: session.user.email,
+                      display_name: emailName,
+                      first_name: emailName,
+                      last_name: '',
+                      username: emailName,
+                      profile_image: null,
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString()
+                    })
+                    .select()
+                    .single();
+                    
+                  if (createError) {
+                    console.error('Error creating profile:', createError);
+                  } else {
+                    console.log('Profile created successfully:', newProfile);
+                    setProfile(newProfile);
+                  }
+                } catch (createError) {
+                  console.error('Error creating profile:', createError);
+                }
+              }
             } else if (profile) {
-              console.log('Profile loaded successfully');
+              console.log('Profile loaded successfully:', profile);
+              console.log('Profile fields:', {
+                first_name: profile.first_name,
+                last_name: profile.last_name,
+                username: profile.username,
+                profile_image: profile.profile_image
+              });
               setProfile(profile);
+            } else {
+              console.log('No profile found for user:', session.user.id);
             }
           } catch (profileError) {
             console.error('Error loading profile:', profileError);
@@ -52,11 +117,13 @@ export const useAuthSimple = () => {
         }
 
         if (mounted) {
+          console.log('Setting loading to false - auth initialized');
           setLoading(false);
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
         if (mounted) {
+          console.log('Setting loading to false - auth error');
           setLoading(false);
         }
       }
@@ -94,6 +161,7 @@ export const useAuthSimple = () => {
         }
         
         if (mounted) {
+          console.log('Setting loading to false - auth state change');
           setLoading(false);
         }
       }

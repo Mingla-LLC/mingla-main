@@ -1,5 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { StyleSheet, SafeAreaView } from 'react-native';
+import { useAuthSimple } from '../hooks/useAuthSimple';
+import { useAppStore } from '../store/appStore';
+import { locationService } from '../services/locationService';
 import WelcomeStep from './onboarding/WelcomeStep';
 import AccountSetupStep from './onboarding/AccountSetupStep';
 import IntentSelectionStep from './onboarding/IntentSelectionStep';
@@ -11,14 +14,18 @@ import MagicStep from './onboarding/MagicStep';
 interface OnboardingFlowProps {
   onComplete: (onboardingData: any) => void;
   onNavigateToSignUp?: () => void;
+  onBackToWelcome?: () => void;
+  onNavigateToSignUpForm?: () => void;
 }
 
-const OnboardingFlow = ({ onComplete, onNavigateToSignUp }: OnboardingFlowProps) => {
+const OnboardingFlow = ({ onComplete, onNavigateToSignUp, onBackToWelcome, onNavigateToSignUpForm }: OnboardingFlowProps) => {
+  const { user } = useAuthSimple();
+  const { profile } = useAppStore();
   const [currentStep, setCurrentStep] = useState(0);
   const [onboardingData, setOnboardingData] = useState<any>({
     userProfile: {
-      name: 'Jordan Smith',
-      email: 'jordan.smith@email.com',
+      name: user?.email?.split('@')[0] || 'User',
+      email: user?.email || '',
       profileImage: null
     },
     intents: [],
@@ -28,6 +35,21 @@ const OnboardingFlow = ({ onComplete, onNavigateToSignUp }: OnboardingFlowProps)
   });
 
   const totalSteps = 7;
+
+  // Update onboarding data when user/profile changes
+  useEffect(() => {
+    if (user || profile) {
+      const displayName = profile?.display_name || profile?.first_name || user?.email?.split('@')[0] || 'User';
+      setOnboardingData((prev: any) => ({
+        ...prev,
+        userProfile: {
+          name: displayName,
+          email: user?.email || '',
+          profileImage: profile?.avatar_url || null
+        }
+      }));
+    }
+  }, [user, profile]);
 
   const styles = StyleSheet.create({
     container: {
@@ -48,6 +70,12 @@ const OnboardingFlow = ({ onComplete, onNavigateToSignUp }: OnboardingFlowProps)
   const handleBack = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const handleBackToWelcome = () => {
+    if (onBackToWelcome) {
+      onBackToWelcome();
     }
   };
 
@@ -116,9 +144,58 @@ const OnboardingFlow = ({ onComplete, onNavigateToSignUp }: OnboardingFlowProps)
     });
   }, []);
 
-  const requestLocationPermission = useCallback(() => {
-    // For demo purposes, always use San Francisco, CA
-    updateOnboardingData('location', 'San Francisco, CA');
+  const requestLocationPermission = useCallback(async () => {
+    try {
+      console.log('Requesting location permission...');
+      
+      // For now, let's skip the actual location request and just use the default
+      // This avoids the Info.plist configuration issue in development
+      console.log('Using default location for demo purposes');
+      updateOnboardingData('location', 'San Francisco, CA');
+      
+      // Show a message to the user
+      alert('Location services configured! Using San Francisco, CA for demo purposes.');
+      
+      // TODO: Uncomment this when the app is properly built with Info.plist configuration
+      
+      // Request location permissions
+      const hasPermission = await locationService.requestPermissions();
+      
+      if (hasPermission) {
+        console.log('Location permission granted, getting current location...');
+        
+        // Try to get current location
+        const location = await locationService.getCurrentLocation();
+        
+        if (location) {
+          console.log('Current location obtained:', location);
+          // Update onboarding data with actual location
+          updateOnboardingData('location', `${location.latitude}, ${location.longitude}`);
+        } else {
+          console.log('Could not get current location, using default');
+          updateOnboardingData('location', 'San Francisco, CA');
+        }
+      } else {
+        console.log('Location permission denied, using default location');
+        updateOnboardingData('location', 'San Francisco, CA');
+      }
+
+    } catch (error: any) {
+      console.error('Error requesting location permission:', error);
+      
+      // Check if it's a configuration error
+      if (error.message && error.message.includes('NSLocation')) {
+        console.log('Location configuration error detected - using default location');
+        // Show a more user-friendly message
+        alert('Location services are not properly configured. Using default location for demo purposes.');
+      } else if (error.message && error.message.includes('Info.plist')) {
+        console.log('Info.plist configuration missing - using default location');
+        alert('Location permissions are not configured in the app. Using default location for demo purposes.');
+      }
+      
+      // Fallback to default location
+      updateOnboardingData('location', 'San Francisco, CA');
+    }
   }, [updateOnboardingData]);
 
   const renderStep = () => {
@@ -127,7 +204,7 @@ const OnboardingFlow = ({ onComplete, onNavigateToSignUp }: OnboardingFlowProps)
         return (
           <WelcomeStep 
             onNext={handleNext}
-            onBack={handleBack}
+            onBack={handleBackToWelcome}
           />
         );
 
@@ -136,7 +213,8 @@ const OnboardingFlow = ({ onComplete, onNavigateToSignUp }: OnboardingFlowProps)
           <AccountSetupStep 
             onNext={handleNext}
             onBack={handleBack}
-            onNavigateToSignUp={onNavigateToSignUp}
+            onNavigateToSignUp={onNavigateToSignUpForm || onNavigateToSignUp}
+            userProfile={onboardingData.userProfile}
           />
         );
 

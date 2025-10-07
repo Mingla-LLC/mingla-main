@@ -1,25 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import AccountSettings from '../src/components/profile/AccountSettings';
-import ActivityPage from '../src/components/ActivityPage';
 import { useAppHandlers } from '../src/components/AppHandlers';
 import { useAppState } from '../src/components/AppStateManager';
 import CollaborationModule from '../src/components/CollaborationModule';
-import CollaborationPreferences from '../src/components/CollaborationPreferences';
-import ConnectionsPage from '../src/components/ConnectionsPage';
 import ErrorBoundary from '../src/components/ErrorBoundary';
 import HomePage from '../src/components/HomePage';
-import NotificationSystem from '../src/components/NotificationSystem';
-import OnboardingFlow from '../src/components/OnboardingFlow';
 import PreferencesSheet from '../src/components/PreferencesSheet';
-import PrivacyPolicy from '../src/components/profile/PrivacyPolicy';
 import ProfilePage from '../src/components/ProfilePage';
-import ProfileSettings from '../src/components/profile/ProfileSettings';
-import ShareModal from '../src/components/ShareModal';
 import SignInPage from '../src/components/SignInPage';
 import TermsOfService from '../src/components/profile/TermsOfService';
-import { formatCurrency } from '../src/components/utils/formatters';
+import PrivacyPolicy from '../src/components/profile/PrivacyPolicy';
+import AccountSettings from '../src/components/profile/AccountSettings';
+import ProfileSettings from '../src/components/profile/ProfileSettings';
+import OnboardingFlow from '../src/components/OnboardingFlow';
+import ActivityPage from '../src/components/ActivityPage';
+import { NavigationProvider } from '../src/contexts/NavigationContext';
+import { MobileFeaturesProvider } from '../src/components/MobileFeaturesProvider';
 
 
 export default function App() {
@@ -29,16 +26,13 @@ export default function App() {
   // Destructure commonly used state
   const {
     isAuthenticated,
-    userRole,
     isLoadingAuth,
+    authTimeout,
+    user,
+    profile,
     handleSignIn,
     handleSignUp,
-    handleSignOut: stateHandleSignOut,
-    hasCompletedOnboarding,
-    setHasCompletedOnboarding,
-    onboardingData,
-    setOnboardingData,
-    isLoadingOnboarding,
+    handleSignOut,
     currentPage,
     setCurrentPage,
     showPreferences,
@@ -47,28 +41,31 @@ export default function App() {
     setShowCollaboration,
     showCollabPreferences,
     setShowCollabPreferences,
+    showTermsOfService,
+    setShowTermsOfService,
+    showPrivacyPolicy,
+    setShowPrivacyPolicy,
+    showAccountSettings,
+    setShowAccountSettings,
+    showProfileSettings,
+    setShowProfileSettings,
     showShareModal,
     setShowShareModal,
     shareData,
     setShareData,
     currentMode,
-    setIsAuthenticated,
     preSelectedFriend,
     setPreSelectedFriend,
     activeSessionData,
     setActiveSessionData,
     userPreferences,
-    setUserPreferences,
     notifications,
     setNotifications,
     collaborationPreferences,
-    setCollaborationPreferences,
     notificationsEnabled,
-    setNotificationsEnabled,
     activityNavigation,
     setActivityNavigation,
     userIdentity,
-    setUserIdentity,
     accountPreferences,
     setAccountPreferences,
     calendarEntries,
@@ -78,682 +75,81 @@ export default function App() {
     removedCardIds,
     setRemovedCardIds,
     friendsList,
-    setFriendsList,
     blockedUsers,
-    setBlockedUsers,
     boardsSessions,
-    setBoardsSessions,
     profileStats,
     setProfileStats,
     updateBoardsSessions,
-    safeAsyncStorageSet
+    handleUserIdentityUpdate,
+    safeAsyncStorageSet,
+    showOnboardingFlow,
+    setShowOnboardingFlow,
+    hasCompletedOnboarding,
+    setHasCompletedOnboarding,
+    onboardingData,
+    setOnboardingData,
+    showSignUpForm,
+    setShowSignUpForm
   } = state;
 
-  const handleSaveCard = (cardData: any) => {
-    try {
-      const existingSaved = savedCards.find((card: any) => card.id === cardData.id);
-      if (existingSaved) {
-        const notification = {
-          id: `already-saved-${Date.now()}`,
-          type: 'success' as const,
-          title: '💖 Already Loved!',
-          message: `${cardData.title} is already in your saved experiences`,
-          autoHide: true,
-          duration: 2000
-        };
-        setNotifications(prev => [...prev, notification]);
-        
-        const updatedRemovedIds = [...removedCardIds, cardData.id];
-        setRemovedCardIds(updatedRemovedIds);
-        safeAsyncStorageSet('mingla_removed_cards', updatedRemovedIds);
-        return;
-      }
-
-      const savedCard = {
-        ...cardData,
-        savedAt: new Date().toISOString(),
-        sessionType: currentMode
-      };
-      
-      const updatedSavedCards = [...savedCards, savedCard];
-      setSavedCards(updatedSavedCards);
-      safeAsyncStorageSet('mingla_saved_cards', updatedSavedCards);
-
-      const updatedRemovedIds = [...removedCardIds, cardData.id];
-      setRemovedCardIds(updatedRemovedIds);
-      safeAsyncStorageSet('mingla_removed_cards', updatedRemovedIds);
-
-      setProfileStats(prev => ({
-        ...prev,
-        savedExperiences: prev.savedExperiences + 1
-      }));
-
-      const notification = {
-        id: `card-save-${Date.now()}`,
-        type: 'success' as const,
-        title: '❤️ Saved!',
-        message: `${cardData.title} has been added to your saved experiences`,
-        autoHide: true,
-        duration: 3000
-      };
-      setNotifications(prev => [...prev, notification]);
-    } catch (error) {
-      console.error('Error saving card:', error);
-      const notification = {
-        id: `card-save-error-${Date.now()}`,
-        type: 'error' as const,
-        title: 'Error',
-        message: 'Failed to save card. Please try again.',
-        autoHide: true,
-        duration: 3000
-      };
-      setNotifications(prev => [...prev, notification]);
-    }
-  };
-
-  const handleAddToCalendar = async (experienceData: any) => {
-    const isDirectSchedule = experienceData._directSchedule;
-    const isPurchase = experienceData.purchaseOption;
-    
-    const cleanExperienceData = { ...experienceData };
-    delete cleanExperienceData._directSchedule;
-    
-    const dateTimePrefs = userPreferences ? {
-      timeOfDay: userPreferences.timeOfDay || 'Afternoon',
-      dayOfWeek: userPreferences.dayOfWeek || 'Weekend',
-      planningTimeframe: userPreferences.planningTimeframe || 'This month'
-    } : {
-      timeOfDay: 'Afternoon',
-      dayOfWeek: 'Weekend', 
-      planningTimeframe: 'This month'
-    };
-
-    const existingSaved = savedCards.find((card: any) => card.id === cleanExperienceData.id);
-    if (!isDirectSchedule && !existingSaved) {
-      const savedCard = {
-        ...cleanExperienceData,
-        savedAt: new Date().toISOString(),
-        sessionType: currentMode
-      };
-      
-      const updatedSavedCards = [...savedCards, savedCard];
-      setSavedCards(updatedSavedCards);
-      safeAsyncStorageSet('mingla_saved_cards', updatedSavedCards);
-    }
-
-    const updatedRemovedIds = [...removedCardIds, cleanExperienceData.id];
-    setRemovedCardIds(updatedRemovedIds);
-    safeAsyncStorageSet('mingla_removed_cards', updatedRemovedIds);
-
-    const suggestedDates = handlers.generateSuggestedDates(dateTimePrefs);
-
-    const calendarEntry = {
-      id: `calendar-${Date.now()}`,
-      experience: cleanExperienceData,
-      purchaseOption: cleanExperienceData.purchaseOption,
-      dateTimePreferences: dateTimePrefs,
-      sessionType: currentMode,
-      sessionName: currentMode === 'solo' ? 'Solo Session' : currentMode,
-      addedAt: new Date().toISOString(),
-      status: 'locked-in',
-      suggestedDates: suggestedDates,
-      isLiked: !isDirectSchedule || existingSaved,
-      isPurchased: !!isPurchase
-    };
-
-    const updatedEntries = [...calendarEntries, calendarEntry];
-    setCalendarEntries(updatedEntries);
-    
-    safeAsyncStorageSet('mingla_calendar_entries', updatedEntries);
-
-    if (isDirectSchedule || isPurchase) {
-      try {
-        const { addToCalendar, createCalendarEventFromEntry } = await import('./components/utils/calendar');
-        
-        const calendarEvent = createCalendarEventFromEntry(calendarEntry);
-        
-        if (isPurchase && cleanExperienceData.purchaseOption) {
-          const purchaseOption = cleanExperienceData.purchaseOption;
-          calendarEvent.title = `${calendarEvent.title} - ${purchaseOption.title}`;
-          calendarEvent.description = [
-            `🛍️ PURCHASED EXPERIENCE`,
-            '',
-            calendarEvent.description,
-            '',
-            `Purchase Details:`,
-            `• Option: ${purchaseOption.title}`,
-            `• Price: ${formatCurrency(purchaseOption.price, accountPreferences.currency)}`,
-            `• Includes: ${purchaseOption.includes?.join(', ') || 'See details'}`,
-            ...(purchaseOption.duration ? [`• Duration: ${purchaseOption.duration}`] : []),
-            '',
-            `Date/Time Preferences:`,
-            `• Preferred Time: ${dateTimePrefs.timeOfDay}`,
-            `• Preferred Day: ${dateTimePrefs.dayOfWeek}`,
-            `• Planning Window: ${dateTimePrefs.planningTimeframe}`,
-            '',
-            `Session: ${calendarEntry.sessionName}`,
-            `Added via Mingla App`
-          ].join('\n');
-        }
-        
-        addToCalendar(calendarEvent);
-        
-        console.log('Event added to device calendar:', calendarEvent);
-      } catch (error) {
-        console.error('Failed to add to device calendar:', error);
-        const fallbackNotification = {
-          id: `calendar-fallback-${Date.now()}`,
-          type: 'warning' as const,
-          title: '📅 Manual Calendar Add',
-          message: 'Please manually add this event to your calendar. Details saved in app.',
-          autoHide: true,
-          duration: 5000
-        };
-        setNotifications(prev => [...prev, fallbackNotification]);
-      }
-    }
-
-    setProfileStats(prev => ({
-      ...prev,
-      savedExperiences: (!isDirectSchedule && !existingSaved) ? prev.savedExperiences + 1 : prev.savedExperiences,
-      placesVisited: updatedEntries.filter(entry => entry.status === 'completed').length
-    }));
-
-    const notificationTitle = isPurchase ? '🛍️ Purchased & Scheduled!' : 
-                             isDirectSchedule ? '📅 Scheduled!' : 
-                             '❤️ Liked & Scheduled!';
-    
-    const notificationMessage = isPurchase ? 
-      `${cleanExperienceData.title} purchased and added to your calendar & device` :
-      isDirectSchedule ? 
-        `${cleanExperienceData.title} has been added to your calendar & device` :
-        `${cleanExperienceData.title} has been added to your calendar, device & saved to favorites`;
-
-    const notification = {
-      id: `calendar-add-${Date.now()}`,
-      type: 'success' as const,
-      title: notificationTitle,
-      message: notificationMessage,
-      autoHide: true,
-      duration: isPurchase ? 5000 : 4000
-    };
-    setNotifications(prev => [...prev, notification]);
-
-    console.log('Experience added to calendar:', calendarEntry);
-  };
-
-  const handleScheduleFromSaved = (savedCardData: any) => {
-    const dateTimePrefs = userPreferences ? {
-      timeOfDay: userPreferences.timeOfDay || 'Afternoon',
-      dayOfWeek: userPreferences.dayOfWeek || 'Weekend',
-      planningTimeframe: userPreferences.planningTimeframe || 'This month'
-    } : {
-      timeOfDay: 'Afternoon',
-      dayOfWeek: 'Weekend', 
-      planningTimeframe: 'This month'
-    };
-
-    const updatedSavedCards = savedCards.filter((card: any) => card.id !== savedCardData.id);
-    setSavedCards(updatedSavedCards);
-    safeAsyncStorageSet('mingla_saved_cards', updatedSavedCards);
-
-    const calendarEntry = {
-      id: `calendar-${Date.now()}`,
-      experience: savedCardData,
-      dateTimePreferences: dateTimePrefs,
-      sessionType: savedCardData.sessionType || currentMode,
-      sessionName: (savedCardData.sessionType || currentMode) === 'solo' ? 'Solo Session' : (savedCardData.sessionType || currentMode),
-      addedAt: new Date().toISOString(),
-      status: 'locked-in',
-      suggestedDates: handlers.generateSuggestedDates(dateTimePrefs),
-      isLiked: true,
-      movedFromSaved: true
-    };
-
-    const updatedEntries = [...calendarEntries, calendarEntry];
-    setCalendarEntries(updatedEntries);
-    safeAsyncStorageSet('mingla_calendar_entries', updatedEntries);
-
-    const notification = {
-      id: `schedule-from-saved-${Date.now()}`,
-      type: 'success' as const,
-      title: '📅 Scheduled!',
-      message: `${savedCardData.title} has been moved to your calendar`,
-      autoHide: true,
-      duration: 3000
-    };
-    setNotifications(prev => [...prev, notification]);
-
-    console.log('Card moved from saved to calendar:', calendarEntry);
-  };
-
-  const handlePurchaseFromSaved = (savedCardData: any, purchaseOption: any) => {
-    const dateTimePrefs = userPreferences ? {
-      timeOfDay: userPreferences.timeOfDay || 'Afternoon',
-      dayOfWeek: userPreferences.dayOfWeek || 'Weekend',
-      planningTimeframe: userPreferences.planningTimeframe || 'This month'
-    } : {
-      timeOfDay: 'Afternoon',
-      dayOfWeek: 'Weekend', 
-      planningTimeframe: 'This month'
-    };
-
-    const updatedSavedCards = savedCards.filter((card: any) => card.id !== savedCardData.id);
-    setSavedCards(updatedSavedCards);
-    safeAsyncStorageSet('mingla_saved_cards', updatedSavedCards);
-
-    const calendarEntry = {
-      id: `calendar-${Date.now()}`,
-      experience: savedCardData,
-      purchaseOption: purchaseOption,
-      dateTimePreferences: dateTimePrefs,
-      sessionType: savedCardData.sessionType || currentMode,
-      sessionName: (savedCardData.sessionType || currentMode) === 'solo' ? 'Solo Session' : (savedCardData.sessionType || currentMode),
-      addedAt: new Date().toISOString(),
-      status: 'locked-in',
-      suggestedDates: handlers.generateSuggestedDates(dateTimePrefs),
-      isLiked: true,
-      movedFromSaved: true,
-      isPurchased: true
-    };
-
-    const updatedEntries = [...calendarEntries, calendarEntry];
-    setCalendarEntries(updatedEntries);
-    safeAsyncStorageSet('mingla_calendar_entries', updatedEntries);
-
-    const notification = {
-      id: `purchase-from-saved-${Date.now()}`,
-      type: 'success' as const,
-      title: '🛍️ Purchased & Scheduled!',
-      message: `${savedCardData.title} (${purchaseOption.title}) has been purchased and added to your calendar`,
-      autoHide: true,
-      duration: 4000
-    };
-    setNotifications(prev => [...prev, notification]);
-
-    console.log('Card purchased from saved and moved to calendar:', calendarEntry);
-  };
-
-  const handleRemoveFromCalendar = (calendarEntry: any) => {
-    const updatedCalendarEntries = calendarEntries.filter((entry: any) => entry.id !== calendarEntry.id);
-    setCalendarEntries(updatedCalendarEntries);
-    safeAsyncStorageSet('mingla_calendar_entries', updatedCalendarEntries);
-
-    const savedCard = {
-      ...calendarEntry.experience,
-      savedAt: new Date().toISOString(),
-      sessionType: calendarEntry.sessionType || currentMode,
-      movedFromCalendar: true
-    };
-
-    const existingSaved = savedCards.find((card: any) => card.id === savedCard.id);
-    if (!existingSaved) {
-      const updatedSavedCards = [...savedCards, savedCard];
-      setSavedCards(updatedSavedCards);
-      safeAsyncStorageSet('mingla_saved_cards', updatedSavedCards);
-
-      setProfileStats(prev => ({
-        ...prev,
-        savedExperiences: prev.savedExperiences + 1,
-        placesVisited: updatedCalendarEntries.filter(entry => entry.status === 'completed').length
-      }));
-    }
-
-    const notification = {
-      id: `remove-from-calendar-${Date.now()}`,
-      type: 'success' as const,
-      title: '❤️ Moved to Saved!',
-      message: `${calendarEntry.experience.title} has been removed from your calendar and moved back to saved experiences`,
-      autoHide: true,
-      duration: 3000
-    };
-    setNotifications(prev => [...prev, notification]);
-
-    console.log('Calendar entry moved back to saved:', savedCard);
-  };
-
-  const handleRemoveSaved = (savedCard: any) => {
-    const updatedSavedCards = savedCards.filter((card: any) => card.id !== savedCard.id);
-    setSavedCards(updatedSavedCards);
-    safeAsyncStorageSet('mingla_saved_cards', updatedSavedCards);
-
-    setProfileStats(prev => ({
-      ...prev,
-      savedExperiences: Math.max(0, prev.savedExperiences - 1)
-    }));
-
-    const notification = {
-      id: `remove-saved-${Date.now()}`,
-      type: 'success' as const,
-      title: '🗑️ Card Discarded',
-      message: `${savedCard.title} has been removed from your saved experiences`,
-      autoHide: true,
-      duration: 3000
-    };
-    setNotifications(prev => [...prev, notification]);
-
-    console.log('Saved card discarded:', savedCard);
-  };
-
-  const handleOnboardingComplete = (completedOnboardingData: any) => {
-    setHasCompletedOnboarding(true);
-    safeAsyncStorageSet('mingla_onboarding_completed', 'true');
-    
-    setOnboardingData(completedOnboardingData);
-    safeAsyncStorageSet('mingla_onboarding_data', completedOnboardingData);
-    
-    if (completedOnboardingData.userProfile) {
-      const [firstName, ...lastNameParts] = completedOnboardingData.userProfile.name.split(' ');
-      const updatedIdentity = {
-        firstName: firstName || 'Jordan',
-        lastName: lastNameParts.join(' ') || 'Smith',
-        username: completedOnboardingData.userProfile.email?.split('@')[0] || 'jordansmith',
-        profileImage: completedOnboardingData.userProfile.profileImage || null
-      };
-      setUserIdentity(updatedIdentity);
-      safeAsyncStorageSet('mingla_user_identity', updatedIdentity);
-    }
-    
-    const primaryIntent = completedOnboardingData.intents?.[0];
-    const hasGroupIntent = completedOnboardingData.intents?.some((intent: any) => intent.id === 'group-fun');
-    const hasSoloIntent = completedOnboardingData.intents?.some((intent: any) => intent.id === 'solo-adventure');
-    
-    const initialPreferences = {
-      experienceType: primaryIntent?.experienceType || 'Solo adventure',
-      categories: completedOnboardingData.vibes || [],
-      location: completedOnboardingData.location || 'San Francisco, CA',
-      budget: '$50-100',
-      timeOfDay: 'Afternoon',
-      dayOfWeek: 'Weekend',
-      planningTimeframe: 'This month',
-      groupSize: hasGroupIntent ? 'Large group (5+)' : 
-                  hasSoloIntent ? 'Solo' : 'Small group (2-4)',
-      accessibility: 'No specific needs',
-      transportation: 'Walking distance',
-      duration: '2-3 hours',
-      weatherPreference: 'Any weather'
-    };
-    
-    setUserPreferences(initialPreferences);
-    
-    if (completedOnboardingData.invitedFriends?.length > 0) {
-      const currentFriends = [...friendsList];
-      const newFriends = completedOnboardingData.invitedFriends.map((friend: any) => ({
-        ...friend,
-        status: 'online',
-        isOnline: true,
-        mutualFriends: Math.floor(Math.random() * 20) + 5
-      }));
-      
-      const updatedFriends = [...currentFriends, ...newFriends];
-      setFriendsList(updatedFriends);
-      safeAsyncStorageSet('mingla_friends_list', updatedFriends);
-      
-      setProfileStats(prev => ({
-        ...prev,
-        connectionsCount: updatedFriends.length
-      }));
-    }
-
-    
-    console.log('Onboarding completed:', completedOnboardingData);
-  };
-
-  const handleAppSignOut = () => {
-    stateHandleSignOut();
-  };
-
-  const handleDeleteAccount = () => {
-    // Similar to sign out but more complete
-    stateHandleSignOut();
-    console.log('Account deleted - all user data removed');
-  };
-
-  // Mock card generator
-  const generateNewMockCard = () => {
-    const cardTemplates = [
-      {
-        title: 'Artisan Chocolate Workshop',
-        category: 'Creative & Hands-On',
-        categoryIcon: 'Sparkles',
-        description: 'Hands-on chocolate making with local artisans',
-        budget: 'Perfect for your $50-100 budget range',
-        rating: 4.8,
-        reviewCount: 342,
-        priceRange: '$75-95',
-        travelTime: '18 min',
-        distance: '4.2 km',
-        experienceType: 'Workshop',
-        highlights: ['Hands-on experience', 'Take home treats', 'Expert guidance'],
-        fullDescription: 'Learn the art of chocolate making from bean to bar in this immersive workshop experience.',
-        address: '456 Artisan Way, Creative District',
-        openingHours: 'Daily 10AM-6PM',
-        tags: ['Creative', 'Educational', 'Delicious'],
-        matchScore: 92,
-        image: 'https://images.unsplash.com/photo-1646082192921-272df4780996?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjaG9jb2xhdGUlMjB3b3Jrc2hvcCUyMGFydGlzYW58ZW58MXx8fHwxNzU5MzI4Nzg3fDA&ixlib=rb-4.1.0&q=80&w=1080',
-        images: [
-          'https://images.unsplash.com/photo-1646082192921-272df4780996?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjaG9jb2xhdGUlMjB3b3Jrc2hvcCUyMGFydGlzYW58ZW58MXx8fHwxNzU5MzI4Nzg3fDA&ixlib=rb-4.1.0&q=80&w=1080'
-        ]
-      }
-    ];
-
-    const randomIndex = Math.floor(Math.random() * cardTemplates.length);
-    const template = cardTemplates[randomIndex];
-    const uniqueId = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    return {
-      id: uniqueId,
-      ...template,
-      socialStats: {
-        views: Math.floor(Math.random() * 5000) + 1000,
-        likes: Math.floor(Math.random() * 500) + 50,
-        saves: Math.floor(Math.random() * 200) + 20,
-        shares: Math.floor(Math.random() * 100) + 10
-      },
-      matchFactors: {
-        location: Math.floor(Math.random() * 30) + 70,
-        budget: Math.floor(Math.random() * 20) + 80,
-        category: Math.floor(Math.random() * 25) + 75,
-        time: Math.floor(Math.random() * 20) + 80,
-        popularity: Math.floor(Math.random() * 30) + 70
-      }
-    };
-  };
-
-
-
-  if (showPreferences) {
+  // Show loading while checking authentication status (with fallback)
+  if (isLoadingAuth && !authTimeout) {
     return (
-      <PreferencesSheet 
-        onClose={() => setShowPreferences(false)} 
-        onSave={handlers.handleSavePreferences}
-        accountPreferences={accountPreferences}
-      />
-    );
-  }
-
-  const renderCurrentPage = () => {
-    switch (currentPage) {
-      case 'home':
-        return (
-          <HomePage 
-            onOpenPreferences={() => setShowPreferences(true)}
-            onOpenCollaboration={handlers.handleCollaborationOpen}
-            onOpenCollabPreferences={() => {
-              if (currentMode !== 'solo') {
-                setActiveSessionData({ id: currentMode, name: currentMode, participants: [] });
-                setShowCollabPreferences(true);
-              }
-            }}
-            currentMode={currentMode}
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-            onAddToCalendar={handleAddToCalendar}
-            savedCards={savedCards}
-            onSaveCard={handleSaveCard}
-            onShareCard={handlers.handleShareCard}
-            onPurchaseComplete={(experienceData, purchaseOption) => {
-              const enhancedPurchaseData = {
-                ...experienceData,
-                purchaseOption: {
-                  ...purchaseOption,
-                  purchasedAt: new Date().toISOString(),
-                  currency: accountPreferences.currency,
-                  userPreferences: userPreferences ? {
-                    timeOfDay: userPreferences.timeOfDay,
-                    dayOfWeek: userPreferences.dayOfWeek,
-                    planningTimeframe: userPreferences.planningTimeframe,
-                    location: userPreferences.location,
-                    groupSize: userPreferences.groupSize
-                  } : null
-                },
-                _directSchedule: true,
-                sessionType: currentMode,
-                sessionName: currentMode === 'solo' ? 'Solo Session' : currentMode
-              };
-              
-              handleAddToCalendar(enhancedPurchaseData);
-              
-              console.log('Purchase completed with preferences:', {
-                experience: experienceData.title,
-                option: purchaseOption.title,
-                price: formatCurrency(purchaseOption.price, accountPreferences.currency),
-                preferences: userPreferences,
-                session: currentMode
-              });
-            }}
-            removedCardIds={removedCardIds}
-            onResetCards={() => setRemovedCardIds([])}
-            generateNewMockCard={generateNewMockCard}
-            onboardingData={onboardingData}
-          />
-        );
-      case 'connections':
-        return (
-          <ConnectionsPage 
-            onSendCollabInvite={handlers.handleCollaborationOpen} 
-            onAddToBoard={handlers.handleAddToBoard}
-            onShareSavedCard={handlers.handleShareSavedCard}
-            onRemoveFriend={handlers.handleRemoveFriend}
-            onBlockUser={handlers.handleBlockUser}
-            onReportUser={handlers.handleReportUser}
-            accountPreferences={accountPreferences}
-            boardsSessions={boardsSessions}
-            currentMode={currentMode}
-            onModeChange={handlers.handleModeChange}
-            onUpdateBoardSession={(updatedBoard: any) => {
-              const updatedBoards = boardsSessions.map(board => 
-                board.id === updatedBoard.id ? updatedBoard : board
-              );
-              updateBoardsSessions(updatedBoards);
-            }}
-            onCreateSession={(newSession: any) => {
-              const updatedBoards = [...boardsSessions, newSession];
-              updateBoardsSessions(updatedBoards);
-            }}
-            onNavigateToBoard={handlers.handleNavigateToActivityBoard}
-            friendsList={friendsList}
-          />
-        );
-      case 'activity':
-        return (
-          <ActivityPage 
-            onSendInvite={handlers.handleSendInvite} 
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-            calendarEntries={calendarEntries}
-            savedCards={savedCards}
-            onScheduleFromSaved={handleScheduleFromSaved}
-            onPurchaseFromSaved={handlePurchaseFromSaved}
-            onRemoveFromCalendar={handleRemoveFromCalendar}
-            onRemoveSaved={handleRemoveSaved}
-            onShareCard={handlers.handleShareCard}
-            boardsSessions={boardsSessions}
-            onUpdateBoardSession={(updatedBoard: any) => {
-              const updatedBoards = boardsSessions.map(board => 
-                board.id === updatedBoard.id ? updatedBoard : board
-              );
-              updateBoardsSessions(updatedBoards);
-            }}
-            navigationData={activityNavigation}
-            onNavigationComplete={() => setActivityNavigation(null)}
-            onPromoteToAdmin={handlers.handlePromoteToAdmin}
-            onDemoteFromAdmin={handlers.handleDemoteFromAdmin}
-            onRemoveMember={handlers.handleRemoveMember}
-            onLeaveBoard={handlers.handleLeaveBoard}
-          />
-        );
-      case 'profile':
-        return (
-          <ProfilePage 
-            onSignOut={handleAppSignOut}
-            onNavigateToActivity={handlers.handleNavigateToActivity}
-            onNavigateToConnections={handlers.handleNavigateToConnections}
-            onNavigateToProfileSettings={() => setCurrentPage('profile-settings')}
-            onNavigateToAccountSettings={() => setCurrentPage('account-settings')}
-            onNavigateToPrivacyPolicy={() => setCurrentPage('privacy-policy')}
-            onNavigateToTermsOfService={() => setCurrentPage('terms-of-service')}
-            savedExperiences={profileStats.savedExperiences}
-            boardsCount={profileStats.boardsCount}
-            connectionsCount={profileStats.connectionsCount}
-            placesVisited={profileStats.placesVisited}
-            notificationsEnabled={notificationsEnabled}
-            onNotificationsToggle={handlers.handleNotificationsToggle}
-            userIdentity={userIdentity}
-            blockedUsers={blockedUsers}
-            onUnblockUser={handlers.handleUnblockUser}
-          />
-        );
-      case 'profile-settings':
-        return (
-          <ProfileSettings 
-            userIdentity={userIdentity}
-            onUpdateIdentity={state.handleUserIdentityUpdate}
-            onNavigateBack={() => setCurrentPage('profile')}
-          />
-        );
-      case 'account-settings':
-        return (
-          <AccountSettings 
-            accountPreferences={accountPreferences}
-            onUpdatePreferences={state.handleAccountPreferencesUpdate}
-            onDeleteAccount={handleDeleteAccount}
-            onNavigateBack={() => setCurrentPage('profile')}
-          />
-        );
-      case 'privacy-policy':
-        return (
-          <PrivacyPolicy 
-            onNavigateBack={() => setCurrentPage('profile')}
-          />
-        );
-      case 'terms-of-service':
-        return (
-          <TermsOfService 
-            onNavigateBack={() => setCurrentPage('profile')}
-          />
-        );
-      default:
-        return <HomePage onOpenPreferences={() => setShowPreferences(true)} />;
-    }
-  };
-
-  // Show loading while checking authentication status
-  if (isLoadingAuth || isLoadingOnboarding) {
-    return (
-      <View className="h-screen bg-gray-50 flex items-center justify-center">
-        <View className="text-center space-y-4">
-          <View className="w-16 h-16 bg-gradient-to-br from-[#FF7043] to-[#FF5722] rounded-full flex items-center justify-center mx-auto">
-            <Text className="text-white text-2xl">✨</Text>
+      <View style={{ flex: 1, backgroundColor: '#f9fafb', justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ alignItems: 'center' }}>
+          <View style={{ 
+            width: 64, 
+            height: 64, 
+            backgroundColor: '#eb7825', 
+            borderRadius: 32, 
+            justifyContent: 'center', 
+            alignItems: 'center',
+            marginBottom: 16
+          }}>
+            <Text style={{ color: 'white', fontSize: 24 }}>✨</Text>
           </View>
-          <Text className="text-gray-600">Loading Mingla...</Text>
+          <Text style={{ color: '#6b7280', fontSize: 16, marginBottom: 8 }}>Loading Mingla...</Text>
+          <Text style={{ color: '#9ca3af', fontSize: 14 }}>
+            Checking authentication...
+          </Text>
         </View>
       </View>
     );
   }
 
+  // Show onboarding flow if it's active
+  if (showOnboardingFlow) {
+    console.log('Showing onboarding flow');
+    return (
+      <ErrorBoundary>
+        <OnboardingFlow
+          onComplete={(data) => {
+            console.log('Onboarding completed:', data);
+            setOnboardingData(data);
+            setHasCompletedOnboarding(true);
+            setShowOnboardingFlow(false);
+          }}
+          onNavigateToSignUp={() => {
+            setShowOnboardingFlow(false);
+            // This will trigger the SignInPage to show sign-up form
+          }}
+          onBackToWelcome={() => {
+            setShowOnboardingFlow(false);
+            // This will return to the welcome screen
+          }}
+          onNavigateToSignUpForm={() => {
+            setShowOnboardingFlow(false);
+            setShowSignUpForm(true);
+            // This will show the sign-up form
+          }}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   // Show sign in page if user is not authenticated
   if (!isAuthenticated) {
+    console.log('User not authenticated - showing SignInPage');
     return (
       <ErrorBoundary>
         <SignInPage
@@ -761,30 +157,266 @@ export default function App() {
           onSignUpRegular={(userData) => handleSignUp(userData, 'explorer')}
           onSignInCurator={(credentials) => handleSignIn(credentials, 'curator')}
           onSignUpCurator={(userData) => handleSignUp(userData, 'curator')}
+          onStartOnboarding={() => setShowOnboardingFlow(true)}
+          initialMode={showSignUpForm ? 'sign-up' : 'welcome'}
+          onResetSignUpForm={() => setShowSignUpForm(false)}
         />
       </ErrorBoundary>
     );
   }
 
-  // Show onboarding flow if user hasn't completed it
-  if (!hasCompletedOnboarding) {
-    const handleNavigateToSignUp = () => {
-      setIsAuthenticated(false);
-    };
+  // Function to render current page based on navigation
+  const renderCurrentPage = () => {
+    switch (currentPage) {
+      case 'home':
+        return (
+          <HomePage 
+            onOpenPreferences={() => setShowPreferences(true)}
+            onOpenCollaboration={handlers.handleCollaborationOpen}
+            onOpenCollabPreferences={() => setShowCollabPreferences(true)}
+            currentMode={currentMode}
+            userPreferences={userPreferences}
+            accountPreferences={{
+              currency: accountPreferences?.currency || 'USD',
+              measurementSystem: (accountPreferences?.measurementSystem as 'Metric' | 'Imperial') || 'Imperial'
+            }}
+            onAddToCalendar={(experienceData: any) => console.log('Add to calendar:', experienceData)}
+            savedCards={savedCards}
+            onSaveCard={(card: any) => console.log('Save card:', card)}
+            onShareCard={handlers.handleShareCard}
+            onPurchaseComplete={(experienceData: any, purchaseOption: any) => console.log('Purchase complete:', experienceData, purchaseOption)}
+            removedCardIds={removedCardIds}
+            onResetCards={() => setRemovedCardIds([])}
+            generateNewMockCard={() => console.log('Generate new card')}
+          />
+        );
+      case 'connections':
+        return (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ fontSize: 18, color: '#6b7280' }}>Connections Page</Text>
+            <Text style={{ fontSize: 14, color: '#9ca3af', marginTop: 8 }}>Coming Soon</Text>
+          </View>
+        );
+        case 'activity':
+          return (
+            <ActivityPage 
+              boardsSessions={boardsSessions}
+              savedCards={savedCards}
+              calendarEntries={calendarEntries}
+              userPreferences={userPreferences}
+              accountPreferences={accountPreferences}
+              navigationData={activityNavigation}
+              onNavigationComplete={() => setActivityNavigation(null)}
+              onSendInvite={(sessionId: string, users: any[]) => {
+                console.log('Sending invite to session:', sessionId, 'users:', users);
+                // Handle invite logic here
+              }}
+              onScheduleFromSaved={(savedCard: any) => {
+                console.log('Scheduling from saved:', savedCard);
+                // Handle scheduling logic here
+              }}
+              onPurchaseFromSaved={(card: any, purchaseOption: any) => {
+                console.log('Purchasing from saved:', card, purchaseOption);
+                // Handle purchase logic here
+              }}
+              onRemoveFromCalendar={(entry: any) => {
+                console.log('Removing from calendar:', entry);
+                // Handle removal logic here
+              }}
+              onRemoveSaved={(card: any) => {
+                console.log('Removing saved card:', card);
+                // Handle removal logic here
+              }}
+              onShareCard={(card: any) => {
+                console.log('Sharing card:', card);
+                // Handle share logic here
+              }}
+              onUpdateBoardSession={(board: any) => {
+                console.log('Updating board session:', board);
+                // Handle board update logic here
+              }}
+              onPromoteToAdmin={(boardId: string, participantId: string) => {
+                console.log('Promoting to admin:', boardId, participantId);
+                // Handle promote logic here
+              }}
+              onDemoteFromAdmin={(boardId: string, participantId: string) => {
+                console.log('Demoting from admin:', boardId, participantId);
+                // Handle demote logic here
+              }}
+              onRemoveMember={(boardId: string, participantId: string) => {
+                console.log('Removing member:', boardId, participantId);
+                // Handle remove member logic here
+              }}
+              onLeaveBoard={(boardId: string) => {
+                console.log('Leaving board:', boardId);
+                // Handle leave board logic here
+              }}
+            />
+          );
+      case 'profile':
+        return (
+          <ProfilePage 
+            onSignOut={() => {
+              console.log('App: Sign out called from ProfilePage');
+              console.log('App: handleSignOut type:', typeof handleSignOut);
+              if (handleSignOut) {
+                handleSignOut();
+              } else {
+                console.error('App: handleSignOut is undefined!');
+              }
+            }}
+            onNavigateToActivity={(tab: 'saved' | 'boards' | 'calendar') => {
+              console.log('Navigate to activity:', tab);
+              setCurrentPage('activity');
+            }}
+            onNavigateToConnections={() => {
+              console.log('Navigate to connections');
+              setCurrentPage('connections');
+            }}
+            onNavigateToProfileSettings={() => {
+              console.log('Main App: Profile Settings button clicked');
+              console.log('Main App: Current userIdentity:', userIdentity);
+              console.log('Main App: Current user from useAuthSimple:', user);
+              console.log('Main App: Current profile from useAuthSimple:', profile);
+              console.log('Main App: Setting showProfileSettings to true');
+              setShowProfileSettings(true);
+              console.log('Main App: showProfileSettings set to true');
+            }}
+            onNavigateToAccountSettings={() => setShowAccountSettings(true)}
+            onNavigateToPrivacyPolicy={() => setShowPrivacyPolicy(true)}
+            onNavigateToTermsOfService={() => setShowTermsOfService(true)}
+            savedExperiences={savedCards?.length || 0}
+            boardsCount={boardsSessions?.length || 0}
+            connectionsCount={friendsList?.length || 0}
+            placesVisited={0}
+            notificationsEnabled={notificationsEnabled}
+            onNotificationsToggle={(enabled: boolean) => console.log('Toggle notifications:', enabled)}
+            userIdentity={userIdentity}
+            blockedUsers={blockedUsers}
+            onUnblockUser={(blockedUser: any) => console.log('Unblock user:', blockedUser)}
+          />
+        );
+      default:
+        return (
+          <HomePage 
+            onOpenPreferences={() => setShowPreferences(true)}
+            onOpenCollaboration={handlers.handleCollaborationOpen}
+            onOpenCollabPreferences={() => setShowCollabPreferences(true)}
+            currentMode={currentMode}
+            userPreferences={userPreferences}
+            accountPreferences={{
+              currency: accountPreferences?.currency || 'USD',
+              measurementSystem: (accountPreferences?.measurementSystem as 'Metric' | 'Imperial') || 'Imperial'
+            }}
+            onAddToCalendar={(experienceData: any) => console.log('Add to calendar:', experienceData)}
+            savedCards={savedCards}
+            onSaveCard={(card: any) => console.log('Save card:', card)}
+            onShareCard={handlers.handleShareCard}
+            onPurchaseComplete={(experienceData: any, purchaseOption: any) => console.log('Purchase complete:', experienceData, purchaseOption)}
+            removedCardIds={removedCardIds}
+            onResetCards={() => setRemovedCardIds([])}
+            generateNewMockCard={() => console.log('Generate new card')}
+          />
+        );
+    }
+  };
 
+  // Show main app if user is authenticated
+  if (isAuthenticated) {
+    console.log('User authenticated - showing main app');
+    
+    // Show PreferencesSheet as full screen if preferences are open
+    if (showPreferences) {
     return (
       <ErrorBoundary>
-        <OnboardingFlow 
-          onComplete={handleOnboardingComplete} 
-          onNavigateToSignUp={handleNavigateToSignUp}
+          <PreferencesSheet 
+            onClose={() => setShowPreferences(false)} 
+            onSave={handlers.handleSavePreferences}
+            accountPreferences={{
+              currency: accountPreferences?.currency || 'USD',
+              measurementSystem: (accountPreferences?.measurementSystem as 'Metric' | 'Imperial') || 'Imperial'
+            }}
+        />
+      </ErrorBoundary>
+    );
+  }
+
+  // Show Terms of Service as full screen if terms are open
+  if (showTermsOfService) {
+    return (
+      <ErrorBoundary>
+        <TermsOfService 
+          onNavigateBack={() => setShowTermsOfService(false)}
+        />
+      </ErrorBoundary>
+    );
+  }
+
+  // Show Privacy Policy as full screen if privacy policy is open
+  if (showPrivacyPolicy) {
+    return (
+      <ErrorBoundary>
+        <PrivacyPolicy 
+          onNavigateBack={() => setShowPrivacyPolicy(false)}
+        />
+      </ErrorBoundary>
+    );
+  }
+
+  // Show Account Settings as full screen if account settings are open
+  if (showAccountSettings) {
+    return (
+      <ErrorBoundary>
+        <AccountSettings 
+          accountPreferences={{
+            currency: accountPreferences?.currency || 'USD',
+            measurementSystem: (accountPreferences?.measurementSystem as 'Metric' | 'Imperial') || 'Imperial'
+          }}
+          onUpdatePreferences={(preferences) => {
+            console.log('Account preferences updated:', preferences);
+            setAccountPreferences(preferences);
+            setShowAccountSettings(false);
+          }}
+          onDeleteAccount={() => {
+            console.log('Delete account requested');
+            // TODO: Implement account deletion
+            setShowAccountSettings(false);
+          }}
+          onNavigateBack={() => setShowAccountSettings(false)}
+        />
+      </ErrorBoundary>
+    );
+  }
+
+  // Show Profile Settings as full screen if profile settings are open
+           if (showProfileSettings) {
+             console.log('Main App: Rendering ProfileSettings component with userIdentity:', userIdentity);
+             console.log('Main App: showProfileSettings is true, rendering ProfileSettings');
+             console.log('Main App: userIdentity keys:', Object.keys(userIdentity || {}));
+             console.log('Main App: userIdentity firstName:', userIdentity?.firstName);
+             console.log('Main App: userIdentity lastName:', userIdentity?.lastName);
+             console.log('Main App: userIdentity username:', userIdentity?.username);
+             console.log('Main App: userIdentity profileImage:', userIdentity?.profileImage);
+    return (
+      <ErrorBoundary>
+        <ProfileSettings 
+          userIdentity={userIdentity}
+          onUpdateIdentity={(updatedIdentity) => {
+            console.log('Profile identity updated:', updatedIdentity);
+            handleUserIdentityUpdate(updatedIdentity);
+            setShowProfileSettings(false);
+          }}
+          onNavigateBack={() => setShowProfileSettings(false)}
         />
       </ErrorBoundary>
     );
   }
 
   return (
-    <ErrorBoundary>
-      <SafeAreaView style={styles.safeArea}>
+    <MobileFeaturesProvider>
+      <NavigationProvider>
+        <ErrorBoundary>
+        <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor="white" />
         <View style={styles.container}>
         {/* Main Content */}
@@ -792,11 +424,31 @@ export default function App() {
           {renderCurrentPage()}
         </View>
 
-        {/* Bottom Navigation - Always Visible */}
+            {/* Collaboration Module */}
+            <CollaborationModule
+              isOpen={showCollaboration}
+              onClose={() => {
+                setShowCollaboration(false);
+                setPreSelectedFriend(null);
+              }}
+              currentMode={currentMode}
+              onModeChange={handlers.handleModeChange}
+              preSelectedFriend={preSelectedFriend}
+              boardsSessions={boardsSessions}
+              onUpdateBoardSession={(updatedBoard: any) => console.log('Update board session:', updatedBoard)}
+              onCreateSession={(newSession: any) => console.log('Create session:', newSession)}
+              onNavigateToBoard={(board: any, discussionTab?: string) => console.log('Navigate to board:', board, discussionTab)}
+              availableFriends={[]}
+            />
+
+            {/* Bottom Navigation */}
         <View style={styles.bottomNavigation}>
           <View style={styles.navigationContainer}>
             <TouchableOpacity 
-              onPress={() => setCurrentPage('home')}
+                  onPress={() => {
+                    console.log('Navigating to home');
+                    setCurrentPage('home');
+                  }}
               style={styles.navItem}
             >
               <Ionicons 
@@ -812,7 +464,10 @@ export default function App() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              onPress={() => setCurrentPage('connections')}
+                  onPress={() => {
+                    console.log('Navigating to connections');
+                    setCurrentPage('connections');
+                  }}
               style={styles.navItem}
             >
               <Ionicons 
@@ -828,7 +483,10 @@ export default function App() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              onPress={() => setCurrentPage('activity')}
+                  onPress={() => {
+                    console.log('Navigating to activity');
+                    setCurrentPage('activity');
+                  }}
               style={styles.navItem}
             >
               <Ionicons 
@@ -844,7 +502,10 @@ export default function App() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              onPress={() => setCurrentPage('profile')}
+                  onPress={() => {
+                    console.log('Navigating to profile');
+                    setCurrentPage('profile');
+                  }}
               style={styles.navItem}
             >
               <Ionicons 
@@ -861,69 +522,13 @@ export default function App() {
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Collaboration Module */}
-        <CollaborationModule
-          isOpen={showCollaboration}
-          onClose={() => {
-            setShowCollaboration(false);
-            setPreSelectedFriend(null);
-          }}
-          currentMode={currentMode}
-          onModeChange={handlers.handleModeChange}
-          preSelectedFriend={preSelectedFriend}
-          boardsSessions={boardsSessions}
-          onUpdateBoardSession={(updatedBoard: any) => {
-            const updatedBoards = boardsSessions.map(board => 
-              board.id === updatedBoard.id ? updatedBoard : board
-            );
-            updateBoardsSessions(updatedBoards);
-          }}
-          onCreateSession={(newSession: any) => {
-            const updatedBoards = [...boardsSessions, newSession];
-            updateBoardsSessions(updatedBoards);
-          }}
-          onNavigateToBoard={handlers.handleNavigateToActivityBoard}
-        />
-
-        {/* Collaboration Preferences */}
-        {showCollabPreferences && activeSessionData && (
-          <CollaborationPreferences
-            isOpen={showCollabPreferences}
-            onClose={() => {
-              setShowCollabPreferences(false);
-              setActiveSessionData(null);
-            }}
-            sessionName={activeSessionData.name}
-            participants={activeSessionData.participants}
-            onSave={handlers.handleCollabPreferencesSave}
-          />
-        )}
-
-        {/* Share Modal */}
-        {showShareModal && shareData && (
-          <ShareModal
-            isOpen={showShareModal}
-            onClose={() => {
-              setShowShareModal(false);
-              setShareData(null);
-            }}
-            experienceData={shareData.experienceData}
-            dateTimePreferences={shareData.dateTimePreferences}
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-          />
-        )}
-
-        {/* Notification System */}
-        <NotificationSystem
-          notifications={notifications}
-          onDismiss={handlers.handleDismissNotification}
-        />
       </View>
       </SafeAreaView>
     </ErrorBoundary>
+    </NavigationProvider>
+    </MobileFeaturesProvider>
   );
+  }
 }
 
 const styles = StyleSheet.create({
@@ -933,39 +538,32 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
   },
   mainContent: {
     flex: 1,
-    overflow: 'hidden',
-    paddingBottom: 80, // Space for bottom navigation
   },
   bottomNavigation: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: 'white',
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    zIndex: 50,
+    paddingBottom: 8,
+    paddingTop: 8,
   },
   navigationContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
   navItem: {
-    flexDirection: 'column',
     alignItems: 'center',
-    gap: 4,
     paddingVertical: 8,
     paddingHorizontal: 16,
+    borderRadius: 8,
   },
   navText: {
     fontSize: 12,
+    marginTop: 4,
   },
   navTextActive: {
     color: '#eb7825',

@@ -1,11 +1,12 @@
 import React from 'react';
 import { Text, View, TouchableOpacity, Image, StyleSheet, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import minglaLogo from '../../../assets/icon.png';
+const minglaLogo = require('../../../assets/icon.png');
 
 interface WelcomeScreenProps {
-  onSignUp: (userData: { email: string; password: string; name: string }) => void;
+  onSignUp: () => void;
   onNavigateToSignIn: () => void;
+  onStartOnboarding?: () => void;
 }
 
 const styles = StyleSheet.create({
@@ -119,7 +120,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export default function WelcomeScreen({ onSignUp, onNavigateToSignIn }: WelcomeScreenProps) {
+export default function WelcomeScreen({ onSignUp, onNavigateToSignIn, onStartOnboarding }: WelcomeScreenProps) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
@@ -159,11 +160,7 @@ export default function WelcomeScreen({ onSignUp, onNavigateToSignIn }: WelcomeS
             {/* Buttons */}
             <View style={styles.buttonsContainer}>
               <TouchableOpacity
-                onPress={() => onSignUp({ 
-                  email: `explorer${Date.now()}@mingla.temp`, 
-                  password: 'temp-password', 
-                  name: 'Explorer User' 
-                })}
+                onPress={onStartOnboarding || onSignUp}
                 style={styles.primaryButton}
               >
                 <Text style={styles.primaryButtonText}>Get Started</Text>

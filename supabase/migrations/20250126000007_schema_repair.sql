@@ -391,8 +391,8 @@ BEGIN
         new_data,
         change_type
     ) VALUES (
-        NEW.user_id,
-        NEW.id,
+        NEW.profile_id,  -- user_id: the profile_id from preferences table maps to user_id in preference_history
+        NEW.profile_id,  -- preference_id: use profile_id as the preference identifier
         CASE 
             WHEN TG_OP = 'INSERT' THEN '{}'::jsonb
             ELSE to_jsonb(OLD)

@@ -26,7 +26,9 @@ export default function PurchaseQRCode({ entry, accountPreferences }: PurchaseQR
       purchaseDate: entry.purchaseOption?.purchasedAt || new Date().toISOString(),
       validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // Valid for 1 year
       verificationToken,
-      customerName: 'Jordan Smith', // This would come from user profile
+      customerName: userIdentity?.firstName && userIdentity?.lastName 
+        ? `${userIdentity.firstName} ${userIdentity.lastName}`.trim()
+        : userIdentity?.firstName || 'Customer', // This would come from user profile
       qrVersion: '1.0'
     };
   };

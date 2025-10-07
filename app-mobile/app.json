@@ -18,6 +18,7 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Mingla needs location access to find experiences near you and provide location-based recommendations.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Mingla needs location access to find experiences near you and provide location-based recommendations.",
+        "NSLocationAlwaysUsageDescription": "Mingla needs location access to find experiences near you and provide location-based recommendations.",
         "NSCameraUsageDescription": "Mingla needs camera access to capture photos for your experiences.",
         "NSPhotoLibraryUsageDescription": "Mingla needs photo library access to select images for your experiences."
       }

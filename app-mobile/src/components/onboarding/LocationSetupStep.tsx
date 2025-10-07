@@ -1,5 +1,5 @@
-import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import React, { useState } from 'react';
+import { Text, View, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface LocationSetupStepProps {
@@ -10,6 +10,16 @@ interface LocationSetupStepProps {
 }
 
 const LocationSetupStep = ({ onNext, onBack, location, onRequestLocationPermission }: LocationSetupStepProps) => {
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  
+  const handleRequestLocationPermission = async () => {
+    setIsRequestingLocation(true);
+    try {
+      await onRequestLocationPermission();
+    } finally {
+      setIsRequestingLocation(false);
+    }
+  };
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -121,6 +131,10 @@ const LocationSetupStep = ({ onNext, onBack, location, onRequestLocationPermissi
       marginBottom: 16,
       width: '100%',
     },
+    enableLocationButtonDisabled: {
+      backgroundColor: '#9ca3af',
+      opacity: 0.7,
+    },
     enableLocationButtonText: {
       color: 'white',
       fontSize: 16,
@@ -202,11 +216,18 @@ const LocationSetupStep = ({ onNext, onBack, location, onRequestLocationPermissi
 
         {/* Enable Location Services Button */}
         <TouchableOpacity
-          onPress={onRequestLocationPermission}
-          style={styles.enableLocationButton}
+          onPress={handleRequestLocationPermission}
+          style={[styles.enableLocationButton, isRequestingLocation && styles.enableLocationButtonDisabled]}
+          disabled={isRequestingLocation}
         >
-          <Ionicons name="location" size={20} color="white" />
-          <Text style={styles.enableLocationButtonText}>Enable Location Services</Text>
+          {isRequestingLocation ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Ionicons name="location" size={20} color="white" />
+          )}
+          <Text style={styles.enableLocationButtonText}>
+            {isRequestingLocation ? 'Requesting Permission...' : 'Enable Location Services'}
+          </Text>
         </TouchableOpacity>
 
         {/* Disclaimer */}

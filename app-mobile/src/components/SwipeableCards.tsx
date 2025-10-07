@@ -3,6 +3,8 @@ import { Text, View, TouchableOpacity, Image, StyleSheet, Dimensions, Animated, 
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { formatCurrency, formatDistance } from './utils/formatters';
+import { ExperiencesService, Experience } from '../services/experiencesService';
+import { useAuthSimple } from '../hooks/useAuthSimple';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -60,85 +62,7 @@ interface SwipeableCardsProps {
   onboardingData?: any;
 }
 
-// Mock data matching the Figma design
-const mockRecommendations: Recommendation[] = [
-  {
-    id: '1',
-    title: 'Golden Gate Park Trail',
-    category: 'Take a Stroll',
-    categoryIcon: 'leaf',
-    timeAway: '18 min away',
-    description: 'Scenic walking adventure for nature lovers',
-    budget: 'Free activity within your budget',
-    rating: 4.7,
-    reviewCount: 203,
-    priceRange: 'Free',
-    distance: '4.2 km',
-    travelTime: '18m',
-    experienceType: 'Outdoor',
-    highlights: ['Japanese Tea Garden', 'Rose Garden', 'Scenic Views'],
-    fullDescription: 'Explore the beautiful trails of Golden Gate Park with stunning views and peaceful nature.',
-    address: 'Golden Gate Park, San Francisco, CA',
-    openingHours: 'Daily 5AM-10PM',
-    tags: ['Japanese Tea Garden', 'Rose Garden', '+2'],
-    matchScore: 95,
-    image: 'https://images.unsplash.com/photo-1739139106925-230659c867e0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxvdXRkb29yJTIwcGFyayUyMHdhbGtpbmclMjB0cmFpbHxlbnwxfHx8fDE3NTkxNzI1MTJ8MA&ixlib=rb-4.1.0&q=80&w=1080',
-    images: [
-      'https://images.unsplash.com/photo-1739139106925-230659c867e0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxvdXRkb29yJTIwcGFyayUyMHdhbGtpbmclMjB0cmFpbHxlbnwxfHx8fDE3NTkxNzI1MTJ8MA&ixlib=rb-4.1.0&q=80&w=1080'
-    ],
-    socialStats: {
-      views: 1250,
-      likes: 89,
-      saves: 23,
-      shares: 12
-    },
-    matchFactors: {
-      location: 92,
-      budget: 100,
-      category: 88,
-      time: 85,
-      popularity: 90
-    }
-  },
-  {
-    id: '2',
-    title: 'Sightglass Coffee Roastery',
-    category: 'Sip & Chill',
-    categoryIcon: 'cafe',
-    timeAway: '12 min away',
-    description: 'Intimate coffee experience with artisan vibes',
-    budget: 'Perfect for your $25-75 budget range',
-    rating: 4.6,
-    reviewCount: 89,
-    priceRange: '$15.00-$40.00',
-    distance: '2.1 km',
-    travelTime: '12m',
-    experienceType: 'Cafe',
-    highlights: ['Single Origin Coffee', 'Local Pastries', 'Cozy Atmosphere'],
-    fullDescription: 'Experience the art of coffee making in this intimate roastery setting.',
-    address: '2707 19th St, San Francisco, CA',
-    openingHours: 'Daily 7AM-6PM',
-    tags: ['Single Origin Coffee', 'Local Pastries', '+2'],
-    matchScore: 87,
-    image: 'https://images.unsplash.com/photo-1642315160505-b3dff3a3c8b9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb2ZmZWUlMjBzaG9wJTIwY296eSUyMGludGVyaW9yfGVufDF8fHx8MTc1OTExMDg1OHww&ixlib=rb-4.1.0&q=80&w=1080',
-    images: [
-      'https://images.unsplash.com/photo-1642315160505-b3dff3a3c8b9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb2ZmZWUlMjBzaG9wJTIwY296eSUyMGludGVyaW9yfGVufDF8fHx8MTc1OTExMDg1OHww&ixlib=rb-4.1.0&q=80&w=1080'
-    ],
-    socialStats: {
-      views: 890,
-      likes: 67,
-      saves: 18,
-      shares: 8
-    },
-    matchFactors: {
-      location: 85,
-      budget: 92,
-      category: 90,
-      time: 88,
-      popularity: 85
-    }
-  }
-];
+// Real data will be fetched from Supabase
 
 const getIconComponent = (iconName: string) => {
   const iconMap: {[key: string]: string} = {
@@ -180,8 +104,86 @@ export default function SwipeableCards({
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [touchStart, setTouchStart] = useState({ x: 0, y: 0 });
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const availableRecommendations = mockRecommendations.filter(rec => 
+  const { user } = useAuthSimple();
+
+  // Fetch real data from Supabase
+  useEffect(() => {
+    const fetchRecommendations = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get user preferences if available
+        let userPrefs = null;
+        if (user?.id) {
+          try {
+            userPrefs = await ExperiencesService.getUserPreferences(user.id);
+            console.log('User preferences loaded:', userPrefs);
+          } catch (error) {
+            console.error('Error loading user preferences:', error);
+            // Continue without preferences - app will use defaults
+            console.log('Using default preferences due to error');
+          }
+        } else {
+          console.log('No user authenticated - using default behavior');
+        }
+        
+        // Fetch experiences from Supabase
+        let experiences = [];
+        try {
+          experiences = await ExperiencesService.getExperiences();
+          console.log('Fetched experiences from Supabase:', experiences.length);
+        } catch (error) {
+          console.error('Error fetching experiences from Supabase:', error);
+          setError('Unable to load experiences. Please check your connection and try again.');
+          return;
+        }
+        
+        if (experiences.length === 0) {
+          console.warn('No experiences found in database');
+          setError('No experiences available. Please check back later.');
+          return;
+        }
+        
+        // Transform experiences to recommendation format
+        const transformedRecommendations = experiences.map(exp => 
+          ExperiencesService.transformExperience(exp)
+        );
+        
+        console.log('Transformed recommendations:', transformedRecommendations.length);
+        setRecommendations(transformedRecommendations);
+        
+        // Track view interaction for the first card (only if user is authenticated)
+        if (transformedRecommendations.length > 0 && user?.id) {
+          try {
+            await ExperiencesService.trackInteraction(
+              user.id,
+              transformedRecommendations[0].id,
+              'view'
+            );
+            console.log('Tracked view interaction for first card');
+          } catch (error) {
+            console.error('Error tracking view interaction:', error);
+            // Continue without tracking - not critical
+          }
+        }
+        
+      } catch (err) {
+        console.error('Error fetching recommendations:', err);
+        setError('Failed to load recommendations');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecommendations();
+  }, [user?.id]);
+
+  const availableRecommendations = recommendations.filter(rec => 
     !removedCards.has(rec.id) && !removedCardIds.includes(rec.id)
   );
 
@@ -240,11 +242,66 @@ export default function SwipeableCards({
     }
   };
 
-  const handleSwipe = (direction: 'left' | 'right') => {
+  const handleSwipe = async (direction: 'left' | 'right') => {
     console.log('Handling swipe:', direction, 'for card:', currentRec?.title);
     
-    if (direction === 'right' && onCardLike) {
-      onCardLike(currentRec);
+    if (!currentRec) return;
+    
+    try {
+      // Track interaction in Supabase (only if user is authenticated)
+      if (user?.id) {
+        const interactionType = direction === 'right' ? 'swipe_right' : 'swipe_left';
+        
+        try {
+          await ExperiencesService.trackInteraction(
+            user.id,
+            currentRec.id,
+            interactionType,
+            {
+              category: currentRec.category,
+              time_of_day: userPreferences?.timeOfDay || 'Afternoon',
+              budget_range: `${currentRec.priceRange}`,
+              location: userPreferences?.location || 'San Francisco'
+            }
+          );
+          console.log('Tracked swipe interaction:', interactionType);
+        } catch (trackingError) {
+          console.error('Error tracking interaction:', trackingError);
+          // Continue without tracking - not critical
+        }
+        
+        // Save to Supabase if swiped right (liked)
+        if (direction === 'right') {
+          try {
+            await ExperiencesService.saveExperience(user.id, currentRec.id, 'liked');
+            console.log('Saved liked experience to Supabase');
+          } catch (saveError) {
+            console.error('Error saving experience:', saveError);
+            // Continue with local save even if Supabase fails
+          }
+          
+          if (onCardLike) {
+            onCardLike(currentRec);
+          }
+        } else {
+          // Track dislike
+          try {
+            await ExperiencesService.saveExperience(user.id, currentRec.id, 'disliked');
+            console.log('Tracked disliked experience');
+          } catch (dislikeError) {
+            console.error('Error tracking dislike:', dislikeError);
+            // Continue without tracking dislike
+          }
+        }
+      } else {
+        // User not authenticated - just handle locally
+        if (direction === 'right' && onCardLike) {
+          onCardLike(currentRec);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error handling swipe:', error);
     }
     
     // Add card to removed cards
@@ -272,6 +329,65 @@ export default function SwipeableCards({
       onShareCard(currentRec);
     }
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <View style={styles.noCardsContainer}>
+        <View style={styles.noCardsContent}>
+          <View style={styles.noCardsIcon}>
+            <Ionicons name="hourglass" size={64} color="#6b7280" />
+          </View>
+          <Text style={styles.noCardsTitle}>Loading experiences...</Text>
+          <Text style={styles.noCardsSubtitle}>
+            Finding the best recommendations for you
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <View style={styles.noCardsContainer}>
+        <View style={styles.noCardsContent}>
+          <View style={styles.noCardsIcon}>
+            <Ionicons name="alert-circle" size={64} color="#ef4444" />
+          </View>
+          <Text style={styles.noCardsTitle}>Oops! Something went wrong</Text>
+          <Text style={styles.noCardsSubtitle}>
+            {error}
+          </Text>
+          <TouchableOpacity 
+            onPress={() => {
+              setError(null);
+              setLoading(true);
+              // Retry fetching
+              const fetchRecommendations = async () => {
+                try {
+                  const experiences = await ExperiencesService.getExperiences();
+                  const transformedRecommendations = experiences.map(exp => 
+                    ExperiencesService.transformExperience(exp)
+                  );
+                  setRecommendations(transformedRecommendations);
+                } catch (err) {
+                  setError('Failed to load recommendations');
+                } finally {
+                  setLoading(false);
+                }
+              };
+              fetchRecommendations();
+            }}
+            style={styles.startOverButton}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.startOverButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   if (availableRecommendations.length === 0) {
     return (
@@ -377,20 +493,44 @@ export default function SwipeableCards({
               </View>
             </View>
             
-            {/* Action Buttons - Temporarily disabled for swipe testing */}
+            {/* Action Buttons */}
             <View style={styles.actionButtons}>
-              <View style={styles.buyButton}>
+              <TouchableOpacity 
+                style={styles.buyButton}
+                onPress={() => {
+                  console.log('Buy Now button pressed!');
+                  onPurchaseComplete?.(currentRec, { type: 'purchase', price: currentRec.priceRange });
+                }}
+                activeOpacity={0.8}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
                 <Ionicons name="bag" size={20} color="white" />
                 <Text style={styles.buyButtonText}>Buy Now</Text>
-              </View>
+              </TouchableOpacity>
               
               <View style={styles.rightButtons}>
-                <View style={styles.actionButton}>
+                <TouchableOpacity 
+                  style={styles.actionButton}
+                  onPress={() => {
+                    console.log('Details button pressed!');
+                    // Add details functionality here
+                  }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
                   <Ionicons name="chevron-down" size={20} color="white" />
-                </View>
-                <View style={styles.actionButton}>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.actionButton}
+                  onPress={() => {
+                    console.log('Share button pressed!');
+                    onShareCard?.(currentRec);
+                  }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
                   <Ionicons name="share" size={20} color="white" />
-                </View>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -638,6 +778,14 @@ const styles = StyleSheet.create({
   noCardsContent: {
     alignItems: 'center',
     gap: 16,
+  },
+  noCardsIcon: {
+    width: 80,
+    height: 80,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sparklesContainer: {
     width: 80,

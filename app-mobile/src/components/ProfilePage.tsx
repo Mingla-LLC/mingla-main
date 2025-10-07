@@ -3,7 +3,6 @@ import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Image } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ImageWithFallback } from './figma/ImageWithFallback';
-import profileImage from '../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -37,23 +36,18 @@ export default function ProfilePage({
   onNavigateToAccountSettings,
   onNavigateToPrivacyPolicy,
   onNavigateToTermsOfService,
-  savedExperiences = 24,
-  boardsCount = 6,
-  connectionsCount = 13,
+  savedExperiences = 0,
+  boardsCount = 0,
+  connectionsCount = 0,
   placesVisited = 0,
   notificationsEnabled = true,
   onNotificationsToggle,
-  userIdentity = {
-    firstName: 'Jordan',
-    lastName: 'Smith', 
-    username: 'jordansmith',
-    profileImage: null
-  },
+  userIdentity,
   blockedUsers = [],
   onUnblockUser
 }: ProfilePageProps) {
   const [currentLocation, setCurrentLocation] = useState('Raleigh, North Carolina, United States');
-  const [profileImageSrc, setProfileImageSrc] = useState(userIdentity.profileImage || profileImage);
+  const [profileImageSrc, setProfileImageSrc] = useState(userIdentity?.profileImage || null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
 
   // Auto-update location on component mount
@@ -64,38 +58,26 @@ export default function ProfilePage({
   const updateLocation = async () => {
     setIsLoadingLocation(true);
     try {
-      if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const { latitude, longitude } = position.coords;
-            // Mock reverse geocoding - in real app would use Google Maps API or similar
-            const locations = [
-              'New York, NY, United States',
-              'Los Angeles, CA, United States', 
-              'Chicago, IL, United States',
-              'Austin, TX, United States',
-              'Seattle, WA, United States',
-              'Raleigh, NC, United States'
-            ];
-            const newLocation = locations[Math.floor(Math.random() * locations.length)];
-            setCurrentLocation(newLocation);
-            // Persist location
-            AsyncStorage.setItem('mingla_user_location', newLocation);
-          },
-          (error) => {
-            console.log('Geolocation error:', error);
-            // Fallback to last known location
-            AsyncStorage.getItem('mingla_user_location').then(lastLocation => {
-              if (lastLocation) {
-                setCurrentLocation(lastLocation);
-              }
-            });
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
-        );
-      }
+      // For now, use a default location since location services need proper configuration
+      // In a real app, this would use expo-location or similar
+      const defaultLocation = 'San Francisco, CA, United States';
+      setCurrentLocation(defaultLocation);
+      
+      // Persist location
+      await AsyncStorage.setItem('mingla_user_location', defaultLocation);
+      
+      console.log('Location updated to:', defaultLocation);
     } catch (error) {
       console.log('Location update failed:', error);
+      // Fallback to last known location
+      try {
+        const lastLocation = await AsyncStorage.getItem('mingla_user_location');
+        if (lastLocation) {
+          setCurrentLocation(lastLocation);
+        }
+      } catch (fallbackError) {
+        console.log('Fallback location failed:', fallbackError);
+      }
     } finally {
       setIsLoadingLocation(false);
     }
@@ -103,8 +85,8 @@ export default function ProfilePage({
 
   // Sync profile image with userIdentity changes
   useEffect(() => {
-    setProfileImageSrc(userIdentity.profileImage || profileImage);
-  }, [userIdentity.profileImage]);
+    setProfileImageSrc(userIdentity?.profileImage || null);
+  }, [userIdentity?.profileImage]);
 
   const handleNotificationsToggle = (enabled: boolean) => {
     onNotificationsToggle?.(enabled);
@@ -144,15 +126,15 @@ export default function ProfilePage({
   ];
 
   const journeyStats = [
-    { label: 'This Month', value: '1', icon: 'calendar' },
-    { label: 'Day Streak', value: '95', icon: 'trending-up' },
-    { label: 'Badges', value: '95', icon: 'trophy' }
+    { label: 'This Month', value: placesVisited.toString(), icon: 'calendar' },
+    { label: 'Day Streak', value: '0', icon: 'trending-up' },
+    { label: 'Badges', value: '0', icon: 'trophy' }
   ];
 
   const vibes = [
-    { label: 'Screen Relax', percentage: 69, color: 'bg-[#eb7825]' },
-    { label: 'Creative', percentage: 19, color: 'bg-[#d6691f]' },
-    { label: 'Stroll', percentage: 6, color: 'bg-[#f08849]' }
+    { label: 'Adventure', percentage: Math.min(100, Math.max(0, savedExperiences * 5)), color: 'bg-[#eb7825]' },
+    { label: 'Social', percentage: Math.min(100, Math.max(0, connectionsCount * 3)), color: 'bg-[#d6691f]' },
+    { label: 'Creative', percentage: Math.min(100, Math.max(0, boardsCount * 10)), color: 'bg-[#f08849]' }
   ];
 
   const settingsItems = [
@@ -160,7 +142,15 @@ export default function ProfilePage({
       icon: 'settings', 
       label: 'Profile Settings', 
       description: 'Edit your name, username, and profile photo',
-      onClick: () => onNavigateToProfileSettings?.() 
+      onClick: () => {
+        console.log('ProfilePage: Profile Settings button clicked');
+        console.log('ProfilePage: onNavigateToProfileSettings function:', typeof onNavigateToProfileSettings);
+        if (onNavigateToProfileSettings) {
+          onNavigateToProfileSettings();
+        } else {
+          console.error('ProfilePage: onNavigateToProfileSettings is not defined!');
+        }
+      }
     },
     { 
       icon: 'shield', 
@@ -195,15 +185,20 @@ export default function ProfilePage({
             {/* Profile Image */}
             <View style={styles.profileImageContainer}>
               <ImageWithFallback
-                source={{ uri: profileImageSrc }}
+                source={profileImageSrc ? { uri: profileImageSrc } : { uri: 'https://via.placeholder.com/80x80/6b7280/ffffff?text=User' }}
                 style={styles.profileImage}
               />
               <View style={styles.onlineIndicator}></View>
             </View>
             
             {/* User Info */}
-            <Text style={styles.userName}>{userIdentity.firstName} {userIdentity.lastName}</Text>
-            <Text style={styles.username}>@{userIdentity.username}</Text>
+            <Text style={styles.userName}>
+              {userIdentity?.firstName && userIdentity?.lastName 
+                ? `${userIdentity.firstName} ${userIdentity.lastName}`.trim()
+                : userIdentity?.firstName || 'User'
+              }
+            </Text>
+            <Text style={styles.username}>@{userIdentity?.username || 'user'}</Text>
             
             {/* Location */}
             <View style={styles.locationContainer}>
@@ -398,7 +393,15 @@ export default function ProfilePage({
         {/* Sign Out */}
         <View style={styles.signOutSection}>
           <TouchableOpacity
-            onPress={onSignOut}
+            onPress={() => {
+              console.log('ProfilePage: Sign out button pressed');
+              console.log('ProfilePage: onSignOut function:', typeof onSignOut);
+              if (onSignOut) {
+                onSignOut();
+              } else {
+                console.error('ProfilePage: onSignOut is not defined!');
+              }
+            }}
             style={styles.signOutButton}
           >
             <Ionicons name="log-out" size={16} color="#dc2626" />

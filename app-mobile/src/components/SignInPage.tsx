@@ -8,15 +8,21 @@ interface SignInPageProps {
   onSignUpRegular: (userData: { email: string; password: string; name: string }) => void;
   onSignInCurator: (credentials: { email: string; password: string }) => void;
   onSignUpCurator: (userData: { email: string; password: string; name: string; organization?: string }) => void;
+  onStartOnboarding?: () => void;
+  initialMode?: 'welcome' | 'sign-in' | 'sign-up';
+  onResetSignUpForm?: () => void;
 }
 
 type AuthMode = 'welcome' | 'sign-in' | 'sign-up';
 
-export default function SignInPage({ onSignInRegular, onSignUpRegular }: SignInPageProps) {
-  const [authMode, setAuthMode] = useState<AuthMode>('welcome');
+export default function SignInPage({ onSignInRegular, onSignUpRegular, onStartOnboarding, initialMode = 'welcome', onResetSignUpForm }: SignInPageProps) {
+  const [authMode, setAuthMode] = useState<AuthMode>(initialMode);
 
   const handleBackToWelcome = () => {
     setAuthMode('welcome');
+    if (onResetSignUpForm) {
+      onResetSignUpForm();
+    }
   };
 
   const handleNavigateToSignIn = () => {
@@ -40,8 +46,9 @@ export default function SignInPage({ onSignInRegular, onSignUpRegular }: SignInP
     case 'welcome':
       return (
         <WelcomeScreen 
-          onSignUp={handleSignUp}
+          onSignUp={handleNavigateToSignUp}
           onNavigateToSignIn={handleNavigateToSignIn}
+          onStartOnboarding={onStartOnboarding}
         />
       );
     
@@ -68,6 +75,7 @@ export default function SignInPage({ onSignInRegular, onSignUpRegular }: SignInP
         <WelcomeScreen 
           onSignUp={handleSignUp}
           onNavigateToSignIn={handleNavigateToSignIn}
+          onStartOnboarding={onStartOnboarding}
         />
       );
   }

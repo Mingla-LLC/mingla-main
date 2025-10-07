@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView, Image } from 'react-native';
+import * as React from 'react';
+import { useState } from 'react';
+import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-import profileImage from '../../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
+// import profileImage from '../../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
 
 interface ProfileSettingsProps {
   userIdentity: {
@@ -20,13 +21,19 @@ export default function ProfileSettings({
   onUpdateIdentity, 
   onNavigateBack 
 }: ProfileSettingsProps) {
+  console.log('ProfileSettings: Received userIdentity:', userIdentity);
+  console.log('ProfileSettings: userIdentity keys:', Object.keys(userIdentity));
+  console.log('ProfileSettings: firstName:', userIdentity.firstName);
+  console.log('ProfileSettings: lastName:', userIdentity.lastName);
+  console.log('ProfileSettings: username:', userIdentity.username);
+  console.log('ProfileSettings: profileImage:', userIdentity.profileImage);
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [tempValues, setTempValues] = useState({
     firstName: userIdentity.firstName,
     lastName: userIdentity.lastName,
     username: userIdentity.username
   });
-  const [profileImageSrc, setProfileImageSrc] = useState(userIdentity.profileImage || profileImage);
+  const [profileImageSrc] = useState(userIdentity.profileImage || null);
 
   const handleEditField = (field: string) => {
     setIsEditing(field);
@@ -55,26 +62,29 @@ export default function ProfileSettings({
   };
 
   const handleAvatarChange = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const newImageSrc = e.target?.result as string;
-          setProfileImageSrc(newImageSrc);
-          const updatedIdentity = {
-            ...userIdentity,
-            profileImage: newImageSrc
-          };
-          onUpdateIdentity(updatedIdentity);
-        };
-        reader.readAsDataURL(file);
-      }
-    };
-    input.click();
+    // In React Native, you would use a library like react-native-image-picker
+    // For now, we'll show an alert with options
+    Alert.alert(
+      'Change Profile Photo',
+      'Choose how you want to update your profile photo',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Take Photo', 
+          onPress: () => {
+            // In a real app, this would open the camera
+            Alert.alert('Camera', 'Camera functionality would be implemented here');
+          }
+        },
+        { 
+          text: 'Choose from Gallery', 
+          onPress: () => {
+            // In a real app, this would open the image picker
+            Alert.alert('Gallery', 'Image picker functionality would be implemented here');
+          }
+        }
+      ]
+    );
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -84,13 +94,7 @@ export default function ProfileSettings({
     }));
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent, field: string) => {
-    if (e.key === 'Enter') {
-      handleSaveField(field);
-    } else if (e.key === 'Escape') {
-      handleCancelEdit();
-    }
-  };
+  // Removed unused handleKeyPress function
 
   return (
     <View style={styles.container}>
@@ -120,7 +124,7 @@ export default function ProfileSettings({
                 style={styles.avatarButton}
               >
                 <ImageWithFallback
-                  source={{ uri: profileImageSrc }}
+                  source={profileImageSrc ? { uri: profileImageSrc } : { uri: 'https://via.placeholder.com/80x80/6b7280/ffffff?text=User' }}
                   style={{
                     width: '100%',
                     height: '100%',
@@ -157,46 +161,38 @@ export default function ProfileSettings({
           <View style={styles.formFields}>
             {/* First Name */}
             <View style={styles.formField}>
-              <View className="flex-1">
-                <Text style={{ color: '#374151', fontWeight: '500', fontSize: 14, marginBottom: 4 }}>
-                  First Name
-                </Text>
+              <View style={styles.fieldContainer}>
+                <Text style={styles.fieldLabel}>First Name</Text>
                 {isEditing === 'firstName' ? (
-                  <View className="flex items-center gap-2">
+                  <View style={styles.editContainer}>
                     <TextInput
                       value={tempValues.firstName}
                       onChangeText={(text) => handleInputChange('firstName', text)}
-                      style={{
-                        flex: 1,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderWidth: 1,
-                        borderColor: '#d1d5db',
-                        borderRadius: 8,
-                        fontSize: 16,
-                        backgroundColor: 'white'
-                      }}
+                      style={styles.textInput}
                       autoFocus
+                      placeholder="Enter first name"
                     />
-                    <TouchableOpacity
-                      onClick={() => handleSaveField('firstName')}
-                      className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                    >
-                      <Ionicons name="checkmark" size={16} color="#10b981" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onClick={handleCancelEdit}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Ionicons name="close" size={16} color="#ef4444" />
-                    </TouchableOpacity>
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity
+                        onPress={() => handleSaveField('firstName')}
+                        style={styles.saveButton}
+                      >
+                        <Ionicons name="checkmark" size={16} color="white" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleCancelEdit}
+                        style={styles.cancelButton}
+                      >
+                        <Ionicons name="close" size={16} color="white" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ) : (
-                  <View className="flex items-center justify-between">
-                    <Text className="text-gray-900">{userIdentity.firstName}</Text>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldValue}>{userIdentity.firstName}</Text>
                     <TouchableOpacity
-                      onClick={() => handleEditField('firstName')}
-                      className="p-2 text-gray-400 hover:text-[#eb7825] hover:bg-orange-50 rounded-lg transition-colors"
+                      onPress={() => handleEditField('firstName')}
+                      style={styles.editButton}
                     >
                       <Ionicons name="create" size={16} color="#6b7280" />
                     </TouchableOpacity>
@@ -206,47 +202,39 @@ export default function ProfileSettings({
             </View>
 
             {/* Last Name */}
-            <View className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
-              <View className="flex-1">
-                <Text style={{ color: '#374151', fontWeight: '500', fontSize: 14, marginBottom: 4 }}>
-                  Last Name
-                </Text>
+            <View style={styles.formField}>
+              <View style={styles.fieldContainer}>
+                <Text style={styles.fieldLabel}>Last Name</Text>
                 {isEditing === 'lastName' ? (
-                  <View className="flex items-center gap-2">
+                  <View style={styles.editContainer}>
                     <TextInput
                       value={tempValues.lastName}
                       onChangeText={(text) => handleInputChange('lastName', text)}
-                      style={{
-                        flex: 1,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderWidth: 1,
-                        borderColor: '#d1d5db',
-                        borderRadius: 8,
-                        fontSize: 16,
-                        backgroundColor: 'white'
-                      }}
+                      style={styles.textInput}
                       autoFocus
+                      placeholder="Enter last name"
                     />
-                    <TouchableOpacity
-                      onClick={() => handleSaveField('lastName')}
-                      className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                    >
-                      <Ionicons name="checkmark" size={16} color="#10b981" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onClick={handleCancelEdit}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Ionicons name="close" size={16} color="#ef4444" />
-                    </TouchableOpacity>
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity
+                        onPress={() => handleSaveField('lastName')}
+                        style={styles.saveButton}
+                      >
+                        <Ionicons name="checkmark" size={16} color="white" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleCancelEdit}
+                        style={styles.cancelButton}
+                      >
+                        <Ionicons name="close" size={16} color="white" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ) : (
-                  <View className="flex items-center justify-between">
-                    <Text className="text-gray-900">{userIdentity.lastName}</Text>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldValue}>{userIdentity.lastName}</Text>
                     <TouchableOpacity
-                      onClick={() => handleEditField('lastName')}
-                      className="p-2 text-gray-400 hover:text-[#eb7825] hover:bg-orange-50 rounded-lg transition-colors"
+                      onPress={() => handleEditField('lastName')}
+                      style={styles.editButton}
                     >
                       <Ionicons name="create" size={16} color="#6b7280" />
                     </TouchableOpacity>
@@ -256,58 +244,50 @@ export default function ProfileSettings({
             </View>
 
             {/* Username */}
-            <View className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
-              <View className="flex-1">
-                <Text style={{ color: '#374151', fontWeight: '500', fontSize: 14, marginBottom: 4 }}>
-                  Username
-                </Text>
+            <View style={styles.formField}>
+              <View style={styles.fieldContainer}>
+                <Text style={styles.fieldLabel}>Username</Text>
                 {isEditing === 'username' ? (
-                  <View className="flex items-center gap-2">
-                    <View className="flex-1 flex items-center">
-                      <Text className="text-gray-500 mr-1">@</Text>
+                  <View style={styles.editContainer}>
+                    <View style={styles.usernameInputContainer}>
+                      <Text style={styles.usernamePrefix}>@</Text>
                       <TextInput
                         value={tempValues.username}
                         onChangeText={(text) => handleInputChange('username', text.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                        style={{
-                          flex: 1,
-                          paddingHorizontal: 12,
-                          paddingVertical: 8,
-                          borderWidth: 1,
-                          borderColor: '#d1d5db',
-                          borderRadius: 8,
-                          fontSize: 16,
-                          backgroundColor: 'white'
-                        }}
+                        style={styles.textInput}
                         autoFocus
                         placeholder="username"
+                        autoCapitalize="none"
                       />
                     </View>
-                    <TouchableOpacity
-                      onClick={() => handleSaveField('username')}
-                      className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                    >
-                      <Ionicons name="checkmark" size={16} color="#10b981" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onClick={handleCancelEdit}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Ionicons name="close" size={16} color="#ef4444" />
-                    </TouchableOpacity>
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity
+                        onPress={() => handleSaveField('username')}
+                        style={styles.saveButton}
+                      >
+                        <Ionicons name="checkmark" size={16} color="white" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleCancelEdit}
+                        style={styles.cancelButton}
+                      >
+                        <Ionicons name="close" size={16} color="white" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ) : (
-                  <View className="flex items-center justify-between">
-                    <Text className="text-gray-900">@{userIdentity.username}</Text>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldValue}>@{userIdentity.username}</Text>
                     <TouchableOpacity
-                      onClick={() => handleEditField('username')}
-                      className="p-2 text-gray-400 hover:text-[#eb7825] hover:bg-orange-50 rounded-lg transition-colors"
+                      onPress={() => handleEditField('username')}
+                      style={styles.editButton}
                     >
                       <Ionicons name="create" size={16} color="#6b7280" />
                     </TouchableOpacity>
                   </View>
                 )}
                 {isEditing === 'username' && (
-                  <Text className="text-xs text-gray-500 mt-1">
+                  <Text style={styles.usernameHint}>
                     Username can only contain lowercase letters, numbers, and underscores.
                   </Text>
                 )}
@@ -359,7 +339,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: '#111827',
     marginBottom: 16,
@@ -395,78 +375,106 @@ const styles = StyleSheet.create({
   changePhotoButton: {
     backgroundColor: '#eb7825',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
   },
   changePhotoButtonText: {
     color: 'white',
     fontWeight: '500',
+    fontSize: 16,
   },
   photoHint: {
     fontSize: 14,
     color: '#6b7280',
     marginTop: 8,
+    lineHeight: 20,
   },
   formFields: {
-    gap: 16,
+    gap: 0,
   },
   formField: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
+  },
+  fieldContainer: {
+    flex: 1,
   },
   fieldLabel: {
     color: '#374151',
     fontWeight: '500',
     fontSize: 14,
-    marginBottom: 4,
+    marginBottom: 8,
   },
   fieldValue: {
     fontSize: 16,
     color: '#111827',
+    fontWeight: '500',
   },
-  editButton: {
-    padding: 8,
-    borderRadius: 6,
-    backgroundColor: '#f3f4f6',
-  },
-  inputContainer: {
-    flex: 1,
+  fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+  },
+  editContainer: {
+    gap: 12,
   },
   textInput: {
     flex: 1,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: '#d1d5db',
-    borderRadius: 6,
+    borderRadius: 8,
     fontSize: 16,
     color: '#111827',
+    backgroundColor: 'white',
+  },
+  usernameInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    backgroundColor: 'white',
+    paddingHorizontal: 12,
+  },
+  usernamePrefix: {
+    fontSize: 16,
+    color: '#6b7280',
+    marginRight: 4,
+  },
+  usernameHint: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   actionButtons: {
     flexDirection: 'row',
     gap: 8,
+    alignSelf: 'flex-end',
   },
   saveButton: {
     padding: 8,
     borderRadius: 6,
     backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cancelButton: {
     padding: 8,
     borderRadius: 6,
     backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   editButton: {
     padding: 8,
     borderRadius: 6,
     backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView, Image, Alert, Clipboard } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView, Image, Alert, Clipboard, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { formatCurrency } from './utils/formatters';
@@ -22,6 +22,7 @@ export default function ShareModal({
   accountPreferences 
 }: ShareModalProps) {
   const [linkCopied, setLinkCopied] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   
   if (!isOpen) return null;
 
@@ -39,32 +40,57 @@ export default function ShareModal({
     }
   };
 
-  const handleSocialShare = (platform: string) => {
+  const handleSocialShare = async (platform: string) => {
     const text = `Check out this amazing experience I found on Mingla! ${experienceData.title} - Join me for ${dateTimePreferences.timeOfDay} on ${dateTimePreferences.dayOfWeek}`;
     const url = shareableLink;
     
-    // For React Native, we'll use the native sharing API
-    // This would typically use react-native-share or similar library
-    Alert.alert(
-      'Share Experience',
-      `${text}\n\n${url}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Copy Link', onPress: handleCopyLink }
-      ]
-    );
+    setIsSharing(true);
+    try {
+      // Use React Native's built-in Share API
+      const result = await Share.share({
+        message: `${text}\n\n${url}`,
+        title: `Check out ${experienceData.title} on Mingla!`,
+        url: url
+      });
+      
+      if (result.action === Share.sharedAction) {
+        console.log('Successfully shared to', platform);
+      } else if (result.action === Share.dismissedAction) {
+        console.log('Share dismissed');
+      }
+    } catch (error) {
+      console.error('Error sharing:', error);
+      // Fallback to copy link if sharing fails
+      handleCopyLink();
+    } finally {
+      setIsSharing(false);
+    }
   };
 
-  const handleNativeShare = () => {
-    // For React Native, this would use react-native-share or similar
-    Alert.alert(
-      'Share Experience',
-      `Check out this amazing experience I found on Mingla! Join me for ${dateTimePreferences.timeOfDay} on ${dateTimePreferences.dayOfWeek}\n\n${shareableLink}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Copy Link', onPress: handleCopyLink }
-      ]
-    );
+  const handleNativeShare = async () => {
+    const text = `Check out this amazing experience I found on Mingla! Join me for ${dateTimePreferences.timeOfDay} on ${dateTimePreferences.dayOfWeek}`;
+    
+    setIsSharing(true);
+    try {
+      // Use React Native's built-in Share API
+      const result = await Share.share({
+        message: `${text}\n\n${shareableLink}`,
+        title: `Check out ${experienceData.title} on Mingla!`,
+        url: shareableLink
+      });
+      
+      if (result.action === Share.sharedAction) {
+        console.log('Successfully shared via native share');
+      } else if (result.action === Share.dismissedAction) {
+        console.log('Native share dismissed');
+      }
+    } catch (error) {
+      console.error('Error with native share:', error);
+      // Fallback to copy link if sharing fails
+      handleCopyLink();
+    } finally {
+      setIsSharing(false);
+    }
   };
 
   return (
@@ -174,7 +200,8 @@ export default function ShareModal({
             <View style={styles.socialButtons}>
               <TouchableOpacity
                 onPress={() => handleSocialShare('messages')}
-                style={styles.socialButton}
+                style={[styles.socialButton, isSharing && styles.socialButtonDisabled]}
+                disabled={isSharing}
               >
                 <View style={styles.socialIcon}>
                   <Text style={styles.socialEmoji}>💬</Text>
@@ -184,7 +211,8 @@ export default function ShareModal({
 
               <TouchableOpacity
                 onPress={() => handleSocialShare('whatsapp')}
-                style={styles.socialButton}
+                style={[styles.socialButton, isSharing && styles.socialButtonDisabled]}
+                disabled={isSharing}
               >
                 <View style={styles.socialIcon}>
                   <Text style={styles.socialEmoji}>📱</Text>
@@ -194,7 +222,8 @@ export default function ShareModal({
 
               <TouchableOpacity
                 onPress={() => handleSocialShare('instagram')}
-                style={styles.socialButton}
+                style={[styles.socialButton, isSharing && styles.socialButtonDisabled]}
+                disabled={isSharing}
               >
                 <View style={styles.socialIcon}>
                   <Text style={styles.socialEmoji}>📷</Text>
@@ -204,7 +233,8 @@ export default function ShareModal({
 
               <TouchableOpacity
                 onPress={() => handleSocialShare('twitter')}
-                style={styles.socialButton}
+                style={[styles.socialButton, isSharing && styles.socialButtonDisabled]}
+                disabled={isSharing}
               >
                 <View style={styles.socialIcon}>
                   <Text style={styles.socialEmoji}>🐦</Text>
@@ -216,7 +246,8 @@ export default function ShareModal({
             {/* Native Share Button */}
             <TouchableOpacity
               onPress={handleNativeShare}
-              style={styles.nativeShareButton}
+              style={[styles.nativeShareButton, isSharing && styles.socialButtonDisabled]}
+              disabled={isSharing}
             >
               <Ionicons name="share" size={16} color="#6b7280" />
               <Text style={styles.nativeShareText}>More sharing options</Text>
@@ -462,6 +493,10 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     backgroundColor: '#f9fafb',
+  },
+  socialButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: '#e5e7eb',
   },
   socialIcon: {
     width: 32,

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import * as React from 'react';
+import { useState } from 'react';
 import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -146,7 +147,6 @@ export default function AccountSettings({
 }: AccountSettingsProps) {
   const [selectedCurrency, setSelectedCurrency] = useState(accountPreferences.currency);
   const [selectedMeasurement, setSelectedMeasurement] = useState(accountPreferences.measurementSystem);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleCurrencyChange = (currencyCode: string) => {
     setSelectedCurrency(currencyCode);
@@ -232,36 +232,42 @@ export default function AccountSettings({
             All amounts are converted from USD using current exchange rates.
           </Text>
 
-          <View style={styles.currencyList}>
-            {supportedCurrencies.map((currency) => (
-              <TouchableOpacity
-                key={currency.code}
-                onPress={() => handleCurrencyChange(currency.code)}
-                style={[
-                  styles.currencyItem,
-                  selectedCurrency === currency.code && styles.currencyItemSelected
-                ]}
-              >
-                <View style={styles.currencyInfo}>
-                  <Text style={styles.currencySymbol}>{currency.symbol}</Text>
-                  <View style={styles.currencyDetails}>
-                    <Text style={styles.currencyCode}>{currency.code}</Text>
-                    <Text style={styles.currencyName}>{currency.name}</Text>
+          <View style={styles.currencyContainer}>
+            <ScrollView 
+              showsVerticalScrollIndicator={true}
+              style={styles.currencyScrollView}
+              contentContainerStyle={styles.currencyScrollContent}
+            >
+              {supportedCurrencies.map((currency) => (
+                <TouchableOpacity
+                  key={currency.code}
+                  onPress={() => handleCurrencyChange(currency.code)}
+                  style={[
+                    styles.currencyItem,
+                    selectedCurrency === currency.code && styles.currencyItemSelected
+                  ]}
+                >
+                  <View style={styles.currencyInfo}>
+                    <Text style={styles.currencySymbol}>{currency.symbol}</Text>
+                    <View style={styles.currencyDetails}>
+                      <Text style={styles.currencyCode}>{currency.code}</Text>
+                      <Text style={styles.currencyName}>{currency.name}</Text>
+                    </View>
                   </View>
-                </View>
-                <View style={styles.currencyExample}>
-                  <Text style={styles.currencyExampleText}>
-                    Example: {formatCurrency(25, currency.code)}
-                  </Text>
-                  <Text style={styles.currencyRate}>
-                    1 USD = {exchangeRates[currency.code as keyof typeof exchangeRates]} {currency.code}
-                  </Text>
-                </View>
-                {selectedCurrency === currency.code && (
-                  <Ionicons name="checkmark" size={20} color="#eb7825" style={styles.checkIcon} />
-                )}
-              </TouchableOpacity>
-            ))}
+                  <View style={styles.currencyExample}>
+                    <Text style={styles.currencyExampleText}>
+                      Example: {formatCurrency(25, currency.code)}
+                    </Text>
+                    <Text style={styles.currencyRate}>
+                      1 USD = {exchangeRates[currency.code as keyof typeof exchangeRates]} {currency.code}
+                    </Text>
+                  </View>
+                  {selectedCurrency === currency.code && (
+                    <Ionicons name="checkmark" size={20} color="#eb7825" style={styles.checkIcon} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
           {selectedCurrency !== 'USD' && (
@@ -416,18 +422,29 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     lineHeight: 20,
   },
-  currencyList: {
-    gap: 8,
+  currencyContainer: {
+    marginBottom: 16,
+  },
+  currencyScrollView: {
+    height: 180, // Fixed height to show ~3 currencies
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    backgroundColor: '#f9fafb',
+  },
+  currencyScrollContent: {
+    padding: 8,
   },
   currencyItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    marginBottom: 8,
+    marginBottom: 4,
+    backgroundColor: 'white',
   },
   currencyItemSelected: {
     borderColor: '#eb7825',

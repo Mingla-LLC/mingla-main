@@ -29,16 +29,8 @@ interface InvitesTabProps {
   onCancelInvite: (inviteId: string) => void;
 }
 
-const InvitesTab = ({
-  sentInvites,
-  receivedInvites,
-  onAcceptInvite,
-  onDeclineInvite,
-  onCancelInvite
-}: InvitesTabProps) => {
-  const [showInviteType, setShowInviteType] = useState<'sent' | 'received'>('received');
-
-  const styles = StyleSheet.create({
+// Move styles outside the component
+const styles = StyleSheet.create({
     invitesContainer: {
       gap: 16,
     },
@@ -99,7 +91,122 @@ const InvitesTab = ({
       fontSize: 14,
       color: '#6b7280',
     },
+    inviteCard: {
+      backgroundColor: 'white',
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: '#e5e7eb',
+    },
+    inviteHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    inviteInfo: {
+      flex: 1,
+    },
+    inviteTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#111827',
+      marginBottom: 4,
+    },
+    inviteFrom: {
+      fontSize: 14,
+      color: '#6b7280',
+      marginBottom: 2,
+    },
+    inviteTo: {
+      fontSize: 14,
+      color: '#6b7280',
+      marginBottom: 2,
+    },
+    inviteTime: {
+      fontSize: 12,
+      color: '#9ca3af',
+    },
+    inviteExpiry: {
+      fontSize: 12,
+      color: '#f59e0b',
+      marginTop: 2,
+    },
+    inviteStatus: {
+      alignItems: 'flex-end',
+    },
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: '#fbbf24',
+    },
+    statusText: {
+      fontSize: 12,
+      color: '#6b7280',
+      fontWeight: '500',
+    },
+    inviteActions: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    acceptButton: {
+      flex: 1,
+      backgroundColor: '#10b981',
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    acceptButtonText: {
+      color: 'white',
+      fontSize: 14,
+      fontWeight: '500',
+    },
+    declineButton: {
+      flex: 1,
+      backgroundColor: '#ef4444',
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    declineButtonText: {
+      color: 'white',
+      fontSize: 14,
+      fontWeight: '500',
+    },
+    cancelButton: {
+      backgroundColor: '#6b7280',
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    cancelButtonText: {
+      color: 'white',
+      fontSize: 14,
+      fontWeight: '500',
+    },
   });
+
+const InvitesTab = ({
+  sentInvites,
+  receivedInvites,
+  onAcceptInvite,
+  onDeclineInvite,
+  onCancelInvite
+}: InvitesTabProps) => {
+  const [showInviteType, setShowInviteType] = useState<'sent' | 'received'>('received');
 
   return (
     <View style={styles.invitesContainer}>
@@ -183,16 +290,70 @@ const InvitesTab = ({
   );
 };
 
-// ReceivedInviteCard component would be imported from a separate file
+// ReceivedInviteCard component
 const ReceivedInviteCard = ({ invite, onAccept, onDecline }: any) => {
-  // This would be a separate component file
-  return null;
+  return (
+    <View style={styles.inviteCard}>
+      <View style={styles.inviteHeader}>
+        <View style={styles.inviteInfo}>
+          <Text style={styles.inviteTitle}>{invite.sessionName}</Text>
+          <Text style={styles.inviteFrom}>From: {invite.fromUser.name}</Text>
+          <Text style={styles.inviteTime}>{invite.createdAt}</Text>
+        </View>
+        <View style={styles.inviteStatus}>
+          <View style={styles.statusDot} />
+        </View>
+      </View>
+      
+      <View style={styles.inviteActions}>
+        <TouchableOpacity 
+          style={styles.acceptButton}
+          onPress={() => onAccept(invite.id)}
+        >
+          <Ionicons name="checkmark" size={16} color="white" />
+          <Text style={styles.acceptButtonText}>Accept</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.declineButton}
+          onPress={() => onDecline(invite.id)}
+        >
+          <Ionicons name="close" size={16} color="white" />
+          <Text style={styles.declineButtonText}>Decline</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 };
 
-// SentInviteCard component would be imported from a separate file
+// SentInviteCard component
 const SentInviteCard = ({ invite, onCancel }: any) => {
-  // This would be a separate component file
-  return null;
+  return (
+    <View style={styles.inviteCard}>
+      <View style={styles.inviteHeader}>
+        <View style={styles.inviteInfo}>
+          <Text style={styles.inviteTitle}>{invite.sessionName}</Text>
+          <Text style={styles.inviteTo}>To: {invite.toUser.name}</Text>
+          <Text style={styles.inviteTime}>{invite.createdAt}</Text>
+          {invite.expiresAt && (
+            <Text style={styles.inviteExpiry}>Expires in {invite.expiresAt}</Text>
+          )}
+        </View>
+        <View style={styles.inviteStatus}>
+          <Text style={styles.statusText}>Pending</Text>
+        </View>
+      </View>
+      
+      <View style={styles.inviteActions}>
+        <TouchableOpacity 
+          style={styles.cancelButton}
+          onPress={() => onCancel(invite.id)}
+        >
+          <Ionicons name="close" size={16} color="white" />
+          <Text style={styles.cancelButtonText}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 };
 
 export default InvitesTab;
