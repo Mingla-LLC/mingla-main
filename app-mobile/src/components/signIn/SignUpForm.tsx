@@ -1,10 +1,29 @@
-import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Input } from '../ui/input';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  StatusBar,
+  ActivityIndicator,
+  Alert,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Input } from "../ui/input";
+import {
+  generateUsernameFromName,
+  generateUniqueUsername,
+  checkUsernameAvailability,
+  sanitizeUsername,
+} from "../../utils/usernameUtils";
 
 interface SignUpFormProps {
-  onSignUp: (userData: { email: string; password: string; name: string }) => void;
+  onSignUp: (userData: {
+    email: string;
+    password: string;
+    name: string;
+    username: string;
+  }) => void;
   onSwitchToSignIn: () => void;
   onBack: () => void;
 }
@@ -12,156 +31,459 @@ interface SignUpFormProps {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: "white",
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 24,
-    paddingTop: 50, // Account for status bar
-    paddingBottom: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: "white",
   },
   backButton: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
   backButtonText: {
-    color: '#6b7280',
+    color: "#6b7280",
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
+    marginLeft: 4,
   },
-  logoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#eb7825',
-    alignItems: 'center',
-    justifyContent: 'center',
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  minglaText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#eb7825",
   },
   formContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: 24,
+    paddingTop: 32,
     paddingBottom: 32,
   },
   formWrapper: {
-    width: '100%',
+    width: "100%",
     maxWidth: 400,
+    alignSelf: "center",
   },
   formHeader: {
-    alignItems: 'center',
-    marginBottom: 24,
+    alignItems: "center",
+    marginBottom: 32,
   },
   formTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#111827",
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
+    letterSpacing: -0.5,
   },
   formSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
+    fontSize: 16,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 22,
   },
   form: {
-    gap: 16,
+    gap: 0,
   },
   formCard: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 24,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    gap: 16,
+    borderColor: "#f3f4f6",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   inputLabel: {
-    color: '#374151',
-    fontWeight: '500',
-    fontSize: 14,
-    marginBottom: 8,
+    color: "#374151",
+    fontWeight: "600",
+    fontSize: 15,
+
+    letterSpacing: 0.2,
   },
   inputWrapper: {
-    position: 'relative',
+    position: "relative",
+  },
+  inputIcon: {
+    /*  position: "absolute", */
+    left: 16,
+    top: "50%",
+    zIndex: 1,
+  },
+  inputWithIcon: {
+    paddingLeft: 48,
   },
   passwordToggle: {
-    position: 'absolute',
-    right: 12,
-    top: '50%',
-    transform: [{ translateY: -10 }],
+    position: "absolute",
+    right: 16,
+    top: 30,
     padding: 4,
+    zIndex: 1,
   },
   submitButton: {
-    width: '100%',
-    backgroundColor: '#eb7825',
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
+    width: "100%",
+    backgroundColor: "#eb7825",
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: 8,
+    shadowColor: "#eb7825",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   submitButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
+    color: "white",
+    fontWeight: "700",
+    fontSize: 17,
+    letterSpacing: 0.3,
+  },
+  submitButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
   },
   alternativeAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 24,
+    paddingVertical: 8,
   },
   alternativeText: {
-    color: '#6b7280',
-    fontSize: 14,
+    color: "#6b7280",
+    fontSize: 15,
   },
   alternativeLink: {
-    color: '#eb7825',
-    fontWeight: '600',
-    textDecorationLine: 'underline',
+    color: "#eb7825",
+    fontWeight: "600",
+    fontSize: 15,
     marginLeft: 4,
+  },
+  usernameLabelContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  generateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  generateButtonText: {
+    color: "#eb7825",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  usernameStatusIcon: {
+    position: "absolute",
+    right: 16,
+    top: 30,
+    padding: 4,
+    zIndex: 1,
+  },
+  usernameHint: {
+    fontSize: 12,
+    color: "#10b981",
+    marginTop: 4,
+    marginLeft: 4,
+  },
+  usernameHintError: {
+    color: "#ef4444",
+  },
+  usernameAutoGeneratedHint: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginTop: 2,
+    marginLeft: 4,
+    fontStyle: "italic",
   },
 });
 
-export default function SignUpForm({ onSignUp, onSwitchToSignIn, onBack }: SignUpFormProps) {
+export default function SignUpForm({
+  onSignUp,
+  onSwitchToSignIn,
+  onBack,
+}: SignUpFormProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    name: ''
+    email: "",
+    password: "",
+    name: "",
+    username: "",
+  });
+  const [usernameStatus, setUsernameStatus] = useState<{
+    checking: boolean;
+    available: boolean | null;
+    isAutoGenerated: boolean;
+  }>({
+    checking: false,
+    available: null,
+    isAutoGenerated: true,
   });
 
+  const nameDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const usernameCheckDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-generate username when name changes
+  useEffect(() => {
+    if (nameDebounceRef.current) {
+      clearTimeout(nameDebounceRef.current);
+    }
+
+    // Only auto-generate if username hasn't been manually edited and name is provided
+    if (formData.name.trim().length > 0) {
+      // Use a ref to track if we should auto-generate
+      // We'll check the current state when the timeout fires
+      nameDebounceRef.current = setTimeout(async () => {
+        // Check current state to see if username is still auto-generated
+        // (user might have manually edited it during the debounce period)
+        setUsernameStatus((prev) => {
+          // Only auto-generate if it's still marked as auto-generated
+          if (prev.isAutoGenerated) {
+            // Generate username based on current name
+            generateUniqueUsername(formData.name).then((generatedUsername) => {
+              setFormData((prev) => ({ ...prev, username: generatedUsername }));
+              setUsernameStatus({
+                checking: true,
+                available: null,
+                isAutoGenerated: true,
+              });
+              // Check availability after generation
+              checkUsernameAvailability(generatedUsername).then(
+                (isAvailable) => {
+                  setUsernameStatus({
+                    checking: false,
+                    available: isAvailable,
+                    isAutoGenerated: true,
+                  });
+                }
+              );
+            });
+          }
+          return prev;
+        });
+      }, 500); // Debounce name input
+    }
+
+    return () => {
+      if (nameDebounceRef.current) {
+        clearTimeout(nameDebounceRef.current);
+      }
+    };
+  }, [formData.name]);
+
+  // Check username availability when username changes
+  useEffect(() => {
+    if (usernameCheckDebounceRef.current) {
+      clearTimeout(usernameCheckDebounceRef.current);
+    }
+
+    if (formData.username.trim().length === 0) {
+      setUsernameStatus((prev) => ({
+        ...prev,
+        checking: false,
+        available: null,
+      }));
+      return;
+    }
+
+    const sanitized = sanitizeUsername(formData.username);
+    if (sanitized.length < 3) {
+      setUsernameStatus((prev) => ({
+        ...prev,
+        checking: false,
+        available: false,
+      }));
+      return;
+    }
+
+    setUsernameStatus((prev) => ({
+      ...prev,
+      checking: true,
+    }));
+
+    usernameCheckDebounceRef.current = setTimeout(async () => {
+      const isAvailable = await checkUsernameAvailability(sanitized);
+      setUsernameStatus((prev) => ({
+        checking: false,
+        available: isAvailable,
+        isAutoGenerated: prev.isAutoGenerated, // Preserve the isAutoGenerated flag
+      }));
+    }, 500); // Debounce username checking
+
+    return () => {
+      if (usernameCheckDebounceRef.current) {
+        clearTimeout(usernameCheckDebounceRef.current);
+      }
+    };
+  }, [formData.username]);
+
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    // If username is manually changed, mark it as not auto-generated
+    if (field === "username") {
+      setUsernameStatus((prev) => ({ ...prev, isAutoGenerated: false }));
+    }
   };
 
-  const handleSubmit = () => {
-    onSignUp({ 
-      email: formData.email, 
-      password: formData.password, 
-      name: formData.name 
+  const handleGenerateNewUsername = async () => {
+    if (formData.name.trim().length === 0) {
+      Alert.alert(
+        "Name Required",
+        "Please enter your name first to generate a username."
+      );
+      return;
+    }
+
+    setUsernameStatus({
+      checking: true,
+      available: null,
+      isAutoGenerated: true,
     });
+
+    const newUsername = await generateUniqueUsername(formData.name);
+    setFormData((prev) => ({ ...prev, username: newUsername }));
+
+    const isAvailable = await checkUsernameAvailability(newUsername);
+    setUsernameStatus({
+      checking: false,
+      available: isAvailable,
+      isAutoGenerated: true,
+    });
+  };
+
+  const handleSubmit = async () => {
+    // Validate form
+    if (!formData.name.trim()) {
+      Alert.alert("Validation Error", "Please enter your full name.");
+      return;
+    }
+
+    if (!formData.email.trim()) {
+      Alert.alert("Validation Error", "Please enter your email address.");
+      return;
+    }
+
+    if (!formData.password.trim() || formData.password.length < 6) {
+      Alert.alert(
+        "Validation Error",
+        "Password must be at least 6 characters long."
+      );
+      return;
+    }
+
+    // Validate username
+    const sanitizedUsername = sanitizeUsername(formData.username);
+    if (sanitizedUsername.length < 3) {
+      Alert.alert(
+        "Validation Error",
+        "Username must be at least 3 characters long and contain only letters, numbers, and underscores."
+      );
+      return;
+    }
+
+    // Check if username is available before submitting
+    if (usernameStatus.checking) {
+      Alert.alert("Please Wait", "Checking username availability...");
+      return;
+    }
+
+    if (usernameStatus.available === false) {
+      Alert.alert(
+        "Username Taken",
+        "This username is already taken. Please choose another one."
+      );
+      return;
+    }
+
+    // Final availability check
+    const isAvailable = await checkUsernameAvailability(sanitizedUsername);
+    if (!isAvailable) {
+      Alert.alert(
+        "Username Taken",
+        "This username is already taken. Please choose another one."
+      );
+      setUsernameStatus({
+        checking: false,
+        available: false,
+        isAutoGenerated: usernameStatus.isAutoGenerated,
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Call onSignUp with sanitized username
+      const result = onSignUp({
+        email: formData.email.trim(),
+        password: formData.password,
+        name: formData.name.trim(),
+        username: sanitizedUsername,
+      });
+    } catch (error) {
+      console.error("Sign up error:", error);
+      // Show error alert
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : typeof error === "string"
+          ? error
+          : error?.toString?.() ||
+            "An error occurred during sign up. Please try again.";
+
+      Alert.alert(
+        "Sign Up Failed",
+        errorMessage,
+        [{ text: "OK", style: "default" }],
+        { cancelable: true }
+      );
+    } finally {
+      // Reset loading state after a short delay to allow parent to handle the response
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 500);
+    }
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
-      
+
       {/* Header with back button and logo */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={onBack}
-          style={styles.backButton}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
+        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={20} color="#6b7280" />
+          <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
-        <View style={styles.logoIcon}>
-          <Ionicons name="people" size={20} color="white" />
+        <View style={styles.headerCenter}>
+          <Text style={styles.minglaText}>Mingla</Text>
         </View>
+        <View style={{ width: 80 }} />
       </View>
 
       {/* Form Content */}
@@ -169,8 +491,10 @@ export default function SignUpForm({ onSignUp, onSwitchToSignIn, onBack }: SignU
         <View style={styles.formWrapper}>
           {/* Form Header */}
           <View style={styles.formHeader}>
-            <Text style={styles.formTitle}>Create Explorer Account</Text>
-            <Text style={styles.formSubtitle}>Start your journey of discovery with Mingla</Text>
+            <Text style={styles.formTitle}>Create Your Account</Text>
+            <Text style={styles.formSubtitle}>
+              Join Mingla and start discovering amazing experiences
+            </Text>
           </View>
 
           {/* Form */}
@@ -179,74 +503,214 @@ export default function SignUpForm({ onSignUp, onSwitchToSignIn, onBack }: SignU
               {/* Name field */}
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Full Name</Text>
-                <Input
-                  type="text"
-                  value={formData.name}
-                  onChangeText={(value) => handleInputChange('name', value)}
-                  placeholder="Enter your full name"
-                  required
-                  style={{
-                    backgroundColor: 'white',
-                    borderWidth: 1,
-                    borderColor: '#d1d5db',
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 12,
-                    fontSize: 16,
-                    color: '#111827',
-                  }}
-                />
+                <View style={styles.inputWrapper}>
+                  <View style={styles.inputIcon}>
+                    <Ionicons name="person-outline" size={20} color="#9ca3af" />
+                  </View>
+                  <Input
+                    type="text"
+                    value={formData.name}
+                    onChangeText={(value) => handleInputChange("name", value)}
+                    placeholder="Enter your full name"
+                    required
+                    style={[
+                      {
+                        backgroundColor: "#f9fafb",
+                        borderWidth: 1.5,
+                        borderColor: "#e5e7eb",
+                        borderRadius: 12,
+                        paddingHorizontal: 16,
+                        paddingLeft: 48,
+                        fontSize: 16,
+                        color: "#111827",
+                      },
+                      styles.inputWithIcon,
+                    ]}
+                  />
+                </View>
+              </View>
+
+              {/* Username field */}
+              <View style={styles.inputContainer}>
+                <View style={styles.usernameLabelContainer}>
+                  <Text style={styles.inputLabel}>Username</Text>
+                  {usernameStatus.isAutoGenerated && formData.username && (
+                    <TouchableOpacity
+                      onPress={handleGenerateNewUsername}
+                      style={styles.generateButton}
+                    >
+                      <Ionicons name="refresh" size={14} color="#eb7825" />
+                      <Text style={styles.generateButtonText}>
+                        Generate New
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <View style={styles.inputWrapper}>
+                  <View style={styles.inputIcon}>
+                    <Ionicons name="at" size={20} color="#9ca3af" />
+                  </View>
+                  <Input
+                    type="text"
+                    value={formData.username}
+                    onChangeText={(value) => {
+                      // Sanitize input as user types
+                      const sanitized = value
+                        .toLowerCase()
+                        .replace(/[^a-z0-9_]/g, "");
+                      handleInputChange("username", sanitized);
+                    }}
+                    placeholder="username"
+                    autoCapitalize="none"
+                    style={[
+                      {
+                        backgroundColor: "#f9fafb",
+                        borderWidth: 1.5,
+                        borderColor:
+                          usernameStatus.available === false
+                            ? "#ef4444"
+                            : usernameStatus.available === true
+                            ? "#10b981"
+                            : "#e5e7eb",
+                        borderRadius: 12,
+                        paddingHorizontal: 16,
+                        paddingLeft: 48,
+                        paddingRight:
+                          usernameStatus.checking ||
+                          usernameStatus.available !== null
+                            ? 48
+                            : 16,
+                        fontSize: 16,
+                        color: "#111827",
+                      },
+                      styles.inputWithIcon,
+                    ]}
+                  />
+                  {/* Username status indicator */}
+                  {usernameStatus.checking && (
+                    <View style={styles.usernameStatusIcon}>
+                      <ActivityIndicator size="small" color="#6b7280" />
+                    </View>
+                  )}
+                  {!usernameStatus.checking &&
+                    usernameStatus.available === true && (
+                      <View style={styles.usernameStatusIcon}>
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={20}
+                          color="#10b981"
+                        />
+                      </View>
+                    )}
+                  {!usernameStatus.checking &&
+                    usernameStatus.available === false && (
+                      <View style={styles.usernameStatusIcon}>
+                        <Ionicons
+                          name="close-circle"
+                          size={20}
+                          color="#ef4444"
+                        />
+                      </View>
+                    )}
+                </View>
+                {!usernameStatus.checking && formData.username && (
+                  <Text
+                    style={[
+                      styles.usernameHint,
+                      usernameStatus.available === false &&
+                        styles.usernameHintError,
+                    ]}
+                  >
+                    {usernameStatus.available === true
+                      ? "Username available"
+                      : usernameStatus.available === false
+                      ? "Username already taken"
+                      : formData.username.length < 3
+                      ? "Username must be at least 3 characters"
+                      : ""}
+                  </Text>
+                )}
+                {usernameStatus.isAutoGenerated && formData.username && (
+                  <Text style={styles.usernameAutoGeneratedHint}>
+                    This username was auto-generated based on your name
+                  </Text>
+                )}
               </View>
 
               {/* Email field */}
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Email</Text>
-                <Input
-                  type="email"
-                  value={formData.email}
-                  onChangeText={(value) => handleInputChange('email', value)}
-                  placeholder="Enter your email"
-                  required
-                  style={{
-                    backgroundColor: 'white',
-                    borderWidth: 1,
-                    borderColor: '#d1d5db',
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 12,
-                    fontSize: 16,
-                    color: '#111827',
-                  }}
-                />
+                <View style={styles.inputWrapper}>
+                  <View style={styles.inputIcon}>
+                    <Ionicons name="mail-outline" size={20} color="#9ca3af" />
+                  </View>
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChangeText={(value) => handleInputChange("email", value)}
+                    placeholder="Enter your email"
+                    required
+                    style={[
+                      {
+                        backgroundColor: "#f9fafb",
+                        borderWidth: 1.5,
+                        borderColor: "#e5e7eb",
+                        borderRadius: 12,
+                        paddingHorizontal: 16,
+
+                        paddingLeft: 48,
+                        fontSize: 16,
+                        color: "#111827",
+                      },
+                      styles.inputWithIcon,
+                    ]}
+                  />
+                </View>
               </View>
 
               {/* Password field */}
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Password</Text>
                 <View style={styles.inputWrapper}>
+                  <View style={styles.inputIcon}>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={20}
+                      color="#9ca3af"
+                    />
+                  </View>
                   <Input
-                    type={showPassword ? 'text' : 'password'}
+                    type={showPassword ? "text" : "password"}
                     value={formData.password}
-                    onChangeText={(value) => handleInputChange('password', value)}
+                    onChangeText={(value) =>
+                      handleInputChange("password", value)
+                    }
                     placeholder="Enter your password"
                     required
-                    style={{
-                      backgroundColor: 'white',
-                      borderWidth: 1,
-                      borderColor: '#d1d5db',
-                      borderRadius: 8,
-                      paddingHorizontal: 12,
-                      paddingVertical: 12,
-                      paddingRight: 48,
-                      fontSize: 16,
-                      color: '#111827',
-                    }}
+                    style={[
+                      {
+                        backgroundColor: "#f9fafb",
+                        borderWidth: 1.5,
+                        borderColor: "#e5e7eb",
+                        borderRadius: 12,
+                        paddingHorizontal: 16,
+                        paddingLeft: 48,
+                        paddingRight: 48,
+                        fontSize: 16,
+                        color: "#111827",
+                      },
+                      styles.inputWithIcon,
+                    ]}
                   />
                   <TouchableOpacity
                     onPress={() => setShowPassword(!showPassword)}
                     style={styles.passwordToggle}
                   >
-                    {showPassword ? <Ionicons name="eye-off" size={20} color="#6b7280" /> : <Ionicons name="eye" size={20} color="#6b7280" />}
+                    {showPassword ? (
+                      <Ionicons name="eye-off" size={20} color="#9ca3af" />
+                    ) : (
+                      <Ionicons name="eye" size={20} color="#9ca3af" />
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -255,15 +719,24 @@ export default function SignUpForm({ onSignUp, onSwitchToSignIn, onBack }: SignU
               <TouchableOpacity
                 onPress={handleSubmit}
                 style={styles.submitButton}
+                activeOpacity={0.9}
+                disabled={isLoading}
               >
-                <Text style={styles.submitButtonText}>Create Account</Text>
+                <View style={styles.submitButtonContent}>
+                  {isLoading && (
+                    <ActivityIndicator size="small" color="white" />
+                  )}
+                  <Text style={styles.submitButtonText}>Create Account</Text>
+                </View>
               </TouchableOpacity>
             </View>
           </View>
 
           {/* Alternative Action */}
           <View style={styles.alternativeAction}>
-            <Text style={styles.alternativeText}>Already have an account? </Text>
+            <Text style={styles.alternativeText}>
+              Already have an account?{" "}
+            </Text>
             <TouchableOpacity onPress={onSwitchToSignIn}>
               <Text style={styles.alternativeLink}>Sign In</Text>
             </TouchableOpacity>

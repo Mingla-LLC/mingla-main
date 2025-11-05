@@ -1,11 +1,22 @@
-import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React from "react";
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  Image,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
+const googleIcon = require("../../../assets/google_icon.png");
 
 interface AccountSetupStepProps {
   onNext: () => void;
   onBack: () => void;
   onNavigateToSignUp?: () => void;
+  onNavigateToPhoneSignUp?: () => void;
+  onNavigateToGoogleSignIn?: () => void;
   userProfile?: {
     name: string;
     email: string;
@@ -13,203 +24,132 @@ interface AccountSetupStepProps {
   };
 }
 
-const AccountSetupStep = ({ onNext, onBack, onNavigateToSignUp, userProfile }: AccountSetupStepProps) => {
+const AccountSetupStep = ({
+  onNext,
+  onBack,
+  onNavigateToSignUp,
+  onNavigateToPhoneSignUp,
+  onNavigateToGoogleSignIn,
+  userProfile,
+}: AccountSetupStepProps) => {
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: 'white',
+      backgroundColor: "white",
     },
     header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+      flexDirection: "row",
+      alignItems: "center",
       paddingHorizontal: 24,
-      paddingVertical: 16,
-      backgroundColor: 'white',
-      borderBottomWidth: 1,
-      borderBottomColor: '#f3f4f6',
+      paddingTop: 16,
+      paddingBottom: 8,
+      backgroundColor: "white",
     },
     backButton: {
-      padding: 8,
-      borderRadius: 20,
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+    },
+    backButtonText: {
+      color: "#6b7280",
+      fontSize: 16,
+      fontWeight: "500",
+      marginLeft: 4,
     },
     headerCenter: {
-      alignItems: 'center',
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 8,
     },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: '#111827',
-    },
-    headerSubtitle: {
+    minglaText: {
       fontSize: 14,
-      color: '#6b7280',
-    },
-    progressBar: {
-      height: 8,
-      backgroundColor: '#e5e7eb',
-      borderRadius: 4,
-      marginHorizontal: 24,
-      marginVertical: 16,
-    },
-    progressFill: {
-      height: 8,
-      backgroundColor: '#eb7825',
-      borderRadius: 4,
+      fontWeight: "500",
+      color: "#eb7825",
     },
     accountMainContent: {
       flex: 1,
       paddingHorizontal: 24,
+      paddingTop: 32,
     },
     titleSection: {
-      alignItems: 'center',
-      marginBottom: 32,
+      alignItems: "center",
+      marginBottom: 40,
     },
     title: {
-      fontSize: 28,
-      fontWeight: 'bold',
-      color: '#111827',
-      textAlign: 'center',
+      fontSize: 32,
+      fontWeight: "bold",
+      color: "#111827",
+      textAlign: "center",
       marginBottom: 8,
     },
     subtitle: {
       fontSize: 16,
-      color: '#6b7280',
-      textAlign: 'center',
-    },
-    profileCard: {
-      backgroundColor: '#f9fafb',
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 32,
-      marginHorizontal: 4,
-      minHeight: 80,
-    },
-    profileInfo: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    avatar: {
-      width: 56,
-      height: 56,
-      backgroundColor: '#eb7825',
-      borderRadius: 28,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: 12,
-    },
-    avatarText: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: 'white',
-    },
-    profileDetails: {
-      flex: 1,
-      marginLeft: 8,
-      flexShrink: 1,
-    },
-    profileName: {
-      fontSize: 20,
-      fontWeight: '600',
-      color: '#111827',
-      marginBottom: 6,
-      flexShrink: 0,
-    },
-    profileEmail: {
-      fontSize: 16,
-      color: '#6b7280',
-      flexShrink: 0,
+      color: "#6b7280",
+      textAlign: "center",
     },
     loginOptions: {
       marginBottom: 24,
     },
-    appleButton: {
-      backgroundColor: '#000000',
+    authButton: {
+      backgroundColor: "white",
       borderRadius: 12,
       paddingVertical: 16,
       paddingHorizontal: 20,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: "#e5e7eb",
       marginBottom: 12,
+      gap: 12,
     },
-    appleIcon: {
-      fontSize: 20,
-      marginRight: 12,
+    authButtonText: {
+      color: "#111827",
+      fontSize: 16,
+      fontWeight: "500",
+
+      textAlign: "center",
+    },
+    appleButton: {
+      backgroundColor: "#000000",
+      borderRadius: 12,
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 12,
     },
     appleButtonText: {
-      color: 'white',
+      color: "white",
       fontSize: 16,
-      fontWeight: '500',
+      fontWeight: "500",
+      marginLeft: 12,
+
+      textAlign: "center",
     },
-    googleButton: {
-      backgroundColor: 'white',
-      borderRadius: 12,
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 2,
-      borderColor: '#e5e7eb',
+    separatorContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginVertical: 16,
       marginBottom: 12,
+    },
+    separatorLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: "#e5e7eb",
+    },
+    separatorText: {
+      paddingHorizontal: 16,
+      fontSize: 14,
+      color: "#9ca3af",
     },
     googleIcon: {
       width: 20,
       height: 20,
-      backgroundColor: '#4285f4',
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: 12,
-    },
-    googleIconText: {
-      color: 'white',
-      fontSize: 12,
-      fontWeight: 'bold',
-    },
-    googleButtonText: {
-      color: '#111827',
-      fontSize: 16,
-      fontWeight: '500',
-    },
-    emailButton: {
-      backgroundColor: '#f3f4f6',
-      borderRadius: 12,
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    emailButtonText: {
-      color: '#111827',
-      fontSize: 16,
-      fontWeight: '500',
-      marginLeft: 12,
-    },
-    disclaimer: {
-      fontSize: 12,
-      color: '#9ca3af',
-      textAlign: 'center',
-      marginBottom: 32,
-      lineHeight: 16,
-    },
-    continueButton: {
-      backgroundColor: '#eb7825',
-      borderRadius: 12,
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    continueButtonText: {
-      color: 'white',
-      fontSize: 16,
-      fontWeight: '600',
-      marginRight: 8,
+      resizeMode: "contain",
     },
   });
 
@@ -218,81 +158,69 @@ const AccountSetupStep = ({ onNext, onBack, onNavigateToSignUp, userProfile }: A
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={20} color="#9ca3af" />
+          <Ionicons name="arrow-back" size={20} color="#6b7280" />
+          <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
-        
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Account Setup</Text>
-          <Text style={styles.headerSubtitle}>Step 2 of 7</Text>
-        </View>
-        
-        <View style={{ width: 32 }} />
-      </View>
 
-      {/* Progress Bar */}
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: '28.6%' }]} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.minglaText}>Mingla</Text>
+        </View>
+
+        <View style={{ width: 80 }} />
       </View>
 
       {/* Main Content */}
       <View style={styles.accountMainContent}>
         {/* Title Section */}
         <View style={styles.titleSection}>
-          <Text style={styles.title}>Create Your Account</Text>
-          <Text style={styles.subtitle}>Quick setup with trusted login options</Text>
-        </View>
-
-        {/* User Profile Card */}
-        <View style={styles.profileCard}>
-          <View style={styles.profileInfo}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {userProfile?.name?.charAt(0)?.toUpperCase() || 'U'}
-              </Text>
-            </View>
-            <View style={styles.profileDetails}>
-              <Text style={styles.profileName}>{userProfile?.name || 'User'}</Text>
-              <Text style={styles.profileEmail}>{userProfile?.email || 'user@email.com'}</Text>
-            </View>
-          </View>
+          <Text style={styles.title}>Welcome to Mingla.</Text>
+          <Text style={styles.subtitle}>
+            Sign in to discover amazing experiences.
+          </Text>
         </View>
 
         {/* Login Options */}
         <View style={styles.loginOptions}>
-          <TouchableOpacity style={styles.appleButton}>
-            <Text style={styles.appleIcon}>🍎</Text>
-            <Text style={styles.appleButtonText}>Continue with Apple</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.googleButton}>
-            <View style={styles.googleIcon}>
-              <Text style={styles.googleIconText}>G</Text>
-            </View>
-            <Text style={styles.googleButtonText}>Continue with Google</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.emailButton}
+          {/* Continue with Email */}
+          <TouchableOpacity
+            style={styles.authButton}
             onPress={onNavigateToSignUp}
           >
-            <Ionicons name="mail" size={20} color="#6b7280" />
-            <Text style={styles.emailButtonText}>Continue with Email</Text>
+            <Ionicons name="mail-outline" size={20} color="#111827" />
+            <Text style={styles.authButtonText}>Continue with Email</Text>
+          </TouchableOpacity>
+
+          {/* Continue with Phone */}
+          <TouchableOpacity
+            style={styles.authButton}
+            onPress={onNavigateToPhoneSignUp}
+          >
+            <Ionicons name="call-outline" size={20} color="#111827" />
+            <Text style={styles.authButtonText}>Continue with Phone</Text>
+          </TouchableOpacity>
+
+          {/* Separator */}
+          <View style={styles.separatorContainer}>
+            <View style={styles.separatorLine} />
+            <Text style={styles.separatorText}>or continue with</Text>
+            <View style={styles.separatorLine} />
+          </View>
+
+          {/* Continue with Google */}
+          <TouchableOpacity
+            style={styles.authButton}
+            onPress={onNavigateToGoogleSignIn}
+          >
+            <Image source={googleIcon} style={styles.googleIcon} />
+            <Text style={styles.authButtonText}>Continue with Google</Text>
+          </TouchableOpacity>
+
+          {/* Continue with Apple */}
+          <TouchableOpacity style={styles.appleButton}>
+            <Ionicons name="logo-apple" size={20} color="white" />
+            <Text style={styles.appleButtonText}>Continue with Apple</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Disclaimer */}
-        <Text style={styles.disclaimer}>
-          All data is prefilled for demo purposes. In production, this would connect to your actual accounts.
-        </Text>
-
-        {/* Continue Button */}
-        <TouchableOpacity
-          onPress={onNext}
-          style={styles.continueButton}
-        >
-          <Text style={styles.continueButtonText}>Continue</Text>
-          <Ionicons name="arrow-forward" size={20} color="white" />
-        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );

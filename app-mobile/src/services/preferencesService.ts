@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase } from "./supabase";
 
 export interface UserPreferences {
   mode: string;
@@ -10,6 +10,7 @@ export interface UserPreferences {
   travel_constraint_type: string;
   travel_constraint_value: number;
   datetime_pref: string;
+  date_option?: string | null;
 }
 
 export interface ProfileData {
@@ -32,22 +33,24 @@ export class PreferencesService {
   /**
    * Get user preferences
    */
-  static async getUserPreferences(userId: string): Promise<UserPreferences | null> {
+  static async getUserPreferences(
+    userId: string
+  ): Promise<UserPreferences | null> {
     try {
       const { data, error } = await supabase
-        .from('preferences')
-        .select('*')
-        .eq('profile_id', userId)
+        .from("preferences")
+        .select("*")
+        .eq("profile_id", userId)
         .single();
 
       if (error) {
-        console.error('Error fetching user preferences:', error);
+        console.error("Error fetching user preferences:", error);
         return null;
       }
 
       return data;
     } catch (error) {
-      console.error('Failed to fetch user preferences:', error);
+      console.error("Failed to fetch user preferences:", error);
       return null;
     }
   }
@@ -55,24 +58,25 @@ export class PreferencesService {
   /**
    * Update user preferences
    */
-  static async updateUserPreferences(userId: string, preferences: Partial<UserPreferences>): Promise<boolean> {
+  static async updateUserPreferences(
+    userId: string,
+    preferences: Partial<UserPreferences>
+  ): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('preferences')
-        .upsert({
-          profile_id: userId,
-          ...preferences,
-          updated_at: new Date().toISOString()
-        });
+      const { error } = await supabase.from("preferences").upsert({
+        profile_id: userId,
+        ...preferences,
+        updated_at: new Date().toISOString(),
+      });
 
       if (error) {
-        console.error('Error updating user preferences:', error);
+        console.error("Error updating user preferences:", error);
         throw error;
       }
 
       return true;
     } catch (error) {
-      console.error('Failed to update user preferences:', error);
+      console.error("Failed to update user preferences:", error);
       return false;
     }
   }
@@ -83,19 +87,19 @@ export class PreferencesService {
   static async getUserProfile(userId: string): Promise<ProfileData | null> {
     try {
       const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
         .single();
 
       if (error) {
-        console.error('Error fetching user profile:', error);
+        console.error("Error fetching user profile:", error);
         return null;
       }
 
       return data;
     } catch (error) {
-      console.error('Failed to fetch user profile:', error);
+      console.error("Failed to fetch user profile:", error);
       return null;
     }
   }
@@ -103,21 +107,24 @@ export class PreferencesService {
   /**
    * Update user profile
    */
-  static async updateUserProfile(userId: string, profileData: Partial<ProfileData>): Promise<boolean> {
+  static async updateUserProfile(
+    userId: string,
+    profileData: Partial<ProfileData>
+  ): Promise<boolean> {
     try {
       const { error } = await supabase
-        .from('profiles')
+        .from("profiles")
         .update(profileData)
-        .eq('id', userId);
+        .eq("id", userId);
 
       if (error) {
-        console.error('Error updating user profile:', error);
+        console.error("Error updating user profile:", error);
         throw error;
       }
 
       return true;
     } catch (error) {
-      console.error('Failed to update user profile:', error);
+      console.error("Failed to update user profile:", error);
       return false;
     }
   }
@@ -128,32 +135,30 @@ export class PreferencesService {
   static async createDefaultPreferences(userId: string): Promise<boolean> {
     try {
       const defaultPreferences: UserPreferences = {
-        mode: 'explore',
+        mode: "explore",
         budget_min: 0,
         budget_max: 1000,
         people_count: 1,
-        categories: ['Stroll', 'Sip & Chill'],
-        travel_mode: 'walking',
-        travel_constraint_type: 'time',
+        categories: ["Stroll", "Sip & Chill"],
+        travel_mode: "walking",
+        travel_constraint_type: "time",
         travel_constraint_value: 30,
-        datetime_pref: new Date().toISOString()
+        datetime_pref: new Date().toISOString(),
       };
 
-      const { error } = await supabase
-        .from('preferences')
-        .insert({
-          profile_id: userId,
-          ...defaultPreferences
-        });
+      const { error } = await supabase.from("preferences").insert({
+        profile_id: userId,
+        ...defaultPreferences,
+      });
 
       if (error) {
-        console.error('Error creating default preferences:', error);
+        console.error("Error creating default preferences:", error);
         throw error;
       }
 
       return true;
     } catch (error) {
-      console.error('Failed to create default preferences:', error);
+      console.error("Failed to create default preferences:", error);
       return false;
     }
   }
@@ -164,30 +169,34 @@ export class PreferencesService {
   static async getSavedExperiences(userId: string): Promise<any[]> {
     try {
       const { data, error } = await supabase
-        .from('saves')
-        .select(`
+        .from("saves")
+        .select(
+          `
           experience_id,
           status,
           scheduled_at,
           created_at,
           experiences (*)
-        `)
-        .eq('profile_id', userId)
-        .eq('status', 'liked')
-        .order('created_at', { ascending: false });
+        `
+        )
+        .eq("profile_id", userId)
+        .eq("status", "liked")
+        .order("created_at", { ascending: false });
 
       if (error) {
-        console.error('Error fetching saved experiences:', error);
+        console.error("Error fetching saved experiences:", error);
         throw error;
       }
 
-      return data?.map(item => ({
-        ...item.experiences,
-        saved_at: item.created_at,
-        scheduled_at: item.scheduled_at
-      })) || [];
+      return (
+        data?.map((item) => ({
+          ...item.experiences,
+          saved_at: item.created_at,
+          scheduled_at: item.scheduled_at,
+        })) || []
+      );
     } catch (error) {
-      console.error('Failed to fetch saved experiences:', error);
+      console.error("Failed to fetch saved experiences:", error);
       return [];
     }
   }
@@ -195,23 +204,26 @@ export class PreferencesService {
   /**
    * Get user's interaction history
    */
-  static async getUserInteractions(userId: string, limit: number = 50): Promise<any[]> {
+  static async getUserInteractions(
+    userId: string,
+    limit: number = 50
+  ): Promise<any[]> {
     try {
       const { data, error } = await supabase
-        .from('user_interactions')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
+        .from("user_interactions")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
         .limit(limit);
 
       if (error) {
-        console.error('Error fetching user interactions:', error);
+        console.error("Error fetching user interactions:", error);
         throw error;
       }
 
       return data || [];
     } catch (error) {
-      console.error('Failed to fetch user interactions:', error);
+      console.error("Failed to fetch user interactions:", error);
       return [];
     }
   }
@@ -222,19 +234,19 @@ export class PreferencesService {
   static async getLearnedPreferences(userId: string): Promise<any[]> {
     try {
       const { data, error } = await supabase
-        .from('user_preference_learning')
-        .select('*')
-        .eq('user_id', userId)
-        .order('confidence', { ascending: false });
+        .from("user_preference_learning")
+        .select("*")
+        .eq("user_id", userId)
+        .order("confidence", { ascending: false });
 
       if (error) {
-        console.error('Error fetching learned preferences:', error);
+        console.error("Error fetching learned preferences:", error);
         throw error;
       }
 
       return data || [];
     } catch (error) {
-      console.error('Failed to fetch learned preferences:', error);
+      console.error("Failed to fetch learned preferences:", error);
       return [];
     }
   }
@@ -242,23 +254,26 @@ export class PreferencesService {
   /**
    * Get user's location history
    */
-  static async getLocationHistory(userId: string, limit: number = 100): Promise<any[]> {
+  static async getLocationHistory(
+    userId: string,
+    limit: number = 100
+  ): Promise<any[]> {
     try {
       const { data, error } = await supabase
-        .from('user_location_history')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
+        .from("user_location_history")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
         .limit(limit);
 
       if (error) {
-        console.error('Error fetching location history:', error);
+        console.error("Error fetching location history:", error);
         throw error;
       }
 
       return data || [];
     } catch (error) {
-      console.error('Failed to fetch location history:', error);
+      console.error("Failed to fetch location history:", error);
       return [];
     }
   }
@@ -267,31 +282,34 @@ export class PreferencesService {
    * Update user's location
    */
   static async updateUserLocation(
-    userId: string, 
-    latitude: number, 
-    longitude: number, 
+    userId: string,
+    latitude: number,
+    longitude: number,
     accuracy?: number,
-    locationType: 'current' | 'home' | 'work' | 'frequent' | 'visited_place' = 'current'
+    locationType:
+      | "current"
+      | "home"
+      | "work"
+      | "frequent"
+      | "visited_place" = "current"
   ): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('user_location_history')
-        .insert({
-          user_id: userId,
-          latitude,
-          longitude,
-          accuracy,
-          location_type: locationType
-        });
+      const { error } = await supabase.from("user_location_history").insert({
+        user_id: userId,
+        latitude,
+        longitude,
+        accuracy,
+        location_type: locationType,
+      });
 
       if (error) {
-        console.error('Error updating user location:', error);
+        console.error("Error updating user location:", error);
         throw error;
       }
 
       return true;
     } catch (error) {
-      console.error('Failed to update user location:', error);
+      console.error("Failed to update user location:", error);
       return false;
     }
   }
@@ -299,22 +317,27 @@ export class PreferencesService {
   /**
    * Get user's frequent locations
    */
-  static async getFrequentLocations(userId: string, limit: number = 5): Promise<any[]> {
+  static async getFrequentLocations(
+    userId: string,
+    limit: number = 5
+  ): Promise<any[]> {
     try {
-      const { data, error } = await supabase
-        .rpc('get_user_frequent_locations', {
+      const { data, error } = await supabase.rpc(
+        "get_user_frequent_locations",
+        {
           user_uuid: userId,
-          limit_count: limit
-        });
+          limit_count: limit,
+        }
+      );
 
       if (error) {
-        console.error('Error fetching frequent locations:', error);
+        console.error("Error fetching frequent locations:", error);
         throw error;
       }
 
       return data || [];
     } catch (error) {
-      console.error('Failed to fetch frequent locations:', error);
+      console.error("Failed to fetch frequent locations:", error);
       return [];
     }
   }

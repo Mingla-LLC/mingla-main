@@ -15,7 +15,17 @@ interface InputProps {
   [key: string]: any;
 }
 
-function Input({ className, type, value, onChange, onChangeText, placeholder, required, style, ...props }: InputProps) {
+function Input({
+  className,
+  type,
+  value,
+  onChange,
+  onChangeText,
+  placeholder,
+  required,
+  style,
+  ...props
+}: InputProps) {
   const handleChange = (text: string) => {
     if (onChangeText) {
       onChangeText(text);
@@ -31,12 +41,15 @@ function Input({ className, type, value, onChange, onChangeText, placeholder, re
       value={value}
       onChangeText={handleChange}
       placeholder={placeholder}
-      secureTextEntry={type === 'password'}
-      keyboardType={type === 'email' ? 'email-address' : type === 'number' ? 'numeric' : 'default'}
-      style={[
-        styles.input,
-        style
-      ]}
+      secureTextEntry={type === "password"}
+      keyboardType={
+        type === "email"
+          ? "email-address"
+          : type === "number"
+          ? "numeric"
+          : "default"
+      }
+      style={[styles.input, style]}
       {...props}
     />
   );
@@ -44,15 +57,15 @@ function Input({ className, type, value, onChange, onChangeText, placeholder, re
 
 const styles = StyleSheet.create({
   input: {
-    height: 36,
-    width: '100%',
+    height: 48,
+    width: "100%",
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: "#d1d5db",
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 16,
-    backgroundColor: 'white',
+    backgroundColor: "white",
   },
 });
 

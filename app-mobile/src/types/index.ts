@@ -13,11 +13,13 @@ export interface User {
   share_budget?: boolean;
   share_categories?: boolean;
   share_date_time?: boolean;
-  visibility_mode?: 'public' | 'friends' | 'private';
+  visibility_mode?: "public" | "friends" | "private";
   show_activity?: boolean;
   show_saved_experiences?: boolean;
   show_location?: boolean;
   show_preferences?: boolean;
+  has_completed_onboarding?: boolean;
+  onboarding_step?: number | null; // 0 = completed, 2-10 = current step
   created_at: string;
 }
 
@@ -31,15 +33,15 @@ export interface RecommendationsRequest {
   categories: string[];
   experienceTypes?: string[];
   timeWindow: {
-    kind: 'Now' | 'Tonight' | 'ThisWeekend' | 'Custom';
+    kind: "Now" | "Tonight" | "ThisWeekend" | "Custom";
     start?: string | null;
     end?: string | null;
     timeOfDay?: string;
   };
   travel: {
-    mode: 'WALKING' | 'DRIVING' | 'TRANSIT';
+    mode: "WALKING" | "DRIVING" | "TRANSIT";
     constraint: {
-      type: 'TIME' | 'DISTANCE';
+      type: "TIME" | "DISTANCE";
       maxMinutes?: number;
       maxDistance?: number;
     };
@@ -48,7 +50,7 @@ export interface RecommendationsRequest {
     lat: number;
     lng: number;
   };
-  units: 'metric' | 'imperial';
+  units: "metric" | "imperial";
 }
 
 export interface RecommendationCard {
@@ -67,13 +69,13 @@ export interface RecommendationCard {
     lng: number;
   };
   route: {
-    mode: 'WALKING' | 'DRIVING' | 'TRANSIT';
+    mode: "WALKING" | "DRIVING" | "TRANSIT";
     etaMinutes: number;
     distanceText: string;
     mapsDeepLink: string;
   };
   source: {
-    provider: 'google_places' | 'eventbrite';
+    provider: "google_places" | "eventbrite";
     placeId?: string;
     eventId?: string;
   };
@@ -125,7 +127,7 @@ export interface CollaborationSession {
   createdAt: string;
   isActive: boolean;
   boardId?: string;
-  status: 'pending' | 'active' | 'dormant';
+  status: "pending" | "active" | "dormant";
   invitedBy: string;
   inviterProfile?: {
     id: string;
@@ -146,7 +148,7 @@ export interface SessionInvite {
     avatar?: string;
   };
   message?: string;
-  status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+  status: "pending" | "accepted" | "declined" | "cancelled";
   createdAt: string;
 }
 
@@ -165,7 +167,7 @@ export interface ActivePreferences {
   experienceTypes: string[];
   time: string;
   travel: string;
-  travelConstraint: 'time' | 'distance';
+  travelConstraint: "time" | "distance";
   travelTime: number;
   travelDistance: number;
   location: string;
@@ -186,6 +188,7 @@ export interface Preferences {
   travel_constraint_type: string;
   travel_constraint_value: number;
   datetime_pref: string;
+  date_option?: string | null; // "Now", "Today", "This Weekend", or "Pick a Date"
   created_at: string;
   updated_at: string;
 }
@@ -222,7 +225,7 @@ export interface CollaborationSession {
   name: string;
   created_by: string;
   board_id?: string;
-  status: 'pending' | 'active' | 'dormant';
+  status: "pending" | "active" | "dormant";
   created_at: string;
   updated_at: string;
 }
@@ -251,7 +254,7 @@ export interface BoardCollaborator {
   id: string;
   board_id: string;
   user_id: string;
-  role: 'owner' | 'collaborator';
+  role: "owner" | "collaborator";
   created_at: string;
 }
 
@@ -260,7 +263,7 @@ export interface CollaborationInvite {
   session_id: string;
   invited_by: string;
   invited_user_id: string;
-  status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+  status: "pending" | "accepted" | "declined" | "cancelled";
   message?: string;
   created_at: string;
   updated_at: string;
@@ -270,11 +273,28 @@ export interface CollaborationInvite {
 export interface UserActivityHistory {
   id: string;
   user_id: string;
-  activity_type: 'view' | 'like' | 'dislike' | 'save' | 'unsave' | 'share' | 'schedule' | 'unschedule' |
-                'click_details' | 'swipe_left' | 'swipe_right' | 'tap' |
-                'experience_saved' | 'experience_liked' | 'experience_disliked' | 
-                'board_created' | 'board_shared' | 'collaboration_joined' |
-                'place_visited' | 'recommendation_viewed' | 'session_created';
+  activity_type:
+    | "view"
+    | "like"
+    | "dislike"
+    | "save"
+    | "unsave"
+    | "share"
+    | "schedule"
+    | "unschedule"
+    | "click_details"
+    | "swipe_left"
+    | "swipe_right"
+    | "tap"
+    | "experience_saved"
+    | "experience_liked"
+    | "experience_disliked"
+    | "board_created"
+    | "board_shared"
+    | "collaboration_joined"
+    | "place_visited"
+    | "recommendation_viewed"
+    | "session_created";
   activity_data: Record<string, any>;
   category?: string;
   location_context: Record<string, any>;
@@ -318,8 +338,13 @@ export interface SavedExperiencePrivacy {
 export interface UserTimeline {
   id: string;
   user_id: string;
-  event_type: 'first_experience' | 'milestone_reached' | 'category_master' | 
-             'explorer_badge' | 'social_butterfly' | 'local_expert';
+  event_type:
+    | "first_experience"
+    | "milestone_reached"
+    | "category_master"
+    | "explorer_badge"
+    | "social_butterfly"
+    | "local_expert";
   event_data: Record<string, any>;
   badge_earned?: string;
   created_at: string;

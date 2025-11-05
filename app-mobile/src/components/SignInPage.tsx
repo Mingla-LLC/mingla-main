@@ -1,79 +1,101 @@
-import React, { useState } from 'react';
-import WelcomeScreen from './signIn/WelcomeScreen';
-import SignInForm from './signIn/SignInForm';
-import SignUpForm from './signIn/SignUpForm';
+import React, { useState } from "react";
+import WelcomeScreen from "./signIn/WelcomeScreen";
+import SignInForm from "./signIn/SignInForm";
+import SignUpForm from "./signIn/SignUpForm";
 
 interface SignInPageProps {
   onSignInRegular: (credentials: { email: string; password: string }) => void;
-  onSignUpRegular: (userData: { email: string; password: string; name: string }) => void;
+  onSignUpRegular: (userData: {
+    email: string;
+    password: string;
+    name: string;
+    username: string;
+  }) => void;
   onSignInCurator: (credentials: { email: string; password: string }) => void;
-  onSignUpCurator: (userData: { email: string; password: string; name: string; organization?: string }) => void;
+  onSignUpCurator: (userData: {
+    email: string;
+    password: string;
+    name: string;
+    username: string;
+    organization?: string;
+  }) => void;
   onStartOnboarding?: () => void;
-  initialMode?: 'welcome' | 'sign-in' | 'sign-up';
+  initialMode?: "welcome" | "sign-in" | "sign-up";
   onResetSignUpForm?: () => void;
 }
 
-type AuthMode = 'welcome' | 'sign-in' | 'sign-up';
+type AuthMode = "welcome" | "sign-in" | "sign-up";
 
-export default function SignInPage({ onSignInRegular, onSignUpRegular, onStartOnboarding, initialMode = 'welcome', onResetSignUpForm }: SignInPageProps) {
+export default function SignInPage({
+  onSignInRegular,
+  onSignUpRegular,
+  onStartOnboarding,
+  initialMode = "welcome",
+  onResetSignUpForm,
+}: SignInPageProps) {
   const [authMode, setAuthMode] = useState<AuthMode>(initialMode);
 
   const handleBackToWelcome = () => {
-    setAuthMode('welcome');
+    setAuthMode("welcome");
     if (onResetSignUpForm) {
       onResetSignUpForm();
     }
   };
 
   const handleNavigateToSignIn = () => {
-    setAuthMode('sign-in');
+    setAuthMode("sign-in");
   };
 
   const handleNavigateToSignUp = () => {
-    setAuthMode('sign-up');
+    setAuthMode("sign-up");
   };
 
   const handleSignIn = (credentials: { email: string; password: string }) => {
     onSignInRegular(credentials);
   };
 
-  const handleSignUp = (userData: { email: string; password: string; name: string }) => {
+  const handleSignUp = (userData: {
+    email: string;
+    password: string;
+    name: string;
+    username: string;
+  }) => {
     onSignUpRegular(userData);
   };
 
   // Render different components based on current mode
   switch (authMode) {
-    case 'welcome':
+    case "welcome":
       return (
-        <WelcomeScreen 
+        <WelcomeScreen
           onSignUp={handleNavigateToSignUp}
           onNavigateToSignIn={handleNavigateToSignIn}
           onStartOnboarding={onStartOnboarding}
         />
       );
-    
-    case 'sign-in':
+
+    case "sign-in":
       return (
-        <SignInForm 
+        <SignInForm
           onSignIn={handleSignIn}
           onSwitchToSignUp={handleNavigateToSignUp}
           onBack={handleBackToWelcome}
         />
       );
-    
-    case 'sign-up':
+
+    case "sign-up":
       return (
-        <SignUpForm 
+        <SignUpForm
           onSignUp={handleSignUp}
           onSwitchToSignIn={handleNavigateToSignIn}
           onBack={handleBackToWelcome}
         />
       );
-    
+
     default:
       return (
-        <WelcomeScreen 
-          onSignUp={handleSignUp}
+        <WelcomeScreen
+          onSignUp={handleNavigateToSignUp}
           onNavigateToSignIn={handleNavigateToSignIn}
           onStartOnboarding={onStartOnboarding}
         />
