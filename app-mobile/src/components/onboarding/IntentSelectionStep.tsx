@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useState } from "react";
 import {
   Text,
   View,
@@ -6,13 +6,15 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 interface IntentSelectionStepProps {
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
   onBack: () => void;
-  intents: any[];
+  intents: any[] | null | undefined;
   onIntentToggle: (intent: any) => void;
 }
 
@@ -22,120 +24,97 @@ const IntentSelectionStep = ({
   intents,
   onIntentToggle,
 }: IntentSelectionStepProps) => {
+  const [isLoading, setIsLoading] = useState(false);
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: "white",
     },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+    progressSection: {
       paddingHorizontal: 24,
-      paddingVertical: 16,
-      backgroundColor: "white",
-      borderBottomWidth: 1,
-      borderBottomColor: "#f3f4f6",
+      paddingTop: 8,
+      paddingBottom: 8,
     },
-    backButton: {
-      padding: 8,
-      borderRadius: 20,
-    },
-    headerCenter: {
-      alignItems: "center",
-    },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: "#111827",
-    },
-    headerSubtitle: {
-      fontSize: 14,
-      color: "#6b7280",
+    progressBarContainer: {
+      marginBottom: 8,
     },
     progressBar: {
-      height: 8,
+      height: 4,
       backgroundColor: "#e5e7eb",
-      borderRadius: 4,
-      marginHorizontal: 24,
-      marginVertical: 16,
+      borderRadius: 2,
+      overflow: "hidden",
     },
     progressFill: {
-      height: 8,
+      height: 4,
       backgroundColor: "#eb7825",
-      borderRadius: 4,
+      borderRadius: 2,
     },
-    intentMainContent: {
-      flex: 1,
+    progressTextContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 4,
+    },
+    progressTextLeft: {
+      fontSize: 12,
+      color: "#6b7280",
+    },
+    progressTextRight: {
+      fontSize: 12,
+      color: "#6b7280",
+    },
+    scrollContent: {
+      flexGrow: 1,
       paddingHorizontal: 24,
+      paddingTop: 24,
+      paddingBottom: 120,
     },
     titleSection: {
-      alignItems: "center",
       marginBottom: 32,
     },
     title: {
-      fontSize: 28,
+      fontSize: 32,
       fontWeight: "bold",
       color: "#111827",
-      textAlign: "center",
       marginBottom: 8,
+      letterSpacing: -0.5,
     },
     subtitle: {
       fontSize: 16,
       color: "#6b7280",
-      textAlign: "center",
-    },
-    selectionCounter: {
-      fontSize: 14,
-      color: "#eb7825",
-      fontWeight: "500",
-      marginTop: 8,
+      lineHeight: 22,
     },
     optionsContainer: {
       flex: 1,
     },
-    optionsContent: {
-      paddingBottom: 20,
-    },
     intentCard: {
-      borderRadius: 12,
-      marginBottom: 12,
-      borderWidth: 2,
-      width: "100%",
-    },
-    intentCardDefault: {
       backgroundColor: "white",
+      borderRadius: 12,
+      borderWidth: 1.5,
       borderColor: "#e5e7eb",
-    },
-    intentCardSelected: {
-      backgroundColor: "#fef3f2",
-      borderColor: "#eb7825",
-    },
-    intentCardContent: {
+      marginBottom: 12,
+      padding: 16,
       flexDirection: "row",
       alignItems: "center",
-      padding: 16,
     },
-    intentIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
+    intentCardSelected: {
+      backgroundColor: "#eb7825",
+      borderColor: "#eb7825",
+      borderWidth: 2,
+    },
+    intentIconContainer: {
       marginRight: 16,
-    },
-    intentIconDefault: {
-      backgroundColor: "#f3f4f6",
+      width: 24,
+      height: 24,
+      justifyContent: "center",
+      alignItems: "center",
     },
     intentIconSelected: {
-      backgroundColor: "#eb7825",
-    },
-    intentEmoji: {
-      fontSize: 20,
+      color: "#ffffff",
     },
     intentTextContainer: {
       flex: 1,
-      flexShrink: 1,
     },
     intentTitle: {
       fontSize: 16,
@@ -143,128 +122,176 @@ const IntentSelectionStep = ({
       color: "#111827",
       marginBottom: 4,
     },
+    intentTitleSelected: {
+      color: "#ffffff",
+    },
     intentDescription: {
       fontSize: 14,
       color: "#6b7280",
       lineHeight: 20,
     },
-    continueButton: {
-      backgroundColor: "#eb7825",
-      borderRadius: 12,
+    intentDescriptionSelected: {
+      color: "#ffffff",
+      opacity: 0.9,
+    },
+    navigationContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 24,
       paddingVertical: 16,
-      paddingHorizontal: 20,
+      backgroundColor: "white",
+      borderTopWidth: 1,
+      borderTopColor: "#f3f4f6",
+    },
+    backButton: {
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 8,
+      backgroundColor: "white",
+    },
+    backButtonText: {
+      fontSize: 16,
+      color: "#111827",
+      fontWeight: "500",
+      marginLeft: 4,
+    },
+    nextButton: {
+      paddingVertical: 12,
+      paddingHorizontal: 16,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
+      borderRadius: 8,
+      minWidth: 100,
     },
-    continueButtonText: {
-      color: "white",
-      fontSize: 16,
-      fontWeight: "600",
-      marginRight: 8,
+    nextButtonEnabled: {
+      backgroundColor: "#eb7825",
     },
-    continueButtonDisabled: {
+    nextButtonDisabled: {
       backgroundColor: "#e5e7eb",
-      opacity: 0.7,
+      opacity: 0.6,
     },
-    continueButtonTextDisabled: {
-      color: "#9ca3af",
+    nextButtonText: {
+      fontSize: 16,
+      fontWeight: "500",
+      marginRight: 4,
+    },
+    nextButtonTextEnabled: {
+      color: "#ffffff",
+    },
+    nextButtonTextDisabled: {
+      color: "#6b7280",
     },
   });
 
   const intentOptions = [
     {
       id: "solo-adventure",
-      title: "Explore new things solo",
-      icon: "globe",
-      emoji: "🌍",
-      description: "Perfect for solo adventures and self-discovery",
+      title: "Solo Adventure",
+      icon: "globe-outline",
+      description: "Explore new things on your own",
       experienceType: "Solo adventure",
     },
     {
       id: "first-dates",
       title: "Plan First Dates",
-      icon: "heart",
-      emoji: "💕",
+      icon: "heart-outline",
       description: "Great first impression experiences",
       experienceType: "First Date",
     },
     {
       id: "romantic",
       title: "Find Romantic Activities",
-      icon: "heart",
-      emoji: "💘",
+      icon: "heart-outline",
       description: "Intimate and romantic experiences",
       experienceType: "Romantic",
     },
     {
       id: "friendly",
       title: "Find Friendly Activities",
-      icon: "people",
-      emoji: "👥",
+      icon: "people-outline",
       description: "Fun activities with friends",
       experienceType: "Friendly",
     },
     {
       id: "group-fun",
-      title: "Find activities for my group",
-      icon: "people",
-      emoji: "🎉",
+      title: "Find Activities for Groups",
+      icon: "people-outline",
       description: "Group activities and celebrations",
       experienceType: "Group fun",
     },
     {
       id: "business",
-      title: "Find places for business and work meetings",
-      icon: "cafe",
-      emoji: "💼",
+      title: "Business/Work Meetings",
+      icon: "briefcase-outline",
       description: "Professional meeting spaces",
       experienceType: "Business",
     },
   ];
 
+  // Get the appropriate icon name for each option
+  const getIconName = (option: (typeof intentOptions)[0]) => {
+    // Use the icon specified in the option, or map to appropriate Ionicons
+    switch (option.id) {
+      case "solo-adventure":
+        return "globe-outline";
+      case "first-dates":
+      case "romantic":
+        return "heart-outline";
+      case "friendly":
+        return "people-outline"; // Two people concept
+      case "group-fun":
+        return "people-outline"; // Three+ people concept
+      case "business":
+        return "briefcase-outline";
+      default:
+        return option.icon;
+    }
+  };
+
+  // Check if intents are selected (robust check)
+  const hasIntentsSelected =
+    intents && Array.isArray(intents) && intents.length > 0;
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={20} color="#9ca3af" />
-        </TouchableOpacity>
+      <StatusBar barStyle="dark-content" backgroundColor="white" />
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Your Intent</Text>
-          <Text style={styles.headerSubtitle}>Step 3 of 7</Text>
+      {/* Progress Bar Section */}
+      <View style={styles.progressSection}>
+        <View style={styles.progressBarContainer}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: "20%" }]} />
+          </View>
+          <View style={styles.progressTextContainer}>
+            <Text style={styles.progressTextLeft}>Step 2 of 10</Text>
+            <Text style={styles.progressTextRight}>20% complete</Text>
+          </View>
         </View>
-
-        <View style={{ width: 32 }} />
       </View>
 
-      {/* Progress Bar */}
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: "42.9%" }]} />
-      </View>
-
-      {/* Main Content */}
-      <View style={styles.intentMainContent}>
+      {/* Scrollable Content */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+      >
         {/* Title Section */}
         <View style={styles.titleSection}>
-          <Text style={styles.title}>I'm here to...</Text>
-          <Text style={styles.subtitle}>
-            Select all reasons that bring you to Mingla
-          </Text>
-          <Text style={styles.selectionCounter}>
-            {intents?.length || 0} selected
-          </Text>
+          <Text style={styles.title}>What brings you here?</Text>
+          <Text style={styles.subtitle}>Select all that apply</Text>
         </View>
 
         {/* Intent Options */}
-        <ScrollView
-          style={styles.optionsContainer}
-          showsVerticalScrollIndicator={true}
-          contentContainerStyle={styles.optionsContent}
-        >
+        <View style={styles.optionsContainer}>
           {intentOptions.map((option) => {
-            const isSelected = intents?.find((i: any) => i.id === option.id);
+            const isSelected = hasIntentsSelected
+              ? intents.some((i: any) => i.id === option.id)
+              : false;
 
             return (
               <TouchableOpacity
@@ -272,59 +299,107 @@ const IntentSelectionStep = ({
                 onPress={() => onIntentToggle(option)}
                 style={[
                   styles.intentCard,
-                  isSelected
-                    ? styles.intentCardSelected
-                    : styles.intentCardDefault,
+                  isSelected && styles.intentCardSelected,
                 ]}
+                activeOpacity={0.7}
               >
-                <View style={styles.intentCardContent}>
-                  <View
+                <View style={styles.intentIconContainer}>
+                  <Ionicons
+                    name={getIconName(option) as any}
+                    size={24}
+                    color={isSelected ? "#ffffff" : "#374151"}
+                  />
+                </View>
+
+                <View style={styles.intentTextContainer}>
+                  <Text
                     style={[
-                      styles.intentIcon,
-                      isSelected
-                        ? styles.intentIconSelected
-                        : styles.intentIconDefault,
+                      styles.intentTitle,
+                      isSelected && styles.intentTitleSelected,
                     ]}
                   >
-                    <Text style={styles.intentEmoji}>{option.emoji}</Text>
-                  </View>
-
-                  <View style={styles.intentTextContainer}>
-                    <Text style={styles.intentTitle}>{option.title}</Text>
-                    <Text style={styles.intentDescription}>
-                      {option.description}
-                    </Text>
-                  </View>
-
-                  {isSelected && (
-                    <Ionicons name="checkmark" size={20} color="#eb7825" />
-                  )}
+                    {option.title}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.intentDescription,
+                      isSelected && styles.intentDescriptionSelected,
+                    ]}
+                  >
+                    {option.description}
+                  </Text>
                 </View>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
+      </ScrollView>
 
-        {/* Continue Button */}
+      {/* Navigation Buttons */}
+      <View style={styles.navigationContainer}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <Ionicons name="arrow-back" size={18} color="#111827" />
+          <Text style={styles.backButtonText}>Back</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
-          onPress={onNext}
-          disabled={!intents || intents.length === 0}
           style={[
-            styles.continueButton,
-            (!intents || intents.length === 0) && styles.continueButtonDisabled,
+            styles.nextButton,
+            hasIntentsSelected
+              ? styles.nextButtonEnabled
+              : styles.nextButtonDisabled,
           ]}
+          onPress={async () => {
+            // Prevent onPress from firing if no intents are selected or already loading
+            if (!hasIntentsSelected || isLoading) return;
+
+            setIsLoading(true);
+            try {
+              // Call onNext and wait for it if it returns a promise
+              const result = onNext();
+              if (result instanceof Promise) {
+                await result;
+              }
+            } catch (error) {
+              console.error("Error in onNext:", error);
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          disabled={!hasIntentsSelected || isLoading}
+          activeOpacity={!hasIntentsSelected || isLoading ? 1 : 0.7}
         >
-          <Text
-            style={[
-              styles.continueButtonText,
-              (!intents || intents.length === 0) &&
-                styles.continueButtonTextDisabled,
-            ]}
-          >
-            Continue
-          </Text>
-          {!intents || intents.length === 0 ? null : (
-            <Ionicons name="arrow-forward" size={20} color="white" />
+          {isLoading ? (
+            <>
+              <ActivityIndicator
+                size="small"
+                color="#ffffff"
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={[styles.nextButtonText, styles.nextButtonTextEnabled]}
+              >
+                Saving...
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text
+                style={[
+                  styles.nextButtonText,
+                  hasIntentsSelected
+                    ? styles.nextButtonTextEnabled
+                    : styles.nextButtonTextDisabled,
+                ]}
+              >
+                Next
+              </Text>
+              <Ionicons
+                name="arrow-forward"
+                size={18}
+                color={hasIntentsSelected ? "#ffffff" : "#6b7280"}
+              />
+            </>
           )}
         </TouchableOpacity>
       </View>

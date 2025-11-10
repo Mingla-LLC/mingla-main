@@ -5,12 +5,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  ScrollView,
+  StatusBar,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 interface BudgetRangeStepProps {
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
   onBack: () => void;
   budgetRange: { min: number; max: number | null };
   onBudgetRangeChange: (range: { min: number; max: number | null }) => void;
@@ -22,18 +25,49 @@ const BudgetRangeStep = ({
   budgetRange,
   onBudgetRangeChange,
 }: BudgetRangeStepProps) => {
+  // Check if initial budgetRange is the default (0-1000)
+  const initialIsDefault = budgetRange?.min === 0 && budgetRange?.max === 1000;
+  
+  // If it's the default range, show empty inputs to indicate no selection
   const [minValue, setMinValue] = useState<string>(
-    budgetRange?.min?.toString() || "0"
+    initialIsDefault ? "" : (budgetRange?.min?.toString() || "")
   );
   const [maxValue, setMaxValue] = useState<string>(
-    budgetRange?.max?.toString() || "100"
+    initialIsDefault ? "" : (budgetRange?.max?.toString() || "")
   );
+  const [isLoading, setIsLoading] = useState(false);
+  const [isMinFocused, setIsMinFocused] = useState(false);
+  const [isMaxFocused, setIsMaxFocused] = useState(false);
+  const [hasUserInteracted, setHasUserInteracted] = useState(!initialIsDefault);
 
-  // Update local state when prop changes
+  // Popular budget ranges - defined early for use in validation
+  const popularRanges = [
+    { min: 0, max: 25, label: "$0-25" },
+    { min: 25, max: 75, label: "$25-75" },
+    { min: 75, max: 150, label: "$75-150" },
+    { min: 150, max: null, label: "$150+" },
+  ];
+
+  // Check if the current budgetRange matches any popular range
+  const checkIfPopularRangeSelected = () => {
+    if (!budgetRange) return false;
+    return popularRanges.some(
+      (range) =>
+        budgetRange.min === range.min && budgetRange.max === range.max
+    );
+  };
+
+  // Check if budgetRange is the default value (0-1000)
+  const isDefaultRange = budgetRange?.min === 0 && budgetRange?.max === 1000;
+
+  // Update local state when prop changes (but only sync values, don't override user input)
   useEffect(() => {
     if (budgetRange) {
-      setMinValue(budgetRange.min?.toString() || "0");
-      setMaxValue(budgetRange.max?.toString() || "100");
+      // Check if this is different from default, which means user has made a selection
+      const currentIsDefault = budgetRange.min === 0 && budgetRange.max === 1000;
+      if (!currentIsDefault) {
+        setHasUserInteracted(true);
+      }
     }
   }, [budgetRange]);
 
@@ -41,12 +75,19 @@ const BudgetRangeStep = ({
     // Allow only numbers
     const numericValue = text.replace(/[^0-9]/g, "");
     setMinValue(numericValue);
+    setHasUserInteracted(true);
 
     const numValue = numericValue ? parseInt(numericValue, 10) : 0;
     if (!isNaN(numValue)) {
       onBudgetRangeChange({
         min: numValue,
-        max: budgetRange.max,
+        max: budgetRange.max ?? (maxValue ? parseInt(maxValue, 10) : null),
+      });
+    } else if (numericValue === "") {
+      // Empty min value
+      onBudgetRangeChange({
+        min: 0,
+        max: budgetRange.max ?? (maxValue ? parseInt(maxValue, 10) : null),
       });
     }
   };
@@ -55,18 +96,19 @@ const BudgetRangeStep = ({
     // Allow only numbers
     const numericValue = text.replace(/[^0-9]/g, "");
     setMaxValue(numericValue);
+    setHasUserInteracted(true);
 
     if (numericValue === "") {
-      // Empty means no limit
+      // Empty means no limit (for $150+)
       onBudgetRangeChange({
-        min: budgetRange.min,
+        min: budgetRange.min ?? (minValue ? parseInt(minValue, 10) : 0),
         max: null,
       });
     } else {
       const numValue = parseInt(numericValue, 10);
       if (!isNaN(numValue)) {
         onBudgetRangeChange({
-          min: budgetRange.min,
+          min: budgetRange.min ?? (minValue ? parseInt(minValue, 10) : 0),
           max: numValue,
         });
       }
@@ -80,6 +122,7 @@ const BudgetRangeStep = ({
     } else {
       setMaxValue(max.toString());
     }
+    setHasUserInteracted(true);
     onBudgetRangeChange({ min, max });
   };
 
@@ -88,148 +131,160 @@ const BudgetRangeStep = ({
       flex: 1,
       backgroundColor: "white",
     },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+    progressSection: {
       paddingHorizontal: 24,
-      paddingVertical: 16,
-      backgroundColor: "white",
-      borderBottomWidth: 1,
-      borderBottomColor: "#f3f4f6",
+      paddingTop: 8,
+      paddingBottom: 8,
     },
-    backButton: {
-      padding: 8,
-      borderRadius: 20,
-    },
-    headerCenter: {
-      alignItems: "center",
-    },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: "#111827",
-    },
-    headerSubtitle: {
-      fontSize: 14,
-      color: "#6b7280",
+    progressBarContainer: {
+      marginBottom: 8,
     },
     progressBar: {
-      height: 8,
+      height: 4,
       backgroundColor: "#e5e7eb",
-      borderRadius: 4,
-      marginHorizontal: 24,
-      marginVertical: 16,
+      borderRadius: 2,
+      overflow: "hidden",
     },
     progressFill: {
-      height: 8,
+      height: 4,
       backgroundColor: "#eb7825",
-      borderRadius: 4,
+      borderRadius: 2,
     },
-    mainContent: {
-      flex: 1,
+    progressTextContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 4,
+    },
+    progressTextLeft: {
+      fontSize: 12,
+      color: "#6b7280",
+    },
+    progressTextRight: {
+      fontSize: 12,
+      color: "#6b7280",
+    },
+    scrollContent: {
+      flexGrow: 1,
       paddingHorizontal: 24,
       paddingTop: 32,
+      paddingBottom: 120,
     },
     titleSection: {
       marginBottom: 32,
-      flexDirection: "row",
       alignItems: "center",
-    },
-    titleIcon: {
-      marginRight: 12,
-    },
-    titleContainer: {
-      flex: 1,
     },
     title: {
       fontSize: 28,
       fontWeight: "bold",
       color: "#111827",
       marginBottom: 8,
+      textAlign: "center",
     },
     subtitle: {
       fontSize: 16,
       color: "#6b7280",
-    },
-    inputSection: {
-      marginBottom: 32,
-    },
-    inputRow: {
-      marginBottom: 20,
-    },
-    inputLabel: {
-      fontSize: 14,
-      fontWeight: "500",
-      color: "#374151",
-      marginBottom: 8,
-    },
-    inputContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: "#e5e7eb",
-      borderRadius: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 16,
-      backgroundColor: "#f9fafb",
-    },
-    dollarSign: {
-      fontSize: 16,
-      fontWeight: "500",
-      color: "#374151",
-      marginRight: 8,
-    },
-    input: {
-      flex: 1,
-      fontSize: 16,
-      color: "#111827",
-      padding: 0,
-    },
-    helperText: {
-      fontSize: 14,
-      color: "#6b7280",
-      marginTop: 4,
+      textAlign: "center",
+      lineHeight: 22,
     },
     popularRangesSection: {
-      marginTop: 8,
+      marginBottom: 24,
     },
     popularRangesLabel: {
       fontSize: 14,
-      fontWeight: "500",
-      color: "#374151",
+      fontWeight: "400",
+      color: "#111827",
       marginBottom: 12,
     },
     popularRangesContainer: {
       flexDirection: "row",
-      gap: 12,
+      flexWrap: "wrap",
+      justifyContent: "space-between",
     },
     popularRangeButton: {
-      flex: 1,
+      width: "48%",
       paddingVertical: 12,
       paddingHorizontal: 16,
       borderRadius: 12,
       borderWidth: 1,
       alignItems: "center",
       justifyContent: "center",
+      marginBottom: 12,
+      backgroundColor: "white",
+      borderColor: "#e5e7eb",
     },
     popularRangeButtonSelected: {
-      backgroundColor: "#3b82f6",
-      borderColor: "#3b82f6",
-    },
-    popularRangeButtonUnselected: {
-      backgroundColor: "#f9fafb",
-      borderColor: "#e5e7eb",
+      backgroundColor: "#eb7825",
+      borderColor: "#eb7825",
     },
     popularRangeButtonText: {
       fontSize: 14,
-      fontWeight: "600",
+      fontWeight: "500",
+      color: "#111827",
     },
     popularRangeButtonTextSelected: {
-      color: "white",
+      color: "#ffffff",
     },
-    popularRangeButtonTextUnselected: {
-      color: "#374151",
+    separator: {
+      alignItems: "center",
+      marginVertical: 24,
+    },
+    separatorText: {
+      fontSize: 14,
+      color: "#9ca3af",
+      fontWeight: "400",
+    },
+    customRangeSection: {
+      marginBottom: 24,
+    },
+    customRangeRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+    },
+    customRangeInputContainer: {
+      flex: 1,
+      marginRight: 12,
+    },
+    customRangeInputContainerLast: {
+      marginRight: 0,
+    },
+    customRangeLabel: {
+      fontSize: 14,
+      fontWeight: "400",
+      color: "#111827",
+      marginBottom: 8,
+    },
+    customRangeInputWrapper: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "white",
+      borderWidth: 1.5,
+      borderColor: "#e5e7eb",
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    customRangeInputWrapperFocused: {
+      borderColor: "#eb7825",
+      borderWidth: 2,
+    },
+    dollarSign: {
+      fontSize: 16,
+      fontWeight: "400",
+      color: "#111827",
+      marginRight: 8,
+    },
+    customRangeInput: {
+      flex: 1,
+      fontSize: 16,
+      color: "#111827",
+      padding: 0,
+    },
+    helperText: {
+      fontSize: 12,
+      color: "#9ca3af",
+      textAlign: "center",
+      marginTop: 8,
     },
     navigationContainer: {
       flexDirection: "row",
@@ -237,195 +292,258 @@ const BudgetRangeStep = ({
       alignItems: "center",
       paddingHorizontal: 24,
       paddingVertical: 16,
+      backgroundColor: "white",
       borderTopWidth: 1,
       borderTopColor: "#f3f4f6",
     },
+    backButton: {
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 8,
+      backgroundColor: "white",
+    },
     backButtonText: {
       fontSize: 16,
-      color: "#6b7280",
+      color: "#111827",
       fontWeight: "500",
+      marginLeft: 4,
     },
     nextButton: {
-      backgroundColor: "#eb7825",
-      borderRadius: 12,
       paddingVertical: 12,
-      paddingHorizontal: 24,
+      paddingHorizontal: 16,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
+      borderRadius: 8,
+      backgroundColor: "#eb7825",
+      minWidth: 100,
     },
     nextButtonDisabled: {
       backgroundColor: "#e5e7eb",
-      opacity: 0.7,
     },
     nextButtonText: {
-      color: "white",
       fontSize: 16,
-      fontWeight: "600",
-      marginRight: 8,
+      fontWeight: "500",
+      color: "#ffffff",
+      marginRight: 4,
     },
     nextButtonTextDisabled: {
-      color: "#9ca3af",
+      color: "#6b7280",
     },
   });
 
-  // Popular budget ranges
-  const popularRanges = [
-    { min: 0, max: 25, label: "$0-25" },
-    { min: 25, max: 50, label: "$25-50" },
-    { min: 50, max: 100, label: "$50-100" },
-    { min: 100, max: null, label: "$100+" },
-  ];
-
-  // Check if a popular range is selected
+  // Check if a popular range is selected (for highlighting)
   const isPopularRangeSelected = (range: {
     min: number;
     max: number | null;
   }) => {
+    if (!budgetRange) return false;
     return budgetRange.min === range.min && budgetRange.max === range.max;
   };
 
   // Validation: min should not be greater than max (if max is set)
-  const minNum = parseInt(minValue, 10) || 0;
-  const maxNum = maxValue ? parseInt(maxValue, 10) : null;
-  const isInvalidRange = maxNum !== null && minNum > maxNum;
+  const currentMin = budgetRange?.min ?? 0;
+  const currentMax = budgetRange?.max ?? null;
+  const isInvalidRange = currentMax !== null && currentMin > currentMax;
 
-  const isNextDisabled = isInvalidRange || minValue === "";
+  // Button should be disabled if:
+  // 1. The range is still the default (0-1000), OR
+  // 2. Range is invalid (min > max when max is set), OR
+  // 3. Min value is not set or is invalid
+  const hasValidMin = budgetRange?.min !== undefined && budgetRange?.min !== null && !isNaN(budgetRange.min);
+  
+  const isNextDisabled = isDefaultRange || isInvalidRange || !hasValidMin;
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={20} color="#9ca3af" />
-        </TouchableOpacity>
+      <StatusBar barStyle="dark-content" backgroundColor="white" />
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Budget Range</Text>
-          <Text style={styles.headerSubtitle}>Step 7 of 10</Text>
+      {/* Progress Bar Section */}
+      <View style={styles.progressSection}>
+        <View style={styles.progressBarContainer}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: "70%" }]} />
+          </View>
+          <View style={styles.progressTextContainer}>
+            <Text style={styles.progressTextLeft}>Step 7 of 10</Text>
+            <Text style={styles.progressTextRight}>70% complete</Text>
+          </View>
         </View>
-
-        <View style={{ width: 32 }} />
       </View>
 
-      {/* Progress Bar */}
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: "70%" }]} />
-      </View>
-
-      {/* Main Content */}
-      <View style={styles.mainContent}>
+      {/* Scrollable Content */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+      >
         {/* Title Section */}
         <View style={styles.titleSection}>
-          <View style={styles.titleIcon}>
-            <Ionicons name="wallet-outline" size={24} color="#f59e0b" />
-          </View>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>What's your budget?</Text>
-            <Text style={styles.subtitle}>
-              Set your typical spending range per person
-            </Text>
-          </View>
+          <Text style={styles.title}>What's your budget?</Text>
+          <Text style={styles.subtitle}>
+            Set your typical spending range per person
+          </Text>
         </View>
 
-        {/* Input Section */}
-        <View style={styles.inputSection}>
-          {/* Minimum Input */}
-          <View style={styles.inputRow}>
-            <Text style={styles.inputLabel}>Minimum per person</Text>
-            <View style={styles.inputContainer}>
-              <Text style={styles.dollarSign}>$</Text>
-              <TextInput
-                style={styles.input}
-                value={minValue}
-                onChangeText={handleMinChange}
-                keyboardType="numeric"
-                placeholder="0"
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
-          </View>
-
-          {/* Maximum Input */}
-          <View style={styles.inputRow}>
-            <Text style={styles.inputLabel}>Maximum per person</Text>
-            <View style={styles.inputContainer}>
-              <Text style={styles.dollarSign}>$</Text>
-              <TextInput
-                style={styles.input}
-                value={maxValue}
-                onChangeText={handleMaxChange}
-                keyboardType="numeric"
-                placeholder="100"
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
-            <Text style={styles.helperText}>
-              Leave empty for no budget limit
-            </Text>
-          </View>
-
-          {/* Popular Ranges */}
-          <View style={styles.popularRangesSection}>
-            <Text style={styles.popularRangesLabel}>Popular ranges:</Text>
-            <View style={styles.popularRangesContainer}>
-              {popularRanges.map((range) => {
-                const isSelected = isPopularRangeSelected(range);
-                return (
-                  <TouchableOpacity
-                    key={range.label}
+        {/* Popular Ranges Section */}
+        <View style={styles.popularRangesSection}>
+          <Text style={styles.popularRangesLabel}>Popular ranges:</Text>
+          <View style={styles.popularRangesContainer}>
+            {popularRanges.map((range) => {
+              const isSelected = isPopularRangeSelected(range);
+              return (
+                <TouchableOpacity
+                  key={range.label}
+                  style={[
+                    styles.popularRangeButton,
+                    isSelected && styles.popularRangeButtonSelected,
+                  ]}
+                  onPress={() =>
+                    handlePopularRangeSelect(range.min, range.max)
+                  }
+                  activeOpacity={0.7}
+                >
+                  <Text
                     style={[
-                      styles.popularRangeButton,
-                      isSelected
-                        ? styles.popularRangeButtonSelected
-                        : styles.popularRangeButtonUnselected,
+                      styles.popularRangeButtonText,
+                      isSelected && styles.popularRangeButtonTextSelected,
                     ]}
-                    onPress={() =>
-                      handlePopularRangeSelect(range.min, range.max)
-                    }
                   >
-                    <Text
-                      style={[
-                        styles.popularRangeButtonText,
-                        isSelected
-                          ? styles.popularRangeButtonTextSelected
-                          : styles.popularRangeButtonTextUnselected,
-                      ]}
-                    >
-                      {range.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                    {range.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Separator */}
+        <View style={styles.separator}>
+          <Text style={styles.separatorText}>or custom range</Text>
+        </View>
+
+        {/* Custom Range Inputs */}
+        <View style={styles.customRangeSection}>
+          <View style={styles.customRangeRow}>
+            {/* Min Input */}
+            <View style={styles.customRangeInputContainer}>
+              <Text style={styles.customRangeLabel}>Min per person</Text>
+              <View
+                style={[
+                  styles.customRangeInputWrapper,
+                  isMinFocused && styles.customRangeInputWrapperFocused,
+                ]}
+              >
+                <Text style={styles.dollarSign}>$</Text>
+                <TextInput
+                  style={styles.customRangeInput}
+                  value={minValue}
+                  onChangeText={handleMinChange}
+                  onFocus={() => setIsMinFocused(true)}
+                  onBlur={() => setIsMinFocused(false)}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+            </View>
+
+            {/* Max Input */}
+            <View
+              style={[
+                styles.customRangeInputContainer,
+                styles.customRangeInputContainerLast,
+              ]}
+            >
+              <Text style={styles.customRangeLabel}>Max per person</Text>
+              <View
+                style={[
+                  styles.customRangeInputWrapper,
+                  isMaxFocused && styles.customRangeInputWrapperFocused,
+                ]}
+              >
+                <Text style={styles.dollarSign}>$</Text>
+                <TextInput
+                  style={styles.customRangeInput}
+                  value={maxValue}
+                  onChangeText={handleMaxChange}
+                  onFocus={() => setIsMaxFocused(true)}
+                  onBlur={() => setIsMaxFocused(false)}
+                  keyboardType="numeric"
+                  placeholder="100"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
             </View>
           </View>
         </View>
-      </View>
+
+        {/* Helper Text */}
+        <Text style={styles.helperText}>
+          Free experiences will always be shown
+        </Text>
+      </ScrollView>
 
       {/* Navigation Buttons */}
       <View style={styles.navigationContainer}>
-        <TouchableOpacity onPress={onBack}>
-          <Text style={styles.backButtonText}>← Back</Text>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <Ionicons name="arrow-back" size={18} color="#111827" />
+          <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={onNext}
-          disabled={isNextDisabled}
           style={[
             styles.nextButton,
             isNextDisabled && styles.nextButtonDisabled,
           ]}
+          onPress={async () => {
+            if (isLoading || isNextDisabled) {
+              return;
+            }
+
+            setIsLoading(true);
+            try {
+              const result = onNext();
+              if (result instanceof Promise) {
+                await result;
+              }
+            } catch (error) {
+              console.error("Error in onNext:", error);
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          disabled={isNextDisabled || isLoading}
+          activeOpacity={isNextDisabled || isLoading ? 1 : 0.7}
         >
-          <Text
-            style={[
-              styles.nextButtonText,
-              isNextDisabled && styles.nextButtonTextDisabled,
-            ]}
-          >
-            Next
-          </Text>
-          {!isNextDisabled && (
-            <Ionicons name="arrow-forward" size={20} color="white" />
+          {isLoading ? (
+            <>
+              <ActivityIndicator
+                size="small"
+                color="#ffffff"
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.nextButtonText}>Saving...</Text>
+            </>
+          ) : (
+            <>
+              <Text
+                style={[
+                  styles.nextButtonText,
+                  isNextDisabled && styles.nextButtonTextDisabled,
+                ]}
+              >
+                Next
+              </Text>
+              <Ionicons
+                name="arrow-forward"
+                size={18}
+                color={isNextDisabled ? "#6b7280" : "#ffffff"}
+              />
+            </>
           )}
         </TouchableOpacity>
       </View>

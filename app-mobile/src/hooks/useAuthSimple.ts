@@ -227,7 +227,8 @@ export const useAuthSimple = () => {
     displayName?: string,
     firstName?: string,
     lastName?: string,
-    username?: string
+    username?: string,
+    accountType?: string
   ) => {
     try {
       // Sign up user - this will send OTP email automatically if configured in Supabase
@@ -242,6 +243,7 @@ export const useAuthSimple = () => {
             last_name:
               lastName || displayName?.split(" ").slice(1).join(" ") || "",
             username: username || email.split("@")[0],
+            account_type: accountType || undefined, // Include account_type in metadata
           },
         },
       });
@@ -492,17 +494,19 @@ export const useAuthSimple = () => {
   const signUpWithPhone = async (
     phone: string,
     password: string,
-    username: string
+    username: string,
+    accountType?: string
   ) => {
     try {
       // Send OTP to phone number
-      // Store password and username in metadata for later use
+      // Store password, username, and account_type in metadata for later use
       const { data, error } = await supabase.auth.signInWithOtp({
         phone,
         options: {
           data: {
             username: username,
             temp_password: password, // Store temporarily in metadata
+            account_type: accountType || undefined, // Include account_type in metadata
           },
         },
       });

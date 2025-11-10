@@ -1,15 +1,18 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Text,
   View,
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  ScrollView,
+  StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 interface TravelModeStepProps {
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
   onBack: () => void;
   travelMode: string;
   onTravelModeChange: (mode: string) => void;
@@ -21,124 +24,101 @@ const TravelModeStep = ({
   travelMode,
   onTravelModeChange,
 }: TravelModeStepProps) => {
+  const [isLoading, setIsLoading] = useState(false);
   const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: "white",
     },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+    progressSection: {
       paddingHorizontal: 24,
-      paddingVertical: 16,
-      backgroundColor: "white",
-      borderBottomWidth: 1,
-      borderBottomColor: "#f3f4f6",
+      paddingTop: 8,
+      paddingBottom: 8,
     },
-    backButton: {
-      padding: 8,
-      borderRadius: 20,
-    },
-    headerCenter: {
-      alignItems: "center",
-    },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: "#111827",
-    },
-    headerSubtitle: {
-      fontSize: 14,
-      color: "#6b7280",
+    progressBarContainer: {
+      marginBottom: 8,
     },
     progressBar: {
-      height: 8,
+      height: 4,
       backgroundColor: "#e5e7eb",
-      borderRadius: 4,
-      marginHorizontal: 24,
-      marginVertical: 16,
+      borderRadius: 2,
+      overflow: "hidden",
     },
     progressFill: {
-      height: 8,
+      height: 4,
       backgroundColor: "#eb7825",
-      borderRadius: 4,
+      borderRadius: 2,
     },
-    mainContent: {
-      flex: 1,
+    progressTextContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 4,
+    },
+    progressTextLeft: {
+      fontSize: 12,
+      color: "#6b7280",
+    },
+    progressTextRight: {
+      fontSize: 12,
+      color: "#6b7280",
+    },
+    scrollContent: {
+      flexGrow: 1,
       paddingHorizontal: 24,
       paddingTop: 32,
+      paddingBottom: 120,
     },
     titleSection: {
       marginBottom: 32,
-      flexDirection: "row",
       alignItems: "center",
-    },
-    titleIcon: {
-      marginRight: 12,
-    },
-    titleContainer: {
-      flex: 1,
     },
     title: {
       fontSize: 28,
       fontWeight: "bold",
       color: "#111827",
       marginBottom: 8,
+      textAlign: "center",
     },
     subtitle: {
       fontSize: 16,
       color: "#6b7280",
+      textAlign: "center",
+      lineHeight: 22,
     },
     optionsContainer: {
-      flex: 1,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      marginBottom: 24,
     },
     modeCard: {
-      borderRadius: 12,
-      marginBottom: 12,
-      borderWidth: 2,
+      width: "48%",
       backgroundColor: "white",
+      borderWidth: 1,
+      borderColor: "#e5e7eb",
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 16,
       position: "relative",
     },
-    modeCardDefault: {
-      borderColor: "#e5e7eb",
-    },
     modeCardSelected: {
+      backgroundColor: "#ffedd5",
+      borderWidth: 2,
       borderColor: "#eb7825",
-      backgroundColor: "#fef3f2",
     },
-    modeCardContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      padding: 16,
-    },
-    modeIconContainer: {
-      width: 56,
-      height: 56,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: 16,
-    },
-    modeIconWalking: {
-      backgroundColor: "#d1fae5",
-    },
-    modeIconBiking: {
-      backgroundColor: "#dbeafe",
-    },
-    modeIconTransit: {
-      backgroundColor: "#e9d5ff",
-    },
-    modeIconDriving: {
-      backgroundColor: "#fed7aa",
-    },
-    modeTextContainer: {
-      flex: 1,
+    modeIcon: {
+      marginBottom: 12,
     },
     modeTitle: {
-      fontSize: 16,
+      fontSize: 18,
       fontWeight: "600",
       color: "#111827",
+      marginBottom: 4,
+    },
+    modeSpeed: {
+      fontSize: 14,
+      color: "#6b7280",
       marginBottom: 4,
     },
     modeDescription: {
@@ -146,7 +126,7 @@ const TravelModeStep = ({
       color: "#6b7280",
       lineHeight: 20,
     },
-    modeCheckmark: {
+    checkmarkContainer: {
       position: "absolute",
       top: 12,
       right: 12,
@@ -161,8 +141,7 @@ const TravelModeStep = ({
       fontSize: 12,
       color: "#9ca3af",
       textAlign: "center",
-      marginTop: 24,
-      marginBottom: 16,
+      marginTop: 8,
     },
     navigationContainer: {
       flexDirection: "row",
@@ -170,35 +149,39 @@ const TravelModeStep = ({
       alignItems: "center",
       paddingHorizontal: 24,
       paddingVertical: 16,
+      backgroundColor: "white",
       borderTopWidth: 1,
       borderTopColor: "#f3f4f6",
     },
+    backButton: {
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 8,
+      backgroundColor: "white",
+    },
     backButtonText: {
       fontSize: 16,
-      color: "#6b7280",
+      color: "#111827",
       fontWeight: "500",
+      marginLeft: 4,
     },
     nextButton: {
-      backgroundColor: "#eb7825",
-      borderRadius: 12,
       paddingVertical: 12,
-      paddingHorizontal: 24,
+      paddingHorizontal: 16,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-    },
-    nextButtonDisabled: {
-      backgroundColor: "#e5e7eb",
-      opacity: 0.7,
+      borderRadius: 8,
+      backgroundColor: "#eb7825",
+      minWidth: 100,
     },
     nextButtonText: {
-      color: "white",
       fontSize: 16,
-      fontWeight: "600",
-      marginRight: 8,
-    },
-    nextButtonTextDisabled: {
-      color: "#9ca3af",
+      fontWeight: "500",
+      color: "#ffffff",
+      marginRight: 4,
     },
   });
 
@@ -206,91 +189,69 @@ const TravelModeStep = ({
     {
       id: "walking",
       title: "Walking",
-      icon: "walk",
-      iconColor: "#10b981",
-      iconBackground: "#d1fae5",
+      icon: "walk-outline",
       speed: "~5 km/h",
       description: "Best for nearby spots",
     },
     {
       id: "biking",
       title: "Biking",
-      icon: "bicycle",
-      iconColor: "#3b82f6",
-      iconBackground: "#dbeafe",
+      icon: "bicycle-outline",
       speed: "~15 km/h",
       description: "Faster than walking",
     },
     {
       id: "public_transit",
       title: "Public Transit",
-      icon: "bus",
-      iconColor: "#8b5cf6",
-      iconBackground: "#e9d5ff",
+      icon: "bus-outline",
       speed: "~20 km/h avg",
       description: "Includes wait time",
     },
     {
       id: "driving",
       title: "Driving",
-      icon: "car",
-      iconColor: "#f97316",
-      iconBackground: "#fed7aa",
+      icon: "car-outline",
       speed: "~30 km/h city",
       description: "Fastest option",
     },
   ];
 
-  const isNextDisabled = !travelMode || travelMode.trim() === "";
-
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={20} color="#9ca3af" />
-        </TouchableOpacity>
+      <StatusBar barStyle="dark-content" backgroundColor="white" />
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Travel Mode</Text>
-          <Text style={styles.headerSubtitle}>Step 5 of 10</Text>
+      {/* Progress Bar Section */}
+      <View style={styles.progressSection}>
+        <View style={styles.progressBarContainer}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: "50%" }]} />
+          </View>
+          <View style={styles.progressTextContainer}>
+            <Text style={styles.progressTextLeft}>Step 5 of 10</Text>
+            <Text style={styles.progressTextRight}>50% complete</Text>
+          </View>
         </View>
-
-        <View style={{ width: 32 }} />
       </View>
 
-      {/* Progress Bar */}
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: "50%" }]} />
-      </View>
-
-      {/* Main Content */}
-      <View style={styles.mainContent}>
+      {/* Scrollable Content */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+      >
         {/* Title Section */}
         <View style={styles.titleSection}>
-          <View style={styles.titleIcon}>
-            <Ionicons name="car" size={24} color="#ef4444" />
-          </View>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>How do you get around?</Text>
-            <Text style={styles.subtitle}>
-              This helps us show realistic travel times
-            </Text>
-          </View>
+          <Text style={styles.title}>How do you get around?</Text>
+          <Text style={styles.subtitle}>
+            This helps us show realistic travel times
+          </Text>
         </View>
 
-        {/* Travel Mode Options */}
+        {/* Transportation Options Grid (2x2) */}
         <View style={styles.optionsContainer}>
           {travelModes.map((mode) => {
             const isSelected = travelMode === mode.id;
-            const iconBgColor =
-              mode.id === "walking"
-                ? styles.modeIconWalking
-                : mode.id === "biking"
-                ? styles.modeIconBiking
-                : mode.id === "public_transit"
-                ? styles.modeIconTransit
-                : styles.modeIconDriving;
 
             return (
               <TouchableOpacity
@@ -298,32 +259,34 @@ const TravelModeStep = ({
                 onPress={() => onTravelModeChange(mode.id)}
                 style={[
                   styles.modeCard,
-                  isSelected ? styles.modeCardSelected : styles.modeCardDefault,
+                  isSelected && styles.modeCardSelected,
                 ]}
+                activeOpacity={0.7}
               >
-                <View style={styles.modeCardContent}>
-                  <View style={[styles.modeIconContainer, iconBgColor]}>
-                    <Ionicons
-                      name={mode.icon as any}
-                      size={28}
-                      color={mode.iconColor}
-                    />
-                  </View>
-
-                  <View style={styles.modeTextContainer}>
-                    <Text style={styles.modeTitle}>{mode.title}</Text>
-                    <Text style={styles.modeDescription}>
-                      {mode.speed}
-                      {mode.description && ` • ${mode.description}`}
-                    </Text>
-                  </View>
-                </View>
-
+                {/* Checkmark (only for selected) */}
                 {isSelected && (
-                  <View style={styles.modeCheckmark}>
-                    <Ionicons name="checkmark" size={16} color="white" />
+                  <View style={styles.checkmarkContainer}>
+                    <Ionicons name="checkmark" size={16} color="#ffffff" />
                   </View>
                 )}
+
+                {/* Icon */}
+                <View style={styles.modeIcon}>
+                  <Ionicons
+                    name={mode.icon as any}
+                    size={28}
+                    color={isSelected ? "#eb7825" : "#6b7280"}
+                  />
+                </View>
+
+                {/* Title */}
+                <Text style={styles.modeTitle}>{mode.title}</Text>
+
+                {/* Speed */}
+                <Text style={styles.modeSpeed}>{mode.speed}</Text>
+
+                {/* Description */}
+                <Text style={styles.modeDescription}>{mode.description}</Text>
               </TouchableOpacity>
             );
           })}
@@ -333,32 +296,51 @@ const TravelModeStep = ({
         <Text style={styles.footerText}>
           You can change this anytime in your preferences
         </Text>
-      </View>
+      </ScrollView>
 
       {/* Navigation Buttons */}
       <View style={styles.navigationContainer}>
-        <TouchableOpacity onPress={onBack}>
-          <Text style={styles.backButtonText}>← Back</Text>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <Ionicons name="arrow-back" size={18} color="#111827" />
+          <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={onNext}
-          disabled={isNextDisabled}
-          style={[
-            styles.nextButton,
-            isNextDisabled && styles.nextButtonDisabled,
-          ]}
+          style={styles.nextButton}
+          onPress={async () => {
+            if (isLoading) {
+              return;
+            }
+
+            setIsLoading(true);
+            try {
+              const result = onNext();
+              if (result instanceof Promise) {
+                await result;
+              }
+            } catch (error) {
+              console.error("Error in onNext:", error);
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          disabled={isLoading}
+          activeOpacity={isLoading ? 1 : 0.7}
         >
-          <Text
-            style={[
-              styles.nextButtonText,
-              isNextDisabled && styles.nextButtonTextDisabled,
-            ]}
-          >
-            Next
-          </Text>
-          {!isNextDisabled && (
-            <Ionicons name="arrow-forward" size={20} color="white" />
+          {isLoading ? (
+            <>
+              <ActivityIndicator
+                size="small"
+                color="#ffffff"
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.nextButtonText}>Saving...</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.nextButtonText}>Next</Text>
+              <Ionicons name="arrow-forward" size={18} color="#ffffff" />
+            </>
           )}
         </TouchableOpacity>
       </View>

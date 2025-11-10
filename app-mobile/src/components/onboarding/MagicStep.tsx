@@ -1,260 +1,435 @@
-import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React from "react";
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  Image,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import minglaLogo from "../../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 interface MagicStepProps {
-  onComplete: (onboardingData: any) => void;
+  onComplete: (onboardingData: any) => void | Promise<void>;
   onBack: () => void;
   onboardingData: any;
+  onNavigateToStep?: (step: number) => void;
 }
 
-const MagicStep = ({ onComplete, onBack, onboardingData }: MagicStepProps) => {
+const MagicStep = ({
+  onComplete,
+  onBack,
+  onboardingData,
+  onNavigateToStep,
+}: MagicStepProps) => {
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: 'white',
+      backgroundColor: "white",
     },
-    magicCard: {
-      backgroundColor: '#eb7825',
-      borderRadius: 24,
-      margin: 24,
-      padding: 40,
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 200,
+    scrollContent: {
+      flexGrow: 1,
+      paddingHorizontal: 24,
+      paddingTop: 40,
+      paddingBottom: 140,
     },
-    magicContent: {
-      alignItems: 'center',
-    },
-    sparklesContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    logoContainer: {
+      alignItems: "center",
       marginBottom: 24,
     },
-    sparkleLarge: {
-      fontSize: 48,
-      marginRight: 8,
+    logo: {
+      width: 120,
+      height: 40,
+      resizeMode: "contain",
     },
-    sparkleSmall: {
-      fontSize: 32,
+    titleSection: {
+      alignItems: "center",
+      marginBottom: 32,
     },
-    magicTitle: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: 'white',
+    title: {
+      fontSize: 28,
+      fontWeight: "bold",
+      color: "#111827",
       marginBottom: 8,
-      textAlign: 'center',
+      textAlign: "center",
     },
-    magicSubtitle: {
+    subtitle: {
       fontSize: 16,
-      color: 'rgba(255, 255, 255, 0.8)',
-      textAlign: 'center',
+      color: "#6b7280",
+      textAlign: "center",
+      lineHeight: 22,
     },
-    profileSection: {
-      flex: 1,
-      paddingHorizontal: 24,
+    summaryList: {
+      marginBottom: 32,
     },
-    profileTitle: {
-      fontSize: 20,
-      fontWeight: '600',
-      color: '#111827',
-      marginBottom: 20,
-    },
-    profileContent: {
-      flex: 1,
-    },
-    profileContentContainer: {
-      paddingBottom: 20,
-    },
-    profileCard: {
-      backgroundColor: '#f9fafb',
+    summaryItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#f9fafb",
       borderRadius: 12,
       padding: 16,
       marginBottom: 12,
+      shadowColor: "#000",
+      shadowOffset: {
+        width: 0,
+        height: 1,
+      },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
     },
-    profileCardHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 12,
+    summaryItemIcon: {
+      marginRight: 12,
     },
-    profileCardTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: '#111827',
-      marginLeft: 8,
+    summaryItemContent: {
+      flex: 1,
     },
-    profileCardContent: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-    },
-    profileCardText: {
-      fontSize: 16,
-      color: '#6b7280',
-    },
-    profileTag: {
-      backgroundColor: 'white',
-      borderRadius: 16,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    profileTagEmoji: {
+    summaryItemTitle: {
       fontSize: 14,
-      marginRight: 4,
+      fontWeight: "500",
+      color: "#6b7280",
+      marginBottom: 4,
     },
-    profileTagText: {
-      fontSize: 14,
-      color: '#374151',
+    summaryItemValue: {
+      fontSize: 16,
+      fontWeight: "400",
+      color: "#111827",
     },
-    enterMinglaButton: {
-      backgroundColor: '#eb7825',
+    summaryItemEdit: {
+      marginLeft: 12,
+      padding: 4,
+    },
+    ctaSection: {
+      alignItems: "center",
+      marginBottom: 24,
+    },
+    ctaText: {
+      fontSize: 16,
+      fontWeight: "400",
+      color: "#111827",
+      textAlign: "center",
+      marginBottom: 4,
+      lineHeight: 24,
+    },
+    getStartedButton: {
+      backgroundColor: "#eb7825",
       borderRadius: 12,
       paddingVertical: 16,
-      paddingHorizontal: 20,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: 20,
+      paddingHorizontal: 24,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "100%",
+      marginTop: 8,
     },
-    enterMinglaButtonText: {
-      color: 'white',
+    getStartedButtonText: {
+      color: "#ffffff",
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: "600",
       marginRight: 8,
     },
   });
 
-  const vibeCategories = [
-    {
-      id: 'take-a-stroll',
-      name: 'Take a Stroll',
-      emoji: '🚶',
-    },
-    {
-      id: 'sip-and-chill',
-      name: 'Sip & Chill',
-      emoji: '☕',
-    },
-    {
-      id: 'casual-eats',
-      name: 'Casual Eats',
-      emoji: '🍕',
-    },
-    {
-      id: 'screen-and-relax',
-      name: 'Screen & Relax',
-      emoji: '🎬',
-    },
-    {
-      id: 'creative-hands-on',
-      name: 'Creative & Hands-On',
-      emoji: '🎨',
-    },
-    {
-      id: 'play-and-move',
-      name: 'Play & Move',
-      emoji: '⚽',
-    },
-    {
-      id: 'dining-experiences',
-      name: 'Dining Experiences',
-      emoji: '🍽️',
-    },
-    {
-      id: 'wellness-dates',
-      name: 'Wellness Dates',
-      emoji: '🧘',
-    },
-    {
-      id: 'freestyle',
-      name: 'Freestyle',
-      emoji: '✨',
+  // Helper functions to format data
+  const formatIntents = () => {
+    if (!onboardingData.intents || onboardingData.intents.length === 0) {
+      return "Not selected";
     }
+    return onboardingData.intents
+      .map((intent: any) => {
+        if (typeof intent === "string") {
+          return intent;
+        }
+        return intent.title || intent.experienceType || intent.id;
+      })
+      .join(" / ");
+  };
+
+  const formatCategories = () => {
+    if (!onboardingData.vibes || onboardingData.vibes.length === 0) {
+      return "Not selected";
+    }
+
+    // Map vibe IDs to names
+    const vibeNameMap: { [key: string]: string } = {
+      "take-a-stroll": "Take a Stroll",
+      "sip-and-chill": "Sip & Chill",
+      "casual-eats": "Casual Eats",
+      "screen-and-relax": "Screen & Relax",
+      "creative-hands-on": "Creative & Hands-On",
+      picnics: "Picnics",
+      "play-and-move": "Play & Move",
+      "dining-experiences": "Dining Experiences",
+      "wellness-dates": "Wellness Dates",
+      freestyle: "Freestyle",
+    };
+
+    const vibeNames = onboardingData.vibes.map((vibeId: string) => {
+      return vibeNameMap[vibeId] || vibeId;
+    });
+
+    // Show first one or join if multiple
+    if (vibeNames.length === 1) {
+      return vibeNames[0];
+    }
+    return vibeNames.join(", ");
+  };
+
+  const formatLocation = () => {
+    return onboardingData.location || "Not set";
+  };
+
+  const formatTravelMode = () => {
+    if (!onboardingData.travelMode) {
+      return "Not selected";
+    }
+    const mode = onboardingData.travelMode;
+    const modeMap: { [key: string]: string } = {
+      walking: "Walking",
+      biking: "Biking",
+      public_transit: "Public Transit",
+      driving: "Driving",
+    };
+    return modeMap[mode] || mode.charAt(0).toUpperCase() + mode.slice(1);
+  };
+
+  const formatBudget = () => {
+    if (!onboardingData.budgetRange) {
+      return "Not set";
+    }
+    const { min, max } = onboardingData.budgetRange;
+    if (max === null || max === undefined) {
+      return `$${min.toFixed(2)} per person`;
+    }
+    if (min === max) {
+      return `$${min.toFixed(2)} per person`;
+    }
+    // Show range format
+    return `$${min.toFixed(2)} - $${max.toFixed(2)} per person`;
+  };
+
+  const formatTravelLimit = () => {
+    if (!onboardingData.travelConstraintType || !onboardingData.travelConstraintValue) {
+      return "Not set";
+    }
+    const { travelConstraintType, travelConstraintValue } = onboardingData;
+    if (travelConstraintType === "time") {
+      return `Up to ${travelConstraintValue} minutes`;
+    } else {
+      return `Up to ${travelConstraintValue} km`;
+    }
+  };
+
+  const formatDateTime = () => {
+    if (!onboardingData.dateTimePref) {
+      return "Not set";
+    }
+    const { dateOption, timeSlot, selectedDate, exactTime } = onboardingData.dateTimePref;
+
+    if (dateOption === "Now") {
+      return "Now";
+    } else if (dateOption === "Today") {
+      if (exactTime) {
+        return `Today, ${exactTime}`;
+      } else if (timeSlot) {
+        const timeSlotMap: { [key: string]: string } = {
+          brunch: "Brunch",
+          afternoon: "Afternoon",
+          dinner: "Dinner",
+          lateNight: "Late Night",
+        };
+        return `Today, ${timeSlotMap[timeSlot] || timeSlot}`;
+      }
+      return "Today";
+    } else if (dateOption === "This Weekend") {
+      if (exactTime) {
+        return `This Weekend, ${exactTime}`;
+      } else if (timeSlot) {
+        const timeSlotMap: { [key: string]: string } = {
+          brunch: "Brunch",
+          afternoon: "Afternoon",
+          dinner: "Dinner",
+          lateNight: "Late Night",
+        };
+        return `This Weekend, ${timeSlotMap[timeSlot] || timeSlot}`;
+      }
+      return "This Weekend";
+    } else if (dateOption === "Pick a Date") {
+      if (selectedDate) {
+        const date = new Date(selectedDate);
+        const dateStr = date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        });
+        if (exactTime) {
+          return `${dateStr}, ${exactTime}`;
+        } else if (timeSlot) {
+          const timeSlotMap: { [key: string]: string } = {
+            brunch: "Brunch",
+            afternoon: "Afternoon",
+            dinner: "Dinner",
+            lateNight: "Late Night",
+          };
+          return `${dateStr}, ${timeSlotMap[timeSlot] || timeSlot}`;
+        }
+        return dateStr;
+      }
+      return "Pick a Date";
+    }
+
+    return "Not set";
+  };
+
+  // Summary items configuration
+  const summaryItems = [
+    {
+      id: "intents",
+      title: "Intents",
+      icon: "heart-outline",
+      value: formatIntents(),
+      step: 2,
+    },
+    {
+      id: "categories",
+      title: "Categories",
+      icon: "cafe-outline",
+      value: formatCategories(),
+      step: 3,
+    },
+    {
+      id: "location",
+      title: "Location",
+      icon: "location-outline",
+      value: formatLocation(),
+      step: 4,
+    },
+    {
+      id: "travelMode",
+      title: "Travel Mode",
+      icon: "paper-plane-outline",
+      value: formatTravelMode(),
+      step: 5,
+    },
+    {
+      id: "budget",
+      title: "Budget",
+      icon: "cash-outline",
+      value: formatBudget(),
+      step: 7,
+    },
+    {
+      id: "travelLimit",
+      title: "Travel Limit",
+      icon: "time-outline",
+      value: formatTravelLimit(),
+      step: 6,
+    },
+    {
+      id: "dateTime",
+      title: "Date & Time",
+      icon: "calendar-outline",
+      value: formatDateTime(),
+      step: 8,
+    },
   ];
+
+  const handleEdit = (step: number) => {
+    if (onNavigateToStep) {
+      onNavigateToStep(step);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Magic Card */}
-      <View style={styles.magicCard}>
-        <View style={styles.magicContent}>
-          <View style={styles.sparklesContainer}>
-            <Text style={styles.sparkleLarge}>✨</Text>
-            <Text style={styles.sparkleSmall}>✨</Text>
-          </View>
-          <Text style={styles.magicTitle}>Creating Magic...</Text>
-          <Text style={styles.magicSubtitle}>Personalizing your experience</Text>
+      <StatusBar barStyle="dark-content" backgroundColor="white" />
+
+      {/* Scrollable Content */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+      >
+        {/* Logo */}
+        <View style={styles.logoContainer}>
+          <Image
+            source={minglaLogo}
+            style={styles.logo}
+            resizeMode="contain"
+          />
         </View>
-      </View>
 
-      {/* Profile Section */}
-      <View style={styles.profileSection}>
-        <Text style={styles.profileTitle}>Your Mingla Profile</Text>
-        
-        <ScrollView 
-          style={styles.profileContent}
-          showsVerticalScrollIndicator={true}
-          contentContainerStyle={styles.profileContentContainer}
-        >
-          {/* Your Intentions */}
-          <View style={styles.profileCard}>
-            <View style={styles.profileCardHeader}>
-              <Ionicons name="flash" size={20} color="#eb7825" />
-              <Text style={styles.profileCardTitle}>Your Intentions</Text>
-            </View>
-            <View style={styles.profileCardContent}>
-              {onboardingData.intents?.length > 0 ? (
-                onboardingData.intents.map((intent: any) => (
-                  <View key={intent.id} style={styles.profileTag}>
-                    <Text style={styles.profileTagEmoji}>{intent.emoji}</Text>
-                    <Text style={styles.profileTagText}>{intent.title}</Text>
-                  </View>
-                ))
-              ) : (
-                <Text style={styles.profileCardText}>No intentions selected</Text>
-              )}
-            </View>
-          </View>
+        {/* Title Section */}
+        <View style={styles.titleSection}>
+          <Text style={styles.title}>You're almost there!</Text>
+          <Text style={styles.subtitle}>Here's your summary.</Text>
+        </View>
 
-          {/* Your Vibes */}
-          {onboardingData.vibes?.length > 0 && (
-            <View style={styles.profileCard}>
-              <View style={styles.profileCardHeader}>
-                <Ionicons name="sparkles" size={20} color="#eb7825" />
-                <Text style={styles.profileCardTitle}>Your Vibes</Text>
+        {/* Summary List */}
+        <View style={styles.summaryList}>
+          {summaryItems.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.summaryItem}
+              onPress={() => handleEdit(item.step)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={item.icon as any}
+                size={20}
+                color="#eb7825"
+                style={styles.summaryItemIcon}
+              />
+              <View style={styles.summaryItemContent}>
+                <Text style={styles.summaryItemTitle}>{item.title}</Text>
+                <Text style={styles.summaryItemValue}>{item.value}</Text>
               </View>
-              <View style={styles.profileCardContent}>
-                {onboardingData.vibes.map((vibeId: string) => {
-                  const vibe = vibeCategories.find(v => v.id === vibeId);
-                  return vibe ? (
-                    <View key={vibeId} style={styles.profileTag}>
-                      <Text style={styles.profileTagEmoji}>{vibe.emoji}</Text>
-                      <Text style={styles.profileTagText}>{vibe.name}</Text>
-                    </View>
-                  ) : null;
-                })}
-              </View>
-            </View>
-          )}
+              <TouchableOpacity
+                style={styles.summaryItemEdit}
+                onPress={() => handleEdit(item.step)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="create-outline" size={20} color="#6b7280" />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-          {/* Location */}
-          <View style={styles.profileCard}>
-            <View style={styles.profileCardHeader}>
-              <Ionicons name="location" size={20} color="#eb7825" />
-              <Text style={styles.profileCardTitle}>Location</Text>
-            </View>
-            <Text style={styles.profileCardText}>{onboardingData.location}</Text>
-          </View>
-        </ScrollView>
+        {/* Call to Action Section */}
+        <View style={styles.ctaSection}>
+          <Text style={styles.ctaText}>
+            Ready to discover amazing experiences?
+          </Text>
+          <Text style={styles.ctaText}>
+            Click "Get Started" to begin your journey
+          </Text>
+        </View>
+      </ScrollView>
 
-        {/* Enter Mingla Button */}
+      {/* Get Started Button */}
+      <View
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          backgroundColor: "white",
+          paddingHorizontal: 24,
+          paddingVertical: 16,
+          borderTopWidth: 1,
+          borderTopColor: "#f3f4f6",
+        }}
+      >
         <TouchableOpacity
-          onPress={() => onComplete(onboardingData)}
-          style={styles.enterMinglaButton}
+          style={styles.getStartedButton}
+          onPress={onComplete}
+          activeOpacity={0.7}
         >
-          <Text style={styles.enterMinglaButtonText}>Enter Mingla</Text>
-          <Ionicons name="arrow-forward" size={20} color="white" />
+          <Text style={styles.getStartedButtonText}>Get Started</Text>
+          <Ionicons name="arrow-forward" size={20} color="#ffffff" />
         </TouchableOpacity>
       </View>
     </SafeAreaView>

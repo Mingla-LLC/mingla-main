@@ -135,7 +135,20 @@ export class LocationService {
 
       if (addresses.length > 0) {
         const address = addresses[0];
-        return `${address.city || ''} ${address.region || ''} ${address.country || ''}`.trim();
+        // Format as "City, State" or "City, Region" if state not available
+        const city = address.city || address.subAdministrativeArea || '';
+        const state = address.region || address.administrativeArea || '';
+        
+        if (city && state) {
+          return `${city}, ${state}`;
+        } else if (city) {
+          return city;
+        } else if (state) {
+          return state;
+        }
+        
+        // Fallback to full address if city/state not available
+        return `${address.street || ''} ${address.city || ''} ${address.region || ''} ${address.country || ''}`.trim();
       }
 
       return null;

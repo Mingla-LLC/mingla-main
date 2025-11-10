@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import WelcomeScreen from "./signIn/WelcomeScreen";
 import SignInForm from "./signIn/SignInForm";
 import SignUpForm from "./signIn/SignUpForm";
+import SignUpAsStep from "./signIn/SignUpAsStep";
 
 interface SignInPageProps {
   onSignInRegular: (credentials: { email: string; password: string }) => void;
@@ -10,6 +11,7 @@ interface SignInPageProps {
     password: string;
     name: string;
     username: string;
+    account_type?: string;
   }) => void;
   onSignInCurator: (credentials: { email: string; password: string }) => void;
   onSignUpCurator: (userData: {
@@ -18,13 +20,14 @@ interface SignInPageProps {
     name: string;
     username: string;
     organization?: string;
+    account_type?: string;
   }) => void;
-  onStartOnboarding?: () => void;
-  initialMode?: "welcome" | "sign-in" | "sign-up";
+  onStartOnboarding?: (accountType?: string) => void;
+  initialMode?: "welcome" | "sign-in" | "sign-up" | "sign-up-as";
   onResetSignUpForm?: () => void;
 }
 
-type AuthMode = "welcome" | "sign-in" | "sign-up";
+type AuthMode = "welcome" | "sign-in" | "sign-up" | "sign-up-as";
 
 export default function SignInPage({
   onSignInRegular,
@@ -34,9 +37,11 @@ export default function SignInPage({
   onResetSignUpForm,
 }: SignInPageProps) {
   const [authMode, setAuthMode] = useState<AuthMode>(initialMode);
+  const [selectedAccountType, setSelectedAccountType] = useState<string | null>(null);
 
   const handleBackToWelcome = () => {
     setAuthMode("welcome");
+    setSelectedAccountType(null);
     if (onResetSignUpForm) {
       onResetSignUpForm();
     }
@@ -50,6 +55,17 @@ export default function SignInPage({
     setAuthMode("sign-up");
   };
 
+  const handleNavigateToSignUpAs = () => {
+    setAuthMode("sign-up-as");
+  };
+
+  const handleSelectAccountType = (accountType: string) => {
+    setSelectedAccountType(accountType);
+    if (onStartOnboarding) {
+      onStartOnboarding(accountType);
+    }
+  };
+
   const handleSignIn = (credentials: { email: string; password: string }) => {
     onSignInRegular(credentials);
   };
@@ -60,7 +76,10 @@ export default function SignInPage({
     name: string;
     username: string;
   }) => {
-    onSignUpRegular(userData);
+    onSignUpRegular({
+      ...userData,
+      account_type: selectedAccountType || undefined,
+    });
   };
 
   // Render different components based on current mode
@@ -70,7 +89,15 @@ export default function SignInPage({
         <WelcomeScreen
           onSignUp={handleNavigateToSignUp}
           onNavigateToSignIn={handleNavigateToSignIn}
-          onStartOnboarding={onStartOnboarding}
+          onStartOnboarding={handleNavigateToSignUpAs}
+        />
+      );
+
+    case "sign-up-as":
+      return (
+        <SignUpAsStep
+          onSelectAccountType={handleSelectAccountType}
+          onBack={handleBackToWelcome}
         />
       );
 
@@ -97,7 +124,7 @@ export default function SignInPage({
         <WelcomeScreen
           onSignUp={handleNavigateToSignUp}
           onNavigateToSignIn={handleNavigateToSignIn}
-          onStartOnboarding={onStartOnboarding}
+          onStartOnboarding={handleNavigateToSignUpAs}
         />
       );
   }

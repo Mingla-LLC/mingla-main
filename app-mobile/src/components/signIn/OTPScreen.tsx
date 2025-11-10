@@ -99,15 +99,17 @@ const styles = StyleSheet.create({
   },
   otpInput: {
     flex: 1,
-    height: 64,
+    height: 80,
     backgroundColor: "#f9fafb",
     borderWidth: 2,
     borderColor: "#e5e7eb",
     borderRadius: 12,
     textAlign: "center",
-    fontSize: 24,
-    fontWeight: "600",
+    fontSize: 32,
+    fontWeight: "700",
     color: "#111827",
+    padding: 0,
+    paddingVertical: 0,
   },
   otpInputFocused: {
     borderColor: "#eb7825",
@@ -210,9 +212,30 @@ export default function OTPScreen({
   };
 
   const handleOtpChange = (index: number, value: string) => {
-    // Only allow single digit
+    // Handle paste or multiple digits
     if (value.length > 1) {
-      value = value[value.length - 1];
+      // Extract only digits
+      const digits = value.replace(/\D/g, "").slice(0, OTP_LENGTH - index);
+      
+      const newOtp = [...otp];
+      // Fill in the digits starting from current index
+      for (let i = 0; i < digits.length && index + i < OTP_LENGTH; i++) {
+        newOtp[index + i] = digits[i];
+      }
+      setOtp(newOtp);
+      setError(null);
+      
+      // Focus on the next empty input or the last input
+      const nextIndex = Math.min(index + digits.length, OTP_LENGTH - 1);
+      setTimeout(() => {
+        inputRefs.current[nextIndex]?.focus();
+      }, 0);
+      
+      // Auto-verify when all digits are entered
+      if (newOtp.every((digit) => digit !== "") && newOtp.length === OTP_LENGTH) {
+        handleVerify(newOtp.join(""));
+      }
+      return;
     }
 
     // Only allow digits
@@ -225,9 +248,11 @@ export default function OTPScreen({
     setOtp(newOtp);
     setError(null);
 
-    // Auto-focus next input
+    // Auto-focus next input with a small delay to ensure it works
     if (value && index < OTP_LENGTH - 1) {
-      inputRefs.current[index + 1]?.focus();
+      setTimeout(() => {
+        inputRefs.current[index + 1]?.focus();
+      }, 0);
     }
 
     // Auto-verify when all digits are entered

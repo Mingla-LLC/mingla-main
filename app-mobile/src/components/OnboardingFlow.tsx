@@ -20,10 +20,11 @@ import OTPScreen from "./signIn/OTPScreen";
 
 interface OnboardingFlowProps {
   onComplete: (onboardingData: any) => void;
-  onNavigateToSignUp?: () => void;
+  onNavigateToSignUp?: (accountType?: string) => void;
   onBackToWelcome?: () => void;
-  onNavigateToSignUpForm?: () => void;
+  onNavigateToSignUpForm?: (accountType?: string) => void;
   onGoogleSignInComplete?: () => void;
+  initialAccountType?: string;
 }
 
 const OnboardingFlow = ({
@@ -32,6 +33,7 @@ const OnboardingFlow = ({
   onBackToWelcome,
   onNavigateToSignUpForm,
   onGoogleSignInComplete,
+  initialAccountType,
 }: OnboardingFlowProps) => {
   const {
     user,
@@ -140,9 +142,10 @@ const OnboardingFlow = ({
       email: user?.email || "",
       profileImage: null,
     },
+    account_type: initialAccountType || null, // Account type from SignUpAsStep
     intents: [], // Step 2: Intent Selection
     vibes: [], // Step 3: Vibe/Category Selection
-    location: "San Francisco, CA", // Step 4: Location Setup
+    location: "", // Step 4: Location Setup
     travelMode: "walking", // Step 5: Travel Mode
     travelConstraintType: "time", // Step 6: Travel Constraint
     travelConstraintValue: 30, // Step 6: Travel Constraint value
@@ -152,6 +155,7 @@ const OnboardingFlow = ({
       timeSlot: null,
       selectedDate: null,
       weekendDay: null,
+      exactTime: null,
     }, // Step 8: Date and Time Preferences
     groupSize: 1, // Group size (people_count)
     invitedFriends: [], // Step 9: Invite Friends (optional)
@@ -180,12 +184,83 @@ const OnboardingFlow = ({
         );
 
         if (preferences) {
+          // Helper function to map intent IDs back to intent objects
+          const mapIntentIdsToObjects = (categoryIds: string[]): any[] => {
+            const intentOptions = [
+              {
+                id: "solo-adventure",
+                title: "Solo Adventure",
+                icon: "globe-outline",
+                description: "Explore new things on your own",
+                experienceType: "Solo adventure",
+              },
+              {
+                id: "first-dates",
+                title: "Plan First Dates",
+                icon: "heart-outline",
+                description: "Great first impression experiences",
+                experienceType: "First Date",
+              },
+              {
+                id: "romantic",
+                title: "Find Romantic Activities",
+                icon: "heart-outline",
+                description: "Intimate and romantic experiences",
+                experienceType: "Romantic",
+              },
+              {
+                id: "friendly",
+                title: "Find Friendly Activities",
+                icon: "people-outline",
+                description: "Fun activities with friends",
+                experienceType: "Friendly",
+              },
+              {
+                id: "group-fun",
+                title: "Find Activities for Groups",
+                icon: "people-outline",
+                description: "Group activities and celebrations",
+                experienceType: "Group fun",
+              },
+              {
+                id: "business",
+                title: "Business/Work Meetings",
+                icon: "briefcase-outline",
+                description: "Professional meeting spaces",
+                experienceType: "Business",
+              },
+            ];
+
+            const intentIds = new Set(intentOptions.map((opt) => opt.id));
+            return categoryIds
+              .filter((id) => intentIds.has(id))
+              .map((id) => intentOptions.find((opt) => opt.id === id))
+              .filter((intent) => intent !== undefined) as any[];
+          };
+
+          // Extract intent IDs from categories array and map to intent objects
+          const categories = preferences.categories || [];
+          const loadedIntents = mapIntentIdsToObjects(categories);
+
+          // Filter out intent IDs from categories to get only vibe categories
+          const intentIds = new Set([
+            "solo-adventure",
+            "first-dates",
+            "romantic",
+            "friendly",
+            "group-fun",
+            "business",
+          ]);
+          const vibeCategories = categories.filter(
+            (cat: string) => !intentIds.has(cat)
+          );
+
           // Load saved preferences into onboardingData
           setOnboardingData((prev: any) => ({
             ...prev,
-            intents: preferences.mode ? [preferences.mode] : [],
-            vibes: preferences.categories || [],
-            location: prev.location || "San Francisco, CA", // Keep default if not set
+            intents: loadedIntents,
+            vibes: vibeCategories,
+            location: prev.location || "", // Keep empty if not set
             travelMode: preferences.travel_mode || "walking",
             travelConstraintType: preferences.travel_constraint_type || "time",
             travelConstraintValue: preferences.travel_constraint_value || 30,
@@ -194,14 +269,27 @@ const OnboardingFlow = ({
               max: preferences.budget_max || 1000,
             },
             dateTimePref: (() => {
-              // Handle new structure: dateOption, timeSlot, selectedDate, weekendDay
+              // Handle new structure: dateOption, timeSlot, selectedDate, weekendDay, exactTime
               // If date_option exists, use new structure
               if (preferences.date_option) {
+                // Map database values to component values
+                let dateOption: string | null = null;
+                if (preferences.date_option === "now") {
+                  dateOption = "Now";
+                } else if (preferences.date_option === "today") {
+                  dateOption = "Today";
+                } else if (preferences.date_option === "weekend") {
+                  dateOption = "This Weekend";
+                } else if (preferences.date_option === "custom") {
+                  dateOption = "Pick a Date";
+                }
+
                 return {
-                  dateOption: preferences.date_option,
-                  timeSlot: null, // Time slot not stored separately, will be inferred if needed
+                  dateOption: dateOption,
+                  timeSlot: (preferences as any).time_slot || null,
                   selectedDate: preferences.datetime_pref || null,
                   weekendDay: null, // Weekend day not stored separately, will be inferred if needed
+                  exactTime: null, // Exact time not stored, user will need to re-enter if needed
                 };
               }
 
@@ -251,6 +339,7 @@ const OnboardingFlow = ({
                 timeSlot: null,
                 selectedDate: null,
                 weekendDay: null,
+                exactTime: null,
               };
             })(),
             groupSize: preferences.people_count || 1,
@@ -320,6 +409,45 @@ const OnboardingFlow = ({
   });
 
   const handleNext = async () => {
+    // Validate step 2: require at least one intent to be selected
+    if (currentStep === 2) {
+      if (!onboardingData.intents || onboardingData.intents.length === 0) {
+        Alert.alert(
+          "Selection Required",
+          "Please select at least one intent to continue.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+    }
+
+    // Validate step 3: require at least one vibe to be selected
+    if (currentStep === 3) {
+      if (!onboardingData.vibes || onboardingData.vibes.length === 0) {
+        Alert.alert(
+          "Selection Required",
+          "Please select at least one vibe to continue.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+    }
+
+    // Validate step 4: require location to be entered
+    if (currentStep === 4) {
+      if (
+        !onboardingData.location ||
+        onboardingData.location.trim().length === 0
+      ) {
+        Alert.alert(
+          "Location Required",
+          "Please enter your location to continue.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+    }
+
     // Save preferences for current step before moving to next
     let saveSuccess = true;
 
@@ -343,12 +471,21 @@ const OnboardingFlow = ({
       saveSuccess = await saveStep7Preferences();
     } else if (currentStep === 8) {
       // Step 8: Date/Time Preferences
-      saveSuccess = await saveStep8Preferences();
+      try {
+        saveSuccess = await saveStep8Preferences();
+      } catch (error: any) {
+        console.error("Error in saveStep8Preferences:", error);
+        alert(
+          error?.message ||
+            "Failed to save date/time preferences. Please try again."
+        );
+        saveSuccess = false;
+      }
     }
 
     // If save failed, prevent moving to next step
     if (!saveSuccess) {
-      alert("Failed to save preferences. Please try again.");
+      // Error alert already shown in catch block above
       return;
     }
 
@@ -459,18 +596,6 @@ const OnboardingFlow = ({
     try {
       console.log("Requesting location permission...");
 
-      // For now, let's skip the actual location request and just use the default
-      // This avoids the Info.plist configuration issue in development
-      console.log("Using default location for demo purposes");
-      updateOnboardingData("location", "San Francisco, CA");
-
-      // Show a message to the user
-      alert(
-        "Location services configured! Using San Francisco, CA for demo purposes."
-      );
-
-      // TODO: Uncomment this when the app is properly built with Info.plist configuration
-
       // Request location permissions
       const hasPermission = await locationService.requestPermissions();
 
@@ -478,15 +603,27 @@ const OnboardingFlow = ({
         console.log("Location permission granted, getting current location...");
 
         // Try to get current location
-        const location = await locationService.getCurrentLocation();
+        const locationData = await locationService.getCurrentLocation();
 
-        if (location) {
-          console.log("Current location obtained:", location);
-          // Update onboarding data with actual location
-          updateOnboardingData(
-            "location",
-            `${location.latitude}, ${location.longitude}`
+        if (locationData) {
+          console.log("Current location obtained:", locationData);
+
+          // Reverse geocode to get city name
+          const cityName = await locationService.reverseGeocode(
+            locationData.latitude,
+            locationData.longitude
           );
+
+          if (cityName) {
+            // Update onboarding data with city name
+            updateOnboardingData("location", cityName);
+          } else {
+            // Fallback to coordinates if reverse geocode fails
+            const locationString = `${locationData.latitude.toFixed(
+              4
+            )}, ${locationData.longitude.toFixed(4)}`;
+            updateOnboardingData("location", locationString);
+          }
         } else {
           console.log("Could not get current location, using default");
           updateOnboardingData("location", "San Francisco, CA");
@@ -535,6 +672,7 @@ const OnboardingFlow = ({
             onNavigateToPhoneSignUp={() => setShowPhoneSignUp(true)}
             onNavigateToGoogleSignIn={handleGoogleSignIn}
             userProfile={onboardingData.userProfile}
+            accountType={onboardingData.account_type}
           />
         );
 
@@ -555,6 +693,7 @@ const OnboardingFlow = ({
             onBack={handleBack}
             vibes={onboardingData.vibes}
             onVibeToggle={handleVibeToggle}
+            intents={onboardingData.intents}
           />
         );
 
@@ -564,6 +703,9 @@ const OnboardingFlow = ({
             onNext={handleNext}
             onBack={handleBack}
             location={onboardingData.location}
+            onLocationChange={(location) =>
+              updateOnboardingData("location", location)
+            }
             onRequestLocationPermission={requestLocationPermission}
           />
         );
@@ -640,6 +782,9 @@ const OnboardingFlow = ({
             }}
             onBack={handleBack}
             onboardingData={onboardingData}
+            onNavigateToStep={(step: number) => {
+              setCurrentStep(step);
+            }}
           />
         );
 
@@ -658,7 +803,8 @@ const OnboardingFlow = ({
       const result = await signUpWithPhone(
         userData.phone,
         userData.password,
-        userData.username
+        userData.username,
+        onboardingData.account_type || undefined // Pass account_type from onboardingData
       );
 
       if (result.error) {
@@ -717,7 +863,17 @@ const OnboardingFlow = ({
     try {
       const { supabase } = await import("../services/supabase");
 
-      // Map intents to category names
+      // Validate that at least one intent is selected
+      if (!onboardingData.intents || onboardingData.intents.length === 0) {
+        console.error("Cannot save Step 2 preferences: No intents selected");
+        Alert.alert(
+          "Selection Required",
+          "Please select at least one intent to continue."
+        );
+        return false;
+      }
+
+      // Map intents to category names (intent IDs)
       const intentCategories =
         onboardingData.intents?.map((intent: any) =>
           typeof intent === "string"
@@ -725,16 +881,42 @@ const OnboardingFlow = ({
             : intent.name || intent.id || intent.category || intent
         ) || [];
 
+      // Get existing preferences to preserve vibe categories
+      const { data: existingPrefs } = await supabase
+        .from("preferences")
+        .select("categories")
+        .eq("profile_id", user.id)
+        .single();
+
+      const existingCategories = existingPrefs?.categories || [];
+
+      // Known intent IDs - filter these out to preserve only vibe categories
+      const intentIds = new Set([
+        "solo-adventure",
+        "first-dates",
+        "romantic",
+        "friendly",
+        "group-fun",
+        "business",
+      ]);
+
+      // Extract existing vibe categories (non-intent IDs)
+      const existingVibeCategories = existingCategories.filter(
+        (cat: string) => !intentIds.has(cat)
+      );
+
+      // Combine new intent IDs with existing vibe categories
+      const allCategories = [
+        ...new Set([...intentCategories, ...existingVibeCategories]),
+      ];
+
       // Create or update preferences with Step 2 data
       const { data, error } = await supabase
         .from("preferences")
         .upsert(
           {
             profile_id: user.id,
-            categories:
-              intentCategories.length > 0
-                ? intentCategories
-                : ["Stroll", "Sip & Chill"], // Default if no intents
+            categories: allCategories,
             updated_at: new Date().toISOString(),
           },
           {
@@ -774,27 +956,49 @@ const OnboardingFlow = ({
         .eq("profile_id", user.id)
         .single();
 
+      // Validate that at least one vibe is selected
+      if (!onboardingData.vibes || onboardingData.vibes.length === 0) {
+        console.error("Cannot save Step 3 preferences: No vibes selected");
+        Alert.alert(
+          "Selection Required",
+          "Please select at least one vibe to continue."
+        );
+        return false;
+      }
+
       const existingCategories = existingPrefs?.categories || [];
 
-      // Map vibes to category names
+      // Map vibes to category names (vibe IDs)
       const vibeCategories =
         onboardingData.vibes?.map((vibe: any) =>
           typeof vibe === "string" ? vibe : vibe.name || vibe.id || vibe
         ) || [];
 
-      // Merge existing categories with new vibes and remove duplicates
+      // Known intent IDs - filter these out to preserve only intent categories
+      const intentIds = new Set([
+        "solo-adventure",
+        "first-dates",
+        "romantic",
+        "friendly",
+        "group-fun",
+        "business",
+      ]);
+
+      // Extract existing intent categories (preserve intent IDs from step 2)
+      const existingIntentCategories = existingCategories.filter(
+        (cat: string) => intentIds.has(cat)
+      );
+
+      // Combine new vibe categories with existing intent categories and remove duplicates
       const mergedCategories = [
-        ...new Set([...existingCategories, ...vibeCategories]),
+        ...new Set([...existingIntentCategories, ...vibeCategories]),
       ];
 
       // Update only categories field
       const { data, error } = await supabase
         .from("preferences")
         .update({
-          categories:
-            mergedCategories.length > 0
-              ? mergedCategories
-              : ["Stroll", "Sip & Chill"],
+          categories: mergedCategories,
           updated_at: new Date().toISOString(),
         })
         .eq("profile_id", user.id)
@@ -957,6 +1161,63 @@ const OnboardingFlow = ({
     }
   }, [user?.id, onboardingData.budgetRange]);
 
+  // Helper function to parse HH:MM AM/PM time string to hours and minutes
+  const parseTimeString = (
+    timeStr: string
+  ): { hours: number; minutes: number } | null => {
+    if (!timeStr || !timeStr.trim()) return null;
+
+    // Remove extra spaces and convert to uppercase for easier parsing
+    const cleaned = timeStr.trim().toUpperCase();
+
+    // Match patterns like "11:30 AM", "2:15 PM", "11:30AM", etc.
+    const timePattern = /(\d{1,2}):(\d{2})\s*(AM|PM)/i;
+    const match = cleaned.match(timePattern);
+
+    if (!match) return null;
+
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const period = match[3].toUpperCase();
+
+    // Convert to 24-hour format
+    if (period === "PM" && hours !== 12) {
+      hours += 12;
+    } else if (period === "AM" && hours === 12) {
+      hours = 0;
+    }
+
+    // Validate hours and minutes
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      return null;
+    }
+
+    return { hours, minutes };
+  };
+
+  // Helper function to calculate next weekend day (Saturday or Sunday)
+  const getNextWeekendDay = (): Date => {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
+
+    let targetDate = new Date(today);
+
+    if (dayOfWeek === 0) {
+      // Today is Sunday, use next Saturday (6 days away)
+      targetDate.setDate(today.getDate() + 6);
+    } else if (dayOfWeek === 6) {
+      // Today is Saturday, use next Sunday (1 day away)
+      targetDate.setDate(today.getDate() + 1);
+    } else if (dayOfWeek < 6) {
+      // Today is Monday-Friday, use next Saturday
+      const daysUntilSaturday = 6 - dayOfWeek;
+      targetDate.setDate(today.getDate() + daysUntilSaturday);
+    }
+
+    targetDate.setHours(0, 0, 0, 0);
+    return targetDate;
+  };
+
   // Step 8: Save date/time preferences
   const saveStep8Preferences = useCallback(async (): Promise<boolean> => {
     if (!user?.id) {
@@ -972,121 +1233,275 @@ const OnboardingFlow = ({
         timeSlot: null,
         selectedDate: null,
         weekendDay: null,
+        exactTime: null,
       };
 
-      // Calculate ISO timestamp based on selections
-      let calculatedDateTime: string;
+      // Determine date_option and time_slot values
+      let dateOptionToSave: string | null = null;
+      let timeSlotToSave: string | null = null;
 
       if (dateTimePref.dateOption === "Now") {
-        // Current timestamp when Next is clicked
-        calculatedDateTime = new Date().toISOString();
-      } else if (dateTimePref.dateOption === "Today" && dateTimePref.timeSlot) {
-        // Today + selected time slot (start time)
+        dateOptionToSave = "now";
+        timeSlotToSave = null;
+      } else if (dateTimePref.dateOption === "Today") {
+        dateOptionToSave = "today";
+        // Save time_slot only if exactTime is not used
+        if (
+          dateTimePref.exactTime &&
+          dateTimePref.exactTime.trim().length > 0
+        ) {
+          timeSlotToSave = null;
+        } else {
+          timeSlotToSave = dateTimePref.timeSlot || null;
+        }
+      } else if (dateTimePref.dateOption === "This Weekend") {
+        dateOptionToSave = "weekend";
+        // Save time_slot only if exactTime is not used
+        if (
+          dateTimePref.exactTime &&
+          dateTimePref.exactTime.trim().length > 0
+        ) {
+          timeSlotToSave = null;
+        } else {
+          timeSlotToSave = dateTimePref.timeSlot || null;
+        }
+      } else if (dateTimePref.dateOption === "Pick a Date") {
+        dateOptionToSave = "custom";
+        // Save time_slot only if exactTime is not used
+        if (
+          dateTimePref.exactTime &&
+          dateTimePref.exactTime.trim().length > 0
+        ) {
+          timeSlotToSave = null;
+        } else {
+          timeSlotToSave = dateTimePref.timeSlot || null;
+        }
+      }
+
+      // Calculate ISO timestamp (datetime_pref) based on selections
+      let calculatedDateTime: string;
+      const now = new Date();
+
+      if (dateTimePref.dateOption === "Now") {
+        // Current timestamp within the hour
+        calculatedDateTime = now.toISOString();
+      } else if (dateTimePref.dateOption === "Today") {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        // Map time slot to start hour
-        const timeSlotHours: { [key: string]: number } = {
-          brunch: 11,
-          afternoon: 14,
-          dinner: 18,
-          lateNight: 22,
-        };
-
-        const startHour = timeSlotHours[dateTimePref.timeSlot] || 11;
-        today.setHours(startHour, 0, 0, 0);
-        calculatedDateTime = today.toISOString();
-      } else if (
-        dateTimePref.dateOption === "This Weekend" &&
-        dateTimePref.weekendDay &&
-        dateTimePref.timeSlot
-      ) {
-        // Weekend day (Saturday or Sunday) + selected time slot
-        const today = new Date();
-        const dayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
-
-        let targetDate = new Date(today);
-        if (dateTimePref.weekendDay === "saturday") {
-          // Calculate days until Saturday
-          const daysUntilSaturday = dayOfWeek === 0 ? 6 : 6 - dayOfWeek;
-          targetDate.setDate(today.getDate() + daysUntilSaturday);
+        // Prefer exact time over time slot
+        if (
+          dateTimePref.exactTime &&
+          dateTimePref.exactTime.trim().length > 0
+        ) {
+          const parsedTime = parseTimeString(dateTimePref.exactTime);
+          if (parsedTime) {
+            today.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
+            calculatedDateTime = today.toISOString();
+          } else {
+            // Invalid time format, fallback to current time
+            calculatedDateTime = now.toISOString();
+          }
+        } else if (dateTimePref.timeSlot) {
+          // Use time slot
+          const timeSlotHours: { [key: string]: number } = {
+            brunch: 11,
+            afternoon: 14,
+            dinner: 18,
+            lateNight: 22,
+          };
+          const startHour = timeSlotHours[dateTimePref.timeSlot] || 11;
+          today.setHours(startHour, 0, 0, 0);
+          calculatedDateTime = today.toISOString();
         } else {
-          // Sunday
-          const daysUntilSunday = dayOfWeek === 0 ? 7 : 7 - dayOfWeek;
-          targetDate.setDate(today.getDate() + daysUntilSunday);
+          // Fallback to current time
+          calculatedDateTime = now.toISOString();
         }
+      } else if (dateTimePref.dateOption === "This Weekend") {
+        // Get next weekend day (Saturday or Sunday)
+        const weekendDate = getNextWeekendDay();
 
-        targetDate.setHours(0, 0, 0, 0);
+        // Prefer exact time over time slot
+        if (
+          dateTimePref.exactTime &&
+          dateTimePref.exactTime.trim().length > 0
+        ) {
+          const parsedTime = parseTimeString(dateTimePref.exactTime);
+          if (parsedTime) {
+            weekendDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
+            calculatedDateTime = weekendDate.toISOString();
+          } else {
+            // Invalid time format, fallback to current time
+            calculatedDateTime = now.toISOString();
+          }
+        } else if (dateTimePref.timeSlot) {
+          // Use time slot
+          const timeSlotHours: { [key: string]: number } = {
+            brunch: 11,
+            afternoon: 14,
+            dinner: 18,
+            lateNight: 22,
+          };
+          const startHour = timeSlotHours[dateTimePref.timeSlot] || 11;
+          weekendDate.setHours(startHour, 0, 0, 0);
+          calculatedDateTime = weekendDate.toISOString();
+        } else {
+          // Fallback to current time
+          calculatedDateTime = now.toISOString();
+        }
+      } else if (dateTimePref.dateOption === "Pick a Date") {
+        if (!dateTimePref.selectedDate) {
+          // No date selected, fallback to current time
+          calculatedDateTime = now.toISOString();
+        } else {
+          const selectedDate = new Date(dateTimePref.selectedDate);
+          selectedDate.setHours(0, 0, 0, 0);
 
-        // Map time slot to start hour
-        const timeSlotHours: { [key: string]: number } = {
-          brunch: 11,
-          afternoon: 14,
-          dinner: 18,
-          lateNight: 22,
-        };
-
-        const startHour = timeSlotHours[dateTimePref.timeSlot] || 11;
-        targetDate.setHours(startHour, 0, 0, 0);
-        calculatedDateTime = targetDate.toISOString();
-      } else if (
-        dateTimePref.dateOption === "Pick a Date" &&
-        dateTimePref.selectedDate &&
-        dateTimePref.timeSlot
-      ) {
-        // Selected date + selected time slot
-        const selectedDate = new Date(dateTimePref.selectedDate);
-        selectedDate.setHours(0, 0, 0, 0);
-
-        // Map time slot to start hour
-        const timeSlotHours: { [key: string]: number } = {
-          brunch: 11,
-          afternoon: 14,
-          dinner: 18,
-          lateNight: 22,
-        };
-
-        const startHour = timeSlotHours[dateTimePref.timeSlot] || 11;
-        selectedDate.setHours(startHour, 0, 0, 0);
-        calculatedDateTime = selectedDate.toISOString();
+          // Prefer exact time over time slot
+          if (
+            dateTimePref.exactTime &&
+            dateTimePref.exactTime.trim().length > 0
+          ) {
+            const parsedTime = parseTimeString(dateTimePref.exactTime);
+            if (parsedTime) {
+              selectedDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
+              calculatedDateTime = selectedDate.toISOString();
+            } else {
+              // Invalid time format, fallback to current time
+              calculatedDateTime = now.toISOString();
+            }
+          } else if (dateTimePref.timeSlot) {
+            // Use time slot
+            const timeSlotHours: { [key: string]: number } = {
+              brunch: 11,
+              afternoon: 14,
+              dinner: 18,
+              lateNight: 22,
+            };
+            const startHour = timeSlotHours[dateTimePref.timeSlot] || 11;
+            selectedDate.setHours(startHour, 0, 0, 0);
+            calculatedDateTime = selectedDate.toISOString();
+          } else {
+            // Fallback to current time
+            calculatedDateTime = now.toISOString();
+          }
+        }
       } else {
         // Fallback to current time
-        calculatedDateTime = new Date().toISOString();
+        calculatedDateTime = now.toISOString();
       }
 
-      // Determine what to save in date_option:
-      // - "Now" → save "Now"
-      // - Other options with time slot → save the time slot (e.g., "brunch", "afternoon", "dinner", "lateNight")
-      let dateOptionToSave: string | null = null;
-      if (dateTimePref.dateOption === "Now") {
-        dateOptionToSave = "Now";
-      } else if (dateTimePref.timeSlot) {
-        // Save the time slot when a time slot is selected
-        dateOptionToSave = dateTimePref.timeSlot;
-      }
+      // Update date_option, time_slot, and datetime_pref fields
+      // Use upsert to ensure the record exists (in case it wasn't created in previous steps)
+      const updateData: any = {
+        profile_id: user.id,
+        date_option: dateOptionToSave,
+        datetime_pref: calculatedDateTime,
+        updated_at: new Date().toISOString(),
+      };
 
-      // Update date_option and datetime_pref fields
+      // Always include time_slot (even if null) - let the database handle null values
+      // If the column doesn't exist, the error handler will retry without it
+      updateData.time_slot = timeSlotToSave;
+
+      console.log("Saving Step 8 preferences with data:", updateData);
+
       const { data, error } = await supabase
         .from("preferences")
-        .update({
-          date_option: dateOptionToSave,
-          datetime_pref: calculatedDateTime,
-          updated_at: new Date().toISOString(),
+        .upsert(updateData, {
+          onConflict: "profile_id",
         })
-        .eq("profile_id", user.id)
         .select()
         .single();
 
       if (error) {
         console.error("Error saving Step 8 preferences:", error);
-        return false;
+        console.error("Error code:", error.code);
+        console.error("Error message:", error.message);
+        console.error("Error details:", JSON.stringify(error, null, 2));
+
+        // Check if it's a column doesn't exist error (PostgreSQL error code 42703)
+        const isColumnError =
+          error.code === "42703" ||
+          (error.message &&
+            error.message.includes("column") &&
+            error.message.includes("does not exist")) ||
+          error.message.includes("time_slot");
+
+        if (isColumnError) {
+          console.warn(
+            "time_slot column might not exist in database. Please run migration: 20250127000005_add_time_slot_to_preferences.sql"
+          );
+          // Retry without time_slot to allow saving other fields
+          const retryData: any = {
+            profile_id: user.id,
+            date_option: dateOptionToSave,
+            datetime_pref: calculatedDateTime,
+            updated_at: new Date().toISOString(),
+          };
+
+          const { data: retryDataResult, error: retryError } = await supabase
+            .from("preferences")
+            .upsert(retryData, {
+              onConflict: "profile_id",
+            })
+            .select()
+            .single();
+
+          if (retryError) {
+            console.error(
+              "Error saving Step 8 preferences (retry without time_slot):",
+              retryError
+            );
+            throw new Error(
+              `Failed to save preferences: ${retryError.message}. Please ensure the database migrations have been run.`
+            );
+          }
+
+          console.log(
+            "Step 8 preferences saved successfully (without time_slot column):",
+            retryDataResult
+          );
+          // Still return true since the main data was saved
+          return true;
+        }
+
+        // For other errors, throw with more context
+        throw new Error(
+          `Failed to save preferences: ${
+            error.message || "Unknown error"
+          }. Error code: ${error.code || "N/A"}`
+        );
       }
 
       console.log("Step 8 preferences saved successfully:", data);
       return true;
-    } catch (error) {
-      console.error("Error saving Step 8 preferences:", error);
-      return false;
+    } catch (error: any) {
+      console.error("Error saving Step 8 preferences (catch):", error);
+      console.error("Error message:", error?.message);
+      console.error("Error stack:", error?.stack);
+
+      // Check for network errors
+      if (
+        error?.message?.includes("Network request failed") ||
+        error?.message?.includes("fetch") ||
+        error?.code === "ECONNREFUSED"
+      ) {
+        console.error(
+          "Network request failed - Possible causes:",
+          "\n1. Supabase connection configuration issue",
+          "\n2. Database migrations not run (especially 20250127000005_add_time_slot_to_preferences.sql)",
+          "\n3. Network connectivity problem",
+          "\n4. Supabase service unavailable"
+        );
+        // Re-throw with user-friendly message
+        throw new Error(
+          "Network error: Unable to connect to the database. Please check your internet connection and ensure the database migrations have been run."
+        );
+      }
+
+      // Re-throw the error so it can be caught and displayed to the user
+      throw error;
     }
   }, [user?.id, onboardingData.dateTimePref]);
 

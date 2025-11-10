@@ -6,12 +6,16 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  StatusBar,
+  Platform,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Calendar } from "../ui/calendar";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 interface DateTimePrefStepProps {
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
   onBack: () => void;
   dateTimePref:
     | string
@@ -27,6 +31,7 @@ interface DateTimePrefStepProps {
     timeSlot?: string;
     selectedDate?: string;
     weekendDay?: string;
+    exactTime?: string;
   }) => void;
 }
 
@@ -59,12 +64,13 @@ const DateTimePrefStep = ({
         weekendDay: null,
       };
     }
-    return {
-      dateOption: dateTimePref.dateOption || null,
-      timeSlot: dateTimePref.timeSlot || null,
-      selectedDate: dateTimePref.selectedDate || null,
-      weekendDay: dateTimePref.weekendDay || null,
-    };
+      return {
+        dateOption: dateTimePref.dateOption || null,
+        timeSlot: dateTimePref.timeSlot || null,
+        selectedDate: dateTimePref.selectedDate || null,
+        weekendDay: dateTimePref.weekendDay || null,
+        exactTime: (dateTimePref as any).exactTime || null,
+      };
   };
 
   const [selectedDateOption, setSelectedDateOption] =
@@ -80,10 +86,37 @@ const DateTimePrefStep = ({
   const [selectedWeekendDay, setSelectedWeekendDay] =
     useState<WeekendDay | null>(parseDateTimePref().weekendDay as WeekendDay);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [selectedTime, setSelectedTime] = useState<Date>(() => {
+    // Parse existing exactTime if available, otherwise default to current time
+    const parsed = parseDateTimePref();
+    if (parsed.exactTime) {
+      const timeStr = parsed.exactTime;
+      // Parse "HH:MM AM/PM" format
+      const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (match) {
+        const hours = parseInt(match[1]);
+        const minutes = parseInt(match[2]);
+        const ampm = match[3].toUpperCase();
+        let hour24 = hours;
+        if (ampm === "PM" && hours !== 12) hour24 = hours + 12;
+        if (ampm === "AM" && hours === 12) hour24 = 0;
+        const date = new Date();
+        date.setHours(hour24, minutes, 0, 0);
+        return date;
+      }
+    }
+    return new Date();
+  });
+  const [exactTime, setExactTime] = useState<string>(
+    parseDateTimePref().exactTime || ""
+  );
+  const [isLoading, setIsLoading] = useState(false);
 
   // Track if this is initial mount to prevent loop on first render
   const isInitialMount = useRef(true);
   const lastProcessedValues = useRef<string | null>(null);
+  const isInternalUpdate = useRef(false);
 
   // Update local state when prop changes (only from external changes, not our own updates)
   useEffect(() => {
@@ -93,6 +126,15 @@ const DateTimePrefStep = ({
       // Store the initial values for comparison
       const initial = JSON.stringify(parseDateTimePref());
       lastProcessedValues.current = initial;
+      return;
+    }
+
+    // Skip if this is an internal update (we just updated the parent)
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false;
+      // Still update lastProcessedValues to reflect the new state
+      const current = JSON.stringify(parseDateTimePref());
+      lastProcessedValues.current = current;
       return;
     }
 
@@ -132,74 +174,92 @@ const DateTimePrefStep = ({
       if (prev !== parsed.weekendDay) return parsed.weekendDay as WeekendDay;
       return prev;
     });
+    setExactTime((prev) => {
+      if (prev !== parsed.exactTime) {
+        const timeStr = parsed.exactTime || "";
+        // Update selectedTime if exactTime exists
+        if (timeStr) {
+          const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+          if (match) {
+            const hours = parseInt(match[1]);
+            const minutes = parseInt(match[2]);
+            const ampm = match[3].toUpperCase();
+            let hour24 = hours;
+            if (ampm === "PM" && hours !== 12) hour24 = hours + 12;
+            if (ampm === "AM" && hours === 12) hour24 = 0;
+            const date = new Date();
+            date.setHours(hour24, minutes, 0, 0);
+            setSelectedTime(date);
+          }
+        }
+        return timeStr;
+      }
+      return prev;
+    });
   }, [dateTimePref]);
 
   const dateOptions: Array<{
     id: DateOption;
     label: string;
-    emoji: string;
     description: string;
   }> = [
-    { id: "Now", label: "Now", emoji: "⚡", description: "Right this minute" },
+    { id: "Now", label: "Now", description: "Leave immediately" },
     {
       id: "Today",
       label: "Today",
-      emoji: "☀️",
-      description: "This afternoon/evening",
+      description: "Pick a time",
     },
     {
       id: "This Weekend",
       label: "This Weekend",
-      emoji: "📅",
-      description: "Saturday or Sunday",
+      description: "Fri-Sun",
     },
     {
       id: "Pick a Date",
       label: "Pick a Date",
-      emoji: "🗓️",
-      description: "Choose exact day",
+      description: "Custom date",
     },
   ];
 
   const timeSlots: Array<{
     id: TimeSlot;
     label: string;
-    emoji: string;
     time: string;
     startHour: number;
     endHour: number;
+    icon: string;
   }> = [
     {
       id: "brunch",
       label: "Brunch",
-      emoji: "🍳",
-      time: "11am–1pm",
+      time: "11:00 AM - 1:00 PM",
       startHour: 11,
       endHour: 13,
+      icon: "cafe",
     },
     {
       id: "afternoon",
       label: "Afternoon",
-      emoji: "☀️",
-      time: "2–5pm",
+      time: "2:00 PM - 5:00 PM",
       startHour: 14,
       endHour: 17,
+      icon: "sunny",
     },
     {
       id: "dinner",
       label: "Dinner",
-      emoji: "🍽️",
-      time: "6–9pm",
+      time: "6:00 PM - 9:00 PM",
       startHour: 18,
       endHour: 21,
+      icon: "restaurant",
     },
     {
       id: "lateNight",
       label: "Late Night",
-      emoji: "🌙",
-      time: "10pm–12am",
+      time: "10:00 PM - 12:00 AM",
       startHour: 22,
       endHour: 24,
+      icon: "moon",
     },
   ];
 
@@ -218,20 +278,65 @@ const DateTimePrefStep = ({
     } else if (option === "This Weekend") {
       setSelectedTimeSlot(null);
       setSelectedDate(null);
-      setSelectedWeekendDay(null);
+      // Don't reset weekendDay for "This Weekend" - we'll handle it differently
     } else if (option === "Pick a Date") {
       setSelectedTimeSlot(null);
       setSelectedWeekendDay(null);
-      if (!selectedDate) {
-        setShowCalendar(true);
-      }
+      // Don't automatically show calendar - user will click the input field
     }
   };
 
   const handleTimeSlotSelect = (slot: TimeSlot) => {
+    // Update state immediately
     setSelectedTimeSlot(slot);
-    updateParentPref();
+    // Clear exact time when a time slot is selected
+    setExactTime("");
+    // Pass the new values directly to updateParentPref to avoid stale state
+    // This ensures the parent gets the new value immediately, not the old state value
+    updateParentPref({ timeSlot: slot, exactTime: "" });
   };
+
+  const formatTimeForDisplay = (date: Date): string => {
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? "PM" : "AM";
+    const hours12 = hours % 12 || 12;
+    const minutesStr = String(minutes).padStart(2, "0");
+    return `${hours12}:${minutesStr} ${ampm}`;
+  };
+
+  const handleTimePickerChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === "android") {
+      setShowTimePicker(false);
+    }
+    
+    if (selectedDate) {
+      setSelectedTime(selectedDate);
+      const formattedTime = formatTimeForDisplay(selectedDate);
+      setExactTime(formattedTime);
+      // Clear time slot when exact time is selected
+      setSelectedTimeSlot(null);
+      // Pass the formatted time directly to ensure it's used immediately
+      updateParentPref({ exactTime: formattedTime, timeSlot: null });
+    }
+    
+    if (Platform.OS === "ios") {
+      // On iOS, keep picker open until user confirms
+      if (event.type === "dismissed") {
+        setShowTimePicker(false);
+      }
+    }
+  };
+
+  const handleTimePickerConfirm = () => {
+    setShowTimePicker(false);
+    const formattedTime = formatTimeForDisplay(selectedTime);
+    setExactTime(formattedTime);
+    setSelectedTimeSlot(null);
+    // Pass the formatted time directly to ensure it's used immediately
+    updateParentPref({ exactTime: formattedTime, timeSlot: null });
+  };
+
 
   const handleWeekendDaySelect = (day: WeekendDay) => {
     setSelectedWeekendDay(day);
@@ -244,13 +349,31 @@ const DateTimePrefStep = ({
     updateParentPref();
   };
 
-  const updateParentPref = () => {
+  const formatDateForDisplay = (date: Date): string => {
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+  };
+
+  const updateParentPref = (overrides?: {
+    timeSlot?: TimeSlot | null;
+    exactTime?: string;
+  }) => {
     if (selectedDateOption) {
+      // Mark that this is an internal update to prevent useEffect from overwriting our state
+      isInternalUpdate.current = true;
+      
       onDateTimePrefChange({
         dateOption: selectedDateOption,
-        timeSlot: selectedTimeSlot || undefined,
+        timeSlot: overrides?.timeSlot !== undefined 
+          ? (overrides.timeSlot || undefined)
+          : (selectedTimeSlot || undefined),
         selectedDate: selectedDate?.toISOString() || undefined,
         weekendDay: selectedWeekendDay || undefined,
+        exactTime: overrides?.exactTime !== undefined 
+          ? overrides.exactTime 
+          : (exactTime || undefined),
       });
     }
   };
@@ -278,94 +401,84 @@ const DateTimePrefStep = ({
       flex: 1,
       backgroundColor: "white",
     },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+    progressSection: {
       paddingHorizontal: 24,
-      paddingVertical: 16,
-      backgroundColor: "white",
-      borderBottomWidth: 1,
-      borderBottomColor: "#f3f4f6",
+      paddingTop: 8,
+      paddingBottom: 8,
     },
-    backButton: {
-      padding: 8,
-      borderRadius: 20,
-    },
-    headerCenter: {
-      alignItems: "center",
-    },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: "#111827",
-    },
-    headerSubtitle: {
-      fontSize: 14,
-      color: "#6b7280",
+    progressBarContainer: {
+      marginBottom: 8,
     },
     progressBar: {
-      height: 8,
+      height: 4,
       backgroundColor: "#e5e7eb",
-      borderRadius: 4,
-      marginHorizontal: 24,
-      marginVertical: 16,
+      borderRadius: 2,
+      overflow: "hidden",
     },
     progressFill: {
-      height: 8,
+      height: 4,
       backgroundColor: "#eb7825",
-      borderRadius: 4,
+      borderRadius: 2,
+    },
+    progressText: {
+      fontSize: 12,
+      color: "#6b7280",
+      marginTop: 4,
+      textAlign: "center",
     },
     scrollContent: {
       flexGrow: 1,
       paddingHorizontal: 24,
-      paddingTop: 32,
-      paddingBottom: 100,
+      paddingTop: 24,
+      paddingBottom: 120,
     },
     titleSection: {
       marginBottom: 32,
     },
     title: {
-      fontSize: 28,
+      fontSize: 32,
       fontWeight: "bold",
       color: "#111827",
       marginBottom: 8,
+      letterSpacing: -0.5,
     },
     subtitle: {
       fontSize: 16,
       color: "#6b7280",
+      lineHeight: 22,
     },
     section: {
-      marginBottom: 32,
+      marginBottom: 24,
     },
     sectionTitle: {
-      fontSize: 18,
+      fontSize: 16,
       fontWeight: "600",
       color: "#111827",
       marginBottom: 16,
+      textAlign: "left",
     },
     dateOptionsContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
       gap: 12,
     },
     dateOptionCard: {
-      flexDirection: "row",
-      alignItems: "center",
-      padding: 20,
-      borderRadius: 16,
-      borderWidth: 2,
+      width: "47.5%",
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1.5,
       backgroundColor: "#f9fafb",
       borderColor: "#e5e7eb",
+      minHeight: 80,
+      justifyContent: "center",
     },
     dateOptionCardSelected: {
-      backgroundColor: "#fef3c7",
+      backgroundColor: "#eb7825",
       borderColor: "#eb7825",
-    },
-    dateOptionEmoji: {
-      fontSize: 32,
-      marginRight: 16,
+      borderWidth: 2,
     },
     dateOptionContent: {
-      flex: 1,
+      alignItems: "flex-start",
     },
     dateOptionLabel: {
       fontSize: 18,
@@ -373,81 +486,196 @@ const DateTimePrefStep = ({
       color: "#111827",
       marginBottom: 4,
     },
+    dateOptionLabelSelected: {
+      color: "#ffffff",
+    },
     dateOptionDescription: {
       fontSize: 14,
       color: "#6b7280",
+      lineHeight: 20,
     },
-    dateOptionCheck: {
-      marginLeft: 12,
+    dateOptionDescriptionSelected: {
+      color: "#ffffff",
+      opacity: 0.9,
     },
-    weekendDaysContainer: {
+    instructionText: {
+      fontSize: 14,
+      color: "#9ca3af",
+      marginTop: 8,
+      textAlign: "center",
+    },
+    weekendInfoCard: {
       flexDirection: "row",
-      gap: 12,
-      marginTop: 16,
-    },
-    weekendDayButton: {
-      flex: 1,
+      alignItems: "center",
       padding: 16,
       borderRadius: 12,
-      borderWidth: 2,
-      alignItems: "center",
-      backgroundColor: "white",
-      borderColor: "#e5e7eb",
+      backgroundColor: "#e0f2fe",
+      marginTop: 12,
+      borderWidth: 0,
     },
-    weekendDayButtonSelected: {
-      backgroundColor: "#fef3c7",
-      borderColor: "#eb7825",
+    weekendInfoIcon: {
+      marginRight: 12,
     },
-    weekendDayLabel: {
+    weekendInfoContent: {
+      flex: 1,
+    },
+    weekendInfoLabel: {
       fontSize: 16,
       fontWeight: "600",
-      color: "#111827",
-      marginTop: 8,
+      color: "#0369a1",
+      marginBottom: 4,
     },
-    weekendDayDate: {
-      fontSize: 12,
-      color: "#6b7280",
-      marginTop: 4,
+    weekendInfoDescription: {
+      fontSize: 14,
+      color: "#0c4a6e",
+      opacity: 0.9,
     },
     timeSlotsContainer: {
       flexDirection: "row",
       flexWrap: "wrap",
       gap: 12,
-      marginTop: 16,
+      marginTop: 12,
     },
     timeSlotCard: {
-      flex: 1,
-      minWidth: "47%",
-      padding: 20,
-      borderRadius: 16,
-      borderWidth: 2,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: "white",
+      width: "47.5%",
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      backgroundColor: "#f9fafb",
       borderColor: "#e5e7eb",
+      minHeight: 80,
+      justifyContent: "center",
     },
     timeSlotCardSelected: {
-      backgroundColor: "#fef3c7",
+      backgroundColor: "#eb7825",
       borderColor: "#eb7825",
+      borderWidth: 2,
     },
-    timeSlotEmoji: {
-      fontSize: 32,
+    timeSlotContent: {
+      alignItems: "flex-start",
+    },
+    timeSlotIcon: {
       marginBottom: 8,
     },
     timeSlotLabel: {
-      fontSize: 16,
+      fontSize: 18,
       fontWeight: "600",
       color: "#111827",
       marginBottom: 4,
     },
+    timeSlotLabelSelected: {
+      color: "#ffffff",
+    },
     timeSlotTime: {
       fontSize: 14,
       color: "#6b7280",
+      lineHeight: 20,
+    },
+    timeSlotTimeSelected: {
+      color: "#ffffff",
+      opacity: 0.9,
+    },
+    quickPresetsLabel: {
+      fontSize: 14,
+      color: "#9ca3af",
+      marginTop: 8,
+      marginBottom: 12,
+    },
+    exactTimeSection: {
+      marginTop: 24,
+    },
+    exactTimeLabel: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#111827",
+      marginBottom: 12,
+    },
+    exactTimeInput: {
+      width: "100%",
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: "#d1d5db",
+      backgroundColor: "#ffffff",
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    exactTimeInputText: {
+      fontSize: 16,
+      color: "#9ca3af",
+      marginLeft: 8,
+      flex: 1,
+    },
+    exactTimeInputTextSelected: {
+      fontSize: 16,
+      color: "#111827",
+      marginLeft: 8,
+      flex: 1,
+      fontWeight: "500",
+    },
+    timePicker: {
+      width: "100%",
+      height: 200,
+    },
+    modalConfirmButton: {
+      fontSize: 16,
+      color: "#eb7825",
+      fontWeight: "600",
+    },
+    dateInputField: {
+      width: "100%",
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: "#eb7825",
+      backgroundColor: "#ffffff",
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 12,
+    },
+    dateInputText: {
+      fontSize: 16,
+      color: "#111827",
+      marginLeft: 8,
+      flex: 1,
+    },
+    dateInputPlaceholder: {
+      fontSize: 16,
+      color: "#9ca3af",
+      marginLeft: 8,
+      flex: 1,
     },
     calendarContainer: {
       marginTop: 16,
       borderRadius: 12,
       overflow: "hidden",
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      justifyContent: "flex-end",
+    },
+    modalContent: {
+      backgroundColor: "white",
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 24,
+      paddingBottom: Platform.OS === "ios" ? 40 : 24,
+      maxHeight: "80%",
+    },
+    modalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 20,
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: "600",
+      color: "#111827",
+    },
+    modalCloseButton: {
+      padding: 8,
     },
     navigationContainer: {
       flexDirection: "row",
@@ -455,33 +683,37 @@ const DateTimePrefStep = ({
       alignItems: "center",
       paddingHorizontal: 24,
       paddingVertical: 16,
+      backgroundColor: "white",
       borderTopWidth: 1,
       borderTopColor: "#f3f4f6",
-      backgroundColor: "white",
+    },
+    backButton: {
+      paddingVertical: 12,
+      paddingHorizontal: 8,
     },
     backButtonText: {
       fontSize: 16,
-      color: "#6b7280",
+      color: "#111827",
       fontWeight: "500",
     },
     nextButton: {
       backgroundColor: "#eb7825",
-      borderRadius: 12,
+      borderRadius: 8,
       paddingVertical: 12,
       paddingHorizontal: 24,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
+      minWidth: 100,
     },
     nextButtonDisabled: {
       backgroundColor: "#e5e7eb",
-      opacity: 0.7,
     },
     nextButtonText: {
       color: "white",
       fontSize: 16,
       fontWeight: "600",
-      marginRight: 8,
+      marginRight: 6,
     },
     nextButtonTextDisabled: {
       color: "#9ca3af",
@@ -492,15 +724,15 @@ const DateTimePrefStep = ({
   const isNextDisabled = () => {
     if (!selectedDateOption) return true;
     if (selectedDateOption === "Now") return false; // "Now" doesn't need time slot
-    // Other options require time slot
+    // "This Weekend" requires time slot or exact time
     if (selectedDateOption === "This Weekend") {
-      return !selectedWeekendDay || !selectedTimeSlot;
+      return !selectedTimeSlot && !exactTime;
     }
     if (selectedDateOption === "Pick a Date") {
-      return !selectedDate || !selectedTimeSlot;
+      return !selectedDate || (!selectedTimeSlot && !exactTime);
     }
-    // "Today" requires time slot
-    return !selectedTimeSlot;
+    // "Today" requires time slot or exact time
+    return !selectedTimeSlot && !exactTime;
   };
 
   const { saturday, sunday } = getWeekendDates();
@@ -524,42 +756,37 @@ const DateTimePrefStep = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={20} color="#9ca3af" />
-        </TouchableOpacity>
-
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Date & Time</Text>
-          <Text style={styles.headerSubtitle}>Step 8 of 10</Text>
+      <StatusBar barStyle="dark-content" backgroundColor="white" />
+      
+      {/* Progress Bar Section */}
+      <View style={styles.progressSection}>
+        <View style={styles.progressBarContainer}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: "80%" }]} />
+          </View>
+          <Text style={styles.progressText}>80% complete • Step 8 of 10</Text>
         </View>
-
-        <View style={{ width: 32 }} />
-      </View>
-
-      {/* Progress Bar */}
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: "80%" }]} />
       </View>
 
       {/* Scrollable Content */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Title Section */}
         <View style={styles.titleSection}>
-          <Text style={styles.title}>When do you prefer to go?</Text>
+          <Text style={styles.title}>When do you want to go?</Text>
           <Text style={styles.subtitle}>
-            Select your preferred date and time
+            Choose your preferred date and time
           </Text>
         </View>
 
         {/* Date Options Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Select Date *</Text>
+          <Text style={styles.sectionTitle}>Select Date</Text>
           <View style={styles.dateOptionsContainer}>
             {dateOptions.map((option) => {
               const isSelected = selectedDateOption === option.id;
@@ -572,105 +799,76 @@ const DateTimePrefStep = ({
                   ]}
                   onPress={() => handleDateOptionSelect(option.id)}
                 >
-                  <Text style={styles.dateOptionEmoji}>{option.emoji}</Text>
                   <View style={styles.dateOptionContent}>
-                    <Text style={styles.dateOptionLabel}>{option.label}</Text>
-                    <Text style={styles.dateOptionDescription}>
+                    <Text
+                      style={[
+                        styles.dateOptionLabel,
+                        isSelected && styles.dateOptionLabelSelected,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.dateOptionDescription,
+                        isSelected && styles.dateOptionDescriptionSelected,
+                      ]}
+                    >
                       {option.description}
                     </Text>
                   </View>
-                  {isSelected && (
-                    <View style={styles.dateOptionCheck}>
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={24}
-                        color="#eb7825"
-                      />
-                    </View>
-                  )}
                 </TouchableOpacity>
               );
             })}
           </View>
+          {/* This Weekend Info Card (only for "This Weekend") */}
+          {selectedDateOption === "This Weekend" && (
+            <TouchableOpacity style={styles.weekendInfoCard}>
+              <Ionicons
+                name="calendar"
+                size={24}
+                color="#0369a1"
+                style={styles.weekendInfoIcon}
+              />
+              <View style={styles.weekendInfoContent}>
+                <Text style={styles.weekendInfoLabel}>This Weekend</Text>
+                <Text style={styles.weekendInfoDescription}>
+                  Includes Friday, Saturday & Sunday
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          
+          <Text style={styles.instructionText}>
+            You can adjust this preference anytime
+          </Text>
         </View>
 
-        {/* Weekend Day Selection (only for "This Weekend") */}
-        {selectedDateOption === "This Weekend" && !selectedWeekendDay && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Choose Day</Text>
-            <View style={styles.weekendDaysContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.weekendDayButton,
-                  selectedWeekendDay === "saturday" &&
-                    styles.weekendDayButtonSelected,
-                ]}
-                onPress={() => handleWeekendDaySelect("saturday")}
-              >
-                <Text style={{ fontSize: 24 }}>📅</Text>
-                <Text style={styles.weekendDayLabel}>Saturday</Text>
-                <Text style={styles.weekendDayDate}>
-                  {formatWeekendDate(saturday)}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.weekendDayButton,
-                  selectedWeekendDay === "sunday" &&
-                    styles.weekendDayButtonSelected,
-                ]}
-                onPress={() => handleWeekendDaySelect("sunday")}
-              >
-                <Text style={{ fontSize: 24 }}>📅</Text>
-                <Text style={styles.weekendDayLabel}>Sunday</Text>
-                <Text style={styles.weekendDayDate}>
-                  {formatWeekendDate(sunday)}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* Calendar Picker (only for "Pick a Date") */}
+        {/* Date Input Field (only for "Pick a Date") */}
         {selectedDateOption === "Pick a Date" && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Select Date</Text>
-            {!selectedDate ? (
-              <TouchableOpacity
-                style={[
-                  styles.dateOptionCard,
-                  { justifyContent: "center", paddingVertical: 24 },
-                ]}
-                onPress={() => setShowCalendar(true)}
-              >
-                <Ionicons name="calendar-outline" size={32} color="#eb7825" />
-                <Text
-                  style={[
-                    styles.dateOptionLabel,
-                    { marginTop: 12, textAlign: "center" },
-                  ]}
-                >
-                  Tap to pick a date
+            <Text style={styles.sectionTitle}>Pick a Date</Text>
+            <TouchableOpacity
+              style={styles.dateInputField}
+              onPress={() => setShowCalendar(true)}
+            >
+              <Ionicons name="calendar" size={20} color="#eb7825" />
+              {selectedDate ? (
+                <Text style={styles.dateInputText}>
+                  {formatDateForDisplay(selectedDate)}
                 </Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.calendarContainer}>
-                <Calendar
-                  selected={selectedDate}
-                  onSelect={handleCalendarDateSelect}
-                />
-              </View>
-            )}
+              ) : (
+                <Text style={styles.dateInputPlaceholder}>mm/dd/yyyy</Text>
+              )}
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Time Slots Section (shown for all except "Now") */}
-        {selectedDateOption &&
-          selectedDateOption !== "Now" &&
-          (selectedDateOption !== "This Weekend" || selectedWeekendDay) &&
-          (selectedDateOption !== "Pick a Date" || selectedDate) && (
+        {/* Time Slots Section (shown for "Today", "This Weekend", and "Pick a Date") */}
+        {selectedDateOption && selectedDateOption !== "Now" && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Select Time *</Text>
+              <Text style={styles.sectionTitle}>Select Time</Text>
+              <Text style={styles.quickPresetsLabel}>Quick Presets</Text>
               <View style={styles.timeSlotsContainer}>
                 {timeSlots.map((slot) => {
                   const isSelected = selectedTimeSlot === slot.id;
@@ -683,56 +881,192 @@ const DateTimePrefStep = ({
                       ]}
                       onPress={() => handleTimeSlotSelect(slot.id)}
                     >
-                      <Text style={styles.timeSlotEmoji}>{slot.emoji}</Text>
-                      <Text style={styles.timeSlotLabel}>{slot.label}</Text>
-                      <Text style={styles.timeSlotTime}>{slot.time}</Text>
-                      {isSelected && (
-                        <View
-                          style={{
-                            position: "absolute",
-                            top: 8,
-                            right: 8,
-                          }}
+                      <View style={styles.timeSlotContent}>
+                        <Ionicons
+                          name={
+                            slot.icon === "cafe"
+                              ? "cafe-outline"
+                              : slot.icon === "sunny"
+                              ? "sunny-outline"
+                              : slot.icon === "restaurant"
+                              ? "restaurant-outline"
+                              : "moon-outline"
+                          }
+                          size={24}
+                          color={isSelected ? "#ffffff" : "#6b7280"}
+                          style={styles.timeSlotIcon}
+                        />
+                        <Text
+                          style={[
+                            styles.timeSlotLabel,
+                            isSelected && styles.timeSlotLabelSelected,
+                          ]}
                         >
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={24}
-                            color="#eb7825"
-                          />
-                        </View>
-                      )}
+                          {slot.label}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.timeSlotTime,
+                            isSelected && styles.timeSlotTimeSelected,
+                          ]}
+                        >
+                          {slot.time}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
+              </View>
+
+              {/* Or Set Exact Time Section */}
+              <View style={styles.exactTimeSection}>
+                <Text style={styles.exactTimeLabel}>Or Set Exact Time</Text>
+                <TouchableOpacity
+                  style={styles.exactTimeInput}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Ionicons name="time-outline" size={20} color={exactTime ? "#eb7825" : "#9ca3af"} />
+                  {exactTime ? (
+                    <Text style={styles.exactTimeInputTextSelected}>
+                      {exactTime}
+                    </Text>
+                  ) : (
+                    <Text style={styles.exactTimeInputText}>
+                      HH:MM AM/PM
+                    </Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
           )}
       </ScrollView>
 
+      {/* Calendar Modal */}
+      <Modal
+        visible={showCalendar}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCalendar(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <SafeAreaView style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Date</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setShowCalendar(false)}
+              >
+                <Ionicons name="close" size={24} color="#111827" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              <Calendar
+                selected={selectedDate || undefined}
+                onSelect={handleCalendarDateSelect}
+              />
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      {/* Time Picker */}
+      {showTimePicker && (
+        Platform.OS === "ios" ? (
+          <Modal
+            visible={showTimePicker}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowTimePicker(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <SafeAreaView style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Select Time</Text>
+                  <TouchableOpacity
+                    style={styles.modalCloseButton}
+                    onPress={handleTimePickerConfirm}
+                  >
+                    <Text style={styles.modalConfirmButton}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={selectedTime}
+                  mode="time"
+                  is24Hour={false}
+                  display="spinner"
+                  onChange={handleTimePickerChange}
+                  style={styles.timePicker}
+                />
+              </SafeAreaView>
+            </View>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={selectedTime}
+            mode="time"
+            is24Hour={false}
+            display="default"
+            onChange={handleTimePickerChange}
+          />
+        )
+      )}
+
       {/* Navigation Buttons */}
       <View style={styles.navigationContainer}>
-        <TouchableOpacity onPress={onBack}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={onNext}
-          disabled={isNextDisabled()}
+          onPress={async () => {
+            if (isNextDisabled() || isLoading) return;
+            setIsLoading(true);
+            try {
+              await onNext();
+            } catch (error) {
+              console.error("Error in onNext:", error);
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          disabled={isNextDisabled() || isLoading}
           style={[
             styles.nextButton,
-            isNextDisabled() && styles.nextButtonDisabled,
+            (isNextDisabled() || isLoading) && styles.nextButtonDisabled,
           ]}
         >
-          <Text
-            style={[
-              styles.nextButtonText,
-              isNextDisabled() && styles.nextButtonTextDisabled,
-            ]}
-          >
-            Next
-          </Text>
-          {!isNextDisabled() && (
-            <Ionicons name="arrow-forward" size={20} color="white" />
+          {isLoading ? (
+            <>
+              <Text
+                style={[
+                  styles.nextButtonText,
+                  isLoading && styles.nextButtonTextDisabled,
+                ]}
+              >
+                Saving...
+              </Text>
+              <Ionicons
+                name="hourglass-outline"
+                size={18}
+                color={isLoading ? "#9ca3af" : "white"}
+              />
+            </>
+          ) : (
+            <>
+              <Text
+                style={[
+                  styles.nextButtonText,
+                  isNextDisabled() && styles.nextButtonTextDisabled,
+                ]}
+              >
+                Next
+              </Text>
+              <Ionicons
+                name="arrow-forward"
+                size={18}
+                color={isNextDisabled() ? "#9ca3af" : "white"}
+              />
+            </>
           )}
         </TouchableOpacity>
       </View>

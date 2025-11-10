@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import {
   Text,
   View,
@@ -6,355 +6,590 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  StatusBar,
+  ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 interface VibeSelectionStepProps {
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
   onBack: () => void;
   vibes: string[];
   onVibeToggle: (vibeId: string) => void;
+  intents?: any[] | null | undefined;
 }
+
+const soloAdventureVibes = [
+  "Take a Stroll",
+  "Sip & Chill",
+  "Casual Eats",
+  "Screen & Relax",
+  "Creative & Hands-On",
+  "Picnics",
+  "Play & Move",
+  "Dining Experiences",
+  "Wellness Dates",
+  "Freestyle",
+];
+const firstDatesVibes = [
+  "Take a Stroll",
+  "Sip & Chill",
+  "Screen & Relax",
+  "Creative & Hands-On",
+  "Picnics",
+  "Play & Move",
+  "Dining Experiences",
+];
+const romanticVibes = [
+  "Sip & Chill",
+  "Picnics",
+  "Dining Experiences",
+  "Wellness Dates",
+];
+const friendlyVibes = [
+  "Take a Stroll",
+  "Sip & Chill",
+  "Casual Eats",
+  "Screen & Relax",
+  "Creative & Hands-On",
+  "Picnics",
+  "Play & Move",
+  "Dining Experiences",
+  "Wellness Dates",
+  "Freestyle",
+];
+const groupFunVibes = [
+  "Casual Eats",
+  "Screen & Relax",
+  "Creative & Hands-On",
+  "Play & Move",
+  "Freestyle",
+];
+const businessVibes = ["Take a Stroll", "Sip & Chill", "Dining Experiences"];
 
 const VibeSelectionStep = ({
   onNext,
   onBack,
   vibes,
   onVibeToggle,
+  intents,
 }: VibeSelectionStepProps) => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Get screen dimensions for responsive layout
+  const screenWidth = Dimensions.get("window").width;
+  const isLargeScreen = screenWidth >= 768; // Tablet or larger
+  const numColumns = isLargeScreen ? 3 : 2;
+  const padding = 24;
+  const gap = 12;
+  const cardWidth = useMemo(() => {
+    const totalPadding = padding * 2;
+    const totalGaps = gap * (numColumns - 1);
+    return (screenWidth - totalPadding - totalGaps) / numColumns;
+  }, [screenWidth, numColumns, padding, gap]);
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: "white",
     },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+    progressSection: {
       paddingHorizontal: 24,
-      paddingVertical: 16,
-      backgroundColor: "white",
-      borderBottomWidth: 1,
-      borderBottomColor: "#f3f4f6",
+      paddingTop: 8,
+      paddingBottom: 8,
     },
-    backButton: {
-      padding: 8,
-      borderRadius: 20,
-    },
-    headerCenter: {
-      alignItems: "center",
-    },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: "#111827",
-    },
-    headerSubtitle: {
-      fontSize: 14,
-      color: "#6b7280",
+    progressBarContainer: {
+      marginBottom: 8,
     },
     progressBar: {
-      height: 8,
+      height: 4,
       backgroundColor: "#e5e7eb",
-      borderRadius: 4,
-      marginHorizontal: 24,
-      marginVertical: 16,
+      borderRadius: 2,
+      overflow: "hidden",
     },
     progressFill: {
-      height: 8,
+      height: 4,
       backgroundColor: "#eb7825",
-      borderRadius: 4,
+      borderRadius: 2,
     },
-    vibeMainContent: {
-      flex: 1,
+    progressTextContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 4,
+    },
+    progressTextLeft: {
+      fontSize: 12,
+      color: "#6b7280",
+    },
+    progressTextRight: {
+      fontSize: 12,
+      color: "#6b7280",
+    },
+    scrollContent: {
+      flexGrow: 1,
       paddingHorizontal: 24,
+      paddingTop: 24,
+      paddingBottom: 120,
     },
     titleSection: {
-      alignItems: "center",
       marginBottom: 32,
     },
     title: {
-      fontSize: 28,
+      fontSize: 32,
       fontWeight: "bold",
       color: "#111827",
-      textAlign: "center",
       marginBottom: 8,
+      letterSpacing: -0.5,
     },
     subtitle: {
       fontSize: 16,
       color: "#6b7280",
-      textAlign: "center",
+      lineHeight: 22,
     },
-    selectionCounter: {
-      fontSize: 14,
-      color: "#eb7825",
-      fontWeight: "500",
-      marginTop: 8,
-    },
-    vibeOptionsContainer: {
+    optionsContainer: {
       flex: 1,
-    },
-    vibeOptionsContent: {
-      paddingBottom: 20,
-    },
-    vibeGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      justifyContent: "space-between",
+      justifyContent: "flex-start",
     },
     vibeCard: {
-      width: "48%",
-      borderRadius: 12,
-      marginBottom: 12,
-      borderWidth: 2,
-    },
-    vibeCardDefault: {
       backgroundColor: "white",
+      borderRadius: 12,
+      borderWidth: 1.5,
       borderColor: "#e5e7eb",
-    },
-    vibeCardSelected: {
-      backgroundColor: "#fef3f2",
-      borderColor: "#eb7825",
-    },
-    vibeCardContent: {
       padding: 16,
       alignItems: "center",
-      position: "relative",
-    },
-    vibeIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 12,
-      alignItems: "center",
       justifyContent: "center",
+      minHeight: 90,
       marginBottom: 12,
     },
-    vibeIconDefault: {
-      backgroundColor: "#f3f4f6",
+    vibeCardSelected: {
+      backgroundColor: "#eb7825",
+      borderColor: "#eb7825",
+      borderWidth: 2,
+    },
+    vibeIconContainer: {
+      width: 28,
+      height: 28,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 8,
     },
     vibeIconSelected: {
-      backgroundColor: "#eb7825",
-    },
-    vibeEmoji: {
-      fontSize: 20,
+      color: "#ffffff",
     },
     vibeTextContainer: {
       alignItems: "center",
+      justifyContent: "center",
     },
     vibeTitle: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: "600",
       color: "#111827",
-      marginBottom: 4,
       textAlign: "center",
     },
-    vibeDescription: {
-      fontSize: 12,
-      color: "#6b7280",
-      textAlign: "center",
-      lineHeight: 16,
+    vibeTitleSelected: {
+      color: "#ffffff",
     },
-    vibeCheckmark: {
-      position: "absolute",
-      top: 8,
-      right: 8,
-    },
-    continueButton: {
-      backgroundColor: "#eb7825",
-      borderRadius: 12,
+    navigationContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 24,
       paddingVertical: 16,
-      paddingHorizontal: 20,
+      backgroundColor: "white",
+      borderTopWidth: 1,
+      borderTopColor: "#f3f4f6",
+    },
+    backButton: {
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 8,
+      backgroundColor: "white",
+    },
+    backButtonText: {
+      fontSize: 16,
+      color: "#111827",
+      fontWeight: "500",
+      marginLeft: 4,
+    },
+    nextButton: {
+      paddingVertical: 12,
+      paddingHorizontal: 16,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
+      borderRadius: 8,
+      minWidth: 100,
     },
-    continueButtonDisabled: {
+    nextButtonEnabled: {
+      backgroundColor: "#eb7825",
+    },
+    nextButtonDisabled: {
       backgroundColor: "#e5e7eb",
-      opacity: 0.7,
+      opacity: 0.6,
     },
-    continueButtonText: {
-      color: "white",
+    nextButtonText: {
       fontSize: 16,
-      fontWeight: "600",
-      marginRight: 8,
+      fontWeight: "500",
+      marginRight: 4,
     },
-    continueButtonTextDisabled: {
-      color: "#9ca3af",
+    nextButtonTextEnabled: {
+      color: "#ffffff",
+    },
+    nextButtonTextDisabled: {
+      color: "#6b7280",
     },
   });
 
-  const vibeCategories = [
+  // Get the appropriate icon name for each vibe
+  const getIconName = (vibeId: string): string => {
+    switch (vibeId) {
+      case "take-a-stroll":
+        return "eye-outline";
+      case "sip-and-chill":
+        return "cafe-outline";
+      case "casual-eats":
+        return "restaurant-outline";
+      case "screen-and-relax":
+        return "musical-notes-outline";
+      case "creative-hands-on":
+        return "construct-outline"; // Gear/cog icon for Creative & Hands-On
+      case "picnics":
+        return "basket-outline";
+      case "play-and-move":
+        return "people-outline"; // Two people icon for Play & Move
+      case "dining-experiences":
+        return "fast-food-outline"; // Fork and knife icon for Dining Experiences
+      case "wellness-dates":
+        return "leaf-outline";
+      case "freestyle":
+        return "star-outline";
+      default:
+        return "ellipse-outline";
+    }
+  };
+
+  // Map vibe names to vibe IDs
+  const vibeNameToId: { [key: string]: string } = {
+    "Take a Stroll": "take-a-stroll",
+    "Sip & Chill": "sip-and-chill",
+    "Casual Eats": "casual-eats",
+    "Screen & Relax": "screen-and-relax",
+    "Creative & Hands-On": "creative-hands-on",
+    Picnics: "picnics",
+    "Play & Move": "play-and-move",
+    "Dining Experiences": "dining-experiences",
+    "Wellness Dates": "wellness-dates",
+    Freestyle: "freestyle",
+  };
+
+  // Map intents to their vibe arrays
+  const getVibesForIntent = (intentId: string): string[] => {
+    let vibeNames: string[] = [];
+
+    switch (intentId) {
+      case "solo-adventure":
+        vibeNames = soloAdventureVibes;
+        break;
+      case "first-dates":
+        vibeNames = firstDatesVibes;
+        break;
+      case "romantic":
+        vibeNames = romanticVibes;
+        break;
+      case "friendly":
+        vibeNames = friendlyVibes;
+        break;
+      case "group-fun":
+        vibeNames = groupFunVibes;
+        break;
+      case "business":
+        vibeNames = businessVibes;
+        break;
+      default:
+        // Default: show all vibes
+        vibeNames = soloAdventureVibes; // All vibes
+        break;
+    }
+
+    // Convert vibe names to vibe IDs
+    return vibeNames
+      .map((name) => vibeNameToId[name])
+      .filter((id) => id !== undefined) as string[];
+  };
+
+  // All available vibe options
+  const allVibeOptions = [
     {
       id: "take-a-stroll",
       name: "Take a Stroll",
-      icon: "eye",
-      emoji: "🚶",
-      description: "Walking tours, parks, scenic routes",
     },
     {
       id: "sip-and-chill",
       name: "Sip & Chill",
-      icon: "cafe",
-      emoji: "☕",
-      description: "Cafes, bars, lounges",
     },
     {
       id: "casual-eats",
       name: "Casual Eats",
-      icon: "restaurant",
-      emoji: "🍕",
-      description: "Casual dining, food trucks, markets",
     },
     {
       id: "screen-and-relax",
       name: "Screen & Relax",
-      icon: "musical-notes",
-      emoji: "🎬",
-      description: "Movies, shows, entertainment",
     },
     {
       id: "creative-hands-on",
       name: "Creative & Hands-On",
-      icon: "sparkles",
-      emoji: "🎨",
-      description: "Workshops, classes, DIY activities",
+    },
+    {
+      id: "picnics",
+      name: "Picnics",
     },
     {
       id: "play-and-move",
       name: "Play & Move",
-      icon: "fitness",
-      emoji: "⚽",
-      description: "Sports, games, active fun",
     },
     {
       id: "dining-experiences",
       name: "Dining Experiences",
-      icon: "restaurant",
-      emoji: "🍽️",
-      description: "Fine dining, tastings, culinary",
     },
     {
       id: "wellness-dates",
       name: "Wellness Dates",
-      icon: "leaf",
-      emoji: "🧘",
-      description: "Spa, yoga, meditation, nature",
     },
     {
       id: "freestyle",
       name: "Freestyle",
-      icon: "star",
-      emoji: "✨",
-      description: "Spontaneous and unique experiences",
     },
   ];
 
+  // Filter vibe options based on selected intents
+  // When multiple intents are selected, show the union of all vibes from all selected intents
+  const getFilteredVibeOptions = (): typeof allVibeOptions => {
+    // Always require intents to filter vibes - if no intents, return empty array
+    // This ensures we don't show all vibes when intents aren't properly loaded
+    if (!intents || !Array.isArray(intents) || intents.length === 0) {
+      console.warn(
+        "VibeSelectionStep: No intents provided, showing empty vibe list"
+      );
+      return [];
+    }
+
+    // Get all unique vibe IDs that are available for ALL selected intents (union)
+    const availableVibeIds = new Set<string>();
+
+    intents.forEach((intent: any) => {
+      // Handle both object format {id: "first-dates"} and string format "first-dates"
+      let intentId: string;
+      if (typeof intent === "string") {
+        intentId = intent;
+      } else if (intent && intent.id) {
+        intentId = intent.id;
+      } else {
+        console.warn("VibeSelectionStep: Invalid intent format", intent);
+        return;
+      }
+
+      // Get vibes for this specific intent
+      const vibesForIntent = getVibesForIntent(intentId);
+      if (vibesForIntent && vibesForIntent.length > 0) {
+        // Add all vibes from this intent to the set (union operation)
+        vibesForIntent.forEach((vibeId) => availableVibeIds.add(vibeId));
+      }
+    });
+
+    // Filter and return only the vibes that are available for the selected intents
+    // Maintain the order from allVibeOptions for consistency
+    const filtered = allVibeOptions.filter((vibe) =>
+      availableVibeIds.has(vibe.id)
+    );
+
+    console.log("VibeSelectionStep: Filtered vibes", {
+      intents: intents.map((i: any) => (typeof i === "string" ? i : i.id)),
+      availableVibeIds: Array.from(availableVibeIds).sort(),
+      filteredCount: filtered.length,
+      filteredVibes: filtered.map((v) => v.name),
+    });
+
+    return filtered;
+  };
+
+  const vibeOptions = getFilteredVibeOptions();
+
+  // Check if vibes are selected (robust check)
+  // Only consider vibes that are actually in the filtered list
+  const hasVibesSelected = useMemo(() => {
+    // If no vibes are available (no intents selected), disable button
+    if (vibeOptions.length === 0) {
+      return false;
+    }
+
+    // If no vibes are selected, disable button
+    if (!vibes || !Array.isArray(vibes) || vibes.length === 0) {
+      return false;
+    }
+
+    // Check if any of the selected vibes are in the current filtered vibe options
+    const availableVibeIds = new Set(vibeOptions.map((v) => v.id));
+
+    // Only return true if at least one selected vibe is in the available options
+    const hasValidSelection = vibes.some((vibeId: string) =>
+      availableVibeIds.has(vibeId)
+    );
+
+    return hasValidSelection;
+  }, [vibes, vibeOptions]);
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={20} color="#9ca3af" />
-        </TouchableOpacity>
+      <StatusBar barStyle="dark-content" backgroundColor="white" />
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Your Vibes</Text>
-          <Text style={styles.headerSubtitle}>Step 4 of 7</Text>
+      {/* Progress Bar Section */}
+      <View style={styles.progressSection}>
+        <View style={styles.progressBarContainer}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: "30%" }]} />
+          </View>
+          <View style={styles.progressTextContainer}>
+            <Text style={styles.progressTextLeft}>Step 3 of 10</Text>
+            <Text style={styles.progressTextRight}>30% complete</Text>
+          </View>
         </View>
-
-        <View style={{ width: 32 }} />
       </View>
 
-      {/* Progress Bar */}
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: "57.1%" }]} />
-      </View>
-
-      {/* Main Content */}
-      <View style={styles.vibeMainContent}>
+      {/* Scrollable Content */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+      >
         {/* Title Section */}
         <View style={styles.titleSection}>
-          <Text style={styles.title}>Choose Your Vibe</Text>
+          <Text style={styles.title}>What's your vibe?</Text>
           <Text style={styles.subtitle}>
-            Select all categories that match your style
-          </Text>
-          <Text style={styles.selectionCounter}>
-            {vibes?.length || 0} selected
+            Pick the experience categories you love
           </Text>
         </View>
 
         {/* Vibe Options Grid */}
-        <ScrollView
-          style={styles.vibeOptionsContainer}
-          showsVerticalScrollIndicator={true}
-          contentContainerStyle={styles.vibeOptionsContent}
-        >
-          <View style={styles.vibeGrid}>
-            {vibeCategories.map((vibe) => {
-              const isSelected = vibes?.includes(vibe.id);
+        <View style={styles.optionsContainer}>
+          {vibeOptions.map((option, index) => {
+            const isSelected = hasVibesSelected && vibes.includes(option.id);
 
-              return (
-                <TouchableOpacity
-                  key={vibe.id}
-                  onPress={() => onVibeToggle(vibe.id)}
-                  style={[
-                    styles.vibeCard,
-                    isSelected
-                      ? styles.vibeCardSelected
-                      : styles.vibeCardDefault,
-                  ]}
-                >
-                  <View style={styles.vibeCardContent}>
-                    <View
-                      style={[
-                        styles.vibeIcon,
-                        isSelected
-                          ? styles.vibeIconSelected
-                          : styles.vibeIconDefault,
-                      ]}
-                    >
-                      <Text style={styles.vibeEmoji}>{vibe.emoji}</Text>
-                    </View>
+            // Calculate marginRight based on column position
+            const isLastInRow = (index + 1) % numColumns === 0;
+            const marginRight = isLastInRow ? 0 : gap;
 
-                    <View style={styles.vibeTextContainer}>
-                      <Text style={styles.vibeTitle}>{vibe.name}</Text>
-                      <Text style={styles.vibeDescription}>
-                        {vibe.description}
-                      </Text>
-                    </View>
+            return (
+              <TouchableOpacity
+                key={option.id}
+                onPress={() => onVibeToggle(option.id)}
+                style={[
+                  styles.vibeCard,
+                  isSelected && styles.vibeCardSelected,
+                  {
+                    width: cardWidth,
+                    marginRight: marginRight,
+                  },
+                ]}
+                activeOpacity={0.7}
+              >
+                <View style={styles.vibeIconContainer}>
+                  <Ionicons
+                    name={getIconName(option.id) as any}
+                    size={24}
+                    color={isSelected ? "#ffffff" : "#374151"}
+                  />
+                </View>
 
-                    {isSelected && (
-                      <View style={styles.vibeCheckmark}>
-                        <Ionicons name="checkmark" size={16} color="#eb7825" />
-                      </View>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </ScrollView>
+                <View style={styles.vibeTextContainer}>
+                  <Text
+                    style={[
+                      styles.vibeTitle,
+                      isSelected && styles.vibeTitleSelected,
+                    ]}
+                  >
+                    {option.name}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </ScrollView>
 
-        {/* Continue Button */}
+      {/* Navigation Buttons */}
+      <View style={styles.navigationContainer}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <Ionicons name="arrow-back" size={18} color="#111827" />
+          <Text style={styles.backButtonText}>Back</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
-          onPress={onNext}
-          disabled={!vibes || vibes.length === 0}
           style={[
-            styles.continueButton,
-            (!vibes || vibes.length === 0) && styles.continueButtonDisabled,
+            styles.nextButton,
+            hasVibesSelected && !isLoading
+              ? styles.nextButtonEnabled
+              : styles.nextButtonDisabled,
           ]}
+          onPress={async () => {
+            // Prevent onPress from firing if no vibes are selected or already loading
+            if (!hasVibesSelected || isLoading) {
+              return;
+            }
+
+            setIsLoading(true);
+            try {
+              // Call onNext and wait for it if it returns a promise
+              const result = onNext();
+              if (result instanceof Promise) {
+                await result;
+              }
+            } catch (error) {
+              console.error("Error in onNext:", error);
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          disabled={!hasVibesSelected || isLoading}
+          activeOpacity={!hasVibesSelected || isLoading ? 1 : 0.7}
         >
-          <Text
-            style={[
-              styles.continueButtonText,
-              (!vibes || vibes.length === 0) &&
-                styles.continueButtonTextDisabled,
-            ]}
-          >
-            Continue
-          </Text>
-          {!vibes || vibes.length === 0 ? null : (
-            <Ionicons name="arrow-forward" size={20} color="white" />
+          {isLoading ? (
+            <>
+              <ActivityIndicator
+                size="small"
+                color="#ffffff"
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={[styles.nextButtonText, styles.nextButtonTextEnabled]}
+              >
+                Saving...
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text
+                style={[
+                  styles.nextButtonText,
+                  hasVibesSelected
+                    ? styles.nextButtonTextEnabled
+                    : styles.nextButtonTextDisabled,
+                ]}
+              >
+                Next
+              </Text>
+              <Ionicons
+                name="arrow-forward"
+                size={18}
+                color={hasVibesSelected ? "#ffffff" : "#6b7280"}
+              />
+            </>
           )}
         </TouchableOpacity>
       </View>

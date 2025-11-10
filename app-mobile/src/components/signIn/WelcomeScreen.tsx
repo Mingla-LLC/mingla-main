@@ -6,7 +6,7 @@ const minglaLogo = require('../../../assets/icon.png');
 interface WelcomeScreenProps {
   onSignUp: () => void;
   onNavigateToSignIn: () => void;
-  onStartOnboarding?: () => void;
+  onStartOnboarding?: (accountType?: string) => void;
 }
 
 const styles = StyleSheet.create({

@@ -518,10 +518,13 @@ export function useAppState() {
       name: string;
       username: string;
       organization?: string;
+      account_type?: string;
     },
     role: "explorer" | "curator"
   ) => {
-    console.log("Sign up requested:", { ...userData, role });
+    // Use account_type from userData if provided, otherwise use role
+    const accountType = userData.account_type || role;
+    console.log("Sign up requested:", { ...userData, role, accountType });
 
     try {
       // Split name into first and last name
@@ -529,14 +532,15 @@ export function useAppState() {
       const lastName = userData.name.split(" ").slice(1).join(" ") || "";
 
       // Use the signUp function from useAuthSimple
-      // signUp now handles profile creation with firstName, lastName, and username
+      // signUp now handles profile creation with firstName, lastName, username, and account_type
       const result = await signUp(
         userData.email,
         userData.password,
         userData.name, // displayName
         firstName,
         lastName,
-        userData.username
+        userData.username,
+        accountType // account_type
       );
 
       if (!result) {

@@ -188,20 +188,34 @@ export default function App() {
             setHasCompletedOnboarding(true);
             setShowOnboardingFlow(false);
           }}
-          onNavigateToSignUp={() => {
+          onNavigateToSignUp={(accountType) => {
             setShowOnboardingFlow(false);
             setShowSignUpForm(true);
+            // Store account_type for signup
+            if (accountType) {
+              setOnboardingData((prev: any) => ({
+                ...prev,
+                account_type: accountType,
+              }));
+            }
             // This will trigger the SignInPage to show sign-up form
           }}
           onBackToWelcome={() => {
             setShowOnboardingFlow(false);
             // This will return to the welcome screen
           }}
-          onNavigateToSignUpForm={() => {
+          onNavigateToSignUpForm={(accountType) => {
             console.log("Navigating to sign-up form");
 
             setShowOnboardingFlow(false);
             setShowSignUpForm(true);
+            // Store account_type for signup
+            if (accountType) {
+              setOnboardingData((prev: any) => ({
+                ...prev,
+                account_type: accountType,
+              }));
+            }
             // This will show the sign-up form
           }}
           onGoogleSignInComplete={() => {
@@ -209,6 +223,7 @@ export default function App() {
             // Check onboarding status will be handled by the navigation logic below
             // Don't set onboarding state here - let the profile check handle it
           }}
+          initialAccountType={onboardingData?.account_type}
         />
       </ErrorBoundary>
     );
@@ -224,12 +239,24 @@ export default function App() {
           onSignInRegular={(credentials) =>
             handleSignIn(credentials, "explorer")
           }
-          onSignUpRegular={(userData) => handleSignUp(userData, "explorer")}
+          onSignUpRegular={(userData) => {
+            const accountType = userData.account_type || "explorer";
+            handleSignUp(userData, accountType);
+          }}
           onSignInCurator={(credentials) =>
             handleSignIn(credentials, "curator")
           }
-          onSignUpCurator={(userData) => handleSignUp(userData, "curator")}
-          onStartOnboarding={() => setShowOnboardingFlow(true)}
+          onSignUpCurator={(userData) => {
+            const accountType = userData.account_type || "curator";
+            handleSignUp(userData, accountType);
+          }}
+          onStartOnboarding={(accountType) => {
+            setOnboardingData((prev: any) => ({
+              ...prev,
+              account_type: accountType,
+            }));
+            setShowOnboardingFlow(true);
+          }}
           initialMode={showSignUpForm ? "sign-up" : "welcome"}
           onResetSignUpForm={() => setShowSignUpForm(false)}
         />

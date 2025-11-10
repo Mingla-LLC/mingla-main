@@ -5,12 +5,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  ScrollView,
+  StatusBar,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 interface TravelConstraintStepProps {
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
   onBack: () => void;
   constraintType: "time" | "distance";
   constraintValue: number;
@@ -29,6 +32,8 @@ const TravelConstraintStep = ({
   const [inputValue, setInputValue] = useState<string>(
     constraintValue?.toString() || "30"
   );
+  const [isLoading, setIsLoading] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   // Update input value when constraintValue prop changes
   useEffect(() => {
@@ -62,76 +67,65 @@ const TravelConstraintStep = ({
       flex: 1,
       backgroundColor: "white",
     },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+    progressSection: {
       paddingHorizontal: 24,
-      paddingVertical: 16,
-      backgroundColor: "white",
-      borderBottomWidth: 1,
-      borderBottomColor: "#f3f4f6",
+      paddingTop: 8,
+      paddingBottom: 8,
     },
-    backButton: {
-      padding: 8,
-      borderRadius: 20,
-    },
-    headerCenter: {
-      alignItems: "center",
-    },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: "#111827",
-    },
-    headerSubtitle: {
-      fontSize: 14,
-      color: "#6b7280",
+    progressBarContainer: {
+      marginBottom: 8,
     },
     progressBar: {
-      height: 8,
+      height: 4,
       backgroundColor: "#e5e7eb",
-      borderRadius: 4,
-      marginHorizontal: 24,
-      marginVertical: 16,
+      borderRadius: 2,
+      overflow: "hidden",
     },
     progressFill: {
-      height: 8,
+      height: 4,
       backgroundColor: "#eb7825",
-      borderRadius: 4,
+      borderRadius: 2,
     },
-    mainContent: {
-      flex: 1,
+    progressTextContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 4,
+    },
+    progressTextLeft: {
+      fontSize: 12,
+      color: "#6b7280",
+    },
+    progressTextRight: {
+      fontSize: 12,
+      color: "#6b7280",
+    },
+    scrollContent: {
+      flexGrow: 1,
       paddingHorizontal: 24,
       paddingTop: 32,
+      paddingBottom: 120,
     },
     titleSection: {
       marginBottom: 32,
-      flexDirection: "row",
       alignItems: "center",
-    },
-    titleIcon: {
-      marginRight: 12,
-    },
-    titleContainer: {
-      flex: 1,
     },
     title: {
       fontSize: 28,
       fontWeight: "bold",
       color: "#111827",
       marginBottom: 8,
+      textAlign: "center",
     },
     subtitle: {
       fontSize: 16,
       color: "#6b7280",
+      textAlign: "center",
+      lineHeight: 22,
     },
     tabsContainer: {
       flexDirection: "row",
       marginBottom: 32,
-      backgroundColor: "#f3f4f6",
-      borderRadius: 12,
-      padding: 4,
     },
     tab: {
       flex: 1,
@@ -140,21 +134,30 @@ const TravelConstraintStep = ({
       justifyContent: "center",
       paddingVertical: 12,
       paddingHorizontal: 16,
-      borderRadius: 8,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      marginRight: 12,
+    },
+    tabLast: {
+      marginRight: 0,
     },
     tabSelected: {
-      backgroundColor: "#eb7825",
+      backgroundColor: "white",
+      borderColor: "#eb7825",
     },
     tabUnselected: {
-      backgroundColor: "transparent",
+      backgroundColor: "#f3f4f6",
+      borderColor: "transparent",
+    },
+    tabIcon: {
+      marginRight: 8,
     },
     tabText: {
       fontSize: 16,
-      fontWeight: "600",
-      marginLeft: 8,
+      fontWeight: "500",
     },
     tabTextSelected: {
-      color: "white",
+      color: "#eb7825",
     },
     tabTextUnselected: {
       color: "#6b7280",
@@ -165,19 +168,23 @@ const TravelConstraintStep = ({
     inputLabel: {
       fontSize: 14,
       fontWeight: "500",
-      color: "#374151",
+      color: "#111827",
       marginBottom: 8,
     },
     inputContainer: {
       flexDirection: "row",
       alignItems: "center",
-      borderWidth: 1,
+      backgroundColor: "white",
+      borderWidth: 1.5,
       borderColor: "#e5e7eb",
       borderRadius: 12,
       paddingHorizontal: 16,
-      paddingVertical: 16,
-      backgroundColor: "white",
+      paddingVertical: 14,
       marginBottom: 8,
+    },
+    inputContainerFocused: {
+      borderColor: "#eb7825",
+      borderWidth: 2,
     },
     inputIcon: {
       marginRight: 12,
@@ -192,37 +199,38 @@ const TravelConstraintStep = ({
       fontSize: 14,
       color: "#6b7280",
       marginBottom: 16,
+      lineHeight: 20,
     },
     quickOptionsContainer: {
       flexDirection: "row",
-      gap: 12,
     },
     quickOption: {
       flex: 1,
       paddingVertical: 12,
       paddingHorizontal: 16,
       borderRadius: 12,
-      borderWidth: 1,
       alignItems: "center",
       justifyContent: "center",
+      marginRight: 12,
+    },
+    quickOptionLast: {
+      marginRight: 0,
     },
     quickOptionSelected: {
       backgroundColor: "#eb7825",
-      borderColor: "#eb7825",
     },
     quickOptionUnselected: {
-      backgroundColor: "white",
-      borderColor: "#e5e7eb",
+      backgroundColor: "#f3f4f6",
     },
     quickOptionText: {
       fontSize: 14,
-      fontWeight: "600",
+      fontWeight: "500",
     },
     quickOptionTextSelected: {
-      color: "white",
+      color: "#ffffff",
     },
     quickOptionTextUnselected: {
-      color: "#374151",
+      color: "#111827",
     },
     navigationContainer: {
       flexDirection: "row",
@@ -230,42 +238,52 @@ const TravelConstraintStep = ({
       alignItems: "center",
       paddingHorizontal: 24,
       paddingVertical: 16,
+      backgroundColor: "white",
       borderTopWidth: 1,
       borderTopColor: "#f3f4f6",
     },
+    backButton: {
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 8,
+      backgroundColor: "white",
+    },
     backButtonText: {
       fontSize: 16,
-      color: "#6b7280",
+      color: "#111827",
       fontWeight: "500",
+      marginLeft: 4,
     },
     nextButton: {
-      backgroundColor: "#eb7825",
-      borderRadius: 12,
       paddingVertical: 12,
-      paddingHorizontal: 24,
+      paddingHorizontal: 16,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
+      borderRadius: 8,
+      backgroundColor: "#eb7825",
+      minWidth: 100,
     },
     nextButtonDisabled: {
       backgroundColor: "#e5e7eb",
-      opacity: 0.7,
     },
     nextButtonText: {
-      color: "white",
       fontSize: 16,
-      fontWeight: "600",
-      marginRight: 8,
+      fontWeight: "500",
+      color: "#ffffff",
+      marginRight: 4,
     },
     nextButtonTextDisabled: {
-      color: "#9ca3af",
+      color: "#6b7280",
     },
   });
 
   // Quick selection options for time (in minutes)
   const timeQuickOptions = [15, 30, 45, 60];
 
-  // Quick selection options for distance (in km) - will be shown when distance tab is selected
+  // Quick selection options for distance (in km)
   const distanceQuickOptions = [5, 10, 15, 20];
 
   const currentQuickOptions =
@@ -279,39 +297,35 @@ const TravelConstraintStep = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={20} color="#9ca3af" />
-        </TouchableOpacity>
+      <StatusBar barStyle="dark-content" backgroundColor="white" />
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Travel Constraint</Text>
-          <Text style={styles.headerSubtitle}>Step 6 of 10</Text>
+      {/* Progress Bar Section */}
+      <View style={styles.progressSection}>
+        <View style={styles.progressBarContainer}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: "60%" }]} />
+          </View>
+          <View style={styles.progressTextContainer}>
+            <Text style={styles.progressTextLeft}>Step 6 of 10</Text>
+            <Text style={styles.progressTextRight}>60% complete</Text>
+          </View>
         </View>
-
-        <View style={{ width: 32 }} />
       </View>
 
-      {/* Progress Bar */}
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: "60%" }]} />
-      </View>
-
-      {/* Main Content */}
-      <View style={styles.mainContent}>
+      {/* Scrollable Content */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+      >
         {/* Title Section */}
         <View style={styles.titleSection}>
-          <View style={styles.titleIcon}>
-            <Ionicons name="time-outline" size={24} color="#ef4444" />
-          </View>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>How far will you go?</Text>
-            <Text style={styles.subtitle}>Set your preferred travel limit</Text>
-          </View>
+          <Text style={styles.title}>How far will you go?</Text>
+          <Text style={styles.subtitle}>Set your preferred travel limit</Text>
         </View>
 
-        {/* Tab Selection */}
+        {/* Tab Selection - Two separate buttons */}
         <View style={styles.tabsContainer}>
           <TouchableOpacity
             style={[
@@ -321,11 +335,13 @@ const TravelConstraintStep = ({
                 : styles.tabUnselected,
             ]}
             onPress={() => onConstraintTypeChange("time")}
+            activeOpacity={0.7}
           >
             <Ionicons
               name="time-outline"
               size={18}
-              color={constraintType === "time" ? "white" : "#6b7280"}
+              color={constraintType === "time" ? "#eb7825" : "#6b7280"}
+              style={styles.tabIcon}
             />
             <Text
               style={[
@@ -342,16 +358,19 @@ const TravelConstraintStep = ({
           <TouchableOpacity
             style={[
               styles.tab,
+              styles.tabLast,
               constraintType === "distance"
                 ? styles.tabSelected
                 : styles.tabUnselected,
             ]}
             onPress={() => onConstraintTypeChange("distance")}
+            activeOpacity={0.7}
           >
             <Ionicons
               name="paper-plane-outline"
               size={18}
-              color={constraintType === "distance" ? "white" : "#6b7280"}
+              color={constraintType === "distance" ? "#eb7825" : "#6b7280"}
+              style={styles.tabIcon}
             />
             <Text
               style={[
@@ -374,22 +393,26 @@ const TravelConstraintStep = ({
               : "Maximum travel distance (km)"}
           </Text>
 
-          <View style={styles.inputContainer}>
-            <View style={styles.inputIcon}>
-              <Ionicons
-                name={
-                  constraintType === "time"
-                    ? "time-outline"
-                    : "location-outline"
-                }
-                size={20}
-                color="#6b7280"
-              />
-            </View>
+          <View
+            style={[
+              styles.inputContainer,
+              isInputFocused && styles.inputContainerFocused,
+            ]}
+          >
+            <Ionicons
+              name={
+                constraintType === "time" ? "time-outline" : "location-outline"
+              }
+              size={20}
+              color={isInputFocused ? "#eb7825" : "#6b7280"}
+              style={styles.inputIcon}
+            />
             <TextInput
               style={styles.input}
               value={inputValue}
               onChangeText={handleInputChange}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
               keyboardType="numeric"
               placeholder={constraintType === "time" ? "30" : "10"}
               placeholderTextColor="#9ca3af"
@@ -404,18 +427,21 @@ const TravelConstraintStep = ({
 
           {/* Quick Selection Options */}
           <View style={styles.quickOptionsContainer}>
-            {currentQuickOptions.map((value) => {
+            {currentQuickOptions.map((value, index) => {
               const isSelected = constraintValue === value;
+              const isLast = index === currentQuickOptions.length - 1;
               return (
                 <TouchableOpacity
                   key={value}
                   style={[
                     styles.quickOption,
+                    isLast && styles.quickOptionLast,
                     isSelected
                       ? styles.quickOptionSelected
                       : styles.quickOptionUnselected,
                   ]}
                   onPress={() => handleQuickSelect(value)}
+                  activeOpacity={0.7}
                 >
                   <Text
                     style={[
@@ -433,32 +459,65 @@ const TravelConstraintStep = ({
             })}
           </View>
         </View>
-      </View>
+      </ScrollView>
 
       {/* Navigation Buttons */}
       <View style={styles.navigationContainer}>
-        <TouchableOpacity onPress={onBack}>
-          <Text style={styles.backButtonText}>← Back</Text>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <Ionicons name="arrow-back" size={18} color="#111827" />
+          <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={onNext}
-          disabled={isNextDisabled}
           style={[
             styles.nextButton,
             isNextDisabled && styles.nextButtonDisabled,
           ]}
+          onPress={async () => {
+            if (isLoading || isNextDisabled) {
+              return;
+            }
+
+            setIsLoading(true);
+            try {
+              const result = onNext();
+              if (result instanceof Promise) {
+                await result;
+              }
+            } catch (error) {
+              console.error("Error in onNext:", error);
+            } finally {
+              setIsLoading(false);
+            }
+          }}
+          disabled={isNextDisabled || isLoading}
+          activeOpacity={isNextDisabled || isLoading ? 1 : 0.7}
         >
-          <Text
-            style={[
-              styles.nextButtonText,
-              isNextDisabled && styles.nextButtonTextDisabled,
-            ]}
-          >
-            Next
-          </Text>
-          {!isNextDisabled && (
-            <Ionicons name="arrow-forward" size={20} color="white" />
+          {isLoading ? (
+            <>
+              <ActivityIndicator
+                size="small"
+                color="#ffffff"
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.nextButtonText}>Saving...</Text>
+            </>
+          ) : (
+            <>
+              <Text
+                style={[
+                  styles.nextButtonText,
+                  isNextDisabled && styles.nextButtonTextDisabled,
+                ]}
+              >
+                Next
+              </Text>
+              <Ionicons
+                name="arrow-forward"
+                size={18}
+                color={isNextDisabled ? "#6b7280" : "#ffffff"}
+              />
+            </>
           )}
         </TouchableOpacity>
       </View>

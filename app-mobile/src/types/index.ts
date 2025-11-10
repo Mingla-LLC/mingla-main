@@ -188,7 +188,8 @@ export interface Preferences {
   travel_constraint_type: string;
   travel_constraint_value: number;
   datetime_pref: string;
-  date_option?: string | null; // "Now", "Today", "This Weekend", or "Pick a Date"
+  date_option?: string | null; // "now", "today", "weekend", "custom"
+  time_slot?: string | null; // "brunch", "afternoon", "dinner", "lateNight"
   created_at: string;
   updated_at: string;
 }

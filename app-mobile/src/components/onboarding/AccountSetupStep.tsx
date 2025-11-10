@@ -14,7 +14,7 @@ const googleIcon = require("../../../assets/google_icon.png");
 interface AccountSetupStepProps {
   onNext: () => void;
   onBack: () => void;
-  onNavigateToSignUp?: () => void;
+  onNavigateToSignUp?: (accountType?: string) => void;
   onNavigateToPhoneSignUp?: () => void;
   onNavigateToGoogleSignIn?: () => void;
   userProfile?: {
@@ -22,6 +22,7 @@ interface AccountSetupStepProps {
     email: string;
     profileImage?: string | null;
   };
+  accountType?: string | null;
 }
 
 const AccountSetupStep = ({
@@ -31,6 +32,7 @@ const AccountSetupStep = ({
   onNavigateToPhoneSignUp,
   onNavigateToGoogleSignIn,
   userProfile,
+  accountType,
 }: AccountSetupStepProps) => {
   const styles = StyleSheet.create({
     container: {
@@ -184,20 +186,20 @@ const AccountSetupStep = ({
           {/* Continue with Email */}
           <TouchableOpacity
             style={styles.authButton}
-            onPress={onNavigateToSignUp}
+            onPress={() => onNavigateToSignUp?.(accountType || undefined)}
           >
             <Ionicons name="mail-outline" size={20} color="#111827" />
             <Text style={styles.authButtonText}>Continue with Email</Text>
           </TouchableOpacity>
 
           {/* Continue with Phone */}
-          <TouchableOpacity
+          {/* <TouchableOpacity
             style={styles.authButton}
             onPress={onNavigateToPhoneSignUp}
           >
             <Ionicons name="call-outline" size={20} color="#111827" />
             <Text style={styles.authButtonText}>Continue with Phone</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
 
           {/* Separator */}
           <View style={styles.separatorContainer}>
