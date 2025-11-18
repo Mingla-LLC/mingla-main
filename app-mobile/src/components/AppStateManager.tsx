@@ -186,6 +186,7 @@ export function useAppState() {
   }>({});
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [preferencesRefreshKey, setPreferencesRefreshKey] = useState(0); // Key to trigger experience refresh
 
   const [activityNavigation, setActivityNavigation] = useState<{
     selectedBoard?: any;
@@ -706,6 +707,8 @@ export function useAppState() {
     setBoardsSessions,
     profileStats,
     setProfileStats,
+    preferencesRefreshKey,
+    setPreferencesRefreshKey,
 
     // Utilities
     updateBoardsSessions,

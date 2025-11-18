@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Text, View, TouchableOpacity, Image, StyleSheet, Dimensions, Animated, PanResponder, SafeAreaView, StatusBar } from 'react-native';
+import { Text, View, TouchableOpacity, Image, StyleSheet, Dimensions, Animated, PanResponder, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { formatCurrency, formatDistance } from './utils/formatters';
 import { ExperiencesService, Experience } from '../services/experiencesService';
+import { ExperienceGenerationService, GeneratedExperience } from '../services/experienceGenerationService';
 import { useAuthSimple } from '../hooks/useAuthSimple';
+import { enhancedLocationService } from '../services/enhancedLocationService';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -60,6 +62,7 @@ interface SwipeableCardsProps {
   onResetCards?: () => void;
   generateNewMockCard?: () => any;
   onboardingData?: any;
+  refreshKey?: number | string; // Key that changes to trigger refresh
 }
 
 // Real data will be fetched from Supabase
@@ -96,7 +99,8 @@ export default function SwipeableCards({
   removedCardIds = [], 
   onResetCards,
   generateNewMockCard, 
-  onboardingData 
+  onboardingData,
+  refreshKey
 }: SwipeableCardsProps) {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -107,12 +111,122 @@ export default function SwipeableCards({
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [currentTipIndex, setCurrentTipIndex] = useState(0);
+  const spinValue = useRef(new Animated.Value(0)).current;
 
   const { user } = useAuthSimple();
 
-  // Fetch real data from Supabase
+  // Tips related to vibes, intents, and categories
+  const tips = [
+    "💡 Solo adventures are perfect for discovering hidden gems at your own pace",
+    "🌟 First dates? Try cozy cafes or scenic walks for a relaxed atmosphere",
+    "💕 Romantic vibes? Look for intimate dining experiences or sunset spots",
+    "👥 Group fun works best with interactive activities like escape rooms or game nights",
+    "☕ Sip & Chill spots are great for casual meetups and work sessions",
+    "🚶‍♀️ Take a Stroll through local parks and neighborhoods to discover new areas",
+    "🍽️ Dining Experiences offer unique culinary adventures beyond the ordinary",
+    "🎨 Creative & Hands-On activities like pottery or painting classes spark creativity",
+    "🧘‍♀️ Wellness Dates combine relaxation with meaningful connection",
+    "🎬 Screen & Relax options are perfect for rainy days or cozy evenings",
+    "🏃‍♀️ Play & Move activities keep you active while having fun",
+    "🧺 Picnics are budget-friendly and perfect for sunny afternoons",
+    "✨ Freestyle experiences let you discover something completely unexpected",
+    "🍔 Casual Eats offer great food without the formal atmosphere",
+    "💼 Business meetings? Choose quiet cafes or professional spaces",
+    "🌆 Explore new neighborhoods to find unique local experiences",
+    "⏰ Adjust your travel time to discover places just outside your usual radius",
+    "💰 Budget-friendly options exist in every category - explore different price ranges",
+    "🎯 Mix different categories to keep your experiences diverse and exciting",
+    "🌙 Late night spots offer a different vibe - perfect for night owls",
+    "☀️ Afternoon activities often have better availability and pricing",
+    "🍳 Brunch spots are great for weekend socializing",
+    "🌳 Nature-based activities are free and refreshing",
+    "🎪 Look for pop-up events and seasonal experiences",
+    "🏛️ Museums and galleries offer cultural enrichment",
+    "🎵 Live music venues create memorable atmosphere",
+    "🍷 Wine tastings and brewery tours are great for groups",
+    "🏖️ Waterfront locations offer scenic views and fresh air",
+    "🎭 Theaters and comedy clubs provide entertainment value",
+    "🛍️ Markets and festivals showcase local culture",
+    "🏋️ Fitness classes combine health with social connection",
+    "📚 Bookstores and libraries offer quiet, intellectual spaces",
+    "🎨 Art galleries provide inspiration and conversation starters",
+    "🍕 Food tours let you sample multiple places in one experience",
+    "🌉 Iconic landmarks make for great photo opportunities",
+    "🏞️ Hiking trails offer exercise and beautiful scenery",
+    "🎪 Festivals and events create shared memorable experiences",
+    "🍰 Dessert spots are perfect for sweet-tooth satisfaction",
+    "🌮 Food trucks offer variety and casual dining",
+    "🎯 Try something new - you might discover a new favorite activity",
+  ];
+
+  // Shuffle tips array for random order
+  const shuffledTips = useRef(
+    tips.sort(() => Math.random() - 0.5)
+  ).current;
+
+  // Rotate tips every 5 seconds
+  useEffect(() => {
+    if (!loading) return;
+
+    const tipInterval = setInterval(() => {
+      setCurrentTipIndex((prev) => (prev + 1) % shuffledTips.length);
+    }, 5000);
+
+    return () => clearInterval(tipInterval);
+  }, [loading, shuffledTips.length]);
+
+  // Animate spinner
+  useEffect(() => {
+    if (!loading) return;
+
+    const spinAnimation = Animated.loop(
+      Animated.timing(spinValue, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+      })
+    );
+
+    spinAnimation.start();
+
+    return () => spinAnimation.stop();
+  }, [loading, spinValue]);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  // Get user location
+  useEffect(() => {
+    const getLocation = async () => {
+      try {
+        const location = await enhancedLocationService.getCurrentLocation();
+        if (location) {
+          setUserLocation({ lat: location.latitude, lng: location.longitude });
+        } else {
+          // Fallback to default location (San Francisco)
+          setUserLocation({ lat: 37.7749, lng: -122.4194 });
+        }
+      } catch (error) {
+        console.error('Error getting location:', error);
+        // Fallback to default location
+        setUserLocation({ lat: 37.7749, lng: -122.4194 });
+      }
+    };
+    getLocation();
+  }, []);
+
+  // Fetch AI-generated experiences
   useEffect(() => {
     const fetchRecommendations = async () => {
+      if (!userLocation) {
+        // Wait for location
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
@@ -125,51 +239,106 @@ export default function SwipeableCards({
             console.log('User preferences loaded:', userPrefs);
           } catch (error) {
             console.error('Error loading user preferences:', error);
-            // Continue without preferences - app will use defaults
-            console.log('Using default preferences due to error');
+            // Use default preferences
+            userPrefs = {
+              mode: 'explore',
+              budget_min: 0,
+              budget_max: 1000,
+              people_count: 1,
+              categories: ['Sip & Chill', 'Stroll'],
+              travel_mode: 'walking',
+              travel_constraint_type: 'time',
+              travel_constraint_value: 30,
+              datetime_pref: new Date().toISOString(),
+            };
           }
         } else {
-          console.log('No user authenticated - using default behavior');
+          // Default preferences for non-authenticated users
+          userPrefs = {
+            mode: 'explore',
+            budget_min: 0,
+            budget_max: 1000,
+            people_count: 1,
+            categories: ['Sip & Chill', 'Stroll'],
+            travel_mode: 'walking',
+            travel_constraint_type: 'time',
+            travel_constraint_value: 30,
+            datetime_pref: new Date().toISOString(),
+          };
         }
         
-        // Fetch experiences from Supabase
-        let experiences = [];
+        // Generate experiences using AI
         try {
-          experiences = await ExperiencesService.getExperiences();
-          console.log('Fetched experiences from Supabase:', experiences.length);
-        } catch (error) {
-          console.error('Error fetching experiences from Supabase:', error);
-          setError('Unable to load experiences. Please check your connection and try again.');
-          return;
-        }
-        
-        if (experiences.length === 0) {
-          console.warn('No experiences found in database');
-          setError('No experiences available. Please check back later.');
-          return;
-        }
-        
-        // Transform experiences to recommendation format
-        const transformedRecommendations = experiences.map(exp => 
-          ExperiencesService.transformExperience(exp)
-        );
-        
-        console.log('Transformed recommendations:', transformedRecommendations.length);
-        setRecommendations(transformedRecommendations);
-        
-        // Track view interaction for the first card (only if user is authenticated)
-        if (transformedRecommendations.length > 0 && user?.id) {
-          try {
-            await ExperiencesService.trackInteraction(
-              user.id,
-              transformedRecommendations[0].id,
-              'view'
-            );
-            console.log('Tracked view interaction for first card');
-          } catch (error) {
-            console.error('Error tracking view interaction:', error);
-            // Continue without tracking - not critical
+          const generatedExperiences = await ExperienceGenerationService.generateExperiences({
+            userId: user?.id || 'anonymous',
+            preferences: userPrefs,
+            location: userLocation,
+          });
+          
+          console.log('Generated experiences:', generatedExperiences.length);
+          
+          if (generatedExperiences.length === 0) {
+            setError('no_matches');
+            setRecommendations([]);
+            return;
           }
+          
+          // Transform to Recommendation format
+          const transformedRecommendations = generatedExperiences.map(exp => ({
+            id: exp.id,
+            title: exp.title,
+            category: exp.category,
+            categoryIcon: exp.categoryIcon,
+            timeAway: exp.travelTime,
+            description: exp.description,
+            budget: exp.priceRange,
+            rating: exp.rating,
+            image: exp.heroImage,
+            images: exp.images || [exp.heroImage],
+            priceRange: exp.priceRange,
+            distance: exp.distance,
+            travelTime: exp.travelTime,
+            experienceType: exp.category,
+            highlights: exp.highlights || [],
+            fullDescription: exp.description,
+            address: exp.address,
+            openingHours: '',
+            tags: exp.highlights || [],
+            matchScore: exp.matchScore,
+            reviewCount: exp.reviewCount,
+            socialStats: {
+              views: 0,
+              likes: 0,
+              saves: 0,
+              shares: 0,
+            },
+            matchFactors: exp.matchFactors || {
+              location: 85,
+              budget: 85,
+              category: 85,
+              time: 85,
+              popularity: 85,
+            },
+          }));
+          
+          setRecommendations(transformedRecommendations);
+          
+          // Track view interaction for the first card
+          if (transformedRecommendations.length > 0 && user?.id) {
+            try {
+              await ExperiencesService.trackInteraction(
+                user.id,
+                transformedRecommendations[0].id,
+                'view'
+              );
+            } catch (error) {
+              console.error('Error tracking view interaction:', error);
+            }
+          }
+          
+        } catch (genError) {
+          console.error('Error generating experiences:', genError);
+          setError('Failed to generate experiences. Please try again.');
         }
         
       } catch (err) {
@@ -181,7 +350,7 @@ export default function SwipeableCards({
     };
 
     fetchRecommendations();
-  }, [user?.id]);
+  }, [user?.id, userLocation, refreshKey]); // Refresh when preferences are updated
 
   const availableRecommendations = recommendations.filter(rec => 
     !removedCards.has(rec.id) && !removedCardIds.includes(rec.id)
@@ -330,25 +499,170 @@ export default function SwipeableCards({
     }
   };
 
-  // Loading state
+  // Loading state with spinner and rotating tips
   if (loading) {
     return (
-      <View style={styles.noCardsContainer}>
-        <View style={styles.noCardsContent}>
-          <View style={styles.noCardsIcon}>
-            <Ionicons name="hourglass" size={64} color="#6b7280" />
+      <View style={styles.loadingContainer}>
+        <View style={styles.loadingContent}>
+          {/* Animated Spinner */}
+          <Animated.View
+            style={[
+              styles.spinnerContainer,
+              {
+                transform: [{ rotate: spin }],
+              },
+            ]}
+          >
+            <View style={styles.spinnerOuter}>
+              <View style={styles.spinnerInner}>
+                <Ionicons name="sparkles" size={32} color="#eb7825" />
+              </View>
+            </View>
+          </Animated.View>
+
+          {/* Loading Text */}
+          <Text style={styles.loadingTitle}>Finding your perfect experiences...</Text>
+
+          {/* Rotating Tip */}
+          <View style={styles.tipContainer}>
+            <Text style={styles.tipText}>{shuffledTips[currentTipIndex]}</Text>
           </View>
-          <Text style={styles.noCardsTitle}>Loading experiences...</Text>
-          <Text style={styles.noCardsSubtitle}>
-            Finding the best recommendations for you
-          </Text>
         </View>
       </View>
     );
   }
 
-  // Error state
-  if (error) {
+  // Error state - No matches found
+  if (error === 'no_matches' || (error && availableRecommendations.length === 0)) {
+    const currentPrefs = userPreferences || {
+      budget_min: 0,
+      budget_max: 1000,
+      categories: [],
+      travel_constraint_value: 30,
+    };
+    
+    return (
+      <View style={styles.noCardsContainer}>
+        <View style={styles.noCardsContent}>
+          <Text style={styles.noMatchesEmoji}>💡</Text>
+          <Text style={styles.noCardsTitle}>No matches found</Text>
+          <Text style={styles.noCardsSubtitle}>
+            We couldn't find experiences matching your current filters.
+          </Text>
+          
+          {/* Filter Summary */}
+          <View style={styles.filterSummary}>
+            <Text style={styles.filterSummaryTitle}>Current Filters:</Text>
+            <View style={styles.filterTags}>
+              {currentPrefs.categories && currentPrefs.categories.length > 0 && (
+                <View style={styles.filterTag}>
+                  <Text style={styles.filterTagText}>
+                    Categories: {currentPrefs.categories.join(', ')}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.filterTag}>
+                <Text style={styles.filterTagText}>
+                  Budget: ${currentPrefs.budget_min || 0}-${currentPrefs.budget_max || 1000}
+                </Text>
+              </View>
+              <View style={styles.filterTag}>
+                <Text style={styles.filterTagText}>
+                  Travel: {currentPrefs.travel_constraint_value || 30} min
+                </Text>
+              </View>
+            </View>
+          </View>
+          
+          <Text style={styles.suggestionsTitle}>Suggestions:</Text>
+          <Text style={styles.suggestionsText}>
+            • Try expanding your budget range{'\n'}
+            • Add more categories to your preferences{'\n'}
+            • Increase your travel time constraint{'\n'}
+            • Check back later for new experiences
+          </Text>
+          
+          <TouchableOpacity 
+            onPress={() => {
+              setError(null);
+              setLoading(true);
+              // Retry with same preferences
+              const fetchRecommendations = async () => {
+                if (!userLocation) return;
+                try {
+                  const userPrefs = user?.id 
+                    ? await ExperiencesService.getUserPreferences(user.id)
+                    : {
+                        mode: 'explore',
+                        budget_min: 0,
+                        budget_max: 1000,
+                        people_count: 1,
+                        categories: ['Sip & Chill', 'Stroll'],
+                        travel_mode: 'walking',
+                        travel_constraint_type: 'time',
+                        travel_constraint_value: 30,
+                        datetime_pref: new Date().toISOString(),
+                      };
+                  
+                  const generatedExperiences = await ExperienceGenerationService.generateExperiences({
+                    userId: user?.id || 'anonymous',
+                    preferences: userPrefs,
+                    location: userLocation,
+                  });
+                  
+                  if (generatedExperiences.length > 0) {
+                    const transformed = generatedExperiences.map(exp => ({
+                      id: exp.id,
+                      title: exp.title,
+                      category: exp.category,
+                      categoryIcon: exp.categoryIcon,
+                      timeAway: exp.travelTime,
+                      description: exp.description,
+                      budget: exp.priceRange,
+                      rating: exp.rating,
+                      image: exp.heroImage,
+                      images: exp.images || [exp.heroImage],
+                      priceRange: exp.priceRange,
+                      distance: exp.distance,
+                      travelTime: exp.travelTime,
+                      experienceType: exp.category,
+                      highlights: exp.highlights || [],
+                      fullDescription: exp.description,
+                      address: exp.address,
+                      openingHours: '',
+                      tags: exp.highlights || [],
+                      matchScore: exp.matchScore,
+                      reviewCount: exp.reviewCount,
+                      socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+                      matchFactors: exp.matchFactors || {
+                        location: 85, budget: 85, category: 85, time: 85, popularity: 85,
+                      },
+                    }));
+                    setRecommendations(transformed);
+                    setError(null);
+                  } else {
+                    setError('no_matches');
+                  }
+                } catch (err) {
+                  setError('Failed to load recommendations');
+                } finally {
+                  setLoading(false);
+                }
+              };
+              fetchRecommendations();
+            }}
+            style={styles.startOverButton}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.startOverButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // General error state
+  if (error && error !== 'no_matches') {
     return (
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
@@ -363,14 +677,61 @@ export default function SwipeableCards({
             onPress={() => {
               setError(null);
               setLoading(true);
-              // Retry fetching
+              // Retry by re-fetching
               const fetchRecommendations = async () => {
+                if (!userLocation) return;
                 try {
-                  const experiences = await ExperiencesService.getExperiences();
-                  const transformedRecommendations = experiences.map(exp => 
-                    ExperiencesService.transformExperience(exp)
-                  );
-                  setRecommendations(transformedRecommendations);
+                  const userPrefs = user?.id 
+                    ? await ExperiencesService.getUserPreferences(user.id)
+                    : {
+                        mode: 'explore',
+                        budget_min: 0,
+                        budget_max: 1000,
+                        people_count: 1,
+                        categories: ['Sip & Chill', 'Stroll'],
+                        travel_mode: 'walking',
+                        travel_constraint_type: 'time',
+                        travel_constraint_value: 30,
+                        datetime_pref: new Date().toISOString(),
+                      };
+                  
+                  const generatedExperiences = await ExperienceGenerationService.generateExperiences({
+                    userId: user?.id || 'anonymous',
+                    preferences: userPrefs,
+                    location: userLocation,
+                  });
+                  
+                  if (generatedExperiences.length > 0) {
+                    const transformed = generatedExperiences.map(exp => ({
+                      id: exp.id,
+                      title: exp.title,
+                      category: exp.category,
+                      categoryIcon: exp.categoryIcon,
+                      timeAway: exp.travelTime,
+                      description: exp.description,
+                      budget: exp.priceRange,
+                      rating: exp.rating,
+                      image: exp.heroImage,
+                      images: exp.images || [exp.heroImage],
+                      priceRange: exp.priceRange,
+                      distance: exp.distance,
+                      travelTime: exp.travelTime,
+                      experienceType: exp.category,
+                      highlights: exp.highlights || [],
+                      fullDescription: exp.description,
+                      address: exp.address,
+                      openingHours: '',
+                      tags: exp.highlights || [],
+                      matchScore: exp.matchScore,
+                      reviewCount: exp.reviewCount,
+                      socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+                      matchFactors: exp.matchFactors || {
+                        location: 85, budget: 85, category: 85, time: 85, popularity: 85,
+                      },
+                    }));
+                    setRecommendations(transformed);
+                    setError(null);
+                  }
                 } catch (err) {
                   setError('Failed to load recommendations');
                 } finally {
@@ -466,7 +827,7 @@ export default function SwipeableCards({
               </View>
             </View>
           )}
-          {/* Card Image */}
+          {/* Hero Image Section - 60-65% of card */}
           <View style={styles.imageContainer}>
             <Image
               source={{ uri: currentRec.image }}
@@ -474,104 +835,75 @@ export default function SwipeableCards({
               resizeMode="cover"
             />
             
-            {/* Match Score Badge */}
+            {/* Match Score Badge - Top Left */}
             <View style={styles.matchBadge}>
+              <Ionicons name="star" size={14} color="#1f2937" style={{ marginRight: 4 }} />
               <Text style={styles.matchText}>{currentRec.matchScore}% Match</Text>
             </View>
             
-            {/* Card Counter */}
-            <View style={styles.cardCounter}>
-              <Text style={styles.counterText}>1/3</Text>
-            </View>
+            {/* Gallery Indicator if multiple images */}
+            {currentRec.images && currentRec.images.length > 1 && (
+              <View style={styles.galleryIndicator}>
+                <Ionicons name="images" size={16} color="white" />
+                <Text style={styles.galleryText}>{currentRec.images.length}</Text>
+              </View>
+            )}
             
-            {/* Card Title Overlay */}
+            {/* Title and Details Overlay - Bottom Left of Image */}
             <View style={styles.titleOverlay}>
               <Text style={styles.cardTitle}>{currentRec.title}</Text>
-              <View style={styles.categoryRow}>
-                <Ionicons name={CategoryIcon as any} size={16} color="white" />
-                <Text style={styles.categoryText}>{currentRec.category}</Text>
-              </View>
-            </View>
-            
-            {/* Action Buttons */}
-            <View style={styles.actionButtons}>
-              <TouchableOpacity 
-                style={styles.buyButton}
-                onPress={() => {
-                  console.log('Buy Now button pressed!');
-                  onPurchaseComplete?.(currentRec, { type: 'purchase', price: currentRec.priceRange });
-                }}
-                activeOpacity={0.8}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="bag" size={20} color="white" />
-                <Text style={styles.buyButtonText}>Buy Now</Text>
-              </TouchableOpacity>
               
-              <View style={styles.rightButtons}>
-                <TouchableOpacity 
-                  style={styles.actionButton}
-                  onPress={() => {
-                    console.log('Details button pressed!');
-                    // Add details functionality here
-                  }}
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons name="chevron-down" size={20} color="white" />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.actionButton}
-                  onPress={() => {
-                    console.log('Share button pressed!');
-                    onShareCard?.(currentRec);
-                  }}
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons name="share" size={20} color="white" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-          
-          {/* Card Details */}
-          <View style={styles.cardDetails}>
-            <View style={styles.detailsRow}>
-              <View style={styles.ratingContainer}>
-                <Ionicons name="star" size={16} color="#eb7825" />
-                <Text style={styles.ratingText}>{currentRec.rating} ({currentRec.reviewCount})</Text>
-              </View>
-              
-              <View style={styles.distanceContainer}>
-                <Ionicons name="navigate" size={16} color="#eb7825" />
-                <Text style={styles.distanceText}>{currentRec.travelTime}</Text>
-              </View>
-              
-              <Text style={styles.priceText}>{currentRec.priceRange}</Text>
-            </View>
-            
-            <Text style={styles.description}>{currentRec.description}</Text>
-            
-            <View style={styles.tagsContainer}>
-              {currentRec.tags.slice(0, 3).map((tag, index) => (
-                <View key={index} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
+              {/* Three small badges: distance, travel time, rating */}
+              <View style={styles.detailsBadges}>
+                <View style={styles.detailBadge}>
+                  <Ionicons name="location" size={12} color="white" />
+                  <Text style={styles.detailBadgeText}>{currentRec.distance}</Text>
                 </View>
-              ))}
+                <View style={styles.detailBadge}>
+                  <Ionicons name="time" size={12} color="white" />
+                  <Text style={styles.detailBadgeText}>{currentRec.travelTime}</Text>
+                </View>
+                <View style={styles.detailBadge}>
+                  <Ionicons name="star" size={12} color="white" />
+                  <Text style={styles.detailBadgeText}>{currentRec.rating.toFixed(1)}</Text>
+                </View>
+              </View>
             </View>
           </View>
           
-          {/* Swipe Instructions */}
-          <View style={styles.swipeInstructions}>
-            <View style={styles.swipeInstruction}>
-              <Ionicons name="arrow-back" size={16} color="#ef4444" />
-              <Text style={styles.swipeInstructionText}>Swipe left for NO</Text>
+          {/* White Details Section - Bottom 35-40% */}
+          <View style={styles.cardDetails}>
+            {/* Category/Provider */}
+            <View style={styles.categoryRow}>
+              <Ionicons name={CategoryIcon as any} size={16} color="#eb7825" />
+              <Text style={styles.categoryText}>{currentRec.category}</Text>
             </View>
-            <View style={styles.swipeInstruction}>
-              <Text style={styles.swipeInstructionText}>Swipe right for YES</Text>
-              <Ionicons name="arrow-forward" size={16} color="#4ade80" />
-            </View>
+            
+            {/* Description - 2 lines max */}
+            <Text style={styles.description} numberOfLines={2}>
+              {currentRec.description}
+            </Text>
+            
+            {/* Top 2 Highlights */}
+            {currentRec.highlights && currentRec.highlights.length > 0 && (
+              <View style={styles.highlightsContainer}>
+                {currentRec.highlights.slice(0, 2).map((highlight: string, index: number) => (
+                  <View key={index} style={styles.highlightBadge}>
+                    <Text style={styles.highlightText}>{highlight}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            
+            {/* Share Button - Centered at bottom */}
+            <TouchableOpacity 
+              style={styles.shareButton}
+              onPress={handleShare}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="share-outline" size={18} color="#6b7280" />
+              <Text style={styles.shareButtonText}>Share</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -610,7 +942,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   imageContainer: {
-    flex: 1,
+    flex: 0.65, // 65% of card height
     position: 'relative',
   },
   cardImage: {
@@ -621,56 +953,87 @@ const styles = StyleSheet.create({
   },
   matchBadge: {
     position: 'absolute',
-    top: 20,
-    left: 20,
-    backgroundColor: '#eb7825',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    top: 16,
+    left: 16,
+    backgroundColor: 'white',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   matchText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
+    color: '#1f2937',
+    fontSize: 13,
+    fontWeight: '600',
   },
-  cardCounter: {
+  galleryIndicator: {
     position: 'absolute',
-    top: 20,
-    right: 20,
+    top: 16,
+    right: 16,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  counterText: {
+  galleryText: {
     color: 'white',
     fontSize: 12,
     fontWeight: '500',
   },
   titleOverlay: {
     position: 'absolute',
-    bottom: 80,
+    bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    padding: 24,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    padding: 20,
+    paddingBottom: 24,
   },
   cardTitle: {
     color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 8,
+    marginBottom: 12,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  detailsBadges: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  detailBadge: {
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  detailBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
   },
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    marginBottom: 12,
   },
   categoryText: {
-    color: 'white',
-    fontSize: 16,
+    color: '#6b7280',
+    fontSize: 14,
     fontWeight: '500',
   },
   actionButtons: {
@@ -712,62 +1075,114 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardDetails: {
-    padding: 24,
-  },
-  detailsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  ratingText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  distanceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  distanceText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  priceText: {
-    fontSize: 14,
-    color: '#eb7825',
-    fontWeight: '600',
+    flex: 0.35, // 35% of card height
+    backgroundColor: 'white',
+    padding: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   description: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#374151',
-    marginBottom: 12,
+    marginBottom: 16,
     lineHeight: 22,
   },
-  tagsContainer: {
+  highlightsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    marginBottom: 16,
   },
-  tag: {
-    backgroundColor: '#f9fafb',
+  highlightBadge: {
+    backgroundColor: '#fef3e2',
     borderWidth: 1,
-    borderColor: '#eb7825',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 18,
+    borderColor: '#fed7aa',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
-  tagText: {
+  highlightText: {
     fontSize: 12,
     color: '#eb7825',
     fontWeight: '500',
+  },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  shareButtonText: {
+    fontSize: 15,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#f9fafb',
+  },
+  loadingContent: {
+    alignItems: 'center',
+    gap: 32,
+    maxWidth: 320,
+  },
+  spinnerContainer: {
+    width: 100,
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  spinnerOuter: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 4,
+    borderColor: '#ffedd5',
+    borderTopColor: '#eb7825',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  spinnerInner: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#fff7ed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  tipContainer: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    minHeight: 80,
+    justifyContent: 'center',
+  },
+  tipText: {
+    fontSize: 15,
+    color: '#374151',
+    textAlign: 'center',
+    lineHeight: 22,
   },
   noCardsContainer: {
     flex: 1,
@@ -806,6 +1221,51 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
     lineHeight: 24,
+    marginBottom: 20,
+  },
+  noMatchesEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  filterSummary: {
+    width: '100%',
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  filterSummaryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  filterTags: {
+    gap: 8,
+  },
+  filterTag: {
+    backgroundColor: 'white',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  filterTagText: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  suggestionsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  suggestionsText: {
+    fontSize: 14,
+    color: '#6b7280',
+    lineHeight: 22,
+    marginBottom: 20,
   },
   startOverButton: {
     backgroundColor: '#eb7825',

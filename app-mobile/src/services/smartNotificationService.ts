@@ -192,13 +192,7 @@ class SmartNotificationService {
           favoriteLocations: true,
         },
         frequency: 'medium',
-        customFrequency: {
-          weekdays: true,
-          weekends: true,
-          morning: true,
-          afternoon: true,
-          evening: true,
-        },
+        // customFrequency removed - column doesn't exist in notification_preferences table
       };
 
       const { data, error } = await supabase
@@ -208,7 +202,9 @@ class SmartNotificationService {
         .single();
 
       if (error) {
-        console.error('Error creating default preferences:', error);
+        // Silently fail if notification_preferences table doesn't exist or has schema issues
+        // This is optional functionality and shouldn't break the app
+        console.warn('Could not create notification preferences (table may not exist):', error.message);
         return null;
       }
 

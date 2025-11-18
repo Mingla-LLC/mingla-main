@@ -97,6 +97,7 @@ export default function App() {
     setOnboardingData,
     showSignUpForm,
     setShowSignUpForm,
+    preferencesRefreshKey,
   } = state;
 
   // Show loading while checking authentication status (with fallback)
@@ -294,6 +295,7 @@ export default function App() {
             removedCardIds={removedCardIds}
             onResetCards={() => setRemovedCardIds([])}
             generateNewMockCard={() => console.log("Generate new card")}
+            refreshKey={preferencesRefreshKey}
           />
         );
       case "connections":

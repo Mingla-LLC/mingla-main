@@ -25,9 +25,10 @@ interface HomePageProps {
   onResetCards?: () => void;
   generateNewMockCard?: () => any;
   onboardingData?: any;
+  refreshKey?: number | string;
 }
 
-export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpenCollabPreferences, currentMode, userPreferences, accountPreferences, onAddToCalendar, savedCards, onSaveCard, onShareCard, onPurchaseComplete, removedCardIds, onResetCards, generateNewMockCard, onboardingData }: HomePageProps) {
+export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpenCollabPreferences, currentMode, userPreferences, accountPreferences, onAddToCalendar, savedCards, onSaveCard, onShareCard, onPurchaseComplete, removedCardIds, onResetCards, generateNewMockCard, onboardingData, refreshKey }: HomePageProps) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -107,6 +108,7 @@ export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpe
           onResetCards={onResetCards}
           generateNewMockCard={generateNewMockCard}
           onboardingData={onboardingData}
+          refreshKey={refreshKey}
         />
       </View>
     </View>

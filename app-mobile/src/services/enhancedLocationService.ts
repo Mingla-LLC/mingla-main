@@ -16,7 +16,7 @@ export interface LocationUpdate {
   isSignificantChange: boolean;
 }
 
-class EnhancedLocationService {
+export class EnhancedLocationService {
   private watchId: Location.LocationSubscription | null = null;
   private lastLocation: LocationData | null = null;
   private listeners: ((update: LocationUpdate) => void)[] = [];

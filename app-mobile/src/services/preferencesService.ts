@@ -63,20 +63,47 @@ export class PreferencesService {
     preferences: Partial<UserPreferences>
   ): Promise<boolean> {
     try {
-      const { error } = await supabase.from("preferences").upsert({
+      console.log("💾 PreferencesService.updateUserPreferences called");
+      console.log("👤 User ID:", userId);
+      console.log(
+        "📋 Preferences to save:",
+        JSON.stringify(preferences, null, 2)
+      );
+
+      const payload = {
         profile_id: userId,
         ...preferences,
         updated_at: new Date().toISOString(),
-      });
+      };
+
+      const result = await supabase.from("preferences").upsert(payload);
+      const { data, error } = result;
 
       if (error) {
-        console.error("Error updating user preferences:", error);
+        console.log("Supabase upsert error", error);
         throw error;
+      }
+
+      // Verify the save by fetching the preferences back
+      const { data: verifyData, error: verifyError } = await supabase
+        .from("preferences")
+        .select("*")
+        .eq("profile_id", userId)
+        .single();
+
+      if (verifyError) {
+        console.warn("⚠️ Could not verify saved preferences:", verifyError);
+      } else {
+        console.log(
+          "✅ Verified saved preferences:",
+          JSON.stringify(verifyData, null, 2)
+        );
       }
 
       return true;
     } catch (error) {
-      console.error("Failed to update user preferences:", error);
+      // If it's a Supabase error, log all its properties
+      console.log("catch block error", error);
       return false;
     }
   }
