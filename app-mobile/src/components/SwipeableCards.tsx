@@ -7,6 +7,8 @@ import { ExperiencesService, Experience } from '../services/experiencesService';
 import { ExperienceGenerationService, GeneratedExperience } from '../services/experienceGenerationService';
 import { useAuthSimple } from '../hooks/useAuthSimple';
 import { enhancedLocationService } from '../services/enhancedLocationService';
+import ExpandedCardModal from './ExpandedCardModal';
+import { ExpandedCardData } from '../types/expandedCardTypes';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -102,18 +104,47 @@ export default function SwipeableCards({
   onboardingData,
   refreshKey
 }: SwipeableCardsProps) {
-  const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
-  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
-  const [touchStart, setTouchStart] = useState({ x: 0, y: 0 });
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   const spinValue = useRef(new Animated.Value(0)).current;
+  const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
+  const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
+  
+  // Use ref to store current recommendations for PanResponder
+  const recommendationsRef = useRef<Recommendation[]>([]);
+  const removedCardsRef = useRef<Set<string>>(new Set());
+  const currentCardIndexRef = useRef(0);
+  
+  // Update refs when state changes
+  useEffect(() => {
+    recommendationsRef.current = recommendations;
+    removedCardsRef.current = removedCards;
+    currentCardIndexRef.current = currentCardIndex;
+  }, [recommendations, removedCards, currentCardIndex]);
+  
+  // Swipe animation values
+  const position = useRef(new Animated.ValueXY()).current;
+  const rotate = position.x.interpolate({
+    inputRange: [-screenWidth, 0, screenWidth],
+    outputRange: ['-30deg', '0deg', '30deg'],
+  });
+  const likeOpacity = position.x.interpolate({
+    inputRange: [0, screenWidth / 4],
+    outputRange: [0, 1],
+  });
+  const nopeOpacity = position.x.interpolate({
+    inputRange: [-screenWidth / 4, 0],
+    outputRange: [1, 0],
+  });
+  const nextCardOpacity = position.x.interpolate({
+    inputRange: [-screenWidth / 2, 0, screenWidth / 2],
+    outputRange: [1, 0, 1],
+  });
 
   const { user } = useAuthSimple();
 
@@ -356,65 +387,172 @@ export default function SwipeableCards({
     !removedCards.has(rec.id) && !removedCardIds.includes(rec.id)
   );
 
+  // Always use currentCardIndex to track position in the deck
   const currentRec = availableRecommendations[currentCardIndex];
   
+  // Reset index if we're beyond the available cards
+  useEffect(() => {
+    if (currentCardIndex >= availableRecommendations.length && availableRecommendations.length > 0) {
+      setCurrentCardIndex(0);
+    }
+  }, [availableRecommendations.length, currentCardIndex]);
+  
   // Debug logging
+  console.log('Total recommendations:', recommendations.length);
   console.log('Available cards:', availableRecommendations.length);
   console.log('Current card index:', currentCardIndex);
+  console.log('Removed cards:', Array.from(removedCards));
   console.log('Current card:', currentRec?.title);
   
 
-  const handleTouchStart = (event: any) => {
-    console.log('Touch started!');
-    const { pageX, pageY } = event.nativeEvent;
-    setTouchStart({ x: pageX, y: pageY });
-    setIsDragging(true);
-    setSwipeDirection(null);
-  };
+  // PanResponder for swipe gestures
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
+      },
+      onPanResponderGrant: () => {
+        position.setOffset({
+          x: (position.x as any)._value,
+          y: (position.y as any)._value,
+        });
+      },
+      onPanResponderMove: (_, gestureState) => {
+        position.setValue({ x: gestureState.dx, y: gestureState.dy });
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        position.flattenOffset();
+        
+        // Get current card from refs (always fresh)
+        const availableCards = recommendationsRef.current.filter(rec => 
+          !removedCardsRef.current.has(rec.id) && !removedCardIds.includes(rec.id)
+        );
+        const cardToRemove = availableCards[currentCardIndexRef.current];
+        
+        // Check for swipe up (expand card)
+        if (gestureState.dy < -50 && Math.abs(gestureState.dx) < 50) {
+          if (cardToRemove) {
+            handleCardExpand();
+          }
+          Animated.spring(position, {
+            toValue: { x: 0, y: 0 },
+            useNativeDriver: false,
+          }).start();
+          return;
+        }
+        
+        // Check for horizontal swipe
+        if (Math.abs(gestureState.dx) > 120) {
+          const direction = gestureState.dx > 0 ? 'right' : 'left';
+          
+          // Check if card exists
+          if (!cardToRemove) {
+            console.warn('No card to swipe');
+            Animated.spring(position, {
+              toValue: { x: 0, y: 0 },
+              useNativeDriver: false,
+            }).start();
+            return;
+          }
+          
+          console.log('Swiping card:', cardToRemove.title);
+          
+          // Animate card off screen first
+          Animated.timing(position, {
+            toValue: {
+              x: direction === 'right' ? screenWidth + 100 : -screenWidth - 100,
+              y: gestureState.dy,
+            },
+            duration: 250,
+            useNativeDriver: false,
+          }).start(() => {
+            // After animation completes, remove the card and advance to next
+            setRemovedCards(prev => {
+              const newSet = new Set([...prev, cardToRemove.id]);
+              console.log('Card removed:', cardToRemove.id);
+              console.log('Total removed:', Array.from(newSet));
+              return newSet;
+            });
+            
+            // Move to next card
+            setCurrentCardIndex(0);
+            
+            // Handle swipe logic (tracking, saving, etc.) in background
+            handleSwipe(direction, cardToRemove);
+            
+            // Wait for React to render the next card before resetting position
+            // This prevents the flash/flicker
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                position.setValue({ x: 0, y: 0 });
+              });
+            });
+          });
+        } else {
+          // Snap back to center
+          Animated.spring(position, {
+            toValue: { x: 0, y: 0 },
+            useNativeDriver: false,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
-  const handleTouchMove = (event: any) => {
-    if (!isDragging) return;
-    
-    const { pageX, pageY } = event.nativeEvent;
-    const deltaX = pageX - touchStart.x;
-    const deltaY = pageY - touchStart.y;
-    
-    console.log('Touch move:', deltaX);
-    setDragOffset({ x: deltaX, y: deltaY });
-    
-    // Set swipe direction for visual feedback
-    if (deltaX > 30) {
-      setSwipeDirection('right');
-    } else if (deltaX < -30) {
-      setSwipeDirection('left');
-    } else {
-      setSwipeDirection(null);
+  const handleCardTap = () => {
+    // Only handle tap if card is not being dragged
+    const currentX = (position.x as any)._value || 0;
+    const currentY = (position.y as any)._value || 0;
+    if (Math.abs(currentX) < 10 && Math.abs(currentY) < 10 && currentRec) {
+      handleCardExpand();
     }
   };
 
-  const handleTouchEnd = (event: any) => {
-    if (!isDragging) return;
-    
-    const { pageX } = event.nativeEvent;
-    const deltaX = pageX - touchStart.x;
-    
-    console.log('Touch ended:', deltaX);
-    setIsDragging(false);
-    setSwipeDirection(null);
-    
-    if (Math.abs(deltaX) > 100) {
-      // Swipe left or right
-      handleSwipe(deltaX > 0 ? 'right' : 'left');
-    } else {
-      // Reset position
-      setDragOffset({ x: 0, y: 0 });
-    }
-  };
-
-  const handleSwipe = async (direction: 'left' | 'right') => {
-    console.log('Handling swipe:', direction, 'for card:', currentRec?.title);
-    
+  const handleCardExpand = () => {
     if (!currentRec) return;
+
+    // Transform Recommendation to ExpandedCardData
+    const expandedCardData: ExpandedCardData = {
+      id: currentRec.id,
+      title: currentRec.title,
+      category: currentRec.category,
+      categoryIcon: currentRec.categoryIcon,
+      description: currentRec.description,
+      fullDescription: currentRec.fullDescription || currentRec.description,
+      image: currentRec.image,
+      images: currentRec.images || [currentRec.image],
+      rating: currentRec.rating,
+      reviewCount: currentRec.reviewCount,
+      priceRange: currentRec.priceRange,
+      distance: currentRec.distance,
+      travelTime: currentRec.travelTime,
+      address: currentRec.address,
+      openingHours: currentRec.openingHours,
+      highlights: currentRec.highlights || [],
+      tags: currentRec.tags || [],
+      matchScore: currentRec.matchScore,
+      matchFactors: currentRec.matchFactors,
+      socialStats: currentRec.socialStats,
+      location: userLocation || undefined,
+      selectedDateTime: userPreferences?.datetime_pref 
+        ? new Date(userPreferences.datetime_pref) 
+        : new Date(),
+    };
+
+    setSelectedCardForExpansion(expandedCardData);
+    setIsExpandedModalVisible(true);
+  };
+
+  const handleCloseExpandedModal = () => {
+    setIsExpandedModalVisible(false);
+    setSelectedCardForExpansion(null);
+  };
+
+  const handleSwipe = async (direction: 'left' | 'right', card: Recommendation) => {
+    console.log('Handling swipe:', direction, 'for card:', card?.title);
+    
+    if (!card) return;
     
     try {
       // Track interaction in Supabase (only if user is authenticated)
@@ -424,12 +562,12 @@ export default function SwipeableCards({
         try {
           await ExperiencesService.trackInteraction(
             user.id,
-            currentRec.id,
+            card.id,
             interactionType,
             {
-              category: currentRec.category,
+              category: card.category,
               time_of_day: userPreferences?.timeOfDay || 'Afternoon',
-              budget_range: `${currentRec.priceRange}`,
+              budget_range: `${card.priceRange}`,
               location: userPreferences?.location || 'San Francisco'
             }
           );
@@ -450,7 +588,7 @@ export default function SwipeableCards({
           }
           
           if (onCardLike) {
-            onCardLike(currentRec);
+            onCardLike(card);
           }
         } else {
           // Track dislike
@@ -472,19 +610,9 @@ export default function SwipeableCards({
     } catch (error) {
       console.error('Error handling swipe:', error);
     }
-    
-    // Add card to removed cards
-    setRemovedCards(prev => {
-      const newSet = new Set([...prev, currentRec.id]);
-      console.log('Removed cards updated:', Array.from(newSet));
-      return newSet;
-    });
-    
-    // Don't increment card index - let the filtering handle it
-    // The next card will automatically become availableRecommendations[0]
-    setCurrentCardIndex(0);
-    
-    setDragOffset({ x: 0, y: 0 });
+
+    // Reset card position for the next swipe
+    position.setValue({ x: 0, y: 0 });
   };
 
   const handleBuyNow = () => {
@@ -766,10 +894,7 @@ export default function SwipeableCards({
               console.log('Start Over button pressed!');
               setRemovedCards(new Set());
               setCurrentCardIndex(0);
-              setDragOffset({ x: 0, y: 0 });
-              setIsDragging(false);
-              setSwipeDirection(null);
-              setTouchStart({ x: 0, y: 0 });
+              position.setValue({ x: 0, y: 0 });
               onResetCards?.();
             }}
             style={styles.startOverButton}
@@ -794,120 +919,259 @@ export default function SwipeableCards({
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         <View style={styles.cardContainer}>
-        <View 
-          style={[
-            styles.card,
-            {
-              transform: [
-                { translateX: dragOffset.x },
-                { translateY: dragOffset.y },
-                { rotate: `${dragOffset.x * 0.1}deg` }
-              ]
-            }
-          ]}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-        >
-          {/* Swipe Direction Overlays */}
-          {swipeDirection === 'right' && (
-            <View style={styles.swipeOverlayRight}>
-              <View style={styles.swipeIndicator}>
-                <Ionicons name="heart" size={40} color="#4ade80" />
-                <Text style={styles.swipeText}>YES</Text>
-              </View>
-            </View>
-          )}
-          
-          {swipeDirection === 'left' && (
-            <View style={styles.swipeOverlayLeft}>
-              <View style={styles.swipeIndicator}>
-                <Ionicons name="close" size={40} color="#ef4444" />
-                <Text style={styles.swipeText}>NO</Text>
-              </View>
-            </View>
-          )}
-          {/* Hero Image Section - 60-65% of card */}
-          <View style={styles.imageContainer}>
-            <Image
-              source={{ uri: currentRec.image }}
-              style={styles.cardImage}
-              resizeMode="cover"
-            />
+          {/* Next Card (behind current) - fully rendered with all details */}
+          {availableRecommendations.length > 1 && (() => {
+            const nextCard = availableRecommendations[1];
+            const NextCategoryIcon = getIconComponent(nextCard.categoryIcon);
             
-            {/* Match Score Badge - Top Left */}
-            <View style={styles.matchBadge}>
-              <Ionicons name="star" size={14} color="#1f2937" style={{ marginRight: 4 }} />
-              <Text style={styles.matchText}>{currentRec.matchScore}% Match</Text>
-            </View>
-            
-            {/* Gallery Indicator if multiple images */}
-            {currentRec.images && currentRec.images.length > 1 && (
-              <View style={styles.galleryIndicator}>
-                <Ionicons name="images" size={16} color="white" />
-                <Text style={styles.galleryText}>{currentRec.images.length}</Text>
-              </View>
-            )}
-            
-            {/* Title and Details Overlay - Bottom Left of Image */}
-            <View style={styles.titleOverlay}>
-              <Text style={styles.cardTitle}>{currentRec.title}</Text>
-              
-              {/* Three small badges: distance, travel time, rating */}
-              <View style={styles.detailsBadges}>
-                <View style={styles.detailBadge}>
-                  <Ionicons name="location" size={12} color="white" />
-                  <Text style={styles.detailBadgeText}>{currentRec.distance}</Text>
-                </View>
-                <View style={styles.detailBadge}>
-                  <Ionicons name="time" size={12} color="white" />
-                  <Text style={styles.detailBadgeText}>{currentRec.travelTime}</Text>
-                </View>
-                <View style={styles.detailBadge}>
-                  <Ionicons name="star" size={12} color="white" />
-                  <Text style={styles.detailBadgeText}>{currentRec.rating.toFixed(1)}</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-          
-          {/* White Details Section - Bottom 35-40% */}
-          <View style={styles.cardDetails}>
-            {/* Category/Provider */}
-            <View style={styles.categoryRow}>
-              <Ionicons name={CategoryIcon as any} size={16} color="#eb7825" />
-              <Text style={styles.categoryText}>{currentRec.category}</Text>
-            </View>
-            
-            {/* Description - 2 lines max */}
-            <Text style={styles.description} numberOfLines={2}>
-              {currentRec.description}
-            </Text>
-            
-            {/* Top 2 Highlights */}
-            {currentRec.highlights && currentRec.highlights.length > 0 && (
-              <View style={styles.highlightsContainer}>
-                {currentRec.highlights.slice(0, 2).map((highlight: string, index: number) => (
-                  <View key={index} style={styles.highlightBadge}>
-                    <Text style={styles.highlightText}>{highlight}</Text>
+            return (
+              <Animated.View
+                style={[
+                  styles.card,
+                  styles.nextCard,
+                  {
+                    opacity: nextCardOpacity,
+                    transform: [{ scale: 0.95 }],
+                  },
+                ]}
+              >
+                {/* Hero Image Section */}
+                <View style={styles.imageContainer}>
+                  <Image
+                    source={{ uri: nextCard.image }}
+                    style={styles.cardImage}
+                    resizeMode="cover"
+                  />
+                  
+                  {/* Match Score Badge */}
+                  <View style={styles.matchBadge}>
+                    <Ionicons name="star" size={14} color="#1f2937" style={{ marginRight: 4 }} />
+                    <Text style={styles.matchText}>{nextCard.matchScore}% Match</Text>
                   </View>
-                ))}
-              </View>
-            )}
-            
-            {/* Share Button - Centered at bottom */}
-            <TouchableOpacity 
-              style={styles.shareButton}
-              onPress={handleShare}
-              activeOpacity={0.7}
+                  
+                  {/* Gallery Indicator if multiple images */}
+                  {nextCard.images && nextCard.images.length > 1 && (
+                    <View style={styles.galleryIndicator}>
+                      <Ionicons name="images" size={16} color="white" />
+                      <Text style={styles.galleryText}>{nextCard.images.length}</Text>
+                    </View>
+                  )}
+                  
+                  {/* Title and Details Overlay */}
+                  <View style={styles.titleOverlay}>
+                    <Text style={styles.cardTitle}>{nextCard.title}</Text>
+                    
+                    {/* Three small badges: distance, travel time, rating */}
+                    <View style={styles.detailsBadges}>
+                      <View style={styles.detailBadge}>
+                        <Ionicons name="location" size={12} color="white" />
+                        <Text style={styles.detailBadgeText}>{nextCard.distance}</Text>
+                      </View>
+                      <View style={styles.detailBadge}>
+                        <Ionicons name="time" size={12} color="white" />
+                        <Text style={styles.detailBadgeText}>{nextCard.travelTime}</Text>
+                      </View>
+                      <View style={styles.detailBadge}>
+                        <Ionicons name="star" size={12} color="white" />
+                        <Text style={styles.detailBadgeText}>{nextCard.rating.toFixed(1)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+                
+                {/* White Details Section */}
+                <View style={styles.cardDetails}>
+                  {/* Category/Provider */}
+                  <View style={styles.categoryRow}>
+                    <Ionicons name={NextCategoryIcon as any} size={16} color="#eb7825" />
+                    <Text style={styles.categoryText}>{nextCard.category}</Text>
+                  </View>
+                  
+                  {/* Description - 2 lines max */}
+                  <Text style={styles.description} numberOfLines={2}>
+                    {nextCard.description}
+                  </Text>
+                  
+                  {/* Top 2 Highlights */}
+                  {nextCard.highlights && nextCard.highlights.length > 0 && (
+                    <View style={styles.highlightsContainer}>
+                      {nextCard.highlights.slice(0, 2).map((highlight: string, index: number) => (
+                        <View key={index} style={styles.highlightBadge}>
+                          <Text style={styles.highlightText}>{highlight}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  
+                  {/* Share Button */}
+                  <TouchableOpacity 
+                    style={styles.shareButton}
+                    onPress={() => {
+                      if (onShareCard) {
+                        onShareCard(nextCard);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="share-outline" size={18} color="#6b7280" />
+                    <Text style={styles.shareButtonText}>Share</Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+            );
+          })()}
+          
+          {/* Current Card */}
+          <Animated.View
+            style={[
+              styles.card,
+              {
+                transform: [
+                  { translateX: position.x },
+                  { translateY: position.y },
+                  { rotate: rotate },
+                ],
+              },
+            ]}
+            {...panResponder.panHandlers}
+          >
+            {/* Swipe Direction Overlays */}
+            <Animated.View
+              style={[
+                styles.swipeOverlayRight,
+                { opacity: likeOpacity },
+              ]}
+              pointerEvents="none"
             >
-              <Ionicons name="share-outline" size={18} color="#6b7280" />
-              <Text style={styles.shareButtonText}>Share</Text>
+              <View style={styles.swipeIndicator}>
+                <Ionicons name="heart" size={60} color="#4ade80" />
+                <Text style={styles.swipeText}>LIKE</Text>
+              </View>
+            </Animated.View>
+            
+            <Animated.View
+              style={[
+                styles.swipeOverlayLeft,
+                { opacity: nopeOpacity },
+              ]}
+              pointerEvents="none"
+            >
+              <View style={styles.swipeIndicator}>
+                <Ionicons name="close" size={60} color="#ef4444" />
+                <Text style={styles.swipeText}>NOPE</Text>
+              </View>
+            </Animated.View>
+
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={handleCardTap}
+              style={StyleSheet.absoluteFill}
+            >
+              {/* Hero Image Section - 60-65% of card */}
+              <View style={styles.imageContainer}>
+                <Image
+                  source={{ uri: currentRec.image }}
+                  style={styles.cardImage}
+                  resizeMode="cover"
+                />
+                
+                {/* Match Score Badge - Top Left */}
+                <View style={styles.matchBadge}>
+                  <Ionicons name="star" size={14} color="#1f2937" style={{ marginRight: 4 }} />
+                  <Text style={styles.matchText}>{currentRec.matchScore}% Match</Text>
+                </View>
+                
+                {/* Gallery Indicator if multiple images */}
+                {currentRec.images && currentRec.images.length > 1 && (
+                  <View style={styles.galleryIndicator}>
+                    <Ionicons name="images" size={16} color="white" />
+                    <Text style={styles.galleryText}>{currentRec.images.length}</Text>
+                  </View>
+                )}
+                
+                {/* Title and Details Overlay - Bottom Left of Image */}
+                <View style={styles.titleOverlay}>
+                  <Text style={styles.cardTitle}>{currentRec.title}</Text>
+                  
+                  {/* Three small badges: distance, travel time, rating */}
+                  <View style={styles.detailsBadges}>
+                    <View style={styles.detailBadge}>
+                      <Ionicons name="location" size={12} color="white" />
+                      <Text style={styles.detailBadgeText}>{currentRec.distance}</Text>
+                    </View>
+                    <View style={styles.detailBadge}>
+                      <Ionicons name="time" size={12} color="white" />
+                      <Text style={styles.detailBadgeText}>{currentRec.travelTime}</Text>
+                    </View>
+                    <View style={styles.detailBadge}>
+                      <Ionicons name="star" size={12} color="white" />
+                      <Text style={styles.detailBadgeText}>{currentRec.rating.toFixed(1)}</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+              
+              {/* White Details Section - Bottom 35-40% */}
+              <View style={styles.cardDetails}>
+                {/* Category/Provider */}
+                <View style={styles.categoryRow}>
+                  <Ionicons name={CategoryIcon as any} size={16} color="#eb7825" />
+                  <Text style={styles.categoryText}>{currentRec.category}</Text>
+                </View>
+                
+                {/* Description - 2 lines max */}
+                <Text style={styles.description} numberOfLines={2}>
+                  {currentRec.description}
+                </Text>
+                
+                {/* Top 2 Highlights */}
+                {currentRec.highlights && currentRec.highlights.length > 0 && (
+                  <View style={styles.highlightsContainer}>
+                    {currentRec.highlights.slice(0, 2).map((highlight: string, index: number) => (
+                      <View key={index} style={styles.highlightBadge}>
+                        <Text style={styles.highlightText}>{highlight}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                
+                {/* Share Button - Centered at bottom */}
+                <TouchableOpacity 
+                  style={styles.shareButton}
+                  onPress={handleShare}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="share-outline" size={18} color="#6b7280" />
+                  <Text style={styles.shareButtonText}>Share</Text>
+                </TouchableOpacity>
+              </View>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </View>
       </View>
-    </View>
+
+      {/* Expanded Card Modal */}
+      <ExpandedCardModal
+        visible={isExpandedModalVisible}
+        card={selectedCardForExpansion}
+        onClose={handleCloseExpandedModal}
+        onSave={(card) => {
+          onCardLike?.(card);
+          handleCloseExpandedModal();
+        }}
+        onSchedule={(card) => {
+          onAddToCalendar?.(card);
+          handleCloseExpandedModal();
+        }}
+        onPurchase={(card, bookingOption) => {
+          onPurchaseComplete?.(card, bookingOption);
+          handleCloseExpandedModal();
+        }}
+        onShare={(card) => {
+          onShareCard?.(card);
+        }}
+        userPreferences={userPreferences}
+      />
     </SafeAreaView>
   );
 }
@@ -927,9 +1191,12 @@ const styles = StyleSheet.create({
     width: screenWidth * 0.92,
     height: screenHeight * 0.65,
     maxWidth: 380,
+    position: 'relative',
   },
   card: {
-    flex: 1,
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
     backgroundColor: 'white',
     borderRadius: 24,
     shadowColor: '#000',
@@ -940,6 +1207,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 6,
+    zIndex: 2,
+  },
+  nextCard: {
+    zIndex: 1,
   },
   imageContainer: {
     flex: 0.65, // 65% of card height
