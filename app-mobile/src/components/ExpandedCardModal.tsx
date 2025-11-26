@@ -71,20 +71,26 @@ export default function ExpandedCardModal({
         );
         setWeatherData(weather);
       } catch (error) {
-        console.error('Error fetching weather:', error);
+        console.error('❌ Error fetching weather in modal:', error);
+        setWeatherData(null);
       } finally {
         setLoadingWeather(false);
       }
+    } else {
+      console.warn('⚠️ No location data for weather fetch:', card);
     }
 
     // Fetch busyness data
     if (card.location) {
       setLoadingBusyness(true);
       try {
+        // Use address and placeId if available (more reliable than name)
         const busyness = await busynessService.getVenueBusyness(
           card.title,
           card.location.lat,
-          card.location.lng
+          card.location.lng,
+          card.address, // Use address for more reliable search
+          (card as any).source?.placeId // Use placeId if available
         );
         setBusynessData(busyness);
       } catch (error) {
@@ -118,15 +124,6 @@ export default function ExpandedCardModal({
   if (!card) {
     return null;
   }
-
-  // Debug: Log card data
-  console.log('ExpandedCardModal - Card data:', {
-    title: card.title,
-    hasImages: !!card.images?.length,
-    hasDescription: !!card.description,
-    hasHighlights: !!card.highlights?.length,
-    matchScore: card.matchScore,
-  });
 
   return (
     <Modal

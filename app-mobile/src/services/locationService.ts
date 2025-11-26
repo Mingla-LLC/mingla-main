@@ -34,7 +34,6 @@ export class LocationService {
             { text: 'Cancel', style: 'cancel' },
             { text: 'Settings', onPress: () => {
               // For now, just show a message since openSettingsAsync might not be available
-              console.log('Please enable location permissions in device settings');
             }}
           ]
         );
@@ -45,7 +44,6 @@ export class LocationService {
       const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
       
       if (backgroundStatus !== 'granted') {
-        console.log('Background location permission not granted, but foreground is sufficient');
       }
 
       return true;

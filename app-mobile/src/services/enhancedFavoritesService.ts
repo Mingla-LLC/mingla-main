@@ -98,7 +98,6 @@ class EnhancedFavoritesService {
         return null;
       }
 
-      console.log(`📁 Created favorites collection: ${name}`);
       return { ...data, item_count: 0 };
     } catch (error) {
       console.error('Error in createCollection:', error);
@@ -172,7 +171,6 @@ class EnhancedFavoritesService {
       // Check if already in favorites
       const existing = await this.getFavoriteItem(userId, recommendation.id, targetCollectionId);
       if (existing) {
-        console.log(`⭐ Recommendation already in favorites: ${recommendation.title}`);
         return true;
       }
 
@@ -195,7 +193,6 @@ class EnhancedFavoritesService {
         return false;
       }
 
-      console.log(`⭐ Added to favorites: ${recommendation.title}`);
       return true;
     } catch (error) {
       console.error('Error in addToFavorites:', error);
@@ -233,7 +230,6 @@ class EnhancedFavoritesService {
         return false;
       }
 
-      console.log(`🗑️ Removed from favorites: ${recommendationId}`);
       return true;
     } catch (error) {
       console.error('Error in removeFromFavorites:', error);
@@ -370,7 +366,6 @@ class EnhancedFavoritesService {
         return false;
       }
 
-      console.log(`✏️ Updated favorite item: ${itemId}`);
       return true;
     } catch (error) {
       console.error('Error in updateFavoriteItem:', error);
@@ -547,7 +542,6 @@ class EnhancedFavoritesService {
         return false;
       }
 
-      console.log(`🗑️ Deleted collection: ${collectionId}`);
       return true;
     } catch (error) {
       console.error('Error in deleteCollection:', error);

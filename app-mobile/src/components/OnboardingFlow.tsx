@@ -78,7 +78,6 @@ const OnboardingFlow = ({
           useAppStore.getState().setProfile(updatedProfile);
         }
 
-        console.log(`Onboarding step updated to ${step}`);
         return true;
       } catch (error) {
         console.error("Error updating onboarding step:", error);
@@ -107,18 +106,12 @@ const OnboardingFlow = ({
         savedStep <= 10
       ) {
         // There's a saved step - let the resume logic handle it
-        console.log(
-          "Found saved onboarding_step, letting resume logic handle it"
-        );
         return;
       }
 
       // No saved step - first time user, skip to Step 2
       setCurrentStep((prevStep) => {
         if (prevStep === 1) {
-          console.log(
-            "User authenticated (first time), skipping AccountSetupStep and going to IntentSelectionStep"
-          );
           return 2;
         }
         return prevStep;
@@ -127,7 +120,6 @@ const OnboardingFlow = ({
       // User is not authenticated - ensure we're on Step 1 (AccountSetupStep)
       setCurrentStep((prevStep) => {
         if (prevStep !== 1) {
-          console.log("User not authenticated, resetting to AccountSetupStep");
           return 1;
         }
         return prevStep;
@@ -357,14 +349,10 @@ const OnboardingFlow = ({
         if (savedStep === 0) {
           // Onboarding completed, but has_completed_onboarding might be false
           // This shouldn't happen, but handle it gracefully
-          console.log(
-            "onboarding_step is 0 but has_completed_onboarding is false - this is unexpected"
-          );
           return;
         }
         if (savedStep >= 2 && savedStep <= 10) {
           // Valid step, resume from here - this takes priority
-          console.log(`Resuming onboarding from step ${savedStep}`);
           setCurrentStep(savedStep);
           return;
         }
@@ -373,7 +361,6 @@ const OnboardingFlow = ({
       // No valid onboarding_step found
       // The other useEffect will handle skipping to step 2 for first-time users
       // But if we're already past step 1, don't change it
-      console.log("No onboarding_step found, current step:", currentStep);
     };
 
     if (user && profile) {
@@ -594,19 +581,16 @@ const OnboardingFlow = ({
 
   const requestLocationPermission = useCallback(async () => {
     try {
-      console.log("Requesting location permission...");
 
       // Request location permissions
       const hasPermission = await locationService.requestPermissions();
 
       if (hasPermission) {
-        console.log("Location permission granted, getting current location...");
 
         // Try to get current location
         const locationData = await locationService.getCurrentLocation();
 
         if (locationData) {
-          console.log("Current location obtained:", locationData);
 
           // Reverse geocode to get city name
           const cityName = await locationService.reverseGeocode(
@@ -625,11 +609,9 @@ const OnboardingFlow = ({
             updateOnboardingData("location", locationString);
           }
         } else {
-          console.log("Could not get current location, using default");
           updateOnboardingData("location", "San Francisco, CA");
         }
       } else {
-        console.log("Location permission denied, using default location");
         updateOnboardingData("location", "San Francisco, CA");
       }
     } catch (error: any) {
@@ -637,17 +619,11 @@ const OnboardingFlow = ({
 
       // Check if it's a configuration error
       if (error.message && error.message.includes("NSLocation")) {
-        console.log(
-          "Location configuration error detected - using default location"
-        );
         // Show a more user-friendly message
         alert(
           "Location services are not properly configured. Using default location for demo purposes."
         );
       } else if (error.message && error.message.includes("Info.plist")) {
-        console.log(
-          "Info.plist configuration missing - using default location"
-        );
         alert(
           "Location permissions are not configured in the app. Using default location for demo purposes."
         );
@@ -931,7 +907,6 @@ const OnboardingFlow = ({
         return false;
       }
 
-      console.log("Step 2 preferences saved successfully:", data);
       return true;
     } catch (error) {
       console.error("Error saving Step 2 preferences:", error);
@@ -1010,7 +985,6 @@ const OnboardingFlow = ({
         return false;
       }
 
-      console.log("Step 3 preferences saved successfully:", data);
       return true;
     } catch (error) {
       console.error("Error saving Step 3 preferences:", error);
@@ -1044,7 +1018,6 @@ const OnboardingFlow = ({
         return false;
       }
 
-      console.log("Step 4 preferences saved successfully:", data);
       return true;
     } catch (error) {
       console.error("Error saving Step 4 preferences:", error);
@@ -1078,7 +1051,6 @@ const OnboardingFlow = ({
         return false;
       }
 
-      console.log("Step 5 preferences saved successfully:", data);
       return true;
     } catch (error) {
       console.error("Error saving Step 5 preferences:", error);
@@ -1113,7 +1085,6 @@ const OnboardingFlow = ({
         return false;
       }
 
-      console.log("Step 6 preferences saved successfully:", data);
       return true;
     } catch (error) {
       console.error("Error saving Step 6 preferences:", error);
@@ -1153,7 +1124,6 @@ const OnboardingFlow = ({
         return false;
       }
 
-      console.log("Step 7 preferences saved successfully:", data);
       return true;
     } catch (error) {
       console.error("Error saving Step 7 preferences:", error);
@@ -1404,7 +1374,6 @@ const OnboardingFlow = ({
       // If the column doesn't exist, the error handler will retry without it
       updateData.time_slot = timeSlotToSave;
 
-      console.log("Saving Step 8 preferences with data:", updateData);
 
       const { data, error } = await supabase
         .from("preferences")
@@ -1458,10 +1427,6 @@ const OnboardingFlow = ({
             );
           }
 
-          console.log(
-            "Step 8 preferences saved successfully (without time_slot column):",
-            retryDataResult
-          );
           // Still return true since the main data was saved
           return true;
         }
@@ -1474,7 +1439,6 @@ const OnboardingFlow = ({
         );
       }
 
-      console.log("Step 8 preferences saved successfully:", data);
       return true;
     } catch (error: any) {
       console.error("Error saving Step 8 preferences (catch):", error);
@@ -1530,9 +1494,6 @@ const OnboardingFlow = ({
       if (error) {
         console.error("Error marking onboarding complete:", error);
       } else {
-        console.log(
-          "Onboarding marked as complete in database (onboarding_step set to 0)"
-        );
         // Update profile in store to reflect the change
         if (data) {
           const { useAppStore } = await import("../store/appStore");

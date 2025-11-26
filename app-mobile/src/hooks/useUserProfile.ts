@@ -97,7 +97,6 @@ export const useUserProfile = () => {
           filter: `id=eq.${user.id}`,
         },
         (payload) => {
-          console.log('Profile updated:', payload.new);
           setProfile(payload.new as UserProfile);
         }
       )

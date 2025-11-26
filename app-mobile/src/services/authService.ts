@@ -84,7 +84,6 @@ class AuthService {
 
   async getCurrentUser() {
     try {
-      console.log('AuthService: Getting current user...');
       
       // Add timeout to prevent hanging
       const timeoutPromise = new Promise((_, reject) => {
@@ -93,11 +92,9 @@ class AuthService {
       
       const authPromise = supabase.auth.getUser();
       const { data: { user }, error } = await Promise.race([authPromise, timeoutPromise]) as any;
-      console.log('AuthService: getUser response:', { user: !!user, error: !!error });
       
       // Handle missing session gracefully - this is normal when user is not signed in
       if (error && error.message.includes('Auth session missing')) {
-        console.log('No active session - user not signed in');
         return { user: null, error: null };
       }
       

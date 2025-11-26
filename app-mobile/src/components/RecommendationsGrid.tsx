@@ -77,7 +77,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       const randomizedOrder = randomizeCardOrder(data.cards.length);
       setRandomizedCardOrder(randomizedOrder);
       setViewedCards(new Set());
-      console.log('🎲 Randomized card order:', randomizedOrder);
     }
   };
 
@@ -93,9 +92,7 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
         });
         
         if (session) {
-          console.log('✅ User session started:', session.id);
         } else {
-          console.log('⚠️ Failed to start user session');
         }
 
         // Initialize A/B testing
@@ -107,7 +104,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
           
           setAbTestVariant(variant);
           setAbTestId(testId);
-          console.log(`🧪 A/B Test variant assigned: ${variant} (test: ${testId})`);
 
           // Initialize real-time updates
           await realtimeRecommendationService.initializeRealtimeUpdates(user.id, {
@@ -154,11 +150,9 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
     setLoading(true);
     setError(null);
     try {
-      console.log('🎯 Fetching enhanced recommendations with preferences:', preferences);
       
       // Get current user ID for personalized recommendations
       const { data: { user } } = await supabase.auth.getUser();
-      console.log('👤 User ID for personalization:', user?.id);
       
       // Enhanced preferences with user ID
       const enhancedPreferences = {
@@ -180,7 +174,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       );
 
       if (cachedRecommendations) {
-        console.log('📦 Using cached recommendations');
         // Translate cached recommendations
         const translatedRecommendations = await translationService.translateRecommendations(cachedRecommendations);
         setRecommendations({ cards: translatedRecommendations });
@@ -193,7 +186,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
 
       // If offline, try to get offline recommendations
       if (!offlineService.isAppOnline()) {
-        console.log('📱 App is offline, using offline recommendations');
         const offlineRecommendations = await offlineService.getOfflineRecommendations(preferences, 20);
         
         if (offlineRecommendations.length > 0) {
@@ -207,7 +199,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
         }
       }
 
-      console.log('🌐 Fetching fresh recommendations from API');
       
       // Determine which recommendation function to use based on A/B test variant
       const functionName = abTestVariant === 'baseline' ? 'recommendations' : 'recommendations-enhanced';
@@ -230,7 +221,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
         throw new Error(data.error);
       }
       
-      console.log('✅ Received enhanced recommendations:', {
         cardCount: data?.cards?.length || 0,
         personalization: data?.meta?.userPersonalization,
         processingTime: data?.meta?.processingTimeMs,
@@ -239,7 +229,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
 
       // Enhance cards with OpenAI if we have cards
       if (data?.cards && data.cards.length > 0) {
-        console.log('🤖 Enhancing cards with OpenAI...');
         try {
           const {
             data: enhancedData,
@@ -288,7 +277,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
               { userId: user?.id, algorithm: abTestVariant, preferences }
             );
           } else if (enhancedData?.enhancedCards && enhancedData.enhancedCards.length > 0) {
-            console.log('✨ Cards enhanced successfully with OpenAI');
             // Merge enhanced copy with original card data
             const enhancedRecommendations = {
               ...data,
@@ -379,7 +367,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
   // Fetch recommendations when preferences change or component mounts
   useEffect(() => {
     if (preferences.origin.lat && preferences.origin.lng && preferences.categories.length > 0) {
-      console.log('🔄 RecommendationsGrid: Fetching recommendations due to preferences change');
       // Reset card index and randomized order when fetching new recommendations
       setCurrentCardIndex(0);
       setRandomizedCardOrder([]);
@@ -390,7 +377,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
 
   // Also fetch on component mount (only if not already loading)
   useEffect(() => {
-    console.log('🔄 RecommendationsGrid: Component mounted, fetching recommendations');
     if (preferences.origin.lat && preferences.origin.lng && preferences.categories.length > 0 && !loading) {
       fetchRecommendations();
     }
@@ -477,8 +463,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       const currentRandomizedIndex = randomizedCardOrder[currentCardIndex];
       setViewedCards(prev => {
         const newViewed = new Set([...prev, currentRandomizedIndex]);
-        console.log(`👀 Viewed card ${currentRandomizedIndex} (${currentCardIndex + 1}/${randomizedCardOrder.length})`);
-        console.log(`📊 Total viewed: ${newViewed.size}/${randomizedCardOrder.length}`);
         
         // Track A/B test view event
         if (user?.id && abTestId && recommendations?.cards[currentRandomizedIndex]) {
@@ -516,7 +500,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
         setCurrentCardIndex(currentCardIndex + 1);
       } else {
         // All cards viewed
-        console.log('🎉 All cards have been viewed!');
         Alert.alert(
           "That's all for now!",
           "You've seen all recommendations. Try adjusting your filters for more options."

@@ -57,7 +57,6 @@ class EnhancedLocationTrackingService {
       const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
       
       if (foregroundStatus !== 'granted') {
-        console.log('Foreground location permission not granted by user');
         return false;
       }
 
@@ -66,10 +65,8 @@ class EnhancedLocationTrackingService {
         const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
         
         if (backgroundStatus !== 'granted') {
-          console.log('Background location permission not granted, continuing with foreground only');
         }
       } catch (backgroundError) {
-        console.log('Background location permission request failed:', backgroundError);
       }
 
       return true;
@@ -113,7 +110,6 @@ class EnhancedLocationTrackingService {
       if (!hasPermission) return false;
 
       if (this.isTracking) {
-        console.log('Location tracking already active');
         return true;
       }
 
@@ -146,7 +142,6 @@ class EnhancedLocationTrackingService {
       );
 
       this.isTracking = true;
-      console.log('Location tracking started');
       return true;
     } catch (error) {
       console.error('Error starting location tracking:', error);
@@ -160,7 +155,6 @@ class EnhancedLocationTrackingService {
       this.watchId = null;
     }
     this.isTracking = false;
-    console.log('Location tracking stopped');
   }
 
   private async handleLocationUpdate(location: LocationData): Promise<void> {

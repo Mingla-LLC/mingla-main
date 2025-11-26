@@ -131,15 +131,12 @@ export default function CollaborationModule({
   }, [preSelectedFriend, isOpen]);
 
   const handleAcceptInvite = (inviteId: string) => {
-    console.log('Accepting invite:', inviteId);
   };
 
   const handleDeclineInvite = (inviteId: string) => {
-    console.log('Declining invite:', inviteId);
   };
 
   const handleCancelInvite = (inviteId: string) => {
-    console.log('Canceling invite:', inviteId);
   };
 
   const handleJoinSession = (sessionId: string, sessionName: string) => {
@@ -148,7 +145,6 @@ export default function CollaborationModule({
   };
 
   const handleLeaveSession = (sessionId: string) => {
-    console.log('Leaving session:', sessionId);
     if (currentMode !== 'solo') {
       onModeChange('solo');
     }
@@ -161,7 +157,6 @@ export default function CollaborationModule({
     
     // Switch to the new session
     onModeChange(sessionData.name);
-    console.log('Creating session:', sessionData);
     onClose();
   };
 
@@ -175,8 +170,6 @@ export default function CollaborationModule({
   );
   
   // Debug logging
-  console.log('CollaborationModule - boardsSessions:', boardsSessions);
-  console.log('CollaborationModule - activeSessions:', activeSessions);
   
   const mockPendingSessions = [
     {

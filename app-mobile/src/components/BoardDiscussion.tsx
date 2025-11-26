@@ -253,7 +253,6 @@ export default function BoardDiscussion({
   const handleSendMessage = () => {
     if (newMessage.trim()) {
       // Handle sending message
-      console.log('Sending message:', newMessage);
       setNewMessage('');
     }
   };
@@ -287,18 +286,15 @@ export default function BoardDiscussion({
   };
 
   const handleVote = (cardId: string, vote: 'yes' | 'no') => {
-    console.log(`Voting ${vote} on card ${cardId} in board ${board.id}`);
     // Update vote logic would go here
   };
 
   const handleRSVP = (cardId: string, rsvp: 'yes' | 'no') => {
-    console.log(`RSVP ${rsvp} for card ${cardId} in board ${board.id}`);
     // Update RSVP logic would go here
   };
 
   const handleToggleNotifications = () => {
     setBoardNotifications(!boardNotifications);
-    console.log(`Board ${board.id} notifications ${!boardNotifications ? 'enabled' : 'disabled'}`);
   };
 
   const handleExitBoard = () => {

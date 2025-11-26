@@ -220,21 +220,17 @@ export const useRealtimeSession = () => {
       // Subscribe to real-time updates
       realtimeService.subscribeToSession(sessionId, {
         onParticipantJoined: (participant) => {
-          console.log('Participant joined:', participant);
           // Reload participants
           loadSessionParticipants(sessionId);
         },
         onParticipantLeft: (participant) => {
-          console.log('Participant left:', participant);
           // Reload participants
           loadSessionParticipants(sessionId);
         },
         onSessionUpdated: (updatedSession) => {
-          console.log('Session updated:', updatedSession);
           setCurrentSession(updatedSession);
         },
         onMessage: (message) => {
-          console.log('Message received:', message);
           setSessionMessages(prev => [...prev, message]);
         },
       });

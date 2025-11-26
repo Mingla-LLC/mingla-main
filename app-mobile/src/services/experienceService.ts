@@ -51,7 +51,6 @@ class ExperienceService {
       
       // If we have fewer than 18 experiences from database, supplement with mock data
       if (dbExperiences.length < 18) {
-        console.log(`Database has ${dbExperiences.length} experiences, supplementing with mock data`);
         const mockData = this.getMockExperiences();
         // Combine database experiences with mock data, avoiding duplicates
         const combined = [...dbExperiences];

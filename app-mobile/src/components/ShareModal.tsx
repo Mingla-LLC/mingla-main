@@ -54,9 +54,7 @@ export default function ShareModal({
       });
       
       if (result.action === Share.sharedAction) {
-        console.log('Successfully shared to', platform);
       } else if (result.action === Share.dismissedAction) {
-        console.log('Share dismissed');
       }
     } catch (error) {
       console.error('Error sharing:', error);
@@ -80,9 +78,7 @@ export default function ShareModal({
       });
       
       if (result.action === Share.sharedAction) {
-        console.log('Successfully shared via native share');
       } else if (result.action === Share.dismissedAction) {
-        console.log('Native share dismissed');
       }
     } catch (error) {
       console.error('Error with native share:', error);

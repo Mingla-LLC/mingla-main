@@ -1,5 +1,8 @@
+import { Alert, Platform, ToastAndroid } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { formatCurrency } from "./utils/formatters";
 import { PreferencesService } from "../services/preferencesService";
+import { savedCardsService } from "../services/savedCardsService";
 
 export function useAppHandlers(state: any) {
   const {
@@ -42,6 +45,17 @@ export function useAppHandlers(state: any) {
     setPreferencesRefreshKey,
   } = state;
 
+  const persistSavedCards = async (cards: any[]) => {
+    try {
+      await AsyncStorage.setItem(
+        "mingla_saved_cards",
+        JSON.stringify(cards || [])
+      );
+    } catch (error) {
+      console.error("Error persisting saved cards:", error);
+    }
+  };
+
   const handleCollaborationOpen = (friend?: any) => {
     setPreSelectedFriend(friend || null);
     setShowCollaboration(true);
@@ -49,7 +63,6 @@ export function useAppHandlers(state: any) {
 
   const handleModeChange = (mode: "solo" | string) => {
     setCurrentMode(mode);
-    console.log("Mode changed to:", mode);
   };
 
   const handleCollabPreferencesOpen = (sessionData: any) => {
@@ -63,11 +76,6 @@ export function useAppHandlers(state: any) {
         ...prev,
         [state.activeSessionData.id]: preferences,
       }));
-      console.log(
-        "Collaboration preferences saved for session:",
-        state.activeSessionData.id,
-        preferences
-      );
     }
     setShowCollabPreferences(false);
     setActiveSessionData(null);
@@ -87,7 +95,6 @@ export function useAppHandlers(state: any) {
       setNotifications((prev: any) => [...prev, notification]);
     });
 
-    console.log("Invites sent for session:", sessionId, "to users:", users);
   };
 
   const handlePromoteToAdmin = (boardId: string, participantId: string) => {
@@ -117,12 +124,6 @@ export function useAppHandlers(state: any) {
     });
 
     updateBoardsSessions(updatedBoards);
-    console.log(
-      "Promoted member to admin:",
-      participantId,
-      "on board:",
-      boardId
-    );
   };
 
   const handleDemoteFromAdmin = (boardId: string, participantId: string) => {
@@ -154,7 +155,6 @@ export function useAppHandlers(state: any) {
     });
 
     updateBoardsSessions(updatedBoards);
-    console.log("Demoted admin:", participantId, "on board:", boardId);
   };
 
   const handleRemoveMember = (boardId: string, participantId: string) => {
@@ -203,7 +203,6 @@ export function useAppHandlers(state: any) {
     setNotifications((prev: any) => [...prev, notification]);
 
     updateBoardsSessions(updatedBoards);
-    console.log("Removed member:", participantId, "from board:", boardId);
   };
 
   const handleLeaveBoard = (boardId: string) => {
@@ -285,7 +284,6 @@ export function useAppHandlers(state: any) {
       setActivityNavigation({ activeTab: "boards" });
     }
 
-    console.log("Left board:", boardId);
   };
 
   const handleAddToBoard = (sessionIds: string[], friend: any) => {
@@ -311,12 +309,6 @@ export function useAppHandlers(state: any) {
       }, index * 100);
     });
 
-    console.log(
-      "Friend added to boards:",
-      friend.name,
-      "Sessions:",
-      sessionIds
-    );
   };
 
   const handleShareSavedCard = (
@@ -334,7 +326,6 @@ export function useAppHandlers(state: any) {
       };
       setNotifications((prev: any) => [...prev, notification]);
     }
-    console.log("Shared saved card with:", friend.name);
   };
 
   const handleRemoveFriend = (friend: any, suppressNotification?: boolean) => {
@@ -359,7 +350,6 @@ export function useAppHandlers(state: any) {
       };
       setNotifications((prev: any) => [...prev, notification]);
     }
-    console.log("Removed friend:", friend.name);
   };
 
   const handleBlockUser = (friend: any, suppressNotification?: boolean) => {
@@ -392,7 +382,6 @@ export function useAppHandlers(state: any) {
       };
       setNotifications((prev: any) => [...prev, notification]);
     }
-    console.log("Blocked user:", friend.name);
   };
 
   const handleUnblockUser = (
@@ -417,7 +406,6 @@ export function useAppHandlers(state: any) {
       };
       setNotifications((prev: any) => [...prev, notification]);
     }
-    console.log("Unblocked user:", blockedUser.name);
   };
 
   const handleReportUser = (
@@ -448,14 +436,6 @@ export function useAppHandlers(state: any) {
       setNotifications((prev: any) => [...prev, notification]);
     }
 
-    console.log(
-      "Reported user:",
-      friend.name,
-      "Reason:",
-      reason,
-      "Details:",
-      details
-    );
   };
 
   const handleDismissNotification = (id: string) => {
@@ -465,17 +445,8 @@ export function useAppHandlers(state: any) {
   };
 
   const handleSavePreferences = async (preferences: any): Promise<boolean> => {
-    console.log("🔄 handleSavePreferences called");
-    console.log(
-      "📋 Received preferences:",
-      JSON.stringify(preferences, null, 2)
-    );
-    console.log("👤 User ID:", user?.id);
-    console.log("🔐 User authenticated:", !!user?.id);
-
     // Update local state immediately for UI responsiveness
     setUserPreferences(preferences);
-    console.log("✅ User preferences saved to local state");
 
     // Save to database if user is authenticated
     if (!user?.id) {
@@ -558,13 +529,6 @@ export function useAppHandlers(state: any) {
         dbPreferences.custom_location = preferences.searchLocation;
       }
 
-      console.log("💾 Preparing to save preferences to database");
-      console.log(
-        "📤 Database preferences payload:",
-        JSON.stringify(dbPreferences, null, 2)
-      );
-      console.log("👤 User ID for save:", user.id);
-
       try {
         const success = await PreferencesService.updateUserPreferences(
           user.id,
@@ -572,17 +536,9 @@ export function useAppHandlers(state: any) {
         );
 
         if (success) {
-          console.log("✅ Preferences successfully saved to database");
-          console.log("✅ User ID:", user.id);
-          console.log(
-            "✅ Saved preferences:",
-            JSON.stringify(dbPreferences, null, 2)
-          );
-
           // Trigger refresh of experiences by updating refresh key
           if (setPreferencesRefreshKey) {
             setPreferencesRefreshKey((prev: number) => prev + 1);
-            console.log("🔄 Triggered experience refresh");
           } else {
             console.warn("⚠️ setPreferencesRefreshKey is not available");
           }
@@ -603,18 +559,14 @@ export function useAppHandlers(state: any) {
     setNotificationsEnabled(enabled);
     if (enabled) {
       if ("Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission().then((permission) => {
-          console.log("Notification permission:", permission);
-        });
+        Notification.requestPermission();
       }
     }
-    console.log("Notifications toggled:", enabled);
   };
 
   const handleNavigateToActivity = (tab: "saved" | "boards" | "calendar") => {
     setCurrentPage("activity");
     setActivityNavigation({ activeTab: tab });
-    console.log("Navigating to Activity page, tab:", tab);
   };
 
   const handleNavigateToActivityBoard = (
@@ -628,17 +580,10 @@ export function useAppHandlers(state: any) {
       discussionTab: discussionTab,
     });
     setShowCollaboration(false);
-    console.log(
-      "Navigating to Activity page, board:",
-      board.name,
-      "discussion tab:",
-      discussionTab
-    );
   };
 
   const handleNavigateToConnections = () => {
     setCurrentPage("connections");
-    console.log("Navigating to Connections page");
   };
 
   const handleShareCard = (experienceData: any) => {
@@ -659,13 +604,6 @@ export function useAppHandlers(state: any) {
       dateTimePreferences: dateTimePrefs,
     });
     setShowShareModal(true);
-
-    console.log(
-      "Sharing card:",
-      experienceData.title,
-      "with prefs:",
-      dateTimePrefs
-    );
   };
 
   // Helper function to generate suggested dates
@@ -702,6 +640,86 @@ export function useAppHandlers(state: any) {
     return suggestions;
   };
 
+  const handleSaveCard = async (card: any) => {
+    if (!user?.id) {
+      Alert.alert(
+        "Sign in to save",
+        "Create an account or sign in to save experiences."
+      );
+      return;
+    }
+
+    if (savedCards?.some((item: any) => item.id === card.id)) {
+      if (Platform.OS === "android") {
+        ToastAndroid.show(
+          `${card.title} is already in your saved experiences`,
+          ToastAndroid.SHORT
+        );
+      } else {
+        Alert.alert(
+          "Already saved",
+          `${card.title} is already in your saved experiences.`
+        );
+      }
+      return;
+    }
+
+    try {
+      await savedCardsService.saveCard(user.id, card);
+      const savedEntry = {
+        ...card,
+        dateAdded: new Date().toISOString(),
+        source: card.source || "solo",
+      };
+
+      setSavedCards((prev: any[]) => {
+        if (prev.some((item) => item.id === savedEntry.id)) {
+          return prev;
+        }
+        const updated = [savedEntry, ...prev];
+        persistSavedCards(updated);
+        setProfileStats((stats: any) => ({
+          ...stats,
+          savedExperiences: updated.length,
+        }));
+        return updated;
+      });
+
+      const message = `❤️ Saved! ${card.title} has been added to your saved experiences`;
+      if (Platform.OS === "android") {
+        ToastAndroid.show(message, ToastAndroid.SHORT);
+      } else {
+        Alert.alert("❤️ Saved!", `${card.title} has been added to your saved experiences`);
+      }
+    } catch (error) {
+      console.error("Error saving card:", error);
+      Alert.alert(
+        "Save failed",
+        "We couldn't save this experience. Please try again."
+      );
+    }
+  };
+
+  const handleRemoveSavedCard = async (card: any) => {
+    if (!user?.id) return;
+
+    try {
+      await savedCardsService.removeCard(user.id, card.id);
+    } catch (error) {
+      console.error("Error removing saved card:", error);
+    }
+
+    setSavedCards((prev: any[]) => {
+      const updated = prev.filter((item) => item.id !== card.id);
+      persistSavedCards(updated);
+      setProfileStats((stats: any) => ({
+        ...stats,
+        savedExperiences: updated.length,
+      }));
+      return updated;
+    });
+  };
+
   return {
     handleCollaborationOpen,
     handleModeChange,
@@ -725,6 +743,8 @@ export function useAppHandlers(state: any) {
     handleNavigateToActivityBoard,
     handleNavigateToConnections,
     handleShareCard,
+    handleSaveCard,
+    handleRemoveSavedCard,
     generateSuggestedDates,
   };
 }

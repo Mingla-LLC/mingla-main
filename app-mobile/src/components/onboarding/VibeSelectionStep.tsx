@@ -408,13 +408,6 @@ const VibeSelectionStep = ({
       availableVibeIds.has(vibe.id)
     );
 
-    console.log("VibeSelectionStep: Filtered vibes", {
-      intents: intents.map((i: any) => (typeof i === "string" ? i : i.id)),
-      availableVibeIds: Array.from(availableVibeIds).sort(),
-      filteredCount: filtered.length,
-      filteredVibes: filtered.map((v) => v.name),
-    });
-
     return filtered;
   };
 

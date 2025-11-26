@@ -256,8 +256,6 @@ const SessionsTab = ({
   pendingSessions
 }: SessionsTabProps) => {
   // Debug logging
-  console.log('SessionsTab - Active sessions:', activeSessions.length, activeSessions);
-  console.log('SessionsTab - Pending sessions:', pendingSessions.length, pendingSessions);
 
   return (
     <View style={styles.sessionsContainer}>

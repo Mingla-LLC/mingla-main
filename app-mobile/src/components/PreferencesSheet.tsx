@@ -184,7 +184,6 @@ export default function PreferencesSheet({
                 loadedIntents.push(item);
               } else {
                 loadedCategories.push(item);
-                console.log("loadedCategories", item);
               }
             });
 

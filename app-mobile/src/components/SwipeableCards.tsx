@@ -1,16 +1,50 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Text, View, TouchableOpacity, Image, StyleSheet, Dimensions, Animated, PanResponder, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { ImageWithFallback } from './figma/ImageWithFallback';
-import { formatCurrency, formatDistance } from './utils/formatters';
-import { ExperiencesService, Experience } from '../services/experiencesService';
-import { ExperienceGenerationService, GeneratedExperience } from '../services/experienceGenerationService';
-import { useAuthSimple } from '../hooks/useAuthSimple';
-import { enhancedLocationService } from '../services/enhancedLocationService';
-import ExpandedCardModal from './ExpandedCardModal';
-import { ExpandedCardData } from '../types/expandedCardTypes';
+import React, { useState, useRef, useEffect } from "react";
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  Image,
+  StyleSheet,
+  Dimensions,
+  Animated,
+  PanResponder,
+  SafeAreaView,
+  StatusBar,
+  ActivityIndicator,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { formatCurrency, formatDistance } from "./utils/formatters";
+import {
+  ExperiencesService,
+  Experience,
+  UserPreferences,
+} from "../services/experiencesService";
+import {
+  ExperienceGenerationService,
+  GeneratedExperience,
+} from "../services/experienceGenerationService";
+import { useAuthSimple } from "../hooks/useAuthSimple";
+import { enhancedLocationService } from "../services/enhancedLocationService";
+import ExpandedCardModal from "./ExpandedCardModal";
+import { ExpandedCardData } from "../types/expandedCardTypes";
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+const CARD_HEIGHT = Math.min(screenHeight * 0.72, 700);
+const IMAGE_SECTION_RATIO = 0.66;
+const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
+
+const getDefaultPreferences = (): UserPreferences => ({
+  mode: "explore",
+  budget_min: 0,
+  budget_max: 1000,
+  people_count: 1,
+  categories: ["Sip & Chill", "Stroll"],
+  travel_mode: "walking",
+  travel_constraint_type: "time",
+  travel_constraint_value: 30,
+  datetime_pref: new Date().toISOString(),
+});
 
 interface Recommendation {
   id: string;
@@ -55,7 +89,7 @@ interface SwipeableCardsProps {
   onCardLike?: (card: any) => void;
   accountPreferences?: {
     currency: string;
-    measurementSystem: 'Metric' | 'Imperial';
+    measurementSystem: "Metric" | "Imperial";
   };
   onAddToCalendar?: (experienceData: any) => void;
   onShareCard?: (card: any) => void;
@@ -70,68 +104,72 @@ interface SwipeableCardsProps {
 // Real data will be fetched from Supabase
 
 const getIconComponent = (iconName: string) => {
-  const iconMap: {[key: string]: string} = {
-    'Coffee': 'cafe',
-    'TreePine': 'leaf',
-    'Sparkles': 'sparkles',
-    'Dumbbell': 'fitness',
-    'Utensils': 'restaurant',
-    'Eye': 'eye',
-    'Heart': 'heart',
-    'Calendar': 'calendar',
-    'MapPin': 'location',
-    'Clock': 'time',
-    'Star': 'star',
-    'Navigation': 'navigate',
-    'Palette': 'color-palette',
-    'Bookmark': 'bookmark'
+  const iconMap: { [key: string]: string } = {
+    Coffee: "cafe",
+    TreePine: "leaf",
+    Sparkles: "sparkles",
+    Dumbbell: "fitness",
+    Utensils: "restaurant",
+    Eye: "eye",
+    Heart: "heart",
+    Calendar: "calendar",
+    MapPin: "location",
+    Clock: "time",
+    Star: "star",
+    Navigation: "navigate",
+    Palette: "color-palette",
+    Bookmark: "bookmark",
   };
-  
-  return iconMap[iconName] || 'heart';
+
+  return iconMap[iconName] || "heart";
 };
 
-export default function SwipeableCards({ 
-  userPreferences, 
-  currentMode = 'solo', 
-  onCardLike, 
-  accountPreferences, 
-  onAddToCalendar, 
-  onShareCard, 
-  onPurchaseComplete, 
-  removedCardIds = [], 
+export default function SwipeableCards({
+  userPreferences,
+  currentMode = "solo",
+  onCardLike,
+  accountPreferences,
+  onAddToCalendar,
+  onShareCard,
+  onPurchaseComplete,
+  removedCardIds = [],
   onResetCards,
-  generateNewMockCard, 
+  generateNewMockCard,
   onboardingData,
-  refreshKey
+  refreshKey,
 }: SwipeableCardsProps) {
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   const spinValue = useRef(new Animated.Value(0)).current;
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
-  const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
-  
+  const [selectedCardForExpansion, setSelectedCardForExpansion] =
+    useState<ExpandedCardData | null>(null);
+
   // Use ref to store current recommendations for PanResponder
   const recommendationsRef = useRef<Recommendation[]>([]);
   const removedCardsRef = useRef<Set<string>>(new Set());
   const currentCardIndexRef = useRef(0);
-  
+
   // Update refs when state changes
   useEffect(() => {
     recommendationsRef.current = recommendations;
     removedCardsRef.current = removedCards;
     currentCardIndexRef.current = currentCardIndex;
   }, [recommendations, removedCards, currentCardIndex]);
-  
+
   // Swipe animation values
   const position = useRef(new Animated.ValueXY()).current;
   const rotate = position.x.interpolate({
     inputRange: [-screenWidth, 0, screenWidth],
-    outputRange: ['-30deg', '0deg', '30deg'],
+    outputRange: ["-30deg", "0deg", "30deg"],
   });
   const likeOpacity = position.x.interpolate({
     inputRange: [0, screenWidth / 4],
@@ -193,9 +231,7 @@ export default function SwipeableCards({
   ];
 
   // Shuffle tips array for random order
-  const shuffledTips = useRef(
-    tips.sort(() => Math.random() - 0.5)
-  ).current;
+  const shuffledTips = useRef(tips.sort(() => Math.random() - 0.5)).current;
 
   // Rotate tips every 5 seconds
   useEffect(() => {
@@ -227,7 +263,7 @@ export default function SwipeableCards({
 
   const spin = spinValue.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+    outputRange: ["0deg", "360deg"],
   });
 
   // Get user location
@@ -242,7 +278,7 @@ export default function SwipeableCards({
           setUserLocation({ lat: 37.7749, lng: -122.4194 });
         }
       } catch (error) {
-        console.error('Error getting location:', error);
+        console.error("Error getting location:", error);
         // Fallback to default location
         setUserLocation({ lat: 37.7749, lng: -122.4194 });
       }
@@ -261,120 +297,107 @@ export default function SwipeableCards({
       try {
         setLoading(true);
         setError(null);
-        
+
         // Get user preferences if available
-        let userPrefs = null;
+        let userPrefs: UserPreferences | null = null;
         if (user?.id) {
           try {
-            userPrefs = await ExperiencesService.getUserPreferences(user.id);
-            console.log('User preferences loaded:', userPrefs);
+            const prefs = await ExperiencesService.getUserPreferences(user.id);
+            if (prefs) {
+              userPrefs = prefs;
+            } else {
+              userPrefs = getDefaultPreferences();
+            }
           } catch (error) {
-            console.error('Error loading user preferences:', error);
-            // Use default preferences
-            userPrefs = {
-              mode: 'explore',
-              budget_min: 0,
-              budget_max: 1000,
-              people_count: 1,
-              categories: ['Sip & Chill', 'Stroll'],
-              travel_mode: 'walking',
-              travel_constraint_type: 'time',
-              travel_constraint_value: 30,
-              datetime_pref: new Date().toISOString(),
-            };
+            console.error("Error loading user preferences:", error);
+            userPrefs = getDefaultPreferences();
           }
         } else {
-          // Default preferences for non-authenticated users
-          userPrefs = {
-            mode: 'explore',
-            budget_min: 0,
-            budget_max: 1000,
-            people_count: 1,
-            categories: ['Sip & Chill', 'Stroll'],
-            travel_mode: 'walking',
-            travel_constraint_type: 'time',
-            travel_constraint_value: 30,
-            datetime_pref: new Date().toISOString(),
-          };
+          userPrefs = getDefaultPreferences();
         }
-        
+
+        if (!userPrefs) {
+          setError("Unable to load preferences");
+          setLoading(false);
+          return;
+        }
+
         // Generate experiences using AI
         try {
-          const generatedExperiences = await ExperienceGenerationService.generateExperiences({
-            userId: user?.id || 'anonymous',
-            preferences: userPrefs,
-            location: userLocation,
-          });
-          
-          console.log('Generated experiences:', generatedExperiences.length);
-          
+          const generatedExperiences =
+            await ExperienceGenerationService.generateExperiences({
+              userId: user?.id || "anonymous",
+              preferences: userPrefs,
+              location: userLocation,
+            });
+
           if (generatedExperiences.length === 0) {
-            setError('no_matches');
+            setError("no_matches");
             setRecommendations([]);
             return;
           }
-          
+
           // Transform to Recommendation format
-          const transformedRecommendations = generatedExperiences.map(exp => ({
-            id: exp.id,
-            title: exp.title,
-            category: exp.category,
-            categoryIcon: exp.categoryIcon,
-            timeAway: exp.travelTime,
-            description: exp.description,
-            budget: exp.priceRange,
-            rating: exp.rating,
-            image: exp.heroImage,
-            images: exp.images || [exp.heroImage],
-            priceRange: exp.priceRange,
-            distance: exp.distance,
-            travelTime: exp.travelTime,
-            experienceType: exp.category,
-            highlights: exp.highlights || [],
-            fullDescription: exp.description,
-            address: exp.address,
-            openingHours: '',
-            tags: exp.highlights || [],
-            matchScore: exp.matchScore,
-            reviewCount: exp.reviewCount,
-            socialStats: {
-              views: 0,
-              likes: 0,
-              saves: 0,
-              shares: 0,
-            },
-            matchFactors: exp.matchFactors || {
-              location: 85,
-              budget: 85,
-              category: 85,
-              time: 85,
-              popularity: 85,
-            },
-          }));
-          
+          const transformedRecommendations = generatedExperiences.map(
+            (exp) => ({
+              id: exp.id,
+              title: exp.title,
+              category: exp.category,
+              categoryIcon: exp.categoryIcon,
+              timeAway: exp.travelTime,
+              description: exp.description,
+              budget: exp.priceRange,
+              rating: exp.rating,
+              image: exp.heroImage,
+              images: exp.images || [exp.heroImage],
+              priceRange: exp.priceRange,
+              distance: exp.distance,
+              travelTime: exp.travelTime,
+              experienceType: exp.category,
+              highlights: exp.highlights || [],
+              fullDescription: exp.description,
+              address: exp.address,
+              openingHours: "",
+              tags: exp.highlights || [],
+              matchScore: exp.matchScore,
+              reviewCount: exp.reviewCount,
+              socialStats: {
+                views: 0,
+                likes: 0,
+                saves: 0,
+                shares: 0,
+              },
+              matchFactors: exp.matchFactors || {
+                location: 85,
+                budget: 85,
+                category: 85,
+                time: 85,
+                popularity: 85,
+              },
+            })
+          );
+
           setRecommendations(transformedRecommendations);
-          
+
           // Track view interaction for the first card
           if (transformedRecommendations.length > 0 && user?.id) {
             try {
               await ExperiencesService.trackInteraction(
                 user.id,
                 transformedRecommendations[0].id,
-                'view'
+                "view"
               );
             } catch (error) {
-              console.error('Error tracking view interaction:', error);
+              console.error("Error tracking view interaction:", error);
             }
           }
-          
         } catch (genError) {
-          console.error('Error generating experiences:', genError);
-          setError('Failed to generate experiences. Please try again.');
+          console.error("Error generating experiences:", genError);
+          setError("Failed to generate experiences. Please try again.");
         }
-        
       } catch (err) {
-        console.error('Error fetching recommendations:', err);
-        setError('Failed to load recommendations');
+        console.error("Error fetching recommendations:", err);
+        setError("Failed to load recommendations");
       } finally {
         setLoading(false);
       }
@@ -383,27 +406,22 @@ export default function SwipeableCards({
     fetchRecommendations();
   }, [user?.id, userLocation, refreshKey]); // Refresh when preferences are updated
 
-  const availableRecommendations = recommendations.filter(rec => 
-    !removedCards.has(rec.id) && !removedCardIds.includes(rec.id)
+  const availableRecommendations = recommendations.filter(
+    (rec) => !removedCards.has(rec.id) && !removedCardIds.includes(rec.id)
   );
 
   // Always use currentCardIndex to track position in the deck
   const currentRec = availableRecommendations[currentCardIndex];
-  
+
   // Reset index if we're beyond the available cards
   useEffect(() => {
-    if (currentCardIndex >= availableRecommendations.length && availableRecommendations.length > 0) {
+    if (
+      currentCardIndex >= availableRecommendations.length &&
+      availableRecommendations.length > 0
+    ) {
       setCurrentCardIndex(0);
     }
   }, [availableRecommendations.length, currentCardIndex]);
-  
-  // Debug logging
-  console.log('Total recommendations:', recommendations.length);
-  console.log('Available cards:', availableRecommendations.length);
-  console.log('Current card index:', currentCardIndex);
-  console.log('Removed cards:', Array.from(removedCards));
-  console.log('Current card:', currentRec?.title);
-  
 
   // PanResponder for swipe gestures
   const panResponder = useRef(
@@ -423,13 +441,15 @@ export default function SwipeableCards({
       },
       onPanResponderRelease: (_, gestureState) => {
         position.flattenOffset();
-        
+
         // Get current card from refs (always fresh)
-        const availableCards = recommendationsRef.current.filter(rec => 
-          !removedCardsRef.current.has(rec.id) && !removedCardIds.includes(rec.id)
+        const availableCards = recommendationsRef.current.filter(
+          (rec) =>
+            !removedCardsRef.current.has(rec.id) &&
+            !removedCardIds.includes(rec.id)
         );
         const cardToRemove = availableCards[currentCardIndexRef.current];
-        
+
         // Check for swipe up (expand card)
         if (gestureState.dy < -50 && Math.abs(gestureState.dx) < 50) {
           if (cardToRemove) {
@@ -441,46 +461,42 @@ export default function SwipeableCards({
           }).start();
           return;
         }
-        
+
         // Check for horizontal swipe
         if (Math.abs(gestureState.dx) > 120) {
-          const direction = gestureState.dx > 0 ? 'right' : 'left';
-          
+          const direction = gestureState.dx > 0 ? "right" : "left";
+
           // Check if card exists
           if (!cardToRemove) {
-            console.warn('No card to swipe');
+            console.warn("No card to swipe");
             Animated.spring(position, {
               toValue: { x: 0, y: 0 },
               useNativeDriver: false,
             }).start();
             return;
           }
-          
-          console.log('Swiping card:', cardToRemove.title);
-          
+
           // Animate card off screen first
           Animated.timing(position, {
             toValue: {
-              x: direction === 'right' ? screenWidth + 100 : -screenWidth - 100,
+              x: direction === "right" ? screenWidth + 100 : -screenWidth - 100,
               y: gestureState.dy,
             },
             duration: 250,
             useNativeDriver: false,
           }).start(() => {
             // After animation completes, remove the card and advance to next
-            setRemovedCards(prev => {
+            setRemovedCards((prev) => {
               const newSet = new Set([...prev, cardToRemove.id]);
-              console.log('Card removed:', cardToRemove.id);
-              console.log('Total removed:', Array.from(newSet));
               return newSet;
             });
-            
+
             // Move to next card
             setCurrentCardIndex(0);
-            
+
             // Handle swipe logic (tracking, saving, etc.) in background
             handleSwipe(direction, cardToRemove);
-            
+
             // Wait for React to render the next card before resetting position
             // This prevents the flash/flicker
             requestAnimationFrame(() => {
@@ -535,8 +551,8 @@ export default function SwipeableCards({
       matchFactors: currentRec.matchFactors,
       socialStats: currentRec.socialStats,
       location: userLocation || undefined,
-      selectedDateTime: userPreferences?.datetime_pref 
-        ? new Date(userPreferences.datetime_pref) 
+      selectedDateTime: userPreferences?.datetime_pref
+        ? new Date(userPreferences.datetime_pref)
         : new Date(),
     };
 
@@ -549,16 +565,18 @@ export default function SwipeableCards({
     setSelectedCardForExpansion(null);
   };
 
-  const handleSwipe = async (direction: 'left' | 'right', card: Recommendation) => {
-    console.log('Handling swipe:', direction, 'for card:', card?.title);
-    
+  const handleSwipe = async (
+    direction: "left" | "right",
+    card: Recommendation
+  ) => {
     if (!card) return;
-    
+
     try {
       // Track interaction in Supabase (only if user is authenticated)
       if (user?.id) {
-        const interactionType = direction === 'right' ? 'swipe_right' : 'swipe_left';
-        
+        const interactionType =
+          direction === "right" ? "swipe_right" : "swipe_left";
+
         try {
           await ExperiencesService.trackInteraction(
             user.id,
@@ -566,49 +584,59 @@ export default function SwipeableCards({
             interactionType,
             {
               category: card.category,
-              time_of_day: userPreferences?.timeOfDay || 'Afternoon',
+              time_of_day: userPreferences?.timeOfDay || "Afternoon",
               budget_range: `${card.priceRange}`,
-              location: userPreferences?.location || 'San Francisco'
+              location: userPreferences?.location || "San Francisco",
             }
           );
-          console.log('Tracked swipe interaction:', interactionType);
         } catch (trackingError) {
-          console.error('Error tracking interaction:', trackingError);
+          console.error("Error tracking interaction:", trackingError);
           // Continue without tracking - not critical
         }
-        
+
         // Save to Supabase if swiped right (liked)
-        if (direction === 'right') {
+        if (direction === "right") {
           try {
-            await ExperiencesService.saveExperience(user.id, currentRec.id, 'liked');
-            console.log('Saved liked experience to Supabase');
-          } catch (saveError) {
-            console.error('Error saving experience:', saveError);
+            await ExperiencesService.saveExperience(
+              user.id,
+              card.id,
+              "liked"
+            );
+          } catch (saveError: any) {
+            if (saveError?.code === "23505") {
+              console.warn(
+                "Experience already saved for this user, skipping duplicate save"
+              );
+            } else {
+              console.error("Error saving experience:", saveError);
+            }
             // Continue with local save even if Supabase fails
           }
-          
+
           if (onCardLike) {
             onCardLike(card);
           }
         } else {
           // Track dislike
           try {
-            await ExperiencesService.saveExperience(user.id, currentRec.id, 'disliked');
-            console.log('Tracked disliked experience');
+            await ExperiencesService.saveExperience(
+              user.id,
+              card.id,
+              "disliked"
+            );
           } catch (dislikeError) {
-            console.error('Error tracking dislike:', dislikeError);
+            console.error("Error tracking dislike:", dislikeError);
             // Continue without tracking dislike
           }
         }
-      } else {
+    } else {
         // User not authenticated - just handle locally
-        if (direction === 'right' && onCardLike) {
-          onCardLike(currentRec);
+        if (direction === "right" && onCardLike) {
+        onCardLike(card);
         }
       }
-      
     } catch (error) {
-      console.error('Error handling swipe:', error);
+      console.error("Error handling swipe:", error);
     }
 
     // Reset card position for the next swipe
@@ -649,7 +677,9 @@ export default function SwipeableCards({
           </Animated.View>
 
           {/* Loading Text */}
-          <Text style={styles.loadingTitle}>Finding your perfect experiences...</Text>
+          <Text style={styles.loadingTitle}>
+            Finding your perfect experiences...
+          </Text>
 
           {/* Rotating Tip */}
           <View style={styles.tipContainer}>
@@ -661,14 +691,17 @@ export default function SwipeableCards({
   }
 
   // Error state - No matches found
-  if (error === 'no_matches' || (error && availableRecommendations.length === 0)) {
+  if (
+    error === "no_matches" ||
+    (error && availableRecommendations.length === 0)
+  ) {
     const currentPrefs = userPreferences || {
       budget_min: 0,
       budget_max: 1000,
       categories: [],
       travel_constraint_value: 30,
     };
-    
+
     return (
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
@@ -677,21 +710,23 @@ export default function SwipeableCards({
           <Text style={styles.noCardsSubtitle}>
             We couldn't find experiences matching your current filters.
           </Text>
-          
+
           {/* Filter Summary */}
           <View style={styles.filterSummary}>
             <Text style={styles.filterSummaryTitle}>Current Filters:</Text>
             <View style={styles.filterTags}>
-              {currentPrefs.categories && currentPrefs.categories.length > 0 && (
-                <View style={styles.filterTag}>
-                  <Text style={styles.filterTagText}>
-                    Categories: {currentPrefs.categories.join(', ')}
-                  </Text>
-                </View>
-              )}
+              {currentPrefs.categories &&
+                currentPrefs.categories.length > 0 && (
+                  <View style={styles.filterTag}>
+                    <Text style={styles.filterTagText}>
+                      Categories: {currentPrefs.categories.join(", ")}
+                    </Text>
+                  </View>
+                )}
               <View style={styles.filterTag}>
                 <Text style={styles.filterTagText}>
-                  Budget: ${currentPrefs.budget_min || 0}-${currentPrefs.budget_max || 1000}
+                  Budget: ${currentPrefs.budget_min || 0}-$
+                  {currentPrefs.budget_max || 1000}
                 </Text>
               </View>
               <View style={styles.filterTag}>
@@ -701,16 +736,15 @@ export default function SwipeableCards({
               </View>
             </View>
           </View>
-          
+
           <Text style={styles.suggestionsTitle}>Suggestions:</Text>
           <Text style={styles.suggestionsText}>
-            • Try expanding your budget range{'\n'}
-            • Add more categories to your preferences{'\n'}
-            • Increase your travel time constraint{'\n'}
-            • Check back later for new experiences
+            • Try expanding your budget range{"\n"}• Add more categories to your
+            preferences{"\n"}• Increase your travel time constraint{"\n"}• Check
+            back later for new experiences
           </Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             onPress={() => {
               setError(null);
               setLoading(true);
@@ -718,28 +752,20 @@ export default function SwipeableCards({
               const fetchRecommendations = async () => {
                 if (!userLocation) return;
                 try {
-                  const userPrefs = user?.id 
-                    ? await ExperiencesService.getUserPreferences(user.id)
-                    : {
-                        mode: 'explore',
-                        budget_min: 0,
-                        budget_max: 1000,
-                        people_count: 1,
-                        categories: ['Sip & Chill', 'Stroll'],
-                        travel_mode: 'walking',
-                        travel_constraint_type: 'time',
-                        travel_constraint_value: 30,
-                        datetime_pref: new Date().toISOString(),
-                      };
-                  
-                  const generatedExperiences = await ExperienceGenerationService.generateExperiences({
-                    userId: user?.id || 'anonymous',
-                    preferences: userPrefs,
-                    location: userLocation,
-                  });
-                  
+                  const userPrefs: UserPreferences = user?.id
+                    ? (await ExperiencesService.getUserPreferences(user.id)) ??
+                      getDefaultPreferences()
+                    : getDefaultPreferences();
+
+                  const generatedExperiences =
+                    await ExperienceGenerationService.generateExperiences({
+                      userId: user?.id || "anonymous",
+                      preferences: userPrefs,
+                      location: userLocation,
+                    });
+
                   if (generatedExperiences.length > 0) {
-                    const transformed = generatedExperiences.map(exp => ({
+                    const transformed = generatedExperiences.map((exp) => ({
                       id: exp.id,
                       title: exp.title,
                       category: exp.category,
@@ -757,22 +783,26 @@ export default function SwipeableCards({
                       highlights: exp.highlights || [],
                       fullDescription: exp.description,
                       address: exp.address,
-                      openingHours: '',
+                      openingHours: "",
                       tags: exp.highlights || [],
                       matchScore: exp.matchScore,
                       reviewCount: exp.reviewCount,
                       socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
                       matchFactors: exp.matchFactors || {
-                        location: 85, budget: 85, category: 85, time: 85, popularity: 85,
+                        location: 85,
+                        budget: 85,
+                        category: 85,
+                        time: 85,
+                        popularity: 85,
                       },
                     }));
                     setRecommendations(transformed);
                     setError(null);
                   } else {
-                    setError('no_matches');
+                    setError("no_matches");
                   }
                 } catch (err) {
-                  setError('Failed to load recommendations');
+                  setError("Failed to load recommendations");
                 } finally {
                   setLoading(false);
                 }
@@ -790,7 +820,7 @@ export default function SwipeableCards({
   }
 
   // General error state
-  if (error && error !== 'no_matches') {
+  if (error && error !== "no_matches") {
     return (
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
@@ -798,10 +828,8 @@ export default function SwipeableCards({
             <Ionicons name="alert-circle" size={64} color="#ef4444" />
           </View>
           <Text style={styles.noCardsTitle}>Oops! Something went wrong</Text>
-          <Text style={styles.noCardsSubtitle}>
-            {error}
-          </Text>
-          <TouchableOpacity 
+          <Text style={styles.noCardsSubtitle}>{error}</Text>
+          <TouchableOpacity
             onPress={() => {
               setError(null);
               setLoading(true);
@@ -809,28 +837,20 @@ export default function SwipeableCards({
               const fetchRecommendations = async () => {
                 if (!userLocation) return;
                 try {
-                  const userPrefs = user?.id 
-                    ? await ExperiencesService.getUserPreferences(user.id)
-                    : {
-                        mode: 'explore',
-                        budget_min: 0,
-                        budget_max: 1000,
-                        people_count: 1,
-                        categories: ['Sip & Chill', 'Stroll'],
-                        travel_mode: 'walking',
-                        travel_constraint_type: 'time',
-                        travel_constraint_value: 30,
-                        datetime_pref: new Date().toISOString(),
-                      };
-                  
-                  const generatedExperiences = await ExperienceGenerationService.generateExperiences({
-                    userId: user?.id || 'anonymous',
-                    preferences: userPrefs,
-                    location: userLocation,
-                  });
-                  
+                  const userPrefs: UserPreferences = user?.id
+                    ? (await ExperiencesService.getUserPreferences(user.id)) ??
+                      getDefaultPreferences()
+                    : getDefaultPreferences();
+
+                  const generatedExperiences =
+                    await ExperienceGenerationService.generateExperiences({
+                      userId: user?.id || "anonymous",
+                      preferences: userPrefs,
+                      location: userLocation,
+                    });
+
                   if (generatedExperiences.length > 0) {
-                    const transformed = generatedExperiences.map(exp => ({
+                    const transformed = generatedExperiences.map((exp) => ({
                       id: exp.id,
                       title: exp.title,
                       category: exp.category,
@@ -848,20 +868,24 @@ export default function SwipeableCards({
                       highlights: exp.highlights || [],
                       fullDescription: exp.description,
                       address: exp.address,
-                      openingHours: '',
+                      openingHours: "",
                       tags: exp.highlights || [],
                       matchScore: exp.matchScore,
                       reviewCount: exp.reviewCount,
                       socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
                       matchFactors: exp.matchFactors || {
-                        location: 85, budget: 85, category: 85, time: 85, popularity: 85,
+                        location: 85,
+                        budget: 85,
+                        category: 85,
+                        time: 85,
+                        popularity: 85,
                       },
                     }));
                     setRecommendations(transformed);
                     setError(null);
                   }
                 } catch (err) {
-                  setError('Failed to load recommendations');
+                  setError("Failed to load recommendations");
                 } finally {
                   setLoading(false);
                 }
@@ -887,11 +911,11 @@ export default function SwipeableCards({
           </View>
           <Text style={styles.noCardsTitle}>You're all caught up!</Text>
           <Text style={styles.noCardsSubtitle}>
-            You've reviewed all available recommendations. Check back later for more personalized suggestions!
+            You've reviewed all available recommendations. Check back later for
+            more personalized suggestions!
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => {
-              console.log('Start Over button pressed!');
               setRemovedCards(new Set());
               setCurrentCardIndex(0);
               position.setValue({ x: 0, y: 0 });
@@ -920,107 +944,137 @@ export default function SwipeableCards({
       <View style={styles.container}>
         <View style={styles.cardContainer}>
           {/* Next Card (behind current) - fully rendered with all details */}
-          {availableRecommendations.length > 1 && (() => {
-            const nextCard = availableRecommendations[1];
-            const NextCategoryIcon = getIconComponent(nextCard.categoryIcon);
-            
-            return (
-              <Animated.View
-                style={[
-                  styles.card,
-                  styles.nextCard,
-                  {
-                    opacity: nextCardOpacity,
-                    transform: [{ scale: 0.95 }],
-                  },
-                ]}
-              >
-                {/* Hero Image Section */}
-                <View style={styles.imageContainer}>
-                  <Image
-                    source={{ uri: nextCard.image }}
-                    style={styles.cardImage}
-                    resizeMode="cover"
-                  />
-                  
-                  {/* Match Score Badge */}
-                  <View style={styles.matchBadge}>
-                    <Ionicons name="star" size={14} color="#1f2937" style={{ marginRight: 4 }} />
-                    <Text style={styles.matchText}>{nextCard.matchScore}% Match</Text>
-                  </View>
-                  
-                  {/* Gallery Indicator if multiple images */}
-                  {nextCard.images && nextCard.images.length > 1 && (
-                    <View style={styles.galleryIndicator}>
-                      <Ionicons name="images" size={16} color="white" />
-                      <Text style={styles.galleryText}>{nextCard.images.length}</Text>
+          {availableRecommendations.length > 1 &&
+            (() => {
+              const nextCard = availableRecommendations[1];
+              const NextCategoryIcon = getIconComponent(nextCard.categoryIcon);
+
+              return (
+                <Animated.View
+                  style={[
+                    styles.card,
+                    styles.nextCard,
+                    {
+                      opacity: nextCardOpacity,
+                      transform: [{ scale: 0.95 }],
+                    },
+                  ]}
+                >
+                  {/* Hero Image Section */}
+                  <View style={styles.imageContainer}>
+                    <Image
+                      source={{ uri: nextCard.image }}
+                      style={styles.cardImage}
+                      resizeMode="cover"
+                    />
+
+                    {/* Match Score Badge */}
+                    <View style={styles.matchBadge}>
+                      <Ionicons
+                        name="star"
+                        size={14}
+                        color="#1f2937"
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={styles.matchText}>
+                        {nextCard.matchScore}% Match
+                      </Text>
                     </View>
-                  )}
-                  
-                  {/* Title and Details Overlay */}
-                  <View style={styles.titleOverlay}>
-                    <Text style={styles.cardTitle}>{nextCard.title}</Text>
-                    
-                    {/* Three small badges: distance, travel time, rating */}
-                    <View style={styles.detailsBadges}>
-                      <View style={styles.detailBadge}>
-                        <Ionicons name="location" size={12} color="white" />
-                        <Text style={styles.detailBadgeText}>{nextCard.distance}</Text>
+
+                    {/* Gallery Indicator if multiple images */}
+                    {nextCard.images && nextCard.images.length > 1 && (
+                      <View style={styles.galleryIndicator}>
+                        <Ionicons name="images" size={16} color="white" />
+                        <Text style={styles.galleryText}>
+                          {nextCard.images.length}
+                        </Text>
                       </View>
-                      <View style={styles.detailBadge}>
-                        <Ionicons name="time" size={12} color="white" />
-                        <Text style={styles.detailBadgeText}>{nextCard.travelTime}</Text>
-                      </View>
-                      <View style={styles.detailBadge}>
-                        <Ionicons name="star" size={12} color="white" />
-                        <Text style={styles.detailBadgeText}>{nextCard.rating.toFixed(1)}</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-                
-                {/* White Details Section */}
-                <View style={styles.cardDetails}>
-                  {/* Category/Provider */}
-                  <View style={styles.categoryRow}>
-                    <Ionicons name={NextCategoryIcon as any} size={16} color="#eb7825" />
-                    <Text style={styles.categoryText}>{nextCard.category}</Text>
-                  </View>
-                  
-                  {/* Description - 2 lines max */}
-                  <Text style={styles.description} numberOfLines={2}>
-                    {nextCard.description}
-                  </Text>
-                  
-                  {/* Top 2 Highlights */}
-                  {nextCard.highlights && nextCard.highlights.length > 0 && (
-                    <View style={styles.highlightsContainer}>
-                      {nextCard.highlights.slice(0, 2).map((highlight: string, index: number) => (
-                        <View key={index} style={styles.highlightBadge}>
-                          <Text style={styles.highlightText}>{highlight}</Text>
+                    )}
+
+                    {/* Title and Details Overlay */}
+                    <View style={styles.titleOverlay}>
+                      <Text style={styles.cardTitle}>{nextCard.title}</Text>
+
+                      {/* Three small badges: distance, travel time, rating */}
+                      <View style={styles.detailsBadges}>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="location" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {nextCard.distance}
+                          </Text>
                         </View>
-                      ))}
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="time" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {nextCard.travelTime}
+                          </Text>
+                        </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="star" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {nextCard.rating.toFixed(1)}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                  )}
-                  
-                  {/* Share Button */}
-                  <TouchableOpacity 
-                    style={styles.shareButton}
-                    onPress={() => {
-                      if (onShareCard) {
-                        onShareCard(nextCard);
-                      }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="share-outline" size={18} color="#6b7280" />
-                    <Text style={styles.shareButtonText}>Share</Text>
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            );
-          })()}
-          
+                  </View>
+
+                  {/* White Details Section */}
+                  <View style={styles.cardDetails}>
+                    {/* Category/Provider */}
+                    <View style={styles.categoryRow}>
+                      <Ionicons
+                        name={NextCategoryIcon as any}
+                        size={16}
+                        color="#eb7825"
+                      />
+                      <Text style={styles.categoryText}>
+                        {nextCard.category}
+                      </Text>
+                    </View>
+
+                    {/* Description - 2 lines max */}
+                    <Text style={styles.description} numberOfLines={2}>
+                      {nextCard.description}
+                    </Text>
+
+                    {/* Top 2 Highlights */}
+                    {nextCard.highlights && nextCard.highlights.length > 0 && (
+                      <View style={styles.highlightsContainer}>
+                        {nextCard.highlights
+                          .slice(0, 2)
+                          .map((highlight: string, index: number) => (
+                            <View key={index} style={styles.highlightBadge}>
+                              <Text style={styles.highlightText}>
+                                {highlight}
+                              </Text>
+                            </View>
+                          ))}
+                      </View>
+                    )}
+
+                    {/* Share Button */}
+                    <TouchableOpacity
+                      style={styles.shareButton}
+                      onPress={() => {
+                        if (onShareCard) {
+                          onShareCard(nextCard);
+                        }
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="share-outline"
+                        size={18}
+                        color="#6b7280"
+                      />
+                      <Text style={styles.shareButtonText}>Share</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              );
+            })()}
+
           {/* Current Card */}
           <Animated.View
             style={[
@@ -1037,10 +1091,7 @@ export default function SwipeableCards({
           >
             {/* Swipe Direction Overlays */}
             <Animated.View
-              style={[
-                styles.swipeOverlayRight,
-                { opacity: likeOpacity },
-              ]}
+              style={[styles.swipeOverlayRight, { opacity: likeOpacity }]}
               pointerEvents="none"
             >
               <View style={styles.swipeIndicator}>
@@ -1048,12 +1099,9 @@ export default function SwipeableCards({
                 <Text style={styles.swipeText}>LIKE</Text>
               </View>
             </Animated.View>
-            
+
             <Animated.View
-              style={[
-                styles.swipeOverlayLeft,
-                { opacity: nopeOpacity },
-              ]}
+              style={[styles.swipeOverlayLeft, { opacity: nopeOpacity }]}
               pointerEvents="none"
             >
               <View style={styles.swipeIndicator}>
@@ -1074,69 +1122,97 @@ export default function SwipeableCards({
                   style={styles.cardImage}
                   resizeMode="cover"
                 />
-                
+
                 {/* Match Score Badge - Top Left */}
                 <View style={styles.matchBadge}>
-                  <Ionicons name="star" size={14} color="#1f2937" style={{ marginRight: 4 }} />
-                  <Text style={styles.matchText}>{currentRec.matchScore}% Match</Text>
+                  <Ionicons
+                    name="star"
+                    size={14}
+                    color="#1f2937"
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={styles.matchText}>
+                    {currentRec.matchScore}% Match
+                  </Text>
                 </View>
-                
+
                 {/* Gallery Indicator if multiple images */}
                 {currentRec.images && currentRec.images.length > 1 && (
                   <View style={styles.galleryIndicator}>
                     <Ionicons name="images" size={16} color="white" />
-                    <Text style={styles.galleryText}>{currentRec.images.length}</Text>
+                    <Text style={styles.galleryText}>
+                      {currentRec.images.length}
+                    </Text>
                   </View>
                 )}
-                
+
                 {/* Title and Details Overlay - Bottom Left of Image */}
                 <View style={styles.titleOverlay}>
                   <Text style={styles.cardTitle}>{currentRec.title}</Text>
-                  
+
                   {/* Three small badges: distance, travel time, rating */}
                   <View style={styles.detailsBadges}>
                     <View style={styles.detailBadge}>
                       <Ionicons name="location" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>{currentRec.distance}</Text>
+                      <Text style={styles.detailBadgeText}>
+                        {currentRec.distance}
+                      </Text>
                     </View>
                     <View style={styles.detailBadge}>
                       <Ionicons name="time" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>{currentRec.travelTime}</Text>
+                      <Text style={styles.detailBadgeText}>
+                        {currentRec.travelTime}
+                      </Text>
                     </View>
                     <View style={styles.detailBadge}>
                       <Ionicons name="star" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>{currentRec.rating.toFixed(1)}</Text>
+                      <Text style={styles.detailBadgeText}>
+                        {currentRec.rating.toFixed(1)}
+                      </Text>
                     </View>
                   </View>
                 </View>
               </View>
-              
+
               {/* White Details Section - Bottom 35-40% */}
               <View style={styles.cardDetails}>
-                {/* Category/Provider */}
-                <View style={styles.categoryRow}>
-                  <Ionicons name={CategoryIcon as any} size={16} color="#eb7825" />
-                  <Text style={styles.categoryText}>{currentRec.category}</Text>
-                </View>
-                
-                {/* Description - 2 lines max */}
-                <Text style={styles.description} numberOfLines={2}>
-                  {currentRec.description}
-                </Text>
-                
-                {/* Top 2 Highlights */}
-                {currentRec.highlights && currentRec.highlights.length > 0 && (
-                  <View style={styles.highlightsContainer}>
-                    {currentRec.highlights.slice(0, 2).map((highlight: string, index: number) => (
-                      <View key={index} style={styles.highlightBadge}>
-                        <Text style={styles.highlightText}>{highlight}</Text>
-                      </View>
-                    ))}
+                <View style={styles.cardDetailsContent}>
+                  {/* Category/Provider */}
+                  <View style={styles.categoryRow}>
+                    <Ionicons
+                      name={CategoryIcon as any}
+                      size={16}
+                      color="#eb7825"
+                    />
+                    <Text style={styles.categoryText}>
+                      {currentRec.category}
+                    </Text>
                   </View>
-                )}
-                
+
+                  {/* Description - 2 lines max */}
+                  <Text style={styles.description} numberOfLines={2}>
+                    {currentRec.description}
+                  </Text>
+
+                  {/* Top 2 Highlights */}
+                  {currentRec.highlights &&
+                    currentRec.highlights.length > 0 && (
+                      <View style={styles.highlightsContainer}>
+                        {currentRec.highlights
+                          .slice(0, 2)
+                          .map((highlight: string, index: number) => (
+                            <View key={index} style={styles.highlightBadge}>
+                              <Text style={styles.highlightText}>
+                                {highlight}
+                              </Text>
+                            </View>
+                          ))}
+                      </View>
+                    )}
+                </View>
+
                 {/* Share Button - Centered at bottom */}
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.shareButton}
                   onPress={handleShare}
                   activeOpacity={0.7}
@@ -1179,27 +1255,29 @@ export default function SwipeableCards({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: "#f9fafb",
   },
   container: {
     flex: 1,
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 24,
+    paddingBottom: 12,
   },
   cardContainer: {
     width: screenWidth * 0.92,
-    height: screenHeight * 0.65,
-    maxWidth: 380,
-    position: 'relative',
+    height: CARD_HEIGHT,
+    maxWidth: 400,
+    position: "relative",
   },
   card: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'white',
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "white",
     borderRadius: 24,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 4,
@@ -1208,60 +1286,61 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
     zIndex: 2,
+    overflow: "hidden",
   },
   nextCard: {
     zIndex: 1,
   },
   imageContainer: {
-    flex: 0.65, // 65% of card height
-    position: 'relative',
+    flex: IMAGE_SECTION_RATIO,
+    position: "relative",
   },
   cardImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
   matchBadge: {
-    position: 'absolute',
+    position: "absolute",
     top: 16,
     left: 16,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
+    flexDirection: "row",
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
   matchText: {
-    color: '#1f2937',
+    color: "#1f2937",
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   galleryIndicator: {
-    position: 'absolute',
+    position: "absolute",
     top: 16,
     right: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   galleryText: {
-    color: 'white',
+    color: "white",
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   titleOverlay: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
@@ -1269,58 +1348,58 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   cardTitle: {
-    color: 'white',
+    color: "white",
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 12,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
   detailsBadges: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
   },
   detailBadge: {
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   detailBadgeText: {
-    color: 'white',
+    color: "white",
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     marginBottom: 12,
   },
   categoryText: {
-    color: '#6b7280',
+    color: "#6b7280",
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   actionButtons: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 5,
     right: 25,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     zIndex: 10,
   },
   buyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#eb7825',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#eb7825",
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 16,
@@ -1329,168 +1408,174 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   buyButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   rightButtons: {
-    flexDirection: 'column',
+    flexDirection: "column",
     gap: 8,
   },
   actionButton: {
     width: 48,
     height: 48,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   cardDetails: {
-    flex: 0.35, // 35% of card height
-    backgroundColor: 'white',
-    padding: 20,
+    flex: DETAILS_SECTION_RATIO,
+    backgroundColor: "white",
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 32,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
+  cardDetailsContent: {
+    flexGrow: 1,
+    gap: 8,
+  },
   description: {
     fontSize: 15,
-    color: '#374151',
-    marginBottom: 16,
+    color: "#374151",
+    marginBottom: 8,
     lineHeight: 22,
   },
   highlightsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   highlightBadge: {
-    backgroundColor: '#fef3e2',
+    backgroundColor: "#fef3e2",
     borderWidth: 1,
-    borderColor: '#fed7aa',
+    borderColor: "#fed7aa",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
   },
   highlightText: {
     fontSize: 12,
-    color: '#eb7825',
-    fontWeight: '500',
+    color: "#eb7825",
+    fontWeight: "500",
   },
   shareButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
     paddingVertical: 12,
-    backgroundColor: '#f9fafb',
+    backgroundColor: "#f9fafb",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: "#e5e7eb",
   },
   shareButtonText: {
     fontSize: 15,
-    color: '#6b7280',
-    fontWeight: '500',
+    color: "#6b7280",
+    fontWeight: "500",
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
-    backgroundColor: '#f9fafb',
+    backgroundColor: "#f9fafb",
   },
   loadingContent: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: 32,
     maxWidth: 320,
   },
   spinnerContainer: {
     width: 100,
     height: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   spinnerOuter: {
     width: 100,
     height: 100,
     borderRadius: 50,
     borderWidth: 4,
-    borderColor: '#ffedd5',
-    borderTopColor: '#eb7825',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderColor: "#ffedd5",
+    borderTopColor: "#eb7825",
+    justifyContent: "center",
+    alignItems: "center",
   },
   spinnerInner: {
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: '#fff7ed',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#fff7ed",
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingTitle: {
     fontSize: 22,
-    fontWeight: '600',
-    color: '#111827',
-    textAlign: 'center',
+    fontWeight: "600",
+    color: "#111827",
+    textAlign: "center",
   },
   tipContainer: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    shadowColor: '#000',
+    borderColor: "#e5e7eb",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
     minHeight: 80,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   tipText: {
     fontSize: 15,
-    color: '#374151',
-    textAlign: 'center',
+    color: "#374151",
+    textAlign: "center",
     lineHeight: 22,
   },
   noCardsContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
   noCardsContent: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: 16,
   },
   noCardsIcon: {
     width: 80,
     height: 80,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: "#f3f4f6",
     borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   sparklesContainer: {
     width: 80,
     height: 80,
-    backgroundColor: '#fef3e2',
+    backgroundColor: "#fef3e2",
     borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   noCardsTitle: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
-    textAlign: 'center',
+    fontWeight: "600",
+    color: "#111827",
+    textAlign: "center",
   },
   noCardsSubtitle: {
     fontSize: 16,
-    color: '#6b7280',
-    textAlign: 'center',
+    color: "#6b7280",
+    textAlign: "center",
     lineHeight: 24,
     marginBottom: 20,
   },
@@ -1499,115 +1584,115 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   filterSummary: {
-    width: '100%',
-    backgroundColor: '#f9fafb',
+    width: "100%",
+    backgroundColor: "#f9fafb",
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
   },
   filterSummaryTitle: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: "600",
+    color: "#374151",
     marginBottom: 12,
   },
   filterTags: {
     gap: 8,
   },
   filterTag: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: "#e5e7eb",
   },
   filterTagText: {
     fontSize: 13,
-    color: '#6b7280',
+    color: "#6b7280",
   },
   suggestionsTitle: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: "600",
+    color: "#374151",
     marginBottom: 8,
   },
   suggestionsText: {
     fontSize: 14,
-    color: '#6b7280',
+    color: "#6b7280",
     lineHeight: 22,
     marginBottom: 20,
   },
   startOverButton: {
-    backgroundColor: '#eb7825',
+    backgroundColor: "#eb7825",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
   },
   startOverButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   swipeOverlayRight: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+    backgroundColor: "rgba(74, 222, 128, 0.1)",
     borderWidth: 4,
-    borderColor: '#4ade80',
+    borderColor: "#4ade80",
     borderRadius: 16,
     zIndex: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   swipeOverlayLeft: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
     borderWidth: 4,
-    borderColor: '#ef4444',
+    borderColor: "#ef4444",
     borderRadius: 16,
     zIndex: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   swipeIndicator: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   swipeText: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
+    fontWeight: "bold",
+    color: "white",
     marginTop: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
   swipeInstructions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: "rgba(0, 0, 0, 0.05)",
     borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    borderTopColor: "#f3f4f6",
   },
   swipeInstruction: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
   swipeInstructionText: {
     fontSize: 12,
-    color: '#6b7280',
-    fontWeight: '500',
+    color: "#6b7280",
+    fontWeight: "500",
   },
 });

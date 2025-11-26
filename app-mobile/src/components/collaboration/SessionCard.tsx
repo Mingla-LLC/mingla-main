@@ -312,9 +312,7 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
             return (
               <View key={participant.id} style={styles.participantContainer}>
                 <TouchableOpacity
-                  onPress={() => {
-                    console.log('Show name for:', participant.name);
-                  }}
+                  onPress={() => {}}
                   style={styles.participantAvatar}
                 >
                   <Text style={styles.participantAvatarText}>
@@ -339,7 +337,6 @@ const SessionCard = ({ session, currentMode, onJoinSession, onNavigateToBoard }:
                   <TouchableOpacity
                     onPress={(e) => {
                       e.stopPropagation();
-                      console.log('Kick user:', participant.name);
                     }}
                     style={styles.kickButton}
                   >

@@ -84,7 +84,6 @@ class ABTestingService {
         console.error('Error fetching active A/B tests:', error);
         // If table doesn't exist, return empty array
         if (error.code === '42P01') {
-          console.log('A/B tests table does not exist yet. Please apply the migration.');
           return [];
         }
         return [];
@@ -124,7 +123,6 @@ class ABTestingService {
       // Check if user meets audience criteria
       const meetsCriteria = await this.checkAudienceCriteria(userId, test.targetAudience);
       if (!meetsCriteria) {
-        console.log(`User ${userId} does not meet audience criteria for test ${testId}`);
         return null;
       }
 
@@ -156,7 +154,6 @@ class ABTestingService {
       // Update cache
       this.updateUserAssignmentsCache(userId, assignment);
 
-      console.log(`✅ Assigned user ${userId} to variant ${variantId} in test ${testId}`);
       return variantId;
     } catch (error) {
       console.error('Error in assignUserToTest:', error);
@@ -190,7 +187,6 @@ class ABTestingService {
         }
         if (error.code === '42P01') {
           // Table doesn't exist
-          console.log('A/B test assignments table does not exist yet. Please apply the migration.');
           return null;
         }
         console.error('Error fetching user assignment:', error);
@@ -277,7 +273,6 @@ class ABTestingService {
     try {
       const assignment = await this.getUserAssignment(userId, testId);
       if (!assignment) {
-        console.log(`No assignment found for user ${userId} in test ${testId}`);
         return;
       }
 
@@ -295,13 +290,9 @@ class ABTestingService {
         .insert([event]);
 
       if (error) {
-        if (error.code === '42P01') {
-          console.log('A/B test events table does not exist yet. Please apply the migration.');
-        } else {
+        if (error.code !== '42P01') {
           console.error('Error tracking A/B test event:', error);
         }
-      } else {
-        console.log(`📊 Tracked A/B test event: ${eventType} for user ${userId} in variant ${assignment.variantId}`);
       }
     } catch (error) {
       console.error('Error in trackEvent:', error);
@@ -438,7 +429,6 @@ class ABTestingService {
         return null;
       }
 
-      console.log(`✅ Created A/B test: ${test.name} (${data.id})`);
       return data.id;
     } catch (error) {
       console.error('Error in createTest:', error);
@@ -465,7 +455,6 @@ class ABTestingService {
         return false;
       }
 
-      console.log(`✅ Ended A/B test: ${testId}`);
       return true;
     } catch (error) {
       console.error('Error in endTest:', error);

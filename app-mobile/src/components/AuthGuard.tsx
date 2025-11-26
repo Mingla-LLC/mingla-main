@@ -24,7 +24,6 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
 
     // Fallback timeout to prevent infinite loading
     const fallbackTimer = setTimeout(() => {
-      console.log('AuthGuard fallback timeout - forcing initialization');
       setIsInitialized(true);
     }, 10000);
 
@@ -35,28 +34,23 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
   }, []);
 
   // Debug logging
-  console.log('AuthGuard state:', { loading, isAuthenticated, user: !!user, isInitialized });
 
   // If we're still loading and not initialized, show loading
   if (loading && !isInitialized) {
-    console.log('Showing loading screen - still loading');
     return fallback;
   }
 
   // If we're not loading but not initialized yet, show loading briefly
   if (!loading && !isInitialized) {
-    console.log('Showing loading screen - not initialized yet');
     return fallback;
   }
 
   // Show children if user is authenticated
   if (isAuthenticated && user) {
-    console.log('User authenticated, showing main app');
     return <>{children}</>;
   }
 
   // Show fallback if not authenticated
-  console.log('User not authenticated, showing fallback');
   return fallback;
 };
 

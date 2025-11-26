@@ -43,7 +43,6 @@ export class NotificationService {
       }
 
       if (finalStatus !== 'granted') {
-        console.log('Notification permission not granted');
         return false;
       }
 
@@ -145,7 +144,6 @@ export class NotificationService {
         .single();
 
       if (!userProfile?.expo_push_token) {
-        console.log('User does not have push token registered');
         return false;
       }
 

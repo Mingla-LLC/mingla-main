@@ -99,7 +99,6 @@ export default function AddFriendModal({ isOpen, onClose }: AddFriendModalProps)
   const handleUnsendRequest = (requestId: string) => {
     setSentRequests(prev => prev.filter(req => req.id !== requestId));
     // In real app, this would call API to cancel the friend request
-    console.log('Friend request unsent:', requestId);
   };
 
   const formatTimeAgo = (dateString: string) => {

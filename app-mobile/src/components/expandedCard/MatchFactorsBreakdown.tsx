@@ -49,12 +49,35 @@ export default function MatchFactorsBreakdown({
     },
   ];
 
-  // Get color based on score
-  const getScoreColor = (score: number): string => {
-    if (score >= 80) return '#10b981'; // Green
-    if (score >= 60) return '#f59e0b'; // Amber
-    if (score >= 40) return '#ef4444'; // Red
-    return '#9ca3af'; // Gray
+  const getScoreStyles = (
+    score: number
+  ): { bar: string; text: string; badge: string } => {
+    if (score >= 80) {
+      return {
+        bar: '#c25507', // deep orange
+        text: '#a03f00',
+        badge: '#fde0c9',
+      };
+    }
+    if (score >= 60) {
+      return {
+        bar: '#eb7825', // primary
+        text: '#c45d12',
+        badge: '#ffe9d9',
+      };
+    }
+    if (score >= 40) {
+      return {
+        bar: '#f5a266', // light orange
+        text: '#d17a3a',
+        badge: '#fff4ea',
+      };
+    }
+    return {
+      bar: '#fbd7bd', // soft peach
+      text: '#d28a5c',
+      badge: '#fff8f2',
+    };
   };
 
   // Get score label
@@ -74,7 +97,7 @@ export default function MatchFactorsBreakdown({
 
       <View style={styles.factorsContainer}>
         {factors.map((factor, index) => {
-          const scoreColor = getScoreColor(factor.value);
+          const scoreStyles = getScoreStyles(factor.value);
           const scoreLabel = getScoreLabel(factor.value);
 
           return (
@@ -89,17 +112,17 @@ export default function MatchFactorsBreakdown({
                   <Text style={styles.factorName}>{factor.name}</Text>
                 </View>
                 <View style={styles.scoreContainer}>
-                  <Text style={[styles.scoreValue, { color: scoreColor }]}>
+                  <Text style={[styles.scoreValue, { color: scoreStyles.text }]}>
                     {factor.value}%
                   </Text>
                   <View
                     style={[
                       styles.scoreBadge,
-                      { backgroundColor: `${scoreColor}15` },
+                      { backgroundColor: scoreStyles.badge },
                     ]}
                   >
                     <Text
-                      style={[styles.scoreLabel, { color: scoreColor }]}
+                      style={[styles.scoreLabel, { color: scoreStyles.text }]}
                     >
                       {scoreLabel}
                     </Text>
@@ -114,7 +137,7 @@ export default function MatchFactorsBreakdown({
                     styles.progressBar,
                     {
                       width: `${factor.value}%`,
-                      backgroundColor: scoreColor,
+                      backgroundColor: scoreStyles.bar,
                     },
                   ]}
                 />

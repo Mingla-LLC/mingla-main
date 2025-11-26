@@ -287,7 +287,7 @@ export default function App() {
               console.log("Add to calendar:", experienceData)
             }
             savedCards={savedCards}
-            onSaveCard={(card: any) => console.log("Save card:", card)}
+            onSaveCard={handlers.handleSaveCard}
             onShareCard={handlers.handleShareCard}
             onPurchaseComplete={(experienceData: any, purchaseOption: any) =>
               console.log("Purchase complete:", experienceData, purchaseOption)
@@ -342,10 +342,7 @@ export default function App() {
               console.log("Removing from calendar:", entry);
               // Handle removal logic here
             }}
-            onRemoveSaved={(card: any) => {
-              console.log("Removing saved card:", card);
-              // Handle removal logic here
-            }}
+            onRemoveSaved={handlers.handleRemoveSavedCard}
             onShareCard={(card: any) => {
               console.log("Sharing card:", card);
               // Handle share logic here

@@ -108,7 +108,6 @@ class UserInteractionService {
 
       this.currentSession = data;
       this.sessionStartTime = Date.now();
-      console.log('Started new session:', data.id);
       return data;
     } catch (error) {
       console.error('Error starting session:', error);
@@ -119,7 +118,6 @@ class UserInteractionService {
   // End the current session
   async endSession(): Promise<void> {
     if (!this.currentSession) {
-      console.log('No active session to end');
       return;
     }
 
@@ -136,7 +134,6 @@ class UserInteractionService {
       if (error) {
         console.error('Error ending session:', error);
       } else {
-        console.log('Ended session:', sessionId);
         this.currentSession = null;
         this.sessionStartTime = 0;
       }
@@ -156,7 +153,6 @@ class UserInteractionService {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.log('No authenticated user, skipping interaction tracking');
         return;
       }
 
@@ -216,10 +212,8 @@ class UserInteractionService {
       if (this.currentSession) {
         await this.updateSessionInteractionCount();
       } else {
-        console.log('No active session, skipping interaction count update');
       }
 
-      console.log('Tracked interaction:', interactionType, 'for experience:', experienceId);
     } catch (error) {
       console.error('Error tracking interaction:', error);
     }
@@ -529,7 +523,6 @@ class UserInteractionService {
 
   private async updateSessionInteractionCount(): Promise<void> {
     if (!this.currentSession) {
-      console.log('No active session to update interaction count');
       return;
     }
 
@@ -551,9 +544,7 @@ class UserInteractionService {
       } else if (error) {
         console.error('Database error updating session interaction count:', error);
       } else if (!this.currentSession) {
-        console.log('Session ended while updating interaction count');
       } else if (this.currentSession.id !== sessionId) {
-        console.log('Session changed while updating interaction count');
       }
     } catch (error) {
       console.error('Error updating session interaction count:', error);

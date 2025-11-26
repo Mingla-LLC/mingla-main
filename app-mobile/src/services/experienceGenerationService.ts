@@ -73,7 +73,6 @@ export class ExperienceGenerationService {
       }
 
       if (!data || !data.cards || data.cards.length === 0) {
-        console.log("No experiences generated");
         return [];
       }
 

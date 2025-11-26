@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useAppStore } from "../store/appStore";
+import { savedCardsService } from "../services/savedCardsService";
 
 // Default data constants moved to separate module to prevent re-creation
 const DEFAULT_FRIENDS = [
@@ -231,7 +232,6 @@ export function useAppState() {
   const [authTimeout, setAuthTimeout] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => {
-      console.log("Auth loading timeout - forcing loading to false");
       setAuthTimeout(true);
     }, 5000); // 5 second timeout - reduced for faster response
 
@@ -241,17 +241,6 @@ export function useAppState() {
   // Force loading to false after timeout or if authLoading is false
   const isLoadingAuth = authLoading && !authTimeout;
 
-  // Debug logging
-  useEffect(() => {
-    console.log("AppStateManager auth state:", {
-      user: !!user,
-      profile: !!profile,
-      authLoading,
-      authTimeout,
-      isLoadingAuth,
-      isAuthenticated,
-    });
-  }, [user, profile, authLoading, authTimeout, isLoadingAuth, isAuthenticated]);
 
   // Load onboarding data from profile (authentication handled by Supabase)
   useEffect(() => {
@@ -259,18 +248,12 @@ export function useAppState() {
     if (profile) {
       const hasCompleted = profile.has_completed_onboarding === true;
       setHasCompletedOnboarding(hasCompleted);
-      console.log("Onboarding status from profile:", hasCompleted);
-
       // If onboarding is not completed, show onboarding flow for authenticated users
       if (!hasCompleted && user && !showOnboardingFlow) {
-        console.log(
-          "User has not completed onboarding, showing onboarding flow"
-        );
         setShowOnboardingFlow(true);
       }
     } else if (user && !profile) {
       // User is authenticated but profile not loaded yet - wait
-      console.log("Waiting for profile to load...");
     } else if (!user) {
       // No user - onboarding status doesn't matter
       setHasCompletedOnboarding(false);
@@ -281,23 +264,7 @@ export function useAppState() {
 
   // Update userIdentity when Supabase authentication changes
   useEffect(() => {
-    console.log("Auth effect triggered:", {
-      user: !!user,
-      profile: !!profile,
-      userEmail: user?.email,
-    });
-
     if (user && profile) {
-      console.log("Updating userIdentity from Supabase:", {
-        userEmail: user.email,
-        profileFirstName: profile.first_name,
-        profileLastName: profile.last_name,
-        profileUsername: profile.username,
-        profileImage: profile.avatar_url,
-        fullProfile: profile,
-      });
-      console.log("Raw profile object keys:", Object.keys(profile));
-      console.log("Raw profile object values:", profile);
 
       // Use the actual first_name and last_name fields from the profile
       const updatedIdentity = {
@@ -309,12 +276,10 @@ export function useAppState() {
         id: user.id,
       };
 
-      console.log("Full profile object:", profile);
       setUserIdentity(updatedIdentity);
       safeAsyncStorageSet("mingla_user_identity", updatedIdentity);
     } else if (user && !profile) {
       // User is authenticated but no profile yet - use basic info from user
-      console.log("User authenticated but no profile, using basic info");
       const emailName = user.email?.split("@")[0] || "User";
       const updatedIdentity = {
         firstName: emailName,
@@ -325,11 +290,9 @@ export function useAppState() {
         id: user.id,
       };
 
-      console.log("Setting userIdentity to (no profile):", updatedIdentity);
       setUserIdentity(updatedIdentity);
       safeAsyncStorageSet("mingla_user_identity", updatedIdentity);
     } else {
-      console.log("No user or profile data available");
     }
   }, [user, profile]);
 
@@ -400,6 +363,34 @@ export function useAppState() {
     loadStoredData();
   }, []);
 
+  useEffect(() => {
+    const syncSavedCardsWithSupabase = async () => {
+      if (!user?.id) {
+        setSavedCards([]);
+        safeAsyncStorageSet("mingla_saved_cards", []);
+        setProfileStats((prev) => ({
+          ...prev,
+          savedExperiences: 0,
+        }));
+        return;
+      }
+
+      try {
+        const cards = await savedCardsService.fetchSavedCards(user.id);
+        setSavedCards(cards);
+        safeAsyncStorageSet("mingla_saved_cards", cards);
+        setProfileStats((prev) => ({
+          ...prev,
+          savedExperiences: cards.length,
+        }));
+      } catch (error) {
+        console.error("Error syncing saved cards:", error);
+      }
+    };
+
+    syncSavedCardsWithSupabase();
+  }, [user?.id]);
+
   // Utility functions
   const updateBoardsSessions = (updatedBoards: any[]) => {
     setBoardsSessions(updatedBoards);
@@ -445,7 +436,6 @@ export function useAppState() {
             },
           ]);
         } else {
-          console.log("Profile updated successfully in Supabase");
           // Show success notification
           setNotifications((prev) => [
             ...prev,
@@ -486,7 +476,6 @@ export function useAppState() {
     credentials: { email: string; password: string },
     role: "explorer" | "curator"
   ) => {
-    console.log("Sign in requested:", { email: credentials.email, role });
 
     try {
       // Use the signIn function from useAuthSimple
@@ -503,7 +492,6 @@ export function useAppState() {
       }
 
       if (data?.user) {
-        console.log("Sign in successful:", data.user.email);
         // The useAuthSimple hook will automatically update the user state
         // and the app will re-render with the authenticated user
       }
@@ -525,7 +513,6 @@ export function useAppState() {
   ) => {
     // Use account_type from userData if provided, otherwise use role
     const accountType = userData.account_type || role;
-    console.log("Sign up requested:", { ...userData, role, accountType });
 
     try {
       // Split name into first and last name
@@ -568,11 +555,6 @@ export function useAppState() {
       }
 
       if (data?.user) {
-        console.log("Sign up successful:", data.user.email);
-        console.log(
-          "Profile created successfully with username:",
-          userData.username
-        );
 
         // Reset showSignUpForm so onboarding can show properly
         setShowSignUpForm(false);
@@ -588,24 +570,16 @@ export function useAppState() {
   };
 
   const handleSignOut = async () => {
-    console.log("Sign out requested");
-
     try {
       // Clear all user data from the store immediately
-      console.log("Clearing all user data from store...");
       const { useAppStore } = await import("../store/appStore");
-      console.log("useAppStore imported successfully");
       const store = useAppStore.getState();
-      console.log("Store state retrieved:", !!store);
-      console.log("clearUserData function:", typeof store.clearUserData);
       store.clearUserData();
-      console.log("clearUserData called successfully");
     } catch (error) {
       console.error("Error clearing store data:", error);
     }
 
     // Also clear local state
-    console.log("Clearing local authentication state...");
     setUserIdentity({
       firstName: "",
       lastName: "",
@@ -614,23 +588,12 @@ export function useAppState() {
       email: "",
       id: "",
     });
-    console.log("Local state cleared");
-
     // Try Supabase sign out in background (non-blocking)
     try {
-      console.log("Attempting Supabase sign out in background...");
       await signOut();
-      console.log("Background Supabase signOut completed");
     } catch (error) {
-      console.log(
-        "Background Supabase sign out failed (non-critical):",
-        (error as Error).message
-      );
+      // Background sign out failed - non-critical
     }
-
-    console.log(
-      "Sign out completed - user should be redirected to sign-in page"
-    );
   };
 
   return {

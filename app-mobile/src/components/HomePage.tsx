@@ -39,7 +39,6 @@ export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpe
         <View style={styles.headerLeft}>
           <TouchableOpacity 
             onPress={() => {
-              console.log('Settings button clicked!');
               if (currentMode === 'solo') {
                 onOpenPreferences();
               } else {
@@ -64,10 +63,8 @@ export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpe
             source={minglaLogo}
             style={styles.logo}
             resizeMode="contain"
-            onError={(error) => {
-              console.log('Logo load error:', error);
-            }}
-            onLoad={() => console.log('Logo loaded successfully')}
+            onError={() => {}}
+            onLoad={() => {}}
           />
         </View>
         

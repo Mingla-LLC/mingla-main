@@ -54,17 +54,14 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
 
   const navigateToExperience = (experienceId: string) => {
     // This will be implemented when we add stack navigation
-    console.log('Navigate to experience:', experienceId);
   };
 
   const navigateToBoard = (boardId: string) => {
     // This will be implemented when we add stack navigation
-    console.log('Navigate to board:', boardId);
   };
 
   const navigateToSession = (sessionId: string) => {
     // This will be implemented when we add stack navigation
-    console.log('Navigate to session:', sessionId);
   };
 
   const navigateToConnections = () => {
@@ -72,7 +69,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
     if (navigation) {
       navigation.navigate('Connections');
     } else {
-      console.log('Navigate to connections');
     }
   };
 
@@ -81,7 +77,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
     if (navigation) {
       navigation.navigate('Activity', { initialTab: 'saved' });
     } else {
-      console.log('Navigate to saved experiences');
     }
   };
 
@@ -90,7 +85,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
     if (navigation) {
       navigation.navigate('Activity');
     } else {
-      console.log('Navigate to scheduled activities');
     }
   };
 

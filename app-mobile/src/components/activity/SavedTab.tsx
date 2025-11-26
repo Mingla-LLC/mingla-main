@@ -436,7 +436,6 @@ const SavedTab = ({
       };
       
       // This would integrate with calendar utilities
-      console.log('Adding to calendar:', card.title, dateTimePrefs);
     } catch (error) {
       console.error('Error adding to device calendar:', error);
     }

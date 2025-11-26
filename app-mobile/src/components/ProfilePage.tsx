@@ -66,9 +66,7 @@ export default function ProfilePage({
       // Persist location
       await AsyncStorage.setItem('mingla_user_location', defaultLocation);
       
-      console.log('Location updated to:', defaultLocation);
     } catch (error) {
-      console.log('Location update failed:', error);
       // Fallback to last known location
       try {
         const lastLocation = await AsyncStorage.getItem('mingla_user_location');
@@ -76,7 +74,6 @@ export default function ProfilePage({
           setCurrentLocation(lastLocation);
         }
       } catch (fallbackError) {
-        console.log('Fallback location failed:', fallbackError);
       }
     } finally {
       setIsLoadingLocation(false);
@@ -143,8 +140,6 @@ export default function ProfilePage({
       label: 'Profile Settings', 
       description: 'Edit your name, username, and profile photo',
       onClick: () => {
-        console.log('ProfilePage: Profile Settings button clicked');
-        console.log('ProfilePage: onNavigateToProfileSettings function:', typeof onNavigateToProfileSettings);
         if (onNavigateToProfileSettings) {
           onNavigateToProfileSettings();
         } else {
@@ -394,8 +389,6 @@ export default function ProfilePage({
         <View style={styles.signOutSection}>
           <TouchableOpacity
             onPress={() => {
-              console.log('ProfilePage: Sign out button pressed');
-              console.log('ProfilePage: onSignOut function:', typeof onSignOut);
               if (onSignOut) {
                 onSignOut();
               } else {

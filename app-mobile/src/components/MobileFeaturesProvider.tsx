@@ -44,7 +44,6 @@ interface MobileFeaturesProviderProps {
 export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ children }) => {
   const { user } = useAppStore();
   
-  console.log('MobileFeaturesProvider: Component mounted');
   
   // State
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
@@ -60,7 +59,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
     // Add a timeout to prevent indefinite blocking
     const timeoutId = setTimeout(() => {
       if (!isInitialized) {
-        console.log('Mobile features initialization timeout - forcing completion');
         setIsInitialized(true);
       }
     }, 5000); // 5 second timeout
@@ -82,7 +80,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
         }
       } else if (nextAppState === 'background') {
         // App went to background, we can continue location tracking
-        console.log('App went to background, location tracking continues');
       }
     };
 
@@ -99,7 +96,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
 
   const initializeMobileFeatures = async () => {
     try {
-      console.log('MobileFeaturesProvider: Starting initialization...');
       setInitializationError(null);
       
       // Initialize services in parallel and don't block on failures
@@ -115,14 +111,12 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
                   return true;
                 })
                 .catch(error => {
-                  console.log('Location fetch failed:', error);
                   return false;
                 });
             }
             return false;
           })
           .catch(error => {
-            console.log('Location permission failed:', error);
             return false;
           }),
 
@@ -133,18 +127,15 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
             return permission;
           })
           .catch(error => {
-            console.log('Notification initialization failed:', error);
             return false;
           }),
 
         // Initialize smart notification service (if user is logged in)
         user ? smartNotificationService.initializeUser(user.id)
           .then(() => {
-            console.log('Smart notification service initialized');
             return true;
           })
           .catch(error => {
-            console.log('Smart notification initialization failed:', error);
             return false;
           }) : Promise.resolve(false),
 
@@ -155,7 +146,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
             return permission;
           })
           .catch(error => {
-            console.log('Camera initialization failed:', error);
             return false;
           }),
 
@@ -165,18 +155,15 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
             if (permission) {
               return enhancedLocationTrackingService.startLocationTracking()
                 .then(success => {
-                  console.log('Enhanced location tracking started:', success);
                   return success;
                 })
                 .catch(error => {
-                  console.log('Enhanced location tracking failed:', error);
                   return false;
                 });
             }
             return false;
           })
           .catch(error => {
-            console.log('Enhanced location tracking permission failed:', error);
             return false;
           })
       ];
@@ -185,7 +172,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
       await Promise.allSettled(initPromises);
 
       setIsInitialized(true);
-      console.log('MobileFeaturesProvider: Initialization completed successfully');
     } catch (error: any) {
       console.error('Error initializing mobile features:', error);
       setInitializationError(error.message);
@@ -208,19 +194,16 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
         
         // If significant change, log it
         if (update.isSignificantChange) {
-          console.log('Significant location change detected');
         }
       },
     });
 
     setIsLocationTracking(true);
-    console.log('Location tracking started');
   };
 
   const stopLocationTracking = () => {
     enhancedLocationService.stopLocationTracking();
     setIsLocationTracking(false);
-    console.log('Location tracking stopped');
   };
 
   const getCurrentLocation = async (): Promise<LocationData | null> => {
@@ -241,7 +224,6 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
       const success = await enhancedNotificationService.registerForPushNotifications(user.id);
       if (success) {
         setNotificationPermissionGranted(true);
-        console.log('Successfully registered for push notifications');
       }
       return success;
     } catch (error) {

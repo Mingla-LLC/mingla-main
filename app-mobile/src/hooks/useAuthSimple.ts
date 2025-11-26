@@ -16,7 +16,6 @@ export const useAuthSimple = () => {
   // Add timeout to prevent infinite loading
   useEffect(() => {
     const timer = setTimeout(() => {
-      console.log("useAuthSimple timeout - forcing loading to false");
       setLoading(false);
     }, 8000); // 8 second timeout
 
@@ -28,14 +27,12 @@ export const useAuthSimple = () => {
 
     const initializeAuth = async () => {
       try {
-        console.log("Initializing auth...");
 
         // Get initial session
         const {
           data: { session },
           error,
         } = await supabase.auth.getSession();
-        console.log("Session result:", { session: !!session, error });
 
         if (error) {
           console.error("Error getting session:", error);
@@ -43,13 +40,7 @@ export const useAuthSimple = () => {
           return;
         }
 
-        console.log(
-          "Session check result:",
-          session ? "Found session" : "No session"
-        );
-
         if (session?.user) {
-          console.log("Setting user from session");
           setAuth(session.user as User);
 
           // Load profile
@@ -72,10 +63,6 @@ export const useAuthSimple = () => {
               // If profile doesn't exist (PGRST116), check if user actually exists
               // User might have been deleted from Supabase but session still cached
               if (profileError.code === "PGRST116") {
-                console.log(
-                  "Profile not found, validating user still exists..."
-                );
-
                 // Validate that user actually exists by trying to get user info
                 const {
                   data: { user: authUser },
@@ -83,9 +70,6 @@ export const useAuthSimple = () => {
                 } = await supabase.auth.getUser();
 
                 if (userError || !authUser || authUser.id !== session.user.id) {
-                  console.log(
-                    "User no longer exists or session invalid, signing out..."
-                  );
                   // User was deleted or session is invalid - sign out and clear
                   await supabase.auth.signOut();
                   setAuth(null);
@@ -95,7 +79,6 @@ export const useAuthSimple = () => {
                 }
 
                 // User exists but profile doesn't - create one
-                console.log("User exists, creating new profile...");
                 try {
                   const emailName = session.user.email?.split("@")[0] || "User";
                   const { data: newProfile, error: createError } =
@@ -118,7 +101,6 @@ export const useAuthSimple = () => {
                   if (createError) {
                     console.error("Error creating profile:", createError);
                   } else {
-                    console.log("Profile created successfully:", newProfile);
                     setProfile(newProfile);
                   }
                 } catch (createError) {
@@ -126,33 +108,21 @@ export const useAuthSimple = () => {
                 }
               }
             } else if (profile) {
-              console.log("Profile loaded successfully:", profile);
-              console.log("Profile fields:", {
-                first_name: profile.first_name,
-                last_name: profile.last_name,
-                username: profile.username,
-                profile_image: profile.profile_image,
-              });
               setProfile(profile);
-            } else {
-              console.log("No profile found for user:", session.user.id);
             }
           } catch (profileError) {
             console.error("Error loading profile:", profileError);
           }
         } else {
-          console.log("No session found");
           setAuth(null);
         }
 
         if (mounted) {
-          console.log("Setting loading to false - auth initialized");
           setLoading(false);
         }
       } catch (error) {
         console.error("Auth initialization error:", error);
         if (mounted) {
-          console.log("Setting loading to false - auth error");
           setLoading(false);
         }
       }
@@ -164,12 +134,6 @@ export const useAuthSimple = () => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(
-        "Auth state change:",
-        event,
-        session ? "Has session" : "No session"
-      );
-
       if (session?.user) {
         setAuth(session.user as User);
 
@@ -192,7 +156,6 @@ export const useAuthSimple = () => {
               } = await supabase.auth.getUser();
 
               if (userError || !authUser || authUser.id !== session.user.id) {
-                console.log("User no longer exists, signing out...");
                 await supabase.auth.signOut();
                 setAuth(null);
                 clearUserData();
@@ -210,7 +173,6 @@ export const useAuthSimple = () => {
       }
 
       if (mounted) {
-        console.log("Setting loading to false - auth state change");
         setLoading(false);
       }
     });
@@ -276,7 +238,6 @@ export const useAuthSimple = () => {
                 "Failed to send verification email. You can request a new code from the verification screen."
             );
           } else {
-            console.log("OTP email sent successfully to:", data.user.email);
           }
         } catch (otpErr: any) {
           console.error("Exception sending OTP:", otpErr);
@@ -292,7 +253,6 @@ export const useAuthSimple = () => {
       // Profile will be automatically created by database trigger
       // Check if we have a session (user might need email confirmation)
       if (data.user) {
-        console.log("Sign up successful, checking session...");
 
         // Use session from signUp response, or get current session
         let session = data.session;
@@ -305,7 +265,6 @@ export const useAuthSimple = () => {
 
         if (session) {
           // Session exists, wait for trigger and load profile
-          console.log("Session exists, waiting for profile creation...");
           await new Promise((resolve) => setTimeout(resolve, 500));
 
           // Try to load the profile that was created by the trigger
@@ -319,15 +278,11 @@ export const useAuthSimple = () => {
             console.error("Error loading profile after signup:", profileError);
             // Don't fail signup if profile loading fails - trigger should have created it
           } else if (profile) {
-            console.log("Profile loaded successfully:", profile);
             setProfile(profile);
           }
         } else {
           // No session - email confirmation might be required
           // The onAuthStateChange listener will handle loading the profile when user confirms email
-          console.log(
-            "No session after signup - profile will be loaded after email confirmation"
-          );
         }
       }
 
@@ -546,10 +501,6 @@ export const useAuthSimple = () => {
 
       // If verification successful, user should have a session
       if (data.user) {
-        console.log(
-          "Phone verification successful, waiting for profile creation..."
-        );
-
         // Set password if it was stored in metadata
         const tempPassword = data.user.user_metadata?.temp_password;
         if (tempPassword) {
@@ -594,7 +545,6 @@ export const useAuthSimple = () => {
             "Account created but profile loading failed. Please refresh the app."
           );
         } else if (profile) {
-          console.log("Profile loaded successfully:", profile);
           setProfile(profile);
         }
       }
@@ -636,7 +586,6 @@ export const useAuthSimple = () => {
       // Supabase will automatically handle account linking if email matches
       const redirectUrl = Linking.createURL("/");
 
-      console.log("Starting Google OAuth with redirect URL:", redirectUrl);
 
       // Initiate OAuth sign-in
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -655,12 +604,10 @@ export const useAuthSimple = () => {
           redirectUrl
         );
 
-        console.log("OAuth result:", result.type);
 
         // Handle the OAuth callback
         // Supabase OAuth redirects contain tokens in the URL hash fragment
         if (result.type === "success" && result.url) {
-          console.log("OAuth callback received:", result.url);
 
           // Parse the callback URL - tokens are in hash fragment for Supabase
           const url = new URL(result.url);
@@ -699,20 +646,14 @@ export const useAuthSimple = () => {
                   profileError
                 );
               } else if (profile) {
-                console.log(
-                  "Profile loaded successfully after Google sign-in:",
-                  profile
-                );
                 setProfile(profile);
               }
             }
           } else {
             // If tokens not in URL, Supabase's onAuthStateChange will handle it
-            console.log("Waiting for session via onAuthStateChange...");
             // The onAuthStateChange listener will automatically handle the session
           }
         } else if (result.type === "cancel") {
-          console.log("User cancelled Google sign-in");
           return { data: null, error: { message: "Sign-in cancelled" } };
         }
       }

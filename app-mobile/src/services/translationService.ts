@@ -88,7 +88,6 @@ class TranslationService {
         await this.loadTranslationCache();
       }
 
-      console.log(`🌍 Translation service initialized with language: ${this.currentLanguage}`);
     } catch (error) {
       console.error('Error initializing translation service:', error);
     }
@@ -119,7 +118,6 @@ class TranslationService {
         await this.loadLanguageTranslations(languageCode);
       }
 
-      console.log(`🌍 Language changed to: ${languageCode}`);
       return true;
     } catch (error) {
       console.error('Error setting language:', error);
@@ -462,7 +460,6 @@ class TranslationService {
     try {
       this.translationCache = {};
       await AsyncStorage.removeItem('translation_cache');
-      console.log('🧹 Translation cache cleared');
     } catch (error) {
       console.error('Error clearing translation cache:', error);
     }

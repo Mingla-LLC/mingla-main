@@ -18,19 +18,16 @@ export const SimpleAuthGuard: React.FC<SimpleAuthGuardProps> = ({
   const [bypassAuth, setBypassAuth] = useState(false);
 
   useEffect(() => {
-    console.log('SimpleAuthGuard: Starting auth check...');
     
     // Add timeout to prevent indefinite blocking
     const timeoutId = setTimeout(() => {
       if (loading) {
-        console.log('SimpleAuthGuard: Auth check timeout - forcing completion');
         setLoading(false);
       }
     }, 3000); // 3 second timeout
 
     // Add bypass timeout for debugging
     const bypassTimeoutId = setTimeout(() => {
-      console.log('SimpleAuthGuard: Bypass timeout - allowing app to proceed');
       setBypassAuth(false);
       setLoading(false);
     }, 10000); // 10 second bypass timeout
@@ -38,12 +35,10 @@ export const SimpleAuthGuard: React.FC<SimpleAuthGuardProps> = ({
     // Check for existing authentication
     const checkAuth = async () => {
       try {
-        console.log('SimpleAuthGuard: Checking current user...');
         const { user, error } = await authService.getCurrentUser();
         if (error) {
           console.error('Auth check error:', error);
         }
-        console.log('SimpleAuthGuard: Auth check completed');
         setLoading(false);
       } catch (error) {
         console.error('Auth check error:', error);
@@ -57,7 +52,6 @@ export const SimpleAuthGuard: React.FC<SimpleAuthGuardProps> = ({
 
     // Listen for auth state changes
     const { data: { subscription } } = authService.onAuthStateChange((user) => {
-      console.log('Auth state changed:', user ? 'User signed in' : 'User signed out');
     });
 
     return () => {
@@ -70,18 +64,15 @@ export const SimpleAuthGuard: React.FC<SimpleAuthGuardProps> = ({
 
   if (loading) {
     return <LoadingScreen onBypass={() => {
-      console.log('Manual bypass triggered');
       setBypassAuth(true);
       setLoading(false);
     }} />;
   }
 
   if (isAuthenticated || bypassAuth) {
-    console.log('SimpleAuthGuard: Rendering main app', { isAuthenticated, bypassAuth });
     return <>{children}</>;
   }
 
-  console.log('SimpleAuthGuard: Rendering auth screen');
   // Show the proper AuthScreen instead of bypass option
   return <AuthScreen />;
 };

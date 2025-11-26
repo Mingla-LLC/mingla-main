@@ -21,12 +21,6 @@ export default function ProfileSettings({
   onUpdateIdentity, 
   onNavigateBack 
 }: ProfileSettingsProps) {
-  console.log('ProfileSettings: Received userIdentity:', userIdentity);
-  console.log('ProfileSettings: userIdentity keys:', Object.keys(userIdentity));
-  console.log('ProfileSettings: firstName:', userIdentity.firstName);
-  console.log('ProfileSettings: lastName:', userIdentity.lastName);
-  console.log('ProfileSettings: username:', userIdentity.username);
-  console.log('ProfileSettings: profileImage:', userIdentity.profileImage);
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [tempValues, setTempValues] = useState({
     firstName: userIdentity.firstName,

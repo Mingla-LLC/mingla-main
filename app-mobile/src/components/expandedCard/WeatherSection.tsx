@@ -146,9 +146,11 @@ export default function WeatherSection({
       <View
         style={[
           styles.recommendationBox,
-          isOutdoorActivity && weatherData.precipitation && weatherData.precipitation > 0.1
-            ? styles.recommendationWarning
-            : styles.recommendationGood,
+          isOutdoorActivity &&
+          weatherData.precipitation &&
+          weatherData.precipitation > 0.1
+            ? styles.recommendationCaution
+            : styles.recommendationHighlight,
         ]}
       >
         <Ionicons
@@ -160,16 +162,16 @@ export default function WeatherSection({
           size={20}
           color={
             isOutdoorActivity && weatherData.precipitation && weatherData.precipitation > 0.1
-              ? '#ef4444'
-              : '#10b981'
+              ? '#c24b0b'
+              : '#eb7825'
           }
         />
         <Text
           style={[
             styles.recommendationText,
             isOutdoorActivity && weatherData.precipitation && weatherData.precipitation > 0.1
-              ? styles.recommendationTextWarning
-              : styles.recommendationTextGood,
+              ? styles.recommendationTextCaution
+              : styles.recommendationTextHighlight,
           ]}
         >
           {weatherData.recommendation}
@@ -310,27 +312,26 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
     gap: 10,
-  },
-  recommendationGood: {
-    backgroundColor: '#f0fdf4',
     borderWidth: 1,
-    borderColor: '#bbf7d0',
   },
-  recommendationWarning: {
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fecaca',
+  recommendationHighlight: {
+    backgroundColor: '#fff5ef',
+    borderColor: '#ffd9c2',
+  },
+  recommendationCaution: {
+    backgroundColor: '#fff0e6',
+    borderColor: '#ffc9b3',
   },
   recommendationText: {
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
   },
-  recommendationTextGood: {
-    color: '#166534',
+  recommendationTextHighlight: {
+    color: '#a34000',
   },
-  recommendationTextWarning: {
-    color: '#991b1b',
+  recommendationTextCaution: {
+    color: '#d04f0c',
   },
   hourlyContainer: {
     marginTop: 8,

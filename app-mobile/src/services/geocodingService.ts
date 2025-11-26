@@ -20,7 +20,6 @@ class GeocodingService {
       // Check cache first
       const cached = this.cache.get(cacheKey);
       if (cached) {
-        console.log('Returning cached geocoding result');
         return cached;
       }
 

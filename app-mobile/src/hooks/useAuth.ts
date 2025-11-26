@@ -16,12 +16,10 @@ export const useAuth = () => {
     
     Promise.race([sessionPromise, timeoutPromise])
       .then(({ data: { session } }: any) => {
-        console.log('Initial session check:', session ? 'Found session' : 'No session');
         if (session?.user) {
           setAuth(session.user as User);
           loadUserProfile(session.user.id);
         } else {
-          console.log('No session found, setting loading to false');
           setLoading(false);
         }
       })
@@ -33,7 +31,6 @@ export const useAuth = () => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state change:', event, session ? 'Has session' : 'No session');
         if (session?.user) {
           setAuth(session.user as User);
           await loadUserProfile(session.user.id);
@@ -50,7 +47,6 @@ export const useAuth = () => {
 
   const loadUserProfile = async (userId: string) => {
     try {
-      console.log('Loading profile for user:', userId);
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('*')
@@ -63,10 +59,8 @@ export const useAuth = () => {
       }
 
       if (profile) {
-        console.log('Profile loaded successfully');
         setProfile(profile);
       } else {
-        console.log('No profile found for user');
       }
     } catch (error) {
       console.error('Error loading profile:', error);

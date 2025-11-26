@@ -32,7 +32,6 @@ class CameraService {
       const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
       
       if (cameraStatus !== 'granted') {
-        console.log('Camera permission not granted - continuing without camera features');
         return false;
       }
 

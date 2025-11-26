@@ -114,7 +114,6 @@ export default function ActivityPage({
   }, [navigationData, onNavigationComplete]);
 
   const handleVote = (cardId: string, vote: 'yes' | 'no') => {
-    console.log(`Voted ${vote} on card ${cardId}`);
   };
 
   const handleRSVP = (cardId: string, rsvp: 'yes' | 'no') => {
@@ -124,15 +123,12 @@ export default function ActivityPage({
         onScheduleFromSaved(card);
       }
     }
-    console.log(`RSVP ${rsvp} for card ${cardId}`);
   };
 
   const handleRemoveSaved = (cardId: string) => {
-    console.log(`Removed card ${cardId} from saved`);
   };
 
   const handleSendToFriend = (cardId: string) => {
-    console.log(`Sending card ${cardId} to friend`);
   };
 
   const handleInviteToSession = (boardId: string, boardName: string) => {
@@ -163,13 +159,11 @@ export default function ActivityPage({
   };
 
   const handleLeaveBoard = (boardId: string, boardName: string) => {
-    console.log(`Leaving board: ${boardName}`);
   };
 
   const handleToggleBoardNotifications = (boardId: string) => {
     setBoardNotifications(prev => {
       const newEnabled = !prev[boardId];
-      console.log(`Board ${boardId} notifications ${newEnabled ? 'enabled' : 'disabled'}`);
       return {
         ...prev,
         [boardId]: newEnabled
@@ -178,7 +172,6 @@ export default function ActivityPage({
   };
 
   const handleExitBoard = (boardId: string, boardName: string) => {
-    console.log(`Exiting board: ${boardName}`);
   };
 
   const isUserAdmin = (board: Board): boolean => {
@@ -191,7 +184,6 @@ export default function ActivityPage({
   };
 
   const handleAddToCalendar = (entry: any) => {
-    console.log('Adding to calendar:', entry);
   };
 
   const handleShowQRCode = (entryId: string) => {

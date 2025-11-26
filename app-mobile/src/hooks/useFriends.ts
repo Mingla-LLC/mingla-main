@@ -62,7 +62,6 @@ export const useFriends = () => {
 
         // If profile doesn't exist, create a basic one
         if (profileError && profileError.code === 'PGRST116') {
-          console.log('Profile not found for user:', friend.friend_user_id, 'creating basic profile');
           
           // Create a basic profile for this user
           const { data: newProfile, error: createError } = await supabase

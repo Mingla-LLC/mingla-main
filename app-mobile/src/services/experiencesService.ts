@@ -134,11 +134,15 @@ export class ExperiencesService {
             experience_id: experienceId,
             status: status,
             scheduled_at: status === 'saved' ? new Date().toISOString() : null
-          });
+          }, { onConflict: 'profile_id,experience_id' });
 
         if (error) {
-          console.error('Error saving experience:', error);
-          throw error;
+          if (error.code === '23505') {
+            console.warn('Save already exists, ignoring duplicate insert');
+          } else {
+            console.error('Error saving experience:', error);
+            throw error;
+          }
         }
       }
 
@@ -163,7 +167,6 @@ export class ExperiencesService {
       if (error) {
         // If no preferences exist, create default ones
         if (error.code === 'PGRST116') {
-          console.log('No preferences found, creating default preferences for user:', userId);
           const defaultPreferences: UserPreferences = {
             mode: 'explore',
             budget_min: 0,
@@ -197,18 +200,15 @@ export class ExperiencesService {
               console.error('Error creating default preferences:', insertError);
               // If it's a trigger-related error, we can still return the defaults
               if (insertError.code === '42703') {
-                console.log('Trigger error detected, but continuing with default preferences');
-                console.log('This is likely due to a database trigger issue - preferences will work locally');
+                // Trigger error detected - preferences will work locally
               }
               // Always return the default preferences even if database insert fails
               return defaultPreferences;
             }
 
-            console.log('Successfully created default preferences in database');
             return defaultPreferences;
           } catch (insertError) {
             console.error('Exception creating default preferences:', insertError);
-            console.log('Continuing with default preferences despite database error');
             return defaultPreferences; // Always return defaults
           }
         }

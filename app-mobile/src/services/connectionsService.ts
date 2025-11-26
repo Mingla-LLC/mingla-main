@@ -51,16 +51,13 @@ export const ConnectionsService = {
 
       if (friendsError) {
         console.error('Error fetching friendships:', friendsError);
-        console.log('Friends table might not exist or have different structure');
         return [];
       }
 
       if (!friendships || friendships.length === 0) {
-        console.log('No friendships found for user:', userId);
         return [];
       }
 
-      console.log('Found friendships:', friendships);
 
       // Try to extract friend IDs from the data
       // The column might be named differently (e.g., 'friend_id', 'friend_user_id', etc.)
@@ -71,7 +68,6 @@ export const ConnectionsService = {
       } else if (friendships[0].friend_user_id) {
         friendIds = friendships.map(f => f.friend_user_id);
       } else {
-        console.log('Unknown friends table structure:', friendships[0]);
         return [];
       }
 
@@ -112,7 +108,6 @@ export const ConnectionsService = {
     try {
       // For now, return empty array since conversations table might not exist
       // This is a simplified implementation
-      console.log('getConversations called for user:', userId);
       return [];
     } catch (error) {
       console.error('Failed to fetch conversations:', error);
@@ -127,7 +122,6 @@ export const ConnectionsService = {
     try {
       // For now, return empty array since messages table might not exist
       // This is a simplified implementation
-      console.log('getMessages called for conversation:', conversationId, 'user:', userId);
       return [];
     } catch (error) {
       console.error('Failed to fetch messages:', error);
@@ -174,16 +168,13 @@ export const ConnectionsService = {
 
       if (requestsError) {
         console.error('Error fetching friend requests:', requestsError);
-        console.log('Friends table might not exist or have different structure');
         return [];
       }
 
       if (!requests || requests.length === 0) {
-        console.log('No friend requests found');
         return [];
       }
 
-      console.log('Found friend requests:', requests);
 
       // Try to find requests where the user is the recipient
       // The column might be named differently (e.g., 'friend_id', 'friend_user_id', etc.)
@@ -194,7 +185,6 @@ export const ConnectionsService = {
       } else if (requests[0].friend_user_id) {
         userRequests = requests.filter(r => r.friend_user_id === userId);
       } else {
-        console.log('Unknown friends table structure for requests:', requests[0]);
         return [];
       }
 

@@ -73,7 +73,6 @@ class OfflineService {
       // Start periodic sync
       this.startPeriodicSync();
       
-      console.log('✅ Offline service initialized');
     } catch (error) {
       console.error('Error initializing offline service:', error);
     }
@@ -95,7 +94,6 @@ class OfflineService {
       this.isOnline = state.isConnected ?? false;
       
       if (!wasOnline && this.isOnline) {
-        console.log('🌐 Network reconnected, starting sync...');
         this.syncOfflineData();
       }
       
@@ -152,7 +150,6 @@ class OfflineService {
       };
 
       await AsyncStorage.setItem('offline_data', JSON.stringify(updatedData));
-      console.log('💾 Offline data saved');
     } catch (error) {
       console.error('Error saving offline data:', error);
     }
@@ -182,7 +179,6 @@ class OfflineService {
         syncStatus: 'synced'
       });
 
-      console.log(`📦 Cached ${limitedRecommendations.length} recommendations for offline use`);
     } catch (error) {
       console.error('Error caching recommendations:', error);
     }
@@ -255,7 +251,6 @@ class OfflineService {
         userPreferences: preferences,
         syncStatus: 'synced'
       });
-      console.log('💾 User preferences cached for offline use');
     } catch (error) {
       console.error('Error caching user preferences:', error);
     }
@@ -298,7 +293,6 @@ class OfflineService {
         syncStatus: 'synced'
       });
 
-      console.log(`💾 Cached ${limitedExperiences.length} saved experiences for offline use`);
     } catch (error) {
       console.error('Error caching saved experiences:', error);
     }
@@ -335,7 +329,6 @@ class OfflineService {
       }
       
       await AsyncStorage.setItem('pending_actions', JSON.stringify(queue));
-      console.log(`📝 Queued action for sync: ${action.type}`);
     } catch (error) {
       console.error('Error queueing action for sync:', error);
     }
@@ -360,7 +353,6 @@ class OfflineService {
   async clearPendingActions(): Promise<void> {
     try {
       await AsyncStorage.removeItem('pending_actions');
-      console.log('🧹 Cleared pending actions');
     } catch (error) {
       console.error('Error clearing pending actions:', error);
     }
@@ -378,7 +370,6 @@ class OfflineService {
     this.notifyListeners();
 
     try {
-      console.log('🔄 Starting offline data sync...');
       
       // Sync pending actions
       await this.syncPendingActions();
@@ -388,7 +379,6 @@ class OfflineService {
         syncStatus: 'synced'
       });
 
-      console.log('✅ Offline data sync completed');
       return true;
     } catch (error) {
       console.error('Error syncing offline data:', error);
@@ -515,7 +505,6 @@ class OfflineService {
     try {
       await AsyncStorage.removeItem('offline_data');
       await AsyncStorage.removeItem('pending_actions');
-      console.log('🧹 Cleared all offline data');
     } catch (error) {
       console.error('Error clearing offline data:', error);
     }

@@ -113,7 +113,6 @@ export const useExperiences = (filters?: ExperienceFilters) => {
 
         setExperiences(prev => [...prev, ...newExperiences]);
       } else {
-        console.log('No nearby places found, falling back to database experiences');
         await fetchExperiences();
       }
     } catch (err: any) {

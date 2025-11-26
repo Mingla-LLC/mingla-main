@@ -120,7 +120,6 @@ class RecommendationHistoryService {
       if (error) {
         console.error('Error recording recommendation interaction:', error);
       } else {
-        console.log(`📝 Recorded ${interactionType} for recommendation: ${recommendation.title}`);
       }
     } catch (error) {
       console.error('Error in recordInteraction:', error);
@@ -320,7 +319,6 @@ class RecommendationHistoryService {
         return false;
       }
 
-      console.log(`🗑️ Cleared recommendation history for user: ${userId}`);
       return true;
     } catch (error) {
       console.error('Error in clearHistory:', error);

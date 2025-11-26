@@ -80,7 +80,6 @@ export default function ConnectionsPageRefactored({
         setConversations(conversationsData);
         setFriendRequests(requestsData);
 
-        console.log('Loaded connections data:', {
           friends: friendsData.length,
           conversations: conversationsData.length,
           requests: requestsData.length
@@ -227,7 +226,6 @@ export default function ConnectionsPageRefactored({
     onAddToBoard?.(sessionIds, friend);
     setShowAddToBoardModal(false);
     setSelectedFriendForBoard(null);
-    console.log('Added friend to boards:', friend.name, 'Sessions:', sessionIds);
   };
 
   const handleShareSavedCard = (friend: Friend) => {

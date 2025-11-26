@@ -59,7 +59,6 @@ class RealtimeRecommendationService {
       const userConfig = { ...this.DEFAULT_CONFIG, ...config };
       this.userConfigs.set(userId, userConfig);
 
-      console.log(`🔄 Initializing real-time updates for user ${userId}`);
 
       // Set up location-based updates
       if (userConfig.enableLocationUpdates) {
@@ -76,7 +75,6 @@ class RealtimeRecommendationService {
         await this.setupInteractionUpdates(userId);
       }
 
-      console.log(`✅ Real-time updates initialized for user ${userId}`);
     } catch (error) {
       console.error('Error initializing real-time updates:', error);
     }
@@ -112,7 +110,6 @@ class RealtimeRecommendationService {
       this.userConfigs.delete(userId);
       this.lastUpdateTimes.delete(userId);
 
-      console.log(`🛑 Stopped real-time updates for user ${userId}`);
     } catch (error) {
       console.error('Error stopping real-time updates:', error);
     }
@@ -135,7 +132,6 @@ class RealtimeRecommendationService {
       const lastUpdate = this.lastUpdateTimes.get(userId) || 0;
       const now = Date.now();
       if (now - lastUpdate < config.updateCooldown * 1000) {
-        console.log(`⏳ Update cooldown active for user ${userId}`);
         return false;
       }
 
@@ -174,7 +170,6 @@ class RealtimeRecommendationService {
         return null;
       }
 
-      console.log(`🔄 Generating real-time update for user ${userId} due to ${trigger.type}`);
 
       // Get updated recommendations based on trigger
       const updatedRecommendations = await this.getUpdatedRecommendations(userId, trigger);
@@ -201,7 +196,6 @@ class RealtimeRecommendationService {
         // Store the update
         await this.storeRealtimeUpdate(update);
 
-        console.log(`✅ Generated real-time update: ${update.id}`);
         return update;
       }
 
@@ -228,7 +222,6 @@ class RealtimeRecommendationService {
             filter: `user_id=eq.${userId}`
           },
           async (payload) => {
-            console.log('📍 Location change detected:', payload);
             
             const trigger: RealtimeUpdateTrigger = {
               type: 'location_change',
@@ -291,7 +284,6 @@ class RealtimeRecommendationService {
             filter: `user_id=eq.${userId}`
           },
           async (payload) => {
-            console.log('👆 Interaction detected:', payload);
             
             // Analyze interaction pattern
             const pattern = await this.analyzeInteractionPattern(userId, payload.new);
@@ -473,7 +465,6 @@ class RealtimeRecommendationService {
   private emitUpdateTrigger(userId: string, trigger: RealtimeUpdateTrigger): void {
     // This would emit an event that the UI can listen to
     // For now, we'll just log it
-    console.log(`📡 Emitting update trigger for user ${userId}:`, trigger);
   }
 
   /**

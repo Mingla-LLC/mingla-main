@@ -34,7 +34,6 @@ export class EnhancedLocationService {
       const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
       
       if (foregroundStatus !== 'granted') {
-        console.log('Foreground location permission not granted by user');
         // Don't show alert for now, just log and continue without location
         return false;
       }
@@ -44,10 +43,8 @@ export class EnhancedLocationService {
         const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
         
         if (backgroundStatus !== 'granted') {
-          console.log('Background location permission not granted, continuing with foreground only');
         }
       } catch (backgroundError) {
-        console.log('Background location permission request failed, continuing with foreground only:', backgroundError);
         // This is not critical, so we continue
       }
 
@@ -118,7 +115,6 @@ export class EnhancedLocationService {
     onLocationUpdate?: (update: LocationUpdate) => void;
   } = {}) {
     if (this.isTracking) {
-      console.log('Location tracking already active');
       return;
     }
 
@@ -245,7 +241,6 @@ export class EnhancedLocationService {
     try {
       // This would integrate with a places API like Google Places or Foursquare
       // For now, we'll return a mock implementation
-      console.log(`Searching for "${query}" near ${latitude}, ${longitude} within ${radius}m`);
       
       // In a real implementation, you would call an external API here
       return [];

@@ -39,7 +39,6 @@ class EnhancedNotificationService {
       }
 
       if (finalStatus !== 'granted') {
-        console.log('Notification permissions not granted');
         return false;
       }
 
@@ -48,14 +47,11 @@ class EnhancedNotificationService {
         try {
           const token = await Notifications.getExpoPushTokenAsync();
           this.expoPushToken = token.data;
-          console.log('Expo push token:', this.expoPushToken);
         } catch (tokenError) {
-          console.log('Could not get Expo push token:', tokenError);
           // Continue without push notifications for now
           this.expoPushToken = null;
         }
       } else {
-        console.log('Running on simulator - push notifications not available, but continuing...');
         this.expoPushToken = null;
       }
 
@@ -100,7 +96,6 @@ class EnhancedNotificationService {
       
       // If no push token (e.g., running on simulator), return true to allow app to continue
       if (!this.expoPushToken) {
-        console.log('No push token available (simulator or error), but allowing app to continue');
         return true;
       }
 
@@ -120,7 +115,6 @@ class EnhancedNotificationService {
         return false;
       }
 
-      console.log('Push token registered successfully');
       return true;
     } catch (error) {
       console.error('Error registering for push notifications:', error);
@@ -187,7 +181,6 @@ class EnhancedNotificationService {
       const result = await response.json();
       
       if (result.data && result.data[0] && result.data[0].status === 'ok') {
-        console.log('Push notification sent successfully');
         return true;
       } else {
         console.error('Failed to send push notification:', result);

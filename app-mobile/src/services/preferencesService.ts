@@ -63,13 +63,6 @@ export class PreferencesService {
     preferences: Partial<UserPreferences>
   ): Promise<boolean> {
     try {
-      console.log("💾 PreferencesService.updateUserPreferences called");
-      console.log("👤 User ID:", userId);
-      console.log(
-        "📋 Preferences to save:",
-        JSON.stringify(preferences, null, 2)
-      );
-
       const payload = {
         profile_id: userId,
         ...preferences,
@@ -80,7 +73,6 @@ export class PreferencesService {
       const { data, error } = result;
 
       if (error) {
-        console.log("Supabase upsert error", error);
         throw error;
       }
 
@@ -93,17 +85,10 @@ export class PreferencesService {
 
       if (verifyError) {
         console.warn("⚠️ Could not verify saved preferences:", verifyError);
-      } else {
-        console.log(
-          "✅ Verified saved preferences:",
-          JSON.stringify(verifyData, null, 2)
-        );
       }
 
       return true;
     } catch (error) {
-      // If it's a Supabase error, log all its properties
-      console.log("catch block error", error);
       return false;
     }
   }

@@ -67,12 +67,10 @@ export const useAppStore = create<AppState>()(
 
       // Auth actions
       setAuth: (user) => {
-        console.log('setAuth called with user:', user ? 'User exists' : 'No user');
         set({ 
           user, 
           isAuthenticated: !!user 
         });
-        console.log('isAuthenticated set to:', !!user);
         
         if (!user) {
           get().clearUserData();

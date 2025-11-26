@@ -208,7 +208,6 @@ class SmartNotificationService {
         return null;
       }
 
-      console.log(`📱 Created default notification preferences for user: ${userId}`);
       return data;
     } catch (error) {
       console.error('Error in createDefaultPreferences:', error);
@@ -240,7 +239,6 @@ class SmartNotificationService {
         this.userPreferences.set(userId, { ...currentPrefs, ...updates });
       }
 
-      console.log(`📱 Updated notification preferences for user: ${userId}`);
       return true;
     } catch (error) {
       console.error('Error in updateUserPreferences:', error);
@@ -511,7 +509,6 @@ class SmartNotificationService {
       if (error) {
         console.error('Error scheduling notification:', error);
       } else {
-        console.log(`📱 Scheduled notification: ${notification.title}`);
       }
     } catch (error) {
       console.error('Error in scheduleNotification:', error);

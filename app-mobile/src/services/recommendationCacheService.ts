@@ -97,7 +97,6 @@ class RecommendationCacheService {
       // Start cleanup timer
       this.startCleanupTimer();
       
-      console.log('✅ Recommendation cache initialized');
     } catch (error) {
       console.error('Error initializing cache:', error);
     }
@@ -133,7 +132,6 @@ class RecommendationCacheService {
       
       this.updateStats(true, Date.now() - startTime);
       
-      console.log(`📦 Cache hit for key: ${cacheKey} (${entry.accessCount} accesses)`);
       return entry.data;
     } catch (error) {
       console.error('Error getting from cache:', error);
@@ -172,7 +170,6 @@ class RecommendationCacheService {
       // Save to AsyncStorage
       await this.saveCacheToStorage();
       
-      console.log(`💾 Cached ${recommendations.length} recommendations with key: ${cacheKey}`);
     } catch (error) {
       console.error('Error setting cache:', error);
     }
@@ -218,7 +215,6 @@ class RecommendationCacheService {
     this.isPrefetching = true;
     
     try {
-      console.log('🔄 Starting recommendation prefetch...');
       
       const prefetchTasks: Promise<void>[] = [];
 
@@ -245,7 +241,6 @@ class RecommendationCacheService {
 
       await Promise.allSettled(prefetchTasks);
       
-      console.log('✅ Prefetch completed');
     } catch (error) {
       console.error('Error during prefetch:', error);
     } finally {
@@ -315,7 +310,6 @@ class RecommendationCacheService {
 
     if (invalidatedCount > 0) {
       await this.saveCacheToStorage();
-      console.log(`🗑️ Invalidated ${invalidatedCount} cache entries`);
     }
 
     return invalidatedCount;
@@ -343,7 +337,6 @@ class RecommendationCacheService {
         memoryUsage: 0,
         lastCleanup: Date.now()
       };
-      console.log('🧹 Cache cleared');
     } catch (error) {
       console.error('Error clearing cache:', error);
     }
@@ -370,7 +363,6 @@ class RecommendationCacheService {
       }
 
       await this.saveCacheToStorage();
-      console.log(`⚡ Cache optimized: removed ${removeCount} entries`);
     } catch (error) {
       console.error('Error optimizing cache:', error);
     }
@@ -386,7 +378,6 @@ class RecommendationCacheService {
         const data = JSON.parse(cached);
         this.cache = new Map(data);
         this.stats.totalEntries = this.cache.size;
-        console.log(`📥 Loaded ${this.cache.size} cache entries from storage`);
       }
     } catch (error) {
       console.error('Error loading cache from storage:', error);
@@ -426,7 +417,6 @@ class RecommendationCacheService {
     if (removedCount > 0) {
       await this.saveCacheToStorage();
       this.stats.lastCleanup = now;
-      console.log(`🧹 Cleaned up ${removedCount} expired cache entries`);
     }
   }
 

@@ -25,7 +25,6 @@ export class RealtimeService {
         table: 'session_participants',
         filter: `session_id=eq.${sessionId}`
       }, (payload) => {
-        console.log('Participant joined:', payload);
         callbacks.onParticipantJoined?.(payload.new);
       })
       .on('postgres_changes', {
@@ -34,7 +33,6 @@ export class RealtimeService {
         table: 'session_participants',
         filter: `session_id=eq.${sessionId}`
       }, (payload) => {
-        console.log('Participant left:', payload);
         callbacks.onParticipantLeft?.(payload.old);
       })
       .on('postgres_changes', {
@@ -43,11 +41,9 @@ export class RealtimeService {
         table: 'collaboration_sessions',
         filter: `id=eq.${sessionId}`
       }, (payload) => {
-        console.log('Session updated:', payload);
         callbacks.onSessionUpdated?.(payload.new as CollaborationSession);
       })
       .on('broadcast', { event: 'message' }, (payload) => {
-        console.log('Message received:', payload);
         callbacks.onMessage?.(payload);
       })
       .subscribe();
@@ -77,7 +73,6 @@ export class RealtimeService {
         table: 'boards',
         filter: `id=eq.${boardId}`
       }, (payload) => {
-        console.log('Board updated:', payload);
         callbacks.onBoardUpdated?.(payload.new as Board);
       })
       .on('postgres_changes', {
@@ -86,7 +81,6 @@ export class RealtimeService {
         table: 'board_collaborators',
         filter: `board_id=eq.${boardId}`
       }, (payload) => {
-        console.log('Collaborator joined:', payload);
         callbacks.onCollaboratorJoined?.(payload.new);
       })
       .on('postgres_changes', {
@@ -95,15 +89,12 @@ export class RealtimeService {
         table: 'board_collaborators',
         filter: `board_id=eq.${boardId}`
       }, (payload) => {
-        console.log('Collaborator left:', payload);
         callbacks.onCollaboratorLeft?.(payload.old);
       })
       .on('broadcast', { event: 'experience_added' }, (payload) => {
-        console.log('Experience added:', payload);
         callbacks.onExperienceAdded?.(payload);
       })
       .on('broadcast', { event: 'experience_removed' }, (payload) => {
-        console.log('Experience removed:', payload);
         callbacks.onExperienceRemoved?.(payload.experienceId);
       })
       .subscribe();

@@ -22,7 +22,6 @@ export const useSessionManagement = () => {
   const loadUserSessions = useCallback(async () => {
     if (!user) return;
 
-    console.log('🔄 Loading user sessions for user:', user.id);
     setSessionState(prev => ({ ...prev, loading: true }));
     
     try {
@@ -33,7 +32,6 @@ export const useSessionManagement = () => {
         .eq('invited_user_id', user.id)
         .eq('status', 'pending');
 
-      console.log('📮 Received invites:', receivedInvites);
       if (receivedError) {
         console.error('❌ Error loading received invites:', receivedError);
       }
@@ -50,7 +48,6 @@ export const useSessionManagement = () => {
         return;
       }
 
-      console.log('👥 User participations:', userParticipations);
       const sessionIds = userParticipations?.map(p => p.session_id) || [];
 
       // 3. Load all collaboration sessions for these session IDs
@@ -61,7 +58,6 @@ export const useSessionManagement = () => {
           .select('*')
           .in('id', sessionIds);
 
-        console.log('📋 Loaded sessions:', sessions);
         if (sessionsError) {
           console.error('❌ Error loading sessions:', sessionsError);
         } else {
@@ -75,7 +71,6 @@ export const useSessionManagement = () => {
         const missingSessionIds = inviteSessionIds.filter(id => !sessionIds.includes(id));
         
         if (missingSessionIds.length > 0) {
-          console.log('🔍 Loading additional sessions from invites:', missingSessionIds);
           const { data: inviteSessions, error: inviteSessionsError } = await supabase
             .from('collaboration_sessions')
             .select('*')
@@ -85,7 +80,6 @@ export const useSessionManagement = () => {
             console.error('❌ Error loading invite sessions:', inviteSessionsError);
           } else {
             allSessions = [...allSessions, ...(inviteSessions || [])];
-            console.log('📋 Added invite sessions:', inviteSessions);
           }
         }
       }
@@ -100,7 +94,6 @@ export const useSessionManagement = () => {
           .select('*')
           .in('session_id', allSessionIds);
 
-        console.log('👥 All participants:', participants);
         if (participantsError) {
           console.error('❌ Error loading participants:', participantsError);
         } else {
@@ -121,7 +114,6 @@ export const useSessionManagement = () => {
           console.error('❌ Error loading profiles:', profilesError);
         } else {
           profiles = profilesData || [];
-          console.log('👤 Loaded profiles:', profiles);
         }
       }
 
@@ -138,7 +130,6 @@ export const useSessionManagement = () => {
           console.error('❌ Error loading inviter profiles:', invitersError);
         } else {
           inviterProfiles = invitersData || [];
-          console.log('👤 Inviter profiles:', inviterProfiles);
         }
       }
 
@@ -198,7 +189,6 @@ export const useSessionManagement = () => {
             status = 'dormant';
           }
 
-          console.log('📊 Session status calculation:', {
             sessionId: session.id,
             sessionName: session.name,
             userHasAccepted: userParticipation?.has_accepted,
@@ -252,8 +242,6 @@ export const useSessionManagement = () => {
         };
       });
 
-      console.log('✅ Final formatted sessions:', formattedSessions);
-      console.log('✅ Final formatted invites:', formattedInvites);
 
       setSessionState(prev => ({
         ...prev,
@@ -361,7 +349,6 @@ export const useSessionManagement = () => {
         console.error('Failed to invite some users:', failed);
       }
 
-      console.log(`✅ Invited ${successful.length} friend${successful.length !== 1 ? 's' : ''} to collaborate on "${sessionName}".`);
 
       // Reload sessions
       await loadUserSessions();
@@ -377,7 +364,6 @@ export const useSessionManagement = () => {
   // Accept specific invite (from notification)
   const acceptInvite = useCallback(async (inviteId: string) => {
     try {
-      console.log('🔔 Accepting invite:', inviteId);
       
       if (!user) {
         console.error('❌ No user found for invite acceptance');
@@ -388,7 +374,6 @@ export const useSessionManagement = () => {
       let invite = sessionState.pendingInvites.find(i => i.id === inviteId);
       
       if (!invite) {
-        console.log('🔍 Invite not in state, fetching from database...');
         
         // Fetch invite directly from database
         const { data: dbInvite, error: inviteError } = await supabase
@@ -436,7 +421,6 @@ export const useSessionManagement = () => {
         };
       }
 
-      console.log('✅ Found invite for session:', invite.sessionId);
 
       // Step 1: Update invite status to accepted
       const { error: inviteUpdateError } = await supabase
@@ -453,7 +437,6 @@ export const useSessionManagement = () => {
         return;
       }
 
-      console.log('✅ Invite status updated to accepted');
 
       // Step 2: Add user as participant or update existing participation
       const { data: existingParticipant, error: checkError } = await supabase
@@ -498,7 +481,6 @@ export const useSessionManagement = () => {
         }
       }
 
-      console.log('✅ User added as participant successfully');
 
       // Step 3: Check if all participants have accepted
       const { data: allParticipants, error: participantsError } = await supabase
@@ -519,11 +501,8 @@ export const useSessionManagement = () => {
       }
 
       const allAccepted = allParticipants?.every(p => p.has_accepted) || false;
-      console.log('👥 All participants:', allParticipants);
-      console.log('✅ All participants accepted?', allAccepted);
 
       if (allAccepted && allParticipants.length >= 2) {
-        console.log('🎉 All participants accepted! Creating board and activating session...');
         
         // Get session details for board creation
         const { data: sessionData, error: sessionError } = await supabase
@@ -551,7 +530,6 @@ export const useSessionManagement = () => {
           if (boardError) {
             console.error('❌ Error creating board:', boardError);
           } else {
-            console.log('✅ Board created successfully:', boardData);
             
             // Update session status and board_id
             const { error: sessionUpdateError } = await supabase
@@ -566,7 +544,6 @@ export const useSessionManagement = () => {
             if (sessionUpdateError) {
               console.error('❌ Error updating session status:', sessionUpdateError);
             } else {
-              console.log('✅ Session updated to active status');
             }
 
             // Add all participants as board collaborators
@@ -583,14 +560,11 @@ export const useSessionManagement = () => {
             if (collaboratorsError) {
               console.error('❌ Error adding collaborators:', collaboratorsError);
             } else {
-              console.log('✅ Collaborators added successfully');
             }
           }
         }
 
-        console.log('🎉 All participants have joined! Board is ready for collaboration.');
       } else {
-        console.log('⏳ Waiting for other participants...');
       }
 
       // Step 4: Remove from UI and reload sessions
@@ -613,7 +587,6 @@ export const useSessionManagement = () => {
   const declineInvite = useCallback(async (inviteId: string) => {
     if (!user) return;
 
-    console.log('❌ Declining invite:', inviteId);
 
     try {
       // Update invite status to declined
@@ -631,7 +604,6 @@ export const useSessionManagement = () => {
         return;
       }
 
-      console.log('✅ Invite declined successfully');
 
       // Remove any participant record for this user in this session
       // Find the invite to get session ID
@@ -659,7 +631,6 @@ export const useSessionManagement = () => {
         }
       }
 
-      console.log('✅ Invitation declined');
 
       // Remove from UI and reload
       setSessionState(prevState => ({
@@ -677,7 +648,6 @@ export const useSessionManagement = () => {
   // Switch to solo session
   const switchToSolo = useCallback(() => {
     if (sessionState.currentSession) {
-      console.log(`Left collaboration session: "${sessionState.currentSession.name}"`);
     }
     
     const newState = {
@@ -693,13 +663,11 @@ export const useSessionManagement = () => {
 
   // Switch to collaborative session (accept invitation)
   const switchToCollaborative = useCallback(async (sessionId: string) => {
-    console.log('🚀 switchToCollaborative called with sessionId:', sessionId);
     
     // First try to find in available sessions, then reload if not found
     let session = sessionState.availableSessions.find(s => s.id === sessionId);
     
     if (!session) {
-      console.log('🔄 Session not found in current state, reloading sessions...');
       await loadUserSessions();
       // Try to find again after reload
       session = sessionState.availableSessions.find(s => s.id === sessionId);
@@ -715,13 +683,10 @@ export const useSessionManagement = () => {
       return;
     }
 
-    console.log('✅ Found session:', session);
-    console.log('📊 Session status:', session.status);
 
     try {
       // For active sessions, just switch to them
       if (session.status === 'active') {
-        console.log('🎯 Switching to active session...');
         const newState = {
           currentSession: session,
           availableSessions: sessionState.availableSessions,
@@ -731,9 +696,7 @@ export const useSessionManagement = () => {
         };
         
         setSessionState(newState);
-        console.log('✅ Switched to collaboration session');
       } else {
-        console.log('⚠️ Session not in expected state:', session.status);
       }
 
     } catch (error) {
@@ -776,7 +739,6 @@ export const useSessionManagement = () => {
         
         setSessionState(newState);
 
-        console.log(`Left collaboration session: "${session.name}".`);
 
         // Reload sessions
         await loadUserSessions();
@@ -799,7 +761,6 @@ export const useSessionManagement = () => {
           .eq('id', sessionId)
           .eq('created_by', user.id);
 
-        console.log(`Session cancelled: "${session.name}"`);
       } else {
         // User was invited - decline the invitation
         await supabase
@@ -815,7 +776,6 @@ export const useSessionManagement = () => {
           .eq('session_id', sessionId)
           .eq('user_id', user.id);
 
-        console.log(`Invitation declined: "${session.name}"`);
       }
 
       // Reload sessions
