@@ -58,6 +58,14 @@ const SavedTab = ({
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<{[cardId: string]: number}>({});
 
+  const getMatchScore = (card: SavedCard): number | null => {
+    if (typeof card?.matchScore === 'number') return card.matchScore;
+    if (typeof (card as any)?.match_score === 'number') return (card as any).match_score;
+    if ((card as any)?.matchFactors?.overall) return (card as any).matchFactors.overall;
+    if ((card as any)?.matchFactors?.total) return (card as any).matchFactors.total;
+    return null;
+  };
+
   const styles = StyleSheet.create({
     container: {
       gap: 16,
@@ -120,7 +128,8 @@ const SavedTab = ({
     cardStats: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 16,
+      flexWrap: 'wrap',
+      gap: 12,
     },
     statItem: {
       flexDirection: 'row',
@@ -140,6 +149,22 @@ const SavedTab = ({
       fontSize: 14,
       fontWeight: '600',
       color: '#eb7825',
+    },
+    matchScoreBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: '#fff5ef',
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderWidth: 1,
+      borderColor: '#fed7aa',
+    },
+    matchScoreText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: '#c2410c',
     },
     expandButton: {
       padding: 4,
@@ -458,6 +483,7 @@ const SavedTab = ({
       {savedCards.map((card) => {
         const CardIcon = getIconComponent(card.categoryIcon);
         const isExpanded = expandedCard === card.id;
+        const matchScore = getMatchScore(card);
         
         return (
           <View key={card.id} style={styles.experienceCard}>
@@ -498,6 +524,14 @@ const SavedTab = ({
                         <Text style={styles.statText}>{card.travelTime || '15 min'}</Text>
                       </View>
                       <Text style={styles.priceText}>{card.priceRange || '$25-50'}</Text>
+                      {matchScore !== null && (
+                        <View style={styles.matchScoreBadge}>
+                          <Ionicons name="flame" size={14} color="#c2410c" />
+                          <Text style={styles.matchScoreText}>
+                            {Math.round(matchScore)}% match
+                          </Text>
+                        </View>
+                      )}
                     </View>
                     
                     <TouchableOpacity

@@ -22,6 +22,7 @@ import AccountSettings from "../src/components/profile/AccountSettings";
 import ProfileSettings from "../src/components/profile/ProfileSettings";
 import OnboardingFlow from "../src/components/OnboardingFlow";
 import ActivityPage from "../src/components/ActivityPage";
+import SavedExperiencesPage from "../src/components/SavedExperiencesPage";
 import { NavigationProvider } from "../src/contexts/NavigationContext";
 import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider";
 import EmailOTPVerificationScreen from "../src/components/EmailOTPVerificationScreen";
@@ -296,6 +297,21 @@ export default function App() {
             onResetCards={() => setRemovedCardIds([])}
             generateNewMockCard={() => console.log("Generate new card")}
             refreshKey={preferencesRefreshKey}
+          />
+        );
+      case "saved":
+        return (
+          <SavedExperiencesPage
+            savedCards={savedCards}
+            userPreferences={userPreferences}
+            onScheduleFromSaved={(card: any) => {
+              console.log("Scheduling from saved:", card);
+            }}
+            onPurchaseFromSaved={(card: any, option: any) => {
+              console.log("Purchasing from saved:", card, option);
+            }}
+            onShareCard={handlers.handleShareCard}
+            onRemoveSaved={handlers.handleRemoveSavedCard}
           />
         );
       case "connections":
@@ -669,6 +685,31 @@ export default function App() {
                         ]}
                       >
                         Activity
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        console.log("Navigating to saved");
+                        setCurrentPage("saved");
+                      }}
+                      style={styles.navItem}
+                    >
+                      <Ionicons
+                        name="bookmark"
+                        size={24}
+                        color={
+                          currentPage === "saved" ? "#eb7825" : "#9CA3AF"
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.navText,
+                          currentPage === "saved"
+                            ? styles.navTextActive
+                            : styles.navTextInactive,
+                        ]}
+                      >
+                        Saved
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity

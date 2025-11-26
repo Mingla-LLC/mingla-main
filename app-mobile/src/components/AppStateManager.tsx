@@ -160,6 +160,7 @@ export function useAppState() {
     | "home"
     | "connections"
     | "activity"
+    | "saved"
     | "profile"
     | "profile-settings"
     | "account-settings"
