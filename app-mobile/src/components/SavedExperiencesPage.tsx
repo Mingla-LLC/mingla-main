@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import SavedTab from "./activity/SavedTab";
@@ -22,6 +23,38 @@ interface SavedExperiencesPageProps {
 type DateRangeFilter = "all" | "7" | "30";
 type SortOption = "newest" | "oldest" | "matchHigh" | "matchLow";
 
+// All available categories in the app
+const ALL_CATEGORIES = [
+  "All",
+  "Take a Stroll",
+  "Sip & Chill",
+  "Casual Eats",
+  "Screen & Relax",
+  "Creative & Hands-On",
+  "Picnics",
+  "Play & Move",
+  "Dining Experiences",
+  "Wellness Dates",
+  "Freestyle",
+];
+
+// All available experience types in the app
+const ALL_EXPERIENCE_TYPES = [
+  "Solo Adventure",
+  "First Date",
+  "Romantic",
+  "Friendly",
+  "Group Fun",
+  "Business",
+];
+
+// Combined categories and experience types for the filter
+const ALL_FILTER_OPTIONS = [
+  "All",
+  ...ALL_CATEGORIES.filter(cat => cat !== "All"),
+  ...ALL_EXPERIENCE_TYPES,
+];
+
 const matchScoreOptions = [
   { label: "Any", value: null },
   { label: "70+", value: 70 },
@@ -36,11 +69,100 @@ const dateRangeOptions: { label: string; value: DateRangeFilter }[] = [
 ];
 
 const sortOptions: { label: string; value: SortOption }[] = [
-  { label: "Newest", value: "newest" },
-  { label: "Oldest", value: "oldest" },
-  { label: "Match ↑", value: "matchHigh" },
-  { label: "Match ↓", value: "matchLow" },
+  { label: "Newest first", value: "newest" },
+  { label: "Oldest first", value: "oldest" },
+  { label: "Match score (high to low)", value: "matchHigh" },
+  { label: "Match score (low to high)", value: "matchLow" },
 ];
+
+interface DropdownProps {
+  label: string;
+  value: string;
+  options: { label: string; value: any }[];
+  onSelect: (value: any) => void;
+  placeholder?: string;
+}
+
+const Dropdown: React.FC<DropdownProps> = ({
+  label,
+  value,
+  options,
+  onSelect,
+  placeholder = "Select...",
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedOption = options.find((opt) => opt.value === value);
+
+  return (
+    <View style={styles.dropdownContainer}>
+      <Text style={styles.dropdownLabel}>{label}</Text>
+      <TouchableOpacity
+        style={styles.dropdownButton}
+        onPress={() => setIsOpen(!isOpen)}
+        activeOpacity={0.7}
+      >
+        <Text
+          style={[
+            styles.dropdownButtonText,
+            !selectedOption && styles.dropdownButtonTextPlaceholder,
+          ]}
+        >
+          {selectedOption?.label || placeholder}
+        </Text>
+        <Ionicons
+          name={isOpen ? "chevron-up" : "chevron-down"}
+          size={20}
+          color="#6b7280"
+        />
+      </TouchableOpacity>
+
+      {isOpen && (
+        <Modal
+          visible={isOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsOpen(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setIsOpen(false)}
+          >
+            <View style={styles.dropdownMenu}>
+              <ScrollView style={styles.dropdownScrollView}>
+                {options.map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.dropdownOption,
+                      value === option.value && styles.dropdownOptionActive,
+                    ]}
+                    onPress={() => {
+                      onSelect(option.value);
+                      setIsOpen(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownOptionText,
+                        value === option.value && styles.dropdownOptionTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    {value === option.value && (
+                      <Ionicons name="checkmark" size={20} color="#eb7825" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+    </View>
+  );
+};
 
 const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
   savedCards = [],
@@ -56,16 +178,12 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
   const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("all");
   const [sortOption, setSortOption] = useState<SortOption>("newest");
 
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    savedCards?.forEach((card) => {
-      if (card?.category) {
-        set.add(card.category);
-      }
-    });
-
-    return ["All", ...Array.from(set).sort()];
-  }, [savedCards]);
+  const categoryOptions = useMemo(() => {
+    return ALL_FILTER_OPTIONS.map((option) => ({
+      label: option,
+      value: option === "All" ? null : option,
+    }));
+  }, []);
 
   const getCardDate = (card: any): Date => {
     const raw =
@@ -100,8 +218,15 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
       });
     }
 
-    if (selectedCategory && selectedCategory !== "All") {
-      cards = cards.filter((card) => card?.category === selectedCategory);
+    if (selectedCategory) {
+      cards = cards.filter((card) => {
+        // Check if it matches category
+        if (card?.category === selectedCategory) return true;
+        // Check if it matches experience type
+        const experienceType = card?.experienceType || (card as any)?.experience_type;
+        if (experienceType === selectedCategory) return true;
+        return false;
+      });
     }
 
     if (matchScoreFilter) {
@@ -172,114 +297,51 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
           />
         </View>
 
-        {/* Category Filter */}
-        <View style={styles.filterSection}>
-          <Text style={styles.filterLabel}>Categories</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category}
-                style={[
-                  styles.chip,
-                  (selectedCategory ?? "All") === category && styles.chipActive,
-                ]}
-                onPress={() =>
-                  setSelectedCategory((prev) =>
-                    prev === category || (category === "All" && prev === null)
-                      ? null
-                      : category
-                  )
-                }
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    (selectedCategory ?? "All") === category &&
-                      styles.chipTextActive,
-                  ]}
-                >
-                  {category}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+        {/* Filters Row */}
+        <View style={styles.filtersRow}>
+          {/* Category Filter */}
+          <View style={styles.filterHalf}>
+            <Dropdown
+              label="Category"
+              value={selectedCategory || "All"}
+              options={categoryOptions}
+              onSelect={(value) => setSelectedCategory(value)}
+              placeholder="All categories"
+            />
+          </View>
 
-        {/* Match filter */}
-        <View style={styles.filterSection}>
-          <Text style={styles.filterLabel}>Match score</Text>
-          <View style={styles.chipRow}>
-            {matchScoreOptions.map((option) => (
-              <TouchableOpacity
-                key={option.label}
-                style={[
-                  styles.chip,
-                  matchScoreFilter === option.value && styles.chipActive,
-                ]}
-                onPress={() => setMatchScoreFilter(option.value)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    matchScoreFilter === option.value && styles.chipTextActive,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          {/* Match Score Filter */}
+          <View style={styles.filterHalf}>
+            <Dropdown
+              label="Match Score"
+              value={matchScoreFilter}
+              options={matchScoreOptions}
+              onSelect={(value) => setMatchScoreFilter(value)}
+              placeholder="Any score"
+            />
           </View>
         </View>
 
-        {/* Date range */}
-        <View style={styles.filterSection}>
-          <Text style={styles.filterLabel}>Date range</Text>
-          <View style={styles.chipRow}>
-            {dateRangeOptions.map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.chip,
-                  dateRangeFilter === option.value && styles.chipActive,
-                ]}
-                onPress={() => setDateRangeFilter(option.value)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    dateRangeFilter === option.value && styles.chipTextActive,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        {/* Second Filters Row */}
+        <View style={styles.filtersRow}>
+          {/* Date Range Filter */}
+          <View style={styles.filterHalf}>
+            <Dropdown
+              label="Date Range"
+              value={dateRangeFilter}
+              options={dateRangeOptions}
+              onSelect={(value) => setDateRangeFilter(value)}
+            />
           </View>
-        </View>
 
-        {/* Sort */}
-        <View style={styles.filterSection}>
-          <Text style={styles.filterLabel}>Sort by</Text>
-          <View style={styles.chipRow}>
-            {sortOptions.map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.chip,
-                  sortOption === option.value && styles.chipActive,
-                ]}
-                onPress={() => setSortOption(option.value)}
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    sortOption === option.value && styles.chipTextActive,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          {/* Sort Filter */}
+          <View style={styles.filterHalf}>
+            <Dropdown
+              label="Sort By"
+              value={sortOption}
+              options={sortOptions}
+              onSelect={(value) => setSortOption(value)}
+            />
           </View>
         </View>
 
@@ -356,39 +418,87 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#111827",
   },
-  filterSection: {
-    marginBottom: 20,
+  filtersRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 16,
   },
-  filterLabel: {
+  filterHalf: {
+    flex: 1,
+  },
+  dropdownContainer: {
+    marginBottom: 0,
+  },
+  dropdownLabel: {
     fontSize: 14,
     fontWeight: "600",
     color: "#374151",
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  chipRow: {
+  dropdownButton: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "white",
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    backgroundColor: "white",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 48,
   },
-  chipActive: {
-    backgroundColor: "#fff5ef",
-    borderColor: "#f97316",
-  },
-  chipText: {
-    fontSize: 13,
-    color: "#4b5563",
+  dropdownButtonText: {
+    fontSize: 15,
+    color: "#111827",
     fontWeight: "500",
+    flex: 1,
   },
-  chipTextActive: {
-    color: "#c2410c",
+  dropdownButtonTextPlaceholder: {
+    color: "#9ca3af",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  dropdownMenu: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    maxHeight: 400,
+    width: "100%",
+    maxWidth: 400,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  dropdownScrollView: {
+    maxHeight: 400,
+  },
+  dropdownOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  dropdownOptionActive: {
+    backgroundColor: "#fff7ed",
+  },
+  dropdownOptionText: {
+    fontSize: 15,
+    color: "#374151",
+    fontWeight: "500",
+    flex: 1,
+  },
+  dropdownOptionTextActive: {
+    color: "#eb7825",
+    fontWeight: "600",
   },
   resultsContainer: {
     marginTop: 8,
@@ -397,4 +507,3 @@ const styles = StyleSheet.create({
 });
 
 export default SavedExperiencesPage;
-

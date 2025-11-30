@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>OAuth Redirect</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+        <h2>Completing sign-in...</h2>
+        <p>Please wait...</p>
+    </div>
+    
+    <script>
+        // Extract tokens from URL hash or query params
+        const hash = window.location.hash.substring(1);
+        const query = window.location.search.substring(1);
+        const params = new URLSearchParams(hash || query);
+        
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+        const errorParam = params.get('error');
+        
+        if (errorParam) {
+            // Redirect to app with error
+            const errorMsg = encodeURIComponent(decodeURIComponent(errorParam));
+            window.location.href = `com.mingla.app://auth/callback?error=${errorMsg}`;
+        } else if (accessToken && refreshToken) {
+            // Redirect to app with tokens
+            const redirectUrl = `com.mingla.app://auth/callback?access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
+            window.location.href = redirectUrl;
+        } else {
+            // No tokens found - might be authorization code flow
+            // Wait a moment and check again
+            setTimeout(function() {
+                const code = params.get('code');
+                if (code) {
+                    // Authorization code - redirect to app
+                    window.location.href = `com.mingla.app://auth/callback?code=${encodeURIComponent(code)}`;
+                } else {
+                    document.body.innerHTML = '<div style="text-align: center; padding: 50px;"><h2>OAuth Complete</h2><p>You can close this window and return to the app.</p></div>';
+                }
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
+

@@ -41,6 +41,7 @@ const OnboardingFlow = ({
     verifyPhoneOTP,
     resendPhoneOTP,
     signInWithGoogle,
+    handleOAuthTokens,
   } = useAuthSimple();
   const { profile } = useAppStore();
   const [currentStep, setCurrentStep] = useState(1);
@@ -581,17 +582,14 @@ const OnboardingFlow = ({
 
   const requestLocationPermission = useCallback(async () => {
     try {
-
       // Request location permissions
       const hasPermission = await locationService.requestPermissions();
 
       if (hasPermission) {
-
         // Try to get current location
         const locationData = await locationService.getCurrentLocation();
 
         if (locationData) {
-
           // Reverse geocode to get city name
           const cityName = await locationService.reverseGeocode(
             locationData.latitude,
@@ -643,7 +641,7 @@ const OnboardingFlow = ({
         return (
           <AccountSetupStep
             onNext={handleNext}
-            onBack={handleBack}
+            onBack={handleBackToWelcome}
             onNavigateToSignUp={onNavigateToSignUpForm || onNavigateToSignUp}
             onNavigateToPhoneSignUp={() => setShowPhoneSignUp(true)}
             onNavigateToGoogleSignIn={handleGoogleSignIn}
@@ -1374,7 +1372,6 @@ const OnboardingFlow = ({
       // If the column doesn't exist, the error handler will retry without it
       updateData.time_slot = timeSlotToSave;
 
-
       const { data, error } = await supabase
         .from("preferences")
         .upsert(updateData, {
@@ -1513,7 +1510,8 @@ const OnboardingFlow = ({
         // Only show error if it's not a cancellation
         if (result.error.message !== "Sign-in cancelled") {
           console.error("Google sign-in error:", result.error);
-          alert(
+          Alert.alert(
+            "Error",
             result.error.message ||
               "Failed to sign in with Google. Please try again."
           );
@@ -1522,12 +1520,12 @@ const OnboardingFlow = ({
       }
 
       // Google sign-in successful
-      // Check if user has completed onboarding
       // The app/index.tsx will check profile.has_completed_onboarding and redirect accordingly
       // Don't call onGoogleSignInComplete here - let the navigation logic handle it
     } catch (error: any) {
       console.error("Google sign-in error:", error);
-      alert(
+      Alert.alert(
+        "Error",
         error.message || "Failed to sign in with Google. Please try again."
       );
     }

@@ -580,85 +580,107 @@ export const useAuthSimple = () => {
     }
   };
 
+  // Helper function to handle OAuth tokens and set session
+  const handleOAuthTokens = async (accessToken: string, refreshToken: string) => {
+    try {
+      // Set the session manually from the tokens
+      const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+
+      if (sessionError) throw sessionError;
+
+      // Wait for profile to be created/loaded
+      if (sessionData.session?.user) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Load profile
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", sessionData.session.user.id)
+          .single();
+
+        if (profileError) {
+          console.error("Error loading profile after Google sign-in:", profileError);
+        } else if (profile) {
+          setProfile(profile);
+        }
+
+        return { data: sessionData.session, error: null };
+      }
+
+      return { data: null, error: { message: "Failed to create session" } };
+    } catch (error: any) {
+      return { data: null, error };
+    }
+  };
+
   const signInWithGoogle = async () => {
     try {
-      // Get the redirect URL for this app using Expo Linking
-      // Supabase will automatically handle account linking if email matches
-      const redirectUrl = Linking.createURL("/");
+      // Use redirect handler URL to avoid Supabase exp:// URL parsing error
+      // Replace this with your Netlify Drop URL after hosting oauth-redirect.html
+      const redirectHandlerUrl = "https://YOUR-NETLIFY-URL.netlify.app";
+      const appRedirectUrl = Linking.createURL("/auth/callback");
 
-
-      // Initiate OAuth sign-in
+      // Initiate OAuth sign-in - must use system browser (not WebView) per Google policy
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: redirectUrl,
+          redirectTo: redirectHandlerUrl, // Redirect to handler page first
+          // Use system browser for security compliance
+          skipBrowserRedirect: false,
         },
       });
 
       if (error) throw error;
 
-      // Open the OAuth URL in browser
+      // Open OAuth in system browser (required by Google's secure browser policy)
       if (data?.url) {
+        // Use redirect handler URL for WebBrowser to detect when to close
         const result = await WebBrowser.openAuthSessionAsync(
           data.url,
-          redirectUrl
+          redirectHandlerUrl
         );
 
-
-        // Handle the OAuth callback
-        // Supabase OAuth redirects contain tokens in the URL hash fragment
+        // Handle the callback - redirect handler will redirect to app deep link
         if (result.type === "success" && result.url) {
-
-          // Parse the callback URL - tokens are in hash fragment for Supabase
-          const url = new URL(result.url);
-          const hashParams = new URLSearchParams(url.hash.substring(1)); // Remove # and parse
-          const accessToken =
-            hashParams.get("access_token") ||
-            url.searchParams.get("access_token");
-          const refreshToken =
-            hashParams.get("refresh_token") ||
-            url.searchParams.get("refresh_token");
-
-          if (accessToken && refreshToken) {
-            // Set the session with the tokens
-            const { data: sessionData, error: sessionError } =
-              await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken,
-              });
-
-            if (sessionError) throw sessionError;
-
-            // Wait for profile to be created/loaded by trigger
-            if (sessionData.session?.user) {
-              await new Promise((resolve) => setTimeout(resolve, 500));
-
-              // Load profile
-              const { data: profile, error: profileError } = await supabase
-                .from("profiles")
-                .select("*")
-                .eq("id", sessionData.session.user.id)
-                .single();
-
-              if (profileError) {
-                console.error(
-                  "Error loading profile after Google sign-in:",
-                  profileError
-                );
-              } else if (profile) {
-                setProfile(profile);
-              }
+          // Parse the callback URL to extract tokens (from deep link after redirect handler)
+          try {
+            const url = new URL(result.url);
+            const hashParams = new URLSearchParams(url.hash.substring(1));
+            const searchParams = new URLSearchParams(url.search);
+            
+            const accessToken = hashParams.get("access_token") || searchParams.get("access_token");
+            const refreshToken = hashParams.get("refresh_token") || searchParams.get("refresh_token");
+            const errorParam = hashParams.get("error") || searchParams.get("error");
+            
+            if (errorParam) {
+              return { data: null, error: { message: decodeURIComponent(errorParam) } };
             }
-          } else {
-            // If tokens not in URL, Supabase's onAuthStateChange will handle it
-            // The onAuthStateChange listener will automatically handle the session
+
+            if (accessToken && refreshToken) {
+              // Use the helper function to handle tokens
+              return await handleOAuthTokens(accessToken, refreshToken);
+            }
+          } catch (parseError) {
+            console.error("Error parsing OAuth callback URL:", parseError);
+            // Fall through to session check
+          }
+          
+          // Fallback: wait for onAuthStateChange to detect session
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session) {
+            return { data: sessionData.session, error: null };
           }
         } else if (result.type === "cancel") {
           return { data: null, error: { message: "Sign-in cancelled" } };
         }
       }
 
-      return { data, error: null };
+      return { data: null, error: { message: "Failed to initiate OAuth" } };
     } catch (error: any) {
       console.error("Google sign-in error:", error);
       Alert.alert(
@@ -682,5 +704,6 @@ export const useAuthSimple = () => {
     verifyPhoneOTP,
     resendPhoneOTP,
     signInWithGoogle,
+    handleOAuthTokens, // Export for WebView component
   };
 };

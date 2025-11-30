@@ -176,6 +176,7 @@ export function useAppState() {
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
+  const [showCoachMap, setShowCoachMap] = useState(false);
   const [currentMode, setCurrentMode] = useState<"solo" | string>("solo");
   const [preSelectedFriend, setPreSelectedFriend] = useState<any>(null);
   const [activeSessionData, setActiveSessionData] = useState<any>(null);
@@ -637,6 +638,8 @@ export function useAppState() {
     setShowShareModal,
     shareData,
     setShareData,
+    showCoachMap,
+    setShowCoachMap,
     currentMode,
     setCurrentMode,
     preSelectedFriend,

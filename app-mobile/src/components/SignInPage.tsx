@@ -89,7 +89,7 @@ export default function SignInPage({
         <WelcomeScreen
           onSignUp={handleNavigateToSignUp}
           onNavigateToSignIn={handleNavigateToSignIn}
-          onStartOnboarding={handleNavigateToSignUpAs}
+          onStartOnboarding={onStartOnboarding}
         />
       );
 
@@ -124,7 +124,7 @@ export default function SignInPage({
         <WelcomeScreen
           onSignUp={handleNavigateToSignUp}
           onNavigateToSignIn={handleNavigateToSignIn}
-          onStartOnboarding={handleNavigateToSignUpAs}
+          onStartOnboarding={onStartOnboarding}
         />
       );
   }

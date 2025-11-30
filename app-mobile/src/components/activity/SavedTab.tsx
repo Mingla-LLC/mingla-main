@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Text, View, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import ExpandedCardModal from '../ExpandedCardModal';
+import { ExpandedCardData } from '../../types/expandedCardTypes';
 
 interface SavedCard {
   id: string;
@@ -55,8 +57,8 @@ const SavedTab = ({
   onRemoveSaved,
   userPreferences
 }: SavedTabProps) => {
-  const [expandedCard, setExpandedCard] = useState<string | null>(null);
-  const [currentImageIndex, setCurrentImageIndex] = useState<{[cardId: string]: number}>({});
+  const [selectedCardForModal, setSelectedCardForModal] = useState<ExpandedCardData | null>(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
 
   const getMatchScore = (card: SavedCard): number | null => {
     if (typeof card?.matchScore === 'number') return card.matchScore;
@@ -165,15 +167,6 @@ const SavedTab = ({
       fontSize: 12,
       fontWeight: '600',
       color: '#c2410c',
-    },
-    expandButton: {
-      padding: 4,
-      borderRadius: 20,
-    },
-    expandIcon: {
-      width: 16,
-      height: 16,
-      color: '#6b7280',
     },
     sourceIndicator: {
       marginTop: 8,
@@ -431,19 +424,6 @@ const SavedTab = ({
     return iconMap[iconName] || 'heart';
   };
 
-  const nextImage = (cardId: string, totalImages: number) => {
-    setCurrentImageIndex(prev => ({
-      ...prev,
-      [cardId]: ((prev[cardId] || 0) + 1) % totalImages
-    }));
-  };
-
-  const prevImage = (cardId: string, totalImages: number) => {
-    setCurrentImageIndex(prev => ({
-      ...prev,
-      [cardId]: ((prev[cardId] || 0) - 1 + totalImages) % totalImages
-    }));
-  };
 
   const handleSchedule = (card: SavedCard) => {
     onScheduleFromSaved(card);
@@ -478,16 +458,70 @@ const SavedTab = ({
     );
   }
 
+  const handleCardPress = (card: SavedCard) => {
+    const matchScore = getMatchScore(card);
+    
+    // Transform saved card to ExpandedCardData format
+    const expandedCardData: ExpandedCardData = {
+      id: card.id,
+      title: card.title,
+      category: card.category,
+      categoryIcon: card.categoryIcon,
+      description: card.description,
+      fullDescription: card.fullDescription || card.description,
+      image: card.image,
+      images: card.images || [card.image],
+      rating: card.rating || 4.5,
+      reviewCount: card.reviewCount || 0,
+      priceRange: card.priceRange || '$25-50',
+      distance: (card as any).distance || '',
+      travelTime: card.travelTime || '15 min',
+      address: card.address || '',
+      openingHours: (card as any).openingHours,
+      highlights: card.highlights || [],
+      tags: (card as any).tags || [],
+      matchScore: matchScore || 0,
+      matchFactors: (card as any).matchFactors || {
+        location: 0,
+        budget: 0,
+        category: 0,
+        time: 0,
+        popularity: 0,
+      },
+      socialStats: {
+        views: card.socialStats?.views || 0,
+        likes: card.socialStats?.likes || 0,
+        saves: card.socialStats?.saves || 0,
+        shares: (card.socialStats as any)?.shares || 0,
+      },
+      location: (card as any).location,
+      selectedDateTime: userPreferences?.datetime_pref
+        ? new Date(userPreferences.datetime_pref)
+        : new Date(),
+    };
+    
+    setSelectedCardForModal(expandedCardData);
+    setIsModalVisible(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalVisible(false);
+    setSelectedCardForModal(null);
+  };
+
   return (
     <View style={styles.container}>
       {savedCards.map((card) => {
         const CardIcon = getIconComponent(card.categoryIcon);
-        const isExpanded = expandedCard === card.id;
         const matchScore = getMatchScore(card);
         
         return (
           <View key={card.id} style={styles.experienceCard}>
-            <View style={styles.cardContent}>
+            <TouchableOpacity
+              onPress={() => handleCardPress(card)}
+              activeOpacity={0.7}
+              style={styles.cardContent}
+            >
               <View style={styles.cardHeader}>
                 <View style={styles.cardImage}>
                   <ImageWithFallback
@@ -533,17 +567,6 @@ const SavedTab = ({
                         </View>
                       )}
                     </View>
-                    
-                    <TouchableOpacity
-                      onPress={() => setExpandedCard(isExpanded ? null : card.id)}
-                      style={styles.expandButton}
-                    >
-                      <Ionicons 
-                        name={isExpanded ? "chevron-up" : "chevron-down"} 
-                        size={16} 
-                        color="#6b7280" 
-                      />
-                    </TouchableOpacity>
                   </View>
 
                   {/* Source indicator */}
@@ -567,7 +590,7 @@ const SavedTab = ({
                   </View>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
 
             {/* Quick Actions */}
             <View style={styles.quickActions}>
@@ -606,110 +629,29 @@ const SavedTab = ({
                 </TouchableOpacity>
               </View>
             </View>
-
-            {/* Expanded Details */}
-            {isExpanded && (
-              <View style={styles.expandedContent}>
-                {/* Image Gallery */}
-                {card.images && card.images.length > 0 && (
-                  <View style={styles.imageGallery}>
-                    <View style={styles.galleryImage}>
-                      <ImageWithFallback
-                        src={card.images[currentImageIndex[card.id] || 0]}
-                        alt={card.title}
-                        style={{ width: '100%', height: '100%' }}
-                      />
-                      
-                      {card.images.length > 1 && (
-                        <>
-                          <TouchableOpacity
-                            onPress={() => prevImage(card.id, card.images.length)}
-                            style={[styles.imageNavigation, styles.leftNav]}
-                          >
-                            <Ionicons name="chevron-back" size={16} color="white" />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => nextImage(card.id, card.images.length)}
-                            style={[styles.imageNavigation, styles.rightNav]}
-                          >
-                            <Ionicons name="chevron-forward" size={16} color="white" />
-                          </TouchableOpacity>
-                          
-                          {/* Image indicators */}
-                          <View style={styles.imageIndicators}>
-                            {card.images.map((_, index) => (
-                              <View
-                                key={index}
-                                style={[
-                                  styles.indicator,
-                                  index === (currentImageIndex[card.id] || 0)
-                                    ? styles.activeIndicator
-                                    : styles.inactiveIndicator
-                                ]}
-                              />
-                            ))}
-                          </View>
-                        </>
-                      )}
-                    </View>
-                  </View>
-                )}
-                
-                {/* Details */}
-                <View style={styles.detailsSection}>
-                  <View>
-                    <Text style={styles.sectionTitle}>About this experience</Text>
-                    <Text style={styles.sectionText}>{card.fullDescription}</Text>
-                  </View>
-                  
-                  {card.highlights && card.highlights.length > 0 && (
-                    <View style={styles.highlightsContainer}>
-                      <Text style={styles.sectionTitle}>Highlights</Text>
-                      <View style={styles.highlightsList}>
-                        {card.highlights.map((highlight, index) => (
-                          <View key={index} style={styles.highlightTag}>
-                            <Text style={styles.highlightText}>{highlight}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    </View>
-                  )}
-                  
-                  <View style={styles.locationContainer}>
-                    <Text style={styles.sectionTitle}>Location</Text>
-                    <View style={styles.locationRow}>
-                      <Ionicons name="location" size={16} color="#eb7825" />
-                      <Text style={styles.locationText}>
-                        {card.address || 'Address not available'}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  {card.socialStats && (
-                    <View style={styles.socialStatsContainer}>
-                      <Text style={styles.socialStatsTitle}>Community Stats</Text>
-                      <View style={styles.socialStatsRow}>
-                        <View style={styles.socialStatItem}>
-                          <Ionicons name="eye" size={16} color="#6b7280" />
-                          <Text style={styles.socialStatText}>{card.socialStats.views} views</Text>
-                        </View>
-                        <View style={styles.socialStatItem}>
-                          <Ionicons name="heart" size={16} color="#6b7280" />
-                          <Text style={styles.socialStatText}>{card.socialStats.likes} likes</Text>
-                        </View>
-                        <View style={styles.socialStatItem}>
-                          <Ionicons name="bookmark" size={16} color="#6b7280" />
-                          <Text style={styles.socialStatText}>{card.socialStats.saves} saves</Text>
-                        </View>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              </View>
-            )}
           </View>
         );
       })}
+
+      {/* Expanded Card Modal */}
+      <ExpandedCardModal
+        visible={isModalVisible}
+        card={selectedCardForModal}
+        onClose={handleCloseModal}
+        onSchedule={(card) => {
+          handleCloseModal();
+          onScheduleFromSaved(card as any);
+        }}
+        onPurchase={(card, bookingOption) => {
+          handleCloseModal();
+          onPurchaseFromSaved(card as any, bookingOption);
+        }}
+        onShare={(card) => {
+          handleCloseModal();
+          onShareCard(card as any);
+        }}
+        userPreferences={userPreferences}
+      />
     </View>
   );
 };

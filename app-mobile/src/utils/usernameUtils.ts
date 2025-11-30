@@ -81,20 +81,57 @@ export async function checkUsernameAvailability(
       return false; // Too short
     }
 
+    // Direct query to check username availability
+    // Query for exact match (sanitized username is already lowercase)
     const { data, error } = await supabase
       .from("profiles")
       .select("username")
       .eq("username", sanitized)
+      .not("username", "is", null)
       .limit(1);
 
     if (error) {
       console.error("Error checking username availability:", error);
-      // On error, assume it's available to not block user flow
+      
+      // If RLS blocks the query, fetch all usernames as fallback
+      // This requires the RLS policy to allow SELECT on profiles
+      try {
+        const { data: allUsernames, error: allError } = await supabase
+          .from("profiles")
+          .select("username")
+          .not("username", "is", null);
+
+        if (allError) {
+          console.error("Error in fallback username check:", allError);
+          // On error, assume available to not block user flow
+          return true;
+        }
+
+        if (allUsernames) {
+          // Check if any username matches case-insensitively
+          const usernameExists = allUsernames.some(
+            (profile) =>
+              profile.username &&
+              profile.username.toLowerCase().trim() === sanitized.toLowerCase().trim()
+          );
+          
+          return !usernameExists;
+        }
+      } catch (fallbackError) {
+        console.error("Exception in fallback username check:", fallbackError);
+      }
+      
+      // If all methods fail, assume available to not block user flow
       return true;
     }
 
-    // Username is available if no results found
-    return !data || data.length === 0;
+    // If exact match found, username is taken
+    if (data && data.length > 0) {
+      return false;
+    }
+
+    // Username is available (no exact match found)
+    return true;
   } catch (error) {
     console.error("Exception checking username availability:", error);
     // On exception, assume it's available

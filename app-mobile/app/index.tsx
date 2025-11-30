@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import {
   SafeAreaView,
   StatusBar,
@@ -26,6 +26,7 @@ import SavedExperiencesPage from "../src/components/SavedExperiencesPage";
 import { NavigationProvider } from "../src/contexts/NavigationContext";
 import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider";
 import EmailOTPVerificationScreen from "../src/components/EmailOTPVerificationScreen";
+import CoachMap from "../src/components/CoachMap";
 
 export default function App() {
   const state = useAppState();
@@ -61,6 +62,8 @@ export default function App() {
     setShowShareModal,
     shareData,
     setShareData,
+    showCoachMap,
+    setShowCoachMap,
     currentMode,
     preSelectedFriend,
     setPreSelectedFriend,
@@ -100,6 +103,27 @@ export default function App() {
     setShowSignUpForm,
     preferencesRefreshKey,
   } = state;
+
+  // Automatically show coach map when main app loads (only once per session)
+  // Use a ref to track if we've already shown it in this session
+  const coachMapShownRef = useRef(false);
+  
+  useEffect(() => {
+    if (
+      isAuthenticated &&
+      user &&
+      profile &&
+      profile.has_completed_onboarding === true &&
+      !coachMapShownRef.current
+    ) {
+      // Show coach map after a brief delay to ensure UI is ready
+      const timer = setTimeout(() => {
+        setShowCoachMap(true);
+        coachMapShownRef.current = true; // Mark as shown for this session
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, user, profile, setShowCoachMap]);
 
   // Show loading while checking authentication status (with fallback)
   if (isLoadingAuth && !authTimeout) {
@@ -740,6 +764,17 @@ export default function App() {
                   </View>
                 </View>
               </View>
+
+              {/* Coach Map Overlay */}
+              <CoachMap
+                visible={showCoachMap}
+                onComplete={() => {
+                  setShowCoachMap(false);
+                }}
+                onSkip={() => {
+                  setShowCoachMap(false);
+                }}
+              />
             </SafeAreaView>
           </ErrorBoundary>
         </NavigationProvider>

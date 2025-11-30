@@ -7,6 +7,7 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Input } from "../ui/input";
@@ -31,154 +32,133 @@ interface SignUpFormProps {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "#ffffff",
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 24,
     paddingTop: 16,
-    paddingBottom: 8,
-    backgroundColor: "white",
+    paddingBottom: 16,
+    backgroundColor: "transparent",
   },
   backButton: {
-    flexDirection: "row",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  backButtonText: {
-    color: "#6b7280",
-    fontSize: 16,
-    fontWeight: "500",
-    marginLeft: 4,
+    justifyContent: "center",
+    backgroundColor: "#f1f5f9",
   },
   headerCenter: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 8,
   },
   minglaText: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 18,
+    fontWeight: "800",
     color: "#eb7825",
+    letterSpacing: 0.3,
   },
   formContainer: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 32,
-    paddingBottom: 32,
+    paddingTop: 16,
+    paddingBottom: 40,
   },
   formWrapper: {
     width: "100%",
-    maxWidth: 400,
+    maxWidth: 440,
     alignSelf: "center",
   },
   formHeader: {
-    alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 48,
+    paddingHorizontal: 4,
   },
   formTitle: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#111827",
-    marginBottom: 8,
-    textAlign: "center",
-    letterSpacing: -0.5,
+    fontSize: 36,
+    fontWeight: "800",
+    color: "#0a0a0a",
+    marginBottom: 12,
+    letterSpacing: -1,
+    lineHeight: 44,
   },
   formSubtitle: {
     fontSize: 16,
-    color: "#6b7280",
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  form: {
-    gap: 0,
-  },
-  formCard: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: "#f3f4f6",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
+    color: "#64748b",
+    lineHeight: 24,
   },
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: 28,
   },
   inputLabel: {
-    color: "#374151",
+    color: "#0f172a",
     fontWeight: "600",
-    fontSize: 15,
-
-    letterSpacing: 0.2,
+    fontSize: 14,
+    marginBottom: 8,
+    letterSpacing: -0.2,
   },
   inputWrapper: {
     position: "relative",
+    width: "100%",
   },
   inputIcon: {
-    /*  position: "absolute", */
+    position: "absolute",
     left: 16,
-    top: "50%",
+    top: 15,
     zIndex: 1,
-  },
-  inputWithIcon: {
-    paddingLeft: 48,
+    pointerEvents: "none",
   },
   passwordToggle: {
     position: "absolute",
-    right: 16,
-    top: 30,
-    padding: 4,
+    right: 12,
+    top: 13,
+    padding: 8,
     zIndex: 1,
+    borderRadius: 8,
   },
   submitButton: {
     width: "100%",
     backgroundColor: "#eb7825",
-    paddingVertical: 16,
+    paddingVertical: 18,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 8,
-    shadowColor: "#eb7825",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
   },
   submitButtonText: {
     color: "white",
     fontWeight: "700",
-    fontSize: 17,
-    letterSpacing: 0.3,
+    fontSize: 16,
+    letterSpacing: 0.2,
   },
   submitButtonContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 10,
   },
   alternativeAction: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 24,
-    paddingVertical: 8,
+    marginTop: 32,
+    paddingVertical: 12,
   },
   alternativeText: {
-    color: "#6b7280",
+    color: "#64748b",
     fontSize: 15,
+    fontWeight: "500",
   },
   alternativeLink: {
     color: "#eb7825",
-    fontWeight: "600",
+    fontWeight: "700",
     fontSize: 15,
-    marginLeft: 4,
+    marginLeft: 6,
   },
   usernameLabelContainer: {
     flexDirection: "row",
@@ -189,9 +169,11 @@ const styles = StyleSheet.create({
   generateButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#fff7ed",
   },
   generateButtonText: {
     color: "#eb7825",
@@ -200,26 +182,26 @@ const styles = StyleSheet.create({
   },
   usernameStatusIcon: {
     position: "absolute",
-    right: 16,
-    top: 30,
+    right: 12,
+    top: 14,
     padding: 4,
     zIndex: 1,
   },
   usernameHint: {
     fontSize: 12,
     color: "#10b981",
-    marginTop: 4,
+    marginTop: 8,
     marginLeft: 4,
+    fontWeight: "500",
   },
   usernameHintError: {
     color: "#ef4444",
   },
   usernameAutoGeneratedHint: {
-    fontSize: 11,
-    color: "#6b7280",
-    marginTop: 2,
+    fontSize: 12,
+    color: "#94a3b8",
+    marginTop: 6,
     marginLeft: 4,
-    fontStyle: "italic",
   },
 });
 
@@ -255,17 +237,10 @@ export default function SignUpForm({
       clearTimeout(nameDebounceRef.current);
     }
 
-    // Only auto-generate if username hasn't been manually edited and name is provided
     if (formData.name.trim().length > 0) {
-      // Use a ref to track if we should auto-generate
-      // We'll check the current state when the timeout fires
       nameDebounceRef.current = setTimeout(async () => {
-        // Check current state to see if username is still auto-generated
-        // (user might have manually edited it during the debounce period)
         setUsernameStatus((prev) => {
-          // Only auto-generate if it's still marked as auto-generated
           if (prev.isAutoGenerated) {
-            // Generate username based on current name
             generateUniqueUsername(formData.name).then((generatedUsername) => {
               setFormData((prev) => ({ ...prev, username: generatedUsername }));
               setUsernameStatus({
@@ -273,7 +248,6 @@ export default function SignUpForm({
                 available: null,
                 isAutoGenerated: true,
               });
-              // Check availability after generation
               checkUsernameAvailability(generatedUsername).then(
                 (isAvailable) => {
                   setUsernameStatus({
@@ -287,7 +261,7 @@ export default function SignUpForm({
           }
           return prev;
         });
-      }, 500); // Debounce name input
+      }, 500);
     }
 
     return () => {
@@ -317,7 +291,7 @@ export default function SignUpForm({
       setUsernameStatus((prev) => ({
         ...prev,
         checking: false,
-        available: false,
+        available: null, // Set to null to show "too short" message instead of "taken"
       }));
       return;
     }
@@ -332,9 +306,9 @@ export default function SignUpForm({
       setUsernameStatus((prev) => ({
         checking: false,
         available: isAvailable,
-        isAutoGenerated: prev.isAutoGenerated, // Preserve the isAutoGenerated flag
+        isAutoGenerated: prev.isAutoGenerated,
       }));
-    }, 500); // Debounce username checking
+    }, 500);
 
     return () => {
       if (usernameCheckDebounceRef.current) {
@@ -345,7 +319,6 @@ export default function SignUpForm({
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    // If username is manually changed, mark it as not auto-generated
     if (field === "username") {
       setUsernameStatus((prev) => ({ ...prev, isAutoGenerated: false }));
     }
@@ -378,7 +351,6 @@ export default function SignUpForm({
   };
 
   const handleSubmit = async () => {
-    // Validate form
     if (!formData.name.trim()) {
       Alert.alert("Validation Error", "Please enter your full name.");
       return;
@@ -397,7 +369,6 @@ export default function SignUpForm({
       return;
     }
 
-    // Validate username
     const sanitizedUsername = sanitizeUsername(formData.username);
     if (sanitizedUsername.length < 3) {
       Alert.alert(
@@ -407,7 +378,6 @@ export default function SignUpForm({
       return;
     }
 
-    // Check if username is available before submitting
     if (usernameStatus.checking) {
       Alert.alert("Please Wait", "Checking username availability...");
       return;
@@ -421,7 +391,6 @@ export default function SignUpForm({
       return;
     }
 
-    // Final availability check
     const isAvailable = await checkUsernameAvailability(sanitizedUsername);
     if (!isAvailable) {
       Alert.alert(
@@ -438,7 +407,6 @@ export default function SignUpForm({
 
     setIsLoading(true);
     try {
-      // Call onSignUp with sanitized username
       const result = onSignUp({
         email: formData.email.trim(),
         password: formData.password,
@@ -447,7 +415,6 @@ export default function SignUpForm({
       });
     } catch (error) {
       console.error("Sign up error:", error);
-      // Show error alert
       const errorMessage =
         error instanceof Error
           ? error.message
@@ -463,7 +430,6 @@ export default function SignUpForm({
         { cancelable: true }
       );
     } finally {
-      // Reset loading state after a short delay to allow parent to handle the response
       setTimeout(() => {
         setIsLoading(false);
       }, 500);
@@ -472,277 +438,300 @@ export default function SignUpForm({
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      {/* Header with back button and logo */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={20} color="#6b7280" />
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.minglaText}>Mingla</Text>
-        </View>
-        <View style={{ width: 80 }} />
-      </View>
-
-      {/* Form Content */}
-      <View style={styles.formContainer}>
-        <View style={styles.formWrapper}>
-          {/* Form Header */}
-          <View style={styles.formHeader}>
-            <Text style={styles.formTitle}>Create Your Account</Text>
-            <Text style={styles.formSubtitle}>
-              Join Mingla and start discovering amazing experiences
-            </Text>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#475569" />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.minglaText}>Mingla</Text>
           </View>
+          <View style={{ width: 40 }} />
+        </View>
 
-          {/* Form */}
-          <View style={styles.form}>
-            <View style={styles.formCard}>
-              {/* Name field */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Full Name</Text>
-                <View style={styles.inputWrapper}>
-                  <View style={styles.inputIcon}>
-                    <Ionicons name="person-outline" size={20} color="#9ca3af" />
-                  </View>
-                  <Input
-                    type="text"
-                    value={formData.name}
-                    onChangeText={(value) => handleInputChange("name", value)}
-                    placeholder="Enter your full name"
-                    required
-                    style={[
-                      {
-                        backgroundColor: "#f9fafb",
-                        borderWidth: 1.5,
-                        borderColor: "#e5e7eb",
-                        borderRadius: 12,
-                        paddingHorizontal: 16,
-                        paddingLeft: 48,
-                        fontSize: 16,
-                        color: "#111827",
-                      },
-                      styles.inputWithIcon,
-                    ]}
-                  />
-                </View>
+        {/* Form Content */}
+        <View style={styles.formContainer}>
+          <View style={styles.formWrapper}>
+            {/* Form Header */}
+            <View style={styles.formHeader}>
+              <Text style={styles.formTitle}>Create Account</Text>
+              <Text style={styles.formSubtitle}>
+                Start discovering amazing experiences today
+              </Text>
+            </View>
+
+            {/* Name field */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Full Name</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons
+                  name="person-outline"
+                  size={20}
+                  color="#94a3b8"
+                  style={styles.inputIcon}
+                />
+                <Input
+                  type="text"
+                  value={formData.name}
+                  onChangeText={(value) => handleInputChange("name", value)}
+                  placeholder="John Doe"
+                  placeholderTextColor="#cbd5e1"
+                  required
+                  style={{
+                    backgroundColor: "#f8fafc",
+                    borderWidth: 0,
+                    borderRadius: 12,
+                    paddingHorizontal: 16,
+                    paddingLeft: 48,
+                    fontSize: 16,
+                    color: "#0f172a",
+                    height: 54,
+                    fontWeight: "500",
+                  }}
+                />
               </View>
+            </View>
 
-              {/* Username field */}
-              <View style={styles.inputContainer}>
-                <View style={styles.usernameLabelContainer}>
-                  <Text style={styles.inputLabel}>Username</Text>
-                  {usernameStatus.isAutoGenerated && formData.username && (
-                    <TouchableOpacity
-                      onPress={handleGenerateNewUsername}
-                      style={styles.generateButton}
-                    >
-                      <Ionicons name="refresh" size={14} color="#eb7825" />
-                      <Text style={styles.generateButtonText}>
-                        Generate New
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <View style={styles.inputWrapper}>
-                  <View style={styles.inputIcon}>
-                    <Ionicons name="at" size={20} color="#9ca3af" />
+            {/* Username field */}
+            <View style={styles.inputContainer}>
+              <View style={styles.usernameLabelContainer}>
+                <Text style={styles.inputLabel}>Username</Text>
+                {usernameStatus.isAutoGenerated && formData.username && (
+                  <TouchableOpacity
+                    onPress={handleGenerateNewUsername}
+                    style={styles.generateButton}
+                  >
+                    <Ionicons name="refresh" size={14} color="#eb7825" />
+                    <Text style={styles.generateButtonText}>New</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={styles.inputWrapper}>
+                <Ionicons
+                  name="at"
+                  size={20}
+                  color="#94a3b8"
+                  style={styles.inputIcon}
+                />
+                <Input
+                  type="text"
+                  value={formData.username}
+                  onChangeText={(value) => {
+                    const sanitized = value
+                      .toLowerCase()
+                      .replace(/[^a-z0-9_]/g, "");
+                    handleInputChange("username", sanitized);
+                  }}
+                  placeholder="johndoe"
+                  placeholderTextColor="#cbd5e1"
+                  autoCapitalize="none"
+                  style={{
+                    backgroundColor: "#f8fafc",
+                    borderRadius: 12,
+                    paddingHorizontal: 16,
+                    paddingLeft: 48,
+                    paddingRight:
+                      usernameStatus.checking ||
+                      usernameStatus.available !== null
+                        ? 48
+                        : 16,
+                    fontSize: 16,
+                    color: "#0f172a",
+                    height: 54,
+                    fontWeight: "500",
+                    borderColor:
+                      usernameStatus.available === false
+                        ? "#f87171"
+                        : usernameStatus.available === true
+                        ? "#34d399"
+                        : "transparent",
+                    borderWidth: usernameStatus.available !== null ? 2 : 0,
+                  }}
+                />
+                {usernameStatus.checking && (
+                  <View style={styles.usernameStatusIcon}>
+                    <ActivityIndicator size="small" color="#64748b" />
                   </View>
-                  <Input
-                    type="text"
-                    value={formData.username}
-                    onChangeText={(value) => {
-                      // Sanitize input as user types
-                      const sanitized = value
-                        .toLowerCase()
-                        .replace(/[^a-z0-9_]/g, "");
-                      handleInputChange("username", sanitized);
-                    }}
-                    placeholder="username"
-                    autoCapitalize="none"
-                    style={[
-                      {
-                        backgroundColor: "#f9fafb",
-                        borderWidth: 1.5,
-                        borderColor:
-                          usernameStatus.available === false
-                            ? "#ef4444"
-                            : usernameStatus.available === true
-                            ? "#10b981"
-                            : "#e5e7eb",
-                        borderRadius: 12,
-                        paddingHorizontal: 16,
-                        paddingLeft: 48,
-                        paddingRight:
-                          usernameStatus.checking ||
-                          usernameStatus.available !== null
-                            ? 48
-                            : 16,
-                        fontSize: 16,
-                        color: "#111827",
-                      },
-                      styles.inputWithIcon,
-                    ]}
-                  />
-                  {/* Username status indicator */}
-                  {usernameStatus.checking && (
+                )}
+                {!usernameStatus.checking &&
+                  usernameStatus.available === true && (
                     <View style={styles.usernameStatusIcon}>
-                      <ActivityIndicator size="small" color="#6b7280" />
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={22}
+                        color="#10b981"
+                      />
                     </View>
                   )}
-                  {!usernameStatus.checking &&
-                    usernameStatus.available === true && (
-                      <View style={styles.usernameStatusIcon}>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={20}
-                          color="#10b981"
-                        />
-                      </View>
-                    )}
-                  {!usernameStatus.checking &&
-                    usernameStatus.available === false && (
-                      <View style={styles.usernameStatusIcon}>
-                        <Ionicons
-                          name="close-circle"
-                          size={20}
-                          color="#ef4444"
-                        />
-                      </View>
-                    )}
-                </View>
-                {!usernameStatus.checking && formData.username && (
-                  <Text
-                    style={[
-                      styles.usernameHint,
-                      usernameStatus.available === false &&
-                        styles.usernameHintError,
-                    ]}
-                  >
-                    {usernameStatus.available === true
-                      ? "Username available"
-                      : usernameStatus.available === false
-                      ? "Username already taken"
-                      : formData.username.length < 3
-                      ? "Username must be at least 3 characters"
-                      : ""}
-                  </Text>
-                )}
-                {usernameStatus.isAutoGenerated && formData.username && (
-                  <Text style={styles.usernameAutoGeneratedHint}>
-                    This username was auto-generated based on your name
-                  </Text>
-                )}
-              </View>
-
-              {/* Email field */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Email</Text>
-                <View style={styles.inputWrapper}>
-                  <View style={styles.inputIcon}>
-                    <Ionicons name="mail-outline" size={20} color="#9ca3af" />
-                  </View>
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    onChangeText={(value) => handleInputChange("email", value)}
-                    placeholder="Enter your email"
-                    required
-                    style={[
-                      {
-                        backgroundColor: "#f9fafb",
-                        borderWidth: 1.5,
-                        borderColor: "#e5e7eb",
-                        borderRadius: 12,
-                        paddingHorizontal: 16,
-
-                        paddingLeft: 48,
-                        fontSize: 16,
-                        color: "#111827",
-                      },
-                      styles.inputWithIcon,
-                    ]}
-                  />
-                </View>
-              </View>
-
-              {/* Password field */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Password</Text>
-                <View style={styles.inputWrapper}>
-                  <View style={styles.inputIcon}>
-                    <Ionicons
-                      name="lock-closed-outline"
-                      size={20}
-                      color="#9ca3af"
-                    />
-                  </View>
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    value={formData.password}
-                    onChangeText={(value) =>
-                      handleInputChange("password", value)
-                    }
-                    placeholder="Enter your password"
-                    required
-                    style={[
-                      {
-                        backgroundColor: "#f9fafb",
-                        borderWidth: 1.5,
-                        borderColor: "#e5e7eb",
-                        borderRadius: 12,
-                        paddingHorizontal: 16,
-                        paddingLeft: 48,
-                        paddingRight: 48,
-                        fontSize: 16,
-                        color: "#111827",
-                      },
-                      styles.inputWithIcon,
-                    ]}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    style={styles.passwordToggle}
-                  >
-                    {showPassword ? (
-                      <Ionicons name="eye-off" size={20} color="#9ca3af" />
-                    ) : (
-                      <Ionicons name="eye" size={20} color="#9ca3af" />
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Submit Button */}
-              <TouchableOpacity
-                onPress={handleSubmit}
-                style={styles.submitButton}
-                activeOpacity={0.9}
-                disabled={isLoading}
-              >
-                <View style={styles.submitButtonContent}>
-                  {isLoading && (
-                    <ActivityIndicator size="small" color="white" />
+                {!usernameStatus.checking &&
+                  usernameStatus.available === false && (
+                    <TouchableOpacity
+                      style={styles.usernameStatusIcon}
+                      onPress={() => {
+                        setFormData((prev) => ({ ...prev, username: "" }));
+                        setUsernameStatus({
+                          checking: false,
+                          available: null,
+                          isAutoGenerated: false,
+                        });
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="close-circle" size={22} color="#ef4444" />
+                    </TouchableOpacity>
                   )}
-                  <Text style={styles.submitButtonText}>Create Account</Text>
-                </View>
+              </View>
+              {!usernameStatus.checking &&
+                formData.username &&
+                (() => {
+                  const sanitized = sanitizeUsername(formData.username);
+                  const isTooShort = sanitized.length < 3;
+
+                  if (isTooShort) {
+                    return (
+                      <Text
+                        style={[styles.usernameHint, styles.usernameHintError]}
+                      >
+                        Username must be at least 3 characters
+                      </Text>
+                    );
+                  }
+
+                  if (usernameStatus.available === true) {
+                    return (
+                      <Text style={styles.usernameHint}>
+                        Username available
+                      </Text>
+                    );
+                  }
+
+                  if (usernameStatus.available === false) {
+                    return (
+                      <Text
+                        style={[styles.usernameHint, styles.usernameHintError]}
+                      >
+                        Username already taken
+                      </Text>
+                    );
+                  }
+
+                  return null;
+                })()}
+              {usernameStatus.isAutoGenerated && formData.username && (
+                <Text style={styles.usernameAutoGeneratedHint}>
+                  Auto-generated from your name
+                </Text>
+              )}
+            </View>
+
+            {/* Email field */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Email</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons
+                  name="mail-outline"
+                  size={20}
+                  color="#94a3b8"
+                  style={styles.inputIcon}
+                />
+                <Input
+                  type="email"
+                  value={formData.email}
+                  onChangeText={(value) => handleInputChange("email", value)}
+                  placeholder="john@example.com"
+                  placeholderTextColor="#cbd5e1"
+                  required
+                  style={{
+                    backgroundColor: "#f8fafc",
+                    borderWidth: 0,
+                    borderRadius: 12,
+                    paddingHorizontal: 16,
+                    paddingLeft: 48,
+                    fontSize: 16,
+                    color: "#0f172a",
+                    height: 54,
+                    fontWeight: "500",
+                  }}
+                />
+              </View>
+            </View>
+
+            {/* Password field */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Password</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={20}
+                  color="#94a3b8"
+                  style={styles.inputIcon}
+                />
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  value={formData.password}
+                  onChangeText={(value) => handleInputChange("password", value)}
+                  placeholder="••••••••"
+                  placeholderTextColor="#cbd5e1"
+                  required
+                  style={{
+                    backgroundColor: "#f8fafc",
+                    borderWidth: 0,
+                    borderRadius: 12,
+                    paddingHorizontal: 16,
+                    paddingLeft: 48,
+                    paddingRight: 48,
+                    fontSize: 16,
+                    color: "#0f172a",
+                    height: 54,
+                    fontWeight: "500",
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.passwordToggle}
+                >
+                  {showPassword ? (
+                    <Ionicons name="eye-off" size={20} color="#64748b" />
+                  ) : (
+                    <Ionicons name="eye" size={20} color="#64748b" />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity
+              onPress={handleSubmit}
+              style={styles.submitButton}
+              activeOpacity={0.8}
+              disabled={isLoading}
+            >
+              <View style={styles.submitButtonContent}>
+                {isLoading && <ActivityIndicator size="small" color="white" />}
+                <Text style={styles.submitButtonText}>Create Account</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Alternative Action */}
+            <View style={styles.alternativeAction}>
+              <Text style={styles.alternativeText}>
+                Already have an account?{" "}
+              </Text>
+              <TouchableOpacity onPress={onSwitchToSignIn}>
+                <Text style={styles.alternativeLink}>Sign In</Text>
               </TouchableOpacity>
             </View>
           </View>
-
-          {/* Alternative Action */}
-          <View style={styles.alternativeAction}>
-            <Text style={styles.alternativeText}>
-              Already have an account?{" "}
-            </Text>
-            <TouchableOpacity onPress={onSwitchToSignIn}>
-              <Text style={styles.alternativeLink}>Sign In</Text>
-            </TouchableOpacity>
-          </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
