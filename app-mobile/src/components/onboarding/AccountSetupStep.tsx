@@ -4,9 +4,9 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Image,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 const googleIcon = require("../../../assets/google_icon.png");

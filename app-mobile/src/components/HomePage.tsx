@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, Image, SafeAreaView, StatusBar } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet, Image, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import SwipeableCards from './SwipeableCards';
 import minglaLogo from '../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png';
@@ -31,7 +32,7 @@ interface HomePageProps {
 export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpenCollabPreferences, currentMode, userPreferences, accountPreferences, onAddToCalendar, savedCards, onSaveCard, onShareCard, onPurchaseComplete, removedCardIds, onResetCards, generateNewMockCard, onboardingData, refreshKey }: HomePageProps) {
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         {/* Top Navigation - Fixed */}
@@ -75,14 +76,14 @@ export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpe
           >
             {currentMode === 'solo' ? (
               <>
-                <Ionicons name="people" size={16} color="#eb7825" />
+                <Ionicons name="people" size={14} color="#ea580c" />
                 <Text style={styles.collaborateText}>Collaborate</Text>
               </>
             ) : (
               <>
-                <Ionicons name="people" size={16} color="#eb7825" />
+                <Ionicons name="people" size={14} color="#ea580c" />
                 <Text style={styles.collaborateText} numberOfLines={1}>{currentMode}</Text>
-                <Ionicons name="chevron-down" size={12} color="#eb7825" style={{ opacity: 0.6 }} />
+                <Ionicons name="chevron-down" size={11} color="#ea580c" style={{ opacity: 0.6 }} />
               </>
             )}
             {/* Notification indicator for pending invites */}
@@ -123,13 +124,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
   },
   header: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 16,
-    minHeight: 80,
+    borderBottomColor: '#e5e7eb',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -138,11 +138,11 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 1,
+      height: 2,
     },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 10,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 2,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -150,24 +150,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   preferencesButton: {
-    padding: 12,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    minWidth: 44,
-    minHeight: 44,
+    padding: 10,
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    minWidth: 40,
+    minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
-    zIndex: 101,
   },
   headerCenter: {
     flex: 1,
@@ -175,8 +166,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logo: {
-    height: 50,
-    width: 250,
+    height: 40,
+    width: 200,
     resizeMode: 'contain',
   },
   logoText: {
@@ -193,29 +184,31 @@ const styles = StyleSheet.create({
   collaborateButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#fef3e2',
+    gap: 6,
+    backgroundColor: '#fff7ed',
     borderWidth: 1,
-    borderColor: '#fed7aa',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    borderColor: '#ffedd5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
     position: 'relative',
   },
   collaborateText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#eb7825',
+    color: '#ea580c',
     maxWidth: 80,
   },
   notificationDot: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 12,
-    height: 12,
-    backgroundColor: '#FF7043',
-    borderRadius: 6,
+    top: -2,
+    right: -2,
+    width: 10,
+    height: 10,
+    backgroundColor: '#ef4444',
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
   },
   mainContent: {
     flex: 1,
