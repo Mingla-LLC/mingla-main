@@ -1,13 +1,25 @@
 import { useState, useEffect } from "react";
-import { Alert } from "react-native";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
+import { Alert, Platform } from "react-native";
+import Constants from "expo-constants";
+import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { User } from "../types";
 
-// Complete web browser session properly for OAuth
-WebBrowser.maybeCompleteAuthSession();
+// Configure Google Sign-In
+const webClientId = 
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 
+  Constants.expoConfig?.extra?.googleWebClientId;
+
+if (webClientId) {
+  GoogleSignin.configure({
+    webClientId, // From Google Cloud Console - Web Client ID
+    offlineAccess: true, // If you want to access Google API on behalf of the user FROM YOUR SERVER
+    forceCodeForRefreshToken: true, // [Android] related to `serverAuthCode`
+  });
+} else {
+  console.warn("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set. Google Sign-In may not work.");
+}
 
 export const useAuthSimple = () => {
   const [loading, setLoading] = useState(true);
@@ -27,7 +39,6 @@ export const useAuthSimple = () => {
 
     const initializeAuth = async () => {
       try {
-
         // Get initial session
         const {
           data: { session },
@@ -253,7 +264,6 @@ export const useAuthSimple = () => {
       // Profile will be automatically created by database trigger
       // Check if we have a session (user might need email confirmation)
       if (data.user) {
-
         // Use session from signUp response, or get current session
         let session = data.session;
         if (!session) {
@@ -581,13 +591,17 @@ export const useAuthSimple = () => {
   };
 
   // Helper function to handle OAuth tokens and set session
-  const handleOAuthTokens = async (accessToken: string, refreshToken: string) => {
+  const handleOAuthTokens = async (
+    accessToken: string,
+    refreshToken: string
+  ) => {
     try {
       // Set the session manually from the tokens
-      const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
 
       if (sessionError) throw sessionError;
 
@@ -603,7 +617,10 @@ export const useAuthSimple = () => {
           .single();
 
         if (profileError) {
-          console.error("Error loading profile after Google sign-in:", profileError);
+          console.error(
+            "Error loading profile after Google sign-in:",
+            profileError
+          );
         } else if (profile) {
           setProfile(profile);
         }
@@ -619,70 +636,103 @@ export const useAuthSimple = () => {
 
   const signInWithGoogle = async () => {
     try {
-      // Use redirect handler URL to avoid Supabase exp:// URL parsing error
-      // Replace this with your Netlify Drop URL after hosting oauth-redirect.html
-      const redirectHandlerUrl = "https://YOUR-NETLIFY-URL.netlify.app";
-      const appRedirectUrl = Linking.createURL("/auth/callback");
+      // Check if Google Sign-In is configured
+      const webClientId = 
+        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 
+        Constants.expoConfig?.extra?.googleWebClientId;
+      
+      if (!webClientId) {
+        Alert.alert(
+          "Configuration Error",
+          "Google Sign-In is not configured. Please set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in your environment variables."
+        );
+        return { data: null, error: { message: "Google Sign-In not configured" } };
+      }
 
-      // Initiate OAuth sign-in - must use system browser (not WebView) per Google policy
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      // Check if Google Play Services are available (Android only)
+      if (Platform.OS === "android") {
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      }
+
+      // Sign in with Google
+      await GoogleSignin.signIn();
+
+      // Get the ID token from the current user
+      const tokens = await GoogleSignin.getTokens();
+      
+      if (!tokens.idToken) {
+        throw new Error("Failed to get ID token from Google");
+      }
+
+      // Sign in to Supabase with the ID token
+      const { data, error } = await supabase.auth.signInWithIdToken({
         provider: "google",
-        options: {
-          redirectTo: redirectHandlerUrl, // Redirect to handler page first
-          // Use system browser for security compliance
-          skipBrowserRedirect: false,
-        },
+        token: tokens.idToken,
       });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      // Open OAuth in system browser (required by Google's secure browser policy)
-      if (data?.url) {
-        // Use redirect handler URL for WebBrowser to detect when to close
-        const result = await WebBrowser.openAuthSessionAsync(
-          data.url,
-          redirectHandlerUrl
-        );
+      if (!data.session) {
+        throw new Error("Failed to create session");
+      }
 
-        // Handle the callback - redirect handler will redirect to app deep link
-        if (result.type === "success" && result.url) {
-          // Parse the callback URL to extract tokens (from deep link after redirect handler)
-          try {
-            const url = new URL(result.url);
-            const hashParams = new URLSearchParams(url.hash.substring(1));
-            const searchParams = new URLSearchParams(url.search);
-            
-            const accessToken = hashParams.get("access_token") || searchParams.get("access_token");
-            const refreshToken = hashParams.get("refresh_token") || searchParams.get("refresh_token");
-            const errorParam = hashParams.get("error") || searchParams.get("error");
-            
-            if (errorParam) {
-              return { data: null, error: { message: decodeURIComponent(errorParam) } };
+      // Load profile after successful sign-in
+      if (data.session.user) {
+        await new Promise((r) => setTimeout(r, 500));
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", data.session.user.id)
+          .single();
+
+        if (!profileError && profile) {
+          // Ensure email_verified is set to true for Google users
+          if (profile.email_verified === false) {
+            const { error: updateError } = await supabase
+              .from("profiles")
+              .update({ email_verified: true })
+              .eq("id", data.session.user.id);
+
+            if (!updateError) {
+              // Reload profile with updated email_verified
+              const { data: updatedProfile } = await supabase
+                .from("profiles")
+                .select("*")
+                .eq("id", data.session.user.id)
+                .single();
+
+              if (updatedProfile) {
+                setProfile(updatedProfile);
+              }
+            } else {
+              console.error("Error updating email_verified:", updateError);
+              setProfile(profile);
             }
-
-            if (accessToken && refreshToken) {
-              // Use the helper function to handle tokens
-              return await handleOAuthTokens(accessToken, refreshToken);
-            }
-          } catch (parseError) {
-            console.error("Error parsing OAuth callback URL:", parseError);
-            // Fall through to session check
+          } else {
+            setProfile(profile);
           }
-          
-          // Fallback: wait for onAuthStateChange to detect session
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData?.session) {
-            return { data: sessionData.session, error: null };
-          }
-        } else if (result.type === "cancel") {
-          return { data: null, error: { message: "Sign-in cancelled" } };
         }
       }
 
-      return { data: null, error: { message: "Failed to initiate OAuth" } };
+      return { data: data.session, error: null };
     } catch (error: any) {
       console.error("Google sign-in error:", error);
+
+      // Handle specific error cases
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        return { data: null, error: { message: "Sign-in cancelled" } };
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        return { data: null, error: { message: "Sign-in already in progress" } };
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        Alert.alert(
+          "Google Play Services Required",
+          "Google Play Services is not available. Please install it from the Play Store."
+        );
+        return { data: null, error: { message: "Google Play Services not available" } };
+      }
+
       Alert.alert(
         "Google Sign-In Failed",
         error.message || "Unable to sign in with Google. Please try again."

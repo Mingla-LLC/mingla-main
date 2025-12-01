@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef } from "react";
 import {
+  Alert,
   SafeAreaView,
   StatusBar,
   StyleSheet,
@@ -8,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as Linking from "expo-linking";
 import { useAppHandlers } from "../src/components/AppHandlers";
 import { useAppState } from "../src/components/AppStateManager";
 import CollaborationModule from "../src/components/CollaborationModule";
@@ -31,6 +33,106 @@ import CoachMap from "../src/components/CoachMap";
 export default function App() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
+  
+  // Handle deep links for OAuth callback
+  useEffect(() => {
+    // Handle initial URL (if app was opened via deep link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink(url);
+      }
+    });
+
+    // Listen for deep links while app is running
+    const subscription = Linking.addEventListener('url', (event) => {
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleDeepLink = async (url: string) => {
+    console.log('Deep link received:', url);
+    
+    // Check if it's an OAuth callback
+    if (url.includes('auth/callback')) {
+      try {
+        console.log('Processing OAuth callback deep link...');
+        
+        // Parse the URL - Supabase puts tokens in hash or query params
+        const parsedUrl = Linking.parse(url);
+        console.log('Parsed URL:', parsedUrl);
+        
+        // Try query params first
+        const queryParams = parsedUrl.queryParams || {};
+        const { access_token, refresh_token, error: errorParam, code } = queryParams;
+        
+        // Also try parsing from hash if available
+        let accessToken = access_token;
+        let refreshToken = refresh_token;
+        let error = errorParam;
+        
+        // If tokens not in query params, try parsing hash manually
+        if (!accessToken && url.includes('#')) {
+          const hashIndex = url.indexOf('#');
+          const hash = url.substring(hashIndex + 1);
+          const hashParams = new URLSearchParams(hash);
+          accessToken = hashParams.get('access_token') || undefined;
+          refreshToken = hashParams.get('refresh_token') || undefined;
+          error = hashParams.get('error') || undefined;
+        }
+        
+        if (error) {
+          console.error('OAuth error from deep link:', error);
+          Alert.alert('Sign-in Error', String(error));
+          return;
+        }
+        
+        if (accessToken && refreshToken) {
+          console.log('Tokens found in deep link, setting session...');
+          // Use supabase directly to set session
+          const { supabase } = await import('../src/services/supabase');
+          const { useAppStore } = await import('../src/store/appStore');
+          const { setProfile } = useAppStore.getState();
+          
+          const { data, error: sessionError } = await supabase.auth.setSession({
+            access_token: String(accessToken),
+            refresh_token: String(refreshToken),
+          });
+          
+          if (sessionError) {
+            console.error('Error setting session:', sessionError);
+            Alert.alert('Error', 'Failed to complete sign-in: ' + sessionError.message);
+          } else if (data.session?.user) {
+            console.log('✅ Session set successfully via deep link');
+            
+            // Load profile
+            const { data: profile, error: profileError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', data.session.user.id)
+              .single();
+            
+            if (!profileError && profile) {
+              setProfile(profile);
+            }
+          }
+        } else if (code) {
+          // Handle authorization code if needed
+          console.log('Authorization code received:', code);
+        } else {
+          console.log('No tokens or code found in deep link. URL:', url);
+          // Session might be created server-side, just log and continue
+        }
+      } catch (error: any) {
+        console.error('Error handling deep link:', error);
+        console.error('Error stack:', error.stack);
+        // Don't show alert - let the app continue, session might still be created
+      }
+    }
+  };
 
   // Destructure commonly used state
   const {
@@ -108,13 +210,40 @@ export default function App() {
   // Use a ref to track if we've already shown it in this session
   const coachMapShownRef = useRef(false);
   
+  // Function to update coach map tour status in profile
+  const updateCoachMapTourStatus = async (status: 'completed' | 'skipped') => {
+    if (!user?.id || !profile) return;
+    
+    try {
+      const { supabase } = await import("../src/services/supabase");
+      const { error } = await supabase
+        .from("profiles")
+        .update({ coach_map_tour_status: status })
+        .eq("id", user.id);
+
+      if (error) {
+        console.error("Error updating coach map tour status:", error);
+        return;
+      }
+
+      // Update profile in store
+      const { useAppStore } = await import("../src/store/appStore");
+      const updatedProfile = { ...profile, coach_map_tour_status: status };
+      useAppStore.getState().setProfile(updatedProfile);
+    } catch (error) {
+      console.error("Error updating coach map tour status:", error);
+    }
+  };
+  
   useEffect(() => {
     if (
       isAuthenticated &&
       user &&
       profile &&
       profile.has_completed_onboarding === true &&
-      !coachMapShownRef.current
+      !coachMapShownRef.current &&
+      // Only show if tour hasn't been completed or skipped
+      (profile.coach_map_tour_status === null || profile.coach_map_tour_status === undefined)
     ) {
       // Show coach map after a brief delay to ensure UI is ready
       const timer = setTimeout(() => {
@@ -171,8 +300,14 @@ export default function App() {
 
   // Check if user needs email verification before onboarding
   // Block onboarding if user is authenticated but email is not verified
+  // Skip email verification for Google sign-in users (Google already verifies emails)
+  const isGoogleUser = user?.app_metadata?.provider === 'google';
   const needsEmailVerification =
-    isAuthenticated && user && profile && profile.email_verified === false;
+    isAuthenticated && 
+    user && 
+    profile && 
+    profile.email_verified === false &&
+    !isGoogleUser; // Skip verification for Google users
 
   // Show email verification screen if needed (before onboarding)
   if (needsEmailVerification && !showSignUpForm) {
@@ -768,10 +903,12 @@ export default function App() {
               {/* Coach Map Overlay */}
               <CoachMap
                 visible={showCoachMap}
-                onComplete={() => {
+                onComplete={async () => {
+                  await updateCoachMapTourStatus('completed');
                   setShowCoachMap(false);
                 }}
-                onSkip={() => {
+                onSkip={async () => {
+                  await updateCoachMapTourStatus('skipped');
                   setShowCoachMap(false);
                 }}
               />

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   share_budget boolean DEFAULT false,
   share_categories boolean DEFAULT true,
   share_date_time boolean DEFAULT true,
+  coach_map_tour_status text CHECK (coach_map_tour_status IN ('completed', 'skipped')) DEFAULT NULL,
   created_at timestamptz DEFAULT now()
 );
 

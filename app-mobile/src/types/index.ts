@@ -20,6 +20,7 @@ export interface User {
   show_preferences?: boolean;
   has_completed_onboarding?: boolean;
   onboarding_step?: number | null; // 0 = completed, 2-10 = current step
+  coach_map_tour_status?: 'completed' | 'skipped' | null; // Track coach map tour status
   created_at: string;
 }
 

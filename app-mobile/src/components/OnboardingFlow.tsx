@@ -1520,6 +1520,23 @@ const OnboardingFlow = ({
       }
 
       // Google sign-in successful
+      // Wait a moment for profile to be loaded by useAuthSimple
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Get the latest profile from store
+      const currentProfile = useAppStore.getState().profile;
+      const currentUser = useAppStore.getState().user;
+
+      // If user is authenticated and hasn't completed onboarding, skip to IntentSelectionStep
+      if (
+        currentUser &&
+        currentProfile &&
+        currentProfile.has_completed_onboarding === false
+      ) {
+        // Skip OTP screen and go directly to IntentSelectionStep (step 2)
+        setCurrentStep(2);
+      }
+
       // The app/index.tsx will check profile.has_completed_onboarding and redirect accordingly
       // Don't call onGoogleSignInComplete here - let the navigation logic handle it
     } catch (error: any) {
