@@ -27,16 +27,20 @@ interface HomePageProps {
   generateNewMockCard?: () => any;
   onboardingData?: any;
   refreshKey?: number | string;
+  isHighlightingHeader?: boolean;
 }
 
-export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpenCollabPreferences, currentMode, userPreferences, accountPreferences, onAddToCalendar, savedCards, onSaveCard, onShareCard, onPurchaseComplete, removedCardIds, onResetCards, generateNewMockCard, onboardingData, refreshKey }: HomePageProps) {
+export default function HomePage({ onOpenPreferences, onOpenCollaboration, onOpenCollabPreferences, currentMode, userPreferences, accountPreferences, onAddToCalendar, savedCards, onSaveCard, onShareCard, onPurchaseComplete, removedCardIds, onResetCards, generateNewMockCard, onboardingData, refreshKey, isHighlightingHeader }: HomePageProps) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         {/* Top Navigation - Fixed */}
-        <View style={styles.header}>
+        <View style={[
+          styles.header,
+          isHighlightingHeader && { zIndex: 1000, elevation: 1000 }
+        ]}>
         <View style={styles.headerLeft}>
           <TouchableOpacity 
             onPress={() => {

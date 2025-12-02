@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   StatusBar,
@@ -33,6 +33,30 @@ import CoachMap from "../src/components/CoachMap";
 export default function App() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
+  const [coachMapCurrentTarget, setCoachMapCurrentTarget] = useState<string | null>(null);
+  
+  // Helper to check if coach map is highlighting tabs
+  const isHighlightingTabs = Boolean(
+    showCoachMap && 
+    coachMapCurrentTarget && 
+    (
+      coachMapCurrentTarget === 'tabHome' ||
+      coachMapCurrentTarget === 'tabConnections' ||
+      coachMapCurrentTarget === 'tabActivity' ||
+      coachMapCurrentTarget === 'tabSaved' ||
+      coachMapCurrentTarget === 'tabProfile'
+    )
+  );
+
+  // Helper to check if coach map is highlighting header buttons
+  const isHighlightingHeader = Boolean(
+    showCoachMap && 
+    coachMapCurrentTarget && 
+    (
+      coachMapCurrentTarget === 'preferencesButton' ||
+      coachMapCurrentTarget === 'collaborateButton'
+    )
+  );
   
   // Handle deep links for OAuth callback
   useEffect(() => {
@@ -435,6 +459,7 @@ export default function App() {
             onOpenCollaboration={handlers.handleCollaborationOpen}
             onOpenCollabPreferences={() => setShowCollabPreferences(true)}
             currentMode={currentMode}
+            isHighlightingHeader={isHighlightingHeader}
             userPreferences={userPreferences}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
@@ -601,6 +626,7 @@ export default function App() {
             onOpenCollaboration={handlers.handleCollaborationOpen}
             onOpenCollabPreferences={() => setShowCollabPreferences(true)}
             currentMode={currentMode}
+            isHighlightingHeader={isHighlightingHeader}
             userPreferences={userPreferences}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
@@ -770,8 +796,14 @@ export default function App() {
                   availableFriends={[]}
                 />
 
-                {/* Bottom Navigation */}
-                <View style={styles.bottomNavigation}>
+                {/* Bottom Navigation - keep visible and above overlay when tabs are highlighted */}
+                <View style={[
+                  styles.bottomNavigation,
+                  isHighlightingTabs && {
+                    zIndex: 1000,
+                    elevation: 1000,
+                  }
+                ]}>
                   <View style={styles.navigationContainer}>
                     <TouchableOpacity
                       onPress={() => {
@@ -898,6 +930,7 @@ export default function App() {
                     </TouchableOpacity>
                   </View>
                 </View>
+                )}
               </View>
 
               {/* Coach Map Overlay */}
@@ -906,10 +939,20 @@ export default function App() {
                 onComplete={async () => {
                   await updateCoachMapTourStatus('completed');
                   setShowCoachMap(false);
+                  setCoachMapCurrentTarget(null);
                 }}
                 onSkip={async () => {
                   await updateCoachMapTourStatus('skipped');
                   setShowCoachMap(false);
+                  setCoachMapCurrentTarget(null);
+                }}
+                onStepChange={(stepIndex, target) => {
+                  // Reset target when coach map closes (stepIndex === -1)
+                  if (stepIndex === -1) {
+                    setCoachMapCurrentTarget(null);
+                  } else {
+                    setCoachMapCurrentTarget(target);
+                  }
                 }}
               />
             </SafeAreaView>
@@ -937,6 +980,8 @@ const styles = StyleSheet.create({
     borderTopColor: "#e5e7eb",
     paddingBottom: 8,
     paddingTop: 8,
+    zIndex: -1, // Low z-index so it doesn't overlay the Modal
+    elevation: -1,
   },
   navigationContainer: {
     flexDirection: "row",
