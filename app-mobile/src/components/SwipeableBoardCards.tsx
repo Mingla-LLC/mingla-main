@@ -48,9 +48,10 @@ interface SwipeableBoardCardsProps {
   cards: BoardCard[];
   onVote: (cardId: string, vote: 'yes' | 'no') => void;
   onRSVP: (cardId: string, rsvp: 'yes' | 'no') => void;
+  onOpenDiscussion?: (cardId: string) => void;
 }
 
-export default function SwipeableBoardCards({ cards, onVote, onRSVP }: SwipeableBoardCardsProps) {
+export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscussion }: SwipeableBoardCardsProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [galleryIndices, setGalleryIndices] = useState<{[key: string]: number}>({});
@@ -467,13 +468,17 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP }: Swipeable
                                   <Text style={styles.votingStatValue}>{card.votes.no}</Text>
                                   <Text style={styles.votingStatLabel}>No</Text>
                                 </View>
-                                <View style={styles.votingStat}>
+                                <TouchableOpacity
+                                  style={styles.votingStat}
+                                  onPress={() => onOpenDiscussion?.(card.id)}
+                                  activeOpacity={0.7}
+                                >
                                   <View style={styles.votingStatIcon}>
                                     <Ionicons name="chatbubble" size={16} color="#2563eb" />
                                   </View>
                                   <Text style={styles.votingStatValue}>{card.messages}</Text>
                                   <Text style={styles.votingStatLabel}>Messages</Text>
-                                </View>
+                                </TouchableOpacity>
                               </View>
                               <Text style={styles.votingStatusSubtext}>
                                 {card.rsvps.responded}/{card.rsvps.total} responses
@@ -528,6 +533,17 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP }: Swipeable
                                   {card.rsvps.userRSVP === 'yes' ? 'RSVP\'d Yes' : 'RSVP Yes'}
                                 </Text>
                               </TouchableOpacity>
+                              {onOpenDiscussion && (
+                                <TouchableOpacity
+                                  onPress={() => onOpenDiscussion(card.id)}
+                                  style={styles.discussionButton}
+                                >
+                                  <Ionicons name="chatbubbles" size={16} color="#007AFF" />
+                                  <Text style={styles.discussionButtonText}>
+                                    Discuss ({card.messages})
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
                             </View>
                           ) : (
                             <View style={styles.expandedLockedSection}>
@@ -1183,6 +1199,22 @@ const styles = StyleSheet.create({
   },
   expandedRSVPButtonTextInactive: {
     color: '#eb7825',
+  },
+  discussionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#E3F2FD',
+    marginTop: 8,
+  },
+  discussionButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#007AFF',
   },
   expandedLockedSection: {
     backgroundColor: '#dcfce7',

@@ -1,100 +1,201 @@
-import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput, StyleSheet, Modal, ScrollView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  StatusBar,
+  Platform,
+  Modal,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { Calendar } from "./ui/calendar";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { useBoardSession } from "../hooks/useBoardSession";
 
 interface CollaborationPreferencesProps {
   isOpen: boolean;
   onClose: () => void;
   sessionName: string;
+  sessionId: string; // Add this prop
   participants: Array<{ id: string; name: string; avatar?: string }>;
   onSave: (preferences: any) => void;
 }
 
-interface ExperienceType {
-  id: string;
-  label: string;
-  icon: string;
-}
-
-interface Category {
-  id: string;
-  label: string;
-  emoji?: string;
-  description: string;
-}
-
-// Remove 'soloAdventure' from the experience types for collaboration
-const experienceTypes: ExperienceType[] = [
-  { id: 'firstDate', label: 'First Date', icon: 'heart' },
-  { id: 'romantic', label: 'Romantic', icon: 'heart' },
-  { id: 'friendly', label: 'Friendly', icon: 'people' },
-  { id: 'groupFun', label: 'Group Fun', icon: 'people' },
-  { id: 'business', label: 'Business', icon: 'briefcase' }
+// Experience Types for collaboration (no Solo Adventure)
+const experienceTypes = [
+  { id: "first-dates", label: "First Date", icon: "heart-outline" },
+  { id: "romantic", label: "Romantic", icon: "heart-outline" },
+  { id: "friendly", label: "Friendly", icon: "people-outline" },
+  { id: "group-fun", label: "Group Fun", icon: "people-outline" },
+  { id: "business", label: "Business", icon: "briefcase-outline" },
 ];
 
+// Budget presets
 const budgetPresets = [
-  { label: '$0–25', min: 0, max: 25 },
-  { label: '$25–75', min: 25, max: 75 },
-  { label: '$75–150', min: 75, max: 150 },
-  { label: '$150+', min: 150, max: 1000 }
+  { label: "$0-25", min: 0, max: 25 },
+  { label: "$25-75", min: 25, max: 75 },
+  { label: "$75-150", min: 75, max: 150 },
+  { label: "$150+", min: 150, max: 1000 },
 ];
 
-const categories: Category[] = [
-  { id: 'stroll', label: 'Take a Stroll', emoji: '🚶‍♀️🌳', description: 'Parks, neighborhoods, scenic walks' },
-  { id: 'sipChill', label: 'Sip & Chill', emoji: '🍹☕🍷', description: 'Cafes, bars, lounges' },
-  { id: 'casualEats', label: 'Casual Eats', emoji: '🍔🌮🍕', description: 'Food trucks, casual dining, markets' },
-  { id: 'screenRelax', label: 'Screen & Relax', emoji: '🎬🎮📺', description: 'Movies, shows, gaming' },
-  { id: 'creative', label: 'Creative & Hands-On', emoji: '🎨✂️🖌️', description: 'Art classes, workshops, DIY' },
-  { id: 'playMove', label: 'Play & Move', emoji: '⚽🏃‍♀️🎾', description: 'Sports, games, active fun' },
-  { id: 'diningExp', label: 'Dining Experiences', emoji: '🍽️🍷🥂', description: 'Fine dining, food tours, tastings' },
-  { id: 'wellness', label: 'Wellness Dates', emoji: '🧘‍♀️🌸💆‍♀️', description: 'Spa, yoga, meditation, nature' },
-  { id: 'freestyle', label: 'Freestyle', emoji: '✨🎲🎪', description: 'Unique, spontaneous experiences' }
+// Categories
+const categories = [
+  { id: "Stroll", label: "Take a Stroll", icon: "eye-outline" },
+  { id: "Sip & Chill", label: "Sip & Chill", icon: "cafe-outline" },
+  { id: "Casual Eats", label: "Casual Eats", icon: "restaurant-outline" },
+  { id: "screenRelax", label: "Screen & Relax", icon: "desktop-outline" },
+  {
+    id: "Creative & Hands-On",
+    label: "Creative & Hands-On",
+    icon: "color-palette-outline",
+  },
+  { id: "Picnics", label: "Picnics", icon: "basket-outline" },
+  { id: "Play & Move", label: "Play & Move", icon: "game-controller-outline" },
+  {
+    id: "Dining Experiences",
+    label: "Dining Experiences",
+    icon: "restaurant-outline",
+  },
+  { id: "Wellness Dates", label: "Wellness Dates", icon: "leaf-outline" },
+  { id: "Freestyle", label: "Freestyle", icon: "sparkles-outline" },
 ];
 
+// Travel modes
 const travelModes = [
-  { id: 'walk', label: 'Walk', subtitle: '(~2 miles)', icon: '🚶‍♀️' },
-  { id: 'drive', label: 'Drive', subtitle: '(~20 miles)', icon: '🚗' },
-  { id: 'transit', label: 'Public transport', subtitle: '(~45 min ride)', icon: '🚌' }
+  { id: "walking", label: "Walking", icon: "walk-outline" },
+  { id: "biking", label: "Biking", icon: "bicycle-outline" },
+  { id: "transit", label: "Public Transit", icon: "bus-outline" },
+  { id: "driving", label: "Driving", icon: "car-outline" },
 ];
 
+// Date options
+const dateOptions = [
+  { id: "Now", label: "Now", description: "Leave immediately" },
+  { id: "Today", label: "Today", description: "Pick a time" },
+  { id: "This Weekend", label: "This Weekend", description: "Fri-Sun" },
+  { id: "Pick a Date", label: "Pick a Date", description: "Custom date" },
+];
+
+// Time slots
 const timeSlots = [
-  { id: 'brunch', label: 'Brunch', emoji: '🍳', time: '11–1' },
-  { id: 'afternoon', label: 'Afternoon', emoji: '☀️', time: '2–5' },
-  { id: 'dinner', label: 'Dinner', emoji: '🍽️', time: '6–9' },
-  { id: 'lateNight', label: 'Late Night', emoji: '🌙', time: '10–12' }
+  { id: "brunch", label: "Brunch", time: "11–1", icon: "cafe-outline" },
+  { id: "afternoon", label: "Afternoon", time: "2–5", icon: "sunny-outline" },
+  { id: "dinner", label: "Dinner", time: "6–9", icon: "restaurant-outline" },
+  { id: "lateNight", label: "Late Night", time: "10–12", icon: "moon-outline" },
 ];
 
-export default function CollaborationPreferences({ 
-  isOpen, 
-  onClose, 
-  sessionName, 
-  participants, 
-  onSave 
-}: CollaborationPreferencesProps) {
-  const [selectedExperiences, setSelectedExperiences] = useState<string[]>([]);
-  const [budgetMin, setBudgetMin] = useState<number | ''>('');
-  const [budgetMax, setBudgetMax] = useState<number | ''>('');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [dateOption, setDateOption] = useState<string>('now');
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('');
-  const [exactTime, setExactTime] = useState<string>('');
-  const [travelMode, setTravelMode] = useState<string>('walk');
-  const [constraintType, setConstraintType] = useState<'time' | 'distance'>('time');
-  const [timeConstraint, setTimeConstraint] = useState<number | ''>('');
-  const [distanceConstraint, setDistanceConstraint] = useState<number | ''>('');
-  const [useLocation, setUseLocation] = useState<'gps' | 'search'>('gps');
-  const [searchLocation, setSearchLocation] = useState<string>('');
+type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
+type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
 
-  const handleExperienceToggle = (id: string) => {
-    setSelectedExperiences(prev => 
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+export default function CollaborationPreferences({
+  isOpen,
+  onClose,
+  sessionName,
+  sessionId, // Add this
+  participants,
+  onSave,
+}: CollaborationPreferencesProps) {
+  // Experience Types (Intents)
+  const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
+
+  // Budget
+  const [budgetMin, setBudgetMin] = useState<number | "">(0);
+  const [budgetMax, setBudgetMax] = useState<number | "">(200);
+
+  // Categories
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+
+  // Date & Time
+  const [selectedDateOption, setSelectedDateOption] =
+    useState<DateOption | null>("Now");
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot | null>(
+    null
+  );
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedWeekendDay, setSelectedWeekendDay] = useState<
+    "saturday" | "sunday" | null
+  >(null);
+  const [exactTime, setExactTime] = useState<string>("");
+  const [selectedTime, setSelectedTime] = useState<Date>(new Date());
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  // Travel Mode
+  const [travelMode, setTravelMode] = useState<string>("walking");
+
+  // Travel Limit
+  const [constraintType, setConstraintType] = useState<"time" | "distance">(
+    "time"
+  );
+  const [constraintValue, setConstraintValue] = useState<number | "">(20);
+
+  // Starting Location
+  const [useLocation, setUseLocation] = useState<"gps" | "search">("gps");
+  const [searchLocation, setSearchLocation] = useState<string>("");
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+
+  // Loading states
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Load preferences from database using useBoardSession hook
+  const { preferences: dbPreferences, updatePreferences, loading: loadingPreferences } = useBoardSession(sessionId);
+
+  // Load existing preferences when component opens or preferences change
+  useEffect(() => {
+    if (isOpen && dbPreferences) {
+      // Map database preferences to component state
+      if (dbPreferences.categories) {
+        setSelectedCategories(dbPreferences.categories);
+      }
+      if (dbPreferences.budget_min !== undefined) {
+        setBudgetMin(dbPreferences.budget_min);
+      }
+      if (dbPreferences.budget_max !== undefined) {
+        setBudgetMax(dbPreferences.budget_max);
+      }
+      if (dbPreferences.group_size !== undefined) {
+        // You might need to map this to people_count or another field
+      }
+      if (dbPreferences.travel_mode) {
+        setTravelMode(dbPreferences.travel_mode);
+      }
+      if (dbPreferences.travel_constraint_type) {
+        setConstraintType(dbPreferences.travel_constraint_type as "time" | "distance");
+      }
+      if (dbPreferences.travel_constraint_value !== undefined) {
+        setConstraintValue(dbPreferences.travel_constraint_value);
+      }
+      if (dbPreferences.time_of_day) {
+        // Map time_of_day to selectedTimeSlot if needed
+      }
+      if (dbPreferences.datetime_pref) {
+        // Parse and set date/time preferences
+        const date = new Date(dbPreferences.datetime_pref);
+        setSelectedDate(date);
+      }
+    }
+  }, [isOpen, dbPreferences]);
+
+  if (!isOpen) return null;
+
+  const handleIntentToggle = (intentId: string) => {
+    setSelectedIntents((prev) =>
+      prev.includes(intentId)
+        ? prev.filter((id) => id !== intentId)
+        : [...prev, intentId]
     );
   };
 
-  const handleCategoryToggle = (id: string) => {
-    setSelectedCategories(prev => 
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+  const handleCategoryToggle = (categoryId: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(categoryId)
+        ? prev.filter((id) => id !== categoryId)
+        : [...prev, categoryId]
     );
   };
 
@@ -103,591 +204,834 @@ export default function CollaborationPreferences({
     setBudgetMax(max);
   };
 
-  const handleSave = () => {
-    const preferences = {
-      selectedExperiences,
-      budgetMin,
-      budgetMax,
-      selectedCategories,
-      dateOption,
-      selectedDate,
-      selectedTimeSlot,
-      exactTime,
-      travelMode,
-      constraintType,
-      timeConstraint,
-      distanceConstraint,
-      useLocation,
-      searchLocation
-    };
-    onSave(preferences);
-    onClose();
+  const handleDateOptionSelect = (option: DateOption) => {
+    setSelectedDateOption(option);
+    if (option === "Now") {
+      setSelectedTimeSlot(null);
+      setExactTime("");
+    }
   };
 
-  const totalSelections = 
-    selectedExperiences.length + // Experience Type pills
-    selectedCategories.length + // Category pills
-    (budgetMin !== '' || budgetMax !== '' ? 1 : 0) + // Budget section
-    (dateOption !== '' ? 1 : 0) + // Date section (only if a date is selected)
-    (dateOption !== 'now' && dateOption !== '' && exactTime !== '' ? 1 : 0) + // Time section (if time is set)
-    (travelMode !== '' ? 1 : 0) + // Travel Mode (only if selected)
-    (timeConstraint !== '' || distanceConstraint !== '' ? 1 : 0) + // Travel Constraint (only if set)
-    (useLocation !== 'gps' ? 1 : 0); // Starting Location (only if selected)
+  const handleTimeSlotSelect = (slot: TimeSlot) => {
+    setSelectedTimeSlot(slot);
+    setExactTime("");
+  };
 
-  if (!isOpen) return null;
+  const formatDateForDisplay = (date: Date): string => {
+    const month = (date.getMonth() + 1).toString().padStart(2, "0");
+    const day = date.getDate().toString().padStart(2, "0");
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+  };
+
+  const handleCalendarDateSelect = (date: Date | undefined) => {
+    if (date) {
+      setSelectedDate(date);
+      setShowCalendar(false);
+    }
+  };
+
+  const handleTimePickerChange = (event: any, date?: Date) => {
+    if (Platform.OS === "android") {
+      setShowTimePicker(false);
+    }
+    if (date) {
+      setSelectedTime(date);
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      const ampm = hours >= 12 ? "PM" : "AM";
+      const displayHours = hours % 12 || 12;
+      const displayMinutes = minutes.toString().padStart(2, "0");
+      setExactTime(`${displayHours}:${displayMinutes} ${ampm}`);
+    }
+  };
+
+  const handleTimePickerConfirm = () => {
+    setShowTimePicker(false);
+  };
+
+  const handleUseCurrentLocation = async () => {
+    setIsRequestingLocation(true);
+    try {
+      const { locationService } = await import("../services/locationService");
+      const location = await locationService.getCurrentLocation();
+      if (location) {
+        setUseLocation("gps");
+        setSearchLocation("");
+      }
+    } catch (error) {
+      console.error("Error getting location:", error);
+    } finally {
+      setIsRequestingLocation(false);
+    }
+  };
+
+  const handleApplyPreferences = async () => {
+    setIsSaving(true);
+    try {
+      // Transform preferences to database format
+      const dbPreferences = {
+        categories: selectedCategories,
+        budget_min: typeof budgetMin === "number" ? budgetMin : 0,
+        budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
+        group_size: selectedIntents.length > 0 ? selectedIntents.length : undefined, // Or map from people_count
+        travel_mode: travelMode,
+        travel_constraint_type: constraintType,
+        travel_constraint_value: typeof constraintValue === "number" ? constraintValue : 20,
+        time_of_day: selectedTimeSlot || null,
+        datetime_pref: selectedDate ? selectedDate.toISOString() : null,
+        // Add other fields as needed
+      };
+
+      // Save to database using useBoardSession hook
+      await updatePreferences(dbPreferences);
+
+      // Also call the onSave callback for backward compatibility
+      const preferences = {
+        selectedIntents,
+        budgetMin,
+        budgetMax,
+        selectedCategories,
+        selectedDateOption,
+        selectedTimeSlot,
+        selectedDate: selectedDate?.toISOString(),
+        exactTime,
+        travelMode,
+        constraintType,
+        constraintValue,
+        useLocation,
+        searchLocation,
+      };
+
+      await onSave(preferences);
+    } catch (error) {
+      console.error("Error saving preferences:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
-    <Modal
-      visible={isOpen}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          <ScrollView style={styles.scrollView}>
-            <View style={styles.content}>
-              {/* Header */}
-            <View style={styles.header}>
-              {/* Cancel Button */}
-              <TouchableOpacity
-                onPress={onClose}
-                style={styles.cancelButton}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>Narrow your search</Text>
-              <Text style={styles.headerSubtitle}>Collaboration Preferences for "{sessionName}"</Text>
-            </View>
-            </View>
-
-            <View style={styles.sectionsContainer}>
-              {/* Section 1: Experience Type */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Experience Type</Text>
-                  <Text style={styles.sectionSubtitle}>Date Idea / Friends / Romantic / Group</Text>
-                </View>
-                <View style={styles.experienceTypesContainer}>
-                  {experienceTypes.map((type) => {
-                    const isSelected = selectedExperiences.includes(type.id);
-                    return (
-                      <TouchableOpacity
-                        key={type.id}
-                        onPress={() => handleExperienceToggle(type.id)}
-                        style={[
-                          styles.experienceTypeButton,
-                          isSelected && styles.experienceTypeButtonSelected
-                        ]}
-                      >
-                        <Ionicons 
-                          name={type.icon as any} 
-                          size={14} 
-                          color={isSelected ? 'white' : '#6b7280'} 
-                        />
-                        <Text style={[
-                          styles.experienceTypeText,
-                          isSelected && styles.experienceTypeTextSelected
-                        ]}>
-                          {type.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* Section 2: Budget per Person */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Budget per Person</Text>
-                </View>
-                
-                {/* Min/Max Inputs */}
-                <View style={styles.budgetInputsContainer}>
-                  <View style={styles.budgetInputWrapper}>
-                    <Text style={styles.inputLabel}>Min</Text>
-                    <View style={styles.budgetInputContainer}>
-                      <Text style={styles.dollarSign}>$</Text>
-                      <TextInput
-                        value={budgetMin?.toString() || ''}
-                        onChangeText={(text) => setBudgetMin(text ? Number(text) : '')}
-                        keyboardType="numeric"
-                        style={styles.budgetInput}
-                        placeholder="0"
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.budgetInputWrapper}>
-                    <Text style={styles.inputLabel}>Max</Text>
-                    <View style={styles.budgetInputContainer}>
-                      <Text style={styles.dollarSign}>$</Text>
-                      <TextInput
-                        value={budgetMax?.toString() || ''}
-                        onChangeText={(text) => setBudgetMax(text ? Number(text) : '')}
-                        keyboardType="numeric"
-                        style={styles.budgetInput}
-                        placeholder="200"
-                      />
-                    </View>
-                  </View>
-                </View>
-
-                {/* Preset Shortcuts */}
-                <View style={styles.budgetPresetsContainer}>
-                  {budgetPresets.map((preset) => (
-                    <TouchableOpacity
-                      key={preset.label}
-                      onPress={() => setBudgetPreset(preset.min, preset.max)}
-                      style={styles.budgetPresetButton}
-                    >
-                      <Text style={styles.budgetPresetText}>{preset.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Section 3: Categories */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Categories</Text>
-                </View>
-                <View style={styles.categoriesGrid}>
-                  {categories.map((category) => {
-                    const isSelected = selectedCategories.includes(category.id);
-                    return (
-                      <TouchableOpacity
-                        key={category.id}
-                        onPress={() => handleCategoryToggle(category.id)}
-                        style={[
-                          styles.categoryCard,
-                          isSelected && styles.categoryCardSelected
-                        ]}
-                      >
-                        <View style={styles.categoryHeader}>
-                          <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                          <Text style={[
-                            styles.categoryTitle,
-                            isSelected && styles.categoryTitleSelected
-                          ]}>
-                            {category.label}
-                          </Text>
-                        </View>
-                        {isSelected && (
-                          <Text style={styles.categoryDescription}>{category.description}</Text>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* Section 4: Date */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Date</Text>
-                </View>
-                <View style={styles.dateOptionsGrid}>
-                  {[
-                    { id: 'now', label: 'Now' },
-                    { id: 'today', label: 'Today' },
-                    { id: 'weekend', label: 'This Weekend' },
-                    { id: 'pick', label: 'Pick a Date' }
-                  ].map((option) => (
-                    <TouchableOpacity
-                      key={option.id}
-                      onPress={() => setDateOption(option.id)}
-                      style={[
-                        styles.dateOptionButton,
-                        dateOption === option.id && styles.dateOptionButtonSelected
-                      ]}
-                    >
-                      <Text style={[
-                        styles.dateOptionText,
-                        dateOption === option.id && styles.dateOptionTextSelected
-                      ]}>
-                        {option.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                
-                {/* Weekend Info */}
-                {dateOption === 'weekend' && (
-                  <View style={styles.weekendInfo}>
-                    <View style={styles.weekendInfoHeader}>
-                      <Ionicons name="calendar" size={20} color="#d97706" />
-                      <Text style={styles.weekendInfoTitle}>This Weekend:</Text>
-                    </View>
-                    <Text style={styles.weekendInfoText}>Automatically includes Friday, Saturday & Sunday</Text>
-                  </View>
-                )}
-
-                {/* Pick a Date */}
-                {dateOption === 'pick' && (
-                  <View>
-                    <Text style={styles.inputLabel}>Select Date</Text>
-                    <View style={styles.dateInputContainer}>
-                      <Ionicons name="calendar" size={20} color="#9ca3af" style={styles.dateInputIcon} />
-                      <TextInput
-                        value={selectedDate}
-                        onChangeText={setSelectedDate}
-                        style={styles.dateInput}
-                        placeholder="YYYY-MM-DD"
-                      />
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              {/* Section 5: Time */}
-              {dateOption !== 'now' && (
-                <View style={styles.section}>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Time</Text>
-                  </View>
-                  
-                  <View style={styles.timeSection}>
-                    <View>
-                      <Text style={styles.inputLabel}>Quick Select</Text>
-                      <View style={styles.timeOptionsGrid}>
-                        {(dateOption === 'today' 
-                          ? ['09:00', '12:00', '15:00', '18:00', '21:00']
-                          : dateOption === 'weekend'
-                          ? ['10:00', '14:00', '17:00', '19:00', '22:00']
-                          : ['09:00', '12:00', '15:00', '18:00', '21:00']
-                        ).map((time) => (
-                          <TouchableOpacity
-                            key={time}
-                            onPress={() => setExactTime(time)}
-                            style={[
-                              styles.timeOptionButton,
-                              exactTime === time && styles.timeOptionButtonSelected
-                            ]}
-                          >
-                            <Text style={[
-                              styles.timeOptionText,
-                              exactTime === time && styles.timeOptionTextSelected
-                            ]}>
-                              {time}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                    
-                    <View>
-                      <Text style={styles.inputLabel}>Custom Time</Text>
-                      <View style={styles.timeInputContainer}>
-                        <Ionicons name="time" size={20} color="#9ca3af" style={styles.timeInputIcon} />
-                        <TextInput
-                          value={exactTime}
-                          onChangeText={setExactTime}
-                          style={styles.timeInput}
-                          placeholder="Enter custom time"
-                        />
-                      </View>
-                    </View>
-
-                    {dateOption === 'today' && (
-                      <Text style={styles.todayTip}>💡 Choose any time from now until the end of today</Text>
-                    )}
-                  </View>
-                </View>
-              )}
-
-              {/* Section 6: Travel Mode */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Travel Mode</Text>
-                </View>
-                <View style={styles.travelModesContainer}>
-                  {travelModes.map((mode) => (
-                    <TouchableOpacity 
-                      key={mode.id} 
-                      onPress={() => setTravelMode(mode.id)}
-                      style={[
-                        styles.travelModeButton,
-                        travelMode === mode.id && styles.travelModeButtonSelected
-                      ]}
-                    >
-                      <View style={[
-                        styles.travelModeRadio,
-                        travelMode === mode.id && styles.travelModeRadioSelected
-                      ]}>
-                        {travelMode === mode.id && (
-                          <View style={styles.travelModeRadioInner} />
-                        )}
-                      </View>
-                      <Text style={styles.travelModeIcon}>{mode.icon}</Text>
-                      <View>
-                        <Text style={styles.travelModeLabel}>{mode.label}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Section 7: Travel Constraint */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Travel Constraint</Text>
-                </View>
-                <View style={styles.constraintTypeContainer}>
-                  <TouchableOpacity
-                    onPress={() => setConstraintType('time')}
-                    style={[
-                      styles.constraintTypeButton,
-                      constraintType === 'time' && styles.constraintTypeButtonSelected
-                    ]}
-                  >
-                    <Text style={[
-                      styles.constraintTypeText,
-                      constraintType === 'time' && styles.constraintTypeTextSelected
-                    ]}>
-                      ⏱️ By Time
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setConstraintType('distance')}
-                    style={[
-                      styles.constraintTypeButton,
-                      constraintType === 'distance' && styles.constraintTypeButtonSelected
-                    ]}
-                  >
-                    <Text style={[
-                      styles.constraintTypeText,
-                      constraintType === 'distance' && styles.constraintTypeTextSelected
-                    ]}>
-                      📍 By Distance
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {constraintType === 'time' ? (
-                  <View>
-                    <Text style={styles.inputLabel}>Keep it under X minutes</Text>
-                    <TextInput
-                      value={timeConstraint?.toString() || ''}
-                      onChangeText={(text) => setTimeConstraint(text ? Number(text) : '')}
-                      keyboardType="numeric"
-                      style={styles.constraintInput}
-                      placeholder="20"
-                    />
-                  </View>
-                ) : (
-                  <View>
-                    <Text style={styles.inputLabel}>Keep it within X miles</Text>
-                    <TextInput
-                      value={distanceConstraint?.toString() || ''}
-                      onChangeText={(text) => setDistanceConstraint(text ? Number(text) : '')}
-                      keyboardType="numeric"
-                      style={styles.constraintInput}
-                      placeholder="5"
-                    />
-                  </View>
-                )}
-              </View>
-
-              {/* Section 8: Starting Location */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Starting Location</Text>
-                  <Text style={styles.sectionSubtitle}>Your starting point will shape travel time & distance results.</Text>
-                </View>
-                <View style={styles.locationSection}>
-                  <View style={styles.locationOptionsContainer}>
-                    <TouchableOpacity
-                      onPress={() => setUseLocation('gps')}
-                      style={[
-                        styles.locationOptionButton,
-                        useLocation === 'gps' && styles.locationOptionButtonSelected
-                      ]}
-                    >
-                      <Text style={[
-                        styles.locationOptionText,
-                        useLocation === 'gps' && styles.locationOptionTextSelected
-                      ]}>
-                        Use My Location
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setUseLocation('search')}
-                      style={[
-                        styles.locationOptionButton,
-                        useLocation === 'search' && styles.locationOptionButtonSelected
-                      ]}
-                    >
-                      <Text style={[
-                        styles.locationOptionText,
-                        useLocation === 'search' && styles.locationOptionTextSelected
-                      ]}>
-                        Search for a Place
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  {useLocation === 'search' && (
-                    <TextInput
-                      value={searchLocation}
-                      onChangeText={setSearchLocation}
-                      style={styles.locationSearchInput}
-                      placeholder="Enter address or place name..."
-                    />
-                  )}
-                </View>
-              </View>
-            </View>
-          </ScrollView>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <StatusBar barStyle="dark-content" backgroundColor="white" />
+      {/* Header */}
+      <View style={styles.header}>
+        {onClose && (
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.closeButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="close" size={24} color="#6b7280" />
+          </TouchableOpacity>
+        )}
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>Narrow your search</Text>
+          <Text style={styles.subtitle}>
+            Collaboration Preferences for "{sessionName}"
+          </Text>
         </View>
-        
-        {/* Footer - Fixed within modal */}
-        <View style={styles.footer}>
-          <View style={styles.footerButtons}>
-            <TouchableOpacity 
-              onPress={handleSave}
-              style={styles.saveButton}
-            >
-              <Text style={styles.saveButtonText}>
-                Apply Collaboration Preferences ({totalSelections})
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              onPress={() => {
-                setSelectedExperiences([]);
-                setSelectedCategories([]);
-                setBudgetMin('');
-                setBudgetMax('');
-                setDateOption('');
-                setSelectedDate('');
-                setSelectedTimeSlot('');
-                setExactTime('');
-                setTravelMode('');
-                setConstraintType('time');
-                setTimeConstraint('');
-                setDistanceConstraint('');
-                setUseLocation('gps');
-                setSearchLocation('');
-              }}
-              style={styles.resetButton}
-            >
-              <Text style={styles.resetButtonText}>Reset</Text>
-            </TouchableOpacity>
+        {onClose && <View style={styles.headerSpacer} />}
+      </View>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Experience Type Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Experience Type</Text>
+          <Text style={styles.sectionSubtitle}>
+            Date Idea / Friends / Romantic / Group Fun
+          </Text>
+          <View style={styles.experienceTypesContainer}>
+            {experienceTypes.map((type) => {
+              const isSelected = selectedIntents.includes(type.id);
+              return (
+                <TouchableOpacity
+                  key={type.id}
+                  onPress={() => handleIntentToggle(type.id)}
+                  style={[
+                    styles.experienceTypeButton,
+                    isSelected && styles.experienceTypeButtonSelected,
+                  ]}
+                >
+                  <Ionicons
+                    name={type.icon as any}
+                    size={16}
+                    color={isSelected ? "#ffffff" : "#6b7280"}
+                  />
+                  <Text
+                    style={[
+                      styles.experienceTypeText,
+                      isSelected && styles.experienceTypeTextSelected,
+                    ]}
+                  >
+                    {type.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
+
+        {/* Budget per Person Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Budget per Person</Text>
+          <View style={styles.budgetInputsContainer}>
+            <View style={styles.budgetInputWrapper}>
+              <Text style={styles.inputLabel}>Min</Text>
+              <View style={styles.budgetInputContainer}>
+                <Text style={styles.dollarSign}>$</Text>
+                <TextInput
+                  value={budgetMin?.toString() || ""}
+                  onChangeText={(text) =>
+                    setBudgetMin(text ? Number(text) : "")
+                  }
+                  keyboardType="numeric"
+                  style={styles.budgetInput}
+                  placeholder="0"
+                />
+              </View>
+            </View>
+            <View style={styles.budgetInputWrapper}>
+              <Text style={styles.inputLabel}>Max</Text>
+              <View style={styles.budgetInputContainer}>
+                <Text style={styles.dollarSign}>$</Text>
+                <TextInput
+                  value={budgetMax?.toString() || ""}
+                  onChangeText={(text) =>
+                    setBudgetMax(text ? Number(text) : "")
+                  }
+                  keyboardType="numeric"
+                  style={styles.budgetInput}
+                  placeholder="200"
+                />
+              </View>
+            </View>
+          </View>
+          <View style={styles.budgetPresetsContainer}>
+            {budgetPresets.map((preset) => (
+              <TouchableOpacity
+                key={preset.label}
+                onPress={() => setBudgetPreset(preset.min, preset.max)}
+                style={styles.budgetPresetButton}
+              >
+                <Text style={styles.budgetPresetText}>{preset.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Categories Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Categories</Text>
+          <View style={styles.categoriesContainer}>
+            {categories.map((category) => {
+              const isSelected = selectedCategories.includes(category.id);
+              return (
+                <TouchableOpacity
+                  key={category.id}
+                  onPress={() => handleCategoryToggle(category.id)}
+                  style={[
+                    styles.categoryButton,
+                    isSelected && styles.categoryButtonSelected,
+                  ]}
+                >
+                  <Ionicons
+                    name={category.icon as any}
+                    size={20}
+                    color={isSelected ? "#eb7825" : "#6b7280"}
+                  />
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      isSelected && styles.categoryTextSelected,
+                    ]}
+                  >
+                    {category.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Date & Time Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Date & Time</Text>
+          <Text style={styles.sectionQuestion}>When do you want to go?</Text>
+          <View style={styles.dateOptionsGrid}>
+            {dateOptions.map((option) => {
+              const isSelected = selectedDateOption === option.id;
+              return (
+                <TouchableOpacity
+                  key={option.id}
+                  onPress={() =>
+                    handleDateOptionSelect(option.id as DateOption)
+                  }
+                  style={[
+                    styles.dateOptionCard,
+                    isSelected && styles.dateOptionCardSelected,
+                  ]}
+                >
+                  <View style={styles.dateOptionContent}>
+                    <Text
+                      style={[
+                        styles.dateOptionLabel,
+                        isSelected && styles.dateOptionLabelSelected,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.dateOptionDescription,
+                        isSelected && styles.dateOptionDescriptionSelected,
+                      ]}
+                    >
+                      {option.description}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Weekend Info Card (only for "This Weekend") */}
+          {selectedDateOption === "This Weekend" && (
+            <TouchableOpacity style={styles.weekendInfoCard}>
+              <Ionicons
+                name="calendar"
+                size={24}
+                color="#0369a1"
+                style={styles.weekendInfoIcon}
+              />
+              <View style={styles.weekendInfoContent}>
+                <Text style={styles.weekendInfoLabel}>This Weekend</Text>
+                <Text style={styles.weekendInfoDescription}>
+                  Includes Friday, Saturday & Sunday
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {/* Calendar for "Pick a Date" */}
+          {selectedDateOption === "Pick a Date" && (
+            <TouchableOpacity
+              style={styles.dateInputField}
+              onPress={() => setShowCalendar(true)}
+            >
+              <Ionicons name="calendar" size={20} color="#eb7825" />
+              {selectedDate ? (
+                <Text style={styles.dateInputText}>
+                  {formatDateForDisplay(selectedDate)}
+                </Text>
+              ) : (
+                <Text style={styles.dateInputPlaceholder}>mm/dd/yyyy</Text>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Time Slots Section (shown for "Today", "This Weekend", and "Pick a Date") */}
+          {selectedDateOption && selectedDateOption !== "Now" && (
+            <>
+              <Text style={styles.quickPresetsLabel}>Quick Presets</Text>
+              <View style={styles.timeSlotsContainer}>
+                {timeSlots.map((slot) => {
+                  const isSelected = selectedTimeSlot === slot.id;
+                  return (
+                    <TouchableOpacity
+                      key={slot.id}
+                      onPress={() => handleTimeSlotSelect(slot.id as TimeSlot)}
+                      style={[
+                        styles.timeSlotCard,
+                        isSelected && styles.timeSlotCardSelected,
+                      ]}
+                    >
+                      <View style={styles.timeSlotContent}>
+                        <Ionicons
+                          name={slot.icon as any}
+                          size={24}
+                          color={isSelected ? "#ffffff" : "#6b7280"}
+                          style={styles.timeSlotIcon}
+                        />
+                        <Text
+                          style={[
+                            styles.timeSlotLabel,
+                            isSelected && styles.timeSlotLabelSelected,
+                          ]}
+                        >
+                          {slot.label}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.timeSlotTime,
+                            isSelected && styles.timeSlotTimeSelected,
+                          ]}
+                        >
+                          {slot.time}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Or Set Exact Time Section */}
+              <View style={styles.exactTimeSection}>
+                <Text style={styles.exactTimeLabel}>Or Set Exact Time</Text>
+                <TouchableOpacity
+                  style={styles.exactTimeInput}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Ionicons
+                    name="time-outline"
+                    size={20}
+                    color={exactTime ? "#eb7825" : "#9ca3af"}
+                  />
+                  {exactTime ? (
+                    <Text style={styles.exactTimeInputTextSelected}>
+                      {exactTime}
+                    </Text>
+                  ) : (
+                    <Text style={styles.exactTimeInputText}>HH:MM AM/PM</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Travel Mode Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Travel Mode</Text>
+          <Text style={styles.sectionQuestion}>How will you get there?</Text>
+          <View style={styles.travelModesGrid}>
+            {travelModes.map((mode) => {
+              const isSelected = travelMode === mode.id;
+              return (
+                <TouchableOpacity
+                  key={mode.id}
+                  onPress={() => setTravelMode(mode.id)}
+                  style={[
+                    styles.travelModeCard,
+                    isSelected && styles.travelModeCardSelected,
+                  ]}
+                >
+                  <Ionicons
+                    name={mode.icon as any}
+                    size={24}
+                    color={isSelected ? "#ffffff" : "#6b7280"}
+                  />
+                  <Text
+                    style={[
+                      styles.travelModeLabel,
+                      isSelected && styles.travelModeLabelSelected,
+                    ]}
+                  >
+                    {mode.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Travel Limit Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderWithBadge}>
+            <Text style={styles.sectionTitle}>Travel Limit</Text>
+            <View style={styles.requiredBadge}>
+              <Text style={styles.requiredBadgeText}>Required</Text>
+            </View>
+          </View>
+          <Text style={styles.sectionQuestion}>
+            How far are you willing to travel?
+          </Text>
+          <View style={styles.constraintTypeContainer}>
+            <TouchableOpacity
+              onPress={() => setConstraintType("time")}
+              style={[
+                styles.constraintTypeButton,
+                constraintType === "time" &&
+                  styles.constraintTypeButtonSelected,
+              ]}
+            >
+              <Ionicons
+                name="time-outline"
+                size={20}
+                color={constraintType === "time" ? "#ffffff" : "#6b7280"}
+              />
+              <Text
+                style={[
+                  styles.constraintTypeText,
+                  constraintType === "time" &&
+                    styles.constraintTypeTextSelected,
+                ]}
+              >
+                By Time
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setConstraintType("distance")}
+              style={[
+                styles.constraintTypeButton,
+                constraintType === "distance" &&
+                  styles.constraintTypeButtonSelected,
+              ]}
+            >
+              <Ionicons
+                name="location-outline"
+                size={20}
+                color={constraintType === "distance" ? "#ffffff" : "#6b7280"}
+              />
+              <Text
+                style={[
+                  styles.constraintTypeText,
+                  constraintType === "distance" &&
+                    styles.constraintTypeTextSelected,
+                ]}
+              >
+                By Distance
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.constraintInputSection}>
+            <Text style={styles.constraintInputLabel}>
+              {constraintType === "time"
+                ? "Maximum travel time (minutes)"
+                : "Maximum travel distance (km)"}
+            </Text>
+            <View
+              style={[
+                styles.constraintInputContainer,
+                false && styles.constraintInputContainerFocused,
+              ]}
+            >
+              <Ionicons
+                name={
+                  constraintType === "time"
+                    ? "time-outline"
+                    : "paper-plane-outline"
+                }
+                size={20}
+                color="#6b7280"
+                style={styles.constraintInputIcon}
+              />
+              <TextInput
+                value={constraintValue?.toString() || ""}
+                onChangeText={(text) => {
+                  const numericValue = text.replace(/[^0-9]/g, "");
+                  setConstraintValue(numericValue ? Number(numericValue) : "");
+                }}
+                keyboardType="numeric"
+                style={styles.constraintInput}
+                placeholder={constraintType === "time" ? "e.g. 20" : "e.g. 5"}
+              />
+            </View>
+
+            {/* Quick selection options */}
+            <Text style={styles.quickOptionsLabel}>Quick Options</Text>
+            <View style={styles.quickOptionsContainer}>
+              {(constraintType === "time"
+                ? [15, 30, 45, 60]
+                : [5, 10, 15, 20]
+              ).map((value, index, array) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[
+                    styles.quickOption,
+                    index === array.length - 1 && styles.quickOptionLast,
+                    constraintValue === value && styles.quickOptionSelected,
+                    constraintValue !== value && styles.quickOptionUnselected,
+                  ]}
+                  onPress={() => setConstraintValue(value)}
+                >
+                  <Text
+                    style={[
+                      styles.quickOptionText,
+                      constraintValue === value &&
+                        styles.quickOptionTextSelected,
+                      constraintValue !== value &&
+                        styles.quickOptionTextUnselected,
+                    ]}
+                  >
+                    {value}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        {/* Starting Location Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Starting Location</Text>
+          <Text style={styles.sectionSubtitle}>
+            Your starting point will shape travel time & distance results.
+          </Text>
+
+          {/* Use My Current Location Button */}
+          <TouchableOpacity
+            style={styles.useLocationButton}
+            onPress={handleUseCurrentLocation}
+            disabled={isRequestingLocation}
+            activeOpacity={0.7}
+          >
+            {isRequestingLocation ? (
+              <ActivityIndicator size="small" color="#eb7825" />
+            ) : (
+              <Ionicons name="send-outline" size={20} color="#eb7825" />
+            )}
+            <Text style={styles.useLocationButtonText}>
+              {isRequestingLocation
+                ? "Getting location..."
+                : "Use my current location"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Separator */}
+          <View style={styles.separator}>
+            <Text style={styles.separatorText}>or</Text>
+          </View>
+
+          {/* Location Input Field */}
+          <View
+            style={[
+              styles.locationInputContainer,
+              false && styles.locationInputContainerFocused,
+            ]}
+          >
+            <Ionicons
+              name="location"
+              size={20}
+              color="#6b7280"
+              style={styles.locationInputIcon}
+            />
+            <TextInput
+              style={styles.locationTextInput}
+              placeholder="Enter your city or address"
+              placeholderTextColor="#9ca3af"
+              value={searchLocation}
+              onChangeText={setSearchLocation}
+              autoCapitalize="words"
+              returnKeyType="done"
+            />
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Apply Button */}
+      <View style={styles.footer}>
+        <TouchableOpacity
+          onPress={handleApplyPreferences}
+          style={[styles.applyButton, isSaving && styles.applyButtonDisabled]}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <View style={styles.buttonLoadingContainer}>
+              <ActivityIndicator size="small" color="#ffffff" />
+              <Text style={styles.applyButtonText}>Saving...</Text>
+            </View>
+          ) : (
+            <Text style={styles.applyButtonText}>Apply Preferences</Text>
+          )}
+        </TouchableOpacity>
       </View>
-    </Modal>
+
+      {/* Calendar Modal */}
+      <Modal
+        visible={showCalendar}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCalendar(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <SafeAreaView style={styles.modalContent} edges={["bottom"]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Date</Text>
+              <TouchableOpacity
+                onPress={() => setShowCalendar(false)}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#111827" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              <Calendar
+                selected={selectedDate || undefined}
+                onSelect={handleCalendarDateSelect}
+              />
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      {/* Time Picker */}
+      {showTimePicker &&
+        (Platform.OS === "ios" ? (
+          <Modal
+            visible={showTimePicker}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowTimePicker(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <SafeAreaView style={styles.modalContent} edges={["bottom"]}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Select Time</Text>
+                  <TouchableOpacity
+                    onPress={handleTimePickerConfirm}
+                    style={styles.modalCloseButton}
+                  >
+                    <Text style={styles.modalConfirmText}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={selectedTime}
+                  mode="time"
+                  is24Hour={false}
+                  display="spinner"
+                  onChange={handleTimePickerChange}
+                  style={styles.timePicker}
+                />
+              </SafeAreaView>
+            </View>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={selectedTime}
+            mode="time"
+            is24Hour={false}
+            display="default"
+            onChange={handleTimePickerChange}
+          />
+        ))}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  container: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  modalContainer: {
-    backgroundColor: 'white',
-    borderRadius: 24,
-    width: '100%',
-    maxWidth: 600,
-    height: '90%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
+    backgroundColor: "#ffffff",
   },
   scrollView: {
     flex: 1,
   },
-  content: {
-    paddingBottom: 32,
-    paddingTop: 32,
+  scrollContent: {
+    paddingBottom: 100,
   },
   header: {
-    position: 'relative',
-    alignItems: 'center',
-    marginBottom: 32,
-    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 32,
+    paddingBottom: 24,
+    backgroundColor: "#ffffff",
   },
-  cancelButton: {
-    position: 'absolute',
-    left: 16,
-    top: 0,
+  closeButton: {
     padding: 8,
-    borderRadius: 20,
+    marginLeft: -8,
+    marginBottom: -8,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
-    textAlign: 'center',
-    marginBottom: 8,
+  titleContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginHorizontal: 12,
+    paddingBottom: 0,
   },
-  headerSubtitle: {
+  headerSpacer: {
+    width: 40,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  subtitle: {
     fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-  },
-  sectionsContainer: {
-    gap: 24,
-    paddingHorizontal: 16,
+    fontWeight: "400",
+    color: "#6b7280",
+    textAlign: "center",
   },
   section: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  sectionHeader: {
+    backgroundColor: "white",
+    marginHorizontal: 16,
     marginBottom: 16,
+    padding: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 4,
   },
   sectionSubtitle: {
     fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
+    color: "#6b7280",
+    marginBottom: 16,
+  },
+  sectionQuestion: {
+    fontSize: 16,
+    color: "#6b7280",
+    marginBottom: 16,
+  },
+  sectionHeaderWithBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  requiredBadge: {
+    backgroundColor: "#fee2e2",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  requiredBadgeText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#dc2626",
   },
   experienceTypesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   experienceTypeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: 'white',
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
   experienceTypeButtonSelected: {
-    borderColor: '#eb7825',
-    backgroundColor: '#eb7825',
+    backgroundColor: "#eb7825",
+    borderColor: "#eb7825",
   },
   experienceTypeText: {
     fontSize: 14,
-    color: '#374151',
+    fontWeight: "500",
+    color: "#374151",
   },
   experienceTypeTextSelected: {
-    color: 'white',
+    color: "#ffffff",
   },
   budgetInputsContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     marginBottom: 16,
   },
@@ -695,375 +1039,500 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   inputLabel: {
-    color: '#6b7280',
     fontSize: 14,
+    color: "#6b7280",
     marginBottom: 8,
   },
   budgetInputContainer: {
-    position: 'relative',
+    position: "relative",
   },
   dollarSign: {
-    position: 'absolute',
+    position: "absolute",
     left: 12,
-    top: '50%',
-    transform: [{ translateY: -10 }],
-    color: '#6b7280',
+    top: 12,
     fontSize: 16,
+    color: "#6b7280",
+    zIndex: 1,
   },
   budgetInput: {
-    width: '100%',
-    paddingLeft: 28,
+    paddingLeft: 32,
     paddingRight: 12,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
     fontSize: 16,
-    backgroundColor: 'white',
+    backgroundColor: "white",
   },
   budgetPresetsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   budgetPresetButton: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
   budgetPresetText: {
     fontSize: 14,
-    color: '#374151',
+    color: "#374151",
   },
-  categoriesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+  categoriesContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
-  categoryCard: {
-    width: '100%',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
-    backgroundColor: 'white',
-    marginBottom: 12,
+  categoryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "white",
+    minWidth: "47%",
   },
-  categoryCardSelected: {
-    borderColor: '#eb7825',
-    backgroundColor: '#fef3f2',
+  categoryButtonSelected: {
+    backgroundColor: "#fef3e2",
+    borderColor: "#eb7825",
   },
-  categoryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
-  },
-  categoryEmoji: {
-    fontSize: 24,
-    marginRight: 8,
-  },
-  categoryTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#111827',
-    flex: 1,
-    flexWrap: 'wrap',
-  },
-  categoryTitleSelected: {
-    color: '#d97706',
-  },
-  categoryDescription: {
+  categoryText: {
     fontSize: 14,
-    color: '#d97706',
+    fontWeight: "500",
+    color: "#374151",
+    flex: 1,
+  },
+  categoryTextSelected: {
+    color: "#eb7825",
   },
   dateOptionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
     marginBottom: 16,
   },
-  dateOptionButton: {
-    flex: 1,
-    minWidth: '45%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: '#f3f4f6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dateOptionButtonSelected: {
-    backgroundColor: '#eb7825',
-  },
-  dateOptionText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  dateOptionTextSelected: {
-    color: 'white',
-  },
-  weekendInfo: {
+  dateOptionCard: {
+    width: "47.5%",
     padding: 16,
-    backgroundColor: '#fef3f2',
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#fed7aa',
+    borderWidth: 1.5,
+    backgroundColor: "#f9fafb",
+    borderColor: "#e5e7eb",
+    minHeight: 80,
+    justifyContent: "center",
   },
-  weekendInfoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+  dateOptionCardSelected: {
+    backgroundColor: "#eb7825",
+    borderColor: "#eb7825",
+    borderWidth: 2,
   },
-  weekendInfoTitle: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#d97706',
+  dateOptionContent: {
+    alignItems: "flex-start",
   },
-  weekendInfoText: {
-    fontSize: 14,
-    color: '#d97706',
+  dateOptionLabel: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 4,
   },
-  dateInputContainer: {
-    position: 'relative',
+  dateOptionLabelSelected: {
+    color: "#ffffff",
   },
-  dateInputIcon: {
-    position: 'absolute',
-    left: 12,
-    top: '50%',
-    transform: [{ translateY: -10 }],
+  dateOptionDescription: {
+    fontSize: 12,
+    color: "#6b7280",
   },
-  dateInput: {
-    width: '100%',
-    paddingLeft: 48,
-    paddingRight: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
+  dateOptionDescriptionSelected: {
+    color: "#ffffff",
+    opacity: 0.9,
+  },
+  weekendInfoCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
     borderRadius: 12,
+    backgroundColor: "#e0f2fe",
+    marginTop: 12,
+    borderWidth: 0,
+  },
+  weekendInfoIcon: {
+    marginRight: 12,
+  },
+  weekendInfoContent: {
+    flex: 1,
+  },
+  weekendInfoLabel: {
     fontSize: 16,
-    backgroundColor: '#f9fafb',
+    fontWeight: "600",
+    color: "#0369a1",
+    marginBottom: 4,
   },
-  timeSection: {
-    gap: 16,
+  weekendInfoDescription: {
+    fontSize: 14,
+    color: "#0c4a6e",
+    opacity: 0.9,
   },
-  timeOptionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  dateInputField: {
+    width: "100%",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#eb7825",
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+  },
+  dateInputText: {
+    fontSize: 16,
+    color: "#111827",
+    marginLeft: 8,
+    flex: 1,
+  },
+  dateInputPlaceholder: {
+    fontSize: 16,
+    color: "#9ca3af",
+    marginLeft: 8,
+    flex: 1,
+  },
+  quickPresetsLabel: {
+    fontSize: 14,
+    color: "#9ca3af",
+    marginTop: 8,
     marginBottom: 12,
   },
-  timeOptionButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
-    backgroundColor: 'white',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: '30%',
+  timeSlotsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 12,
   },
-  timeOptionButtonSelected: {
-    borderColor: '#eb7825',
-    backgroundColor: '#fef3f2',
-  },
-  timeOptionText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  timeOptionTextSelected: {
-    color: '#d97706',
-  },
-  timeInputContainer: {
-    position: 'relative',
-  },
-  timeInputIcon: {
-    position: 'absolute',
-    left: 12,
-    top: '50%',
-    transform: [{ translateY: -10 }],
-  },
-  timeInput: {
-    width: '100%',
-    paddingLeft: 48,
-    paddingRight: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
+  timeSlotCard: {
+    width: "47.5%",
+    padding: 16,
     borderRadius: 12,
-    fontSize: 16,
-    backgroundColor: '#f9fafb',
+    borderWidth: 1.5,
+    backgroundColor: "#f9fafb",
+    borderColor: "#e5e7eb",
+    minHeight: 80,
+    justifyContent: "center",
   },
-  todayTip: {
-    fontSize: 12,
-    color: '#6b7280',
-    backgroundColor: '#dbeafe',
-    padding: 8,
-    borderRadius: 8,
-  },
-  travelModesContainer: {
-    gap: 8,
-  },
-  travelModeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    backgroundColor: 'transparent',
-  },
-  travelModeButtonSelected: {
-    backgroundColor: '#fef3f2',
-  },
-  travelModeRadio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+  timeSlotCardSelected: {
+    backgroundColor: "#eb7825",
+    borderColor: "#eb7825",
     borderWidth: 2,
-    borderColor: '#d1d5db',
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
   },
-  travelModeRadioSelected: {
-    borderColor: '#eb7825',
-    backgroundColor: '#eb7825',
+  timeSlotContent: {
+    alignItems: "flex-start",
   },
-  travelModeRadioInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'white',
+  timeSlotIcon: {
+    marginBottom: 8,
   },
-  travelModeIcon: {
-    fontSize: 24,
-    marginRight: 12,
+  timeSlotLabel: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  timeSlotLabelSelected: {
+    color: "#ffffff",
+  },
+  timeSlotTime: {
+    fontSize: 14,
+    color: "#6b7280",
+    lineHeight: 20,
+  },
+  timeSlotTimeSelected: {
+    color: "#ffffff",
+    opacity: 0.9,
+  },
+  exactTimeSection: {
+    marginTop: 24,
+  },
+  exactTimeLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  exactTimeInput: {
+    width: "100%",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#d1d5db",
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  exactTimeInputText: {
+    fontSize: 16,
+    color: "#9ca3af",
+    marginLeft: 8,
+    flex: 1,
+  },
+  exactTimeInputTextSelected: {
+    fontSize: 16,
+    color: "#111827",
+    marginLeft: 8,
+    flex: 1,
+    fontWeight: "500",
+  },
+  travelModesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  travelModeCard: {
+    width: "47%",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#e5e7eb",
+    backgroundColor: "white",
+    alignItems: "center",
+    minHeight: 80,
+    justifyContent: "center",
+  },
+  travelModeCardSelected: {
+    backgroundColor: "#eb7825",
+    borderColor: "#eb7825",
   },
   travelModeLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#111827',
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+    marginTop: 8,
+  },
+  travelModeLabelSelected: {
+    color: "#ffffff",
   },
   constraintTypeContainer: {
-    flexDirection: 'row',
-    gap: 8,
+    flexDirection: "row",
+    gap: 12,
     marginBottom: 16,
   },
   constraintTypeButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: 12,
     borderRadius: 12,
-    backgroundColor: '#f3f4f6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: "#e5e7eb",
+    backgroundColor: "white",
   },
   constraintTypeButtonSelected: {
-    backgroundColor: '#eb7825',
+    backgroundColor: "#eb7825",
+    borderColor: "#eb7825",
   },
   constraintTypeText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#374151",
   },
   constraintTypeTextSelected: {
-    color: 'white',
+    color: "#ffffff",
+  },
+  constraintInputSection: {
+    marginBottom: 24,
+  },
+  constraintInputLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#111827",
+    marginBottom: 8,
+  },
+  constraintInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderWidth: 1.5,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 8,
+  },
+  constraintInputContainerFocused: {
+    borderColor: "#eb7825",
+    borderWidth: 2,
+  },
+  constraintInputIcon: {
+    marginRight: 12,
   },
   constraintInput: {
-    width: '100%',
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
+    flex: 1,
     fontSize: 16,
-    backgroundColor: 'white',
+    color: "#111827",
+    padding: 0,
   },
-  locationSection: {
-    gap: 16,
+  quickOptionsLabel: {
+    fontSize: 14,
+    color: "#9ca3af",
+    marginTop: 8,
+    marginBottom: 16,
   },
-  locationOptionsContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  quickOptionsContainer: {
+    flexDirection: "row",
   },
-  locationOptionButton: {
+  quickOption: {
     flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: '#f3f4f6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
-  locationOptionButtonSelected: {
-    backgroundColor: '#eb7825',
+  quickOptionLast: {
+    marginRight: 0,
   },
-  locationOptionText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
+  quickOptionSelected: {
+    backgroundColor: "#eb7825",
   },
-  locationOptionTextSelected: {
-    color: 'white',
+  quickOptionUnselected: {
+    backgroundColor: "#f3f4f6",
   },
-  locationSearchInput: {
-    width: '100%',
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
+  quickOptionText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  quickOptionTextSelected: {
+    color: "#ffffff",
+  },
+  quickOptionTextUnselected: {
+    color: "#111827",
+  },
+  useLocationButton: {
+    backgroundColor: "#ffedd5",
+    borderWidth: 1.5,
+    borderColor: "#eb7825",
     borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+    width: "100%",
+  },
+  useLocationButtonText: {
+    color: "#eb7825",
     fontSize: 16,
-    backgroundColor: 'white',
+    fontWeight: "600",
+    marginLeft: 10,
+  },
+  separator: {
+    alignItems: "center",
+    marginVertical: 20,
+  },
+  separatorText: {
+    fontSize: 14,
+    color: "#9ca3af",
+    fontWeight: "400",
+  },
+  locationInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderWidth: 1.5,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 8,
+  },
+  locationInputContainerFocused: {
+    borderColor: "#eb7825",
+    borderWidth: 2,
+  },
+  locationInputIcon: {
+    marginRight: 12,
+  },
+  locationTextInput: {
+    flex: 1,
+    fontSize: 16,
+    color: "#111827",
+    padding: 0,
   },
   footer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "white",
     borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    borderTopColor: "#e5e7eb",
     padding: 16,
-    backgroundColor: 'white',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  footerButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  saveButton: {
-    flex: 1,
-    backgroundColor: '#eb7825',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowRadius: 4,
     elevation: 4,
   },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: 'white',
-  },
-  resetButton: {
-    backgroundColor: '#f3f4f6',
+  applyButton: {
+    backgroundColor: "#eb7825",
     paddingVertical: 16,
-    paddingHorizontal: 24,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  resetButtonText: {
+  applyButtonDisabled: {
+    opacity: 0.7,
+  },
+  applyButtonText: {
+    color: "#ffffff",
     fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
+    fontWeight: "600",
+  },
+  buttonLoadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingBottom: Platform.OS === "ios" ? 40 : 24,
+    maxHeight: "80%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  modalCloseButton: {
+    padding: 8,
+  },
+  modalConfirmText: {
+    fontSize: 16,
+    color: "#eb7825",
+    fontWeight: "600",
+  },
+  timePicker: {
+    width: "100%",
+    height: 200,
   },
 });

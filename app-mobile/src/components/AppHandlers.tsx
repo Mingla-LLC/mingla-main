@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { formatCurrency } from "./utils/formatters";
 import { PreferencesService } from "../services/preferencesService";
 import { savedCardsService } from "../services/savedCardsService";
+import { supabase } from "../services/supabase";
 
 export function useAppHandlers(state: any) {
   const {
@@ -70,13 +71,61 @@ export function useAppHandlers(state: any) {
     setShowCollabPreferences(true);
   };
 
-  const handleCollabPreferencesSave = (preferences: any) => {
+  const handleCollabPreferencesSave = async (preferences: any) => {
+    // Get session ID from activeSessionData or currentMode
+    let sessionId: string | null = null;
+    
+    if (state.activeSessionData?.id) {
+      sessionId = state.activeSessionData.id;
+    } else if (state.currentMode !== "solo") {
+      // Find session by name
+      const { data: sessions } = await supabase
+        .from("collaboration_sessions")
+        .select("id")
+        .eq("name", state.currentMode)
+        .limit(1);
+      
+      if (sessions && sessions.length > 0) {
+        sessionId = sessions[0].id;
+      }
+    }
+
+    if (sessionId) {
+      // Transform preferences to database format
+      const dbPreferences = {
+        categories: preferences.selectedCategories || [],
+        budget_min: typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
+        budget_max: typeof preferences.budgetMax === "number" ? preferences.budgetMax : 1000,
+        travel_mode: preferences.travelMode || "walking",
+        travel_constraint_type: preferences.constraintType || "time",
+        travel_constraint_value: typeof preferences.constraintValue === "number" ? preferences.constraintValue : 20,
+        time_of_day: preferences.selectedTimeSlot || null,
+        datetime_pref: preferences.selectedDate || null,
+      };
+
+      // Save to database
+      const { error } = await supabase
+        .from("board_session_preferences")
+        .upsert({
+          session_id: sessionId,
+          ...dbPreferences,
+        }, {
+          onConflict: "session_id",
+        });
+
+      if (error) {
+        console.error("Error saving collaboration preferences:", error);
+      }
+    }
+
+    // Also update local state for backward compatibility
     if (state.activeSessionData) {
       setCollaborationPreferences((prev: any) => ({
         ...prev,
         [state.activeSessionData.id]: preferences,
       }));
     }
+    
     setShowCollabPreferences(false);
     setActiveSessionData(null);
   };
@@ -524,8 +573,9 @@ export function useAppHandlers(state: any) {
       // If exactTime is provided, we could map it to a time_slot, but for now we'll skip it
       // since PreferencesSheet allows custom times that don't map to predefined slots
 
-      // Add custom_location if searchLocation is provided
-      if (preferences.useLocation === "search" && preferences.searchLocation) {
+      // Add custom_location if searchLocation is provided (for both search and GPS)
+      // When useLocation is "gps", searchLocation contains the city name or coordinates
+      if (preferences.searchLocation) {
         dbPreferences.custom_location = preferences.searchLocation;
       }
 

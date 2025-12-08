@@ -712,8 +712,8 @@ export default function CoachMap({
           style={[
             StyleSheet.absoluteFill,
             styles.darkOverlay,
-            isTabStep() && { bottom: 100 }, // Leave space for bottom navigation
-            isHeaderStep() && { top: 100 }, // Leave space for header
+            isTabStep() ? { bottom: 100 } : null, // Leave space for bottom navigation
+            isHeaderStep() ? { top: 100 } : null, // Leave space for header
           ]}
         />
 

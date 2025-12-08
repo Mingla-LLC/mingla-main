@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Text, View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../../services/supabase';
+import { useAppStore } from '../../store/appStore';
 
 interface Friend {
   id: string;
@@ -15,14 +17,18 @@ interface CreateTabProps {
   preSelectedFriend?: Friend | null;
   availableFriends?: Friend[];
   onCreateSession: (sessionData: any) => void;
+  onNavigateToInvites?: () => void;
+  onSessionCreated?: () => void; // Callback to reload sessions after creation
 }
 
-const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession }: CreateTabProps) => {
+const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, onNavigateToInvites, onSessionCreated }: CreateTabProps) => {
+  const { user } = useAppStore();
   const [createStep, setCreateStep] = useState<'details' | 'friends' | 'confirm'>('details');
   const [newSessionName, setNewSessionName] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<Friend[]>(
     preSelectedFriend ? [preSelectedFriend] : []
   );
+  const [isCreating, setIsCreating] = useState(false);
 
   const styles = StyleSheet.create({
     container: {
@@ -56,10 +62,15 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession }
       paddingHorizontal: 16,
       paddingVertical: 12,
       borderWidth: 1,
-      borderColor: '#e5e7eb',
+      borderColor: '#eb7825',
       borderRadius: 12,
       fontSize: 16,
       backgroundColor: 'white',
+    },
+    helperText: {
+      fontSize: 14,
+      color: '#6B7280',
+      marginTop: 8,
     },
     preSelectedFriendCard: {
       backgroundColor: '#dbeafe',
@@ -112,16 +123,20 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession }
     continueButton: {
       width: '100%',
       backgroundColor: '#eb7825',
-      paddingVertical: 12,
+      paddingVertical: 14,
       paddingHorizontal: 24,
       borderRadius: 12,
+      flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
     },
     continueButtonDisabled: {
-      backgroundColor: '#9ca3af',
+      backgroundColor: '#eb7825',
+      opacity: 0.5,
     },
     continueButtonText: {
-      color: 'white',
+      color: '#FFFFFF',
       fontSize: 16,
       fontWeight: '600',
     },
@@ -361,6 +376,36 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession }
       fontSize: 16,
       fontWeight: '600',
     },
+    emptyStateContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 48,
+      paddingHorizontal: 24,
+    },
+    emptyStateTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: '#111827',
+      marginTop: 16,
+      marginBottom: 8,
+    },
+    emptyStateText: {
+      fontSize: 14,
+      color: '#6B7280',
+      textAlign: 'center',
+      marginBottom: 24,
+    },
+    emptyStateButton: {
+      backgroundColor: '#eb7825',
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      borderRadius: 12,
+    },
+    emptyStateButtonText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '600',
+    },
   });
 
   const mockFriends = [
@@ -383,43 +428,159 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession }
     });
   };
 
-  const handleCreateSession = () => {
+  const handleCreateSession = async () => {
     if (!newSessionName.trim() || selectedFriends.length === 0) return;
-    
-    const newSession = {
-      id: `board-${Date.now()}`,
-      name: newSessionName,
-      type: 'group-hangout',
-      description: `Collaborative session with ${selectedFriends.map(f => f.name).join(', ')}`,
-      participants: [
-        { id: 'you', name: 'You', status: 'online' },
-        ...selectedFriends.map(friend => ({
-          id: friend.id,
-          name: friend.name,
-          status: friend.status || 'offline'
-        }))
-      ],
-      status: 'active',
-      cardsCount: 0,
-      createdAt: 'Just now',
-      unreadMessages: 0,
-      lastActivity: 'Just now',
-      icon: 'Users',
-      gradient: 'from-blue-500 to-indigo-500',
-      creatorId: 'you',
-      admins: ['you'],
-      currentUserId: 'you'
-    };
-    
-    onCreateSession(newSession);
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to create a session');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      // Create the session in the database
+      const { data: sessionData, error: sessionError } = await supabase
+        .from('collaboration_sessions')
+        .insert({
+          name: newSessionName.trim(),
+          created_by: user.id,
+          status: 'active',
+        })
+        .select()
+        .single();
+
+      if (sessionError) {
+        console.error('Error creating session:', sessionError);
+        Alert.alert('Error', `Failed to create session: ${sessionError.message}`);
+        return;
+      }
+
+      // Add creator as participant (auto-accepted)
+      const { error: creatorError } = await supabase
+        .from('session_participants')
+        .insert({
+          session_id: sessionData.id,
+          user_id: user.id,
+          has_accepted: true,
+          joined_at: new Date().toISOString(),
+        });
+
+      if (creatorError) {
+        console.error('Error adding creator as participant:', creatorError);
+        Alert.alert('Error', 'Failed to add you as a participant');
+        return;
+      }
+
+      // Add selected friends as participants (not accepted yet - they need to accept invites)
+      for (const friend of selectedFriends) {
+        // Get friend's user ID from their profile
+        const friendUserId = friend.id; // This should be the friend's user ID
+
+        // Get friend's email from their profile
+        const { data: friendProfile } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('id', friendUserId)
+          .single();
+
+        const friendEmail = friendProfile?.email;
+
+        if (!friendEmail) {
+          console.error(`No email found for friend ${friend.name} (${friendUserId})`);
+          continue;
+        }
+
+        // Add as participant (not accepted yet)
+        const { error: participantError } = await supabase
+          .from('session_participants')
+          .insert({
+            session_id: sessionData.id,
+            user_id: friendUserId,
+            has_accepted: false,
+          });
+
+        if (participantError) {
+          console.error(`Error adding friend ${friend.name} as participant:`, participantError);
+          continue;
+        }
+
+        // Create invite for the friend
+        const { data: inviteData, error: inviteError } = await supabase
+          .from('collaboration_invites')
+          .insert({
+            session_id: sessionData.id,
+            invited_by: user.id,
+            invited_user_id: friendUserId,
+            status: 'pending',
+          })
+          .select('id')
+          .single();
+
+        if (inviteError) {
+          console.error(`Error creating invite for ${friend.name}:`, inviteError);
+          continue;
+        }
+
+        // Send email and push notification via Edge Function
+        try {
+          const { data: emailData, error: emailError } =
+            await supabase.functions.invoke('bright-responder', {
+              body: {
+                inviterId: user.id,
+                invitedUserId: friendUserId,
+                invitedUserEmail: friendEmail,
+                sessionId: sessionData.id,
+                sessionName: newSessionName.trim(),
+                inviteId: inviteData.id,
+              },
+            });
+
+          if (emailError) {
+            console.error(`Error sending invite email to ${friend.name}:`, emailError);
+          } else {
+            console.log(`Invite email sent successfully to ${friend.name}:`, emailData);
+          }
+        } catch (emailErr: any) {
+          console.error(`Failed to send invite email to ${friend.name}:`, emailErr);
+          // Don't fail the whole process if email fails
+        }
+      }
+
+      // Call the onCreateSession callback with the created session
+      if (onCreateSession) {
+        onCreateSession({
+          id: sessionData.id,
+          name: sessionData.name,
+          status: sessionData.status,
+          createdBy: sessionData.created_by,
+          createdAt: sessionData.created_at,
+        });
+      }
+
+      // Trigger session reload
+      if (onSessionCreated) {
+        onSessionCreated();
+      }
+
+      // Reset form
+      setNewSessionName('');
+      setSelectedFriends(preSelectedFriend ? [preSelectedFriend] : []);
+      setCreateStep('details');
+      
+      Alert.alert('Success', 'Session created successfully!');
+    } catch (error: any) {
+      console.error('Error creating session:', error);
+      Alert.alert('Error', error.message || 'Failed to create session');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const renderDetailsStep = () => (
     <View style={styles.stepContainer}>
       <View>
-        <Text style={styles.title}>Session Details</Text>
+        <Text style={styles.title}>Create New Session</Text>
         <Text style={styles.subtitle}>
-          Give your collaboration session a memorable name
+          Name your collaboration session
         </Text>
         
         <View style={styles.inputContainer}>
@@ -427,9 +588,11 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession }
           <TextInput
             value={newSessionName}
             onChangeText={setNewSessionName}
-            placeholder="e.g., Weekend Adventure Squad"
+            placeholder="e.g., Weekend Plans, Date Night Ideas..."
             style={styles.textInput}
+            placeholderTextColor="#9CA3AF"
           />
+          <Text style={styles.helperText}>This will be visible to all participants</Text>
         </View>
       </View>
 
@@ -467,12 +630,14 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession }
         ]}
       >
         <Text style={styles.continueButtonText}>Continue</Text>
+        <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
       </TouchableOpacity>
     </View>
   );
 
   const renderFriendsStep = () => {
-    const baseFriends = availableFriends.length > 0 ? availableFriends : mockFriends;
+    // Use real friends from database, only fallback to mock if absolutely no friends available
+    const baseFriends = availableFriends.length > 0 ? availableFriends : [];
     const allFriends = [...baseFriends];
     
     if (preSelectedFriend && !baseFriends.some(f => f.id === preSelectedFriend.id)) {
@@ -523,58 +688,78 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession }
           </View>
         )}
 
-        <View>
-          <Text style={styles.friendsListTitle}>Available Friends</Text>
-          <View style={styles.friendsList}>
-            {allFriends.map((friend) => {
-              const isSelected = selectedFriends.some(f => f.id === friend.id);
-              const isPreSelected = preSelectedFriend?.id === friend.id;
-              return (
-                <TouchableOpacity
-                  key={friend.id}
-                  onPress={() => toggleFriendSelection(friend)}
-                  style={[
-                    styles.friendItem,
-                    isSelected ? styles.friendItemSelected : styles.friendItemUnselected
-                  ]}
-                >
-                  <View style={styles.friendAvatar}>
-                    <Text style={styles.friendAvatarText}>
-                      {friend.name[0]}
-                    </Text>
-                  </View>
-                  <View style={styles.friendInfo}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={styles.friendName}>{friend.name}</Text>
-                      {isPreSelected && (
-                        <Text style={styles.preSelectedBadge}>Pre-selected</Text>
-                      )}
-                    </View>
-                    <Text style={styles.friendUsername}>
-                      @{(friend.username || friend.name.toLowerCase().replace(' ', ''))}
-                    </Text>
-                  </View>
-                  {isSelected && (
-                    <Ionicons name="checkmark" size={20} color="#eb7825" />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
+        {allFriends.length === 0 ? (
+          <View style={styles.emptyStateContainer}>
+            <Ionicons name="people-outline" size={48} color="#D1D5DB" />
+            <Text style={styles.emptyStateTitle}>You have no friends</Text>
+            <Text style={styles.emptyStateText}>
+              Add friends to start collaborating on sessions together
+            </Text>
+            {onNavigateToInvites && (
+              <TouchableOpacity
+                onPress={onNavigateToInvites}
+                style={styles.emptyStateButton}
+              >
+                <Text style={styles.emptyStateButtonText}>Go to Invites</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </View>
+        ) : (
+          <View>
+            <Text style={styles.friendsListTitle}>Available Friends</Text>
+            <View style={styles.friendsList}>
+              {allFriends.map((friend) => {
+                const isSelected = selectedFriends.some(f => f.id === friend.id);
+                const isPreSelected = preSelectedFriend?.id === friend.id;
+                return (
+                  <TouchableOpacity
+                    key={friend.id}
+                    onPress={() => toggleFriendSelection(friend)}
+                    style={[
+                      styles.friendItem,
+                      isSelected ? styles.friendItemSelected : styles.friendItemUnselected
+                    ]}
+                  >
+                    <View style={styles.friendAvatar}>
+                      <Text style={styles.friendAvatarText}>
+                        {friend.name[0]}
+                      </Text>
+                    </View>
+                    <View style={styles.friendInfo}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={styles.friendName}>{friend.name}</Text>
+                        {isPreSelected && (
+                          <Text style={styles.preSelectedBadge}>Pre-selected</Text>
+                        )}
+                      </View>
+                      <Text style={styles.friendUsername}>
+                        @{(friend.username || friend.name.toLowerCase().replace(' ', ''))}
+                      </Text>
+                    </View>
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={20} color="#eb7825" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
-        <TouchableOpacity
-          onPress={() => setCreateStep('confirm')}
-          disabled={selectedFriends.length === 0}
-          style={[
-            styles.continueButton,
-            selectedFriends.length === 0 && styles.continueButtonDisabled
-          ]}
-        >
-          <Text style={styles.continueButtonText}>
-            Continue ({selectedFriends.length} selected)
-          </Text>
-        </TouchableOpacity>
+        {allFriends.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setCreateStep('confirm')}
+            disabled={selectedFriends.length === 0}
+            style={[
+              styles.continueButton,
+              selectedFriends.length === 0 && styles.continueButtonDisabled
+            ]}
+          >
+            <Text style={styles.continueButtonText}>
+              Continue ({selectedFriends.length} selected)
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -639,9 +824,14 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession }
 
       <TouchableOpacity
         onPress={handleCreateSession}
-        style={styles.sendInvitesButton}
+        style={[styles.sendInvitesButton, isCreating && styles.sendInvitesButtonDisabled]}
+        disabled={isCreating}
       >
-        <Text style={styles.sendInvitesButtonText}>Send Invites</Text>
+        {isCreating ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <Text style={styles.sendInvitesButtonText}>Send Invites</Text>
+        )}
       </TouchableOpacity>
     </View>
   );

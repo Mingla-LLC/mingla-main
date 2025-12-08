@@ -49,6 +49,7 @@ interface ActivityPageProps {
   onRemoveSaved?: (card: any) => void;
   onShareCard?: (card: any) => void;
   boardsSessions?: any[];
+  isLoadingBoards?: boolean;
   onUpdateBoardSession?: (board: any) => void;
   navigationData?: {
     selectedBoard?: any;
@@ -60,6 +61,7 @@ interface ActivityPageProps {
   onDemoteFromAdmin?: (boardId: string, participantId: string) => void;
   onRemoveMember?: (boardId: string, participantId: string) => void;
   onLeaveBoard?: (boardId: string) => void;
+  onNavigateToBoard?: (sessionId: string) => void;
 }
 
 export default function ActivityPage({ 
@@ -74,6 +76,7 @@ export default function ActivityPage({
   onRemoveSaved,
   onShareCard,
   boardsSessions = [],
+  isLoadingBoards = false,
   onUpdateBoardSession,
   navigationData,
   onNavigationComplete,
@@ -179,6 +182,23 @@ export default function ActivityPage({
   };
 
   const handleOpenBoard = (boardId: string) => {
+    // Check if this is a board session (has session_type = 'board')
+    // For now, we'll check if onNavigateToBoard is provided and use it
+    // Otherwise fall back to the old behavior
+    if (onNavigateToBoard) {
+      // Try to find the session ID from the board
+      const board = boardsSessions.find(b => b.id === boardId);
+      if (board && (board as any).sessionId) {
+        onNavigateToBoard((board as any).sessionId);
+        return;
+      }
+      // If board has a direct session reference, use it
+      if ((board as any).session_id) {
+        onNavigateToBoard((board as any).session_id);
+        return;
+      }
+    }
+    // Fallback to old behavior
     setSelectedBoard(boardId);
     setShowBoardDetails(true);
   };
@@ -292,10 +312,8 @@ export default function ActivityPage({
     },
   });
 
-  // Filter to only show active boards (not pending sessions)
-  const activeBoards = boardsSessions.filter(board => 
-    board.status === 'active' || board.status === 'voting' || board.status === 'locked'
-  );
+  // Show all boards (no filtering by status - user wants to see all boards they're a member of)
+  const activeBoards = boardsSessions;
 
   return (
     <View style={styles.container}>
@@ -378,6 +396,7 @@ export default function ActivityPage({
             {activeTab === 'boards' && (
               <BoardsTab
                 boards={activeBoards}
+                isLoading={isLoadingBoards}
                 onOpenBoard={handleOpenBoard}
                 onInviteToSession={handleInviteToSession}
                 onToggleNotifications={handleToggleBoardNotifications}

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { StyleSheet, Alert } from "react-native";
+import { StyleSheet, Alert, View, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useAppStore } from "../store/appStore";
@@ -42,11 +42,13 @@ const OnboardingFlow = ({
     verifyPhoneOTP,
     resendPhoneOTP,
     signInWithGoogle,
+    signInWithApple,
     handleOAuthTokens,
   } = useAuthSimple();
   const { profile } = useAppStore();
   const [currentStep, setCurrentStep] = useState(1);
   const [showPhoneSignUp, setShowPhoneSignUp] = useState(false);
+  const [isSigningInWithCompletedOnboarding, setIsSigningInWithCompletedOnboarding] = useState(false);
 
   // Helper function to update onboarding_step in profile
   const updateOnboardingStep = useCallback(
@@ -395,6 +397,12 @@ const OnboardingFlow = ({
       flex: 1,
       backgroundColor: "white",
     },
+    loaderContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "white",
+    },
   });
 
   const handleNext = async () => {
@@ -646,6 +654,7 @@ const OnboardingFlow = ({
             onNavigateToSignUp={onNavigateToSignUpForm || onNavigateToSignUp}
             onNavigateToPhoneSignUp={() => setShowPhoneSignUp(true)}
             onNavigateToGoogleSignIn={handleGoogleSignIn}
+            onNavigateToAppleSignIn={handleAppleSignIn}
             userProfile={onboardingData.userProfile}
             accountType={onboardingData.account_type}
           />
@@ -1504,10 +1513,16 @@ const OnboardingFlow = ({
   }, [user?.id]);
 
   const handleGoogleSignIn = async () => {
+    // Show loader immediately when sign-in starts
+    setIsSigningInWithCompletedOnboarding(true);
+    
     try {
       const result = await signInWithGoogle();
 
       if (result.error) {
+        // Hide loader on error
+        setIsSigningInWithCompletedOnboarding(false);
+        
         // Only show error if it's not a cancellation
         if (result.error.message !== "Sign-in cancelled") {
           console.error("Google sign-in error:", result.error);
@@ -1522,25 +1537,59 @@ const OnboardingFlow = ({
 
       // Google sign-in successful
       // Wait a moment for profile to be loaded by useAuthSimple
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Try multiple times to get the updated profile
+      let currentProfile = useAppStore.getState().profile;
+      let currentUser = useAppStore.getState().user;
+      let attempts = 0;
+      
+      while ((!currentProfile || !currentUser) && attempts < 5) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        currentProfile = useAppStore.getState().profile;
+        currentUser = useAppStore.getState().user;
+        attempts++;
+      }
 
-      // Get the latest profile from store
-      const currentProfile = useAppStore.getState().profile;
-      const currentUser = useAppStore.getState().user;
+      // Check if user has completed onboarding
+      if (
+        currentUser &&
+        currentProfile &&
+        currentProfile.has_completed_onboarding === true
+      ) {
+        // User has completed onboarding - close onboarding flow and let app redirect to home
+        if (onBackToWelcome) {
+          onBackToWelcome();
+        }
+        // Also call onComplete to ensure state is updated
+        if (onComplete) {
+          onComplete(onboardingData || {});
+        }
+        
+        // Hide loader after a short delay to allow navigation
+        setTimeout(() => {
+          setIsSigningInWithCompletedOnboarding(false);
+        }, 1000);
+        
+        return;
+      }
 
-      // If user is authenticated and hasn't completed onboarding, skip to IntentSelectionStep
+      // If user is authenticated and hasn't completed onboarding, hide loader and continue onboarding
       if (
         currentUser &&
         currentProfile &&
         currentProfile.has_completed_onboarding === false
       ) {
-        // Skip OTP screen and go directly to IntentSelectionStep (step 2)
+        // Hide loader and skip OTP screen, go directly to IntentSelectionStep (step 2)
+        setIsSigningInWithCompletedOnboarding(false);
         setCurrentStep(2);
+      } else {
+        // Profile not loaded yet, keep loader showing
+        // It will be hidden when profile loads or after timeout
       }
 
       // The app/index.tsx will check profile.has_completed_onboarding and redirect accordingly
-      // Don't call onGoogleSignInComplete here - let the navigation logic handle it
     } catch (error: any) {
+      // Hide loader on error
+      setIsSigningInWithCompletedOnboarding(false);
       console.error("Google sign-in error:", error);
       Alert.alert(
         "Error",
@@ -1548,6 +1597,103 @@ const OnboardingFlow = ({
       );
     }
   };
+
+  const handleAppleSignIn = async () => {
+    // Show loader immediately when sign-in starts
+    setIsSigningInWithCompletedOnboarding(true);
+    
+    try {
+      const result = await signInWithApple();
+
+      if (result.error) {
+        // Hide loader on error
+        setIsSigningInWithCompletedOnboarding(false);
+        
+        // Only show error if it's not a cancellation
+        if (result.error.message !== "Sign-in cancelled") {
+          console.error("Apple sign-in error:", result.error);
+          Alert.alert(
+            "Error",
+            result.error.message ||
+              "Failed to sign in with Apple. Please try again."
+          );
+        }
+        return;
+      }
+
+      // Apple sign-in successful
+      // Wait a moment for profile to be loaded by useAuthSimple
+      // Try multiple times to get the updated profile
+      let currentProfile = useAppStore.getState().profile;
+      let currentUser = useAppStore.getState().user;
+      let attempts = 0;
+      
+      while ((!currentProfile || !currentUser) && attempts < 5) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        currentProfile = useAppStore.getState().profile;
+        currentUser = useAppStore.getState().user;
+        attempts++;
+      }
+
+      // Check if user has completed onboarding
+      if (
+        currentUser &&
+        currentProfile &&
+        currentProfile.has_completed_onboarding === true
+      ) {
+        // User has completed onboarding - close onboarding flow and let app redirect to home
+        if (onBackToWelcome) {
+          onBackToWelcome();
+        }
+        // Also call onComplete to ensure state is updated
+        if (onComplete) {
+          onComplete(onboardingData || {});
+        }
+        
+        // Hide loader after a short delay to allow navigation
+        setTimeout(() => {
+          setIsSigningInWithCompletedOnboarding(false);
+        }, 1000);
+        
+        return;
+      }
+
+      // If user is authenticated and hasn't completed onboarding, hide loader and continue onboarding
+      if (
+        currentUser &&
+        currentProfile &&
+        currentProfile.has_completed_onboarding === false
+      ) {
+        // Hide loader and skip OTP screen, go directly to IntentSelectionStep (step 2)
+        setIsSigningInWithCompletedOnboarding(false);
+        setCurrentStep(2);
+      } else {
+        // Profile not loaded yet, keep loader showing
+        // It will be hidden when profile loads or after timeout
+      }
+
+      // The app/index.tsx will check profile.has_completed_onboarding and redirect accordingly
+    } catch (error: any) {
+      // Hide loader on error
+      setIsSigningInWithCompletedOnboarding(false);
+      console.error("Apple sign-in error:", error);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to sign in with Apple. Please try again."
+      );
+    }
+  };
+
+  // Show full-screen loader if signing in with completed onboarding
+  if (isSigningInWithCompletedOnboarding) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color="#eb7825" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // Show phone signup form if active
   if (showPhoneSignUp) {

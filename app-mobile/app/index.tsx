@@ -13,6 +13,7 @@ import * as Linking from "expo-linking";
 import { useAppHandlers } from "../src/components/AppHandlers";
 import { useAppState } from "../src/components/AppStateManager";
 import CollaborationModule from "../src/components/CollaborationModule";
+import CollaborationPreferences from "../src/components/CollaborationPreferences";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import HomePage from "../src/components/HomePage";
 import PreferencesSheet from "../src/components/PreferencesSheet";
@@ -25,138 +26,22 @@ import ProfileSettings from "../src/components/profile/ProfileSettings";
 import OnboardingFlow from "../src/components/OnboardingFlow";
 import ActivityPage from "../src/components/ActivityPage";
 import SavedExperiencesPage from "../src/components/SavedExperiencesPage";
+import ConnectionsPage from "../src/components/ConnectionsPage";
 import { NavigationProvider } from "../src/contexts/NavigationContext";
 import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider";
 import EmailOTPVerificationScreen from "../src/components/EmailOTPVerificationScreen";
 import CoachMap from "../src/components/CoachMap";
+import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
+import { ToastContainer } from "../src/components/ui/ToastContainer";
+import { useBoardSession } from "../hooks/useBoardSession";
 
 export default function App() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
-  const [coachMapCurrentTarget, setCoachMapCurrentTarget] = useState<string | null>(null);
-  
-  // Helper to check if coach map is highlighting tabs
-  const isHighlightingTabs = Boolean(
-    showCoachMap && 
-    coachMapCurrentTarget && 
-    (
-      coachMapCurrentTarget === 'tabHome' ||
-      coachMapCurrentTarget === 'tabConnections' ||
-      coachMapCurrentTarget === 'tabActivity' ||
-      coachMapCurrentTarget === 'tabSaved' ||
-      coachMapCurrentTarget === 'tabProfile'
-    )
-  );
-
-  // Helper to check if coach map is highlighting header buttons
-  const isHighlightingHeader = Boolean(
-    showCoachMap && 
-    coachMapCurrentTarget && 
-    (
-      coachMapCurrentTarget === 'preferencesButton' ||
-      coachMapCurrentTarget === 'collaborateButton'
-    )
-  );
-  
-  // Handle deep links for OAuth callback
-  useEffect(() => {
-    // Handle initial URL (if app was opened via deep link)
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleDeepLink(url);
-      }
-    });
-
-    // Listen for deep links while app is running
-    const subscription = Linking.addEventListener('url', (event) => {
-      handleDeepLink(event.url);
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
-  const handleDeepLink = async (url: string) => {
-    console.log('Deep link received:', url);
-    
-    // Check if it's an OAuth callback
-    if (url.includes('auth/callback')) {
-      try {
-        console.log('Processing OAuth callback deep link...');
-        
-        // Parse the URL - Supabase puts tokens in hash or query params
-        const parsedUrl = Linking.parse(url);
-        console.log('Parsed URL:', parsedUrl);
-        
-        // Try query params first
-        const queryParams = parsedUrl.queryParams || {};
-        const { access_token, refresh_token, error: errorParam, code } = queryParams;
-        
-        // Also try parsing from hash if available
-        let accessToken = access_token;
-        let refreshToken = refresh_token;
-        let error = errorParam;
-        
-        // If tokens not in query params, try parsing hash manually
-        if (!accessToken && url.includes('#')) {
-          const hashIndex = url.indexOf('#');
-          const hash = url.substring(hashIndex + 1);
-          const hashParams = new URLSearchParams(hash);
-          accessToken = hashParams.get('access_token') || undefined;
-          refreshToken = hashParams.get('refresh_token') || undefined;
-          error = hashParams.get('error') || undefined;
-        }
-        
-        if (error) {
-          console.error('OAuth error from deep link:', error);
-          Alert.alert('Sign-in Error', String(error));
-          return;
-        }
-        
-        if (accessToken && refreshToken) {
-          console.log('Tokens found in deep link, setting session...');
-          // Use supabase directly to set session
-          const { supabase } = await import('../src/services/supabase');
-          const { useAppStore } = await import('../src/store/appStore');
-          const { setProfile } = useAppStore.getState();
-          
-          const { data, error: sessionError } = await supabase.auth.setSession({
-            access_token: String(accessToken),
-            refresh_token: String(refreshToken),
-          });
-          
-          if (sessionError) {
-            console.error('Error setting session:', sessionError);
-            Alert.alert('Error', 'Failed to complete sign-in: ' + sessionError.message);
-          } else if (data.session?.user) {
-            console.log('✅ Session set successfully via deep link');
-            
-            // Load profile
-            const { data: profile, error: profileError } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', data.session.user.id)
-              .single();
-            
-            if (!profileError && profile) {
-              setProfile(profile);
-            }
-          }
-        } else if (code) {
-          // Handle authorization code if needed
-          console.log('Authorization code received:', code);
-        } else {
-          console.log('No tokens or code found in deep link. URL:', url);
-          // Session might be created server-side, just log and continue
-        }
-      } catch (error: any) {
-        console.error('Error handling deep link:', error);
-        console.error('Error stack:', error.stack);
-        // Don't show alert - let the app continue, session might still be created
-      }
-    }
-  };
+  const [coachMapCurrentTarget, setCoachMapCurrentTarget] = useState<
+    string | null
+  >(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   // Destructure commonly used state
   const {
@@ -191,18 +76,23 @@ export default function App() {
     showCoachMap,
     setShowCoachMap,
     currentMode,
+    setCurrentMode,
     preSelectedFriend,
     setPreSelectedFriend,
     activeSessionData,
     setActiveSessionData,
     userPreferences,
+    setUserPreferences,
     notifications,
     setNotifications,
     collaborationPreferences,
+    setCollaborationPreferences,
     notificationsEnabled,
+    setNotificationsEnabled,
     activityNavigation,
     setActivityNavigation,
     userIdentity,
+    setUserIdentity,
     accountPreferences,
     setAccountPreferences,
     calendarEntries,
@@ -212,10 +102,18 @@ export default function App() {
     removedCardIds,
     setRemovedCardIds,
     friendsList,
+    setFriendsList,
     blockedUsers,
+    setBlockedUsers,
     boardsSessions,
+    setBoardsSessions,
+    isLoadingBoards,
     profileStats,
     setProfileStats,
+    preferencesRefreshKey,
+    setPreferencesRefreshKey,
+    boardViewSessionId,
+    setBoardViewSessionId,
     updateBoardsSessions,
     handleUserIdentityUpdate,
     safeAsyncStorageSet,
@@ -227,17 +125,143 @@ export default function App() {
     setOnboardingData,
     showSignUpForm,
     setShowSignUpForm,
-    preferencesRefreshKey,
   } = state;
+
+  // Helper to check if coach map is highlighting tabs
+  const isHighlightingTabs = Boolean(
+    showCoachMap &&
+      coachMapCurrentTarget &&
+      (coachMapCurrentTarget === "tabHome" ||
+        coachMapCurrentTarget === "tabConnections" ||
+        coachMapCurrentTarget === "tabActivity" ||
+        coachMapCurrentTarget === "tabSaved" ||
+        coachMapCurrentTarget === "tabProfile")
+  );
+
+  // Helper to check if coach map is highlighting header buttons
+  const isHighlightingHeader = Boolean(
+    showCoachMap &&
+      coachMapCurrentTarget &&
+      (coachMapCurrentTarget === "preferencesButton" ||
+        coachMapCurrentTarget === "collaborateButton")
+  );
+
+  // Handle deep links for OAuth callback
+  useEffect(() => {
+    // Handle initial URL (if app was opened via deep link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink(url);
+      }
+    });
+
+    // Listen for deep links while app is running
+    const subscription = Linking.addEventListener("url", (event) => {
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleDeepLink = async (url: string) => {
+    console.log("Deep link received:", url);
+
+    // Check if it's an OAuth callback
+    if (url.includes("auth/callback")) {
+      try {
+        console.log("Processing OAuth callback deep link...");
+
+        // Parse the URL - Supabase puts tokens in hash or query params
+        const parsedUrl = Linking.parse(url);
+        console.log("Parsed URL:", parsedUrl);
+
+        // Try query params first
+        const queryParams = parsedUrl.queryParams || {};
+        const {
+          access_token,
+          refresh_token,
+          error: errorParam,
+          code,
+        } = queryParams;
+
+        // Also try parsing from hash if available
+        let accessToken = access_token;
+        let refreshToken = refresh_token;
+        let error = errorParam;
+
+        // If tokens not in query params, try parsing hash manually
+        if (!accessToken && url.includes("#")) {
+          const hashIndex = url.indexOf("#");
+          const hash = url.substring(hashIndex + 1);
+          const hashParams = new URLSearchParams(hash);
+          accessToken = hashParams.get("access_token") || undefined;
+          refreshToken = hashParams.get("refresh_token") || undefined;
+          error = hashParams.get("error") || undefined;
+        }
+
+        if (error) {
+          console.error("OAuth error from deep link:", error);
+          Alert.alert("Sign-in Error", String(error));
+          return;
+        }
+
+        if (accessToken && refreshToken) {
+          console.log("Tokens found in deep link, setting session...");
+          // Use supabase directly to set session
+          const { supabase } = await import("../src/services/supabase");
+          const { useAppStore } = await import("../src/store/appStore");
+          const { setProfile } = useAppStore.getState();
+
+          const { data, error: sessionError } = await supabase.auth.setSession({
+            access_token: String(accessToken),
+            refresh_token: String(refreshToken),
+          });
+
+          if (sessionError) {
+            console.error("Error setting session:", sessionError);
+            Alert.alert(
+              "Error",
+              "Failed to complete sign-in: " + sessionError.message
+            );
+          } else if (data.session?.user) {
+            console.log("✅ Session set successfully via deep link");
+
+            // Load profile
+            const { data: profile, error: profileError } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", data.session.user.id)
+              .single();
+
+            if (!profileError && profile) {
+              setProfile(profile);
+            }
+          }
+        } else if (code) {
+          // Handle authorization code if needed
+          console.log("Authorization code received:", code);
+        } else {
+          console.log("No tokens or code found in deep link. URL:", url);
+          // Session might be created server-side, just log and continue
+        }
+      } catch (error: any) {
+        console.error("Error handling deep link:", error);
+        console.error("Error stack:", error.stack);
+        // Don't show alert - let the app continue, session might still be created
+      }
+    }
+  };
 
   // Automatically show coach map when main app loads (only once per session)
   // Use a ref to track if we've already shown it in this session
   const coachMapShownRef = useRef(false);
-  
+
   // Function to update coach map tour status in profile
-  const updateCoachMapTourStatus = async (status: 'completed' | 'skipped') => {
+  const updateCoachMapTourStatus = async (status: "completed" | "skipped") => {
     if (!user?.id || !profile) return;
-    
+
     try {
       const { supabase } = await import("../src/services/supabase");
       const { error } = await supabase
@@ -258,7 +282,7 @@ export default function App() {
       console.error("Error updating coach map tour status:", error);
     }
   };
-  
+
   useEffect(() => {
     if (
       isAuthenticated &&
@@ -267,7 +291,8 @@ export default function App() {
       profile.has_completed_onboarding === true &&
       !coachMapShownRef.current &&
       // Only show if tour hasn't been completed or skipped
-      (profile.coach_map_tour_status === null || profile.coach_map_tour_status === undefined)
+      (profile.coach_map_tour_status === null ||
+        profile.coach_map_tour_status === undefined)
     ) {
       // Show coach map after a brief delay to ensure UI is ready
       const timer = setTimeout(() => {
@@ -277,6 +302,37 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [isAuthenticated, user, profile, setShowCoachMap]);
+
+  // Get session ID when in collaboration mode
+  useEffect(() => {
+    const getSessionId = async () => {
+      if (currentMode !== "solo") {
+        // Try to get from active session
+        const activeSession = await import(
+          "../src/services/sessionService"
+        ).then((module) => module.SessionService.getActiveSession());
+        if (activeSession) {
+          setCurrentSessionId(activeSession.sessionId);
+        } else {
+          // Fallback: find session by name
+          const { supabase } = await import("../src/services/supabase");
+          const { data: sessions } = await supabase
+            .from("collaboration_sessions")
+            .select("id")
+            .eq("name", currentMode)
+            .limit(1);
+
+          if (sessions && sessions.length > 0) {
+            setCurrentSessionId(sessions[0].id);
+          }
+        }
+      } else {
+        setCurrentSessionId(null);
+      }
+    };
+
+    getSessionId();
+  }, [currentMode]);
 
   // Show loading while checking authentication status (with fallback)
   if (isLoadingAuth && !authTimeout) {
@@ -324,14 +380,16 @@ export default function App() {
 
   // Check if user needs email verification before onboarding
   // Block onboarding if user is authenticated but email is not verified
-  // Skip email verification for Google sign-in users (Google already verifies emails)
-  const isGoogleUser = user?.app_metadata?.provider === 'google';
+  // Skip email verification for Google and Apple sign-in users (they already verify emails)
+  const isGoogleUser = user?.app_metadata?.provider === "google";
+  const isAppleUser = user?.app_metadata?.provider === "apple";
   const needsEmailVerification =
-    isAuthenticated && 
-    user && 
-    profile && 
+    isAuthenticated &&
+    user &&
+    profile &&
     profile.email_verified === false &&
-    !isGoogleUser; // Skip verification for Google users
+    !isGoogleUser &&
+    !isAppleUser; // Skip verification for Google and Apple users
 
   // Show email verification screen if needed (before onboarding)
   if (needsEmailVerification && !showSignUpForm) {
@@ -387,7 +445,10 @@ export default function App() {
           }}
           onBackToWelcome={() => {
             setShowOnboardingFlow(false);
-            // This will return to the welcome screen
+            // If user has completed onboarding, mark it as complete in local state
+            if (profile?.has_completed_onboarding === true) {
+              setHasCompletedOnboarding(true);
+            }
           }}
           onNavigateToSignUpForm={(accountType) => {
             console.log("Navigating to sign-up form");
@@ -455,7 +516,9 @@ export default function App() {
       case "home":
         return (
           <HomePage
-            onOpenPreferences={() => setShowPreferences(true)}
+            onOpenPreferences={() => {
+              setShowPreferences(true);
+            }}
             onOpenCollaboration={handlers.handleCollaborationOpen}
             onOpenCollabPreferences={() => setShowCollabPreferences(true)}
             currentMode={currentMode}
@@ -500,21 +563,36 @@ export default function App() {
         );
       case "connections":
         return (
-          <View
-            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-          >
-            <Text style={{ fontSize: 18, color: "#6b7280" }}>
-              Connections Page
-            </Text>
-            <Text style={{ fontSize: 14, color: "#9ca3af", marginTop: 8 }}>
-              Coming Soon
-            </Text>
-          </View>
+          <ConnectionsPage
+            onSendCollabInvite={(friend: any) => {
+              console.log("Sending collaboration invite to:", friend);
+            }}
+            onAddToBoard={handlers.handleAddToBoard}
+            onShareSavedCard={handlers.handleShareSavedCard}
+            onRemoveFriend={handlers.handleRemoveFriend}
+            onBlockUser={handlers.handleBlockUser}
+            onReportUser={handlers.handleReportUser}
+            accountPreferences={accountPreferences}
+            boardsSessions={boardsSessions}
+            currentMode={currentMode}
+            onModeChange={handlers.handleModeChange}
+            onUpdateBoardSession={(board: any) => {
+              console.log("Updating board session:", board);
+            }}
+            onCreateSession={(newSession: any) => {
+              console.log("Creating session:", newSession);
+            }}
+            onNavigateToBoard={(board: any, discussionTab?: string) => {
+              setBoardViewSessionId(board.id || board);
+              setCurrentPage("board-view");
+            }}
+          />
         );
       case "activity":
         return (
           <ActivityPage
             boardsSessions={boardsSessions}
+            isLoadingBoards={isLoadingBoards}
             savedCards={savedCards}
             calendarEntries={calendarEntries}
             userPreferences={userPreferences}
@@ -567,7 +645,33 @@ export default function App() {
               console.log("Leaving board:", boardId);
               // Handle leave board logic here
             }}
+            onNavigateToBoard={(sessionId: string) => {
+              setBoardViewSessionId(sessionId);
+              setCurrentPage("board-view");
+            }}
           />
+        );
+      case "board-view":
+        return boardViewSessionId ? (
+          <BoardViewScreen
+            sessionId={boardViewSessionId}
+            onBack={() => {
+              setCurrentPage("activity");
+              setBoardViewSessionId(null);
+            }}
+            onNavigateToSession={(sessionId: string) => {
+              setBoardViewSessionId(sessionId);
+            }}
+          />
+        ) : (
+          <View
+            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+          >
+            <Text>No session selected</Text>
+            <TouchableOpacity onPress={() => setCurrentPage("activity")}>
+              <Text style={{ color: "#007AFF", marginTop: 16 }}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
         );
       case "profile":
         return (
@@ -622,7 +726,9 @@ export default function App() {
       default:
         return (
           <HomePage
-            onOpenPreferences={() => setShowPreferences(true)}
+            onOpenPreferences={() => {
+              setShowPreferences(true);
+            }}
             onOpenCollaboration={handlers.handleCollaborationOpen}
             onOpenCollabPreferences={() => setShowCollabPreferences(true)}
             currentMode={currentMode}
@@ -663,12 +769,32 @@ export default function App() {
       "User authenticated and completed onboarding - showing main app"
     );
 
+    // Show CollaborationPreferences as full screen if collaboration preferences are open
+    if (showCollabPreferences && currentMode !== "solo" && currentSessionId) {
+      return (
+        <ErrorBoundary>
+          <CollaborationPreferences
+            isOpen={showCollabPreferences}
+            onClose={() => {
+              setShowCollabPreferences(false);
+            }}
+            sessionName={currentMode}
+            sessionId={currentSessionId} // Add this
+            participants={[]}
+            onSave={handlers.handleCollabPreferencesSave}
+          />
+        </ErrorBoundary>
+      );
+    }
+
     // Show PreferencesSheet as full screen if preferences are open
     if (showPreferences) {
       return (
         <ErrorBoundary>
           <PreferencesSheet
-            onClose={() => setShowPreferences(false)}
+            onClose={() => {
+              setShowPreferences(false);
+            }}
             onSave={handlers.handleSavePreferences}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
@@ -764,201 +890,207 @@ export default function App() {
     }
 
     return (
-      <MobileFeaturesProvider>
-        <NavigationProvider>
-          <ErrorBoundary>
-            <SafeAreaView style={styles.safeArea}>
-              <StatusBar barStyle="dark-content" backgroundColor="white" />
-              <View style={styles.container}>
-                {/* Main Content */}
-                <View style={styles.mainContent}>{renderCurrentPage()}</View>
+      <>
+        <MobileFeaturesProvider>
+          <NavigationProvider>
+            <ErrorBoundary>
+              <SafeAreaView style={styles.safeArea}>
+                <StatusBar barStyle="dark-content" backgroundColor="white" />
+                <View style={styles.container}>
+                  {/* Main Content */}
+                  <View style={styles.mainContent}>{renderCurrentPage()}</View>
 
-                {/* Collaboration Module */}
-                <CollaborationModule
-                  isOpen={showCollaboration}
-                  onClose={() => {
-                    setShowCollaboration(false);
-                    setPreSelectedFriend(null);
-                  }}
-                  currentMode={currentMode}
-                  onModeChange={handlers.handleModeChange}
-                  preSelectedFriend={preSelectedFriend}
-                  boardsSessions={boardsSessions}
-                  onUpdateBoardSession={(updatedBoard: any) =>
-                    console.log("Update board session:", updatedBoard)
-                  }
-                  onCreateSession={(newSession: any) =>
-                    console.log("Create session:", newSession)
-                  }
-                  onNavigateToBoard={(board: any, discussionTab?: string) =>
-                    console.log("Navigate to board:", board, discussionTab)
-                  }
-                  availableFriends={[]}
-                />
+                  {/* Collaboration Module */}
+                  <CollaborationModule
+                    isOpen={showCollaboration}
+                    onClose={() => {
+                      setShowCollaboration(false);
+                      setPreSelectedFriend(null);
+                    }}
+                    currentMode={currentMode}
+                    onModeChange={handlers.handleModeChange}
+                    preSelectedFriend={preSelectedFriend}
+                    boardsSessions={boardsSessions}
+                    onUpdateBoardSession={(updatedBoard: any) =>
+                      console.log("Update board session:", updatedBoard)
+                    }
+                    onCreateSession={(newSession: any) =>
+                      console.log("Create session:", newSession)
+                    }
+                    onNavigateToBoard={(board: any, discussionTab?: string) =>
+                      console.log("Navigate to board:", board, discussionTab)
+                    }
+                    availableFriends={[]}
+                  />
 
-                {/* Bottom Navigation - keep visible and above overlay when tabs are highlighted */}
-                <View style={[
-                  styles.bottomNavigation,
-                  isHighlightingTabs && {
-                    zIndex: 1000,
-                    elevation: 1000,
-                  }
-                ]}>
-                  <View style={styles.navigationContainer}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        console.log("Navigating to home");
-                        setCurrentPage("home");
-                      }}
-                      style={styles.navItem}
-                    >
-                      <Ionicons
-                        name="home"
-                        size={24}
-                        color={currentPage === "home" ? "#eb7825" : "#9CA3AF"}
-                      />
-                      <Text
-                        style={[
-                          styles.navText,
-                          currentPage === "home"
-                            ? styles.navTextActive
-                            : styles.navTextInactive,
-                        ]}
+                  {/* Bottom Navigation - keep visible and above overlay when tabs are highlighted */}
+                  <View
+                    style={[
+                      styles.bottomNavigation,
+                      isHighlightingTabs && {
+                        zIndex: 1000,
+                        elevation: 1000,
+                      },
+                    ]}
+                  >
+                    <View style={styles.navigationContainer}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log("Navigating to home");
+                          setCurrentPage("home");
+                        }}
+                        style={styles.navItem}
                       >
-                        Home
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        console.log("Navigating to connections");
-                        setCurrentPage("connections");
-                      }}
-                      style={styles.navItem}
-                    >
-                      <Ionicons
-                        name="people"
-                        size={24}
-                        color={
-                          currentPage === "connections" ? "#eb7825" : "#9CA3AF"
-                        }
-                      />
-                      <Text
-                        style={[
-                          styles.navText,
-                          currentPage === "connections"
-                            ? styles.navTextActive
-                            : styles.navTextInactive,
-                        ]}
+                        <Ionicons
+                          name="home"
+                          size={24}
+                          color={currentPage === "home" ? "#eb7825" : "#9CA3AF"}
+                        />
+                        <Text
+                          style={[
+                            styles.navText,
+                            currentPage === "home"
+                              ? styles.navTextActive
+                              : styles.navTextInactive,
+                          ]}
+                        >
+                          Home
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log("Navigating to connections");
+                          setCurrentPage("connections");
+                        }}
+                        style={styles.navItem}
                       >
-                        Connections
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        console.log("Navigating to activity");
-                        setCurrentPage("activity");
-                      }}
-                      style={styles.navItem}
-                    >
-                      <Ionicons
-                        name="calendar"
-                        size={24}
-                        color={
-                          currentPage === "activity" ? "#eb7825" : "#9CA3AF"
-                        }
-                      />
-                      <Text
-                        style={[
-                          styles.navText,
-                          currentPage === "activity"
-                            ? styles.navTextActive
-                            : styles.navTextInactive,
-                        ]}
+                        <Ionicons
+                          name="people"
+                          size={24}
+                          color={
+                            currentPage === "connections"
+                              ? "#eb7825"
+                              : "#9CA3AF"
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.navText,
+                            currentPage === "connections"
+                              ? styles.navTextActive
+                              : styles.navTextInactive,
+                          ]}
+                        >
+                          Connections
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log("Navigating to activity");
+                          setCurrentPage("activity");
+                        }}
+                        style={styles.navItem}
                       >
-                        Activity
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        console.log("Navigating to saved");
-                        setCurrentPage("saved");
-                      }}
-                      style={styles.navItem}
-                    >
-                      <Ionicons
-                        name="bookmark"
-                        size={24}
-                        color={
-                          currentPage === "saved" ? "#eb7825" : "#9CA3AF"
-                        }
-                      />
-                      <Text
-                        style={[
-                          styles.navText,
-                          currentPage === "saved"
-                            ? styles.navTextActive
-                            : styles.navTextInactive,
-                        ]}
+                        <Ionicons
+                          name="calendar"
+                          size={24}
+                          color={
+                            currentPage === "activity" ? "#eb7825" : "#9CA3AF"
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.navText,
+                            currentPage === "activity"
+                              ? styles.navTextActive
+                              : styles.navTextInactive,
+                          ]}
+                        >
+                          Activity
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log("Navigating to saved");
+                          setCurrentPage("saved");
+                        }}
+                        style={styles.navItem}
                       >
-                        Saved
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        console.log("Navigating to profile");
-                        setCurrentPage("profile");
-                      }}
-                      style={styles.navItem}
-                    >
-                      <Ionicons
-                        name="person"
-                        size={24}
-                        color={
-                          currentPage === "profile" ? "#eb7825" : "#9CA3AF"
-                        }
-                      />
-                      <Text
-                        style={[
-                          styles.navText,
-                          currentPage === "profile"
-                            ? styles.navTextActive
-                            : styles.navTextInactive,
-                        ]}
+                        <Ionicons
+                          name="bookmark"
+                          size={24}
+                          color={
+                            currentPage === "saved" ? "#eb7825" : "#9CA3AF"
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.navText,
+                            currentPage === "saved"
+                              ? styles.navTextActive
+                              : styles.navTextInactive,
+                          ]}
+                        >
+                          Saved
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log("Navigating to profile");
+                          setCurrentPage("profile");
+                        }}
+                        style={styles.navItem}
                       >
-                        Profile
-                      </Text>
-                    </TouchableOpacity>
+                        <Ionicons
+                          name="person"
+                          size={24}
+                          color={
+                            currentPage === "profile" ? "#eb7825" : "#9CA3AF"
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.navText,
+                            currentPage === "profile"
+                              ? styles.navTextActive
+                              : styles.navTextInactive,
+                          ]}
+                        >
+                          Profile
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
-                )}
-              </View>
 
-              {/* Coach Map Overlay */}
-              <CoachMap
-                visible={showCoachMap}
-                onComplete={async () => {
-                  await updateCoachMapTourStatus('completed');
-                  setShowCoachMap(false);
-                  setCoachMapCurrentTarget(null);
-                }}
-                onSkip={async () => {
-                  await updateCoachMapTourStatus('skipped');
-                  setShowCoachMap(false);
-                  setCoachMapCurrentTarget(null);
-                }}
-                onStepChange={(stepIndex, target) => {
-                  // Reset target when coach map closes (stepIndex === -1)
-                  if (stepIndex === -1) {
+                {/* Coach Map Overlay */}
+                <CoachMap
+                  visible={showCoachMap}
+                  onComplete={async () => {
+                    await updateCoachMapTourStatus("completed");
+                    setShowCoachMap(false);
                     setCoachMapCurrentTarget(null);
-                  } else {
-                    setCoachMapCurrentTarget(target);
-                  }
-                }}
-              />
-            </SafeAreaView>
-          </ErrorBoundary>
-        </NavigationProvider>
-      </MobileFeaturesProvider>
+                  }}
+                  onSkip={async () => {
+                    await updateCoachMapTourStatus("skipped");
+                    setShowCoachMap(false);
+                    setCoachMapCurrentTarget(null);
+                  }}
+                  onStepChange={(stepIndex, target) => {
+                    // Reset target when coach map closes (stepIndex === -1)
+                    if (stepIndex === -1) {
+                      setCoachMapCurrentTarget(null);
+                    } else {
+                      setCoachMapCurrentTarget(target);
+                    }
+                  }}
+                />
+              </SafeAreaView>
+            </ErrorBoundary>
+          </NavigationProvider>
+        </MobileFeaturesProvider>
+        <ToastContainer />
+      </>
     );
   }
 }

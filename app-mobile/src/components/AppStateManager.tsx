@@ -166,7 +166,9 @@ export function useAppState() {
     | "account-settings"
     | "privacy-policy"
     | "terms-of-service"
+    | "board-view"
   >("home");
+  const [boardViewSessionId, setBoardViewSessionId] = useState<string | null>(null);
   const [showPreferences, setShowPreferences] = useState(false);
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [showCollabPreferences, setShowCollabPreferences] = useState(false);
@@ -218,6 +220,7 @@ export function useAppState() {
   const [friendsList, setFriendsList] = useState(DEFAULT_FRIENDS);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [boardsSessions, setBoardsSessions] = useState(DEFAULT_BOARDS_SESSIONS);
+  const [isLoadingBoards, setIsLoadingBoards] = useState(false);
 
   const [profileStats, setProfileStats] = useState({
     savedExperiences: 0,
@@ -297,6 +300,39 @@ export function useAppState() {
     } else {
     }
   }, [user, profile]);
+
+  // Load and restore active session on user login
+  useEffect(() => {
+    const loadActiveSession = async () => {
+      if (!user?.id) {
+        // No user, clear any stored session
+        setCurrentMode("solo");
+        return;
+      }
+
+      try {
+        const sessionServiceModule = await import("../services/sessionService");
+        const { SessionService } = sessionServiceModule;
+        const activeSession = await SessionService.validateActiveSession(user.id);
+
+        if (activeSession) {
+          // Restore the active session
+          setCurrentMode(activeSession.sessionName);
+        } else {
+          // No valid active session, ensure solo mode
+          setCurrentMode("solo");
+        }
+      } catch (error) {
+        console.error("Error loading active session:", error);
+        // On error, default to solo mode
+        setCurrentMode("solo");
+      }
+    };
+
+    if (user) {
+      loadActiveSession();
+    }
+  }, [user?.id]);
 
   // Load other data from AsyncStorage
   useEffect(() => {
@@ -391,6 +427,40 @@ export function useAppState() {
     };
 
     syncSavedCardsWithSupabase();
+  }, [user?.id]);
+
+  // Sync board sessions from database
+  useEffect(() => {
+    const syncBoardSessionsWithSupabase = async () => {
+      if (!user?.id) {
+        setBoardsSessions([]);
+        safeAsyncStorageSet("mingla_boards_sessions", []);
+        setProfileStats((prev) => ({
+          ...prev,
+          boardsCount: 0,
+        }));
+        setIsLoadingBoards(false);
+        return;
+      }
+
+      setIsLoadingBoards(true);
+      try {
+        const { BoardSessionService } = await import("../services/boardSessionService");
+        const boards = await BoardSessionService.fetchUserBoardSessions(user.id);
+        setBoardsSessions(boards);
+        safeAsyncStorageSet("mingla_boards_sessions", boards);
+        setProfileStats((prev) => ({
+          ...prev,
+          boardsCount: boards.length,
+        }));
+      } catch (error) {
+        console.error("Error syncing board sessions:", error);
+      } finally {
+        setIsLoadingBoards(false);
+      }
+    };
+
+    syncBoardSessionsWithSupabase();
   }, [user?.id]);
 
   // Utility functions
@@ -672,10 +742,13 @@ export function useAppState() {
     setBlockedUsers,
     boardsSessions,
     setBoardsSessions,
+    isLoadingBoards,
     profileStats,
     setProfileStats,
     preferencesRefreshKey,
     setPreferencesRefreshKey,
+    boardViewSessionId,
+    setBoardViewSessionId,
 
     // Utilities
     updateBoardsSessions,

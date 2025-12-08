@@ -1,78 +1,121 @@
-import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-
-interface FriendRequest {
-  id: string;
-  name: string;
-  username: string;
-  avatar?: string;
-  mutualFriends: number;
-  requestedAt: string;
-}
+import React, { useState, useEffect } from "react";
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Modal,
+  ScrollView,
+  ActivityIndicator,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useFriends } from "../hooks/useFriends";
+import { formatTimestamp } from "../utils/dateUtils";
 
 interface FriendRequestsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const mockFriendRequests: FriendRequest[] = [
-  {
-    id: 'req-1',
-    name: 'Alex Johnson',
-    username: 'alexjohnson',
-    avatar: undefined,
-    mutualFriends: 7,
-    requestedAt: '2 hours ago'
-  },
-  {
-    id: 'req-2', 
-    name: 'Emily Chen',
-    username: 'emilychen',
-    avatar: undefined,
-    mutualFriends: 3,
-    requestedAt: '1 day ago'
-  },
-  {
-    id: 'req-3',
-    name: 'Michael Brown',
-    username: 'mikebrown', 
-    avatar: undefined,
-    mutualFriends: 5,
-    requestedAt: '3 days ago'
-  }
-];
+export default function FriendRequestsModal({
+  isOpen,
+  onClose,
+}: FriendRequestsModalProps) {
+  const {
+    friendRequests,
+    loadFriendRequests,
+    acceptFriendRequest,
+    declineFriendRequest,
+  } = useFriends();
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [processedRequests, setProcessedRequests] = useState<{
+    [key: string]: "accepted" | "declined";
+  }>({});
 
-export default function FriendRequestsModal({ isOpen, onClose }: FriendRequestsModalProps) {
-  const [requests, setRequests] = useState<FriendRequest[]>(mockFriendRequests);
-  const [processedRequests, setProcessedRequests] = useState<{[key: string]: 'accepted' | 'declined'}>({});
+  // Load friend requests when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setInitialLoading(true);
+      const fetchRequests = async () => {
+        try {
+          await loadFriendRequests();
+        } catch (error) {
+          console.error("Error loading friend requests:", error);
+        } finally {
+          setInitialLoading(false);
+        }
+      };
+      fetchRequests();
+    } else {
+      // Reset loading state when modal closes
+      setInitialLoading(true);
+    }
+  }, [isOpen, loadFriendRequests]);
 
-  const handleAcceptRequest = (requestId: string) => {
-    setProcessedRequests(prev => ({ ...prev, [requestId]: 'accepted' }));
-    
-    // Remove from requests after animation
-    setTimeout(() => {
-      setRequests(prev => prev.filter(req => req.id !== requestId));
-      setProcessedRequests(prev => {
+  // Filter only incoming pending requests
+  const incomingRequests = friendRequests.filter(
+    (req) => req.type === "incoming" && req.status === "pending"
+  );
+
+  const handleAcceptRequest = async (requestId: string) => {
+    setProcessedRequests((prev) => ({ ...prev, [requestId]: "accepted" }));
+    setLoading(true);
+
+    try {
+      await acceptFriendRequest(requestId);
+      // Reload requests after accepting
+      await loadFriendRequests();
+
+      // Remove from processed requests after animation
+      setTimeout(() => {
+        setProcessedRequests((prev) => {
+          const newState = { ...prev };
+          delete newState[requestId];
+          return newState;
+        });
+      }, 1500);
+    } catch (error) {
+      console.error("Error accepting friend request:", error);
+      // Revert the processed state on error
+      setProcessedRequests((prev) => {
         const newState = { ...prev };
         delete newState[requestId];
         return newState;
       });
-    }, 1500);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeclineRequest = (requestId: string) => {
-    setProcessedRequests(prev => ({ ...prev, [requestId]: 'declined' }));
-    
-    // Remove from requests after animation
-    setTimeout(() => {
-      setRequests(prev => prev.filter(req => req.id !== requestId));
-      setProcessedRequests(prev => {
+  const handleDeclineRequest = async (requestId: string) => {
+    setProcessedRequests((prev) => ({ ...prev, [requestId]: "declined" }));
+    setLoading(true);
+
+    try {
+      await declineFriendRequest(requestId);
+      // Reload requests after declining
+      await loadFriendRequests();
+
+      // Remove from processed requests after animation
+      setTimeout(() => {
+        setProcessedRequests((prev) => {
+          const newState = { ...prev };
+          delete newState[requestId];
+          return newState;
+        });
+      }, 1500);
+    } catch (error) {
+      console.error("Error declining friend request:", error);
+      // Revert the processed state on error
+      setProcessedRequests((prev) => {
         const newState = { ...prev };
         delete newState[requestId];
         return newState;
       });
-    }, 1500);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -86,114 +129,188 @@ export default function FriendRequestsModal({ isOpen, onClose }: FriendRequestsM
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <View style={styles.headerIcon}>
-              <Ionicons name="people" size={20} color="white" />
-            </View>
-            <View>
-              <Text style={styles.headerTitle}>Friend Requests</Text>
-              <Text style={styles.headerSubtitle}>{requests.length} pending requests</Text>
-            </View>
-          </View>
-          <TouchableOpacity 
-            onPress={onClose}
-            style={styles.closeButton}
-          >
-            <Ionicons name="close" size={20} color="#6b7280" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Content */}
-        <ScrollView style={styles.content}>
-          {requests.length === 0 ? (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyStateIcon}>
-                <Ionicons name="people" size={32} color="#9ca3af" />
-              </View>
-              <Text style={styles.emptyStateTitle}>No Friend Requests</Text>
-              <Text style={styles.emptyStateText}>
-                You're all caught up! New friend requests will appear here.
-              </Text>
+          {initialLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#eb7825" />
             </View>
           ) : (
-            <View style={styles.requestsList}>
-              {requests.map((request) => {
-                const status = processedRequests[request.id];
-                
-                return (
-                  <View 
-                    key={request.id}
-                    style={[
-                      styles.requestItem,
-                      status === 'accepted' && styles.requestItemAccepted,
-                      status === 'declined' && styles.requestItemDeclined
-                    ]}
-                  >
-                    <View style={styles.requestContent}>
-                      {/* Avatar */}
-                      <View style={styles.avatarContainer}>
-                        <View style={styles.avatar}>
-                          <Text style={styles.avatarText}>
-                            {request.name.split(' ').map(n => n[0]).join('')}
-                          </Text>
-                        </View>
-                      </View>
-                      
-                      {/* User Info */}
-                      <View style={styles.userInfo}>
-                        <Text style={styles.userName}>{request.name}</Text>
-                        <Text style={styles.userUsername}>@{request.username}</Text>
-                        {request.mutualFriends > 0 && (
-                          <Text style={styles.mutualFriends}>{request.mutualFriends} mutual friends</Text>
-                        )}
-                        <Text style={styles.requestTime}>{request.requestedAt}</Text>
-                      </View>
-
-                      {/* Action Buttons */}
-                      <View style={styles.actionButtons}>
-                        {status === 'accepted' ? (
-                          <View style={styles.statusAccepted}>
-                            <Ionicons name="checkmark" size={16} color="#059669" />
-                            <Text style={styles.statusText}>Accepted</Text>
-                          </View>
-                        ) : status === 'declined' ? (
-                          <View style={styles.statusDeclined}>
-                            <Ionicons name="close" size={16} color="#dc2626" />
-                            <Text style={styles.statusText}>Declined</Text>
-                          </View>
-                        ) : (
-                          <>
-                            <TouchableOpacity
-                              onPress={() => handleDeclineRequest(request.id)}
-                              style={styles.declineButton}
-                            >
-                              <Ionicons name="person-remove" size={16} color="#6b7280" />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => handleAcceptRequest(request.id)}
-                              style={styles.acceptButton}
-                            >
-                              <Ionicons name="person-add" size={16} color="white" />
-                            </TouchableOpacity>
-                          </>
-                        )}
-                      </View>
-                    </View>
+            <>
+              {/* Header */}
+              <View style={styles.header}>
+                <View style={styles.headerContent}>
+                  <View style={styles.headerIcon}>
+                    <Ionicons name="people" size={20} color="white" />
                   </View>
-                );
-              })}
-            </View>
-          )}
-        </ScrollView>
+                  <View>
+                    <Text style={styles.headerTitle}>Friend Requests</Text>
+                    <Text style={styles.headerSubtitle}>
+                      {incomingRequests.length} pending requests
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                  <Ionicons name="close" size={20} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
 
-        {/* Footer */}
-        {requests.length > 0 && (
-          <View style={styles.footer}>
-            {/* Footer content can be added here if needed */}
-          </View>
-        )}
+              {/* Content */}
+              <ScrollView
+                style={styles.content}
+                contentContainerStyle={styles.contentContainer}
+              >
+                {incomingRequests.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <View style={styles.emptyStateIcon}>
+                      <Ionicons name="people" size={32} color="#9ca3af" />
+                    </View>
+                    <Text style={styles.emptyStateTitle}>
+                      No Friend Requests
+                    </Text>
+                    <Text style={styles.emptyStateText}>
+                      You're all caught up! New friend requests will appear
+                      here.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.requestsList}>
+                    {incomingRequests.map((request) => {
+                      const status = processedRequests[request.id];
+                      const senderName =
+                        request.sender.display_name ||
+                        (request.sender.first_name && request.sender.last_name
+                          ? `${request.sender.first_name} ${request.sender.last_name}`
+                          : request.sender.username) ||
+                        "Unknown";
+                      const initials = senderName
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .toUpperCase()
+                        .slice(0, 2);
+
+                      return (
+                        <View
+                          key={request.id}
+                          style={[
+                            styles.requestItem,
+                            status === "accepted" && styles.requestItemAccepted,
+                            status === "declined" && styles.requestItemDeclined,
+                          ]}
+                        >
+                          <View style={styles.requestContent}>
+                            {/* Avatar */}
+                            <View style={styles.avatarContainer}>
+                              <View style={styles.avatar}>
+                                {request.sender.avatar_url ? (
+                                  <Text style={styles.avatarText}>IMG</Text>
+                                ) : (
+                                  <Text style={styles.avatarText}>
+                                    {initials}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+
+                            {/* User Info */}
+                            <View style={styles.userInfo}>
+                              <Text style={styles.userName}>{senderName}</Text>
+                              <Text style={styles.userUsername}>
+                                @{request.sender.username}
+                              </Text>
+                              <Text style={styles.requestTime}>
+                                {formatTimestamp(request.created_at)}
+                              </Text>
+                            </View>
+
+                            {/* Action Buttons */}
+                            <View style={styles.actionButtons}>
+                              {status === "accepted" ? (
+                                <View style={styles.statusAccepted}>
+                                  <Ionicons
+                                    name="checkmark"
+                                    size={16}
+                                    color="#059669"
+                                  />
+                                  <Text style={styles.statusText}>
+                                    Accepted
+                                  </Text>
+                                </View>
+                              ) : status === "declined" ? (
+                                <View style={styles.statusDeclined}>
+                                  <Ionicons
+                                    name="close"
+                                    size={16}
+                                    color="#dc2626"
+                                  />
+                                  <Text style={styles.statusText}>
+                                    Declined
+                                  </Text>
+                                </View>
+                              ) : (
+                                <>
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      handleDeclineRequest(request.id)
+                                    }
+                                    style={styles.declineButton}
+                                    disabled={loading}
+                                  >
+                                    {loading &&
+                                    processedRequests[request.id] ===
+                                      "declined" ? (
+                                      <ActivityIndicator
+                                        size="small"
+                                        color="#6b7280"
+                                      />
+                                    ) : (
+                                      <Ionicons
+                                        name="person-remove"
+                                        size={16}
+                                        color="#6b7280"
+                                      />
+                                    )}
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      handleAcceptRequest(request.id)
+                                    }
+                                    style={styles.acceptButton}
+                                    disabled={loading}
+                                  >
+                                    {loading &&
+                                    processedRequests[request.id] ===
+                                      "accepted" ? (
+                                      <ActivityIndicator
+                                        size="small"
+                                        color="white"
+                                      />
+                                    ) : (
+                                      <Ionicons
+                                        name="person-add"
+                                        size={16}
+                                        color="white"
+                                      />
+                                    )}
+                                  </TouchableOpacity>
+                                </>
+                              )}
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </ScrollView>
+
+              {/* Footer */}
+              {incomingRequests.length > 0 && (
+                <View style={styles.footer}>
+                  {/* Footer content can be added here if needed */}
+                </View>
+              )}
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -203,106 +320,110 @@ export default function FriendRequestsModal({ isOpen, onClose }: FriendRequestsM
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
     padding: 16,
   },
   modalContainer: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 16,
-    width: '100%',
+    width: "100%",
     maxWidth: 400,
-    maxHeight: '80%',
-    shadowColor: '#000',
+    maxHeight: "80%",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
     elevation: 16,
+    flexDirection: "column",
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: "#f3f4f6",
   },
   headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   headerIcon: {
     width: 40,
     height: 40,
-    backgroundColor: '#eb7825',
+    backgroundColor: "#eb7825",
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#6b7280',
+    color: "#6b7280",
   },
   closeButton: {
     padding: 8,
     borderRadius: 12,
   },
   content: {
-    flex: 1,
+    maxHeight: 400,
+  },
+  contentContainer: {
+    padding: 16,
+    paddingBottom: 16,
   },
   emptyState: {
     padding: 32,
-    alignItems: 'center',
+    alignItems: "center",
   },
   emptyStateIcon: {
     width: 64,
     height: 64,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: "#f3f4f6",
     borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 16,
   },
   emptyStateTitle: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#111827',
+    fontWeight: "500",
+    color: "#111827",
     marginBottom: 8,
   },
   emptyStateText: {
     fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
+    color: "#6b7280",
+    textAlign: "center",
   },
   requestsList: {
-    padding: 16,
     gap: 12,
   },
   requestItem: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: "#f9fafb",
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: "#e5e7eb",
     borderRadius: 12,
     padding: 16,
   },
   requestItemAccepted: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#bbf7d0',
+    backgroundColor: "#f0fdf4",
+    borderColor: "#bbf7d0",
   },
   requestItemDeclined: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
+    backgroundColor: "#fef2f2",
+    borderColor: "#fecaca",
   },
   requestContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 16,
   },
   avatarContainer: {
@@ -311,14 +432,14 @@ const styles = StyleSheet.create({
   avatar: {
     width: 48,
     height: 48,
-    backgroundColor: '#eb7825',
+    backgroundColor: "#eb7825",
     borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarText: {
-    color: 'white',
-    fontWeight: '500',
+    color: "white",
+    fontWeight: "500",
     fontSize: 16,
   },
   userInfo: {
@@ -327,72 +448,78 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
   },
   userUsername: {
     fontSize: 14,
-    color: '#6b7280',
+    color: "#6b7280",
   },
   mutualFriends: {
     fontSize: 12,
-    color: '#6b7280',
+    color: "#6b7280",
     marginTop: 2,
   },
   requestTime: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: "#9ca3af",
     marginTop: 2,
   },
   actionButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     flexShrink: 0,
   },
   statusAccepted: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    backgroundColor: '#dcfce7',
+    backgroundColor: "#dcfce7",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
   },
   statusDeclined: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    backgroundColor: '#fee2e2',
+    backgroundColor: "#fee2e2",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
   },
   statusText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#059669',
+    fontWeight: "500",
+    color: "#059669",
   },
   declineButton: {
     padding: 8,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: "#f3f4f6",
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   acceptButton: {
     padding: 8,
-    backgroundColor: '#eb7825',
+    backgroundColor: "#eb7825",
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   footer: {
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-    backgroundColor: '#f9fafb',
+    borderTopColor: "#f3f4f6",
+    backgroundColor: "#f9fafb",
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
+  },
+  loadingContainer: {
+    padding: 64,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 200,
   },
 });

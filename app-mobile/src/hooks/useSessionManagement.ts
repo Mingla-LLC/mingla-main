@@ -189,16 +189,6 @@ export const useSessionManagement = () => {
             status = 'dormant';
           }
 
-            sessionId: session.id,
-            sessionName: session.name,
-            userHasAccepted: userParticipation?.has_accepted,
-            allAccepted,
-            participantCount: participants.length,
-            createdBy: session.created_by,
-            userId: user?.id,
-            finalStatus: status
-          });
-
           // Get inviter profile (creator of the session)
           const inviterProfile = getProfile(session.created_by);
           const formattedInviterProfile = inviterProfile ? {

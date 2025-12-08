@@ -1,0 +1,455 @@
+#eb7825
+
+Primary action buttons ("Apply Preferences", "Send", "Create Board", "Save")
+Selected state for tabs (Friends/Messages active tab)
+Selected state for category pills
+Selected state for experience type chips
+Mode toggle active state (Board Mode)
+Vote "thumbs up" when active (green variant used instead)
+Primary icon color for key actions
+Logo color
+Link text and interactive elements
+Session type indicator badges
+Board badges on saved cards
+Secondary Orange (Hover/Active)
+#d6691f
+
+Hover state for primary buttons
+Active/pressed state for interactive elements
+Darker variant for depth in gradients
+Orange Backgrounds (Light)
+#FEF3E7 (light orange tint)
+
+Selected pill backgrounds
+Highlighted sections
+Active time slot backgrounds
+Tips/info boxes background
+#eb7825/20 (20% opacity orange)
+
+Focus rings on inputs
+Subtle highlights
+Selection overlays
+Neutral Colors
+White
+#FFFFFF
+
+Card backgrounds
+Modal backgrounds
+Bottom sheet backgrounds
+Input field backgrounds
+Unselected button backgrounds
+Chat message bubbles (sent messages)
+Main app background
+Black
+#111827 (near black)
+
+Primary text (headings, body text)
+Session names
+Card titles
+Button text on light backgrounds
+Grays
+#F9FAFB (very light gray)
+
+Disabled button backgrounds
+Input field backgrounds (inactive)
+Section separators (subtle)
+Empty state backgrounds
+#F3F4F6 (light gray)
+
+Background for inactive states
+Divider lines (subtle)
+Card stack background layers
+#E5E7EB (medium-light gray)
+
+Borders on inputs (default state)
+Borders on cards
+Divider lines
+Unselected chip borders
+Handle indicator on bottom sheets
+#D1D5DB (medium gray)
+
+Borders on inactive elements
+Disabled text
+Placeholder text in inputs
+Separator lines
+#9CA3AF (gray)
+
+Secondary text
+Placeholder text
+"X is typing..." indicator
+Timestamps
+Metadata text
+#6B7280 (dark gray)
+
+Body text (secondary)
+Descriptions
+Unselected tab text
+Helper text
+Icon colors (inactive)
+#4B5563 (darker gray)
+
+Important secondary text
+Active but not primary text
+#374151 (very dark gray)
+
+Section labels
+Important metadata
+Secondary headings
+Semantic Colors
+Success/Positive (Green)
+#10B981 (emerald green)
+
+"Count Me In" RSVP button (active state)
+Success toasts/notifications
+"✓" checkmarks
+Online status indicator (green dot)
+Accepted state indicators
+Thumbs up vote (active state)
+Positive confirmation messages
+#059669 (darker green)
+
+Hover state for success buttons
+#D1FAE5 (light green background)
+
+Success message backgrounds
+Accepted request backgrounds
+Positive alert boxes
+Error/Negative (Red)
+#EF4444 (red)
+
+"Can't Make It" RSVP button (active state)
+Error messages
+Delete/remove buttons
+Block user option
+Thumbs down vote (active state)
+Destructive actions
+#DC2626 (darker red)
+
+Hover state for destructive buttons
+#FEE2E2 (light red background)
+
+Error message backgrounds
+Alert/warning boxes
+Warning/Caution (Yellow/Amber)
+#F59E0B (amber)
+
+Warning messages
+Caution indicators
+"Away" status (yellow dot)
+#FEF3C7 (light yellow background)
+
+Warning message backgrounds
+Info (Blue)
+#3B82F6 (blue)
+
+Info messages
+Link text (alternative to orange)
+Badge indicators (unread counts)
+#DBEAFE (light blue background)
+
+Info message backgrounds
+Where Colors Are Used
+Buttons
+Primary Buttons:
+
+Background: #eb7825
+Hover: #d6691f
+Text: #FFFFFF
+Examples: "Apply Preferences", "Send Friend Request", "Create Session", "Save Card"
+Secondary Buttons:
+
+Background: #FFFFFF
+Border: #E5E7EB
+Text: #374151
+Hover: #F9FAFB
+Examples: "Cancel", "Skip", "Back"
+Success Buttons:
+
+Background: #10B981
+Hover: #059669
+Text: #FFFFFF
+Examples: "Count Me In", "Accept Invite", "Confirm"
+Destructive Buttons:
+
+Background: #EF4444
+Hover: #DC2626
+Text: #FFFFFF
+Examples: "Can't Make It", "Delete Session", "Remove Friend", "Block User"
+Disabled Buttons:
+
+Background: #D1D5DB
+Text: #9CA3AF
+Cursor: not-allowed
+Tabs & Navigation
+Active Tab:
+
+Background: #eb7825
+Text: #FFFFFF
+Border-bottom: none
+Inactive Tab:
+
+Background: transparent
+Text: #6B7280
+Border-bottom: 2px solid #E5E7EB
+Hover: Text → #374151
+Mode Toggle (Board Mode active):
+
+Background: #eb7825
+Icon: #FFFFFF
+Text: #FFFFFF
+Badge: #FFFFFF background with #eb7825 text
+Mode Toggle (Solo Mode active):
+
+Background: #FFFFFF
+Border: #E5E7EB
+Icon: #6B7280
+Text: #6B7280
+Cards
+Card Background:
+
+Background: #FFFFFF
+Border: 1px solid #E5E7EB
+Shadow: 0 1px 3px rgba(0, 0, 0, 0.1)
+Card Header (Match Score Badge):
+
+Background: #eb7825
+Text: #FFFFFF
+Border-radius: 20px
+Card Stats:
+
+Icons: #6B7280
+Text: #374151
+Card Overlays (on swipe):
+
+Swipe Right: rgba(16, 185, 129, 0.2) (green tint)
+Swipe Left: rgba(239, 68, 68, 0.2) (red tint)
+Form Inputs
+Default State:
+
+Background: #FFFFFF
+Border: 1px solid #D1D5DB
+Text: #111827
+Placeholder: #9CA3AF
+Focus State:
+
+Border: 2px solid #eb7825
+Ring: 0 0 0 3px rgba(235, 120, 37, 0.2)
+Error State:
+
+Border: 2px solid #EF4444
+Ring: 0 0 0 3px rgba(239, 68, 68, 0.1)
+Helper text: #EF4444
+Disabled State:
+
+Background: #F9FAFB
+Border: 1px solid #E5E7EB
+Text: #9CA3AF
+Pills & Chips
+Selected Category Pill:
+
+Background: linear-gradient(to right, #eb7825, #d6691f)
+Border: 2px solid #eb7825
+Text: #FFFFFF
+Icon: #FFFFFF
+Unselected Category Pill:
+
+Background: #FFFFFF
+Border: 2px solid #E5E7EB
+Text: #6B7280
+Icon: #6B7280
+Hover: Border → #D1D5DB
+Experience Type Chip (Selected):
+
+Background: #FEF3E7
+Border: 2px solid #eb7825
+Text: #eb7825
+Icon: #eb7825
+Experience Type Chip (Unselected):
+
+Background: #FFFFFF
+Border: 2px solid #E5E7EB
+Text: #6B7280
+Voting & RSVP
+Vote Thumbs Up (Active):
+
+Icon: #10B981 (green)
+Background: rgba(16, 185, 129, 0.1)
+Count text: #10B981
+Vote Thumbs Down (Active):
+
+Icon: #EF4444 (red)
+Background: rgba(239, 68, 68, 0.1)
+Count text: #EF4444
+Vote Buttons (Inactive):
+
+Icon: #9CA3AF
+Background: transparent
+Count text: #6B7280
+RSVP "Count Me In" (Active):
+
+Background: #10B981
+Text: #FFFFFF
+Icon: #FFFFFF
+RSVP "Can't Make It" (Active):
+
+Background: #EF4444
+Text: #FFFFFF
+Icon: #FFFFFF
+RSVP Buttons (Inactive):
+
+Background: #FFFFFF
+Border: 1px solid #E5E7EB
+Text: #374151
+Icon: #6B7280
+Messages & Chat
+Sent Messages (Current User):
+
+Background: #eb7825
+Text: #FFFFFF
+Timestamp: rgba(255, 255, 255, 0.7)
+Received Messages (Other Users):
+
+Background: #F3F4F6
+Text: #111827
+Timestamp: #9CA3AF
+@Mentions:
+
+Background: #FEF3E7
+Text: #eb7825
+Font-weight: 600
+Typing Indicator:
+
+Text: #6B7280
+Dots: #9CA3AF (animated)
+Unread Badge:
+
+Background: #EF4444
+Text: #FFFFFF
+Border-radius: 50%
+Status Indicators
+Online (Green Dot):
+
+Background: #10B981
+Border: 2px solid #FFFFFF
+Size: 8px circle
+Offline (Gray Dot):
+
+Background: #9CA3AF
+Border: 2px solid #FFFFFF
+Size: 8px circle
+Away (Yellow Dot):
+
+Background: #F59E0B
+Border: 2px solid #FFFFFF
+Size: 8px circle
+Notifications & Toasts
+Success Toast:
+
+Background: #D1FAE5
+Border: 1px solid #10B981
+Icon: #10B981
+Text: #065F46
+Error Toast:
+
+Background: #FEE2E2
+Border: 1px solid #EF4444
+Icon: #EF4444
+Text: #991B1B
+Info Toast:
+
+Background: #DBEAFE
+Border: 1px solid #3B82F6
+Icon: #3B82F6
+Text: #1E40AF
+Warning Toast:
+
+Background: #FEF3C7
+Border: 1px solid #F59E0B
+Icon: #F59E0B
+Text: #92400E
+Badges & Labels
+Board Badge (on saved cards):
+
+Background: #eb7825
+Text: #FFFFFF
+Icon: #FFFFFF
+Border-radius: 4px
+Session Type Badge:
+
+Group Hangout: #3B82F6 (blue)
+Date Night: #EC4899 (pink)
+Squad Outing: #8B5CF6 (purple)
+Business Meeting: #6B7280 (gray)
+Unread Count Badge:
+
+Background: #EF4444
+Text: #FFFFFF
+Min-width: 20px
+Height: 20px
+Border-radius: 10px
+"New" Badge:
+
+Background: #10B981
+Text: #FFFFFF
+Padding: 2px 8px
+Border-radius: 12px
+Backgrounds
+Main App Background:
+
+#F9FAFB
+Modal Overlay:
+
+rgba(0, 0, 0, 0.5)
+Bottom Sheet Background:
+
+#FFFFFF
+Border-radius: 24px 24px 0 0
+Card Stack Background:
+
+#F3F4F6 (behind cards for depth)
+Empty State Background:
+
+#F9FAFB
+Icon: #D1D5DB
+Text: #6B7280
+Shadows
+Card Shadow:
+
+box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24)
+Modal Shadow:
+
+box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)
+Button Shadow (raised):
+
+box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1)
+Bottom Sheet Shadow:
+
+box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1)
+Gradients
+Primary Button Gradient:
+
+linear-gradient(135deg, #eb7825 0%, #d6691f 100%)
+Selected Pill Gradient:
+
+linear-gradient(90deg, #eb7825 0%, #d6691f 100%)
+Card Overlay Gradient (bottom):
+
+linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 100%)
+Color Usage Principles
+Primary orange (#eb7825) is ONLY for primary actions and selected states
+White backgrounds for all content containers to maintain clean, modern look
+Semantic colors (green/red) for clear positive/negative actions
+Gray scale for hierarchy: darker = more important, lighter = less important
+Consistent borders using #E5E7EB for visual separation
+Hover states always 10-15% darker than base color
+Active/pressed states slightly darker than hover
+Disabled states always use gray scale, never colored
+Focus rings use 20% opacity of primary color for accessibility
+
+
+
+
+
+
+
+https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/smart-task

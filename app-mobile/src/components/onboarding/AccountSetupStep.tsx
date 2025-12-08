@@ -17,6 +17,7 @@ interface AccountSetupStepProps {
   onNavigateToSignUp?: (accountType?: string) => void;
   onNavigateToPhoneSignUp?: () => void;
   onNavigateToGoogleSignIn?: () => void;
+  onNavigateToAppleSignIn?: () => void;
   userProfile?: {
     name: string;
     email: string;
@@ -31,6 +32,7 @@ const AccountSetupStep = ({
   onNavigateToSignUp,
   onNavigateToPhoneSignUp,
   onNavigateToGoogleSignIn,
+  onNavigateToAppleSignIn,
   userProfile,
   accountType,
 }: AccountSetupStepProps) => {
@@ -218,7 +220,10 @@ const AccountSetupStep = ({
           </TouchableOpacity>
 
           {/* Continue with Apple */}
-          <TouchableOpacity style={styles.appleButton}>
+          <TouchableOpacity 
+            style={styles.appleButton}
+            onPress={onNavigateToAppleSignIn}
+          >
             <Ionicons name="logo-apple" size={20} color="white" />
             <Text style={styles.appleButtonText}>Continue with Apple</Text>
           </TouchableOpacity>

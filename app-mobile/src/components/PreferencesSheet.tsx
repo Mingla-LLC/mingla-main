@@ -7,11 +7,12 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  SafeAreaView,
   StatusBar,
   Platform,
   Modal,
+  Alert,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { PreferencesService } from "../services/preferencesService";
@@ -235,13 +236,23 @@ export default function PreferencesSheet({
             }
           }
 
-          // Load location preferences
-          if ((prefs as any).custom_lat && (prefs as any).custom_lng) {
-            setUseLocation("search");
-            // You might want to reverse geocode this
-            setSearchLocation(
-              `${(prefs as any).custom_lat}, ${(prefs as any).custom_lng}`
+          // Load location preferences from custom_location
+          if ((prefs as any).custom_location) {
+            const savedLocation = (prefs as any).custom_location;
+            setSearchLocation(savedLocation);
+
+            // Determine if it's GPS (coordinates format) or search (city name)
+            // GPS coordinates typically look like "37.7749, -122.4194"
+            const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(
+              savedLocation
             );
+            if (isCoordinates) {
+              // It's coordinates, likely from GPS
+              setUseLocation("gps");
+            } else {
+              // It's a city name or address, likely from search
+              setUseLocation("search");
+            }
           }
         }
       } catch (error) {
@@ -363,22 +374,79 @@ export default function PreferencesSheet({
   const handleUseCurrentLocation = async () => {
     setIsRequestingLocation(true);
     try {
+      // Request permissions first - this will show the system permission dialog if not granted
+      console.log("Requesting location permissions...");
       const hasPermission = await locationService.requestPermissions();
-      if (hasPermission) {
-        const locationData = await locationService.getCurrentLocation();
-        if (locationData) {
-          const cityName = await locationService.reverseGeocode(
-            locationData.latitude,
-            locationData.longitude
+      console.log("Permission result:", hasPermission);
+
+      // Even if permissions are granted, try to get location
+      // This might trigger a system prompt if location services are disabled
+      console.log("Requesting location...");
+      const locationData = await locationService.getCurrentLocation();
+      console.log("locationData", locationData);
+      if (locationData) {
+        // Reverse geocode to get city name
+        const cityName = await locationService.reverseGeocode(
+          locationData.latitude,
+          locationData.longitude
+        );
+        if (cityName) {
+          setSearchLocation(cityName);
+          setUseLocation("gps");
+        } else {
+          // If reverse geocode fails, use coordinates as fallback
+          setSearchLocation(
+            `${locationData.latitude.toFixed(
+              4
+            )}, ${locationData.longitude.toFixed(4)}`
           );
-          if (cityName) {
-            setSearchLocation(cityName);
-            setUseLocation("gps");
-          }
+          setUseLocation("gps");
         }
+      } else {
+        // Location couldn't be retrieved - check if location services are enabled
+        const Location = await import("expo-location");
+        const isEnabled = await Location.hasServicesEnabledAsync();
+        const { status } = await Location.getForegroundPermissionsAsync();
+
+        if (status !== "granted") {
+          // Permission not granted - request again to show system dialog
+          console.log("Permission not granted, requesting again...");
+          await locationService.requestPermissions();
+        } else if (!isEnabled) {
+          // Permissions granted but location services are disabled
+          // On Android, we can't show a system dialog to enable location services
+          // But we can check if we should request permissions again (which might trigger system prompts)
+          // Or guide user to enable location services
+          console.log(
+            "Location services disabled - permissions are granted but services are off"
+          );
+          // Try requesting permissions again - on some Android versions this might trigger a system prompt
+          // to enable location services
+          await locationService.requestPermissions();
+        }
+        // If permission is granted and services are enabled but location is still null,
+        // it's likely a GPS/network issue - user can try again or enter manually
       }
-    } catch (error) {
-      console.error("Error getting current location:", error);
+    } catch (error: any) {
+      // Suppress location service errors - they're handled above
+      const errorMessage = error?.message || String(error) || "";
+      const errorString = String(error);
+      const isLocationServiceError =
+        errorMessage.includes("location services") ||
+        errorMessage.includes("unavailable") ||
+        errorMessage.includes("Current location is unavailable") ||
+        errorString.includes("location services") ||
+        errorString.includes("unavailable");
+
+      if (!isLocationServiceError) {
+        // Only log unexpected errors
+        console.error("Error getting current location:", error);
+        Alert.alert(
+          "Error",
+          "An error occurred while getting your location. Please try again.",
+          [{ text: "OK" }]
+        );
+      }
     } finally {
       setIsRequestingLocation(false);
     }
@@ -423,31 +491,37 @@ export default function PreferencesSheet({
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#eb7825" />
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#eb7825" />
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
+      {/* Header */}
+      <View style={styles.header}>
+        {onClose && (
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.closeButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="close" size={24} color="#6b7280" />
+          </TouchableOpacity>
+        )}
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>Narrow your search</Text>
+          <Text style={styles.subtitle}>Personal Preferences</Text>
+        </View>
+        {onClose && <View style={styles.headerSpacer} />}
+      </View>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          {onClose && (
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#111827" />
-            </TouchableOpacity>
-          )}
-          <Text style={styles.title}>Narrow your search</Text>
-        </View>
-
         {/* Experience Type Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Experience Type</Text>
@@ -963,7 +1037,7 @@ export default function PreferencesSheet({
         onRequestClose={() => setShowCalendar(false)}
       >
         <View style={styles.modalOverlay}>
-          <SafeAreaView style={styles.modalContent}>
+          <SafeAreaView style={styles.modalContent} edges={["bottom"]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Date</Text>
               <TouchableOpacity
@@ -993,7 +1067,7 @@ export default function PreferencesSheet({
             onRequestClose={() => setShowTimePicker(false)}
           >
             <View style={styles.modalOverlay}>
-              <SafeAreaView style={styles.modalContent}>
+              <SafeAreaView style={styles.modalContent} edges={["bottom"]}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Select Time</Text>
                   <TouchableOpacity
@@ -1030,12 +1104,19 @@ export default function PreferencesSheet({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#ffffff",
   },
   loadingContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#f9fafb",
+    zIndex: 9999,
   },
   scrollView: {
     flex: 1,
@@ -1045,22 +1126,40 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 32,
     paddingBottom: 24,
-    position: "relative",
+    backgroundColor: "#ffffff",
   },
   closeButton: {
-    position: "absolute",
-    left: 16,
     padding: 8,
+    marginLeft: -8,
+    marginBottom: -8,
+  },
+  titleContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginHorizontal: 12,
+    paddingBottom: 0,
+  },
+  headerSpacer: {
+    width: 40,
   },
   title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#111827",
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    fontWeight: "400",
+    color: "#6b7280",
+    textAlign: "center",
   },
   section: {
     backgroundColor: "white",

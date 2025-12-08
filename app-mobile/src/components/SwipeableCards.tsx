@@ -26,8 +26,12 @@ import {
 } from "../services/experienceGenerationService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { enhancedLocationService } from "../services/enhancedLocationService";
+import * as Location from "expo-location";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
+import { BoardCardService } from "../services/boardCardService";
+import { useSessionManagement } from "../hooks/useSessionManagement";
+import { useBoardSession } from "../hooks/useBoardSession";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 const CARD_HEIGHT = Math.min(screenHeight * 0.72, 700);
@@ -149,9 +153,25 @@ export default function SwipeableCards({
   } | null>(null);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   const spinValue = useRef(new Animated.Value(0)).current;
+  const hasFetchedRef = useRef(false);
+  const lastRefreshKeyRef = useRef<number | string | undefined>(undefined);
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
+
+  // Get current session for board saving
+  const { currentSession, isInSolo } = useSessionManagement();
+  const { user } = useAuthSimple();
+  
+  // Check if we're in a board session
+  const isBoardSession = !isInSolo && currentSession?.session_type === 'board';
+  
+  // Load board preferences if in board session
+  // Use hook unconditionally (React rules) but pass undefined when not in board session
+  const boardSessionResult = useBoardSession(
+    isBoardSession && currentSession?.id ? currentSession.id : undefined
+  );
+  const boardPreferences = boardSessionResult?.preferences || null;
 
   // Use ref to store current recommendations for PanResponder
   const recommendationsRef = useRef<Recommendation[]>([]);
@@ -183,8 +203,6 @@ export default function SwipeableCards({
     inputRange: [-screenWidth / 2, 0, screenWidth / 2],
     outputRange: [1, 0, 1],
   });
-
-  const { user } = useAuthSimple();
 
   // Tips related to vibes, intents, and categories
   const tips = [
@@ -266,25 +284,93 @@ export default function SwipeableCards({
     outputRange: ["0deg", "360deg"],
   });
 
-  // Get user location
+  // Get user location - prioritize location from DB, fallback to current GPS location
   useEffect(() => {
     const getLocation = async () => {
       try {
+        // First, try to get location from database preferences
+        if (user?.id) {
+          try {
+            const prefs = await ExperiencesService.getUserPreferences(user.id);
+            if (prefs && (prefs as any).custom_location) {
+              const savedLocation = (prefs as any).custom_location;
+              console.log("Found saved location in DB:", savedLocation);
+              
+              // Check if it's coordinates (format: "37.7749, -122.4194")
+              const coordinatesMatch = savedLocation.match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+              if (coordinatesMatch) {
+                const lat = parseFloat(coordinatesMatch[1]);
+                const lng = parseFloat(coordinatesMatch[2]);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                  console.log("Using saved coordinates from DB:", { lat, lng });
+                  setUserLocation({ lat, lng });
+                  return;
+                }
+              } else {
+                // It's a city name - geocode it to get coordinates
+                try {
+                  const geocoded = await Location.geocodeAsync(savedLocation);
+                  if (geocoded && geocoded.length > 0) {
+                    const { latitude, longitude } = geocoded[0];
+                    console.log("Geocoded saved location from DB:", { lat: latitude, lng: longitude });
+                    setUserLocation({ lat: latitude, lng: longitude });
+                    return;
+                  }
+                } catch (geocodeError) {
+                  console.log("Could not geocode saved location, falling back to GPS:", geocodeError);
+                }
+              }
+            }
+          } catch (prefsError) {
+            console.log("Error loading preferences for location, falling back to GPS:", prefsError);
+          }
+        }
+        
+        // Fallback to current GPS location
+        console.log("No saved location in DB, using current GPS location");
         const location = await enhancedLocationService.getCurrentLocation();
         if (location) {
           setUserLocation({ lat: location.latitude, lng: location.longitude });
         } else {
-          // Fallback to default location (San Francisco)
+          // Try to get last known location as fallback
+          const lastKnown = await enhancedLocationService.getLastKnownLocation();
+          if (lastKnown) {
+            setUserLocation({ lat: lastKnown.latitude, lng: lastKnown.longitude });
+          } else {
+            // Final fallback to default location (San Francisco)
+            setUserLocation({ lat: 37.7749, lng: -122.4194 });
+          }
+        }
+      } catch (error: any) {
+        // Suppress location service errors - they're expected if services are disabled
+        const errorMessage = error?.message || String(error) || '';
+        const isLocationServiceError = 
+          errorMessage.includes('location services') || 
+          errorMessage.includes('unavailable') ||
+          errorMessage.includes('Location services are not enabled');
+        
+        if (!isLocationServiceError) {
+          // Only log unexpected errors
+          console.error("Error getting location:", error);
+        }
+        
+        // Try last known location before falling back to default
+        try {
+          const lastKnown = await enhancedLocationService.getLastKnownLocation();
+          if (lastKnown) {
+            setUserLocation({ lat: lastKnown.latitude, lng: lastKnown.longitude });
+          } else {
+            // Final fallback to default location
+            setUserLocation({ lat: 37.7749, lng: -122.4194 });
+          }
+        } catch {
+          // Final fallback to default location
           setUserLocation({ lat: 37.7749, lng: -122.4194 });
         }
-      } catch (error) {
-        console.error("Error getting location:", error);
-        // Fallback to default location
-        setUserLocation({ lat: 37.7749, lng: -122.4194 });
       }
     };
     getLocation();
-  }, []);
+  }, [user?.id]);
 
   // Fetch AI-generated experiences
   useEffect(() => {
@@ -294,9 +380,24 @@ export default function SwipeableCards({
         return;
       }
 
+      // Check if we should skip fetching:
+      // If we already have recommendations AND refreshKey hasn't changed, use cached data
+      const refreshKeyChanged = refreshKey !== lastRefreshKeyRef.current;
+      const hasRecommendations = recommendations.length > 0;
+      
+      if (hasRecommendations && !refreshKeyChanged) {
+        // Already have recommendations and no explicit refresh requested - use cached data
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
+        
+        // Mark as fetched and update refresh key ref
+        hasFetchedRef.current = true;
+        lastRefreshKeyRef.current = refreshKey;
 
         // Get user preferences if available
         let userPrefs: UserPreferences | null = null;
@@ -314,6 +415,17 @@ export default function SwipeableCards({
           }
         } else {
           userPrefs = getDefaultPreferences();
+        }
+
+        // Merge board preferences if in board session
+        if (isBoardSession && boardPreferences) {
+          userPrefs = {
+            ...userPrefs,
+            categories: boardPreferences.categories || userPrefs.categories,
+            budget_min: boardPreferences.budget_min ?? userPrefs.budget_min,
+            budget_max: boardPreferences.budget_max ?? userPrefs.budget_max,
+            people_count: boardPreferences.group_size || userPrefs.people_count,
+          };
         }
 
         if (!userPrefs) {
@@ -613,6 +725,41 @@ export default function SwipeableCards({
             // Continue with local save even if Supabase fails
           }
 
+          // If in a board session, save to board_saved_cards
+          if (isBoardSession && currentSession?.id) {
+            try {
+              const experienceData = {
+                id: card.id,
+                title: card.title,
+                category: card.category,
+                categoryIcon: card.categoryIcon,
+                image: card.image,
+                images: card.images,
+                rating: card.rating,
+                reviewCount: card.reviewCount,
+                travelTime: card.travelTime,
+                priceRange: card.priceRange,
+                description: card.description,
+                fullDescription: card.fullDescription,
+                address: card.address,
+                highlights: card.highlights,
+                matchScore: card.matchScore,
+                socialStats: card.socialStats,
+                matchFactors: card.matchFactors,
+              };
+
+              await BoardCardService.saveCardToBoard({
+                sessionId: currentSession.id,
+                experienceId: card.id,
+                experienceData,
+                userId: user.id,
+              });
+            } catch (boardSaveError) {
+              console.error("Error saving card to board:", boardSaveError);
+              // Continue even if board save fails
+            }
+          }
+
           if (onCardLike) {
             onCardLike(card);
           }
@@ -627,6 +774,21 @@ export default function SwipeableCards({
           } catch (dislikeError) {
             console.error("Error tracking dislike:", dislikeError);
             // Continue without tracking dislike
+          }
+        }
+
+        // Track swipe state for board sessions
+        if (isBoardSession && currentSession?.id) {
+          try {
+            await BoardCardService.trackSwipeState({
+              sessionId: currentSession.id,
+              experienceId: card.id,
+              userId: user.id,
+              swipeDirection: direction,
+            });
+          } catch (swipeStateError) {
+            console.error("Error tracking swipe state:", swipeStateError);
+            // Continue even if swipe state tracking fails
           }
         }
     } else {

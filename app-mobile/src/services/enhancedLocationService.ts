@@ -1,5 +1,5 @@
-import * as Location from 'expo-location';
-import { Alert } from 'react-native';
+import * as Location from "expo-location";
+import { Alert } from "react-native";
 
 export interface LocationData {
   latitude: number;
@@ -24,25 +24,36 @@ export class EnhancedLocationService {
 
   async requestPermissions(): Promise<boolean> {
     try {
+      // Check if location services are enabled first
+      const isEnabled = await Location.hasServicesEnabledAsync();
+      if (!isEnabled) {
+        // Location services are disabled - return false silently
+        return false;
+      }
+
       // Check if permissions are already granted
-      const { status: currentStatus } = await Location.getForegroundPermissionsAsync();
-      if (currentStatus === 'granted') {
+      const { status: currentStatus } =
+        await Location.getForegroundPermissionsAsync();
+      if (currentStatus === "granted") {
         return true;
       }
 
       // Request foreground permissions
-      const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
-      
-      if (foregroundStatus !== 'granted') {
-        // Don't show alert for now, just log and continue without location
+      const { status: foregroundStatus } =
+        await Location.requestForegroundPermissionsAsync();
+
+      if (foregroundStatus !== "granted") {
+        // Permission denied - return false silently
         return false;
       }
 
       // Request background permissions for better experience (optional)
       try {
-        const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-        
-        if (backgroundStatus !== 'granted') {
+        const { status: backgroundStatus } =
+          await Location.requestBackgroundPermissionsAsync();
+
+        if (backgroundStatus !== "granted") {
+          // Background permission not granted, but foreground is enough
         }
       } catch (backgroundError) {
         // This is not critical, so we continue
@@ -50,17 +61,27 @@ export class EnhancedLocationService {
 
       return true;
     } catch (error) {
-      console.error('Error requesting location permissions:', error);
-      // Don't throw error, just return false and continue without location
+      // Don't log permission errors - they're expected
       return false;
     }
   }
 
   async getCurrentLocation(): Promise<LocationData | null> {
     try {
-      const hasPermission = await this.requestPermissions();
-      if (!hasPermission) return null;
+      // First check if location services are enabled
+      const isEnabled = await Location.hasServicesEnabledAsync();
+      if (!isEnabled) {
+        // Location services disabled - try last known location silently
+        return await this.getLastKnownLocation();
+      }
 
+      const hasPermission = await this.requestPermissions();
+      if (!hasPermission) {
+        // Try to get last known location if permission denied
+        return await this.getLastKnownLocation();
+      }
+
+      // Now safe to get current location
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
         timeInterval: 5000,
@@ -78,8 +99,31 @@ export class EnhancedLocationService {
 
       this.lastLocation = locationData;
       return locationData;
-    } catch (error) {
-      console.error('Error getting current location:', error);
+    } catch (error: any) {
+      // Check if location services are disabled or unavailable
+      const errorMessage = error?.message || String(error) || "";
+      const isLocationServiceError =
+        errorMessage.includes("location services") ||
+        errorMessage.includes("unavailable") ||
+        errorMessage.includes("Location services are not enabled") ||
+        errorMessage.includes("Current location is unavailable");
+
+      if (isLocationServiceError) {
+        // Try to get last known location as fallback (silently)
+        try {
+          const lastKnown = await this.getLastKnownLocation();
+          if (lastKnown) {
+            return lastKnown;
+          }
+        } catch {
+          // Ignore errors when getting last known location
+        }
+        // Return null silently - don't log expected errors
+        return null;
+      }
+
+      // Only log unexpected errors
+      console.error("Error getting current location:", error);
       return null;
     }
   }
@@ -103,17 +147,19 @@ export class EnhancedLocationService {
         timestamp: location.timestamp,
       };
     } catch (error) {
-      console.error('Error getting last known location:', error);
+      console.error("Error getting last known location:", error);
       return this.lastLocation;
     }
   }
 
-  startLocationTracking(options: {
-    accuracy?: Location.Accuracy;
-    timeInterval?: number;
-    distanceInterval?: number;
-    onLocationUpdate?: (update: LocationUpdate) => void;
-  } = {}) {
+  startLocationTracking(
+    options: {
+      accuracy?: Location.Accuracy;
+      timeInterval?: number;
+      distanceInterval?: number;
+      onLocationUpdate?: (update: LocationUpdate) => void;
+    } = {}
+  ) {
     if (this.isTracking) {
       return;
     }
@@ -141,8 +187,9 @@ export class EnhancedLocationService {
           };
 
           // Check if this is a significant change
-          const isSignificantChange = this.isSignificantLocationChange(locationData);
-          
+          const isSignificantChange =
+            this.isSignificantLocationChange(locationData);
+
           const update: LocationUpdate = {
             location: locationData,
             isSignificantChange,
@@ -152,8 +199,8 @@ export class EnhancedLocationService {
           this.lastLocation = locationData;
 
           // Notify listeners
-          this.listeners.forEach(listener => listener(update));
-          
+          this.listeners.forEach((listener) => listener(update));
+
           // Call the provided callback
           options.onLocationUpdate?.(update);
         }
@@ -171,7 +218,7 @@ export class EnhancedLocationService {
 
   addLocationListener(listener: (update: LocationUpdate) => void) {
     this.listeners.push(listener);
-    
+
     // Return unsubscribe function
     return () => {
       const index = this.listeners.indexOf(listener);
@@ -196,22 +243,30 @@ export class EnhancedLocationService {
     return distance > 100;
   }
 
-  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  private calculateDistance(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number {
     const R = 6371e3; // Earth's radius in meters
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
 
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c; // Distance in meters
   }
 
-  async getLocationAddress(latitude: number, longitude: number): Promise<string | null> {
+  async getLocationAddress(
+    latitude: number,
+    longitude: number
+  ): Promise<string | null> {
     try {
       const addresses = await Location.reverseGeocodeAsync({
         latitude,
@@ -226,26 +281,31 @@ export class EnhancedLocationService {
           address.region,
           address.country,
         ].filter(Boolean);
-        
-        return parts.join(', ');
+
+        return parts.join(", ");
       }
 
       return null;
     } catch (error) {
-      console.error('Error getting address:', error);
+      console.error("Error getting address:", error);
       return null;
     }
   }
 
-  async searchNearbyPlaces(query: string, latitude: number, longitude: number, radius: number = 5000) {
+  async searchNearbyPlaces(
+    query: string,
+    latitude: number,
+    longitude: number,
+    radius: number = 5000
+  ) {
     try {
       // This would integrate with a places API like Google Places or Foursquare
       // For now, we'll return a mock implementation
-      
+
       // In a real implementation, you would call an external API here
       return [];
     } catch (error) {
-      console.error('Error searching nearby places:', error);
+      console.error("Error searching nearby places:", error);
       return [];
     }
   }

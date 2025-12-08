@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Text, View, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Friend, Conversation, Message } from '../services/connectionsService';
 import { ConnectionsService } from '../services/connectionsService';
-import FriendsTab from './connections/FriendsTab';
+import CollaborationFriendsTab from './collaboration/CollaborationFriendsTab';
+import { useFriends } from '../hooks/useFriends';
 import MessagesTab from './connections/MessagesTab';
 import FriendSelectionModal from './FriendSelectionModal';
 import AddFriendModal from './AddFriendModal';
@@ -50,14 +51,27 @@ export default function ConnectionsPageRefactored({
   const [showQRCode, setShowQRCode] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
   
+  // Use useFriends hook for friends data
+  const { friends: dbFriends, fetchFriends, friendRequests, loadFriendRequests, removeFriend } = useFriends();
+  
   // Real data state
-  const [friends, setFriends] = useState<Friend[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Fetch real data from Supabase
+  // Transform database friends to match CollaborationFriendsTab interface
+  const transformedFriends = useMemo(() => {
+    return dbFriends.map(friend => ({
+      id: friend.friend_user_id || friend.id,
+      name: friend.display_name || `${friend.first_name || ''} ${friend.last_name || ''}`.trim() || friend.username || 'Unknown',
+      username: friend.username,
+      avatar: friend.avatar_url,
+      status: 'offline' as const, // Default to offline, can be enhanced with presence later
+      mutualFriends: 0, // Can be calculated later if needed
+    }));
+  }, [dbFriends]);
+
+  // Fetch conversations and load friend requests
   useEffect(() => {
     const fetchData = async () => {
       if (!user?.id) {
@@ -69,21 +83,14 @@ export default function ConnectionsPageRefactored({
         setLoading(true);
         setError(null);
 
-        // Fetch friends, conversations, and friend requests in parallel
-        const [friendsData, conversationsData, requestsData] = await Promise.all([
-          ConnectionsService.getFriends(user.id),
+        // Fetch conversations and friend requests in parallel
+        const [conversationsData] = await Promise.all([
           ConnectionsService.getConversations(user.id),
-          ConnectionsService.getFriendRequests(user.id)
         ]);
 
-        setFriends(friendsData);
         setConversations(conversationsData);
-        setFriendRequests(requestsData);
-
-          friends: friendsData.length,
-          conversations: conversationsData.length,
-          requests: requestsData.length
-        });
+        await loadFriendRequests();
+        await fetchFriends();
       } catch (err) {
         console.error('Error fetching connections data:', err);
         setError('Failed to load connections data');
@@ -93,7 +100,7 @@ export default function ConnectionsPageRefactored({
     };
 
     fetchData();
-  }, [user?.id]);
+  }, [user?.id, loadFriendRequests, fetchFriends]);
 
   // Messaging state
   const [showFriendSelection, setShowFriendSelection] = useState(false);
@@ -108,9 +115,12 @@ export default function ConnectionsPageRefactored({
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedUserToReport, setSelectedUserToReport] = useState<Friend | null>(null);
 
-  // Use real data from Supabase, fallback to props for backwards compatibility
-  const currentFriends = friends.length > 0 ? friends : friendsList;
+  // Use transformed friends from useFriends hook
+  const currentFriends = transformedFriends;
   const currentConversations = conversations;
+  
+  // Get friend requests count
+  const friendRequestsCount = friendRequests.filter(req => req.type === 'incoming' && req.status === 'pending').length;
 
   const handleCopyInvite = () => {
     // In React Native, you would use Clipboard from @react-native-clipboard/clipboard
@@ -232,12 +242,24 @@ export default function ConnectionsPageRefactored({
     onShareSavedCard?.(friend);
   };
 
-  const handleRemoveFriend = (friend: Friend) => {
-    onRemoveFriend?.(friend);
+  const handleRemoveFriend = async (friend: Friend) => {
+    try {
+      await removeFriend(friend.id);
+      await fetchFriends(); // Reload friends after removal
+      onRemoveFriend?.(friend);
+    } catch (error) {
+      console.error('Error removing friend:', error);
+    }
   };
 
-  const handleBlockUser = (friend: Friend) => {
-    onBlockUser?.(friend);
+  const handleBlockUser = async (friend: Friend) => {
+    try {
+      // Block user using useFriends hook if available, otherwise use prop handler
+      onBlockUser?.(friend);
+      await fetchFriends(); // Reload friends after blocking
+    } catch (error) {
+      console.error('Error blocking user:', error);
+    }
   };
 
   const handleReportUser = (friend: Friend) => {
@@ -266,13 +288,8 @@ export default function ConnectionsPageRefactored({
   // Loading state
   if (loading) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Connections</Text>
-        </View>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading connections...</Text>
-        </View>
+      <View style={styles.fullscreenLoader}>
+        <ActivityIndicator size="large" color="#eb7825" />
       </View>
     );
   }
@@ -319,7 +336,11 @@ export default function ConnectionsPageRefactored({
                 ]}
               >
                 <View style={styles.tabContent}>
-                  <Ionicons name="people" size={20} color="#6b7280" />
+                  <Ionicons 
+                    name="people" 
+                    size={20} 
+                    color={activeTab === 'friends' ? '#FFFFFF' : '#6B7280'} 
+                  />
                   <Text style={[
                     styles.tabText,
                     activeTab === 'friends' && styles.activeTabText
@@ -330,20 +351,25 @@ export default function ConnectionsPageRefactored({
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setActiveTab('messages')}
-                style={[
-                  styles.tab,
-                  activeTab === 'messages' && styles.activeTab
-                ]}
+                style={styles.tab}
               >
                 <View style={styles.tabContent}>
-                  <Ionicons name="chatbubble" size={20} color="#6b7280" />
-                  <Text style={[
-                    styles.tabText,
-                    activeTab === 'messages' && styles.activeTabText
-                  ]}>
+                  <Ionicons 
+                    name="chatbubble" 
+                    size={20} 
+                    color="#6B7280" 
+                  />
+                  <Text style={styles.tabText}>
                     Messages
                   </Text>
                 </View>
+                {conversations.some(conv => conv.unreadCount > 0) && (
+                  <View style={styles.notificationBadge}>
+                    <Text style={styles.notificationBadgeText}>
+                      {conversations.reduce((sum, conv) => sum + conv.unreadCount, 0)}
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -351,7 +377,7 @@ export default function ConnectionsPageRefactored({
           {/* Tab Content */}
           <View style={styles.tabContentContainer}>
             {activeTab === 'friends' ? (
-              <FriendsTab
+              <CollaborationFriendsTab
                 friends={currentFriends}
                 onSelectFriend={handleSelectFriend}
                 onSendCollabInvite={handleSendCollabInvite}
@@ -366,7 +392,7 @@ export default function ConnectionsPageRefactored({
                 onCopyInvite={handleCopyInvite}
                 showQRCode={showQRCode}
                 inviteCopied={inviteCopied}
-                friendRequestsCount={friendRequests.length}
+                friendRequestsCount={friendRequestsCount}
               />
             ) : (
               <MessagesTab
@@ -402,13 +428,19 @@ export default function ConnectionsPageRefactored({
 
       <AddFriendModal
         isOpen={showAddFriendModal}
-        onClose={() => setShowAddFriendModal(false)}
+        onClose={() => {
+          setShowAddFriendModal(false);
+          fetchFriends(); // Reload friends after adding
+        }}
       />
 
       <FriendRequestsModal
         isOpen={showFriendRequests}
-        onClose={() => setShowFriendRequests(false)}
-        requests={friendRequests}
+        onClose={() => {
+          setShowFriendRequests(false);
+          fetchFriends(); // Reload friends after accepting/declining
+          loadFriendRequests(); // Reload friend requests
+        }}
       />
 
       <AddToBoardModal
@@ -466,9 +498,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
+    position: 'relative',
   },
   activeTab: {
-    backgroundColor: 'white',
+    backgroundColor: '#eb7825',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -480,28 +513,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    position: 'relative',
   },
   tabText: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#6b7280',
+    color: '#6B7280',
   },
   activeTabText: {
-    color: '#eb7825',
+    color: '#FFFFFF',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  notificationBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   tabContentContainer: {
     flex: 1,
   },
-  loadingContainer: {
+  fullscreenLoader: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#6b7280',
-    textAlign: 'center',
+    backgroundColor: '#FFFFFF',
   },
   errorContainer: {
     flex: 1,

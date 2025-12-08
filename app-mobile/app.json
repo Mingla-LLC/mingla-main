@@ -54,6 +54,7 @@
       "expo-notifications",
       "expo-camera",
       "expo-calendar",
+      "expo-apple-authentication",
       [
         "@react-native-google-signin/google-signin",
         {
