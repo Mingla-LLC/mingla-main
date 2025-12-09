@@ -158,9 +158,8 @@ export default function CollaborationPreferences({
       if (dbPreferences.budget_max !== undefined) {
         setBudgetMax(dbPreferences.budget_max);
       }
-      if (dbPreferences.group_size !== undefined) {
-        // You might need to map this to people_count or another field
-      }
+      // Note: group_size column doesn't exist in board_session_preferences table
+      // Group size is determined by the number of participants in the session
       if (dbPreferences.travel_mode) {
         setTravelMode(dbPreferences.travel_mode);
       }
@@ -178,10 +177,35 @@ export default function CollaborationPreferences({
         const date = new Date(dbPreferences.datetime_pref);
         setSelectedDate(date);
       }
+      // Load location preferences from location column
+      if (dbPreferences.location) {
+        const savedLocation = dbPreferences.location;
+        setSearchLocation(savedLocation);
+        
+        // Determine if it's GPS (coordinates format) or search (city name)
+        // GPS coordinates typically look like "37.7749, -122.4194"
+        const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(savedLocation);
+        if (isCoordinates) {
+          // It's coordinates, likely from GPS
+          setUseLocation("gps");
+        } else {
+          // It's a city name or address, likely from search
+          setUseLocation("search");
+        }
+      }
     }
   }, [isOpen, dbPreferences]);
 
   if (!isOpen) return null;
+
+  // Show loading spinner when fetching preferences
+  if (loadingPreferences) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#eb7825" />
+      </View>
+    );
+  }
 
   const handleIntentToggle = (intentId: string) => {
     setSelectedIntents((prev) =>
@@ -254,10 +278,32 @@ export default function CollaborationPreferences({
     setIsRequestingLocation(true);
     try {
       const { locationService } = await import("../services/locationService");
+      
+      // Request permissions first
+      const hasPermission = await locationService.requestPermissions();
+      if (!hasPermission) {
+        setIsRequestingLocation(false);
+        return;
+      }
+
+      // Get current location
       const location = await locationService.getCurrentLocation();
       if (location) {
-        setUseLocation("gps");
-        setSearchLocation("");
+        // Reverse geocode to get city name
+        const cityName = await locationService.reverseGeocode(
+          location.latitude,
+          location.longitude
+        );
+        if (cityName) {
+          setSearchLocation(cityName);
+          setUseLocation("gps");
+        } else {
+          // If reverse geocode fails, use coordinates as fallback
+          setSearchLocation(
+            `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`
+          );
+          setUseLocation("gps");
+        }
       }
     } catch (error) {
       console.error("Error getting location:", error);
@@ -270,18 +316,23 @@ export default function CollaborationPreferences({
     setIsSaving(true);
     try {
       // Transform preferences to database format
-      const dbPreferences = {
+      const dbPreferences: any = {
         categories: selectedCategories,
         budget_min: typeof budgetMin === "number" ? budgetMin : 0,
         budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
-        group_size: selectedIntents.length > 0 ? selectedIntents.length : undefined, // Or map from people_count
+        // Note: group_size column doesn't exist in board_session_preferences table
+        // Group size is determined by the number of participants in the session
         travel_mode: travelMode,
         travel_constraint_type: constraintType,
         travel_constraint_value: typeof constraintValue === "number" ? constraintValue : 20,
         time_of_day: selectedTimeSlot || null,
         datetime_pref: selectedDate ? selectedDate.toISOString() : null,
-        // Add other fields as needed
       };
+
+      // Add location if searchLocation is provided (for both GPS and search)
+      if (searchLocation) {
+        dbPreferences.location = searchLocation;
+      }
 
       // Save to database using useBoardSession hook
       await updatePreferences(dbPreferences);
@@ -913,6 +964,17 @@ export default function CollaborationPreferences({
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "white",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  },
   container: {
     flex: 1,
     backgroundColor: "#ffffff",

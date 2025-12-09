@@ -179,7 +179,8 @@ export const CreateSessionModal: React.FC = () => {
               categories: preferences.categories || [],
               budget_min: preferences.budgetMin,
               budget_max: preferences.budgetMax,
-              group_size: preferences.groupSize,
+              // Note: group_size column doesn't exist in board_session_preferences table
+              // Group size is determined by the number of participants in the session
               experience_types: preferences.experienceTypes || [],
             });
         }

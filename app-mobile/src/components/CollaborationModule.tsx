@@ -560,6 +560,26 @@ export default function CollaborationModule({
         console.error("Error adding participant:", participantError);
       }
 
+      // Create preference record for the accepting user
+      const { error: preferencesError } = await supabase
+        .from("board_session_preferences")
+        .insert({
+          session_id: invite.session_id,
+          user_id: user.id,
+          budget_min: 0,
+          budget_max: 1000,
+          categories: [],
+          travel_mode: "walking",
+          travel_constraint_type: "time",
+          travel_constraint_value: 30,
+        });
+
+      if (preferencesError && preferencesError.code !== "23505") {
+        // 23505 is unique violation - preferences might already exist, which is fine
+        console.error("Error creating preferences for accepting user:", preferencesError);
+        // Don't fail - preferences can be created later when user opens preferences sheet
+      }
+
       // Call edge function to notify inviter
       try {
         const { data: notifyData, error: notifyError } =

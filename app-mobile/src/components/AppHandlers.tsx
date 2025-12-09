@@ -92,7 +92,7 @@ export function useAppHandlers(state: any) {
 
     if (sessionId) {
       // Transform preferences to database format
-      const dbPreferences = {
+      const dbPreferences: any = {
         categories: preferences.selectedCategories || [],
         budget_min: typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
         budget_max: typeof preferences.budgetMax === "number" ? preferences.budgetMax : 1000,
@@ -103,14 +103,20 @@ export function useAppHandlers(state: any) {
         datetime_pref: preferences.selectedDate || null,
       };
 
+      // Add location if searchLocation is provided (for both GPS and search)
+      if (preferences.searchLocation) {
+        dbPreferences.location = preferences.searchLocation;
+      }
+
       // Save to database
       const { error } = await supabase
         .from("board_session_preferences")
         .upsert({
           session_id: sessionId,
+          user_id: user.id,
           ...dbPreferences,
         }, {
-          onConflict: "session_id",
+          onConflict: "session_id,user_id",
         });
 
       if (error) {

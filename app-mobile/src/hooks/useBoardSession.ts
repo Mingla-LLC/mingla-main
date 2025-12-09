@@ -37,7 +37,7 @@ export const useBoardSession = (sessionId?: string) => {
 
   // Load session data
   const loadSession = useCallback(async (id: string) => {
-    if (!id) return;
+    if (!id || !user) return;
 
     setLoading(true);
     setError(null);
@@ -52,11 +52,12 @@ export const useBoardSession = (sessionId?: string) => {
 
       if (sessionError) throw sessionError;
 
-      // Load preferences
+      // Load preferences for the current user
       const { data: prefsData, error: prefsError } = await supabase
         .from('board_session_preferences')
         .select('*')
         .eq('session_id', id)
+        .eq('user_id', user?.id || '')
         .single();
 
       if (prefsError && prefsError.code !== 'PGRST116') {
@@ -97,7 +98,7 @@ export const useBoardSession = (sessionId?: string) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   // Update preferences
   const updatePreferences = useCallback(async (newPreferences: Partial<BoardSessionPreferences>) => {
@@ -108,9 +109,10 @@ export const useBoardSession = (sessionId?: string) => {
         .from('board_session_preferences')
         .upsert({
           session_id: sessionId,
+          user_id: user.id,
           ...newPreferences,
         }, {
-          onConflict: 'session_id',
+          onConflict: 'session_id,user_id',
         });
 
       if (error) throw error;
@@ -173,12 +175,12 @@ export const useBoardSession = (sessionId?: string) => {
     };
   }, [sessionId]);
 
-  // Load session on mount or when sessionId changes
+  // Load session on mount or when sessionId or user changes
   useEffect(() => {
-    if (sessionId) {
+    if (sessionId && user) {
       loadSession(sessionId);
     }
-  }, [sessionId, loadSession]);
+  }, [sessionId, user?.id, loadSession]);
 
   return {
     session,

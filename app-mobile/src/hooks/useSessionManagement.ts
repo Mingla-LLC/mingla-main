@@ -285,6 +285,25 @@ export const useSessionManagement = () => {
         throw creatorParticipantError;
       }
 
+      // Create preference record for the creator
+      const { error: preferencesError } = await supabase
+        .from('board_session_preferences')
+        .insert({
+          session_id: sessionData.id,
+          user_id: user.id,
+          budget_min: 0,
+          budget_max: 1000,
+          categories: [],
+          travel_mode: 'walking',
+          travel_constraint_type: 'time',
+          travel_constraint_value: 30,
+        });
+
+      if (preferencesError) {
+        console.error('Error creating preferences for creator:', preferencesError);
+        // Don't throw - preferences can be created later when user opens preferences sheet
+      }
+
       // Process participants
       const participantPromises = participants.map(async (username) => {
         // Find user by username
@@ -469,6 +488,26 @@ export const useSessionManagement = () => {
           console.error('❌ Error creating participant:', participantError);
           return;
         }
+      }
+
+      // Create preference record for the accepting user
+      const { error: preferencesError } = await supabase
+        .from('board_session_preferences')
+        .insert({
+          session_id: invite.sessionId,
+          user_id: user.id,
+          budget_min: 0,
+          budget_max: 1000,
+          categories: [],
+          travel_mode: 'walking',
+          travel_constraint_type: 'time',
+          travel_constraint_value: 30,
+        });
+
+      if (preferencesError && preferencesError.code !== '23505') {
+        // 23505 is unique violation - preferences might already exist, which is fine
+        console.error('❌ Error creating preferences for accepting user:', preferencesError);
+        // Don't return - this is not critical, preferences can be created later
       }
 
 
