@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Conversation } from '../../data/mockConnections';
+import { ImageWithFallback } from '../figma/ImageWithFallback';
 
 interface ConversationCardProps {
   conversation: Conversation;
@@ -26,11 +27,18 @@ export default function ConversationCard({
     >
       <View style={styles.conversationContent}>
         <View style={styles.avatarContainer}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {conversation.name.split(' ').map(n => n[0]).join('')}
-            </Text>
-          </View>
+          {conversation.avatar ? (
+            <ImageWithFallback
+              source={{ uri: conversation.avatar }}
+              style={styles.avatar}
+            />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {conversation.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)}
+              </Text>
+            </View>
+          )}
           {conversation.isOnline && (
             <View style={styles.onlineDot} />
           )}
@@ -82,10 +90,11 @@ const styles = StyleSheet.create({
   avatar: {
     width: 48,
     height: 48,
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#7c3aed',
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   avatarText: {
     color: 'white',

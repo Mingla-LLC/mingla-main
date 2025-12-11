@@ -376,13 +376,15 @@ export default function CollaborationModule({
     }
   };
 
-  const loadUserSessions = async () => {
+  const loadUserSessions = async (showLoader: boolean = true) => {
     if (!user) {
       console.log("No user, skipping session load");
       return;
     }
 
-    setLoadingSessions(true);
+    if (showLoader) {
+      setLoadingSessions(true);
+    }
     try {
       console.log("Loading user sessions for user:", user.id);
 
@@ -396,7 +398,9 @@ export default function CollaborationModule({
       if (participationError) {
         console.error("Error loading participations:", participationError);
         setUserSessions([]);
-        setLoadingSessions(false);
+        if (showLoader) {
+          setLoadingSessions(false);
+        }
         return;
       }
 
@@ -404,7 +408,9 @@ export default function CollaborationModule({
 
       if (sessionIds.length === 0) {
         setUserSessions([]);
-        setLoadingSessions(false);
+        if (showLoader) {
+          setLoadingSessions(false);
+        }
         return;
       }
 
@@ -419,7 +425,9 @@ export default function CollaborationModule({
       if (sessionsError) {
         console.error("Error loading sessions:", sessionsError);
         setUserSessions([]);
-        setLoadingSessions(false);
+        if (showLoader) {
+          setLoadingSessions(false);
+        }
         return;
       }
 
@@ -495,7 +503,9 @@ export default function CollaborationModule({
     } catch (error) {
       console.error("Error loading sessions:", error);
     } finally {
-      setLoadingSessions(false);
+      if (showLoader) {
+        setLoadingSessions(false);
+      }
     }
   };
 
@@ -730,12 +740,16 @@ export default function CollaborationModule({
       const result = await SessionService.switchToSession(user.id, sessionId);
 
       if (result.success && result.session) {
-        // Update mode with session name
-        onModeChange(result.session.name);
-        // Reload sessions to reflect the change
-        await loadUserSessions();
+        // Mode is already updated optimistically in SessionsTab
+        // Close modal immediately so user sees "Active" state
         onClose();
+        // Reload sessions in background without showing loader
+        loadUserSessions(false).catch((error) => {
+          console.error("Error reloading sessions:", error);
+        });
       } else {
+        // Revert mode change on error
+        onModeChange("solo");
         // Show error to user
         const { Alert } = await import("react-native");
         Alert.alert(
@@ -745,6 +759,8 @@ export default function CollaborationModule({
       }
     } catch (error: any) {
       console.error("Error joining session:", error);
+      // Revert mode change on error
+      onModeChange("solo");
       const { Alert } = await import("react-native");
       Alert.alert(
         "Error",

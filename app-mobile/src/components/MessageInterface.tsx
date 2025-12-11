@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView, Image, Alert } from 'react-native';
+import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView, Image, Alert, KeyboardAvoidingView, Platform, Keyboard, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import CollaborationModule from './CollaborationModule';
@@ -75,6 +75,41 @@ export default function MessageInterface({
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [selectedBoards, setSelectedBoards] = useState<string[]>([]);
   const messagesEndRef = useRef<ScrollView>(null);
+  const keyboardHeight = useRef(new Animated.Value(0)).current;
+
+  // Handle keyboard show/hide
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (event) => {
+        Animated.timing(keyboardHeight, {
+          toValue: event.endCoordinates.height,
+          duration: event.duration || 250,
+          useNativeDriver: false,
+        }).start();
+        // Scroll to bottom when keyboard appears
+        setTimeout(() => {
+          messagesEndRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        Animated.timing(keyboardHeight, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, [keyboardHeight]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -400,7 +435,13 @@ export default function MessageInterface({
       </View>
 
       {/* Messages */}
-      <ScrollView style={styles.messagesContainer} ref={messagesEndRef}>
+      <ScrollView 
+          style={styles.messagesContainer} 
+          ref={messagesEndRef}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardDismissMode="interactive"
+        >
         {messages.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyStateIcon}>
@@ -414,46 +455,61 @@ export default function MessageInterface({
             {messages.map(renderMessage)}
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
 
-      {/* File Preview */}
-      {selectedFile && (
-        <View style={styles.filePreview}>
-          <View style={styles.filePreviewContent}>
-            {previewUrl && selectedFile.type?.startsWith('image/') && (
-              <ImageWithFallback
-                source={{ uri: previewUrl }}
-                style={styles.filePreviewImage}
-              />
-            )}
-            {previewUrl && selectedFile.type?.startsWith('video/') && (
-              <View style={styles.filePreviewVideo}>
-                <Ionicons name="play-circle" size={24} color="#eb7825" />
+        {/* File Preview */}
+        {selectedFile && (
+          <View style={styles.filePreview}>
+            <View style={styles.filePreviewContent}>
+              {previewUrl && selectedFile.type?.startsWith('image/') && (
+                <ImageWithFallback
+                  source={{ uri: previewUrl }}
+                  style={styles.filePreviewImage}
+                />
+              )}
+              {previewUrl && selectedFile.type?.startsWith('video/') && (
+                <View style={styles.filePreviewVideo}>
+                  <Ionicons name="play-circle" size={24} color="#eb7825" />
+                </View>
+              )}
+              {!previewUrl && (
+                <View style={styles.filePreviewIcon}>
+                  <Ionicons name="document-text" size={24} color="#eb7825" />
+                </View>
+              )}
+              
+              <View style={styles.filePreviewInfo}>
+                <Text style={styles.filePreviewName}>{selectedFile.name}</Text>
+                <Text style={styles.filePreviewSize}>{formatFileSize(selectedFile.size)}</Text>
               </View>
-            )}
-            {!previewUrl && (
-              <View style={styles.filePreviewIcon}>
-                <Ionicons name="document-text" size={24} color="#eb7825" />
-              </View>
-            )}
-            
-            <View style={styles.filePreviewInfo}>
-              <Text style={styles.filePreviewName}>{selectedFile.name}</Text>
-              <Text style={styles.filePreviewSize}>{formatFileSize(selectedFile.size)}</Text>
+              
+              <TouchableOpacity
+                onPress={handleRemoveFile}
+                style={styles.removeFileButton}
+              >
+                <Ionicons name="close" size={12} color="#6b7280" />
+              </TouchableOpacity>
             </View>
-            
-            <TouchableOpacity
-              onPress={handleRemoveFile}
-              style={styles.removeFileButton}
-            >
-              <Ionicons name="close" size={12} color="#6b7280" />
-            </TouchableOpacity>
           </View>
-        </View>
-      )}
+        )}
 
-      {/* Input Area */}
-      <View style={styles.inputArea}>
+        {/* Input Area */}
+        <Animated.View 
+          style={[
+            styles.inputArea,
+            {
+              paddingBottom: keyboardHeight.interpolate({
+                inputRange: [0, 400],
+                outputRange: [12, 0],
+              }),
+              marginBottom: keyboardHeight.interpolate({
+                inputRange: [0, 16, 400],
+                outputRange: [0, 0, 384],
+                extrapolate: 'clamp',
+              }),
+            }
+          ]}
+        >
         <View style={styles.inputContainer}>
           {/* Attachment Menu */}
           <View style={styles.attachmentContainer}>
@@ -514,8 +570,9 @@ export default function MessageInterface({
               value={newMessage}
               onChangeText={setNewMessage}
               placeholder={selectedFile ? "Add a caption..." : "Type a message..."}
+              placeholderTextColor="#9ca3af"
               style={styles.messageInput}
-              multiline
+              multiline={false}
               maxLength={1000}
             />
           </View>
@@ -526,10 +583,10 @@ export default function MessageInterface({
             disabled={!newMessage.trim() && !selectedFile}
             style={[styles.sendButton, (!newMessage.trim() && !selectedFile) && styles.sendButtonDisabled]}
           >
-            <Ionicons name="send" size={20} color="white" />
+            <Ionicons name="paper-plane" size={20} color="white" />
           </TouchableOpacity>
         </View>
-      </View>
+      </Animated.View>
 
       {/* Hidden File Input - Not supported in React Native */}
       {/* File selection will be handled through TouchableOpacity and native file picker */}
@@ -980,13 +1037,15 @@ const styles = StyleSheet.create({
   inputArea: {
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
     backgroundColor: 'white',
   },
   inputContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 12,
+    alignItems: 'center',
+    gap: 8,
   },
   attachmentContainer: {
     position: 'relative',
@@ -1044,14 +1103,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f4f6',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 44,
+    paddingVertical: 10,
+    minHeight: 40,
     justifyContent: 'center',
   },
   messageInput: {
     fontSize: 16,
     color: '#111827',
-    maxHeight: 80,
+    padding: 0,
+    margin: 0,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   sendButton: {
     width: 40,

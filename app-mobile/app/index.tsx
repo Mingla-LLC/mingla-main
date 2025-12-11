@@ -478,7 +478,7 @@ export default function App() {
   // Show sign in page if user is not authenticated
   // Also show sign in if authenticated but profile hasn't loaded yet (to avoid flash)
   if (!isAuthenticated || (user && !profile && !isLoadingAuth)) {
-    console.log("User not authenticated - showing SignInPage");
+  
     return (
       <ErrorBoundary>
         <SignInPage

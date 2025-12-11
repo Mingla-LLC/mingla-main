@@ -343,9 +343,39 @@ const SessionsTab = ({
   isLoading = false
 }: SessionsTabProps) => {
   const isSoloMode = currentMode === 'solo';
+  const [switchingSessionId, setSwitchingSessionId] = React.useState<string | null>(null);
   
   const isSessionActive = (session: CollaborationSession) => {
     return currentMode === session.id || currentMode === session.name;
+  };
+  
+  const handleSwitchSession = async (session: CollaborationSession) => {
+    if (isSessionActive(session)) {
+      return; // Already active, don't switch
+    }
+    
+    setSwitchingSessionId(session.id);
+    try {
+      if (onJoinSession) {
+        // Optimistically update mode immediately so button shows "Active" right away
+        onModeChange(session.name);
+        await onJoinSession(session.id, session.name);
+      } else {
+        // Fallback to mode change if handler not provided
+        onModeChange(session.name);
+        if (onNavigateToBoard) {
+          onNavigateToBoard(session.id);
+        }
+      }
+    } catch (error) {
+      // If error, revert mode change
+      console.error("Error switching session:", error);
+    } finally {
+      // Clear loading state after a brief delay to show "Active" state
+      setTimeout(() => {
+        setSwitchingSessionId(null);
+      }, 100);
+    }
   };
 
   // Show loading spinner when sessions are loading
@@ -519,32 +549,35 @@ const SessionsTab = ({
                       styles.switchButton,
                       isActive && styles.switchButtonActive
                     ]}
-                    onPress={async () => {
-                      if (!isActive) {
-                        // Use the proper session switching handler
-                        if (onJoinSession) {
-                          await onJoinSession(session.id, session.name);
-                        } else {
-                          // Fallback to mode change if handler not provided
-                          onModeChange(session.name);
-                          if (onNavigateToBoard) {
-                            onNavigateToBoard(session.id);
-                          }
-                        }
-                      }
-                    }}
+                    onPress={() => handleSwitchSession(session)}
+                    disabled={isActive || switchingSessionId === session.id}
+                    activeOpacity={0.7}
                   >
-                    <Ionicons 
-                      name="flash" 
-                      size={16} 
-                      color={isActive ? "#FFFFFF" : "#6B7280"} 
-                    />
-                    <Text style={[
-                      styles.switchButtonText,
-                      isActive && styles.switchButtonTextActive
-                    ]}>
-                      {isActive ? 'Active' : 'Switch to this session'}
-                    </Text>
+                    {switchingSessionId === session.id && !isActive ? (
+                      <>
+                        <ActivityIndicator 
+                          size="small" 
+                          color="#6B7280" 
+                        />
+                        <Text style={styles.switchButtonText}>
+                          Switching...
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons 
+                          name="flash" 
+                          size={16} 
+                          color={isActive ? "#FFFFFF" : "#6B7280"} 
+                        />
+                        <Text style={[
+                          styles.switchButtonText,
+                          isActive && styles.switchButtonTextActive
+                        ]}>
+                          {isActive ? 'Active' : 'Switch to this session'}
+                        </Text>
+                      </>
+                    )}
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.actionButton}

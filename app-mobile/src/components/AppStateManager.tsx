@@ -179,7 +179,17 @@ export function useAppState() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
   const [showCoachMap, setShowCoachMap] = useState(false);
-  const [currentMode, setCurrentMode] = useState<"solo" | string>("solo");
+  // Load currentMode from AsyncStorage on initialization
+  const [currentMode, setCurrentModeState] = useState<"solo" | string>("solo");
+  
+  // Wrapper to persist currentMode changes
+  const setCurrentMode = (mode: "solo" | string) => {
+    setCurrentModeState(mode);
+    // Persist asynchronously without blocking
+    safeAsyncStorageSet("mingla_current_mode", mode).catch((error) => {
+      console.error("Error persisting current mode:", error);
+    });
+  };
   const [preSelectedFriend, setPreSelectedFriend] = useState<any>(null);
   const [activeSessionData, setActiveSessionData] = useState<any>(null);
 
@@ -301,6 +311,26 @@ export function useAppState() {
     }
   }, [user, profile]);
 
+  // Load currentMode from AsyncStorage on mount
+  useEffect(() => {
+    const loadCurrentMode = async () => {
+      try {
+        const storedMode = await AsyncStorage.getItem("mingla_current_mode");
+        if (storedMode) {
+          const parsedMode = JSON.parse(storedMode);
+          // Only set if it's a valid value
+          if (parsedMode === "solo" || (typeof parsedMode === "string" && parsedMode.length > 0)) {
+            setCurrentModeState(parsedMode);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading current mode from storage:", error);
+      }
+    };
+
+    loadCurrentMode();
+  }, []);
+
   // Load and restore active session on user login
   useEffect(() => {
     const loadActiveSession = async () => {
@@ -311,6 +341,18 @@ export function useAppState() {
       }
 
       try {
+        // First, try to load from AsyncStorage (user preference)
+        const storedMode = await AsyncStorage.getItem("mingla_current_mode");
+        if (storedMode) {
+          const parsedMode = JSON.parse(storedMode);
+          // Only restore if it's a valid session or solo mode
+          if (parsedMode === "solo" || (typeof parsedMode === "string" && parsedMode.length > 0)) {
+            setCurrentModeState(parsedMode);
+            return; // Use stored preference, don't override with database session
+          }
+        }
+
+        // If no stored preference, check database for active session
         const sessionServiceModule = await import("../services/sessionService");
         const { SessionService } = sessionServiceModule;
         const activeSession = await SessionService.validateActiveSession(user.id);

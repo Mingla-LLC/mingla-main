@@ -149,7 +149,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     width: '100%',
     maxWidth: 400,
-    maxHeight: '80%',
+    height: '85%',
+    maxHeight: '85%',
     flexDirection: 'column',
   },
   header: {
@@ -207,6 +208,7 @@ const styles = StyleSheet.create({
   friendsList: {
     flex: 1,
     padding: 16,
+    minHeight: 0, // Important for ScrollView to work properly
   },
   emptyState: {
     alignItems: 'center',
