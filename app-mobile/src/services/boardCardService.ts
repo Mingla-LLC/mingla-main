@@ -27,32 +27,56 @@ export class BoardCardService {
     userId,
   }: SaveCardToBoardParams): Promise<{ data: any; error: any }> {
     try {
-      // Check if card already exists in this session
-      const { data: existingCard, error: checkError } = await supabase
+      // Check if card already exists in this session by checking card_data JSONB
+      // Cards are identified by their ID stored in card_data->>'id'
+      const { data: existingCards, error: checkError } = await supabase
         .from('board_saved_cards')
         .select('id')
         .eq('session_id', sessionId)
-        .eq('saved_card_id', experienceId)
-        .single();
+        .eq('card_data->>id', experienceId);
 
       if (checkError && checkError.code !== 'PGRST116') {
-        // PGRST116 is "not found" - that's fine
-        throw checkError;
+        // PGRST116 is "not found" - that's fine, but other errors should be thrown
+        if (checkError.code !== '42703') { // 42703 is column doesn't exist, try alternative
+          throw checkError;
+        }
       }
 
-      if (existingCard) {
+      // If column doesn't exist error, try alternative check
+      if (checkError?.code === '42703' || (!checkError && existingCards && existingCards.length > 0)) {
+        // Try checking all cards and filtering in memory
+        const { data: allCards } = await supabase
+          .from('board_saved_cards')
+          .select('id, card_data')
+          .eq('session_id', sessionId);
+
+        const existing = allCards?.find((card: any) => 
+          card.card_data?.id === experienceId || card.card_data?.experience_id === experienceId
+        );
+
+        if (existing) {
+          return { data: existing, error: null };
+        }
+      } else if (existingCards && existingCards.length > 0) {
         // Card already saved, return existing
-        return { data: existingCard, error: null };
+        return { data: existingCards[0], error: null };
       }
 
       // Insert new saved card
+      // Store the full card data in card_data JSONB
+      // experience_id can be NULL if the card doesn't exist in experiences table yet
       const { data, error } = await supabase
         .from('board_saved_cards')
         .insert({
           session_id: sessionId,
-          saved_card_id: experienceId,
+          experience_id: null, // Can be NULL if card doesn't exist in experiences table
+          saved_experience_id: null, // Can be NULL if not from saved_experiences
+          card_data: {
+            ...experienceData,
+            id: experienceId, // Ensure ID is stored in card_data
+            experience_id: experienceId, // Also store as experience_id in JSONB for easy lookup
+          },
           saved_by: userId,
-          experience_data: experienceData,
         })
         .select()
         .single();
@@ -63,10 +87,10 @@ export class BoardCardService {
       realtimeService.broadcastCardSave(sessionId, {
         id: data.id,
         session_id: sessionId,
-        saved_card_id: experienceId,
+        experience_id: experienceId,
         saved_by: userId,
         saved_at: data.saved_at,
-        experience_data: experienceData,
+        card_data: data.card_data,
       });
 
       return { data, error: null };

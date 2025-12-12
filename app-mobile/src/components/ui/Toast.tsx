@@ -92,6 +92,10 @@ export const Toast: React.FC<ToastProps> = ({
   const getColor = () => {
     switch (type) {
       case 'success':
+        // Check if message is about board save - use orange
+        if (message.includes('Added to Board!')) {
+          return '#EB7825';
+        }
         return '#10B981';
       case 'error':
         return '#EF4444';

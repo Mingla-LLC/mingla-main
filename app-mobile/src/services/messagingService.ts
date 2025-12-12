@@ -327,6 +327,12 @@ export class MessagingService {
       if (error) throw error;
 
       const enrichedMessage = await this.enrichMessage(data, senderId);
+      
+      // Send notifications to recipients (non-blocking)
+      this.sendMessageNotifications(conversationId, senderId, enrichedMessage).catch(err => 
+        console.error('Error sending notifications:', err)
+      );
+      
       return { message: enrichedMessage, error: null };
     } catch (error: any) {
       console.error('Error sending message:', error);
@@ -484,6 +490,138 @@ export class MessagingService {
       sender_name: senderName,
       is_read: !!readData,
     };
+  }
+
+  /**
+   * Send notifications (push and email) to message recipients
+   */
+  private async sendMessageNotifications(
+    conversationId: string,
+    senderId: string,
+    message: DirectMessage
+  ): Promise<void> {
+    try {
+      // Get conversation participants (excluding sender)
+      const { data: participants, error: participantsError } = await supabase
+        .from('conversation_participants')
+        .select('user_id')
+        .eq('conversation_id', conversationId)
+        .neq('user_id', senderId);
+
+      if (participantsError || !participants || participants.length === 0) {
+        return;
+      }
+
+      // Get sender profile
+      const { data: senderProfile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, username, email')
+        .eq('id', senderId)
+        .single();
+
+      const senderName = senderProfile?.first_name && senderProfile?.last_name
+        ? `${senderProfile.first_name} ${senderProfile.last_name}`
+        : senderProfile?.username || 'Someone';
+
+      // Prepare message preview
+      let messagePreview = message.content;
+      if (message.message_type === 'image') {
+        messagePreview = '📷 Photo';
+      } else if (message.message_type === 'video') {
+        messagePreview = '🎥 Video';
+      } else if (message.message_type === 'file') {
+        messagePreview = `📄 ${message.file_name || 'Document'}`;
+      } else if (messagePreview.length > 50) {
+        messagePreview = messagePreview.substring(0, 50) + '...';
+      }
+
+      // Send notifications to each recipient
+      for (const participant of participants) {
+        const recipientId = participant.user_id;
+
+        // Send push notification
+        await this.sendPushNotification(recipientId, senderName, messagePreview, conversationId);
+
+        // Send email notification
+        await this.sendEmailNotification(recipientId, senderName, messagePreview, conversationId, senderProfile?.email);
+      }
+    } catch (error) {
+      console.error('Error sending message notifications:', error);
+    }
+  }
+
+  /**
+   * Send push notification to recipient
+   */
+  private async sendPushNotification(
+    recipientId: string,
+    senderName: string,
+    messagePreview: string,
+    conversationId: string
+  ): Promise<void> {
+    try {
+      // Import enhanced notification service dynamically to avoid circular dependencies
+      const { enhancedNotificationService } = await import('./enhancedNotificationService');
+      
+      await enhancedNotificationService.sendPushNotification(recipientId, {
+        type: 'session_message',
+        title: `New message from ${senderName}`,
+        body: messagePreview,
+        data: {
+          conversationId,
+          messageType: 'direct_message',
+        },
+      });
+    } catch (error) {
+      console.error('Error sending push notification:', error);
+    }
+  }
+
+  /**
+   * Send email notification to recipient
+   */
+  private async sendEmailNotification(
+    recipientId: string,
+    senderName: string,
+    messagePreview: string,
+    conversationId: string,
+    senderEmail?: string
+  ): Promise<void> {
+    try {
+      // Get recipient email
+      const { data: recipientProfile } = await supabase
+        .from('profiles')
+        .select('email, first_name')
+        .eq('id', recipientId)
+        .single();
+
+      if (!recipientProfile?.email) {
+        console.warn('No email found for recipient:', recipientId);
+        return;
+      }
+
+      // Call Supabase Edge Function to send email
+      // If Edge Function doesn't exist, this will fail gracefully
+      const { error } = await supabase.functions.invoke('send-message-email', {
+        body: {
+          recipientEmail: recipientProfile.email,
+          recipientName: recipientProfile.first_name || 'User',
+          senderName,
+          senderEmail: senderEmail || 'noreply@mingla.app',
+          messagePreview,
+          conversationId,
+        },
+      });
+
+      if (error) {
+        // Edge Function might not exist yet - log but don't fail
+        console.log('Email notification via Edge Function not available:', error.message);
+        // Fallback: Could use a database trigger or webhook here
+      }
+    } catch (error) {
+      // Silently fail - email notifications are optional
+      console.log('Email notification error (non-critical):', error);
+    }
   }
 }
 

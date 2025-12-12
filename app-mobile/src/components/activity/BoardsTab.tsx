@@ -65,6 +65,7 @@ const BoardsTab = ({
   const styles = StyleSheet.create({
     container: {
       gap: 16,
+      paddingBottom: 62, // Add padding to prevent tab bar from touching last card
     },
     boardCard: {
       backgroundColor: "white",
@@ -89,11 +90,30 @@ const BoardsTab = ({
     boardInfo: {
       flex: 1,
     },
+    boardNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 4,
+    },
     boardName: {
       fontSize: 16,
       fontWeight: "600",
       color: "#111827",
-      marginBottom: 4,
+    },
+    unreadBadge: {
+      backgroundColor: "#eb7825",
+      borderRadius: 12,
+      minWidth: 24,
+      height: 24,
+      paddingHorizontal: 8,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    unreadBadgeText: {
+      color: "white",
+      fontSize: 12,
+      fontWeight: "600",
     },
     boardDescription: {
       fontSize: 14,
@@ -334,7 +354,18 @@ const BoardsTab = ({
               {/* Header Section */}
               <View style={styles.boardHeader}>
                 <View style={styles.boardInfo}>
-                  <Text style={styles.boardName}>{board.name}</Text>
+                  <View style={styles.boardNameRow}>
+                    <Text style={styles.boardName}>{board.name}</Text>
+                    {board.unreadMessages > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadBadgeText}>
+                          {board.unreadMessages > 99
+                            ? "99+"
+                            : board.unreadMessages}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.boardDescription}>
                     {board.description}
                   </Text>

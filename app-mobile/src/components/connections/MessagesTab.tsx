@@ -34,6 +34,7 @@ interface MessagesTabProps {
   onCreateSession?: (newSession: any) => void;
   onNavigateToBoard?: (board: any, discussionTab?: string) => void;
   availableFriends: Friend[];
+  currentUserId?: string;
 }
 
 export default function MessagesTab({
@@ -54,9 +55,11 @@ export default function MessagesTab({
   onCreateSession,
   onNavigateToBoard,
   availableFriends,
-}: MessagesTabProps) {
+  currentUserId,
+}: MessagesTabProps & { currentUserId?: string }) {
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
 
+  console.log("Current User ID:", currentUserId);
   // Filter conversations based on message search query
   const filteredConversations = conversations.filter((conversation) => {
     if (!messageSearchQuery.trim()) return true;
@@ -154,8 +157,20 @@ export default function MessagesTab({
               key={`conversation-${conversation.id}-${index}`}
               conversation={conversation}
               onSelectConversation={(conv) => {
-                const friend = conv.participants[0];
-                if (friend) onSelectFriend(friend);
+                // Get the other participant (not the current user)
+                // The conversation name is already the other participant's name
+                const otherParticipant = currentUserId
+                  ? conv.participants.find((p) => p.id !== currentUserId)
+                  : conv.participants.find((p) => p.name === conv.name);
+
+                if (otherParticipant) {
+                  // Ensure the name matches the conversation name (other participant)
+                  const friendWithCorrectName = {
+                    ...otherParticipant,
+                    name: conv.name, // Use conversation name which is guaranteed to be the other participant
+                  };
+                  onSelectFriend(friendWithCorrectName);
+                }
               }}
             />
           ))

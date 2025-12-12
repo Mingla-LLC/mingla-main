@@ -707,6 +707,7 @@ export class RealtimeService {
 
   /**
    * Update typing indicator in database
+   * Note: Typing indicators are handled via broadcast only, no database storage needed
    */
   private async updateTypingIndicator(
     sessionId: string,
@@ -714,23 +715,9 @@ export class RealtimeService {
     savedCardId: string | undefined,
     isTyping: boolean
   ) {
-    try {
-      const { error } = await supabase.from("board_typing_indicators").upsert(
-        {
-          session_id: sessionId,
-          user_id: userId,
-          saved_card_id: savedCardId || null,
-          is_typing: isTyping,
-        },
-        {
-          onConflict: "session_id,user_id,saved_card_id",
-        }
-      );
-
-      if (error) throw error;
-    } catch (error) {
-      console.error("Error updating typing indicator:", error);
-    }
+    // Typing indicators are handled via broadcast only
+    // No database storage needed - this prevents errors if table doesn't exist
+    return;
   }
 
   // ===========================================

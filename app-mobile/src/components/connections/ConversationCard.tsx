@@ -13,6 +13,17 @@ export default function ConversationCard({
   conversation,
   onSelectConversation
 }: ConversationCardProps) {
+  // Helper function to clean email-like names
+  const cleanName = (name: string): string => {
+    if (!name) return 'Unknown';
+    // Remove @domain part if present (e.g., "john@gmail.com" -> "john")
+    const atIndex = name.indexOf('@');
+    if (atIndex !== -1) {
+      return name.substring(0, atIndex).trim();
+    }
+    return name.trim();
+  };
+
   const handlePress = () => {
     const friend = conversation.participants[0];
     if (friend) {
@@ -47,11 +58,17 @@ export default function ConversationCard({
         <View style={styles.conversationInfo}>
           <View style={styles.conversationHeader}>
             <View style={styles.conversationDetails}>
-              <Text style={styles.conversationName}>{conversation.name}</Text>
+              <Text style={styles.conversationName}>{cleanName(conversation.name)}</Text>
               <Text style={styles.lastMessage} numberOfLines={1}>
-                {conversation.lastMessage.content.length > 60 
-                  ? conversation.lastMessage.content.substring(0, 60) + '...' 
-                  : conversation.lastMessage.content
+                {conversation.lastMessage.type === 'file' 
+                  ? `📄 ${conversation.lastMessage.fileName || 'Document'}`
+                  : conversation.lastMessage.type === 'image'
+                  ? '📷 Photo'
+                  : conversation.lastMessage.type === 'video'
+                  ? '🎥 Video'
+                  : conversation.lastMessage.content.length > 60 
+                    ? conversation.lastMessage.content.substring(0, 60) + '...' 
+                    : conversation.lastMessage.content
                 }
               </Text>
             </View>
@@ -59,7 +76,9 @@ export default function ConversationCard({
               <Text style={styles.timestamp}>{conversation.lastMessage.timestamp}</Text>
               {conversation.unreadCount > 0 && (
                 <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadCount}>{conversation.unreadCount}</Text>
+                  <Text style={styles.unreadCount}>
+                    {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+                  </Text>
                 </View>
               )}
             </View>
@@ -145,16 +164,17 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
   unreadBadge: {
-    width: 20,
+    minWidth: 20,
     height: 20,
     backgroundColor: '#eb7825',
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 6,
   },
   unreadCount: {
-    fontSize: 12,
+    fontSize: 11,
     color: 'white',
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

@@ -1,14 +1,14 @@
-import React from 'react';
+import React from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Animated,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
-export type BoardTab = 'swipe' | 'saved' | 'discussion';
+export type BoardTab = "swipe" | "saved" | "discussion";
 
 interface BoardTabsProps {
   activeTab: BoardTab;
@@ -32,20 +32,14 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
     badge?: number;
   }> = [
     {
-      id: 'swipe',
-      label: 'Swipe',
-      icon: 'swap-horizontal',
+      id: "saved",
+      label: `Cards (${savedCount})`,
+      icon: "bookmark",
     },
     {
-      id: 'saved',
-      label: 'Saved',
-      icon: 'bookmark',
-      badge: savedCount > 0 ? savedCount : undefined,
-    },
-    {
-      id: 'discussion',
-      label: 'Discussion',
-      icon: 'chatbubbles',
+      id: "discussion",
+      label: "Discussion",
+      icon: "chatbubbles",
       badge: unreadMessages > 0 ? unreadMessages : undefined,
     },
   ];
@@ -55,7 +49,7 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
       <View style={styles.tabsContainer}>
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
-          
+
           return (
             <TouchableOpacity
               key={tab.id}
@@ -64,30 +58,19 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
               activeOpacity={0.7}
             >
               <View style={styles.tabContent}>
-                <View style={styles.iconContainer}>
-                  <Ionicons
-                    name={tab.icon as any}
-                    size={20}
-                    color={isActive ? '#007AFF' : '#666'}
-                  />
-                  {tab.badge !== undefined && tab.badge > 0 && (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>
-                        {tab.badge > 99 ? '99+' : tab.badge}
-                      </Text>
-                    </View>
-                  )}
-                </View>
                 <Text
-                  style={[
-                    styles.tabLabel,
-                    isActive && styles.tabLabelActive,
-                  ]}
+                  style={[styles.tabLabel, isActive && styles.tabLabelActive]}
                 >
                   {tab.label}
                 </Text>
+                {tab.badge !== undefined && tab.badge > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {tab.badge > 99 ? "99+" : tab.badge}
+                    </Text>
+                  </View>
+                )}
               </View>
-              {isActive && <View style={styles.activeIndicator} />}
             </TouchableOpacity>
           );
         })}
@@ -98,70 +81,65 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderBottomWidth: 1,
-    borderBottomColor: '#e1e5e9',
+    borderBottomColor: "#e1e5e9",
+    paddingHorizontal: 8,
   },
   tabsContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 8,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 24,
+    paddingVertical: 4,
+    marginVertical: 16,
   },
   tab: {
     flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    marginHorizontal: 4,
   },
   tabActive: {
-    backgroundColor: 'transparent',
-  },
-  tabContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconContainer: {
-    position: 'relative',
-    marginBottom: 4,
-  },
-  badge: {
-    position: 'absolute',
-    top: -6,
-    right: -8,
-    backgroundColor: '#FF3B30',
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'white',
-  },
-  badgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: '700',
+    backgroundColor: "white",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   tabLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#666',
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#666",
   },
   tabLabelActive: {
-    color: '#007AFF',
-    fontWeight: '600',
+    color: "#eb7825",
+    fontWeight: "600",
   },
-  activeIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-    backgroundColor: '#007AFF',
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
+  tabContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  badge: {
+    backgroundColor: "#eb7825",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  badgeText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "600",
   },
 });
-

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Friend, Conversation, Message } from '../services/connectionsService';
 import { ConnectionsService } from '../services/connectionsService';
@@ -30,6 +30,7 @@ interface ConnectionsPageProps {
   onCreateSession?: (newSession: any) => void;
   onNavigateToBoard?: (board: any, discussionTab?: string) => void;
   friendsList?: any[];
+  onUnreadCountChange?: (count: number) => void;
 }
 
 export default function ConnectionsPageRefactored({ 
@@ -46,7 +47,8 @@ export default function ConnectionsPageRefactored({
   onUpdateBoardSession,
   onCreateSession,
   onNavigateToBoard,
-  friendsList = []
+  friendsList = [],
+  onUnreadCountChange
 }: ConnectionsPageProps) {
   const { user } = useAuthSimple();
   const [activeTab, setActiveTab] = useState<'friends' | 'messages'>('friends');
@@ -103,6 +105,17 @@ export default function ConnectionsPageRefactored({
               .select('id, display_name, username, first_name, last_name, avatar_url')
               .in('id', participantIds);
 
+            // Helper function to clean email-like names
+            const cleanName = (name: string): string => {
+              if (!name) return 'Unknown';
+              // Remove @domain part if present (e.g., "john@gmail.com" -> "john")
+              const atIndex = name.indexOf('@');
+              if (atIndex !== -1) {
+                return name.substring(0, atIndex).trim();
+              }
+              return name.trim();
+            };
+
             // Find the other participant (not the current user)
             const otherParticipant = conv.participants.find(p => p.user_id !== user.id);
             const otherParticipantProfile = profiles?.find(p => p.id === otherParticipant?.user_id);
@@ -110,11 +123,12 @@ export default function ConnectionsPageRefactored({
             // Get participant info
             const participantProfiles = conv.participants.map(p => {
               const profile = profiles?.find(prof => prof.id === p.user_id);
+              const rawName = profile?.display_name || 
+                      (profile?.first_name && profile?.last_name ? `${profile.first_name} ${profile.last_name}` : profile?.username) ||
+                      'Unknown';
               return {
                 id: p.user_id,
-                name: profile?.display_name || 
-                      (profile?.first_name && profile?.last_name ? `${profile.first_name} ${profile.last_name}` : profile?.username) ||
-                      'Unknown',
+                name: cleanName(rawName),
                 username: profile?.username || 'unknown',
                 avatar: profile?.avatar_url,
                 status: 'offline' as const,
@@ -123,13 +137,15 @@ export default function ConnectionsPageRefactored({
             });
 
             // Get conversation name (other participant's name for direct messages)
-            const conversationName = otherParticipantProfile 
+            const rawConversationName = otherParticipantProfile 
               ? (otherParticipantProfile.display_name || 
                  (otherParticipantProfile.first_name && otherParticipantProfile.last_name 
                    ? `${otherParticipantProfile.first_name} ${otherParticipantProfile.last_name}` 
                    : otherParticipantProfile.username) ||
                  'Unknown')
               : 'Unknown';
+            
+            const conversationName = cleanName(rawConversationName);
 
             // Format timestamp
             const formatTimestamp = (timestamp: string) => {
@@ -227,11 +243,18 @@ export default function ConnectionsPageRefactored({
     fetchData();
   }, [user?.id, loadFriendRequests, fetchFriends]);
 
+  // Update total unread count whenever conversations change
+  useEffect(() => {
+    const totalUnread = conversations.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0);
+    onUnreadCountChange?.(totalUnread);
+  }, [conversations, onUnreadCountChange]);
+
   // Messaging state
   const [showFriendSelection, setShowFriendSelection] = useState(false);
   const [activeChat, setActiveChat] = useState<Friend | null>(null);
   const [showMessageInterface, setShowMessageInterface] = useState(false);
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({});
+  const [uploadingFile, setUploadingFile] = useState(false);
   
   // Add friend modal state
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
@@ -405,18 +428,56 @@ export default function ConnectionsPageRefactored({
                 isMe: newMessage.sender_id === user.id,
                 unread: !newMessage.is_read && newMessage.sender_id !== user.id,
               };
-              // Only add if message doesn't already exist (to avoid duplicates from optimistic updates)
+              // Replace optimistic message (tempId) or add if doesn't exist
               setMessages(prev => {
                 const exists = prev.some(msg => msg.id === transformedMsg.id);
-                if (exists) return prev;
+                if (exists) return prev; // Already exists with real ID
+                
+                // Check if there's an optimistic message (tempId) that should be replaced
+                // Match by content and sender to identify the optimistic message
+                const optimisticIndex = prev.findIndex(msg => 
+                  msg.id.startsWith('temp-') && 
+                  msg.senderId === transformedMsg.senderId &&
+                  msg.content === transformedMsg.content &&
+                  Math.abs(new Date(msg.timestamp).getTime() - new Date(transformedMsg.timestamp).getTime()) < 5000 // Within 5 seconds
+                );
+                
+                if (optimisticIndex !== -1) {
+                  // Replace optimistic message with real one
+                  const updated = [...prev];
+                  updated[optimisticIndex] = transformedMsg;
+                  return updated;
+                }
+                
+                // No optimistic message found, add new message
                 return [...prev, transformedMsg];
               });
               
-              // Update cache (avoid duplicates)
+              // Update cache (replace optimistic or add if doesn't exist)
               setMessagesCache(prev => {
                 const existing = prev[conversationId!] || [];
                 const exists = existing.some(msg => msg.id === transformedMsg.id);
-                if (exists) return prev;
+                if (exists) return prev; // Already exists with real ID
+                
+                // Check if there's an optimistic message to replace
+                const optimisticIndex = existing.findIndex(msg => 
+                  msg.id.startsWith('temp-') && 
+                  msg.senderId === transformedMsg.senderId &&
+                  msg.content === transformedMsg.content &&
+                  Math.abs(new Date(msg.timestamp).getTime() - new Date(transformedMsg.timestamp).getTime()) < 5000
+                );
+                
+                if (optimisticIndex !== -1) {
+                  // Replace optimistic message with real one
+                  const updated = [...existing];
+                  updated[optimisticIndex] = transformedMsg;
+                  return {
+                    ...prev,
+                    [conversationId!]: updated,
+                  };
+                }
+                
+                // No optimistic message found, add new message
                 return {
                   ...prev,
                   [conversationId!]: [...existing, transformedMsg],
@@ -494,22 +555,76 @@ export default function ConnectionsPageRefactored({
     setMessages([]);
   };
 
-  const handleSendMessage = async (content: string, type: 'text' | 'image' | 'video' | 'file', file?: File) => {
+  const handleSendMessage = async (content: string, type: 'text' | 'image' | 'video' | 'file', file?: any) => {
     if (!activeChat || !user?.id || !currentConversationId) return;
 
     // Generate temporary ID for optimistic update
     const tempId = `temp-${Date.now()}-${Math.random()}`;
     const now = new Date().toISOString();
 
-    // Upload file if needed (for now, just send text)
+    // Upload file if needed
     let fileUrl: string | undefined;
     let fileName: string | undefined;
     let fileSize: number | undefined;
 
     if (file && type !== 'text') {
-      // TODO: Implement file upload to Supabase Storage
-      fileName = file.name;
-      fileSize = file.size;
+      setUploadingFile(true);
+      try {
+        // Upload file to Supabase Storage
+        // File from expo-image-picker has structure: { uri, type, name, size }
+        const fileUri = file.uri || file;
+        const fileExt = file.name?.split('.').pop() || 
+                       (file.type === 'image' ? 'jpg' : 
+                        file.type === 'video' ? 'mp4' : 
+                        fileUri.split('.').pop() || 'bin');
+        const fileNameWithExt = `${user.id}_${Date.now()}.${fileExt}`;
+        const filePath = `${currentConversationId}/${fileNameWithExt}`;
+
+        // Determine content type
+        let contentType = 'application/octet-stream';
+        if (type === 'image') {
+          contentType = file.type === 'image' ? 'image/jpeg' : 'image/png';
+        } else if (type === 'video') {
+          contentType = 'video/mp4';
+        }
+
+        // Create FormData for React Native
+        const formData = new FormData();
+        formData.append('file', {
+          uri: fileUri,
+          type: contentType,
+          name: fileNameWithExt,
+        } as any);
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('messages')
+          .upload(filePath, formData, {
+            contentType: contentType,
+            upsert: false,
+          });
+
+        if (uploadError) {
+          console.error('Error uploading file:', uploadError);
+          setUploadingFile(false);
+          Alert.alert('Upload Error', 'Failed to upload file. Please try again.');
+          return;
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('messages')
+          .getPublicUrl(filePath);
+
+        fileUrl = urlData.publicUrl;
+        fileName = file.name || fileNameWithExt;
+        fileSize = file.size || 0;
+        setUploadingFile(false);
+      } catch (error) {
+        console.error('Error uploading file:', error);
+        setUploadingFile(false);
+        Alert.alert('Upload Error', 'Failed to upload file. Please try again.');
+        return;
+      }
     }
 
     // Create optimistic message
@@ -650,12 +765,32 @@ export default function ConnectionsPageRefactored({
         unread: false,
       };
 
-      // Replace temporary message with real one
-      setMessages(prev => prev.map(msg => msg.id === tempId ? realMsg : msg));
+      // Replace temporary message with real one (if tempId still exists)
+      // If real-time handler already replaced it, this will be a no-op
+      setMessages(prev => {
+        const hasTempId = prev.some(msg => msg.id === tempId);
+        const hasRealId = prev.some(msg => msg.id === realMsg.id);
+        
+        if (!hasTempId && hasRealId) {
+          // Real-time handler already replaced it, no need to do anything
+          return prev;
+        }
+        
+        // Replace tempId with real message
+        return prev.map(msg => msg.id === tempId ? realMsg : msg);
+      });
       
       // Update cache with real message
       setMessagesCache(prev => {
         const existing = prev[currentConversationId] || [];
+        const hasTempId = existing.some(msg => msg.id === tempId);
+        const hasRealId = existing.some(msg => msg.id === realMsg.id);
+        
+        if (!hasTempId && hasRealId) {
+          // Real-time handler already replaced it, no need to do anything
+          return prev;
+        }
+        
         return {
           ...prev,
           [currentConversationId]: existing.map(msg => msg.id === tempId ? realMsg : msg),
@@ -919,6 +1054,7 @@ export default function ConnectionsPageRefactored({
                 onCreateSession={onCreateSession}
                 onNavigateToBoard={onNavigateToBoard}
                 availableFriends={currentFriends}
+                currentUserId={user?.id}
               />
             )}
           </View>

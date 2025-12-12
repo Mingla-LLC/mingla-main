@@ -34,6 +34,8 @@ import CoachMap from "../src/components/CoachMap";
 import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { useBoardSession } from "../hooks/useBoardSession";
+import { messagingService } from "../src/services/messagingService";
+import { BoardMessageService } from "../src/services/boardMessageService";
 
 export default function App() {
   const state = useAppState();
@@ -42,6 +44,9 @@ export default function App() {
     string | null
   >(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [totalUnreadMessages, setTotalUnreadMessages] = useState<number>(0);
+  const [totalUnreadBoardMessages, setTotalUnreadBoardMessages] =
+    useState<number>(0);
 
   // Destructure commonly used state
   const {
@@ -253,6 +258,62 @@ export default function App() {
       }
     }
   };
+
+  // Fetch unread message count on app load
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      if (!isAuthenticated || !user?.id) {
+        setTotalUnreadMessages(0);
+        return;
+      }
+
+      try {
+        const { conversations, error } =
+          await messagingService.getConversations(user.id);
+        if (!error && conversations) {
+          const totalUnread = conversations.reduce(
+            (sum, conv) => sum + (conv.unread_count || 0),
+            0
+          );
+          setTotalUnreadMessages(totalUnread);
+        }
+      } catch (error) {
+        console.error("Error fetching unread count:", error);
+      }
+    };
+
+    fetchUnreadCount();
+  }, [isAuthenticated, user?.id]);
+
+  // Fetch unread board messages count on app load
+  useEffect(() => {
+    const fetchUnreadBoardCount = async () => {
+      if (!isAuthenticated || !user?.id) {
+        setTotalUnreadBoardMessages(0);
+        return;
+      }
+
+      try {
+        const { count, error } =
+          await BoardMessageService.getTotalUnreadBoardMessages(user.id);
+        if (!error) {
+          setTotalUnreadBoardMessages(count);
+        }
+      } catch (error) {
+        console.error("Error fetching unread board messages count:", error);
+      }
+    };
+
+    fetchUnreadBoardCount();
+
+    // Set up real-time listener for board messages
+    // This will update when new messages arrive
+    const interval = setInterval(() => {
+      fetchUnreadBoardCount();
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, user?.id]);
 
   // Automatically show coach map when main app loads (only once per session)
   // Use a ref to track if we've already shown it in this session
@@ -478,7 +539,6 @@ export default function App() {
   // Show sign in page if user is not authenticated
   // Also show sign in if authenticated but profile hasn't loaded yet (to avoid flash)
   if (!isAuthenticated || (user && !profile && !isLoadingAuth)) {
-  
     return (
       <ErrorBoundary>
         <SignInPage
@@ -586,6 +646,7 @@ export default function App() {
               setBoardViewSessionId(board.id || board);
               setCurrentPage("board-view");
             }}
+            onUnreadCountChange={setTotalUnreadMessages}
           />
         );
       case "activity":
@@ -649,6 +710,7 @@ export default function App() {
               setBoardViewSessionId(sessionId);
               setCurrentPage("board-view");
             }}
+            onUnreadCountChange={setTotalUnreadBoardMessages}
           />
         );
       case "board-view":
@@ -964,15 +1026,26 @@ export default function App() {
                         }}
                         style={styles.navItem}
                       >
-                        <Ionicons
-                          name="people"
-                          size={24}
-                          color={
-                            currentPage === "connections"
-                              ? "#eb7825"
-                              : "#9CA3AF"
-                          }
-                        />
+                        <View style={styles.navIconContainer}>
+                          <Ionicons
+                            name="people"
+                            size={24}
+                            color={
+                              currentPage === "connections"
+                                ? "#eb7825"
+                                : "#9CA3AF"
+                            }
+                          />
+                          {totalUnreadMessages > 0 && (
+                            <View style={styles.tabBadge}>
+                              <Text style={styles.tabBadgeText}>
+                                {totalUnreadMessages > 99
+                                  ? "99+"
+                                  : totalUnreadMessages}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <Text
                           style={[
                             styles.navText,
@@ -991,13 +1064,24 @@ export default function App() {
                         }}
                         style={styles.navItem}
                       >
-                        <Ionicons
-                          name="calendar"
-                          size={24}
-                          color={
-                            currentPage === "activity" ? "#eb7825" : "#9CA3AF"
-                          }
-                        />
+                        <View style={styles.navIconContainer}>
+                          <Ionicons
+                            name="calendar"
+                            size={24}
+                            color={
+                              currentPage === "activity" ? "#eb7825" : "#9CA3AF"
+                            }
+                          />
+                          {totalUnreadBoardMessages > 0 && (
+                            <View style={styles.tabBadge}>
+                              <Text style={styles.tabBadgeText}>
+                                {totalUnreadBoardMessages > 99
+                                  ? "99+"
+                                  : totalUnreadBoardMessages}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <Text
                           style={[
                             styles.navText,
@@ -1098,7 +1182,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "white",
   },
   container: {
     flex: 1,
@@ -1126,6 +1210,28 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
+  },
+  navIconContainer: {
+    position: "relative",
+  },
+  tabBadge: {
+    position: "absolute",
+    top: -6,
+    right: -8,
+    minWidth: 18,
+    height: 18,
+    backgroundColor: "#eb7825",
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: "white",
+  },
+  tabBadgeText: {
+    fontSize: 10,
+    color: "white",
+    fontWeight: "700",
   },
   navText: {
     fontSize: 12,

@@ -74,28 +74,48 @@ export class BoardMessageService {
     offset: number = 0
   ): Promise<{ data: BoardMessage[]; error: any }> {
     try {
-      const { data, error } = await supabase
+      // First, fetch messages without profiles join
+      const { data: messages, error: messagesError } = await supabase
         .from('board_messages')
-        .select(`
-          *,
-          profiles (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .eq('session_id', sessionId)
         .is('deleted_at', null)
         .order('created_at', { ascending: true })
         .range(offset, offset + limit - 1);
 
-      if (error) throw error;
+      if (messagesError) throw messagesError;
+
+      if (!messages || messages.length === 0) {
+        return { data: [], error: null };
+      }
+
+      // Get unique user IDs from messages
+      const userIds = [...new Set(messages.map(m => m.user_id))];
+
+      // Fetch profiles separately
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, first_name, last_name, avatar_url')
+        .in('id', userIds);
+
+      if (profilesError) {
+        console.warn('Error fetching profiles:', profilesError);
+        // Continue without profiles if there's an error
+      }
+
+      // Create a map of user_id to profile
+      const profileMap = new Map(
+        (profiles || []).map(p => [p.id, p])
+      );
+
+      // Merge messages with profiles
+      const messagesWithProfiles = messages.map(message => ({
+        ...message,
+        profiles: profileMap.get(message.user_id) || null,
+      }));
 
       // Load read receipts for messages
-      const messageIds = (data || []).map(m => m.id);
+      const messageIds = messages.map(m => m.id);
       if (messageIds.length > 0) {
         const { data: reads } = await supabase
           .from('board_message_reads')
@@ -103,7 +123,7 @@ export class BoardMessageService {
           .in('message_id', messageIds);
 
         // Attach read receipts to messages
-        const messagesWithReads = (data || []).map(message => ({
+        const messagesWithReads = messagesWithProfiles.map(message => ({
           ...message,
           read_by: reads?.filter(r => r.message_id === message.id) || [],
         }));
@@ -111,7 +131,7 @@ export class BoardMessageService {
         return { data: messagesWithReads as BoardMessage[], error: null };
       }
 
-      return { data: (data || []) as BoardMessage[], error: null };
+      return { data: messagesWithProfiles as BoardMessage[], error: null };
     } catch (err: any) {
       console.error('Error getting board messages:', err);
       return { data: [], error: err };
@@ -129,7 +149,7 @@ export class BoardMessageService {
     userId,
   }: SendMessageParams): Promise<{ data: BoardMessage | null; error: any }> {
     try {
-      const { data, error } = await supabase
+      const { data: message, error: insertError } = await supabase
         .from('board_messages')
         .insert({
           session_id: sessionId,
@@ -138,32 +158,39 @@ export class BoardMessageService {
           mentions: mentions.length > 0 ? mentions : null,
           reply_to_id: replyToId || null,
         })
-        .select(`
-          *,
-          profiles (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .single();
 
-      if (error) throw error;
+      if (insertError) throw insertError;
+
+      // Fetch profile separately
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, first_name, last_name, avatar_url')
+        .eq('id', userId)
+        .single();
+
+      const messageWithProfile = {
+        ...message,
+        profiles: profile || null,
+      };
 
       // Broadcast message
       realtimeService.sendBoardMessage(sessionId, {
-        content: data.content,
-        mentions: data.mentions || [],
-        replyToId: data.reply_to_id,
+        content: message.content,
+        mentions: message.mentions || [],
+        replyToId: message.reply_to_id,
       });
 
       // Mark as read by sender
-      await this.markMessageAsRead(data.id, userId);
+      await this.markMessageAsRead(message.id, userId);
 
-      return { data: data as BoardMessage, error: null };
+      // Send notifications (non-blocking)
+      this.sendBoardMessageNotifications(sessionId, userId, message, messageWithProfile).catch(err =>
+        console.error('Error sending board message notifications:', err)
+      );
+
+      return { data: messageWithProfile as BoardMessage, error: null };
     } catch (err: any) {
       console.error('Error sending board message:', err);
       return { data: null, error: err };
@@ -179,7 +206,7 @@ export class BoardMessageService {
     userId: string
   ): Promise<{ data: BoardMessage | null; error: any }> {
     try {
-      const { data, error } = await supabase
+      const { data: message, error: updateError } = await supabase
         .from('board_messages')
         .update({
           content: content.trim(),
@@ -187,22 +214,24 @@ export class BoardMessageService {
         })
         .eq('id', messageId)
         .eq('user_id', userId)
-        .select(`
-          *,
-          profiles (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .single();
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
-      return { data: data as BoardMessage, error: null };
+      // Fetch profile separately
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, first_name, last_name, avatar_url')
+        .eq('id', userId)
+        .single();
+
+      const messageWithProfile = {
+        ...message,
+        profiles: profile || null,
+      };
+
+      return { data: messageWithProfile as BoardMessage, error: null };
     } catch (err: any) {
       console.error('Error updating message:', err);
       return { data: null, error: err };
@@ -334,36 +363,56 @@ export class BoardMessageService {
     offset: number = 0
   ): Promise<{ data: CardMessage[]; error: any }> {
     try {
-      const { data, error } = await supabase
+      // First, fetch messages without profiles join
+      const { data: messages, error: messagesError } = await supabase
         .from('board_card_messages')
-        .select(`
-          *,
-          profiles (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .eq('session_id', sessionId)
         .eq('saved_card_id', savedCardId)
         .is('deleted_at', null)
         .order('created_at', { ascending: true })
         .range(offset, offset + limit - 1);
 
-      if (error) throw error;
+      if (messagesError) throw messagesError;
+
+      if (!messages || messages.length === 0) {
+        return { data: [], error: null };
+      }
+
+      // Get unique user IDs from messages
+      const userIds = [...new Set(messages.map(m => m.user_id))];
+
+      // Fetch profiles separately
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, first_name, last_name, avatar_url')
+        .in('id', userIds);
+
+      if (profilesError) {
+        console.warn('Error fetching profiles:', profilesError);
+        // Continue without profiles if there's an error
+      }
+
+      // Create a map of user_id to profile
+      const profileMap = new Map(
+        (profiles || []).map(p => [p.id, p])
+      );
+
+      // Merge messages with profiles
+      const messagesWithProfiles = messages.map(message => ({
+        ...message,
+        profiles: profileMap.get(message.user_id) || null,
+      }));
 
       // Load read receipts
-      const messageIds = (data || []).map(m => m.id);
+      const messageIds = messages.map(m => m.id);
       if (messageIds.length > 0) {
         const { data: reads } = await supabase
           .from('board_card_message_reads')
           .select('message_id, user_id, read_at')
           .in('message_id', messageIds);
 
-        const messagesWithReads = (data || []).map(message => ({
+        const messagesWithReads = messagesWithProfiles.map(message => ({
           ...message,
           read_by: reads?.filter(r => r.message_id === message.id) || [],
         }));
@@ -371,7 +420,7 @@ export class BoardMessageService {
         return { data: messagesWithReads as CardMessage[], error: null };
       }
 
-      return { data: (data || []) as CardMessage[], error: null };
+      return { data: messagesWithProfiles as CardMessage[], error: null };
     } catch (err: any) {
       console.error('Error getting card messages:', err);
       return { data: [], error: err };
@@ -390,7 +439,7 @@ export class BoardMessageService {
     userId,
   }: SendCardMessageParams): Promise<{ data: CardMessage | null; error: any }> {
     try {
-      const { data, error } = await supabase
+      const { data: message, error: insertError } = await supabase
         .from('board_card_messages')
         .insert({
           session_id: sessionId,
@@ -400,32 +449,34 @@ export class BoardMessageService {
           mentions: mentions.length > 0 ? mentions : null,
           reply_to_id: replyToId || null,
         })
-        .select(`
-          *,
-          profiles (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .single();
 
-      if (error) throw error;
+      if (insertError) throw insertError;
+
+      // Fetch profile separately
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, first_name, last_name, avatar_url')
+        .eq('id', userId)
+        .single();
+
+      const messageWithProfile = {
+        ...message,
+        profiles: profile || null,
+      };
 
       // Broadcast message
       realtimeService.sendCardMessage(sessionId, savedCardId, {
-        content: data.content,
-        mentions: data.mentions || [],
-        replyToId: data.reply_to_id,
+        content: message.content,
+        mentions: message.mentions || [],
+        replyToId: message.reply_to_id,
       });
 
       // Mark as read by sender
-      await this.markCardMessageAsRead(data.id, userId);
+      await this.markCardMessageAsRead(message.id, userId);
 
-      return { data: data as CardMessage, error: null };
+      return { data: messageWithProfile as CardMessage, error: null };
     } catch (err: any) {
       console.error('Error sending card message:', err);
       return { data: null, error: err };
@@ -471,7 +522,7 @@ export class BoardMessageService {
     userId: string
   ): Promise<{ data: CardMessage | null; error: any }> {
     try {
-      const { data, error } = await supabase
+      const { data: message, error: updateError } = await supabase
         .from('board_card_messages')
         .update({
           content: content.trim(),
@@ -479,22 +530,24 @@ export class BoardMessageService {
         })
         .eq('id', messageId)
         .eq('user_id', userId)
-        .select(`
-          *,
-          profiles (
-            id,
-            username,
-            display_name,
-            first_name,
-            last_name,
-            avatar_url
-          )
-        `)
+        .select('*')
         .single();
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
-      return { data: data as CardMessage, error: null };
+      // Fetch profile separately
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, first_name, last_name, avatar_url')
+        .eq('id', userId)
+        .single();
+
+      const messageWithProfile = {
+        ...message,
+        profiles: profile || null,
+      };
+
+      return { data: messageWithProfile as CardMessage, error: null };
     } catch (err: any) {
       console.error('Error updating card message:', err);
       return { data: null, error: err };
@@ -523,6 +576,216 @@ export class BoardMessageService {
     } catch (err: any) {
       console.error('Error deleting card message:', err);
       return { error: err };
+    }
+  }
+
+  /**
+   * Get total unread board messages count for a user across all sessions
+   */
+  static async getTotalUnreadBoardMessages(
+    userId: string
+  ): Promise<{ count: number; error: any }> {
+    try {
+      // Get all sessions where user is a participant
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('session_participants')
+        .select('session_id')
+        .eq('user_id', userId)
+        .eq('has_accepted', true);
+
+      if (sessionsError || !sessions || sessions.length === 0) {
+        return { count: 0, error: null };
+      }
+
+      const sessionIds = sessions.map(s => s.session_id);
+
+      // Get all unread messages in these sessions
+      const { data: unreadMessages, error: messagesError } = await supabase
+        .from('board_messages')
+        .select('id')
+        .in('session_id', sessionIds)
+        .neq('user_id', userId) // Exclude messages sent by the user
+        .is('deleted_at', null);
+
+      if (messagesError || !unreadMessages || unreadMessages.length === 0) {
+        return { count: 0, error: null };
+      }
+
+      const messageIds = unreadMessages.map(m => m.id);
+
+      // Get read receipts for these messages
+      const { data: readMessages } = await supabase
+        .from('board_message_reads')
+        .select('message_id')
+        .eq('user_id', userId)
+        .in('message_id', messageIds);
+
+      const readMessageIds = new Set(readMessages?.map(r => r.message_id) || []);
+      const unreadCount = messageIds.filter(id => !readMessageIds.has(id)).length;
+
+      return { count: unreadCount, error: null };
+    } catch (err: any) {
+      console.error('Error getting total unread board messages:', err);
+      return { count: 0, error: err };
+    }
+  }
+
+  /**
+   * Get unread messages count for a specific board session
+   */
+  static async getUnreadBoardMessagesCount(
+    sessionId: string,
+    userId: string
+  ): Promise<{ count: number; error: any }> {
+    try {
+      // Get all unread messages in this session
+      const { data: unreadMessages, error: messagesError } = await supabase
+        .from('board_messages')
+        .select('id')
+        .eq('session_id', sessionId)
+        .neq('user_id', userId) // Exclude messages sent by the user
+        .is('deleted_at', null);
+
+      if (messagesError || !unreadMessages || unreadMessages.length === 0) {
+        return { count: 0, error: null };
+      }
+
+      const messageIds = unreadMessages.map(m => m.id);
+
+      // Get read receipts for these messages
+      const { data: readMessages } = await supabase
+        .from('board_message_reads')
+        .select('message_id')
+        .eq('user_id', userId)
+        .in('message_id', messageIds);
+
+      const readMessageIds = new Set(readMessages?.map(r => r.message_id) || []);
+      const unreadCount = messageIds.filter(id => !readMessageIds.has(id)).length;
+
+      return { count: unreadCount, error: null };
+    } catch (err: any) {
+      console.error('Error getting unread board messages count:', err);
+      return { count: 0, error: err };
+    }
+  }
+
+  /**
+   * Send notifications for board messages
+   */
+  private static async sendBoardMessageNotifications(
+    sessionId: string,
+    senderId: string,
+    message: any,
+    messageWithProfile: BoardMessage
+  ): Promise<void> {
+    try {
+      // Get session participants (excluding sender)
+      const { data: participants, error: participantsError } = await supabase
+        .from('session_participants')
+        .select('user_id')
+        .eq('session_id', sessionId)
+        .neq('user_id', senderId)
+        .eq('has_accepted', true);
+
+      if (participantsError || !participants || participants.length === 0) {
+        return;
+      }
+
+      // Get sender profile
+      const senderName = messageWithProfile.profiles?.display_name ||
+        (messageWithProfile.profiles?.first_name && messageWithProfile.profiles?.last_name
+          ? `${messageWithProfile.profiles.first_name} ${messageWithProfile.profiles.last_name}`
+          : messageWithProfile.profiles?.username || 'Someone');
+
+      // Prepare message preview
+      let messagePreview = message.content;
+      if (messagePreview.length > 50) {
+        messagePreview = messagePreview.substring(0, 50) + '...';
+      }
+
+      // Get session name
+      const { data: session } = await supabase
+        .from('collaboration_sessions')
+        .select('name')
+        .eq('id', sessionId)
+        .single();
+
+      const sessionName = session?.name || 'Board';
+
+      // Send notifications to each participant
+      for (const participant of participants) {
+        const recipientId = participant.user_id;
+        const isMentioned = message.mentions && Array.isArray(message.mentions) && message.mentions.includes(recipientId);
+
+        // Import notification service dynamically
+        const { enhancedNotificationService } = await import('./enhancedNotificationService');
+
+        // Send push notification
+        await enhancedNotificationService.sendPushNotification(recipientId, {
+          type: 'board_update',
+          title: isMentioned 
+            ? `${senderName} mentioned you in ${sessionName}`
+            : `New message in ${sessionName}`,
+          body: messagePreview,
+          data: {
+            sessionId,
+            messageId: message.id,
+            messageType: 'board_message',
+            isMention: isMentioned,
+          },
+        });
+
+        // Send email notification if mentioned
+        if (isMentioned) {
+          await this.sendMentionEmailNotification(recipientId, senderName, messagePreview, sessionId, sessionName);
+        }
+      }
+    } catch (error) {
+      console.error('Error sending board message notifications:', error);
+    }
+  }
+
+  /**
+   * Send email notification for mentions
+   */
+  private static async sendMentionEmailNotification(
+    recipientId: string,
+    senderName: string,
+    messagePreview: string,
+    sessionId: string,
+    sessionName: string
+  ): Promise<void> {
+    try {
+      // Get recipient email
+      const { data: recipientProfile } = await supabase
+        .from('profiles')
+        .select('email, first_name')
+        .eq('id', recipientId)
+        .single();
+
+      if (!recipientProfile?.email) {
+        return;
+      }
+
+      // Call Supabase Edge Function to send email
+      const { error } = await supabase.functions.invoke('send-message-email', {
+        body: {
+          recipientEmail: recipientProfile.email,
+          recipientName: recipientProfile.first_name || 'User',
+          senderName,
+          senderEmail: 'noreply@mingla.app',
+          messagePreview: `${senderName} mentioned you: ${messagePreview}`,
+          conversationId: sessionId,
+          isMention: true,
+          sessionName,
+        },
+      });
+
+      if (error) {
+        console.log('Email notification via Edge Function not available:', error.message);
+      }
+    } catch (error) {
+      console.log('Email notification error (non-critical):', error);
     }
   }
 }

@@ -3,6 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { formatCurrency } from "./utils/formatters";
 import { PreferencesService } from "../services/preferencesService";
 import { savedCardsService } from "../services/savedCardsService";
+import { BoardCardService } from "../services/boardCardService";
+import { toastManager } from "../components/ui/Toast";
 import { supabase } from "../services/supabase";
 
 export function useAppHandlers(state: any) {
@@ -705,47 +707,125 @@ export function useAppHandlers(state: any) {
       return;
     }
 
-    if (savedCards?.some((item: any) => item.id === card.id)) {
-      if (Platform.OS === "android") {
-        ToastAndroid.show(
-          `${card.title} is already in your saved experiences`,
-          ToastAndroid.SHORT
+    // Check if we're in a session (not solo mode)
+    const isInSession = currentMode !== "solo";
+    const currentSession = isInSession 
+      ? boardsSessions.find((s: any) => s.id === currentMode || s.name === currentMode)
+      : null;
+
+    // If in a session, check if card is already saved in that session
+    if (isInSession && currentSession) {
+      try {
+        // Check if card already exists by querying card_data JSONB
+        const { data: existingCards } = await supabase
+          .from('board_saved_cards')
+          .select('id, card_data')
+          .eq('session_id', currentSession.id);
+
+        // Check if any card has matching ID in card_data
+        const existing = existingCards?.find((savedCard: any) => 
+          savedCard.card_data?.id === card.id || 
+          savedCard.card_data?.experience_id === card.id
         );
-      } else {
-        Alert.alert(
-          "Already saved",
-          `${card.title} is already in your saved experiences.`
-        );
+
+        if (existing) {
+          toastManager.show(
+            `${card.title} is already saved in ${currentSession.name}`,
+            'info',
+            3000
+          );
+          return;
+        }
+      } catch (error) {
+        // Card doesn't exist, continue with save
+        console.error('Error checking existing card:', error);
       }
-      return;
+    } else {
+      // In solo mode, check general saved cards
+      if (savedCards?.some((item: any) => item.id === card.id)) {
+        if (Platform.OS === "android") {
+          ToastAndroid.show(
+            `${card.title} is already in your saved experiences`,
+            ToastAndroid.SHORT
+          );
+        } else {
+          Alert.alert(
+            "Already saved",
+            `${card.title} is already in your saved experiences.`
+          );
+        }
+        return;
+      }
     }
 
     try {
-      await savedCardsService.saveCard(user.id, card);
-      const savedEntry = {
-        ...card,
-        dateAdded: new Date().toISOString(),
-        source: card.source || "solo",
-      };
+      // If in a session, save to board_saved_cards
+      if (isInSession && currentSession) {
+        const experienceData = {
+          id: card.id,
+          title: card.title,
+          category: card.category,
+          categoryIcon: card.categoryIcon,
+          image: card.image,
+          images: card.images,
+          rating: card.rating,
+          reviewCount: card.reviewCount,
+          travelTime: card.travelTime,
+          priceRange: card.priceRange,
+          description: card.description,
+          fullDescription: card.fullDescription,
+          address: card.address,
+          highlights: card.highlights,
+          matchScore: card.matchScore,
+          socialStats: card.socialStats,
+          matchFactors: card.matchFactors,
+        };
 
-      setSavedCards((prev: any[]) => {
-        if (prev.some((item) => item.id === savedEntry.id)) {
-          return prev;
+        const { error: boardError } = await BoardCardService.saveCardToBoard({
+          sessionId: currentSession.id,
+          experienceId: card.id,
+          experienceData,
+          userId: user.id,
+        });
+
+        if (boardError) {
+          throw boardError;
         }
-        const updated = [savedEntry, ...prev];
-        persistSavedCards(updated);
-        setProfileStats((stats: any) => ({
-          ...stats,
-          savedExperiences: updated.length,
-        }));
-        return updated;
-      });
 
-      const message = `❤️ Saved! ${card.title} has been added to your saved experiences`;
-      if (Platform.OS === "android") {
-        ToastAndroid.show(message, ToastAndroid.SHORT);
+        // Show toast notification matching UI: "Added to Board! [Card Name] has been added to [Session Name]"
+        toastManager.show(
+          `Added to Board! ${card.title} has been added to ${currentSession.name}`,
+          'success',
+          4000
+        );
       } else {
-        Alert.alert("❤️ Saved!", `${card.title} has been added to your saved experiences`);
+        // Solo mode: save to general saved_experiences
+        await savedCardsService.saveCard(user.id, card);
+        const savedEntry = {
+          ...card,
+          dateAdded: new Date().toISOString(),
+          source: card.source || "solo",
+        };
+
+        setSavedCards((prev: any[]) => {
+          if (prev.some((item) => item.id === savedEntry.id)) {
+            return prev;
+          }
+          const updated = [savedEntry, ...prev];
+          persistSavedCards(updated);
+          setProfileStats((stats: any) => ({
+            ...stats,
+            savedExperiences: updated.length,
+          }));
+          return updated;
+        });
+
+        const message = `❤️ Saved! ${card.title} has been added to your saved experiences`;
+        if (Platform.OS === "android") {
+          ToastAndroid.show(message, ToastAndroid.SHORT);
+        } else {
+          Alert.alert("❤️ Saved!", `${card.title} has been added to your saved experiences`);
+        }
       }
     } catch (error) {
       console.error("Error saving card:", error);

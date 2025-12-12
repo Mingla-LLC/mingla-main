@@ -1,18 +1,32 @@
-import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import BoardsTab from './activity/BoardsTab';
-import SavedTab from './activity/SavedTab';
-import CalendarTab from './activity/CalendarTab';
-import BoardDiscussion from './BoardDiscussion';
-import UserInviteModal from './UserInviteModal';
-import PurchaseModal from './PurchaseModal';
-import PurchaseQRCode from './PurchaseQRCode';
+import React, { useState, useEffect, useCallback } from "react";
+import { BoardMessageService } from "../services/boardMessageService";
+import { useAppStore } from "../store/appStore";
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import BoardsTab from "./activity/BoardsTab";
+import SavedTab from "./activity/SavedTab";
+import CalendarTab from "./activity/CalendarTab";
+import BoardDiscussion from "./BoardDiscussion";
+import UserInviteModal from "./UserInviteModal";
+import PurchaseModal from "./PurchaseModal";
+import PurchaseQRCode from "./PurchaseQRCode";
 
 interface Board {
   id: string;
   name: string;
-  type: 'date-night' | 'group-hangout' | 'adventure' | 'wellness' | 'food-tour' | 'cultural';
+  type:
+    | "date-night"
+    | "group-hangout"
+    | "adventure"
+    | "wellness"
+    | "food-tour"
+    | "cultural";
   description: string;
   participants: Array<{
     id: string;
@@ -20,7 +34,7 @@ interface Board {
     status: string;
     lastActive?: string;
   }>;
-  status: 'active' | 'voting' | 'locked' | 'completed';
+  status: "active" | "voting" | "locked" | "completed";
   voteDeadline?: string;
   finalizedDate?: string;
   cardsCount: number;
@@ -39,7 +53,7 @@ interface ActivityPageProps {
   userPreferences?: any;
   accountPreferences?: {
     currency: string;
-    measurementSystem: 'Metric' | 'Imperial';
+    measurementSystem: "Metric" | "Imperial";
   };
   calendarEntries?: any[];
   savedCards?: any[];
@@ -53,7 +67,7 @@ interface ActivityPageProps {
   onUpdateBoardSession?: (board: any) => void;
   navigationData?: {
     selectedBoard?: any;
-    activeTab?: 'saved' | 'boards' | 'calendar';
+    activeTab?: "saved" | "boards" | "calendar";
     discussionTab?: string;
   } | null;
   onNavigationComplete?: () => void;
@@ -62,14 +76,15 @@ interface ActivityPageProps {
   onRemoveMember?: (boardId: string, participantId: string) => void;
   onLeaveBoard?: (boardId: string) => void;
   onNavigateToBoard?: (sessionId: string) => void;
+  onUnreadCountChange?: (count: number) => void;
 }
 
-export default function ActivityPage({ 
-  onSendInvite, 
-  userPreferences, 
-  accountPreferences, 
-  calendarEntries = [], 
-  savedCards = [], 
+export default function ActivityPage({
+  onSendInvite,
+  userPreferences,
+  accountPreferences,
+  calendarEntries = [],
+  savedCards = [],
   onScheduleFromSaved,
   onPurchaseFromSaved,
   onRemoveFromCalendar,
@@ -83,15 +98,26 @@ export default function ActivityPage({
   onPromoteToAdmin,
   onDemoteFromAdmin,
   onRemoveMember,
-  onLeaveBoard
+  onLeaveBoard,
+  onNavigateToBoard,
+  onUnreadCountChange,
 }: ActivityPageProps) {
-  const [activeTab, setActiveTab] = useState<'boards' | 'saved' | 'calendar'>('boards');
+  const [activeTab, setActiveTab] = useState<"boards" | "saved" | "calendar">(
+    "boards"
+  );
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
   const [showBoardDetails, setShowBoardDetails] = useState(false);
-  const [activeDiscussionTab, setActiveDiscussionTab] = useState<'cards' | 'discussion'>('discussion');
+  const [activeDiscussionTab, setActiveDiscussionTab] = useState<
+    "cards" | "discussion"
+  >("discussion");
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteSessionData, setInviteSessionData] = useState<{id: string; name: string} | null>(null);
-  const [boardNotifications, setBoardNotifications] = useState<{[boardId: string]: boolean}>({});
+  const [inviteSessionData, setInviteSessionData] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [boardNotifications, setBoardNotifications] = useState<{
+    [boardId: string]: boolean;
+  }>({});
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [purchaseModalCard, setPurchaseModalCard] = useState<any>(null);
   const [showQRCode, setShowQRCode] = useState<string | null>(null);
@@ -116,23 +142,69 @@ export default function ActivityPage({
     }
   }, [navigationData, onNavigationComplete]);
 
-  const handleVote = (cardId: string, vote: 'yes' | 'no') => {
-  };
+  const { user } = useAppStore();
+  const [boardsWithUnreadCounts, setBoardsWithUnreadCounts] = useState<any[]>(
+    []
+  );
 
-  const handleRSVP = (cardId: string, rsvp: 'yes' | 'no') => {
-    if (rsvp === 'yes') {
-      const card = savedCards.find(c => c.id === cardId);
+  // Fetch unread counts for each board
+  useEffect(() => {
+    const fetchUnreadCounts = async () => {
+      if (!user?.id || !boardsSessions || boardsSessions.length === 0) {
+        setBoardsWithUnreadCounts(boardsSessions || []);
+        return;
+      }
+
+      try {
+        // Fetch unread counts for all boards in parallel
+        const boardsWithCounts = await Promise.all(
+          boardsSessions.map(async (board) => {
+            // Get session_id from board (could be id or session_id field)
+            const sessionId = (board as any).session_id || board.id;
+
+            const { count, error } =
+              await BoardMessageService.getUnreadBoardMessagesCount(
+                sessionId,
+                user.id
+              );
+
+            return {
+              ...board,
+              unreadMessages: error ? 0 : count || 0,
+            };
+          })
+        );
+
+        setBoardsWithUnreadCounts(boardsWithCounts);
+      } catch (error) {
+        console.error("Error fetching unread counts for boards:", error);
+        // Fallback to boards without counts
+        setBoardsWithUnreadCounts(boardsSessions);
+      }
+    };
+
+    fetchUnreadCounts();
+
+    // Refresh unread counts periodically
+    const interval = setInterval(fetchUnreadCounts, 30000); // Every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [boardsSessions, user?.id]);
+
+  const handleVote = (cardId: string, vote: "yes" | "no") => {};
+
+  const handleRSVP = (cardId: string, rsvp: "yes" | "no") => {
+    if (rsvp === "yes") {
+      const card = savedCards.find((c) => c.id === cardId);
       if (card && onScheduleFromSaved) {
         onScheduleFromSaved(card);
       }
     }
   };
 
-  const handleRemoveSaved = (cardId: string) => {
-  };
+  const handleRemoveSaved = (cardId: string) => {};
 
-  const handleSendToFriend = (cardId: string) => {
-  };
+  const handleSendToFriend = (cardId: string) => {};
 
   const handleInviteToSession = (boardId: string, boardName: string) => {
     setInviteSessionData({ id: boardId, name: boardName });
@@ -155,56 +227,60 @@ export default function ActivityPage({
   const handlePurchaseComplete = (experienceData: any, purchaseOption: any) => {
     setShowPurchaseModal(false);
     setPurchaseModalCard(null);
-    
+
     if (onPurchaseFromSaved) {
       onPurchaseFromSaved(experienceData, purchaseOption);
     }
   };
 
-  const handleLeaveBoard = (boardId: string, boardName: string) => {
-  };
+  const handleLeaveBoard = (boardId: string, boardName: string) => {};
 
   const handleToggleBoardNotifications = (boardId: string) => {
-    setBoardNotifications(prev => {
+    setBoardNotifications((prev) => {
       const newEnabled = !prev[boardId];
       return {
         ...prev,
-        [boardId]: newEnabled
+        [boardId]: newEnabled,
       };
     });
   };
 
-  const handleExitBoard = (boardId: string, boardName: string) => {
-  };
+  const handleExitBoard = (boardId: string, boardName: string) => {};
 
   const isUserAdmin = (board: Board): boolean => {
     return board.admins.includes(board.currentUserId);
   };
 
   const handleOpenBoard = (boardId: string) => {
-    // Check if this is a board session (has session_type = 'board')
-    // For now, we'll check if onNavigateToBoard is provided and use it
-    // Otherwise fall back to the old behavior
+    // If onNavigateToBoard is provided, use it to navigate to the board view
     if (onNavigateToBoard) {
-      // Try to find the session ID from the board
-      const board = boardsSessions.find(b => b.id === boardId);
+      // Try to find the board in boardsSessions
+      const board = boardsSessions.find((b) => b.id === boardId);
+
+      // Check for session_id field (boards can have a session_id)
+      if (board && (board as any).session_id) {
+        onNavigateToBoard((board as any).session_id);
+        return;
+      }
+
+      // Check for sessionId field (alternative naming)
       if (board && (board as any).sessionId) {
         onNavigateToBoard((board as any).sessionId);
         return;
       }
-      // If board has a direct session reference, use it
-      if ((board as any).session_id) {
-        onNavigateToBoard((board as any).session_id);
-        return;
-      }
+
+      // If board not found or no session_id, try using boardId as sessionId
+      // (in some cases, board.id might be the same as session.id)
+      onNavigateToBoard(boardId);
+      return;
     }
-    // Fallback to old behavior
+
+    // Fallback to old behavior (showing board details modal)
     setSelectedBoard(boardId);
     setShowBoardDetails(true);
   };
 
-  const handleAddToCalendar = (entry: any) => {
-  };
+  const handleAddToCalendar = (entry: any) => {};
 
   const handleShowQRCode = (entryId: string) => {
     setShowQRCode(entryId);
@@ -213,25 +289,25 @@ export default function ActivityPage({
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: 'white',
+      backgroundColor: "white",
     },
     header: {
-      backgroundColor: 'white',
+      backgroundColor: "white",
       borderBottomWidth: 1,
-      borderBottomColor: '#f3f4f6',
+      borderBottomColor: "#f3f4f6",
       paddingHorizontal: 24,
       paddingTop: 24,
       paddingBottom: 16,
     },
     headerTitle: {
       fontSize: 20,
-      fontWeight: '600',
-      color: '#111827',
+      fontWeight: "600",
+      color: "#111827",
       marginBottom: 24,
     },
     tabContainer: {
-      flexDirection: 'row',
-      backgroundColor: '#f3f4f6',
+      flexDirection: "row",
+      backgroundColor: "#f3f4f6",
       borderRadius: 12,
       padding: 4,
     },
@@ -240,11 +316,11 @@ export default function ActivityPage({
       paddingVertical: 8,
       paddingHorizontal: 16,
       borderRadius: 8,
-      alignItems: 'center',
+      alignItems: "center",
     },
     tabActive: {
-      backgroundColor: 'white',
-      shadowColor: '#000',
+      backgroundColor: "white",
+      shadowColor: "#000",
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.1,
       shadowRadius: 2,
@@ -252,55 +328,55 @@ export default function ActivityPage({
     },
     tabText: {
       fontSize: 14,
-      fontWeight: '500',
+      fontWeight: "500",
     },
     tabTextActive: {
-      color: '#111827',
+      color: "#111827",
     },
     tabTextInactive: {
-      color: '#6b7280',
+      color: "#6b7280",
     },
     content: {
       flex: 1,
-      overflow: 'hidden',
+      overflow: "hidden",
     },
     contentContainer: {
       paddingHorizontal: 24,
       paddingVertical: 24,
     },
     modalOverlay: {
-      position: 'absolute',
+      position: "absolute",
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      alignItems: 'center',
-      justifyContent: 'center',
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      alignItems: "center",
+      justifyContent: "center",
       zIndex: 50,
       paddingHorizontal: 16,
       paddingBottom: 96,
     },
     qrModal: {
-      backgroundColor: 'white',
+      backgroundColor: "white",
       borderRadius: 12,
       maxWidth: 400,
-      width: '100%',
-      maxHeight: '100%',
-      overflow: 'hidden',
+      width: "100%",
+      maxHeight: "100%",
+      overflow: "hidden",
     },
     qrModalHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
       padding: 16,
       borderBottomWidth: 1,
-      borderBottomColor: '#e5e7eb',
+      borderBottomColor: "#e5e7eb",
     },
     qrModalTitle: {
       fontSize: 18,
-      fontWeight: '600',
-      color: '#111827',
+      fontWeight: "600",
+      color: "#111827",
     },
     qrModalCloseButton: {
       padding: 8,
@@ -313,7 +389,8 @@ export default function ActivityPage({
   });
 
   // Show all boards (no filtering by status - user wants to see all boards they're a member of)
-  const activeBoards = boardsSessions;
+  const activeBoards =
+    boardsWithUnreadCounts.length > 0 ? boardsWithUnreadCounts : boardsSessions;
 
   return (
     <View style={styles.container}>
@@ -321,48 +398,51 @@ export default function ActivityPage({
       {!selectedBoard && (
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Activity</Text>
-          
+
           {/* Tab Navigation */}
           <View style={styles.tabContainer}>
             <TouchableOpacity
-              onPress={() => setActiveTab('boards')}
-              style={[
-                styles.tab,
-                activeTab === 'boards' && styles.tabActive
-              ]}
+              onPress={() => setActiveTab("boards")}
+              style={[styles.tab, activeTab === "boards" && styles.tabActive]}
             >
-              <Text style={[
-                styles.tabText,
-                activeTab === 'boards' ? styles.tabTextActive : styles.tabTextInactive
-              ]}>
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === "boards"
+                    ? styles.tabTextActive
+                    : styles.tabTextInactive,
+                ]}
+              >
                 Boards
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setActiveTab('saved')}
-              style={[
-                styles.tab,
-                activeTab === 'saved' && styles.tabActive
-              ]}
+              onPress={() => setActiveTab("saved")}
+              style={[styles.tab, activeTab === "saved" && styles.tabActive]}
             >
-              <Text style={[
-                styles.tabText,
-                activeTab === 'saved' ? styles.tabTextActive : styles.tabTextInactive
-              ]}>
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === "saved"
+                    ? styles.tabTextActive
+                    : styles.tabTextInactive,
+                ]}
+              >
                 Saved
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setActiveTab('calendar')}
-              style={[
-                styles.tab,
-                activeTab === 'calendar' && styles.tabActive
-              ]}
+              onPress={() => setActiveTab("calendar")}
+              style={[styles.tab, activeTab === "calendar" && styles.tabActive]}
             >
-              <Text style={[
-                styles.tabText,
-                activeTab === 'calendar' ? styles.tabTextActive : styles.tabTextInactive
-              ]}>
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === "calendar"
+                    ? styles.tabTextActive
+                    : styles.tabTextInactive,
+                ]}
+              >
                 Locked In
               </Text>
             </TouchableOpacity>
@@ -374,9 +454,9 @@ export default function ActivityPage({
       <View style={styles.content}>
         {showBoardDetails && selectedBoard ? (
           (() => {
-            const board = boardsSessions.find(b => b.id === selectedBoard);
+            const board = boardsSessions.find((b) => b.id === selectedBoard);
             return board ? (
-              <BoardDiscussion 
+              <BoardDiscussion
                 board={board}
                 onBack={() => {
                   setShowBoardDetails(false);
@@ -393,7 +473,7 @@ export default function ActivityPage({
           })()
         ) : (
           <ScrollView style={styles.contentContainer}>
-            {activeTab === 'boards' && (
+            {activeTab === "boards" && (
               <BoardsTab
                 boards={activeBoards}
                 isLoading={isLoadingBoards}
@@ -406,7 +486,7 @@ export default function ActivityPage({
                 isUserAdmin={isUserAdmin}
               />
             )}
-            {activeTab === 'saved' && (
+            {activeTab === "saved" && (
               <SavedTab
                 savedCards={savedCards}
                 onScheduleFromSaved={onScheduleFromSaved || (() => {})}
@@ -416,7 +496,7 @@ export default function ActivityPage({
                 userPreferences={userPreferences}
               />
             )}
-            {activeTab === 'calendar' && (
+            {activeTab === "calendar" && (
               <CalendarTab
                 calendarEntries={calendarEntries}
                 onRemoveFromCalendar={onRemoveFromCalendar || (() => {})}
@@ -439,12 +519,12 @@ export default function ActivityPage({
           setInviteSessionData(null);
         }}
         onSendInvites={handleSendInvites}
-        sessionName={inviteSessionData?.name || ''}
+        sessionName={inviteSessionData?.name || ""}
       />
 
       {/* Purchase Modal */}
       {showPurchaseModal && purchaseModalCard && (
-        <PurchaseModal 
+        <PurchaseModal
           isOpen={showPurchaseModal}
           onClose={() => {
             setShowPurchaseModal(false);
@@ -469,12 +549,14 @@ export default function ActivityPage({
                 <Ionicons name="close" size={20} color="#6b7280" />
               </TouchableOpacity>
             </View>
-            
+
             <View style={styles.qrModalContent}>
               {(() => {
-                const entry = calendarEntries.find((e: any) => e.id === showQRCode);
+                const entry = calendarEntries.find(
+                  (e: any) => e.id === showQRCode
+                );
                 return entry ? (
-                  <PurchaseQRCode 
+                  <PurchaseQRCode
                     entry={entry}
                     accountPreferences={accountPreferences}
                   />

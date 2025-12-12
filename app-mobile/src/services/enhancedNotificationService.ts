@@ -15,7 +15,7 @@ Notifications.setNotificationHandler({
 });
 
 export interface NotificationData {
-  type: 'collaboration_invite' | 'session_message' | 'board_update' | 'experience_shared' | 'location_reminder';
+  type: 'collaboration_invite' | 'session_message' | 'board_update' | 'experience_shared' | 'location_reminder' | 'message';
   title: string;
   body: string;
   data?: any;
@@ -154,7 +154,7 @@ class EnhancedNotificationService {
         .single();
 
       if (tokenError || !tokenData) {
-        console.error('No push token found for user:', userId);
+        // User hasn't registered for push notifications - this is normal, silently return
         return false;
       }
 

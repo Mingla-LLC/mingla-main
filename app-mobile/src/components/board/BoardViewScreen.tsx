@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,22 +7,24 @@ import {
   ActivityIndicator,
   Alert,
   TouchableOpacity,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { BoardHeader } from './BoardHeader';
-import { BoardTabs, BoardTab } from './BoardTabs';
-import { Participant } from './ParticipantAvatars';
-import { useBoardSession } from '../../hooks/useBoardSession';
-import { supabase } from '../../services/supabase';
-import { realtimeService } from '../../services/realtimeService';
-import { useAppStore } from '../../store/appStore';
-import SwipeableBoardCards from '../SwipeableBoardCards';
-import BoardSettingsModal from './BoardSettingsModal';
-import { BoardDiscussionTab } from './BoardDiscussionTab';
-import { CardDiscussionModal } from './CardDiscussionModal';
-import { BoardErrorHandler } from '../../services/boardErrorHandler';
-import { useNetworkMonitor } from '../../services/networkMonitor';
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { BoardHeader } from "./BoardHeader";
+import { BoardTabs, BoardTab } from "./BoardTabs";
+import { Participant } from "./ParticipantAvatars";
+import { useBoardSession } from "../../hooks/useBoardSession";
+import { supabase } from "../../services/supabase";
+import { realtimeService } from "../../services/realtimeService";
+import { useAppStore } from "../../store/appStore";
+import SwipeableBoardCards from "../SwipeableBoardCards";
+import BoardSettingsModal from "./BoardSettingsModal";
+import { BoardDiscussionTab } from "./BoardDiscussionTab";
+import { CardDiscussionModal } from "./CardDiscussionModal";
+import { BoardErrorHandler } from "../../services/boardErrorHandler";
+import { useNetworkMonitor } from "../../services/networkMonitor";
+import { BoardCache } from "../../services/boardCache";
+import { BoardMessageService } from "../../services/boardMessageService";
 
 interface BoardViewScreenProps {
   sessionId: string;
@@ -32,11 +34,14 @@ interface BoardViewScreenProps {
 
 interface SavedCard {
   id: string;
-  saved_card_id: string;
+  saved_card_id?: string;
   session_id: string;
   saved_by: string;
   saved_at: string;
-  experience_data?: any;
+  experience_id?: string | null;
+  saved_experience_id?: string | null;
+  card_data?: any; // JSONB field containing full card data
+  experience_data?: any; // Legacy field, kept for backward compatibility
 }
 
 export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
@@ -44,10 +49,15 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   onBack,
   onNavigateToSession,
 }) => {
-  const { session, preferences, loading: sessionLoading, error: sessionError } = useBoardSession(sessionId);
+  const {
+    session,
+    preferences,
+    loading: sessionLoading,
+    error: sessionError,
+  } = useBoardSession(sessionId);
   const { user } = useAppStore();
   const networkState = useNetworkMonitor();
-  const [activeTab, setActiveTab] = useState<BoardTab>('swipe');
+  const [activeTab, setActiveTab] = useState<BoardTab>("discussion");
   const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -66,52 +76,57 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   const [hasMoreCards, setHasMoreCards] = useState(true);
   const CARDS_PER_PAGE = 20;
 
-  const loadSavedCards = useCallback(async (page: number = 0, append: boolean = false) => {
-    if (!sessionId) return;
+  const loadSavedCards = useCallback(
+    async (page: number = 0, append: boolean = false) => {
+      if (!sessionId) return;
 
-    // Check cache first
-    const cacheKey = BoardCache.getSavedCardsKey(sessionId, page);
-    const cached = await BoardCache.get<any[]>(cacheKey);
-    if (cached && !append) {
-      setSavedCards(cached);
-      setLoadingCards(false);
-      // Still fetch in background to update cache
-    }
-
-    setLoadingCards(true);
-    try {
-      const { data, error } = await supabase
-        .from('board_saved_cards')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('saved_at', { ascending: false })
-        .range(page * CARDS_PER_PAGE, (page + 1) * CARDS_PER_PAGE - 1);
-
-      if (error) {
-        const boardError = BoardErrorHandler.handleNetworkError(error);
-        BoardErrorHandler.showError(boardError, () => loadSavedCards(page, append));
-        return;
+      // Check cache first
+      const cacheKey = BoardCache.getSavedCardsKey(sessionId, page);
+      const cached = await BoardCache.get<any[]>(cacheKey);
+      if (cached && !append) {
+        setSavedCards(cached);
+        setLoadingCards(false);
+        // Still fetch in background to update cache
       }
 
-      // Cache the data
-      await BoardCache.set(cacheKey, data || [], 2 * 60 * 1000); // 2 minutes
+      setLoadingCards(true);
+      try {
+        const { data, error } = await supabase
+          .from("board_saved_cards")
+          .select("*")
+          .eq("session_id", sessionId)
+          .order("saved_at", { ascending: false })
+          .range(page * CARDS_PER_PAGE, (page + 1) * CARDS_PER_PAGE - 1);
 
-      if (append) {
-        setSavedCards(prev => [...prev, ...(data || [])]);
-      } else {
-        setSavedCards(data || []);
+        if (error) {
+          const boardError = BoardErrorHandler.handleNetworkError(error);
+          BoardErrorHandler.showError(boardError, () =>
+            loadSavedCards(page, append)
+          );
+          return;
+        }
+
+        // Cache the data
+        await BoardCache.set(cacheKey, data || [], 2 * 60 * 1000); // 2 minutes
+
+        if (append) {
+          setSavedCards((prev) => [...prev, ...(data || [])]);
+        } else {
+          setSavedCards(data || []);
+        }
+
+        setHasMoreCards((data || []).length === CARDS_PER_PAGE);
+        setSavedCardsPage(page);
+      } catch (err: any) {
+        console.error("Error loading saved cards:", err);
+        const boardError = BoardErrorHandler.handleNetworkError(err);
+        BoardErrorHandler.showError(boardError);
+      } finally {
+        setLoadingCards(false);
       }
-
-      setHasMoreCards((data || []).length === CARDS_PER_PAGE);
-      setSavedCardsPage(page);
-    } catch (err: any) {
-      console.error('Error loading saved cards:', err);
-      const boardError = BoardErrorHandler.handleNetworkError(err);
-      BoardErrorHandler.showError(boardError);
-    } finally {
-      setLoadingCards(false);
-    }
-  }, [sessionId]);
+    },
+    [sessionId]
+  );
 
   // Load participants
   const loadParticipants = useCallback(async () => {
@@ -119,8 +134,9 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
 
     try {
       const { data, error } = await supabase
-        .from('session_participants')
-        .select(`
+        .from("session_participants")
+        .select(
+          `
           *,
           profiles (
             id,
@@ -130,14 +146,15 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
             last_name,
             avatar_url
           )
-        `)
-        .eq('session_id', sessionId);
+        `
+        )
+        .eq("session_id", sessionId);
 
       if (error) throw error;
 
       setParticipants((data || []) as Participant[]);
     } catch (err: any) {
-      console.error('Error loading participants:', err);
+      console.error("Error loading participants:", err);
     }
   }, [sessionId]);
 
@@ -146,146 +163,171 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     if (!sessionId || !user?.id) return;
 
     try {
-      const { data, error } = await supabase.rpc('get_unread_message_count', {
-        p_session_id: sessionId,
-        p_user_id: user.id,
-      });
+      const { count, error } =
+        await BoardMessageService.getUnreadBoardMessagesCount(
+          sessionId,
+          user.id
+        );
 
       if (error) {
-        // Function might not exist yet, set to 0
-        console.warn('Error loading unread count:', error);
+        console.warn("Error loading unread count:", error);
         setUnreadMessages(0);
         return;
       }
 
-      setUnreadMessages(data || 0);
+      setUnreadMessages(count || 0);
     } catch (err: any) {
-      console.error('Error loading unread count:', err);
+      console.error("Error loading unread count:", err);
       setUnreadMessages(0);
     }
   }, [sessionId, user?.id]);
 
   // Handle card vote
-  const handleVote = useCallback(async (cardId: string, vote: 'yes' | 'no') => {
-    if (!user?.id || !sessionId) return;
+  const handleVote = useCallback(
+    async (cardId: string, vote: "yes" | "no") => {
+      if (!user?.id || !sessionId) return;
 
-    try {
-      const savedCard = savedCards.find(c => c.saved_card_id === cardId);
-      if (!savedCard) return;
+      try {
+        const savedCard = savedCards.find((c) => c.saved_card_id === cardId);
+        if (!savedCard) return;
 
-      // Convert 'yes'/'no' to 'up'/'down' for database
-      const voteType = vote === 'yes' ? 'up' : 'down';
+        // Convert 'yes'/'no' to 'up'/'down' for database
+        const voteType = vote === "yes" ? "up" : "down";
 
-      // Upsert vote
-      const { error } = await supabase
-        .from('board_votes')
-        .upsert({
-          session_id: sessionId,
-          saved_card_id: savedCard.id,
+        // Upsert vote
+        const { error } = await supabase.from("board_votes").upsert(
+          {
+            session_id: sessionId,
+            saved_card_id: savedCard.id,
+            user_id: user.id,
+            vote_type: voteType,
+          },
+          {
+            onConflict: "board_votes_session_saved_card_user_unique",
+          }
+        );
+
+        if (error) throw error;
+
+        // Broadcast vote update
+        realtimeService.broadcastVoteUpdate(sessionId, savedCard.id, {
           user_id: user.id,
           vote_type: voteType,
-        }, {
-          onConflict: 'board_votes_session_saved_card_user_unique',
         });
 
-      if (error) throw error;
-
-      // Broadcast vote update
-      realtimeService.broadcastVoteUpdate(sessionId, savedCard.id, {
-        user_id: user.id,
-        vote_type: voteType,
-      });
-
-      // Reload vote counts
-      loadVoteAndRSVPCounts();
-    } catch (err: any) {
-      console.error('Error voting:', err);
-      Alert.alert('Error', 'Failed to submit vote');
-    }
-  }, [user?.id, sessionId, savedCards, loadVoteAndRSVPCounts]);
+        // Reload vote counts
+        loadVoteAndRSVPCounts();
+      } catch (err: any) {
+        console.error("Error voting:", err);
+        Alert.alert("Error", "Failed to submit vote");
+      }
+    },
+    [user?.id, sessionId, savedCards, loadVoteAndRSVPCounts]
+  );
 
   // Handle RSVP
-  const handleRSVP = useCallback(async (cardId: string, rsvp: 'yes' | 'no') => {
-    if (!user?.id || !sessionId) return;
+  const handleRSVP = useCallback(
+    async (cardId: string, rsvp: "yes" | "no") => {
+      if (!user?.id || !sessionId) return;
 
-    // Check network
-    if (!networkState.isConnected) {
-      Alert.alert('No Connection', 'Please check your internet connection and try again.');
-      return;
-    }
-
-    try {
-      const savedCard = savedCards.find(c => c.saved_card_id === cardId);
-      if (!savedCard) {
-        Alert.alert('Error', 'Card not found');
+      // Check network
+      if (!networkState.isConnected) {
+        Alert.alert(
+          "No Connection",
+          "Please check your internet connection and try again."
+        );
         return;
       }
 
-      // Convert 'yes'/'no' to 'attending'/'not_attending' for database
-      const rsvpStatus = rsvp === 'yes' ? 'attending' : 'not_attending';
+      try {
+        const savedCard = savedCards.find((c) => c.saved_card_id === cardId);
+        if (!savedCard) {
+          Alert.alert("Error", "Card not found");
+          return;
+        }
 
-      // Upsert RSVP
-      const { error } = await supabase
-        .from('board_card_rsvps')
-        .upsert({
-          session_id: sessionId,
-          saved_card_id: savedCard.id,
+        // Convert 'yes'/'no' to 'attending'/'not_attending' for database
+        const rsvpStatus = rsvp === "yes" ? "attending" : "not_attending";
+
+        // Upsert RSVP
+        const { error } = await supabase.from("board_card_rsvps").upsert(
+          {
+            session_id: sessionId,
+            saved_card_id: savedCard.id,
+            user_id: user.id,
+            rsvp_status: rsvpStatus,
+          },
+          {
+            onConflict: "board_card_rsvps_session_saved_card_user_unique",
+          }
+        );
+
+        if (error) {
+          const boardError = BoardErrorHandler.handleNetworkError(error);
+          BoardErrorHandler.showError(boardError, () =>
+            handleRSVP(cardId, rsvp)
+          );
+          return;
+        }
+
+        // Broadcast RSVP update
+        realtimeService.broadcastRSVPUpdate(sessionId, savedCard.id, {
           user_id: user.id,
           rsvp_status: rsvpStatus,
-        }, {
-          onConflict: 'board_card_rsvps_session_saved_card_user_unique',
         });
 
-      if (error) {
-        const boardError = BoardErrorHandler.handleNetworkError(error);
-        BoardErrorHandler.showError(boardError, () => handleRSVP(cardId, rsvp));
-        return;
+        // Reload RSVP counts
+        loadVoteAndRSVPCounts();
+
+        // Show success feedback
+        toastManager.success(
+          rsvp === "yes" ? "RSVP: Attending!" : "RSVP: Not attending"
+        );
+      } catch (err: any) {
+        console.error("Error RSVPing:", err);
+        const boardError = BoardErrorHandler.handleNetworkError(err);
+        BoardErrorHandler.showError(boardError);
       }
-
-      // Broadcast RSVP update
-      realtimeService.broadcastRSVPUpdate(sessionId, savedCard.id, {
-        user_id: user.id,
-        rsvp_status: rsvpStatus,
-      });
-
-      // Reload RSVP counts
-      loadVoteAndRSVPCounts();
-      
-      // Show success feedback
-      toastManager.success(rsvp === 'yes' ? 'RSVP: Attending!' : 'RSVP: Not attending');
-    } catch (err: any) {
-      console.error('Error RSVPing:', err);
-      const boardError = BoardErrorHandler.handleNetworkError(err);
-      BoardErrorHandler.showError(boardError);
-    }
-  }, [user?.id, sessionId, savedCards, loadVoteAndRSVPCounts, networkState.isConnected]);
+    },
+    [
+      user?.id,
+      sessionId,
+      savedCards,
+      loadVoteAndRSVPCounts,
+      networkState.isConnected,
+    ]
+  );
 
   // Load card message counts
-  const [cardMessageCounts, setCardMessageCounts] = useState<Record<string, number>>({});
+  const [cardMessageCounts, setCardMessageCounts] = useState<
+    Record<string, number>
+  >({});
 
   const loadCardMessageCounts = useCallback(async () => {
     if (!sessionId || !user?.id || savedCards.length === 0) return;
 
     try {
-      const savedCardIds = savedCards.map(c => c.id);
+      const savedCardIds = savedCards.map((c) => c.id);
       const { data, error } = await supabase
-        .from('board_card_messages')
-        .select('saved_card_id')
-        .eq('session_id', sessionId)
-        .in('saved_card_id', savedCardIds)
-        .is('deleted_at', null);
+        .from("board_card_messages")
+        .select("saved_card_id")
+        .eq("session_id", sessionId)
+        .in("saved_card_id", savedCardIds)
+        .is("deleted_at", null);
 
       if (error) throw error;
 
       // Count messages per card
       const counts: Record<string, number> = {};
-      savedCardIds.forEach(cardId => {
-        counts[cardId] = (data || []).filter(m => m.saved_card_id === cardId).length;
+      savedCardIds.forEach((cardId) => {
+        counts[cardId] = (data || []).filter(
+          (m) => m.saved_card_id === cardId
+        ).length;
       });
 
       setCardMessageCounts(counts);
     } catch (err: any) {
-      console.error('Error loading card message counts:', err);
+      console.error("Error loading card message counts:", err);
     }
   }, [sessionId, user?.id, savedCards]);
 
@@ -295,8 +337,8 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
 
     const channel = realtimeService.subscribeToBoardSession(sessionId, {
       onCardSaved: (card) => {
-        setSavedCards(prev => {
-          if (prev.find(c => c.id === card.id)) return prev;
+        setSavedCards((prev) => {
+          if (prev.find((c) => c.id === card.id)) return prev;
           return [card, ...prev];
         });
         loadCardMessageCounts();
@@ -325,7 +367,14 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     return () => {
       realtimeService.unsubscribe(`board_session:${sessionId}`);
     };
-  }, [sessionId, loadSavedCards, loadUnreadCount, loadParticipants, loadCardMessageCounts, loadVoteAndRSVPCounts]);
+  }, [
+    sessionId,
+    loadSavedCards,
+    loadUnreadCount,
+    loadParticipants,
+    loadCardMessageCounts,
+    loadVoteAndRSVPCounts,
+  ]);
 
   // Validate session and permissions on mount
   useEffect(() => {
@@ -333,7 +382,9 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       if (!sessionId || !user?.id) return;
 
       // Check session validity
-      const validityCheck = await BoardErrorHandler.checkSessionValidity(sessionId);
+      const validityCheck = await BoardErrorHandler.checkSessionValidity(
+        sessionId
+      );
       setSessionValid(validityCheck.valid);
 
       if (!validityCheck.valid && validityCheck.error) {
@@ -344,7 +395,10 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       }
 
       // Check permissions
-      const permissionCheck = await BoardErrorHandler.checkSessionPermission(sessionId, user.id);
+      const permissionCheck = await BoardErrorHandler.checkSessionPermission(
+        sessionId,
+        user.id
+      );
       setHasPermission(permissionCheck.hasPermission);
       setIsAdmin(permissionCheck.isAdmin || false);
 
@@ -366,35 +420,55 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       loadParticipants();
       loadUnreadCount();
     }
-  }, [sessionValid, hasPermission, loadSavedCards, loadParticipants, loadUnreadCount]);
+  }, [
+    sessionValid,
+    hasPermission,
+    loadSavedCards,
+    loadParticipants,
+    loadUnreadCount,
+  ]);
 
   // Load vote and RSVP counts for saved cards
-  const [voteCounts, setVoteCounts] = useState<Record<string, { yes: number; no: number; userVote: 'yes' | 'no' | null }>>({});
-  const [rsvpCounts, setRsvpCounts] = useState<Record<string, { responded: number; total: number; userRSVP: 'yes' | 'no' | null }>>({});
+  const [voteCounts, setVoteCounts] = useState<
+    Record<string, { yes: number; no: number; userVote: "yes" | "no" | null }>
+  >({});
+  const [rsvpCounts, setRsvpCounts] = useState<
+    Record<
+      string,
+      { responded: number; total: number; userRSVP: "yes" | "no" | null }
+    >
+  >({});
 
   const loadVoteAndRSVPCounts = useCallback(async () => {
     if (!sessionId || !user?.id || savedCards.length === 0) return;
 
     try {
       // Load vote counts for all saved cards
-      const savedCardIds = savedCards.map(c => c.id);
+      const savedCardIds = savedCards.map((c) => c.id);
       const { data: votesData, error: votesError } = await supabase
-        .from('board_votes')
-        .select('*')
-        .eq('session_id', sessionId)
-        .in('saved_card_id', savedCardIds);
+        .from("board_votes")
+        .select("*")
+        .eq("session_id", sessionId)
+        .in("saved_card_id", savedCardIds);
 
       if (votesError) throw votesError;
 
       // Aggregate vote counts (convert 'up'/'down' to 'yes'/'no')
-      const counts: Record<string, { yes: number; no: number; userVote: 'yes' | 'no' | null }> = {};
-      savedCards.forEach(card => {
-        const cardVotes = votesData?.filter(v => v.saved_card_id === card.id) || [];
-        const yesVotes = cardVotes.filter(v => v.vote_type === 'up').length;
-        const noVotes = cardVotes.filter(v => v.vote_type === 'down').length;
-        const userVoteRaw = cardVotes.find(v => v.user_id === user.id)?.vote_type;
-        const userVote = userVoteRaw === 'up' ? 'yes' : userVoteRaw === 'down' ? 'no' : null;
-        
+      const counts: Record<
+        string,
+        { yes: number; no: number; userVote: "yes" | "no" | null }
+      > = {};
+      savedCards.forEach((card) => {
+        const cardVotes =
+          votesData?.filter((v) => v.saved_card_id === card.id) || [];
+        const yesVotes = cardVotes.filter((v) => v.vote_type === "up").length;
+        const noVotes = cardVotes.filter((v) => v.vote_type === "down").length;
+        const userVoteRaw = cardVotes.find(
+          (v) => v.user_id === user.id
+        )?.vote_type;
+        const userVote =
+          userVoteRaw === "up" ? "yes" : userVoteRaw === "down" ? "no" : null;
+
         counts[card.id] = {
           yes: yesVotes,
           no: noVotes,
@@ -405,23 +479,40 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
 
       // Load RSVP counts
       const { data: rsvpsData, error: rsvpsError } = await supabase
-        .from('board_card_rsvps')
-        .select('*')
-        .eq('session_id', sessionId)
-        .in('saved_card_id', savedCardIds);
+        .from("board_card_rsvps")
+        .select("*")
+        .eq("session_id", sessionId)
+        .in("saved_card_id", savedCardIds);
 
       if (rsvpsError) throw rsvpsError;
 
       // Aggregate RSVP counts (convert 'attending'/'not_attending' to 'yes'/'no')
-      const rsvpCountsData: Record<string, { responded: number; total: number; userRSVP: 'yes' | 'no' | null }> = {};
-      const totalParticipants = participants.filter(p => p.has_accepted).length;
-      savedCards.forEach(card => {
-        const cardRSVPs = rsvpsData?.filter(r => r.saved_card_id === card.id) || [];
-        const yesRSVPs = cardRSVPs.filter(r => r.rsvp_status === 'attending').length;
-        const noRSVPs = cardRSVPs.filter(r => r.rsvp_status === 'not_attending').length;
-        const userRSVPRaw = cardRSVPs.find(r => r.user_id === user.id)?.rsvp_status;
-        const userRSVP = userRSVPRaw === 'attending' ? 'yes' : userRSVPRaw === 'not_attending' ? 'no' : null;
-        
+      const rsvpCountsData: Record<
+        string,
+        { responded: number; total: number; userRSVP: "yes" | "no" | null }
+      > = {};
+      const totalParticipants = participants.filter(
+        (p) => p.has_accepted
+      ).length;
+      savedCards.forEach((card) => {
+        const cardRSVPs =
+          rsvpsData?.filter((r) => r.saved_card_id === card.id) || [];
+        const yesRSVPs = cardRSVPs.filter(
+          (r) => r.rsvp_status === "attending"
+        ).length;
+        const noRSVPs = cardRSVPs.filter(
+          (r) => r.rsvp_status === "not_attending"
+        ).length;
+        const userRSVPRaw = cardRSVPs.find(
+          (r) => r.user_id === user.id
+        )?.rsvp_status;
+        const userRSVP =
+          userRSVPRaw === "attending"
+            ? "yes"
+            : userRSVPRaw === "not_attending"
+            ? "no"
+            : null;
+
         rsvpCountsData[card.id] = {
           responded: yesRSVPs + noRSVPs,
           total: totalParticipants,
@@ -430,7 +521,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       });
       setRsvpCounts(rsvpCountsData);
     } catch (err: any) {
-      console.error('Error loading vote/RSVP counts:', err);
+      console.error("Error loading vote/RSVP counts:", err);
     }
   }, [sessionId, user?.id, savedCards, participants]);
 
@@ -442,26 +533,35 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   }, [savedCards, loadVoteAndRSVPCounts, loadCardMessageCounts]);
 
   // Transform saved cards to board card format
-  const boardCards = savedCards.map(savedCard => {
-    const experience = savedCard.experience_data || {};
-    const voteData = voteCounts[savedCard.id] || { yes: 0, no: 0, userVote: null };
-    const rsvpData = rsvpCounts[savedCard.id] || { responded: 0, total: participants.filter(p => p.has_accepted).length, userRSVP: null };
+  const boardCards = savedCards.map((savedCard) => {
+    // Use card_data JSONB field (which contains the full card data)
+    const experience = savedCard.card_data || savedCard.experience_data || {};
+    const voteData = voteCounts[savedCard.id] || {
+      yes: 0,
+      no: 0,
+      userVote: null,
+    };
+    const rsvpData = rsvpCounts[savedCard.id] || {
+      responded: 0,
+      total: participants.filter((p) => p.has_accepted).length,
+      userRSVP: null,
+    };
     const messageCount = cardMessageCounts[savedCard.id] || 0;
-    
+
     return {
-      id: savedCard.saved_card_id,
-      title: experience.title || 'Untitled Experience',
-      category: experience.category || 'Experience',
-      categoryIcon: experience.categoryIcon || 'star',
-      image: experience.image || '',
+      id: experience.id || savedCard.saved_card_id || savedCard.id,
+      title: experience.title || "Untitled Experience",
+      category: experience.category || "Experience",
+      categoryIcon: experience.categoryIcon || "star",
+      image: experience.image || "",
       images: experience.images || [],
       rating: experience.rating || 0,
       reviewCount: experience.reviewCount || 0,
-      travelTime: experience.travelTime || 'N/A',
-      priceRange: experience.priceRange || 'N/A',
-      description: experience.description || '',
-      fullDescription: experience.fullDescription || '',
-      address: experience.address || '',
+      travelTime: experience.travelTime || "N/A",
+      priceRange: experience.priceRange || "N/A",
+      description: experience.description || "",
+      fullDescription: experience.fullDescription || "",
+      address: experience.address || "",
       highlights: experience.highlights || [],
       matchScore: experience.matchScore || 0,
       socialStats: experience.socialStats || { views: 0, likes: 0, saves: 0 },
@@ -479,8 +579,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.loadingText}>Loading board session...</Text>
+          <ActivityIndicator size="large" color="#eb7825" />
         </View>
       </SafeAreaView>
     );
@@ -490,23 +589,23 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     const error = sessionError
       ? BoardErrorHandler.handleSessionError({ message: sessionError })
       : !sessionValid
-      ? { userFriendlyMessage: 'This board session is no longer available.' }
+      ? { userFriendlyMessage: "This board session is no longer available." }
       : !hasPermission
-      ? { userFriendlyMessage: 'You don\'t have permission to access this session.' }
-      : { userFriendlyMessage: 'Session not found' };
+      ? {
+          userFriendlyMessage:
+            "You don't have permission to access this session.",
+        }
+      : { userFriendlyMessage: "Session not found" };
 
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={48} color="#FF3B30" />
           <Text style={styles.errorText}>
-            {error.userFriendlyMessage || 'Session not found'}
+            {error.userFriendlyMessage || "Session not found"}
           </Text>
           {onBack && (
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={onBack}
-            >
+            <TouchableOpacity style={styles.backButton} onPress={onBack}>
               <Text style={styles.backButtonText}>Go Back</Text>
             </TouchableOpacity>
           )}
@@ -516,7 +615,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={[]}>
       {/* Network Error Banner */}
       {showNetworkBanner && (
         <View style={styles.networkBanner}>
@@ -530,16 +629,16 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       <BoardHeader
         session={session}
         participants={participants}
+        onBack={onBack}
         onSettingsPress={() => {
           if (isAdmin || session.created_by === user?.id) {
             setShowSettings(true);
           } else {
-            Alert.alert('Permission Denied', 'Only session admins can access settings.');
+            Alert.alert(
+              "Permission Denied",
+              "Only session admins can access settings."
+            );
           }
-        }}
-        onInvitePress={() => {
-          // Open invite modal
-          Alert.alert('Invite', 'Invite functionality coming soon');
         }}
         loading={loadingCards}
       />
@@ -552,32 +651,15 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       />
 
       <View style={styles.content}>
-        {activeTab === 'swipe' && (
-          <SwipeableBoardCards
-            cards={boardCards}
-            onVote={handleVote}
-            onRSVP={handleRSVP}
-            onOpenDiscussion={(cardId: string) => {
-              const card = boardCards.find(c => c.id === cardId);
-              if (card) {
-                const savedCard = savedCards.find(sc => sc.saved_card_id === cardId);
-                if (savedCard) {
-                  setSelectedCardForDiscussion({
-                    savedCardId: savedCard.id,
-                    cardTitle: card.title,
-                  });
-                }
-              }
-            }}
-          />
-        )}
-
-        {activeTab === 'saved' && (
+        {activeTab === "saved" && (
           <ScrollView
             style={styles.savedContainer}
             onScrollEndDrag={(e) => {
-              const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-              const isCloseToBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 200;
+              const { contentOffset, contentSize, layoutMeasurement } =
+                e.nativeEvent;
+              const isCloseToBottom =
+                contentOffset.y + layoutMeasurement.height >=
+                contentSize.height - 200;
               if (isCloseToBottom && hasMoreCards && !loadingCards) {
                 loadSavedCards(savedCardsPage + 1, true);
               }
@@ -598,20 +680,22 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
               </View>
             ) : (
               <>
-                {savedCards.map(card => (
-                  <View key={card.id} style={styles.savedCard}>
-                    <Text style={styles.savedCardTitle}>
-                      {card.experience_data?.title || 'Untitled'}
-                    </Text>
-                    <Text style={styles.savedCardDescription}>
-                      {card.experience_data?.description || ''}
-                    </Text>
-                  </View>
-                ))}
+                {savedCards.map((card) => {
+                  const cardData = card.card_data || card.experience_data || {};
+                  return (
+                    <View key={card.id} style={styles.savedCard}>
+                      <Text style={styles.savedCardTitle}>
+                        {cardData.title || "Untitled"}
+                      </Text>
+                      <Text style={styles.savedCardDescription}>
+                        {cardData.description || ""}
+                      </Text>
+                    </View>
+                  );
+                })}
                 {loadingCards && savedCards.length > 0 && (
                   <View style={styles.loadingMoreContainer}>
-                    <ActivityIndicator size="small" color="#007AFF" />
-                    <Text style={styles.loadingMoreText}>Loading more cards...</Text>
+                    <ActivityIndicator size="small" color="#eb7825" />
                   </View>
                 )}
               </>
@@ -619,10 +703,11 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
           </ScrollView>
         )}
 
-        {activeTab === 'discussion' && (
+        {activeTab === "discussion" && (
           <BoardDiscussionTab
             sessionId={sessionId}
             participants={participants}
+            onUnreadCountChange={loadUnreadCount}
           />
         )}
       </View>
@@ -651,33 +736,33 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: "white",
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     gap: 12,
   },
   loadingText: {
     fontSize: 16,
-    color: '#666',
+    color: "#666",
   },
   errorContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
     gap: 16,
   },
   errorText: {
     fontSize: 16,
-    color: '#FF3B30',
-    textAlign: 'center',
-    fontWeight: '500',
+    color: "#FF3B30",
+    textAlign: "center",
+    fontWeight: "500",
   },
   backButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
@@ -685,21 +770,21 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 16,
-    color: 'white',
-    fontWeight: '600',
+    color: "white",
+    fontWeight: "600",
   },
   networkBanner: {
-    backgroundColor: '#FF9500',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#FF9500",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 12,
     gap: 8,
   },
   networkBannerText: {
-    color: 'white',
+    color: "white",
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   content: {
     flex: 1,
@@ -709,11 +794,11 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   savedCard: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -721,50 +806,49 @@ const styles = StyleSheet.create({
   },
   savedCardTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1a1a',
+    fontWeight: "600",
+    color: "#1a1a1a",
     marginBottom: 8,
   },
   savedCardDescription: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
   },
   discussionContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   comingSoonText: {
     fontSize: 16,
-    color: '#666',
+    color: "#666",
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 40,
   },
   emptyText: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1a1a',
+    fontWeight: "600",
+    color: "#1a1a1a",
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
+    color: "#666",
+    textAlign: "center",
   },
   loadingMoreContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 16,
     gap: 8,
   },
   loadingMoreText: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
   },
 });
-
