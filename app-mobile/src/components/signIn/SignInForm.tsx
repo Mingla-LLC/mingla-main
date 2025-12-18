@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 18,
-    paddingVertical: 12,
+    paddingVertical: 11.5,
   },
   alternativeText: {
     color: "#64748b",
