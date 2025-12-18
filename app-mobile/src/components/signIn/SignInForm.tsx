@@ -6,9 +6,14 @@ import {
   StyleSheet,
   StatusBar,
   ScrollView,
+  Image,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Input } from "../ui/input";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+const logo = require("../../../assets/mobile_logo.png");
 
 interface SignInFormProps {
   onSignIn: (credentials: { email: string; password: string }) => void;
@@ -27,35 +32,34 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: "transparent",
+    paddingHorizontal: 12,
+    backgroundColor: "white",
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f1f5f9",
+  },
+  backButtonText: {
+    color: "#6b7280",
+    fontSize: 16,
+    fontWeight: "500",
+    marginLeft: 4,
   },
   headerCenter: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  minglaText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#eb7825",
-    letterSpacing: 0.3,
+  logo: {
+    width: 150,
+    height: 40,
+    resizeMode: "contain",
   },
   formContainer: {
     flex: 1,
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 40,
+    justifyContent: "center",
   },
   formWrapper: {
     width: "100%",
@@ -63,7 +67,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   formHeader: {
-    marginBottom: 48,
+    marginBottom: 32,
     paddingHorizontal: 4,
   },
   formTitle: {
@@ -78,6 +82,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#64748b",
     lineHeight: 24,
+    textAlign: "center",
+    marginTop: 32,
   },
   inputContainer: {
     marginBottom: 28,
@@ -85,7 +91,7 @@ const styles = StyleSheet.create({
   inputLabel: {
     color: "#0f172a",
     fontWeight: "600",
-    fontSize: 14,
+    fontSize: 16,
     marginBottom: 8,
     letterSpacing: -0.2,
   },
@@ -103,7 +109,7 @@ const styles = StyleSheet.create({
   passwordToggle: {
     position: "absolute",
     right: 12,
-    top: 13,
+    top: 8,
     padding: 8,
     zIndex: 1,
     borderRadius: 8,
@@ -112,10 +118,15 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "#eb7825",
     paddingVertical: 18,
-    borderRadius: 14,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 8,
+    flexDirection: "row",
+    gap: 8,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
   },
   submitButtonText: {
     color: "white",
@@ -127,7 +138,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 32,
+    marginTop: 18,
     paddingVertical: 12,
   },
   alternativeText: {
@@ -149,6 +160,7 @@ export default function SignInForm({
   onBack,
 }: SignInFormProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -158,13 +170,22 @@ export default function SignInForm({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = () => {
-    onSignIn({ email: formData.email, password: formData.password });
+  const handleSubmit = async () => {
+    if (isLoading) return;
+
+    setIsLoading(true);
+    try {
+      await onSignIn({ email: formData.email, password: formData.password });
+    } catch (error) {
+      console.error("Sign in error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+    <SafeAreaView style={styles.container}>
+      {/*   <StatusBar barStyle="dark-content" backgroundColor="#ffffff" /> */}
 
       <ScrollView
         style={{ flex: 1 }}
@@ -174,21 +195,22 @@ export default function SignInForm({
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={22} color="#475569" />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.minglaText}>Mingla</Text>
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.backButton} onPress={onBack}>
+              <Ionicons name="arrow-back" size={20} color="#6b7280" />
+              <Text style={styles.backButtonText}>Back</Text>
+            </TouchableOpacity>
           </View>
-          <View style={{ width: 40 }} />
         </View>
 
         {/* Form Content */}
         <View style={styles.formContainer}>
+          <View style={styles.headerCenter}>
+            <Image source={logo} style={styles.logo} resizeMode="contain" />
+          </View>
           <View style={styles.formWrapper}>
             {/* Form Header */}
             <View style={styles.formHeader}>
-              <Text style={styles.formTitle}>Welcome Back</Text>
               <Text style={styles.formSubtitle}>
                 Sign in to continue your journey
               </Text>
@@ -212,7 +234,7 @@ export default function SignInForm({
                   placeholderTextColor="#cbd5e1"
                   required
                   style={{
-                    backgroundColor: "#f8fafc",
+                    backgroundColor: "#f1f5f9",
                     borderWidth: 0,
                     borderRadius: 12,
                     paddingHorizontal: 16,
@@ -244,7 +266,7 @@ export default function SignInForm({
                   placeholderTextColor="#cbd5e1"
                   required
                   style={{
-                    backgroundColor: "#f8fafc",
+                    backgroundColor: "#f1f5f9",
                     borderWidth: 0,
                     borderRadius: 12,
                     paddingHorizontal: 16,
@@ -272,9 +294,16 @@ export default function SignInForm({
             {/* Submit Button */}
             <TouchableOpacity
               onPress={handleSubmit}
-              style={styles.submitButton}
+              style={[
+                styles.submitButton,
+                isLoading && styles.submitButtonDisabled,
+              ]}
               activeOpacity={0.8}
+              disabled={isLoading}
             >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : null}
               <Text style={styles.submitButtonText}>Sign In</Text>
             </TouchableOpacity>
 
@@ -290,6 +319,6 @@ export default function SignInForm({
           </View>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

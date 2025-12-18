@@ -226,7 +226,7 @@ export default function WelcomeScreen({
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
+      {/*    <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       <View style={styles.mainContent}>
         {/* Minglå Logo */}
