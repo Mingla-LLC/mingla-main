@@ -1,15 +1,10 @@
 import React from "react";
-import {
-  Text,
-  View,
-  TouchableOpacity,
-  StyleSheet,
-  Image,
-} from "react-native";
+import { Text, View, TouchableOpacity, StyleSheet, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 const googleIcon = require("../../../assets/google_icon.png");
+const logo = require("../../../assets/mobile_logo.png");
 
 interface AccountSetupStepProps {
   onNext: () => void;
@@ -40,19 +35,19 @@ const AccountSetupStep = ({
     container: {
       flex: 1,
       backgroundColor: "white",
+      justifyContent: "center",
     },
     header: {
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: 24,
-      paddingTop: 16,
-      paddingBottom: 8,
+
       backgroundColor: "white",
     },
     backButton: {
       flexDirection: "row",
       alignItems: "center",
-      paddingVertical: 8,
+
       paddingHorizontal: 4,
     },
     backButtonText: {
@@ -62,20 +57,17 @@ const AccountSetupStep = ({
       marginLeft: 4,
     },
     headerCenter: {
-      flex: 1,
       alignItems: "center",
       justifyContent: "center",
       marginTop: 8,
     },
-    minglaText: {
-      fontSize: 14,
-      fontWeight: "500",
-      color: "#eb7825",
+    logo: {
+      width: 150,
     },
     accountMainContent: {
       flex: 1,
       paddingHorizontal: 24,
-      paddingTop: 32,
+      justifyContent: "center",
     },
     titleSection: {
       alignItems: "center",
@@ -98,8 +90,8 @@ const AccountSetupStep = ({
     },
     authButton: {
       backgroundColor: "white",
-      borderRadius: 12,
-      paddingVertical: 16,
+      borderRadius: 24,
+      paddingVertical: 10,
       paddingHorizontal: 20,
       flexDirection: "row",
       alignItems: "center",
@@ -118,13 +110,13 @@ const AccountSetupStep = ({
     },
     appleButton: {
       backgroundColor: "#000000",
-      borderRadius: 12,
-      paddingVertical: 16,
+      borderRadius: 24,
+      paddingVertical: 10,
       paddingHorizontal: 20,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      marginBottom: 12,
+      marginBottom: 120,
     },
     appleButtonText: {
       color: "white",
@@ -158,28 +150,24 @@ const AccountSetupStep = ({
   });
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={[]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
           <Ionicons name="arrow-back" size={20} color="#6b7280" />
           <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
-
-        <View style={styles.headerCenter}>
-          <Text style={styles.minglaText}>Mingla</Text>
-        </View>
-
-        <View style={{ width: 80 }} />
       </View>
 
       {/* Main Content */}
       <View style={styles.accountMainContent}>
+        <View style={styles.headerCenter}>
+          <Image source={logo} style={styles.logo} resizeMode="contain" />
+        </View>
         {/* Title Section */}
         <View style={styles.titleSection}>
-          <Text style={styles.title}>Welcome to Mingla.</Text>
           <Text style={styles.subtitle}>
-            Sign in to discover amazing experiences.
+            Sign up to discover amazing experiences.
           </Text>
         </View>
 
@@ -220,7 +208,7 @@ const AccountSetupStep = ({
           </TouchableOpacity>
 
           {/* Continue with Apple */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.appleButton}
             onPress={onNavigateToAppleSignIn}
           >
