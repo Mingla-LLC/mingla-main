@@ -199,7 +199,7 @@ export default function WelcomeScreen({
     try {
       await onGoogleSignIn();
     } catch (error) {
-      console.error("Google sign-in error:", error);
+      /*  console.error("Google sign-in error:", error); */
     } finally {
       setIsGoogleSignInInProgress(false);
     }

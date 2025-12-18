@@ -38,7 +38,9 @@ export default function SignInPage({
   onResetSignUpForm,
 }: SignInPageProps) {
   const [authMode, setAuthMode] = useState<AuthMode>(initialMode);
-  const [selectedAccountType, setSelectedAccountType] = useState<string | null>(null);
+  const [selectedAccountType, setSelectedAccountType] = useState<string | null>(
+    null
+  );
   const { signInWithGoogle, signInWithApple } = useAuthSimple();
 
   const handleBackToWelcome = () => {
@@ -89,11 +91,11 @@ export default function SignInPage({
       const result = await signInWithGoogle();
       if (result.error) {
         // Error is already handled by signInWithGoogle (shows Alert)
-        console.error('Google sign-in error:', result.error);
+        /*    console.error('Google sign-in error:', result.error); */
       }
       // If successful, app/index.tsx will handle navigation based on onboarding status
     } catch (error) {
-      console.error('Unexpected error during Google sign-in:', error);
+      console.error("Unexpected error during Google sign-in:", error);
     }
   };
 
@@ -102,11 +104,11 @@ export default function SignInPage({
       const result = await signInWithApple();
       if (result.error) {
         // Error is already handled by signInWithApple (shows Alert)
-        console.error('Apple sign-in error:', result.error);
+        console.error("Apple sign-in error:", result.error);
       }
       // If successful, app/index.tsx will handle navigation based on onboarding status
     } catch (error) {
-      console.error('Unexpected error during Apple sign-in:', error);
+      console.error("Unexpected error during Apple sign-in:", error);
     }
   };
 

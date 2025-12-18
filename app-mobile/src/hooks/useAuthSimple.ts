@@ -1,15 +1,18 @@
 import { useState, useEffect } from "react";
 import { Alert, Platform } from "react-native";
 import Constants from "expo-constants";
-import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
+import {
+  GoogleSignin,
+  statusCodes,
+} from "@react-native-google-signin/google-signin";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { User } from "../types";
 
 // Configure Google Sign-In
-const webClientId = 
-  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 
+const webClientId =
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
   Constants.expoConfig?.extra?.googleWebClientId;
 
 if (webClientId) {
@@ -19,7 +22,9 @@ if (webClientId) {
     forceCodeForRefreshToken: true, // [Android] related to `serverAuthCode`
   });
 } else {
-  console.warn("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set. Google Sign-In may not work.");
+  console.warn(
+    "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set. Google Sign-In may not work."
+  );
 }
 
 export const useAuthSimple = () => {
@@ -638,21 +643,26 @@ export const useAuthSimple = () => {
   const signInWithGoogle = async () => {
     try {
       // Check if Google Sign-In is configured
-      const webClientId = 
-        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 
+      const webClientId =
+        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
         Constants.expoConfig?.extra?.googleWebClientId;
-      
+
       if (!webClientId) {
         Alert.alert(
           "Configuration Error",
           "Google Sign-In is not configured. Please set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in your environment variables."
         );
-        return { data: null, error: { message: "Google Sign-In not configured" } };
+        return {
+          data: null,
+          error: { message: "Google Sign-In not configured" },
+        };
       }
 
       // Check if Google Play Services are available (Android only)
       if (Platform.OS === "android") {
-        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        await GoogleSignin.hasPlayServices({
+          showPlayServicesUpdateDialog: true,
+        });
       }
 
       // Check if there's a previous Google sign-in and sign out to force account picker
@@ -667,7 +677,7 @@ export const useAuthSimple = () => {
 
       // Get the ID token from the current user
       const tokens = await GoogleSignin.getTokens();
-      
+
       if (!tokens.idToken) {
         throw new Error("Failed to get ID token from Google");
       }
@@ -682,9 +692,12 @@ export const useAuthSimple = () => {
           googleEmail = googleUser.user.email.toLowerCase().trim();
         }
       } catch (e) {
-        console.warn("Could not extract email from Google sign-in response:", e);
+        console.warn(
+          "Could not extract email from Google sign-in response:",
+          e
+        );
       }
-      
+
       // If we couldn't get email from the response, we'll check after Supabase sign-in
 
       // Check if user with this email already exists in profiles
@@ -695,7 +708,7 @@ export const useAuthSimple = () => {
           .select("id, email")
           .ilike("email", googleEmail)
           .maybeSingle();
-        
+
         if (existingProfile) {
           existingUser = existingProfile;
         }
@@ -712,8 +725,8 @@ export const useAuthSimple = () => {
       let isExistingUserError = false;
       if (error) {
         // Check if error is related to user already existing
-        isExistingUserError = 
-          error.message?.includes("already registered") || 
+        isExistingUserError =
+          error.message?.includes("already registered") ||
           error.message?.includes("already exists") ||
           error.message?.includes("Database error saving new user") ||
           error.message?.includes("duplicate key") ||
@@ -722,38 +735,43 @@ export const useAuthSimple = () => {
 
         if (isExistingUserError) {
           console.log("User already exists, checking for session...");
-          
+
           // Wait a bit for Supabase to process the sign-in
           // Sometimes the session is created even if there's a database error
           // Try multiple times with increasing delays
           let sessionFound = false;
           for (let attempt = 0; attempt < 3; attempt++) {
-            await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
-            
+            await new Promise((resolve) =>
+              setTimeout(resolve, 500 * (attempt + 1))
+            );
+
             const { data: sessionData } = await supabase.auth.getSession();
-            
+
             if (sessionData?.session && sessionData.session.user) {
               // Session was created successfully, ignore the error
-              data = { session: sessionData.session, user: sessionData.session.user };
+              data = {
+                session: sessionData.session,
+                user: sessionData.session.user,
+              };
               error = null;
               sessionFound = true;
               console.log("Successfully signed in existing user via Google");
               break;
             }
           }
-          
+
           if (!sessionFound) {
             // No session found after waiting
             // The user exists but Supabase didn't create a session
             // This might mean the Google provider isn't linked to their account
             // For now, let's try one more time with the OAuth flow
             console.log("No session found, retrying OAuth sign-in...");
-            
+
             const retryResult = await supabase.auth.signInWithIdToken({
               provider: "google",
               token: tokens.idToken,
             });
-            
+
             if (!retryResult.error && retryResult.data?.session) {
               // Success on retry
               data = retryResult.data;
@@ -763,16 +781,22 @@ export const useAuthSimple = () => {
               // Still no session - Supabase might need account linking
               // But the user should be able to sign in, so let's check one more time
               await new Promise((resolve) => setTimeout(resolve, 1000));
-              const { data: finalSessionData } = await supabase.auth.getSession();
-              
+              const { data: finalSessionData } =
+                await supabase.auth.getSession();
+
               if (finalSessionData?.session && finalSessionData.session.user) {
-                data = { session: finalSessionData.session, user: finalSessionData.session.user };
+                data = {
+                  session: finalSessionData.session,
+                  user: finalSessionData.session.user,
+                };
                 error = null;
                 console.log("Session found on final check");
               } else {
                 // No session - the account needs to be linked
                 // But instead of throwing an error, let's proceed and see if Supabase handles it
-                console.warn("Could not create session for existing user, but continuing...");
+                console.warn(
+                  "Could not create session for existing user, but continuing..."
+                );
                 // Don't throw error - let the flow continue
                 // The error might be from the trigger, but Supabase might handle it
               }
@@ -796,7 +820,7 @@ export const useAuthSimple = () => {
           // we need to inform the user
           throw new Error(
             "Unable to sign in with Google. An account with this email already exists. " +
-            "Please sign in with your email and password, then link Google in settings."
+              "Please sign in with your email and password, then link Google in settings."
           );
         } else if (error) {
           // Some other error
@@ -846,19 +870,25 @@ export const useAuthSimple = () => {
 
       return { data: data.session, error: null };
     } catch (error: any) {
-      console.error("Google sign-in error:", error);
+      /*   console.error("Google sign-in error:", error); */
 
       // Handle specific error cases
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
         return { data: null, error: { message: "Sign-in cancelled" } };
       } else if (error.code === statusCodes.IN_PROGRESS) {
-        return { data: null, error: { message: "Sign-in already in progress" } };
+        return {
+          data: null,
+          error: { message: "Sign-in already in progress" },
+        };
       } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
         Alert.alert(
           "Google Play Services Required",
           "Google Play Services is not available. Please install it from the Play Store."
         );
-        return { data: null, error: { message: "Google Play Services not available" } };
+        return {
+          data: null,
+          error: { message: "Google Play Services not available" },
+        };
       }
 
       Alert.alert(
@@ -877,7 +907,10 @@ export const useAuthSimple = () => {
           "Not Available",
           "Apple Sign-In is only available on iOS devices."
         );
-        return { data: null, error: { message: "Apple Sign-In only available on iOS" } };
+        return {
+          data: null,
+          error: { message: "Apple Sign-In only available on iOS" },
+        };
       }
 
       const isAvailable = await AppleAuthentication.isAvailableAsync();
@@ -886,7 +919,10 @@ export const useAuthSimple = () => {
           "Not Available",
           "Apple Sign-In is not available on this device. Please use iOS 13 or later."
         );
-        return { data: null, error: { message: "Apple Sign-In not available" } };
+        return {
+          data: null,
+          error: { message: "Apple Sign-In not available" },
+        };
       }
 
       // Request Apple authentication
@@ -927,7 +963,7 @@ export const useAuthSimple = () => {
         if (!profileError && profile) {
           // Update profile with Apple user info if available (first time only)
           const updates: any = {};
-          
+
           // Apple only provides name/email on first sign-in
           if (credential.fullName) {
             if (credential.fullName.givenName && !profile.first_name) {
@@ -936,11 +972,15 @@ export const useAuthSimple = () => {
             if (credential.fullName.familyName && !profile.last_name) {
               updates.last_name = credential.fullName.familyName;
             }
-            if (credential.fullName.givenName && credential.fullName.familyName && !profile.display_name) {
+            if (
+              credential.fullName.givenName &&
+              credential.fullName.familyName &&
+              !profile.display_name
+            ) {
               updates.display_name = `${credential.fullName.givenName} ${credential.fullName.familyName}`;
             }
           }
-          
+
           // Ensure email_verified is set to true for Apple users
           if (profile.email_verified === false) {
             updates.email_verified = true;
@@ -974,7 +1014,7 @@ export const useAuthSimple = () => {
                 .from("profiles")
                 .update({ email_verified: true })
                 .eq("id", profile.id);
-              
+
               if (!updateError) {
                 setProfile({ ...profile, email_verified: true });
               } else {
