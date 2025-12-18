@@ -65,13 +65,15 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
         </View>
 
         {/* Right: Three-dot Menu */}
-        <TouchableOpacity
-          style={styles.menuButton}
-          onPress={onSettingsPress}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="ellipsis-horizontal" size={24} color="#1a1a1a" />
-        </TouchableOpacity>
+        {onSettingsPress && (
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={onSettingsPress}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={24} color="#1a1a1a" />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

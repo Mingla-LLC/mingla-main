@@ -79,6 +79,10 @@ export const Toast: React.FC<ToastProps> = ({
   const getIcon = () => {
     switch (type) {
       case 'success':
+        // Use a calendar icon for scheduling to match design
+        if (message.includes('has been moved to your calendar')) {
+          return 'calendar';
+        }
         return 'checkmark-circle';
       case 'error':
         return 'close-circle';
@@ -92,8 +96,11 @@ export const Toast: React.FC<ToastProps> = ({
   const getColor = () => {
     switch (type) {
       case 'success':
-        // Check if message is about board save - use orange
-        if (message.includes('Added to Board!')) {
+        // Use brand orange for board save and calendar schedule confirmations
+        if (
+          message.includes('Added to Board!') ||
+          message.includes('has been moved to your calendar')
+        ) {
           return '#EB7825';
         }
         return '#10B981';

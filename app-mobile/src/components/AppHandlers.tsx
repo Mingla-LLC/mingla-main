@@ -64,8 +64,45 @@ export function useAppHandlers(state: any) {
     setShowCollaboration(true);
   };
 
-  const handleModeChange = (mode: "solo" | string) => {
-    setCurrentMode(mode);
+  const handleModeChange = async (mode: "solo" | string) => {
+    if (mode === "solo") {
+      // Switch to solo mode - no database action needed
+      setCurrentMode("solo");
+    } else {
+      // Switch to a collaboration session - update database
+      if (user?.id) {
+        try {
+          const sessionServiceModule = await import("../services/sessionService");
+          const { SessionService } = sessionServiceModule;
+          
+          // Find session ID from mode (could be session name or ID)
+          const session = boardsSessions.find(
+            (s: any) => s.id === mode || s.name === mode || (s as any).session_id === mode
+          );
+          
+          if (session) {
+            const sessionId = session.id || (session as any).session_id;
+            const result = await SessionService.switchToSession(user.id, sessionId);
+            
+            if (result.success) {
+              setCurrentMode(mode);
+            } else {
+              console.error("Error switching to session:", result.error);
+              // Fallback to solo if switch fails
+              setCurrentMode("solo");
+            }
+          } else {
+            // Session not found, default to solo
+            setCurrentMode("solo");
+          }
+        } catch (error) {
+          console.error("Error switching to session:", error);
+          setCurrentMode("solo");
+        }
+      } else {
+        setCurrentMode(mode);
+      }
+    }
   };
 
   const handleCollabPreferencesOpen = (sessionData: any) => {
@@ -710,17 +747,33 @@ export function useAppHandlers(state: any) {
     // Check if we're in a session (not solo mode)
     const isInSession = currentMode !== "solo";
     const currentSession = isInSession 
-      ? boardsSessions.find((s: any) => s.id === currentMode || s.name === currentMode)
+      ? boardsSessions.find((s: any) => s.id === currentMode || s.name === currentMode || (s as any).session_id === currentMode)
       : null;
 
-    // If in a session, check if card is already saved in that session
+    // Get the actual session_id (could be session_id field or id field)
+    const sessionId = currentSession 
+      ? ((currentSession as any).session_id || currentSession.id)
+      : null;
+
+    // Debug: Log session info
     if (isInSession && currentSession) {
+      console.log('💾 Saving card to board session:', {
+        currentMode,
+        boardId: currentSession.id,
+        sessionId: sessionId,
+        boardName: currentSession.name,
+        hasSessionId: !!(currentSession as any).session_id
+      });
+    }
+
+    // If in a session, check if card is already saved in that session
+    if (isInSession && currentSession && sessionId) {
       try {
         // Check if card already exists by querying card_data JSONB
         const { data: existingCards } = await supabase
           .from('board_saved_cards')
           .select('id, card_data')
-          .eq('session_id', currentSession.id);
+          .eq('session_id', sessionId);
 
         // Check if any card has matching ID in card_data
         const existing = existingCards?.find((savedCard: any) => 
@@ -782,7 +835,7 @@ export function useAppHandlers(state: any) {
         };
 
         const { error: boardError } = await BoardCardService.saveCardToBoard({
-          sessionId: currentSession.id,
+          sessionId: sessionId!,
           experienceId: card.id,
           experienceData,
           userId: user.id,
@@ -790,6 +843,22 @@ export function useAppHandlers(state: any) {
 
         if (boardError) {
           throw boardError;
+        }
+
+        // Refresh savedCards to include the newly saved board card in Saved tab
+        try {
+          const refreshedCards = await savedCardsService.fetchSavedCards(user.id);
+          setSavedCards(refreshedCards);
+          setProfileStats((stats: any) => ({
+            ...stats,
+            savedExperiences: refreshedCards.length,
+          }));
+        } catch (refreshError) {
+          console.error(
+            "Error refreshing saved cards after board save:",
+            refreshError
+          );
+          // Don't fail the save operation if refresh fails
         }
 
         // Show toast notification matching UI: "Added to Board! [Card Name] has been added to [Session Name]"
@@ -856,6 +925,155 @@ export function useAppHandlers(state: any) {
     });
   };
 
+  const handleScheduleFromSaved = async (card: any) => {
+    // Generate a suggested date based on user preferences
+    const suggestedDates = generateSuggestedDates(userPreferences || {});
+    const suggestedDate = suggestedDates[0];
+    const date = new Date(suggestedDate);
+
+    // TEMP: Log the exact datetime used for scheduling (for device calendar debugging)
+    console.log(
+      "[ScheduleFromSaved] Using datetime for calendar:",
+      suggestedDate,
+      "->",
+      date.toISOString()
+    );
+    
+    // Format date and time for display
+    const dateStr = date.toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+    const timeStr = date.toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    });
+
+    // Persist calendar entry in Supabase so it is available across devices
+    try {
+      const { CalendarService } = await import("../services/calendarService");
+
+      // Avoid duplicates (check current in-memory entries first)
+      const exists = calendarEntries.some(
+        (entry: any) =>
+          (entry.experience?.id === card.id || entry.card_data?.id === card.id) &&
+          entry.status === "pending"
+      );
+      if (exists) {
+        return;
+      }
+
+      const record = await CalendarService.addEntryFromSavedCard(
+        user.id,
+        card,
+        suggestedDate
+      );
+
+      // Add to device calendar
+      try {
+        const { DeviceCalendarService } = await import("../services/deviceCalendarService");
+        const deviceEvent = DeviceCalendarService.createEventFromCard(
+          card,
+          date,
+          record.duration_minutes || 120 // Use duration from record if available, default 2 hours
+        );
+        const deviceEventId = await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
+        
+        // Store device event ID in the calendar entry for future reference
+        // (We could update the Supabase record with this ID if needed)
+        if (deviceEventId) {
+          // Optionally update the record with device_event_id
+          // For now, we'll just log it
+        }
+      } catch (deviceCalendarError) {
+        // Don't fail the whole operation if device calendar fails
+        // The Supabase entry is already saved, which is the source of truth
+        console.warn("Failed to add to device calendar:", deviceCalendarError);
+      }
+
+      // Normalize record into the shape used by CalendarTab
+      const cardData = record.card_data || {};
+      const calendarEntry = {
+        id: record.id,
+        card_id: record.card_id, // Include card_id for matching
+        board_card_id: record.board_card_id,
+        title: cardData.title || card.title || "Saved Experience",
+        category: cardData.category || card.category || "Experience",
+        categoryIcon: cardData.categoryIcon || card.categoryIcon || "star",
+        image:
+          cardData.image ||
+          card.image ||
+          (Array.isArray(cardData.images) ? cardData.images[0] : card.images?.[0] || ""),
+        images: cardData.images || card.images || (card.image ? [card.image] : []),
+        rating: cardData.rating || card.rating || 0,
+        reviewCount: cardData.reviewCount || card.reviewCount || 0,
+        date: dateStr,
+        time: timeStr,
+        source: (record.source as "solo" | "collaboration") || "solo",
+        sourceDetails: card.sessionName
+          ? `From ${card.sessionName}`
+          : "Solo Experience",
+        priceRange: cardData.priceRange || card.priceRange || "TBD",
+        description: cardData.description || card.description || "",
+        fullDescription:
+          cardData.fullDescription || card.fullDescription || card.description || "",
+        address: cardData.address || card.address || "",
+        highlights: cardData.highlights || card.highlights || [],
+        socialStats: cardData.socialStats || card.socialStats || {
+          views: 0,
+          likes: 0,
+          saves: 0,
+        },
+        status: record.status,
+        experience: {
+          ...cardData,
+          ...card,
+          id: card.id,
+        },
+        suggestedDates: [record.scheduled_at],
+        sessionName: card.sessionName,
+        archived_at: record.archived_at,
+        dateTimePreferences: userPreferences
+          ? {
+              timeOfDay: userPreferences.timeOfDay || "Afternoon",
+              dayOfWeek: userPreferences.dayOfWeek || "Weekend",
+              planningTimeframe:
+                userPreferences.planningTimeframe || "This month",
+            }
+          : undefined,
+      };
+
+      // Add to calendar entries - check for duplicates using card_id
+      setCalendarEntries((prev: any[]) => {
+        // Check if already exists (prevent duplicates)
+        const exists = prev.some((entry: any) => 
+          (entry.card_id === card.id || entry.experience?.id === card.id) && 
+          entry.status === 'pending' &&
+          !entry.archived_at
+        );
+        if (exists) {
+          return prev;
+        }
+        return [calendarEntry, ...prev];
+      });
+
+      // Show confirmation toast matching the design (orange banner at top)
+      toastManager.success(
+        `Scheduled! ${card.title} has been moved to your calendar`,
+        3000
+      );
+    } catch (error) {
+      console.error("Error scheduling from saved:", error);
+      Alert.alert(
+        "Schedule failed",
+        "We couldn't add this to your calendar. Please try again."
+      );
+    }
+  };
+
   return {
     handleCollaborationOpen,
     handleModeChange,
@@ -881,6 +1099,7 @@ export function useAppHandlers(state: any) {
     handleShareCard,
     handleSaveCard,
     handleRemoveSavedCard,
+    handleScheduleFromSaved,
     generateSuggestedDates,
   };
 }

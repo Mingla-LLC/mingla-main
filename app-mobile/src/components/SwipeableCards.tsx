@@ -316,7 +316,6 @@ export default function SwipeableCards({
             const prefs = await ExperiencesService.getUserPreferences(user.id);
             if (prefs && (prefs as any).custom_location) {
               const savedLocation = (prefs as any).custom_location;
-              console.log("Found saved location in DB:", savedLocation);
               
               // Check if it's coordinates (format: "37.7749, -122.4194")
               const coordinatesMatch = savedLocation.match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
@@ -334,7 +333,6 @@ export default function SwipeableCards({
                   const geocoded = await Location.geocodeAsync(savedLocation);
                   if (geocoded && geocoded.length > 0) {
                     const { latitude, longitude } = geocoded[0];
-                    console.log("Geocoded saved location from DB:", { lat: latitude, lng: longitude });
                     setUserLocation({ lat: latitude, lng: longitude });
                     return;
                   }
@@ -503,10 +501,6 @@ export default function SwipeableCards({
 
           // Mode is already determined above - use isCollaborationMode from there
           if (isCollaborationMode) {
-            console.log(`🎯 Collaboration mode detected - Generating session experiences`);
-            console.log(`   Session ID: ${resolvedSessionId}`);
-            console.log(`   Current Mode: ${currentMode}`);
-            console.log(`   Current Session: ${currentSession?.id || 'null'}`);
             // Use session-based generation that aggregates all user preferences
             generatedExperiences =
               await ExperienceGenerationService.generateSessionExperiences({

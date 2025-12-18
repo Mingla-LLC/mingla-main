@@ -103,17 +103,105 @@ export const savedCardsService = {
   },
 
   async fetchSavedCards(profileId: string): Promise<SavedCardModel[]> {
-    const { data, error } = await supabase
+    // Fetch ALL cards saved by the user:
+    // 1. Solo mode saves from saved_card table
+    // 2. Collaboration/board mode saves from board_saved_cards table
+    
+    // Fetch cards from saved_card table (solo mode saves)
+    const { data: soloCards, error: soloError } = await supabase
       .from("saved_card")
       .select("*")
       .eq("profile_id", profileId)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      throw error;
+    if (soloError) {
+      console.error("Error fetching solo saved cards:", soloError);
+      // Continue with empty array if solo fetch fails - we'll still try board cards
     }
 
-    return (data as SavedCardRecord[]).map(normalizeRecord);
+    // Fetch cards from board_saved_cards table (collaboration/board mode saves)
+    // Only include cards where this user saved them (saved_by = profileId)
+    const { data: boardCards, error: boardError } = await supabase
+      .from("board_saved_cards")
+      .select(`
+        id,
+        session_id,
+        experience_id,
+        saved_experience_id,
+        saved_by,
+        saved_at,
+        card_data,
+        collaboration_sessions!inner(name)
+      `)
+      .eq("saved_by", profileId)
+      .order("saved_at", { ascending: false });
+
+    if (boardError) {
+      console.error("Error fetching board saved cards:", boardError);
+      // Don't throw - continue with solo cards if board fetch fails
+    }
+
+    // Normalize solo cards - ensure source is set to "solo"
+    const normalizedSoloCards = ((soloCards as SavedCardRecord[]) || []).map((record) => {
+      const normalized = normalizeRecord(record);
+      return {
+        ...normalized,
+        source: "solo" as const,
+      };
+    });
+
+    // Normalize board cards - ensure source is set to "collaboration"
+    const normalizedBoardCards = (boardCards || []).map((record: any) => {
+      const cardData = record.card_data || {};
+      const sessionName = record.collaboration_sessions?.name || "Board Session";
+
+      return {
+        ...cardData,
+        id:
+          cardData.id ||
+          record.experience_id ||
+          record.saved_experience_id ||
+          record.id,
+        title: cardData.title || "Saved experience",
+        category: cardData.category || null,
+        image:
+          cardData.image ||
+          (Array.isArray(cardData.images) ? cardData.images[0] : null),
+        images: cardData.images || (cardData.image ? [cardData.image] : []),
+        matchScore: cardData.matchScore ?? null,
+        dateAdded: cardData.dateAdded || record.saved_at,
+        source: "collaboration" as const,
+        sessionName: sessionName,
+        sessionId: record.session_id,
+      };
+    });
+
+    // Combine ALL cards (both solo and collaboration)
+    // Deduplicate by experience ID - if same card saved in both solo and board, prefer board version
+    // (board version has more context like session name)
+    const uniqueCards = new Map<string, SavedCardModel>();
+    
+    // Add board cards first (they take precedence if duplicate)
+    normalizedBoardCards.forEach((card) => {
+      if (card.id) {
+        uniqueCards.set(card.id, card);
+      }
+    });
+    
+    // Add solo cards - include all, even if duplicate (will be overwritten by board version if exists)
+    normalizedSoloCards.forEach((card) => {
+      if (card.id && !uniqueCards.has(card.id)) {
+        uniqueCards.set(card.id, card);
+      }
+    });
+
+    // Return ALL unique cards sorted by date (most recent first)
+    // This includes both solo and collaboration cards saved by the user
+    return Array.from(uniqueCards.values()).sort((a, b) => {
+      const dateA = new Date(a.dateAdded || 0).getTime();
+      const dateB = new Date(b.dateAdded || 0).getTime();
+      return dateB - dateA;
+    });
   },
 };
 

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { Text, View, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import ExpandedCardModal from '../ExpandedCardModal';
@@ -42,11 +42,12 @@ interface SavedCard {
 
 interface SavedTabProps {
   savedCards: SavedCard[];
-  onScheduleFromSaved: (card: SavedCard) => void;
+  onScheduleFromSaved: (card: SavedCard) => void | Promise<void>;
   onPurchaseFromSaved: (card: SavedCard, purchaseOption: any) => void;
   onShareCard: (card: SavedCard) => void;
   onRemoveSaved: (card: SavedCard) => void;
   userPreferences?: any;
+  scheduledCardIds?: string[];
 }
 
 const SavedTab = ({
@@ -55,10 +56,23 @@ const SavedTab = ({
   onPurchaseFromSaved,
   onShareCard,
   onRemoveSaved,
-  userPreferences
+  userPreferences,
+  scheduledCardIds = [],
 }: SavedTabProps) => {
   const [selectedCardForModal, setSelectedCardForModal] = useState<ExpandedCardData | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(true);
+  const [schedulingCardId, setSchedulingCardId] = useState<string | null>(null);
+
+  // Show loader briefly while processing cards (non-blocking)
+  useEffect(() => {
+    setIsProcessing(true);
+    // Use a small timeout to allow render, then process
+    const timer = setTimeout(() => {
+      setIsProcessing(false);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [savedCards]);
 
   const getMatchScore = (card: SavedCard): number | null => {
     if (typeof card?.matchScore === 'number') return card.matchScore;
@@ -92,10 +106,11 @@ const SavedTab = ({
       gap: 12,
     },
     cardImage: {
-      width: 64,
-      height: 64,
+      width: 80,
+      height: 80,
       borderRadius: 12,
       overflow: 'hidden',
+      backgroundColor: '#f3f4f6',
     },
     cardInfo: {
       flex: 1,
@@ -103,34 +118,28 @@ const SavedTab = ({
     },
     cardTitle: {
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: '700',
       color: '#111827',
-      marginBottom: 8,
+      marginBottom: 4,
     },
-    cardCategory: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginBottom: 8,
-    },
-    categoryIcon: {
-      width: 16,
-      height: 16,
-      color: '#eb7825',
-    },
-    categoryText: {
+    cardSubtitle: {
       fontSize: 14,
       color: '#6b7280',
+      marginBottom: 8,
+    },
+    recentlySavedText: {
+      fontSize: 12,
+      color: '#9ca3af',
     },
     cardMeta: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      marginBottom: 8,
     },
     cardStats: {
       flexDirection: 'row',
       alignItems: 'center',
-      flexWrap: 'wrap',
       gap: 12,
     },
     statItem: {
@@ -152,32 +161,14 @@ const SavedTab = ({
       fontWeight: '600',
       color: '#eb7825',
     },
-    matchScoreBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      backgroundColor: '#fff5ef',
-      borderRadius: 999,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderWidth: 1,
-      borderColor: '#fed7aa',
-    },
-    matchScoreText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: '#c2410c',
-    },
     sourceIndicator: {
-      marginTop: 8,
+      marginTop: 4,
     },
     sourceBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 8,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 10,
       paddingVertical: 4,
-      borderRadius: 12,
+      borderRadius: 999,
     },
     soloBadge: {
       backgroundColor: '#dbeafe',
@@ -186,9 +177,13 @@ const SavedTab = ({
       backgroundColor: '#f3e8ff',
     },
     soloText: {
+      fontSize: 12,
+      fontWeight: '500',
       color: '#1e40af',
     },
     collaborationText: {
+      fontSize: 12,
+      fontWeight: '500',
       color: '#7c3aed',
     },
     sourceIcon: {
@@ -199,40 +194,55 @@ const SavedTab = ({
       fontSize: 12,
     },
     quickActions: {
+      paddingTop: 12,
       paddingHorizontal: 16,
       paddingBottom: 16,
+      borderTopWidth: 1,
+      borderTopColor: '#f3f4f6',
     },
     actionsRow: {
       flexDirection: 'row',
+      alignItems: 'center',
       gap: 8,
     },
     primaryButton: {
       flex: 1,
       backgroundColor: '#eb7825',
-      paddingVertical: 8,
+      paddingVertical: 10,
       paddingHorizontal: 16,
       borderRadius: 12,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 4,
+      gap: 6,
+    },
+    primaryButtonDisabled: {
+      opacity: 0.7,
     },
     primaryButtonText: {
       color: 'white',
       fontSize: 14,
-      fontWeight: '500',
+      fontWeight: '600',
     },
-    secondaryButton: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderWidth: 1,
-      borderColor: '#e5e7eb',
+    shareButton: {
+      width: 40,
+      height: 40,
       borderRadius: 12,
+      backgroundColor: 'white',
+      borderWidth: 1,
+      borderColor: '#e5e7eb', // Light gray border
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    secondaryButtonIcon: {
-      width: 16,
-      height: 16,
-      color: '#6b7280',
+    deleteButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: 'white',
+      borderWidth: 1,
+      borderColor: '#ef4444', // Red border
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     expandedContent: {
       borderTopWidth: 1,
@@ -389,6 +399,18 @@ const SavedTab = ({
       textAlign: 'center',
       marginBottom: 24,
     },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 48,
+      gap: 12,
+    },
+    loadingText: {
+      fontSize: 14,
+      color: '#6b7280',
+      marginTop: 8,
+    },
   });
 
   const getIconComponent = (iconName: any) => {
@@ -425,26 +447,49 @@ const SavedTab = ({
   };
 
 
-  const handleSchedule = (card: SavedCard) => {
-    onScheduleFromSaved(card);
-    
-    // Add to device calendar
+  const handleSchedule = async (card: SavedCard) => {
+    if (scheduledCardIds.includes(card.id)) {
+      return;
+    }
+
+    setSchedulingCardId(card.id);
     try {
-      const dateTimePrefs = userPreferences ? {
-        timeOfDay: userPreferences.timeOfDay || 'Afternoon',
-        dayOfWeek: userPreferences.dayOfWeek || 'Weekend',
-        planningTimeframe: userPreferences.planningTimeframe || 'This month'
-      } : {
-        timeOfDay: 'Afternoon',
-        dayOfWeek: 'Weekend',
-        planningTimeframe: 'This month'
-      };
+      await onScheduleFromSaved(card);
       
-      // This would integrate with calendar utilities
+      // Add to device calendar
+      try {
+        const dateTimePrefs = userPreferences ? {
+          timeOfDay: userPreferences.timeOfDay || 'Afternoon',
+          dayOfWeek: userPreferences.dayOfWeek || 'Weekend',
+          planningTimeframe: userPreferences.planningTimeframe || 'This month'
+        } : {
+          timeOfDay: 'Afternoon',
+          dayOfWeek: 'Weekend',
+          planningTimeframe: 'This month'
+        };
+        
+        // This would integrate with calendar utilities
+      } catch (error) {
+        console.error('Error adding to device calendar:', error);
+      }
     } catch (error) {
-      console.error('Error adding to device calendar:', error);
+      console.error('Error scheduling card:', error);
+    } finally {
+      // Small delay to show success feedback
+      setTimeout(() => {
+        setSchedulingCardId(null);
+      }, 500);
     }
   };
+
+  if (isProcessing) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#eb7825" />
+        <Text style={styles.loadingText}>Loading saved experiences...</Text>
+      </View>
+    );
+  }
 
   if (savedCards.length === 0) {
     return (
@@ -510,11 +555,9 @@ const SavedTab = ({
   };
 
   return (
-    <View style={styles.container}>
+      <View style={styles.container}>
       {savedCards.map((card) => {
-        const CardIcon = getIconComponent(card.categoryIcon);
-        const matchScore = getMatchScore(card);
-        
+        const isScheduled = scheduledCardIds.includes(card.id);
         return (
           <View key={card.id} style={styles.experienceCard}>
             <TouchableOpacity
@@ -532,54 +575,41 @@ const SavedTab = ({
                 </View>
                 
                 <View style={styles.cardInfo}>
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cardTitle}>{card.title}</Text>
-                      <View style={styles.cardCategory}>
-                        <Ionicons name={CardIcon} size={16} color="#eb7825" />
-                        <Text style={styles.categoryText}>{card.category}</Text>
-                      </View>
+                      {/* Subtitle - use category or a default subtitle */}
+                      <Text style={styles.cardSubtitle}>{(card as any).subtitle || card.category || 'Experience'}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 12, color: '#6b7280' }}>
-                        {card.dateAdded || 'Recently saved'}
+                      <Text style={styles.recentlySavedText}>
+                        Recently saved
                       </Text>
                     </View>
                   </View>
                   
+                  {/* Stats row: Rating, Duration, Price, Chevron */}
                   <View style={styles.cardMeta}>
                     <View style={styles.cardStats}>
                       <View style={styles.statItem}>
-                        <Ionicons name="star" size={16} color="#eb7825" />
+                        <Ionicons name="star" size={14} color="#fbbf24" />
                         <Text style={styles.statText}>{card.rating || '4.5'}</Text>
                       </View>
                       <View style={styles.statItem}>
-                        <Ionicons name="navigate" size={16} color="#eb7825" />
-                        <Text style={styles.statText}>{card.travelTime || '15 min'}</Text>
+                        <Ionicons name="paper-plane" size={14} color="#6b7280" />
+                        <Text style={styles.statText}>{card.travelTime || '15m'}</Text>
                       </View>
                       <Text style={styles.priceText}>{card.priceRange || '$25-50'}</Text>
-                      {matchScore !== null && (
-                        <View style={styles.matchScoreBadge}>
-                          <Ionicons name="flame" size={14} color="#c2410c" />
-                          <Text style={styles.matchScoreText}>
-                            {Math.round(matchScore)}% match
-                          </Text>
-                        </View>
-                      )}
                     </View>
+                    <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
                   </View>
 
-                  {/* Source indicator */}
+                  {/* Source badge */}
                   <View style={styles.sourceIndicator}>
                     <View style={[
                       styles.sourceBadge,
                       card.source === 'solo' ? styles.soloBadge : styles.collaborationBadge
                     ]}>
-                      <Ionicons 
-                        name={card.source === 'solo' ? "eye" : "people"} 
-                        size={12} 
-                        color={card.source === 'solo' ? "#1e40af" : "#7c3aed"} 
-                      />
                       <Text style={[
                         styles.sourceText,
                         card.source === 'solo' ? styles.soloText : styles.collaborationText
@@ -607,25 +637,38 @@ const SavedTab = ({
                 ) : (
                   <TouchableOpacity 
                     onPress={() => handleSchedule(card)}
-                    style={styles.primaryButton}
+                    style={[
+                      styles.primaryButton,
+                      (schedulingCardId === card.id || isScheduled) &&
+                        styles.primaryButtonDisabled,
+                    ]}
+                    disabled={schedulingCardId === card.id || isScheduled}
                   >
-                    <Ionicons name="calendar" size={16} color="white" />
-                    <Text style={styles.primaryButtonText}>Schedule</Text>
+                    {schedulingCardId === card.id ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <>
+                        <Ionicons name="calendar" size={16} color="white" />
+                        <Text style={styles.primaryButtonText}>
+                          {isScheduled ? "Scheduled" : "Schedule"}
+                        </Text>
+                      </>
+                    )}
                   </TouchableOpacity>
                 )}
                 
                 <TouchableOpacity 
                   onPress={() => onShareCard(card)}
-                  style={styles.secondaryButton}
+                  style={styles.shareButton}
                 >
-                  <Ionicons name="share" size={16} color="#6b7280" />
+                  <Ionicons name="share-social-outline" size={18} color="#374151" />
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
                   onPress={() => onRemoveSaved(card)}
-                  style={styles.secondaryButton}
+                  style={styles.deleteButton}
                 >
-                  <Ionicons name="close" size={16} color="#6b7280" />
+                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
                 </TouchableOpacity>
               </View>
             </View>

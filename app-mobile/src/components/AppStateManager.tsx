@@ -179,16 +179,13 @@ export function useAppState() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
   const [showCoachMap, setShowCoachMap] = useState(false);
-  // Load currentMode from AsyncStorage on initialization
+  // Load currentMode from database (no AsyncStorage persistence)
   const [currentMode, setCurrentModeState] = useState<"solo" | string>("solo");
   
-  // Wrapper to persist currentMode changes
+  // Wrapper to update currentMode (no persistence - always fetch from DB)
   const setCurrentMode = (mode: "solo" | string) => {
     setCurrentModeState(mode);
-    // Persist asynchronously without blocking
-    safeAsyncStorageSet("mingla_current_mode", mode).catch((error) => {
-      console.error("Error persisting current mode:", error);
-    });
+    // No AsyncStorage persistence - always fetch from database
   };
   const [preSelectedFriend, setPreSelectedFriend] = useState<any>(null);
   const [activeSessionData, setActiveSessionData] = useState<any>(null);
@@ -226,6 +223,7 @@ export function useAppState() {
   // Large data arrays with lazy initialization
   const [calendarEntries, setCalendarEntries] = useState([]);
   const [savedCards, setSavedCards] = useState([]);
+  const [isLoadingSavedCards, setIsLoadingSavedCards] = useState(false);
   const [removedCardIds, setRemovedCardIds] = useState([]);
   const [friendsList, setFriendsList] = useState(DEFAULT_FRIENDS);
   const [blockedUsers, setBlockedUsers] = useState([]);
@@ -311,57 +309,26 @@ export function useAppState() {
     }
   }, [user, profile]);
 
-  // Load currentMode from AsyncStorage on mount
-  useEffect(() => {
-    const loadCurrentMode = async () => {
-      try {
-        const storedMode = await AsyncStorage.getItem("mingla_current_mode");
-        if (storedMode) {
-          const parsedMode = JSON.parse(storedMode);
-          // Only set if it's a valid value
-          if (parsedMode === "solo" || (typeof parsedMode === "string" && parsedMode.length > 0)) {
-            setCurrentModeState(parsedMode);
-          }
-        }
-      } catch (error) {
-        console.error("Error loading current mode from storage:", error);
-      }
-    };
-
-    loadCurrentMode();
-  }, []);
-
-  // Load and restore active session on user login
+  // Load active session from database on user login (no AsyncStorage)
   useEffect(() => {
     const loadActiveSession = async () => {
       if (!user?.id) {
-        // No user, clear any stored session
+        // No user, default to solo mode
         setCurrentMode("solo");
         return;
       }
 
       try {
-        // First, try to load from AsyncStorage (user preference)
-        const storedMode = await AsyncStorage.getItem("mingla_current_mode");
-        if (storedMode) {
-          const parsedMode = JSON.parse(storedMode);
-          // Only restore if it's a valid session or solo mode
-          if (parsedMode === "solo" || (typeof parsedMode === "string" && parsedMode.length > 0)) {
-            setCurrentModeState(parsedMode);
-            return; // Use stored preference, don't override with database session
-          }
-        }
-
-        // If no stored preference, check database for active session
+        // Always fetch from database - no AsyncStorage
         const sessionServiceModule = await import("../services/sessionService");
         const { SessionService } = sessionServiceModule;
-        const activeSession = await SessionService.validateActiveSession(user.id);
+        const activeSession = await SessionService.getActiveSession(user.id);
 
         if (activeSession) {
-          // Restore the active session
+          // Set the active session name as current mode
           setCurrentMode(activeSession.sessionName);
         } else {
-          // No valid active session, ensure solo mode
+          // No valid active session, default to solo mode
           setCurrentMode("solo");
         }
       } catch (error) {
@@ -373,6 +340,9 @@ export function useAppState() {
 
     if (user) {
       loadActiveSession();
+    } else {
+      // No user, default to solo
+      setCurrentMode("solo");
     }
   }, [user?.id]);
 
@@ -445,6 +415,7 @@ export function useAppState() {
 
   useEffect(() => {
     const syncSavedCardsWithSupabase = async () => {
+      setIsLoadingSavedCards(true);
       if (!user?.id) {
         setSavedCards([]);
         safeAsyncStorageSet("mingla_saved_cards", []);
@@ -452,6 +423,7 @@ export function useAppState() {
           ...prev,
           savedExperiences: 0,
         }));
+        setIsLoadingSavedCards(false);
         return;
       }
 
@@ -465,10 +437,85 @@ export function useAppState() {
         }));
       } catch (error) {
         console.error("Error syncing saved cards:", error);
+      } finally {
+        setIsLoadingSavedCards(false);
       }
     };
 
     syncSavedCardsWithSupabase();
+  }, [user?.id]);
+
+  // Sync calendar entries from Supabase so scheduling is consistent across devices
+  useEffect(() => {
+    const syncCalendarEntriesWithSupabase = async () => {
+      if (!user?.id) {
+        setCalendarEntries([]);
+        safeAsyncStorageSet("mingla_calendar_entries", []);
+        return;
+      }
+
+      try {
+        const { CalendarService } = await import("../services/calendarService");
+        const records = await CalendarService.fetchUserCalendarEntries(user.id);
+        
+        // Normalize records into the shape used by CalendarTab
+        const normalizedEntries = records
+          .filter((record) => !record.archived_at) // Exclude archived entries
+          .map((record) => {
+            const cardData = record.card_data || {};
+            const scheduledDate = new Date(record.scheduled_at);
+            const dateStr = scheduledDate.toLocaleDateString('en-US', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            });
+            const timeStr = scheduledDate.toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            });
+
+            return {
+              id: record.id,
+              card_id: record.card_id,
+              board_card_id: record.board_card_id,
+              title: cardData.title || 'Saved Experience',
+              category: cardData.category || 'Experience',
+              categoryIcon: cardData.categoryIcon || 'star',
+              image: cardData.image || (Array.isArray(cardData.images) ? cardData.images[0] : ''),
+              images: cardData.images || (cardData.image ? [cardData.image] : []),
+              rating: cardData.rating || 0,
+              reviewCount: cardData.reviewCount || 0,
+              date: dateStr,
+              time: timeStr,
+              source: record.source || 'solo',
+              sourceDetails: cardData.sessionName ? `From ${cardData.sessionName}` : 'Solo Experience',
+              priceRange: cardData.priceRange || 'TBD',
+              description: cardData.description || '',
+              fullDescription: cardData.fullDescription || cardData.description || '',
+              address: cardData.address || '',
+              highlights: cardData.highlights || [],
+              socialStats: cardData.socialStats || { views: 0, likes: 0, saves: 0 },
+              status: record.status,
+              experience: {
+                ...cardData,
+                id: record.card_id || cardData.id,
+              },
+              suggestedDates: [record.scheduled_at],
+              sessionName: cardData.sessionName,
+              archived_at: record.archived_at,
+            };
+          });
+        
+        setCalendarEntries(normalizedEntries);
+        safeAsyncStorageSet("mingla_calendar_entries", normalizedEntries);
+      } catch (error) {
+        console.error("Error syncing calendar entries:", error);
+      }
+    };
+
+    syncCalendarEntriesWithSupabase();
   }, [user?.id]);
 
   // Sync board sessions from database
@@ -776,6 +823,7 @@ export function useAppState() {
     setCalendarEntries,
     savedCards,
     setSavedCards,
+    isLoadingSavedCards,
     removedCardIds,
     setRemovedCardIds,
     friendsList,
@@ -789,6 +837,7 @@ export function useAppState() {
     setProfileStats,
     preferencesRefreshKey,
     setPreferencesRefreshKey,
+    isLoadingSavedCards,
     boardViewSessionId,
     setBoardViewSessionId,
 

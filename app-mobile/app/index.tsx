@@ -36,6 +36,7 @@ import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
+import ShareModal from "../src/components/ShareModal";
 
 export default function App() {
   const state = useAppState();
@@ -122,6 +123,7 @@ export default function App() {
     updateBoardsSessions,
     handleUserIdentityUpdate,
     safeAsyncStorageSet,
+    isLoadingSavedCards,
     showOnboardingFlow,
     setShowOnboardingFlow,
     hasCompletedOnboarding,
@@ -610,6 +612,7 @@ export default function App() {
         return (
           <SavedExperiencesPage
             savedCards={savedCards}
+            isLoading={isLoadingSavedCards}
             userPreferences={userPreferences}
             onScheduleFromSaved={(card: any) => {
               console.log("Scheduling from saved:", card);
@@ -669,10 +672,7 @@ export default function App() {
               );
               // Handle invite logic here
             }}
-            onScheduleFromSaved={(savedCard: any) => {
-              console.log("Scheduling from saved:", savedCard);
-              // Handle scheduling logic here
-            }}
+            onScheduleFromSaved={handlers.handleScheduleFromSaved}
             onPurchaseFromSaved={(card: any, purchaseOption: any) => {
               console.log("Purchasing from saved:", card, purchaseOption);
               // Handle purchase logic here
@@ -682,10 +682,7 @@ export default function App() {
               // Handle removal logic here
             }}
             onRemoveSaved={handlers.handleRemoveSavedCard}
-            onShareCard={(card: any) => {
-              console.log("Sharing card:", card);
-              // Handle share logic here
-            }}
+            onShareCard={handlers.handleShareCard}
             onUpdateBoardSession={(board: any) => {
               console.log("Updating board session:", board);
               // Handle board update logic here
@@ -711,6 +708,7 @@ export default function App() {
               setCurrentPage("board-view");
             }}
             onUnreadCountChange={setTotalUnreadBoardMessages}
+            activeBoardSessionId={boardViewSessionId}
           />
         );
       case "board-view":
@@ -719,10 +717,66 @@ export default function App() {
             sessionId={boardViewSessionId}
             onBack={() => {
               setCurrentPage("activity");
-              setBoardViewSessionId(null);
+              // Keep boardViewSessionId set so Saved tab can show board-specific cards
+              // It will be cleared when user navigates away from activity page or selects a different board
             }}
             onNavigateToSession={(sessionId: string) => {
               setBoardViewSessionId(sessionId);
+            }}
+            onExitBoard={async (exitedSessionId?: string, exitedSessionName?: string) => {
+              if (!user?.id) return;
+
+              // OPTIMISTIC UPDATE: Remove board from list immediately
+              if (exitedSessionId && boardsSessions) {
+                const updatedBoards = boardsSessions.filter(
+                  (board: any) => board.id !== exitedSessionId && (board as any).session_id !== exitedSessionId
+                );
+                updateBoardsSessions(updatedBoards);
+              }
+
+              // OPTIMISTIC UPDATE: If exited session was the active session, switch to solo immediately
+              if (exitedSessionName && currentMode === exitedSessionName) {
+                state.setCurrentMode("solo");
+              }
+
+              // Now do database operations and refresh in background
+              try {
+                // Remove user from session participants
+                if (exitedSessionId) {
+                  const { supabase } = await import("../src/services/supabase");
+                  await supabase
+                    .from("session_participants")
+                    .delete()
+                    .eq("session_id", exitedSessionId)
+                    .eq("user_id", user.id);
+
+                  // Update invites to declined
+                  await supabase
+                    .from("collaboration_invites")
+                    .update({ status: "declined" })
+                    .eq("session_id", exitedSessionId)
+                    .eq("invited_user_id", user.id);
+                }
+
+                // Refresh boards list from database to ensure consistency
+                const { BoardSessionService } = await import("../src/services/boardSessionService");
+                const boards = await BoardSessionService.fetchUserBoardSessions(user.id);
+                updateBoardsSessions(boards);
+                
+                // Refresh active session from database
+                const { SessionService } = await import("../src/services/sessionService");
+                const activeSession = await SessionService.getActiveSession(user.id);
+                
+                // Update current mode based on active session
+                if (activeSession) {
+                  state.setCurrentMode(activeSession.sessionName);
+                } else {
+                  state.setCurrentMode("solo");
+                }
+              } catch (error) {
+                console.error("Error refreshing boards after exit:", error);
+                // Don't show error to user - optimistic update already happened
+              }
             }}
           />
         ) : (
@@ -827,10 +881,6 @@ export default function App() {
     profile &&
     profile.has_completed_onboarding === true
   ) {
-    console.log(
-      "User authenticated and completed onboarding - showing main app"
-    );
-
     // Show CollaborationPreferences as full screen if collaboration preferences are open
     if (showCollabPreferences && currentMode !== "solo" && currentSessionId) {
       return (
@@ -983,6 +1033,18 @@ export default function App() {
                       console.log("Navigate to board:", board, discussionTab)
                     }
                     availableFriends={[]}
+                    onRefreshBoards={async () => {
+                      // Refresh boards list immediately after accepting invite
+                      if (user?.id) {
+                        try {
+                          const { BoardSessionService } = await import("../src/services/boardSessionService");
+                          const boards = await BoardSessionService.fetchUserBoardSessions(user.id);
+                          updateBoardsSessions(boards);
+                        } catch (error) {
+                          console.error("Error refreshing boards:", error);
+                        }
+                      }
+                    }}
                   />
 
                   {/* Bottom Navigation - keep visible and above overlay when tabs are highlighted */}
@@ -1059,7 +1121,6 @@ export default function App() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => {
-                          console.log("Navigating to activity");
                           setCurrentPage("activity");
                         }}
                         style={styles.navItem}
@@ -1168,6 +1229,16 @@ export default function App() {
                       setCoachMapCurrentTarget(target);
                     }
                   }}
+                />
+
+                {/* Share Modal */}
+                <ShareModal
+                  isOpen={showShareModal}
+                  onClose={() => setShowShareModal(false)}
+                  experienceData={shareData?.experienceData}
+                  dateTimePreferences={shareData?.dateTimePreferences}
+                  userPreferences={userPreferences}
+                  accountPreferences={accountPreferences}
                 />
               </SafeAreaView>
             </ErrorBoundary>

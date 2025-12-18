@@ -41,8 +41,6 @@ class BoardSessionService {
     userId: string
   ): Promise<BoardSessionData[]> {
     try {
-      console.log("🔍 Fetching board sessions for user:", userId);
-
       // 1. Get all session IDs where user is a participant AND has accepted the invite
       // Only show boards where the user has explicitly accepted participation
       const { data: participations, error: participationError } = await supabase
@@ -64,19 +62,12 @@ class BoardSessionService {
       }
 
       const sessionIds = participations.map((p) => p.session_id);
-      console.log("🆔 Session IDs:", sessionIds);
 
       // 2. First, get all collaboration sessions (without filtering by session_type) to see what we have
       const { data: allSessions, error: allSessionsError } = await supabase
         .from("collaboration_sessions")
         .select("*")
         .in("id", sessionIds);
-
-      console.log(
-        "📦 All sessions found (before filtering):",
-        allSessions?.length || 0
-      );
-      console.log("📦 All sessions data:", allSessions);
 
       if (allSessionsError) {
         console.error("❌ Error fetching all sessions:", allSessionsError);
@@ -246,8 +237,6 @@ class BoardSessionService {
         })
       );
 
-      console.log("✅ Final board sessions data:", boardSessionsData.length);
-      console.log("✅ Final board sessions:", boardSessionsData);
       return boardSessionsData;
     } catch (error) {
       console.error("❌ Error in fetchUserBoardSessions:", error);

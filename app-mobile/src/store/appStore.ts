@@ -150,8 +150,7 @@ export const useAppStore = create<AppState>()(
         preferences: state.preferences,
         saves: state.saves,
         boards: state.boards,
-        currentSession: state.currentSession,
-        isInSolo: state.isInSolo,
+        // Don't persist currentSession and isInSolo - always fetch from database
         currentCardIndex: state.currentCardIndex
       }),
     }

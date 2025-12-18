@@ -60,6 +60,7 @@ interface CollaborationModuleProps {
   onCreateSession?: (newSession: any) => void;
   onNavigateToBoard?: (board: any, discussionTab?: string) => void;
   availableFriends?: Friend[];
+  onRefreshBoards?: () => void; // Callback to refresh boards list
 }
 
 // Mock data
@@ -123,6 +124,7 @@ export default function CollaborationModule({
   onCreateSession,
   onNavigateToBoard,
   availableFriends = [],
+  onRefreshBoards,
 }: CollaborationModuleProps) {
   const [activeTab, setActiveTab] = useState<"sessions" | "invites" | "create">(
     "sessions"
@@ -388,7 +390,7 @@ export default function CollaborationModule({
     try {
       console.log("Loading user sessions for user:", user.id);
 
-      // Get all sessions where user is a participant
+      // Get all sessions where user is a participant (matching BoardSessionService logic)
       const { data: participations, error: participationError } = await supabase
         .from("session_participants")
         .select("session_id, has_accepted")
@@ -404,9 +406,20 @@ export default function CollaborationModule({
         return;
       }
 
-      const sessionIds = participations?.map((p) => p.session_id) || [];
+      const sessionIdsFromParticipants = participations?.map((p) => p.session_id) || [];
 
-      if (sessionIds.length === 0) {
+      // Also get sessions where user is the creator (fallback for edge cases)
+      const { data: createdSessions, error: createdSessionsError } = await supabase
+        .from("collaboration_sessions")
+        .select("id")
+        .eq("created_by", user.id)
+        .is("archived_at", null);
+
+      // Combine both sets of session IDs
+      const createdSessionIds = createdSessions?.map((s) => s.id) || [];
+      const allSessionIds = [...new Set([...sessionIdsFromParticipants, ...createdSessionIds])];
+
+      if (allSessionIds.length === 0) {
         setUserSessions([]);
         if (showLoader) {
           setLoadingSessions(false);
@@ -414,12 +427,11 @@ export default function CollaborationModule({
         return;
       }
 
-      // Load session details - simplified query first
-      const { data: sessions, error: sessionsError } = await supabase
+      // Load session details - show ALL non-archived sessions (matching BoardSessionService logic)
+      const { data: allSessions, error: sessionsError } = await supabase
         .from("collaboration_sessions")
         .select("*")
-        .in("id", sessionIds)
-        .in("status", ["active", "voting", "locked"])
+        .in("id", allSessionIds)
         .order("created_at", { ascending: false });
 
       if (sessionsError) {
@@ -430,6 +442,9 @@ export default function CollaborationModule({
         }
         return;
       }
+
+      // Filter out archived sessions only (matching BoardSessionService)
+      const sessions = (allSessions || []).filter((s) => s.archived_at === null);
 
       // Load participants separately for better reliability
       // Only load participants who have accepted the invite
@@ -446,7 +461,7 @@ export default function CollaborationModule({
             profiles!session_participants_user_id_fkey(display_name, email, avatar_url)
           `
             )
-            .in("session_id", sessionIds)
+            .in("session_id", allSessionIds)
             .eq("has_accepted", true);
 
         if (!participantsError && participantsData) {
@@ -615,6 +630,11 @@ export default function CollaborationModule({
       // Reload invites and sessions
       await loadInvites();
       await loadUserSessions();
+
+      // Immediately refresh boards list so the new board appears in Activity Page
+      if (onRefreshBoards) {
+        onRefreshBoards();
+      }
     } catch (error) {
       console.error("Error accepting invite:", error);
     }

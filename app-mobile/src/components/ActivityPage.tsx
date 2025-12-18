@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { BoardMessageService } from "../services/boardMessageService";
+import { BoardCardService } from "../services/boardCardService";
 import { useAppStore } from "../store/appStore";
 import {
   Text,
@@ -77,6 +78,7 @@ interface ActivityPageProps {
   onLeaveBoard?: (boardId: string) => void;
   onNavigateToBoard?: (sessionId: string) => void;
   onUnreadCountChange?: (count: number) => void;
+  activeBoardSessionId?: string | null; // Session ID of the currently open board
 }
 
 export default function ActivityPage({
@@ -101,6 +103,7 @@ export default function ActivityPage({
   onLeaveBoard,
   onNavigateToBoard,
   onUnreadCountChange,
+  activeBoardSessionId,
 }: ActivityPageProps) {
   const [activeTab, setActiveTab] = useState<"boards" | "saved" | "calendar">(
     "boards"
@@ -146,6 +149,8 @@ export default function ActivityPage({
   const [boardsWithUnreadCounts, setBoardsWithUnreadCounts] = useState<any[]>(
     []
   );
+  const [boardSavedCards, setBoardSavedCards] = useState<any[]>([]);
+  const [loadingBoardCards, setLoadingBoardCards] = useState(false);
 
   // Fetch unread counts for each board
   useEffect(() => {
@@ -190,6 +195,73 @@ export default function ActivityPage({
 
     return () => clearInterval(interval);
   }, [boardsSessions, user?.id]);
+
+  // Fetch board-specific saved cards when a board is open and Saved tab is active
+  useEffect(() => {
+    const fetchBoardSavedCards = async () => {
+      if (
+        activeBoardSessionId &&
+        activeTab === "saved" &&
+        !showBoardDetails
+      ) {
+        setLoadingBoardCards(true);
+        try {
+          const { data, error } = await BoardCardService.getSessionSavedCards(
+            activeBoardSessionId
+          );
+
+          if (error) {
+            console.error("Error fetching board saved cards:", error);
+            setBoardSavedCards([]);
+          } else {
+            // Transform board saved cards to match SavedTab format
+            const transformedCards = (data || []).map((boardCard: any) => {
+              const cardData = boardCard.card_data || boardCard.experience_data || {};
+              return {
+                id: cardData.id || boardCard.id,
+                title: cardData.title || cardData.name || "Untitled",
+                category: cardData.category || cardData.type || "Experience",
+                categoryIcon: cardData.categoryIcon || null,
+                image: cardData.image || cardData.images?.[0] || "",
+                images: cardData.images || [cardData.image || ""],
+                rating: cardData.rating || 0,
+                reviewCount: cardData.reviewCount || cardData.reviews || 0,
+                priceRange: cardData.priceRange || cardData.price || "$",
+                travelTime: cardData.travelTime || "",
+                description: cardData.description || "",
+                fullDescription: cardData.fullDescription || cardData.description || "",
+                address: cardData.address || cardData.location || "",
+                highlights: cardData.highlights || [],
+                matchScore: cardData.matchScore || 0,
+                socialStats: {
+                  views: cardData.socialStats?.views || 0,
+                  likes: cardData.socialStats?.likes || 0,
+                  saves: cardData.socialStats?.saves || 0,
+                },
+                dateAdded: boardCard.saved_at || new Date().toISOString(),
+                source: "collaboration" as const,
+                sessionName: boardsSessions.find(
+                  (b) => (b as any).session_id === activeBoardSessionId || b.id === activeBoardSessionId
+                )?.name,
+                purchaseOptions: cardData.purchaseOptions || [],
+              };
+            });
+            setBoardSavedCards(transformedCards);
+          }
+        } catch (error) {
+          console.error("Error fetching board saved cards:", error);
+          setBoardSavedCards([]);
+        } finally {
+          setLoadingBoardCards(false);
+        }
+      } else {
+        // Clear board cards when not viewing a board or not on Saved tab
+        setBoardSavedCards([]);
+      }
+    };
+
+    fetchBoardSavedCards();
+  }, [activeBoardSessionId, activeTab, showBoardDetails, boardsSessions]);
 
   const handleVote = (cardId: string, vote: "yes" | "no") => {};
 
@@ -488,7 +560,14 @@ export default function ActivityPage({
             )}
             {activeTab === "saved" && (
               <SavedTab
-                savedCards={savedCards}
+                savedCards={
+                  activeBoardSessionId && !showBoardDetails
+                    ? boardSavedCards
+                    : savedCards
+                }
+                scheduledCardIds={calendarEntries
+                  .filter((entry: any) => !entry.archived_at)
+                  .map((entry: any) => entry.card_id || entry.experience?.id || entry.card_data?.id)}
                 onScheduleFromSaved={onScheduleFromSaved || (() => {})}
                 onPurchaseFromSaved={handleOpenPurchase}
                 onShareCard={onShareCard || (() => {})}

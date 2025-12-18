@@ -74,7 +74,18 @@ class AuthService {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       
+      // Clear all user data including session state
       this.appStore.clearUserData();
+      
+      // Clear any AsyncStorage session data (for safety)
+      try {
+        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+        await AsyncStorage.removeItem('mingla_active_session');
+        await AsyncStorage.removeItem('mingla_current_mode');
+      } catch (storageError) {
+        console.warn('Error clearing AsyncStorage on sign out:', storageError);
+      }
+      
       return { error: null };
     } catch (error) {
       console.error('Sign out error:', error);

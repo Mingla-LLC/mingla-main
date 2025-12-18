@@ -489,8 +489,6 @@ export class ExperienceGenerationService {
     request: SessionExperienceGenerationRequest
   ): Promise<GeneratedExperience[]> {
     try {
-      console.log(`🎯 Generating session experiences for session: ${request.sessionId}`);
-      
       // Call Supabase edge function to generate session experiences
       const { data, error } = await supabase.functions.invoke(
         "generate-session-experiences",
@@ -523,11 +521,6 @@ export class ExperienceGenerationService {
         return [];
       }
 
-      console.log(`✅ Generated ${data.cards.length} session experience cards`);
-      if (data.meta) {
-        console.log(`📊 Aggregated preferences:`, data.meta.aggregatedPreferences);
-        console.log(`👥 Participant count:`, data.meta.participantCount);
-      }
 
       // Transform the response to our format
       return data.cards.map((card: any) =>

@@ -1,7 +1,4 @@
 import { supabase } from './supabase';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const ACTIVE_SESSION_KEY = 'mingla_active_session';
 
 export interface ActiveSession {
   sessionId: string;
@@ -12,7 +9,8 @@ export interface ActiveSession {
 class SessionService {
   /**
    * Switch to a collaboration session
-   * Validates user is a participant, persists to database and local storage
+   * Validates user is a participant and updates session's last_activity_at
+   * The active session is determined by the most recently active session the user participates in
    */
   static async switchToSession(
     userId: string,
@@ -55,23 +53,15 @@ class SessionService {
         };
       }
 
-      // 3. Persist active session to local storage
-      const activeSession: ActiveSession = {
-        sessionId: session.id,
-        sessionName: session.name,
-        switchedAt: new Date().toISOString(),
-      };
-
-      await AsyncStorage.setItem(
-        ACTIVE_SESSION_KEY,
-        JSON.stringify(activeSession)
-      );
-
-      // 4. Update session's last_activity_at
-      await supabase
+      // 3. Update session's last_activity_at to mark it as the most recently active
+      const { error: updateError } = await supabase
         .from('collaboration_sessions')
         .update({ last_activity_at: new Date().toISOString() })
         .eq('id', sessionId);
+
+      if (updateError) {
+        console.error('Error updating session activity:', updateError);
+      }
 
       return {
         success: true,
@@ -91,46 +81,52 @@ class SessionService {
   }
 
   /**
-   * Switch to solo mode (clear active session)
+   * Switch to solo mode
+   * No database action needed - active session is determined by most recent activity
    */
   static async switchToSolo(): Promise<{ success: boolean; error?: string }> {
-    try {
-      await AsyncStorage.removeItem(ACTIVE_SESSION_KEY);
-      return { success: true };
-    } catch (error: any) {
-      console.error('Error switching to solo:', error);
-      return {
-        success: false,
-        error: error.message || 'Failed to switch to solo mode',
-      };
-    }
+    // No database action needed - the active session is determined dynamically
+    return { success: true };
   }
 
   /**
-   * Get current active session from local storage
+   * Get current active session from database
+   * Returns the most recently active session the user is participating in
    */
-  static async getActiveSession(): Promise<ActiveSession | null> {
+  static async getActiveSession(userId: string): Promise<ActiveSession | null> {
     try {
-      const stored = await AsyncStorage.getItem(ACTIVE_SESSION_KEY);
-      if (!stored) return null;
-
-      const activeSession: ActiveSession = JSON.parse(stored);
-
-      // Validate session still exists and user is still a participant
-      const { data: participant } = await supabase
+      // Get all sessions where user is a participant and has accepted
+      const { data: participations, error: participationError } = await supabase
         .from('session_participants')
-        .select('user_id')
-        .eq('session_id', activeSession.sessionId)
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
-        .single();
+        .select('session_id, has_accepted')
+        .eq('user_id', userId)
+        .eq('has_accepted', true);
 
-      if (!participant) {
-        // Session is no longer valid, clear it
-        await AsyncStorage.removeItem(ACTIVE_SESSION_KEY);
+      if (participationError || !participations || participations.length === 0) {
         return null;
       }
 
-      return activeSession;
+      const sessionIds = participations.map(p => p.session_id);
+
+      // Get the most recently active session
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('collaboration_sessions')
+        .select('id, name, last_activity_at')
+        .in('id', sessionIds)
+        .is('archived_at', null)
+        .order('last_activity_at', { ascending: false })
+        .limit(1);
+
+      if (sessionsError || !sessions || sessions.length === 0) {
+        return null;
+      }
+
+      const activeSession = sessions[0];
+      return {
+        sessionId: activeSession.id,
+        sessionName: activeSession.name,
+        switchedAt: activeSession.last_activity_at || new Date().toISOString(),
+      };
     } catch (error) {
       console.error('Error getting active session:', error);
       return null;
@@ -138,72 +134,21 @@ class SessionService {
   }
 
   /**
-   * Validate and refresh active session
-   * Returns null if session is invalid
+   * Validate and get active session from database
+   * Returns null if no valid active session
    */
   static async validateActiveSession(
     userId: string
   ): Promise<ActiveSession | null> {
-    try {
-      const activeSession = await this.getActiveSession();
-      if (!activeSession) return null;
-
-      // Check if session still exists
-      const { data: session, error: sessionError } = await supabase
-        .from('collaboration_sessions')
-        .select('id, name, status')
-        .eq('id', activeSession.sessionId)
-        .single();
-
-      if (sessionError || !session) {
-        // Session deleted, clear active session
-        await AsyncStorage.removeItem(ACTIVE_SESSION_KEY);
-        return null;
-      }
-
-      // Check if user is still a participant
-      const { data: participant } = await supabase
-        .from('session_participants')
-        .select('user_id, has_accepted')
-        .eq('session_id', activeSession.sessionId)
-        .eq('user_id', userId)
-        .single();
-
-      if (!participant || !participant.has_accepted) {
-        // User is no longer a participant, clear active session
-        await AsyncStorage.removeItem(ACTIVE_SESSION_KEY);
-        return null;
-      }
-
-      // Update session name if it changed
-      if (session.name !== activeSession.sessionName) {
-        const updatedSession: ActiveSession = {
-          ...activeSession,
-          sessionName: session.name,
-        };
-        await AsyncStorage.setItem(
-          ACTIVE_SESSION_KEY,
-          JSON.stringify(updatedSession)
-        );
-        return updatedSession;
-      }
-
-      return activeSession;
-    } catch (error) {
-      console.error('Error validating active session:', error);
-      return null;
-    }
+    return await this.getActiveSession(userId);
   }
 
   /**
    * Clear active session (used when leaving a session)
+   * No action needed - user is removed from session_participants, so they won't have an active session
    */
   static async clearActiveSession(): Promise<void> {
-    try {
-      await AsyncStorage.removeItem(ACTIVE_SESSION_KEY);
-    } catch (error) {
-      console.error('Error clearing active session:', error);
-    }
+    // No action needed - active session is determined dynamically from database
   }
 }
 

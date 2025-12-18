@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,12 +7,14 @@ import {
   TouchableOpacity,
   ScrollView,
   Modal,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import SavedTab from "./activity/SavedTab";
 
 interface SavedExperiencesPageProps {
   savedCards: any[];
+  isLoading?: boolean;
   userPreferences?: any;
   onScheduleFromSaved: (card: any) => void;
   onPurchaseFromSaved: (card: any, option: any) => void;
@@ -166,6 +168,7 @@ const Dropdown: React.FC<DropdownProps> = ({
 
 const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
   savedCards = [],
+  isLoading = false,
   userPreferences,
   onScheduleFromSaved,
   onPurchaseFromSaved,
@@ -205,7 +208,11 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
     return 0;
   };
 
-  const filteredCards = useMemo(() => {
+  const [filteredCards, setFilteredCards] = useState<any[]>(
+    Array.isArray(savedCards) ? savedCards : []
+  );
+
+  useEffect(() => {
     let cards = Array.isArray(savedCards) ? [...savedCards] : [];
 
     if (searchQuery.trim()) {
@@ -223,7 +230,8 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
         // Check if it matches category
         if (card?.category === selectedCategory) return true;
         // Check if it matches experience type
-        const experienceType = card?.experienceType || (card as any)?.experience_type;
+        const experienceType =
+          card?.experienceType || (card as any)?.experience_type;
         if (experienceType === selectedCategory) return true;
         return false;
       });
@@ -256,7 +264,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
       return 0;
     });
 
-    return cards;
+    setFilteredCards(cards);
   }, [
     savedCards,
     searchQuery,
@@ -265,6 +273,15 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
     dateRangeFilter,
     sortOption,
   ]);
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Ionicons name="heart" size={28} color="#eb7825" />
+        <Text style={styles.loadingText}>Loading your saved experiences...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -400,6 +417,17 @@ const styles = StyleSheet.create({
   badgeText: {
     color: "#c2410c",
     fontWeight: "600",
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    paddingVertical: 48,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "#6b7280",
   },
   searchContainer: {
     flexDirection: "row",
