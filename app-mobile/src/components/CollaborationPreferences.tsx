@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Text,
   View,
@@ -92,6 +92,61 @@ const timeSlots = [
 type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
 type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
 
+// Compatibility matrix: maps intent IDs to allowed category IDs
+// null means all categories are allowed
+const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
+  "first-dates": [
+    "Stroll",
+    "Sip & Chill",
+    "Picnics",
+    "screenRelax",
+    "Creative & Hands-On",
+    "Play & Move",
+    "Dining Experiences",
+  ],
+  romantic: ["Sip & Chill", "Picnics", "Dining Experiences", "Wellness Dates"],
+  friendly: null, // All categories
+  "group-fun": [
+    "Play & Move",
+    "Creative & Hands-On",
+    "Casual Eats",
+    "screenRelax",
+    "Freestyle",
+  ],
+  business: ["Stroll", "Sip & Chill", "Dining Experiences"],
+};
+
+// Get allowed category IDs based on selected intents
+const getAllowedCategoryIds = (
+  selectedIntents: string[]
+): Set<string> | null => {
+  if (selectedIntents.length === 0) {
+    // If no intents selected, show all categories
+    return null;
+  }
+
+  const allowedSets: Set<string>[] = [];
+
+  for (const intent of selectedIntents) {
+    const allowed = INTENT_CATEGORY_COMPATIBILITY[intent];
+    if (allowed === null) {
+      // This intent allows all categories, so return null (all allowed)
+      return null;
+    }
+    allowedSets.push(new Set(allowed));
+  }
+
+  // Union of all allowed categories
+  const union = new Set<string>();
+  for (const allowedSet of allowedSets) {
+    for (const categoryId of allowedSet) {
+      union.add(categoryId);
+    }
+  }
+
+  return union;
+};
+
 export default function CollaborationPreferences({
   isOpen,
   onClose,
@@ -143,12 +198,19 @@ export default function CollaborationPreferences({
   const [isSaving, setIsSaving] = useState(false);
 
   // Load preferences from database using useBoardSession hook
-  const { preferences: dbPreferences, updatePreferences, loading: loadingPreferences } = useBoardSession(sessionId);
+  const {
+    preferences: dbPreferences,
+    updatePreferences,
+    loading: loadingPreferences,
+  } = useBoardSession(sessionId);
 
   // Load existing preferences when component opens or preferences change
   useEffect(() => {
     if (isOpen && dbPreferences) {
       // Map database preferences to component state
+      if (dbPreferences.experience_types) {
+        setSelectedIntents(dbPreferences.experience_types);
+      }
       if (dbPreferences.categories) {
         setSelectedCategories(dbPreferences.categories);
       }
@@ -164,7 +226,9 @@ export default function CollaborationPreferences({
         setTravelMode(dbPreferences.travel_mode);
       }
       if (dbPreferences.travel_constraint_type) {
-        setConstraintType(dbPreferences.travel_constraint_type as "time" | "distance");
+        setConstraintType(
+          dbPreferences.travel_constraint_type as "time" | "distance"
+        );
       }
       if (dbPreferences.travel_constraint_value !== undefined) {
         setConstraintValue(dbPreferences.travel_constraint_value);
@@ -181,10 +245,12 @@ export default function CollaborationPreferences({
       if (dbPreferences.location) {
         const savedLocation = dbPreferences.location;
         setSearchLocation(savedLocation);
-        
+
         // Determine if it's GPS (coordinates format) or search (city name)
         // GPS coordinates typically look like "37.7749, -122.4194"
-        const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(savedLocation);
+        const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(
+          savedLocation
+        );
         if (isCoordinates) {
           // It's coordinates, likely from GPS
           setUseLocation("gps");
@@ -195,6 +261,27 @@ export default function CollaborationPreferences({
       }
     }
   }, [isOpen, dbPreferences]);
+
+  // Filter categories based on selected intents
+  const filteredCategories = useMemo(() => {
+    const allowedIds = getAllowedCategoryIds(selectedIntents);
+    if (allowedIds === null) {
+      // All categories allowed
+      return categories;
+    }
+    return categories.filter((category) => allowedIds.has(category.id));
+  }, [selectedIntents]);
+
+  // Filter out invalid selectedCategories when intents change
+  useEffect(() => {
+    const allowedIds = getAllowedCategoryIds(selectedIntents);
+    if (allowedIds !== null) {
+      setSelectedCategories((prev) => {
+        const validCategories = prev.filter((catId) => allowedIds.has(catId));
+        return validCategories.length !== prev.length ? validCategories : prev;
+      });
+    }
+  }, [selectedIntents]);
 
   if (!isOpen) return null;
 
@@ -278,7 +365,7 @@ export default function CollaborationPreferences({
     setIsRequestingLocation(true);
     try {
       const { locationService } = await import("../services/locationService");
-      
+
       // Request permissions first
       const hasPermission = await locationService.requestPermissions();
       if (!hasPermission) {
@@ -324,7 +411,8 @@ export default function CollaborationPreferences({
         // Group size is determined by the number of participants in the session
         travel_mode: travelMode,
         travel_constraint_type: constraintType,
-        travel_constraint_value: typeof constraintValue === "number" ? constraintValue : 20,
+        travel_constraint_value:
+          typeof constraintValue === "number" ? constraintValue : 20,
         time_of_day: selectedTimeSlot || null,
         datetime_pref: selectedDate ? selectedDate.toISOString() : null,
       };
@@ -367,23 +455,23 @@ export default function CollaborationPreferences({
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       {/* Header */}
       <View style={styles.header}>
-        {onClose && (
-          <TouchableOpacity
-            onPress={onClose}
-            style={styles.closeButton}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="close" size={24} color="#6b7280" />
-          </TouchableOpacity>
-        )}
-        <View style={styles.titleContainer}>
+        <View style={styles.headerRow}>
+          {onClose && (
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeButton}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close" size={24} color="#6b7280" />
+            </TouchableOpacity>
+          )}
           <Text style={styles.title}>Narrow your search</Text>
-          <Text style={styles.subtitle}>
-            Collaboration Preferences for "{sessionName}"
-          </Text>
+          {onClose && <View style={styles.headerSpacer} />}
         </View>
-        {onClose && <View style={styles.headerSpacer} />}
+        <Text style={styles.subtitle}>
+          Collaboration Preferences for "{sessionName}"
+        </Text>
       </View>
       <ScrollView
         style={styles.scrollView}
@@ -478,7 +566,7 @@ export default function CollaborationPreferences({
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Categories</Text>
           <View style={styles.categoriesContainer}>
-            {categories.map((category) => {
+            {filteredCategories.map((category) => {
               const isSelected = selectedCategories.includes(category.id);
               return (
                 <TouchableOpacity
@@ -986,35 +1074,27 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   header: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 32,
-    paddingBottom: 24,
+    paddingBottom: 16,
     backgroundColor: "#ffffff",
   },
-  closeButton: {
-    padding: 8,
-    marginLeft: -8,
-    marginBottom: -8,
-  },
-  titleContainer: {
-    flex: 1,
+  headerRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
-    marginHorizontal: 12,
-    paddingBottom: 0,
+    justifyContent: "space-between",
+  },
+  closeButton: {
+    marginLeft: -8,
   },
   headerSpacer: {
     width: 40,
   },
   title: {
+    flex: 1,
     fontSize: 20,
     fontWeight: "700",
     color: "#1e293b",
     textAlign: "center",
-    marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
@@ -1144,8 +1224,7 @@ const styles = StyleSheet.create({
     color: "#374151",
   },
   categoriesContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flexDirection: "column",
     gap: 8,
   },
   categoryButton: {

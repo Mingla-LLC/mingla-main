@@ -137,7 +137,7 @@ export default function SignInPage({
       return (
         <SignInForm
           onSignIn={handleSignIn}
-          onSwitchToSignUp={handleNavigateToSignUp}
+          onSwitchToSignUp={handleBackToWelcome}
           onBack={handleBackToWelcome}
         />
       );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Text,
   View,
@@ -95,6 +95,62 @@ const timeSlots = [
 
 type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
 type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
+
+// Compatibility matrix: maps intent IDs to allowed category IDs
+// null means all categories are allowed
+const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
+  "solo-adventure": null, // All categories
+  "first-dates": [
+    "Stroll",
+    "Sip & Chill",
+    "Picnics",
+    "screenRelax",
+    "Creative & Hands-On",
+    "Play & Move",
+    "Dining Experiences",
+  ],
+  romantic: ["Sip & Chill", "Picnics", "Dining Experiences", "Wellness Dates"],
+  friendly: null, // All categories
+  "group-fun": [
+    "Play & Move",
+    "Creative & Hands-On",
+    "Casual Eats",
+    "screenRelax",
+    "Freestyle",
+  ],
+  business: ["Stroll", "Sip & Chill", "Dining Experiences"],
+};
+
+// Get allowed category IDs based on selected intents
+const getAllowedCategoryIds = (
+  selectedIntents: string[]
+): Set<string> | null => {
+  if (selectedIntents.length === 0) {
+    // If no intents selected, show all categories
+    return null;
+  }
+
+  const allowedSets: Set<string>[] = [];
+
+  for (const intent of selectedIntents) {
+    const allowed = INTENT_CATEGORY_COMPATIBILITY[intent];
+    if (allowed === null) {
+      // This intent allows all categories, so return null (all allowed)
+      return null;
+    }
+    allowedSets.push(new Set(allowed));
+  }
+
+  // Union of all allowed categories
+  const union = new Set<string>();
+  for (const allowedSet of allowedSets) {
+    for (const categoryId of allowedSet) {
+      union.add(categoryId);
+    }
+  }
+
+  return union;
+};
 
 export default function PreferencesSheet({
   onClose,
@@ -265,6 +321,27 @@ export default function PreferencesSheet({
     loadPreferences();
   }, [user?.id]);
 
+  // Filter categories based on selected intents
+  const filteredCategories = useMemo(() => {
+    const allowedIds = getAllowedCategoryIds(selectedIntents);
+    if (allowedIds === null) {
+      // All categories allowed
+      return categories;
+    }
+    return categories.filter((category) => allowedIds.has(category.id));
+  }, [selectedIntents]);
+
+  // Filter out invalid selectedCategories when intents change
+  useEffect(() => {
+    const allowedIds = getAllowedCategoryIds(selectedIntents);
+    if (allowedIds !== null) {
+      setSelectedCategories((prev) => {
+        const validCategories = prev.filter((catId) => allowedIds.has(catId));
+        return validCategories.length !== prev.length ? validCategories : prev;
+      });
+    }
+  }, [selectedIntents]);
+
   const handleIntentToggle = (id: string) => {
     setSelectedIntents((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -375,15 +452,11 @@ export default function PreferencesSheet({
     setIsRequestingLocation(true);
     try {
       // Request permissions first - this will show the system permission dialog if not granted
-      console.log("Requesting location permissions...");
       const hasPermission = await locationService.requestPermissions();
-      console.log("Permission result:", hasPermission);
 
       // Even if permissions are granted, try to get location
       // This might trigger a system prompt if location services are disabled
-      console.log("Requesting location...");
       const locationData = await locationService.getCurrentLocation();
-      console.log("locationData", locationData);
       if (locationData) {
         // Reverse geocode to get city name
         const cityName = await locationService.reverseGeocode(
@@ -514,7 +587,7 @@ export default function PreferencesSheet({
         )}
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Narrow your search</Text>
-          <Text style={styles.subtitle}>Personal Preferences</Text>
+          {/* <Text style={styles.subtitle}>Personal Preferences</Text> */}
         </View>
         {onClose && <View style={styles.headerSpacer} />}
       </View>
@@ -611,7 +684,7 @@ export default function PreferencesSheet({
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Categories</Text>
           <View style={styles.categoriesContainer}>
-            {categories.map((category) => {
+            {filteredCategories.map((category) => {
               const isSelected = selectedCategories.includes(category.id);
               return (
                 <TouchableOpacity
@@ -1129,8 +1202,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 32,
-    paddingBottom: 24,
+    paddingBottom: 16,
     backgroundColor: "#ffffff",
   },
   closeButton: {
@@ -1283,8 +1355,7 @@ const styles = StyleSheet.create({
     color: "#374151",
   },
   categoriesContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flexDirection: "column",
     gap: 8,
   },
   categoryButton: {
