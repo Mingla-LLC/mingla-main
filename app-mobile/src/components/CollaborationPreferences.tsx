@@ -514,6 +514,40 @@ export default function CollaborationPreferences({
           </View>
         </View>
 
+        {/* Categories Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Categories</Text>
+          <View style={styles.categoriesContainer}>
+            {filteredCategories.map((category) => {
+              const isSelected = selectedCategories.includes(category.id);
+              return (
+                <TouchableOpacity
+                  key={category.id}
+                  onPress={() => handleCategoryToggle(category.id)}
+                  style={[
+                    styles.categoryButton,
+                    isSelected && styles.categoryButtonSelected,
+                  ]}
+                >
+                  <Ionicons
+                    name={category.icon as any}
+                    size={20}
+                    color={isSelected ? "#eb7825" : "#6b7280"}
+                  />
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      isSelected && styles.categoryTextSelected,
+                    ]}
+                  >
+                    {category.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
         {/* Budget per Person Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Budget per Person</Text>
@@ -559,40 +593,6 @@ export default function CollaborationPreferences({
                 <Text style={styles.budgetPresetText}>{preset.label}</Text>
               </TouchableOpacity>
             ))}
-          </View>
-        </View>
-
-        {/* Categories Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Categories</Text>
-          <View style={styles.categoriesContainer}>
-            {filteredCategories.map((category) => {
-              const isSelected = selectedCategories.includes(category.id);
-              return (
-                <TouchableOpacity
-                  key={category.id}
-                  onPress={() => handleCategoryToggle(category.id)}
-                  style={[
-                    styles.categoryButton,
-                    isSelected && styles.categoryButtonSelected,
-                  ]}
-                >
-                  <Ionicons
-                    name={category.icon as any}
-                    size={20}
-                    color={isSelected ? "#eb7825" : "#6b7280"}
-                  />
-                  <Text
-                    style={[
-                      styles.categoryText,
-                      isSelected && styles.categoryTextSelected,
-                    ]}
-                  >
-                    {category.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
           </View>
         </View>
 
