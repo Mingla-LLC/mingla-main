@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 
 interface MatchScoreBoxProps {
   matchScore: number;
@@ -11,56 +10,104 @@ interface MatchScoreBoxProps {
     time: number;
     popularity: number;
   };
+  userPreferences?: any;
+  cardCategory?: string;
 }
 
 export default function MatchScoreBox({
   matchScore,
   matchFactors,
+  userPreferences,
+  cardCategory,
 }: MatchScoreBoxProps) {
-  // Generate match explanation based on score
-  const getMatchExplanation = (score: number): string => {
-    if (score >= 90) {
-      return 'Excellent match! This experience aligns perfectly with your preferences.';
-    } else if (score >= 75) {
-      return 'Great match! This experience closely matches your preferences.';
-    } else if (score >= 60) {
-      return 'Good match! This experience aligns well with most of your preferences.';
+  // Generate match explanation based on factors
+  const getMatchExplanation = (): string => {
+    const factors = [];
+    
+    // Check for high-scoring factors
+    if (matchFactors.category > 0.7) {
+      const categoryText = getCategoryPreference();
+      if (categoryText) {
+        factors.push(`matches your preference for ${categoryText}`);
+      }
+    }
+    if (matchFactors.budget > 0.7) {
+      const budgetText = getBudgetPreference();
+      if (budgetText) {
+        factors.push(`fits within your ${budgetText} budget range`);
+      } else {
+        factors.push('fits within your budget range');
+      }
+    }
+    if (matchFactors.time > 0.7) {
+      const timeText = getTimePreference();
+      if (timeText) {
+        factors.push(`scheduled for your preferred ${timeText} time`);
+      } else {
+        factors.push('scheduled for your preferred time');
+      }
+    }
+    if (matchFactors.location > 0.7) {
+      factors.push('matches your location preferences');
+    }
+
+    // Default message if no strong factors
+    if (factors.length === 0) {
+      return 'Suggested based on your preferences and interests.';
+    }
+
+    // Combine factors with proper grammar
+    if (factors.length === 1) {
+      return `Suggested because it ${factors[0]}.`;
+    } else if (factors.length === 2) {
+      return `Suggested because it ${factors[0]} and ${factors[1]}.`;
     } else {
-      return 'Decent match. This experience may have some differences from your preferences.';
+      return `Suggested because it ${factors.slice(0, -1).join(', ')}, and ${factors[factors.length - 1]}.`;
     }
   };
 
-  // Get top match factors
-  const getTopFactors = () => {
-    const factors = [
-      { name: 'Location', score: matchFactors.location },
-      { name: 'Budget', score: matchFactors.budget },
-      { name: 'Category', score: matchFactors.category },
-      { name: 'Time', score: matchFactors.time },
-      { name: 'Popularity', score: matchFactors.popularity },
-    ];
+  // Helper to get category preference text
+  const getCategoryPreference = (): string => {
+    if (!userPreferences?.categories || userPreferences.categories.length === 0) {
+      return cardCategory ? cardCategory.toLowerCase() : 'selected categories';
+    }
+    if (userPreferences.categories.length === 1) {
+      return userPreferences.categories[0].toLowerCase();
+    }
+    return 'selected categories';
+  };
 
-    return factors
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 2)
-      .map((f) => f.name.toLowerCase())
-      .join(' and ');
+  // Helper to get budget preference text
+  const getBudgetPreference = (): string => {
+    if (!userPreferences) return '';
+    const min = userPreferences.budget_min || userPreferences.budgetMin;
+    const max = userPreferences.budget_max || userPreferences.budgetMax;
+    if (min !== undefined && max !== undefined) {
+      return `$${min}-$${max}`;
+    }
+    return '';
+  };
+
+  // Helper to get time preference text
+  const getTimePreference = (): string => {
+    if (!userPreferences) return '';
+    const timeSlot = userPreferences.time_slot || userPreferences.timeSlot;
+    if (timeSlot) {
+      const timeMap: { [key: string]: string } = {
+        brunch: 'brunch',
+        afternoon: 'afternoon',
+        dinner: 'dinner',
+        lateNight: 'late night',
+      };
+      return timeMap[timeSlot] || timeSlot;
+    }
+    return '';
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.scoreContainer}>
-          <Ionicons name="star" size={20} color="#ffffff" />
-          <Text style={styles.scoreText}>{matchScore}% Match</Text>
-        </View>
-        <Text style={styles.explanation}>{getMatchExplanation(matchScore)}</Text>
-      </View>
-      <View style={styles.factorsContainer}>
-        <Text style={styles.factorsLabel}>
-          Strongest matches: {getTopFactors()}
-        </Text>
-      </View>
+      <Text style={styles.label}>Match Reason:</Text>
+      <Text style={styles.explanation}>{getMatchExplanation()}</Text>
     </View>
   );
 }
@@ -70,40 +117,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#eb7825',
     marginHorizontal: 16,
     marginTop: 16,
+    marginBottom: 8,
     borderRadius: 12,
     padding: 16,
   },
-  header: {
-    marginBottom: 8,
-  },
-  scoreContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 6,
-  },
-  scoreText: {
-    fontSize: 20,
+  label: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#ffffff',
+    marginBottom: 4,
   },
   explanation: {
     fontSize: 14,
     color: '#ffffff',
     lineHeight: 20,
-    opacity: 0.95,
-  },
-  factorsContainer: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  factorsLabel: {
-    fontSize: 12,
-    color: '#ffffff',
-    opacity: 0.9,
-    fontStyle: 'italic',
   },
 });
 

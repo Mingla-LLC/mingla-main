@@ -3,7 +3,9 @@ import WelcomeScreen from "./signIn/WelcomeScreen";
 import SignInForm from "./signIn/SignInForm";
 import SignUpForm from "./signIn/SignUpForm";
 import SignUpAsStep from "./signIn/SignUpAsStep";
+import AccountSetupStep from "./onboarding/AccountSetupStep";
 import { useAuthSimple } from "../hooks/useAuthSimple";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface SignInPageProps {
   onSignInRegular: (credentials: { email: string; password: string }) => void;
@@ -28,7 +30,12 @@ interface SignInPageProps {
   onResetSignUpForm?: () => void;
 }
 
-type AuthMode = "welcome" | "sign-in" | "sign-up" | "sign-up-as";
+type AuthMode =
+  | "welcome"
+  | "sign-in"
+  | "sign-up"
+  | "sign-up-as"
+  | "account-setup";
 
 export default function SignInPage({
   onSignInRegular,
@@ -61,6 +68,10 @@ export default function SignInPage({
 
   const handleNavigateToSignUpAs = () => {
     setAuthMode("sign-up-as");
+  };
+
+  const handleNavigateToAccountSetup = () => {
+    setAuthMode("account-setup");
   };
 
   const handleSelectAccountType = (accountType: string) => {
@@ -137,7 +148,7 @@ export default function SignInPage({
       return (
         <SignInForm
           onSignIn={handleSignIn}
-          onSwitchToSignUp={handleBackToWelcome}
+          onSwitchToSignUp={handleNavigateToAccountSetup}
           onBack={handleBackToWelcome}
         />
       );
@@ -146,9 +157,29 @@ export default function SignInPage({
       return (
         <SignUpForm
           onSignUp={handleSignUp}
-          onSwitchToSignIn={handleNavigateToSignIn}
+          onSwitchToSignIn={handleBackToWelcome}
           onBack={handleBackToWelcome}
         />
+      );
+
+    case "account-setup":
+      return (
+        <SafeAreaView
+          edges={["top"]}
+          style={{ flex: 1, backgroundColor: "white" }}
+        >
+          <AccountSetupStep
+            onNext={handleNavigateToSignUp}
+            onBack={handleBackToWelcome}
+            onNavigateToSignUp={(accountType) => {
+              setSelectedAccountType(accountType || null);
+              setAuthMode("sign-up");
+            }}
+            onNavigateToGoogleSignIn={handleGoogleSignIn}
+            onNavigateToAppleSignIn={handleAppleSignIn}
+            accountType={selectedAccountType}
+          />
+        </SafeAreaView>
       );
 
     default:

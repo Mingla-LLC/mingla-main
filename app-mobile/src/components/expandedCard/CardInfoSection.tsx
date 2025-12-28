@@ -1,0 +1,191 @@
+import React from "react";
+import { View, Text, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
+interface CardInfoSectionProps {
+  title: string;
+  category: string;
+  categoryIcon?: string;
+  tags?: string[];
+  rating?: number;
+  travelTime?: string;
+  priceRange?: string;
+  description?: string;
+}
+
+export default function CardInfoSection({
+  title,
+  category,
+  categoryIcon,
+  tags = [],
+  rating,
+  travelTime,
+  priceRange,
+  description,
+}: CardInfoSectionProps) {
+  // Get category icon component
+  const getCategoryIcon = () => {
+    if (categoryIcon) {
+      return categoryIcon;
+    }
+    // Default icons based on category
+    const categoryLower = category.toLowerCase();
+    if (categoryLower.includes("stroll") || categoryLower.includes("walk")) {
+      return "cafe";
+    }
+    if (categoryLower.includes("sip") || categoryLower.includes("chill")) {
+      return "wine";
+    }
+    if (
+      categoryLower.includes("dining") ||
+      categoryLower.includes("restaurant")
+    ) {
+      return "restaurant";
+    }
+    if (categoryLower.includes("picnic")) {
+      return "basket";
+    }
+    if (categoryLower.includes("wellness")) {
+      return "leaf";
+    }
+    if (
+      categoryLower.includes("creative") ||
+      categoryLower.includes("hands-on")
+    ) {
+      return "color-palette";
+    }
+    if (categoryLower.includes("play") || categoryLower.includes("move")) {
+      return "game-controller";
+    }
+    return "star";
+  };
+
+  // Find "Romantic" tag or use first tag
+  const romanticTag =
+    tags.find((tag) => tag.toLowerCase().includes("romantic")) || tags[0];
+
+  return (
+    <View style={styles.container}>
+      {/* Title */}
+      <Text style={styles.title}>{title}</Text>
+
+      {/* Tags Row */}
+      <View style={styles.tagsRow}>
+        <View style={styles.categoryTag}>
+          <Ionicons name={getCategoryIcon() as any} size={14} color="#d97706" />
+          <Text style={styles.categoryText}>{category}</Text>
+        </View>
+        {romanticTag && (
+          <>
+            <Text style={styles.bullet}>•</Text>
+            <Text style={styles.tagText}>{romanticTag}</Text>
+          </>
+        )}
+      </View>
+
+      {/* Metrics Row */}
+      <View style={styles.metricsRow}>
+        {rating !== undefined && (
+          <View style={styles.metricItem}>
+            <Ionicons name="star" size={14} color="#d97706" />
+            <Text style={styles.metricText}>{rating.toFixed(1)}</Text>
+          </View>
+        )}
+        {travelTime && (
+          <>
+            {rating !== undefined && <View style={styles.metricDivider} />}
+            <View style={styles.metricItem}>
+              <Ionicons name="paper-plane" size={14} color="#d97706" />
+              <Text style={styles.metricText}>{travelTime}</Text>
+            </View>
+          </>
+        )}
+        {priceRange && (
+          <>
+            {(rating !== undefined || travelTime) && (
+              <View style={styles.metricDivider} />
+            )}
+            <Text style={styles.priceText}>{priceRange}</Text>
+          </>
+        )}
+      </View>
+
+      {/* Description */}
+      {description && <Text style={styles.description}>{description}</Text>}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 12,
+    lineHeight: 32,
+  },
+  tagsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    flexWrap: "wrap",
+  },
+  categoryTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  categoryText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#d97706",
+  },
+  bullet: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginHorizontal: 8,
+  },
+  tagText: {
+    fontSize: 14,
+    color: "#6b7280",
+    fontWeight: 600,
+  },
+  metricsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    flexWrap: "wrap",
+  },
+  metricItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  metricText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#d97706",
+  },
+  metricDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: "#e5e7eb",
+    marginHorizontal: 12,
+  },
+  priceText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#d97706",
+  },
+  description: {
+    fontSize: 15,
+    color: "#374151",
+    lineHeight: 22,
+    marginBottom: 8,
+  },
+});

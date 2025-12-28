@@ -8,6 +8,8 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Input } from "../ui/input";
@@ -187,138 +189,145 @@ export default function SignInForm({
     <SafeAreaView style={styles.container}>
       {/*   <StatusBar barStyle="dark-content" backgroundColor="#ffffff" /> */}
 
-      <ScrollView
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={onBack}>
-              <Ionicons name="arrow-back" size={20} color="#6b7280" />
-              <Text style={styles.backButtonText}>Back</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Form Content */}
-        <View style={styles.formContainer}>
-          <View style={styles.headerCenter}>
-            <Image source={logo} style={styles.logo} resizeMode="contain" />
-          </View>
-          <View style={styles.formWrapper}>
-            {/* Form Header */}
-            <View style={styles.formHeader}>
-              <Text style={styles.formSubtitle}>
-                Sign in to continue your journey
-              </Text>
-            </View>
-
-            {/* Email field */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Email</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons
-                  name="mail-outline"
-                  size={20}
-                  color="#94a3b8"
-                  style={styles.inputIcon}
-                />
-                <Input
-                  type="email"
-                  value={formData.email}
-                  onChangeText={(value) => handleInputChange("email", value)}
-                  placeholder="john@example.com"
-                  placeholderTextColor="#cbd5e1"
-                  required
-                  style={{
-                    backgroundColor: "#f1f5f9",
-                    borderWidth: 0,
-                    borderRadius: 12,
-                    paddingHorizontal: 16,
-                    paddingLeft: 48,
-                    fontSize: 16,
-                    color: "#0f172a",
-                    height: 54,
-                    fontWeight: "500",
-                  }}
-                />
-              </View>
-            </View>
-
-            {/* Password field */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Password</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={20}
-                  color="#94a3b8"
-                  style={styles.inputIcon}
-                />
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  value={formData.password}
-                  onChangeText={(value) => handleInputChange("password", value)}
-                  placeholder="••••••••"
-                  placeholderTextColor="#cbd5e1"
-                  required
-                  style={{
-                    backgroundColor: "#f1f5f9",
-                    borderWidth: 0,
-                    borderRadius: 12,
-                    paddingHorizontal: 16,
-                    paddingLeft: 48,
-                    paddingRight: 48,
-                    fontSize: 16,
-                    color: "#0f172a",
-                    height: 54,
-                    fontWeight: "500",
-                  }}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.passwordToggle}
-                >
-                  {showPassword ? (
-                    <Ionicons name="eye-off" size={20} color="#64748b" />
-                  ) : (
-                    <Ionicons name="eye" size={20} color="#64748b" />
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Submit Button */}
-            <TouchableOpacity
-              onPress={handleSubmit}
-              style={[
-                styles.submitButton,
-                isLoading && styles.submitButtonDisabled,
-              ]}
-              activeOpacity={0.8}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator size="small" color="white" />
-              ) : null}
-              <Text style={styles.submitButtonText}>Sign In</Text>
-            </TouchableOpacity>
-
-            {/* Alternative Action */}
-            <View style={styles.alternativeAction}>
-              <Text style={styles.alternativeText}>
-                Don't have an account?{" "}
-              </Text>
-              <TouchableOpacity onPress={onSwitchToSignUp}>
-                <Text style={styles.alternativeLink}>Sign Up</Text>
+            <View style={styles.header}>
+              <TouchableOpacity style={styles.backButton} onPress={onBack}>
+                <Ionicons name="arrow-back" size={20} color="#6b7280" />
+                <Text style={styles.backButtonText}>Back</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </ScrollView>
+
+          {/* Form Content */}
+          <View style={styles.formContainer}>
+            <View style={styles.headerCenter}>
+              <Image source={logo} style={styles.logo} resizeMode="contain" />
+            </View>
+            <View style={styles.formWrapper}>
+              {/* Form Header */}
+              <View style={styles.formHeader}>
+                <Text style={styles.formSubtitle}>
+                  Sign in to continue your journey
+                </Text>
+              </View>
+
+              {/* Email field */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Email</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons
+                    name="mail-outline"
+                    size={20}
+                    color="#94a3b8"
+                    style={styles.inputIcon}
+                  />
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChangeText={(value) => handleInputChange("email", value)}
+                    placeholder="john@example.com"
+                    placeholderTextColor="#cbd5e1"
+                    required
+                    style={{
+                      backgroundColor: "#f1f5f9",
+                      borderWidth: 0,
+                      borderRadius: 12,
+                      paddingHorizontal: 16,
+                      paddingLeft: 48,
+                      fontSize: 16,
+                      color: "#0f172a",
+                      height: 54,
+                      fontWeight: "500",
+                    }}
+                  />
+                </View>
+              </View>
+
+              {/* Password field */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Password</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={20}
+                    color="#94a3b8"
+                    style={styles.inputIcon}
+                  />
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={formData.password}
+                    onChangeText={(value) =>
+                      handleInputChange("password", value)
+                    }
+                    placeholder="••••••••"
+                    placeholderTextColor="#cbd5e1"
+                    required
+                    style={{
+                      backgroundColor: "#f1f5f9",
+                      borderWidth: 0,
+                      borderRadius: 12,
+                      paddingHorizontal: 16,
+                      paddingLeft: 48,
+                      paddingRight: 48,
+                      fontSize: 16,
+                      color: "#0f172a",
+                      height: 54,
+                      fontWeight: "500",
+                    }}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.passwordToggle}
+                  >
+                    {showPassword ? (
+                      <Ionicons name="eye-off" size={20} color="#64748b" />
+                    ) : (
+                      <Ionicons name="eye" size={20} color="#64748b" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Submit Button */}
+              <TouchableOpacity
+                onPress={handleSubmit}
+                style={[
+                  styles.submitButton,
+                  isLoading && styles.submitButtonDisabled,
+                ]}
+                activeOpacity={0.8}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : null}
+                <Text style={styles.submitButtonText}>Sign In</Text>
+              </TouchableOpacity>
+
+              {/* Alternative Action */}
+              <View style={styles.alternativeAction}>
+                <Text style={styles.alternativeText}>
+                  Don't have an account?{" "}
+                </Text>
+                <TouchableOpacity onPress={onSwitchToSignUp}>
+                  <Text style={styles.alternativeLink}>Sign Up</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

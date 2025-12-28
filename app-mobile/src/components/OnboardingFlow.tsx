@@ -48,13 +48,15 @@ const OnboardingFlow = ({
   const { profile } = useAppStore();
   const [currentStep, setCurrentStep] = useState(1);
   const [showPhoneSignUp, setShowPhoneSignUp] = useState(false);
-  const [isSigningInWithCompletedOnboarding, setIsSigningInWithCompletedOnboarding] = useState(false);
+  const [
+    isSigningInWithCompletedOnboarding,
+    setIsSigningInWithCompletedOnboarding,
+  ] = useState(false);
 
   // Helper function to update onboarding_step in profile
   const updateOnboardingStep = useCallback(
     async (step: number): Promise<boolean> => {
       if (!user?.id) {
-        console.error("Cannot update onboarding step: No user ID");
         return false;
       }
 
@@ -1515,14 +1517,14 @@ const OnboardingFlow = ({
   const handleGoogleSignIn = async () => {
     // Show loader immediately when sign-in starts
     setIsSigningInWithCompletedOnboarding(true);
-    
+
     try {
       const result = await signInWithGoogle();
 
       if (result.error) {
         // Hide loader on error
         setIsSigningInWithCompletedOnboarding(false);
-        
+
         // Only show error if it's not a cancellation
         if (result.error.message !== "Sign-in cancelled") {
           console.error("Google sign-in error:", result.error);
@@ -1541,7 +1543,7 @@ const OnboardingFlow = ({
       let currentProfile = useAppStore.getState().profile;
       let currentUser = useAppStore.getState().user;
       let attempts = 0;
-      
+
       while ((!currentProfile || !currentUser) && attempts < 5) {
         await new Promise((resolve) => setTimeout(resolve, 300));
         currentProfile = useAppStore.getState().profile;
@@ -1563,12 +1565,12 @@ const OnboardingFlow = ({
         if (onComplete) {
           onComplete(onboardingData || {});
         }
-        
+
         // Hide loader after a short delay to allow navigation
         setTimeout(() => {
           setIsSigningInWithCompletedOnboarding(false);
         }, 1000);
-        
+
         return;
       }
 
@@ -1601,14 +1603,14 @@ const OnboardingFlow = ({
   const handleAppleSignIn = async () => {
     // Show loader immediately when sign-in starts
     setIsSigningInWithCompletedOnboarding(true);
-    
+
     try {
       const result = await signInWithApple();
 
       if (result.error) {
         // Hide loader on error
         setIsSigningInWithCompletedOnboarding(false);
-        
+
         // Only show error if it's not a cancellation
         if (result.error.message !== "Sign-in cancelled") {
           console.error("Apple sign-in error:", result.error);
@@ -1627,7 +1629,7 @@ const OnboardingFlow = ({
       let currentProfile = useAppStore.getState().profile;
       let currentUser = useAppStore.getState().user;
       let attempts = 0;
-      
+
       while ((!currentProfile || !currentUser) && attempts < 5) {
         await new Promise((resolve) => setTimeout(resolve, 300));
         currentProfile = useAppStore.getState().profile;
@@ -1649,12 +1651,12 @@ const OnboardingFlow = ({
         if (onComplete) {
           onComplete(onboardingData || {});
         }
-        
+
         // Hide loader after a short delay to allow navigation
         setTimeout(() => {
           setIsSigningInWithCompletedOnboarding(false);
         }, 1000);
-        
+
         return;
       }
 

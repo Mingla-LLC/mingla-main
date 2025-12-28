@@ -6,7 +6,6 @@
 const OPENWEATHER_API_KEY = process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY || "";
 const OPENWEATHER_BASE_URL = "https://api.openweathermap.org/data/2.5";
 
-
 export interface WeatherData {
   temperature: number;
   condition: string;
@@ -54,14 +53,14 @@ class WeatherService {
       const url = `${OPENWEATHER_BASE_URL}/onecall?lat=${lat}&lon=${lng}&appid=${OPENWEATHER_API_KEY}&units=imperial&exclude=minutely,alerts`;
 
       const response = await fetch(url);
-      
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Weather API error:', {
+        /*     const errorText = await response.text();
+        console.error("❌ Weather API error:", {
           status: response.status,
           statusText: response.statusText,
-          error: errorText
-        });
+          error: errorText,
+        }); */
         throw new Error(`Weather API error: ${response.status} - ${errorText}`);
       }
 
@@ -117,14 +116,14 @@ class WeatherService {
         hourlyForecast,
       };
     } catch (error: any) {
-      console.error("❌ Error fetching weather:", error);
+      /*   console.error("❌ Error fetching weather:", error);
       console.error("Error details:", {
         message: error?.message,
         stack: error?.stack,
         apiKeyPresent: !!OPENWEATHER_API_KEY,
-        apiKeyLength: OPENWEATHER_API_KEY?.length
-      });
-      
+        apiKeyLength: OPENWEATHER_API_KEY?.length,
+      }); */
+
       // If One Call API fails, try Current Weather API as fallback
       try {
         return await this.getCurrentWeatherFallback(lat, lng);
@@ -180,19 +179,21 @@ class WeatherService {
   ): Promise<WeatherData | null> {
     try {
       const url = `${OPENWEATHER_BASE_URL}/weather?lat=${lat}&lon=${lng}&appid=${OPENWEATHER_API_KEY}&units=imperial`;
-      
+
       const response = await fetch(url);
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Current Weather API error:', {
+        console.error("❌ Current Weather API error:", {
           status: response.status,
-          error: errorText
+          error: errorText,
         });
-        throw new Error(`Current Weather API error: ${response.status} - ${errorText}`);
+        throw new Error(
+          `Current Weather API error: ${response.status} - ${errorText}`
+        );
       }
 
       const data = await response.json();
-      
+
       // Convert Current Weather API format to match One Call API format for recommendation
       const weatherForRecommendation = {
         temp: data.main.temp,
@@ -201,7 +202,7 @@ class WeatherService {
         rain: undefined,
         snow: undefined,
       };
-      
+
       const recommendation = this.generateActivityRecommendation(
         weatherForRecommendation,
         weatherForRecommendation

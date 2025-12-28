@@ -644,6 +644,52 @@ serve(async (req) => {
       }));
     }
 
+    // Special handling for stroll cards: fetch companion stops
+    const strollCards = enriched.filter((place) => {
+      const categoryKey = place.category?.toLowerCase() || "";
+      return (
+        categoryKey.includes("stroll") ||
+        categoryKey === "take a stroll" ||
+        categoryKey === "take-a-stroll" ||
+        categoryKey === "take_a_stroll"
+      );
+    });
+
+    console.log(
+      `🚶 Found ${strollCards.length} stroll cards, fetching companion stops...`
+    );
+
+    // PARALLELIZE: Fetch companion stops for all stroll cards simultaneously
+    const strollCardPromises = strollCards.map(async (strollCard) => {
+      try {
+        const companionStops = await findCompanionStops(
+          strollCard.location,
+          500 // 500 meters max distance
+        );
+        if (companionStops.length > 0) {
+          strollCard.companionStops = companionStops;
+          console.log(
+            `   ✅ Found ${companionStops.length} companion stop for "${
+              strollCard.name
+            }": ${companionStops.map((cs) => cs.name).join(", ")}`
+          );
+        } else {
+          console.log(
+            `   ⚠️ No companion stops found for "${strollCard.name}"`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `   ❌ Error fetching companion stops for "${strollCard.name}":`,
+          error
+        );
+      }
+      return strollCard;
+    });
+
+    // Wait for all stroll cards to be processed in parallel
+    await Promise.all(strollCardPromises);
+
     // Convert to card format
     const cards = enriched.map((place) => convertToCard(place, preferences));
     console.log(`✅ Converted ${cards.length} places to card format`);
@@ -1494,8 +1540,147 @@ function generateFallbackHighlights(place: any): string[] {
   return highlights[place.category] || ["Great Experience", "Highly Rated"];
 }
 
+// Find companion stops (café/bakery/ice cream/food truck) near a stroll anchor
+async function findCompanionStops(
+  anchorLocation: { lat: number; lng: number },
+  maxDistance: number = 500 // meters
+): Promise<any[]> {
+  if (!GOOGLE_API_KEY) {
+    console.warn("⚠️ Google API key not available for companion stops");
+    return [];
+  }
+
+  const companionTypes = [
+    "cafe",
+    "coffee_shop",
+    "bakery",
+    "ice_cream_shop",
+    "gelato_shop",
+    "food_truck",
+    "restaurant",
+    "bistro",
+    "bar",
+    "wine_bar",
+    "juice_bar",
+    "smoothie_shop",
+    "tea_house",
+    "donut_shop",
+    "pastry_shop",
+    "deli",
+    "sandwich_shop",
+    "pizza_restaurant",
+    "fast_food_restaurant",
+    "meal_takeaway",
+  ];
+
+  // PARALLELIZE: Fetch all companion types simultaneously
+  const companionPromises = companionTypes.map(async (placeType) => {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${anchorLocation.lat},${anchorLocation.lng}&radius=${maxDistance}&type=${placeType}&key=${GOOGLE_API_KEY}`;
+
+      const response = await fetch(url);
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      if (data.status === "OK" && data.results?.length) {
+        return data.results.slice(0, 2).map((place: any) => {
+          return {
+            id: place.place_id,
+            name: place.name,
+            location: {
+              lat: place.geometry.location.lat,
+              lng: place.geometry.location.lng,
+            },
+            address: place.vicinity || place.formatted_address,
+            rating: place.rating,
+            reviewCount: place.user_ratings_total || 0,
+            imageUrl: place.photos?.[0]
+              ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.photos[0].photo_reference}&key=${GOOGLE_API_KEY}`
+              : null,
+            placeId: place.place_id,
+            type: placeType,
+          };
+        });
+      }
+      return [];
+    } catch (error) {
+      console.error(`Error fetching companion stops for ${placeType}:`, error);
+      return [];
+    }
+  });
+
+  // Wait for all fetches in parallel
+  const results = await Promise.all(companionPromises);
+  const allCompanions = results.flat();
+
+  // Sort by rating and limit to top 1 (best match only)
+  return allCompanions
+    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+    .slice(0, 1);
+}
+
+// Build route timeline for stroll cards (solo mode)
+function buildStrollRouteTimeline(
+  companionStop: any,
+  anchor: any,
+  routeDuration: number
+): any[] {
+  const timeline: any[] = [];
+
+  // Start: Companion stop
+  timeline.push({
+    step: 1,
+    type: "start",
+    title: "Start",
+    location: companionStop,
+    description: `Begin at ${companionStop.name}`,
+    duration: 0,
+  });
+
+  // Walk: Anchor route (solo: 25-35 minutes, average 30)
+  const walkDuration = routeDuration - 5;
+  timeline.push({
+    step: 2,
+    type: "walk",
+    title: "Scenic Walk",
+    location: anchor,
+    description: `Walk to ${anchor.name}`,
+    duration: walkDuration,
+  });
+
+  // Optional Pause (only if route is long enough)
+  if (routeDuration >= 30) {
+    timeline.push({
+      step: 3,
+      type: "pause",
+      title: "Pause & Enjoy",
+      location: anchor,
+      description: `Take a moment to enjoy ${anchor.name}`,
+      duration: 5,
+    });
+  }
+
+  // Wrap-Up: End at anchor
+  timeline.push({
+    step: timeline.length + 1,
+    type: "wrap-up",
+    title: "Wrap-Up",
+    location: anchor,
+    description: `End at ${anchor.name}`,
+    duration: 0,
+  });
+
+  return timeline;
+}
+
+// Calculate route duration for solo mode (25-35 minutes)
+function calculateStrollRouteDuration(): number {
+  // Solo: 25-35 minutes, return average
+  return 30;
+}
+
 function convertToCard(place: any, preferences: UserPreferences): any {
-  return {
+  const baseCard = {
     id: place.id,
     title: place.name,
     category: place.category,
@@ -1517,6 +1702,48 @@ function convertToCard(place: any, preferences: UserPreferences): any {
     placeId: place.placeId,
     matchFactors: place.matchFactors || {},
   };
+
+  // Add stroll-specific data if this is a stroll card
+  const isStrollCategory =
+    place.category?.toLowerCase().includes("stroll") ||
+    place.category?.toLowerCase() === "take a stroll" ||
+    place.category?.toLowerCase() === "take-a-stroll" ||
+    place.category?.toLowerCase() === "take_a_stroll";
+
+  if (
+    isStrollCategory &&
+    place.companionStops &&
+    place.companionStops.length > 0
+  ) {
+    const routeDuration = calculateStrollRouteDuration();
+    const companionStop = place.companionStops[0]; // Use the first/best companion stop
+    const timeline = buildStrollRouteTimeline(
+      companionStop,
+      place,
+      routeDuration
+    );
+
+    return {
+      ...baseCard,
+      strollData: {
+        anchor: {
+          id: place.id,
+          name: place.name,
+          location: place.location,
+          address: place.address,
+        },
+        companionStops: place.companionStops,
+        route: {
+          duration: routeDuration,
+          startLocation: companionStop.location,
+          endLocation: place.location,
+        },
+        timeline,
+      },
+    };
+  }
+
+  return baseCard;
 }
 
 function formatPriceRange(min: number, max: number): string {

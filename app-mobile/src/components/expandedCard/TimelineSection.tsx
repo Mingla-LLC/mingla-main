@@ -10,6 +10,15 @@ interface TimelineSectionProps {
   address?: string;
   priceRange?: string;
   travelTime?: string;
+  strollTimeline?: Array<{
+    step: number;
+    type: string;
+    title: string;
+    location: any;
+    description: string;
+    duration: number;
+  }>;
+  routeDuration?: number;
 }
 
 export default function TimelineSection({
@@ -18,14 +27,43 @@ export default function TimelineSection({
   address,
   priceRange,
   travelTime,
+  strollTimeline,
+  routeDuration,
 }: TimelineSectionProps) {
-  const timeline: TimelineData = generateTimeline({
-    category,
-    title,
-    address,
-    priceRange,
-    travelTime,
-  });
+  // Use stroll timeline if available, otherwise generate default timeline
+  let timeline: TimelineData;
+  
+  if (strollTimeline && strollTimeline.length > 0) {
+    // Convert stroll timeline to TimelineData format
+    const totalDuration = routeDuration 
+      ? `${routeDuration} min`
+      : strollTimeline.reduce((sum, step) => sum + step.duration, 0) + ' min';
+    
+    timeline = {
+      category,
+      totalDuration,
+      costPerPerson: priceRange || 'Free',
+      steps: strollTimeline.map((step) => ({
+        id: `step-${step.step}`,
+        title: step.title,
+        description: step.description,
+        duration: step.duration > 0 ? `${step.duration} min` : undefined,
+        icon: step.type === 'start' ? 'cafe' 
+          : step.type === 'walk' ? 'walk'
+          : step.type === 'pause' ? 'happy'
+          : 'checkmark',
+        location: step.location?.name || step.location?.address || address,
+      })),
+    };
+  } else {
+    timeline = generateTimeline({
+      category,
+      title,
+      address,
+      priceRange,
+      travelTime,
+    });
+  }
 
   // Get icon name from string
   const getIconName = (icon: string | undefined): string => {

@@ -41,7 +41,6 @@ const AccountSetupStep = ({
       flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: 24,
-
       backgroundColor: "white",
     },
     backButton: {
@@ -150,7 +149,7 @@ const AccountSetupStep = ({
   });
 
   return (
-    <SafeAreaView style={styles.container} edges={[]}>
+    <>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
@@ -217,7 +216,7 @@ const AccountSetupStep = ({
           </TouchableOpacity>
         </View>
       </View>
-    </SafeAreaView>
+    </>
   );
 };
 

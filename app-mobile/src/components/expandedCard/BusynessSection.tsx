@@ -1,7 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { BusynessData } from '../../services/busynessService';
+import React from "react";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { BusynessData } from "../../services/busynessService";
 
 interface BusynessSectionProps {
   busynessData: BusynessData | null;
@@ -14,431 +14,252 @@ export default function BusynessSection({
   loading,
   travelTime,
 }: BusynessSectionProps) {
-  // Get busyness level color
-  const getBusynessColor = (
-    level: 'Not Busy' | 'Moderate' | 'Busy' | 'Very Busy'
-  ): string => {
-    switch (level) {
-      case 'Not Busy':
-        return '#10b981'; // Green
-      case 'Moderate':
-        return '#f59e0b'; // Amber
-      case 'Busy':
-        return '#ef4444'; // Red
-      case 'Very Busy':
-        return '#dc2626'; // Dark red
-      default:
-        return '#6b7280';
-    }
+  // Get busyness level percentage range
+  const getBusynessRange = (popularity: number): string => {
+    if (popularity < 30) return "0-30%";
+    if (popularity < 50) return "30-50%";
+    if (popularity < 70) return "50-70%";
+    if (popularity < 85) return "70-85%";
+    return "85-100%";
   };
 
-  // Get busyness icon
-  const getBusynessIcon = (
-    level: 'Not Busy' | 'Moderate' | 'Busy' | 'Very Busy'
+  // Get traffic condition text
+  const getTrafficCondition = (
+    condition?: "Light" | "Moderate" | "Heavy"
   ): string => {
-    switch (level) {
-      case 'Not Busy':
-        return 'checkmark-circle';
-      case 'Moderate':
-        return 'time';
-      case 'Busy':
-        return 'warning';
-      case 'Very Busy':
-        return 'alert-circle';
-      default:
-        return 'information-circle';
-    }
-  };
-
-  // Get traffic condition color
-  const getTrafficColor = (condition: 'Light' | 'Moderate' | 'Heavy'): string => {
+    if (!condition) return "Clear Roads";
     switch (condition) {
-      case 'Light':
-        return '#10b981';
-      case 'Moderate':
-        return '#f59e0b';
-      case 'Heavy':
-        return '#ef4444';
+      case "Light":
+        return "Clear Roads";
+      case "Moderate":
+        return "Moderate Traffic";
+      case "Heavy":
+        return "Heavy Traffic";
       default:
-        return '#6b7280';
+        return "Clear Roads";
     }
+  };
+
+  // Get delay text
+  const getDelayText = (condition?: "Light" | "Moderate" | "Heavy"): string => {
+    if (!condition || condition === "Light") return "No delays";
+    if (condition === "Moderate") return "Minor delays";
+    return "Expect delays";
   };
 
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Ionicons name="people" size={20} color="#eb7825" />
-          <Text style={styles.title}>Traffic & Busyness</Text>
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color="#eb7825" />
-          <Text style={styles.loadingText}>Loading busyness data...</Text>
+        <View style={styles.card}>
+          <View style={styles.header}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="car" size={20} color="#fed7aa" />
+            </View>
+            <Text style={styles.title}>Traffic Conditions</Text>
+          </View>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#ea580c" />
+            <Text style={styles.loadingText}>Loading traffic data...</Text>
+          </View>
         </View>
       </View>
     );
   }
 
   if (!busynessData) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Ionicons name="people" size={20} color="#eb7825" />
-          <Text style={styles.title}>Traffic & Busyness</Text>
-        </View>
-        <View style={styles.unavailableContainer}>
-          <Text style={styles.unavailableText}>
-            Busyness information unavailable
-          </Text>
-        </View>
-      </View>
-    );
+    return null;
   }
 
-  const busynessColor = getBusynessColor(busynessData.busynessLevel);
-  const busynessIcon = getBusynessIcon(busynessData.busynessLevel);
+  const trafficCondition =
+    busynessData.trafficInfo?.trafficCondition || "Light";
+  const currentTravelTime =
+    busynessData.trafficInfo?.currentTravelTime || travelTime || "N/A";
+  const busynessRange = getBusynessRange(busynessData.currentPopularity);
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Ionicons name="people" size={20} color="#eb7825" />
-        <Text style={styles.title}>Traffic & Busyness</Text>
-      </View>
-
-      {/* Current Busyness Status */}
-      <View style={styles.statusContainer}>
-        <View style={styles.busynessCard}>
-          <View style={styles.busynessHeader}>
-            <Ionicons name={busynessIcon as any} size={24} color={busynessColor} />
-            <View style={styles.busynessInfo}>
-              <Text style={styles.busynessLabel}>Current Status</Text>
-              <Text
-                style={[styles.busynessLevel, { color: busynessColor }]}
-              >
-                {busynessData.busynessLevel}
+      {/* Traffic Conditions Card */}
+      {(busynessData.trafficInfo || travelTime) && (
+        <View style={styles.card}>
+          <View style={styles.header}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="car" size={20} color="#d6691f" />
+            </View>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.title}>Traffic Conditions</Text>
+              <Text style={styles.condition}>
+                {busynessData.trafficInfo
+                  ? getTrafficCondition(trafficCondition)
+                  : "Clear Roads"}
               </Text>
             </View>
-            <View style={styles.popularityBadge}>
-              <Text style={styles.popularityText}>
-                {busynessData.currentPopularity}%
-              </Text>
+            <View style={styles.metrics}>
+              <Text style={styles.time}>{currentTravelTime}</Text>
+              {busynessData.trafficInfo && (
+                <Text style={styles.delay}>
+                  {getDelayText(trafficCondition)}
+                </Text>
+              )}
             </View>
           </View>
-          <Text style={styles.busynessMessage}>
-            {busynessData.message}
-          </Text>
-        </View>
 
-        {/* Traffic Information */}
-        {busynessData.trafficInfo && (
-          <View style={styles.trafficCard}>
-            <View style={styles.trafficHeader}>
-              <Ionicons name="car" size={20} color="#6b7280" />
-              <Text style={styles.trafficLabel}>Travel Time</Text>
-            </View>
-            <Text style={styles.trafficTime}>
-              {busynessData.trafficInfo.currentTravelTime}
+          <View style={styles.recommendationBox}>
+            <Text style={styles.recommendationText}>
+              Recommendation:{" "}
+              {busynessData.trafficInfo
+                ? trafficCondition === "Light"
+                  ? "Excellent driving conditions - smooth journey ahead!"
+                  : trafficCondition === "Moderate"
+                  ? "Moderate traffic expected - plan for slight delays."
+                  : "Heavy traffic conditions - consider alternative routes or timing."
+                : "Good conditions for travel."}
             </Text>
-            <View style={styles.trafficCondition}>
-              <View
-                style={[
-                  styles.trafficIndicator,
-                  {
-                    backgroundColor: getTrafficColor(
-                      busynessData.trafficInfo.trafficCondition
-                    ),
-                  },
-                ]}
-              />
-              <Text style={styles.trafficConditionText}>
-                {busynessData.trafficInfo.trafficCondition} Traffic
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Travel Time from card data if traffic info not available */}
-        {!busynessData.trafficInfo && travelTime && (
-          <View style={styles.trafficCard}>
-            <View style={styles.trafficHeader}>
-              <Ionicons name="time" size={20} color="#6b7280" />
-              <Text style={styles.trafficLabel}>Estimated Travel Time</Text>
-            </View>
-            <Text style={styles.trafficTime}>{travelTime}</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Popular Times Chart */}
-      {busynessData.popularTimes && busynessData.popularTimes.length > 0 && (
-        <View style={styles.popularTimesContainer}>
-          <Text style={styles.popularTimesTitle}>Popular Times</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.popularTimesScroll}
-          >
-            {busynessData.popularTimes.map((dayData, dayIndex) => {
-              const today = new Date().getDay();
-              const isToday = dayIndex === (today === 0 ? 6 : today - 1); // Adjust for Sunday = 0
-
-              return (
-                <View
-                  key={dayIndex}
-                  style={[
-                    styles.dayColumn,
-                    isToday && styles.dayColumnToday,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dayLabel,
-                      isToday && styles.dayLabelToday,
-                    ]}
-                  >
-                    {dayData.day.slice(0, 3)}
-                  </Text>
-                  <View style={styles.barsContainer}>
-                    {dayData.times.map((timeSlot, timeIndex) => {
-                      const barHeight = (timeSlot.popularity / 100) * 60;
-                      const isPeak = timeSlot.popularity > 70;
-                      const isModerate = timeSlot.popularity > 40 && timeSlot.popularity <= 70;
-
-                      return (
-                        <View
-                          key={timeIndex}
-                          style={[
-                            styles.bar,
-                            {
-                              height: Math.max(barHeight, 4),
-                              backgroundColor: isPeak
-                                ? '#ef4444'
-                                : isModerate
-                                ? '#f59e0b'
-                                : '#10b981',
-                            },
-                          ]}
-                        />
-                      );
-                    })}
-                  </View>
-                </View>
-              );
-            })}
-          </ScrollView>
-          <View style={styles.legend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: '#10b981' }]} />
-              <Text style={styles.legendText}>Not Busy</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: '#f59e0b' }]} />
-              <Text style={styles.legendText}>Moderate</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: '#ef4444' }]} />
-              <Text style={styles.legendText}>Peak</Text>
-            </View>
           </View>
         </View>
       )}
+
+      {/* Busy Level Card */}
+      <View style={[styles.card, styles.busyCard]}>
+        <View style={styles.header}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="stats-chart" size={20} color="#d6691f" />
+          </View>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.title}>Busy Level</Text>
+            <Text style={styles.busyLevel}>{busynessData.busynessLevel}</Text>
+          </View>
+          <View style={styles.metric}>
+            <Text style={styles.occupancy}>{busynessRange} occupancy</Text>
+          </View>
+        </View>
+
+        {/* Progress Bar */}
+        <View style={styles.progressBarContainer}>
+          <View style={styles.progressBarTrack}>
+            <View
+              style={[
+                styles.progressBarFill,
+                { width: `${busynessData.currentPopularity}%` },
+              ]}
+            />
+          </View>
+        </View>
+
+        <View style={styles.recommendationBox}>
+          <Text style={styles.recommendationText}>
+            Recommendation: {busynessData.message}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#ffffff',
-    paddingVertical: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  card: {
+    backgroundColor: "#eb78251a",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#eb782566",
+  },
+  busyCard: {
+    marginTop: 0,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
     gap: 8,
   },
+  iconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#d6691f",
+    marginBottom: 4,
+  },
+  condition: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#4a5565",
+  },
+  busyLevel: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#4a5565",
   },
   loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 20,
     gap: 8,
   },
   loadingText: {
     fontSize: 14,
-    color: '#6b7280',
+    color: "#ea580c",
   },
-  unavailableContainer: {
-    paddingVertical: 32,
-    paddingHorizontal: 16,
+  metrics: {
+    alignItems: "flex-end",
   },
-  unavailableText: {
-    fontSize: 14,
-    color: '#9ca3af',
-    textAlign: 'center',
+  metric: {
+    alignItems: "flex-end",
   },
-  statusContainer: {
-    paddingHorizontal: 16,
-    gap: 12,
-    marginBottom: 16,
-  },
-  busynessCard: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  busynessHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 12,
-  },
-  busynessInfo: {
-    flex: 1,
-  },
-  busynessLabel: {
-    fontSize: 12,
-    color: '#6b7280',
+  time: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#ea580c",
     marginBottom: 4,
   },
-  busynessLevel: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  popularityBadge: {
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  popularityText: {
+  delay: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
+    color: "#ea580c",
   },
-  busynessMessage: {
+  occupancy: {
     fontSize: 14,
-    color: '#374151',
-    lineHeight: 20,
+    fontWeight: "500",
+    color: "#ea580c",
   },
-  trafficCard: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  trafficHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
-  },
-  trafficLabel: {
-    fontSize: 14,
-    color: '#6b7280',
-    fontWeight: '500',
-  },
-  trafficTime: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  trafficCondition: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  trafficIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  trafficConditionText: {
-    fontSize: 12,
-    color: '#6b7280',
-    fontWeight: '500',
-  },
-  popularTimesContainer: {
-    marginTop: 8,
-  },
-  popularTimesTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    paddingHorizontal: 16,
+  progressBarContainer: {
     marginBottom: 12,
   },
-  popularTimesScroll: {
-    paddingHorizontal: 16,
-    gap: 12,
-    paddingBottom: 8,
+  progressBarTrack: {
+    height: 8,
+    backgroundColor: "#ebe6e7",
+    borderRadius: 4,
+    overflow: "hidden",
   },
-  dayColumn: {
-    alignItems: 'center',
-    minWidth: 50,
-    gap: 8,
+  progressBarFill: {
+    height: "100%",
+    backgroundColor: "#eb7825",
+    borderRadius: 4,
   },
-  dayColumnToday: {
-    backgroundColor: '#fef3e2',
-    padding: 8,
-    borderRadius: 8,
+  recommendationBox: {
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 8,
     borderWidth: 1,
-    borderColor: '#fed7aa',
+    borderColor: "#0a0a0a33",
   },
-  dayLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    fontWeight: '500',
-  },
-  dayLabelToday: {
-    color: '#eb7825',
-    fontWeight: '600',
-  },
-  barsContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 70,
-    gap: 2,
-  },
-  bar: {
-    width: 4,
-    borderRadius: 2,
-    minHeight: 4,
-  },
-  legend: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 16,
-    marginTop: 12,
-    paddingHorizontal: 16,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendColor: {
-    width: 12,
-    height: 12,
-    borderRadius: 2,
-  },
-  legendText: {
-    fontSize: 12,
-    color: '#6b7280',
+  recommendationText: {
+    fontSize: 14,
+    color: "#ea580c",
+    lineHeight: 20,
   },
 });
-

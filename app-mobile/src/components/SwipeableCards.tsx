@@ -8,7 +8,6 @@ import {
   Dimensions,
   Animated,
   PanResponder,
-  SafeAreaView,
   StatusBar,
   ActivityIndicator,
 } from "react-native";
@@ -32,6 +31,7 @@ import { ExpandedCardData } from "../types/expandedCardTypes";
 import { BoardCardService } from "../services/boardCardService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 const CARD_HEIGHT = Math.min(screenHeight * 0.72, 700);
@@ -55,6 +55,8 @@ interface Recommendation {
   title: string;
   category: string;
   categoryIcon: string;
+  lat?: number;
+  lng?: number;
   timeAway: string;
   description: string;
   budget: string;
@@ -147,6 +149,7 @@ export default function SwipeableCards({
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isFetchingCompanion, setIsFetchingCompanion] = useState(false);
   const [userLocation, setUserLocation] = useState<{
     lat: number;
     lng: number;
@@ -159,35 +162,41 @@ export default function SwipeableCards({
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
-  
+
   // Track if we're transitioning between modes to prevent showing stale cards
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
 
   // Get current session for board saving
-  const { currentSession, isInSolo, availableSessions, loading: sessionsLoading } = useSessionManagement();
+  const {
+    currentSession,
+    isInSolo,
+    availableSessions,
+    loading: sessionsLoading,
+  } = useSessionManagement();
   const { user } = useAuthSimple();
-  
+
   // Resolve session ID from currentMode if currentSession is not available
   // currentMode can be either "solo", a session name, or a session ID
   const resolvedSessionId = React.useMemo(() => {
     if (currentMode === "solo") return null;
-    
+
     // If we have currentSession, use its ID
     if (currentSession?.id) return currentSession.id;
-    
+
     // Otherwise, try to find session by name or ID from availableSessions
     const session = availableSessions.find(
       (s) => s.id === currentMode || s.name === currentMode
     );
     return session?.id || null;
   }, [currentMode, currentSession, availableSessions]);
-  
+
   // Check if we're waiting for session resolution in collaboration mode
-  const isWaitingForSessionResolution = currentMode !== "solo" && !resolvedSessionId && sessionsLoading;
-  
+  const isWaitingForSessionResolution =
+    currentMode !== "solo" && !resolvedSessionId && sessionsLoading;
+
   // Check if we're in a board session
-  const isBoardSession = !isInSolo && currentSession?.session_type === 'board';
-  
+  const isBoardSession = !isInSolo && currentSession?.session_type === "board";
+
   // Load board preferences if in board session
   // Use hook unconditionally (React rules) but pass undefined when not in board session
   const boardSessionResult = useBoardSession(
@@ -316,9 +325,11 @@ export default function SwipeableCards({
             const prefs = await ExperiencesService.getUserPreferences(user.id);
             if (prefs && (prefs as any).custom_location) {
               const savedLocation = (prefs as any).custom_location;
-              
+
               // Check if it's coordinates (format: "37.7749, -122.4194")
-              const coordinatesMatch = savedLocation.match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+              const coordinatesMatch = savedLocation.match(
+                /^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/
+              );
               if (coordinatesMatch) {
                 const lat = parseFloat(coordinatesMatch[1]);
                 const lng = parseFloat(coordinatesMatch[2]);
@@ -337,15 +348,21 @@ export default function SwipeableCards({
                     return;
                   }
                 } catch (geocodeError) {
-                  console.log("Could not geocode saved location, falling back to GPS:", geocodeError);
+                  console.log(
+                    "Could not geocode saved location, falling back to GPS:",
+                    geocodeError
+                  );
                 }
               }
             }
           } catch (prefsError) {
-            console.log("Error loading preferences for location, falling back to GPS:", prefsError);
+            console.log(
+              "Error loading preferences for location, falling back to GPS:",
+              prefsError
+            );
           }
         }
-        
+
         // Fallback to current GPS location
         console.log("No saved location in DB, using current GPS location");
         const location = await enhancedLocationService.getCurrentLocation();
@@ -353,9 +370,13 @@ export default function SwipeableCards({
           setUserLocation({ lat: location.latitude, lng: location.longitude });
         } else {
           // Try to get last known location as fallback
-          const lastKnown = await enhancedLocationService.getLastKnownLocation();
+          const lastKnown =
+            await enhancedLocationService.getLastKnownLocation();
           if (lastKnown) {
-            setUserLocation({ lat: lastKnown.latitude, lng: lastKnown.longitude });
+            setUserLocation({
+              lat: lastKnown.latitude,
+              lng: lastKnown.longitude,
+            });
           } else {
             // Final fallback to default location (San Francisco)
             setUserLocation({ lat: 37.7749, lng: -122.4194 });
@@ -363,22 +384,26 @@ export default function SwipeableCards({
         }
       } catch (error: any) {
         // Suppress location service errors - they're expected if services are disabled
-        const errorMessage = error?.message || String(error) || '';
-        const isLocationServiceError = 
-          errorMessage.includes('location services') || 
-          errorMessage.includes('unavailable') ||
-          errorMessage.includes('Location services are not enabled');
-        
+        const errorMessage = error?.message || String(error) || "";
+        const isLocationServiceError =
+          errorMessage.includes("location services") ||
+          errorMessage.includes("unavailable") ||
+          errorMessage.includes("Location services are not enabled");
+
         if (!isLocationServiceError) {
           // Only log unexpected errors
           console.error("Error getting location:", error);
         }
-        
+
         // Try last known location before falling back to default
         try {
-          const lastKnown = await enhancedLocationService.getLastKnownLocation();
+          const lastKnown =
+            await enhancedLocationService.getLastKnownLocation();
           if (lastKnown) {
-            setUserLocation({ lat: lastKnown.latitude, lng: lastKnown.longitude });
+            setUserLocation({
+              lat: lastKnown.latitude,
+              lng: lastKnown.longitude,
+            });
           } else {
             // Final fallback to default location
             setUserLocation({ lat: 37.7749, lng: -122.4194 });
@@ -401,11 +426,15 @@ export default function SwipeableCards({
       }
 
       // FIRST: Determine the current mode and check if it changed
-      const modeChanged = previousModeRef.current !== undefined && previousModeRef.current !== currentMode;
-      
+      const modeChanged =
+        previousModeRef.current !== undefined &&
+        previousModeRef.current !== currentMode;
+
       // If mode changed, clear everything and show loading
       if (modeChanged) {
-        console.log(`🔄 Mode changed from "${previousModeRef.current}" to "${currentMode}": clearing and fetching new recommendations`);
+        console.log(
+          `🔄 Mode changed from "${previousModeRef.current}" to "${currentMode}": clearing and fetching new recommendations`
+        );
         setIsModeTransitioning(true);
         setRecommendations([]);
         setRemovedCards(new Set());
@@ -425,7 +454,7 @@ export default function SwipeableCards({
 
       // THIRD: Determine the actual mode we should fetch for
       const isCollaborationMode = currentMode !== "solo" && resolvedSessionId;
-      
+
       // If we're in collaboration mode but session isn't resolved yet, wait
       if (currentMode !== "solo" && !resolvedSessionId) {
         // Still loading sessions or session not found - show loading
@@ -444,8 +473,13 @@ export default function SwipeableCards({
       // Never use cached data if mode changed - we need fresh data for the new mode
       const refreshKeyChanged = refreshKey !== lastRefreshKeyRef.current;
       const hasRecommendations = recommendations.length > 0;
-      
-      if (hasRecommendations && !refreshKeyChanged && !modeChanged && !isModeTransitioning) {
+
+      if (
+        hasRecommendations &&
+        !refreshKeyChanged &&
+        !modeChanged &&
+        !isModeTransitioning
+      ) {
         // Already have recommendations and no explicit refresh requested - use cached data
         // But only if mode hasn't changed and we're not transitioning
         setLoading(false);
@@ -455,7 +489,7 @@ export default function SwipeableCards({
       try {
         setLoading(true);
         setError(null);
-        
+
         // Mark as fetched and update refresh key ref
         hasFetchedRef.current = true;
         lastRefreshKeyRef.current = refreshKey;
@@ -510,9 +544,13 @@ export default function SwipeableCards({
           } else {
             // Only fetch solo cards if we're actually in solo mode
             if (currentMode === "solo") {
-              console.log(`🎯 Solo mode detected - Generating individual experiences`);
+              console.log(
+                `🎯 Solo mode detected - Generating individual experiences`
+              );
               console.log(`   Current Mode: ${currentMode}`);
-              console.log(`   Resolved Session ID: ${resolvedSessionId || 'null'}`);
+              console.log(
+                `   Resolved Session ID: ${resolvedSessionId || "null"}`
+              );
               // Use solo generation with individual preferences
               generatedExperiences =
                 await ExperienceGenerationService.generateExperiences({
@@ -535,8 +573,16 @@ export default function SwipeableCards({
           }
 
           // Transform to Recommendation format
-          const transformedRecommendations = generatedExperiences.map(
-            (exp) => ({
+          const transformedRecommendations = generatedExperiences.map((exp) => {
+            // Debug: Log strollData for stroll cards
+            if (exp.strollData) {
+              console.log("✅ strollData preserved in transformation:", {
+                cardTitle: exp.title,
+                hasCompanionStops: !!exp.strollData.companionStops?.length,
+                companionStopsCount: exp.strollData.companionStops?.length || 0,
+              });
+            }
+            return {
               id: exp.id,
               title: exp.title,
               category: exp.category,
@@ -558,6 +604,8 @@ export default function SwipeableCards({
               tags: exp.highlights || [],
               matchScore: exp.matchScore,
               reviewCount: exp.reviewCount,
+              lat: exp.lat,
+              lng: exp.lng,
               socialStats: {
                 views: 0,
                 likes: 0,
@@ -571,14 +619,18 @@ export default function SwipeableCards({
                 time: 85,
                 popularity: 85,
               },
-            })
-          );
+              // Include strollData if available
+              strollData: exp.strollData,
+            };
+          });
 
           setRecommendations(transformedRecommendations);
-          
+
           // Only mark transition as complete and update previousModeRef AFTER successfully fetching
           if (modeChanged) {
-            console.log(`✅ Successfully fetched ${transformedRecommendations.length} recommendations for mode "${currentMode}"`);
+            console.log(
+              `✅ Successfully fetched ${transformedRecommendations.length} recommendations for mode "${currentMode}"`
+            );
             previousModeRef.current = currentMode;
             setIsModeTransitioning(false); // Mode transition complete
           }
@@ -618,7 +670,17 @@ export default function SwipeableCards({
     };
 
     fetchRecommendations();
-  }, [user?.id, userLocation, refreshKey, currentMode, resolvedSessionId, currentSession?.id, availableSessions, isWaitingForSessionResolution, sessionsLoading]); // Refresh when preferences, mode, or session changes
+  }, [
+    user?.id,
+    userLocation,
+    refreshKey,
+    currentMode,
+    resolvedSessionId,
+    currentSession?.id,
+    availableSessions,
+    isWaitingForSessionResolution,
+    sessionsLoading,
+  ]); // Refresh when preferences, mode, or session changes
 
   // Initialize previousModeRef on mount
   useEffect(() => {
@@ -631,21 +693,22 @@ export default function SwipeableCards({
   // 1. We're transitioning between modes
   // 2. Mode changed but recommendations haven't been cleared yet
   // 3. We have recommendations but they don't match current mode (safety check)
-  const modeMismatch = previousModeRef.current !== undefined && 
-                       previousModeRef.current !== currentMode && 
-                       recommendations.length > 0;
-  
+  const modeMismatch =
+    previousModeRef.current !== undefined &&
+    previousModeRef.current !== currentMode &&
+    recommendations.length > 0;
+
   const shouldHideCards = isModeTransitioning || modeMismatch;
-  
-  const availableRecommendations = shouldHideCards 
-    ? [] 
+
+  const availableRecommendations = shouldHideCards
+    ? []
     : recommendations.filter(
         (rec) => !removedCards.has(rec.id) && !removedCardIds.includes(rec.id)
       );
 
   // Always use currentCardIndex to track position in the deck
   const currentRec = availableRecommendations[currentCardIndex];
-  
+
   // If we detect a mode mismatch, clear recommendations immediately
   useEffect(() => {
     if (modeMismatch) {
@@ -770,8 +833,61 @@ export default function SwipeableCards({
     }
   };
 
-  const handleCardExpand = () => {
+  const handleCardExpand = async () => {
     if (!currentRec) return;
+
+    let strollData = (currentRec as any).strollData;
+
+    // If stroll card and we don't already have companion data, fetch it on demand
+    const categoryLower = currentRec.category?.toLowerCase() || "";
+    const isStrollCard =
+      categoryLower.includes("stroll") ||
+      categoryLower === "take a stroll" ||
+      categoryLower === "take-a-stroll" ||
+      categoryLower === "take_a_stroll";
+
+    if (!strollData && isStrollCard) {
+      const anchor =
+        strollData?.anchor ||
+        (currentRec.lat &&
+        currentRec.lng &&
+        currentRec.title
+          ? {
+              id: currentRec.id,
+              name: currentRec.title,
+              location: { lat: currentRec.lat, lng: currentRec.lng },
+              address: currentRec.address,
+            }
+          : null);
+
+      if (anchor) {
+        try {
+          setIsFetchingCompanion(true);
+          const fetchedStrollData =
+            await ExperienceGenerationService.fetchCompanionStrollData(anchor);
+          if (fetchedStrollData) {
+            strollData = fetchedStrollData;
+          }
+        } catch (err) {
+          console.error("Error fetching companion stroll data:", err);
+        } finally {
+          setIsFetchingCompanion(false);
+        }
+      }
+    }
+
+    // Debug: Log strollData when expanding
+    if (strollData) {
+      console.log("✅ strollData found when expanding card:", {
+        cardTitle: currentRec.title,
+        hasCompanionStops: !!strollData.companionStops?.length,
+        companionStopsCount: strollData.companionStops?.length || 0,
+        hasTimeline: !!strollData.timeline?.length,
+        timelineSteps: strollData.timeline?.length || 0,
+      });
+    } else {
+      console.log("⚠️ No strollData found for card:", currentRec.title);
+    }
 
     // Transform Recommendation to ExpandedCardData
     const expandedCardData: ExpandedCardData = {
@@ -795,10 +911,17 @@ export default function SwipeableCards({
       matchScore: currentRec.matchScore,
       matchFactors: currentRec.matchFactors,
       socialStats: currentRec.socialStats,
-      location: userLocation || undefined,
+      // Use anchor location for stroll cards, otherwise use user location
+      location:
+        strollData?.anchor?.location ||
+        (userLocation
+          ? { lat: userLocation.lat, lng: userLocation.lng }
+          : undefined),
       selectedDateTime: userPreferences?.datetime_pref
         ? new Date(userPreferences.datetime_pref)
         : new Date(),
+      // Include strollData if available
+      strollData: strollData,
     };
 
     setSelectedCardForExpansion(expandedCardData);
@@ -842,11 +965,7 @@ export default function SwipeableCards({
         // Save to Supabase if swiped right (liked)
         if (direction === "right") {
           try {
-            await ExperiencesService.saveExperience(
-              user.id,
-              card.id,
-              "liked"
-            );
+            await ExperiencesService.saveExperience(user.id, card.id, "liked");
           } catch (saveError: any) {
             if (saveError?.code === "23505") {
               console.warn(
@@ -924,10 +1043,10 @@ export default function SwipeableCards({
             // Continue even if swipe state tracking fails
           }
         }
-    } else {
+      } else {
         // User not authenticated - just handle locally
         if (direction === "right" && onCardLike) {
-        onCardLike(card);
+          onCardLike(card);
         }
       }
     } catch (error) {
@@ -1053,28 +1172,40 @@ export default function SwipeableCards({
                   let generatedExperiences: any[] = [];
 
                   // Resolve session ID from currentMode if needed
-                  const resolvedSessionIdForRetry = currentMode !== "solo" 
-                    ? (currentSession?.id || availableSessions.find(s => s.id === currentMode || s.name === currentMode)?.id)
-                    : null;
-                  
+                  const resolvedSessionIdForRetry =
+                    currentMode !== "solo"
+                      ? currentSession?.id ||
+                        availableSessions.find(
+                          (s) => s.id === currentMode || s.name === currentMode
+                        )?.id
+                      : null;
+
                   // Check if we're in collaboration mode and have a session
-                  const isCollaborationMode = currentMode !== "solo" && resolvedSessionIdForRetry;
-                  
+                  const isCollaborationMode =
+                    currentMode !== "solo" && resolvedSessionIdForRetry;
+
                   if (isCollaborationMode) {
-                    console.log(`🎯 Retry: Collaboration mode - Using session experiences`);
+                    console.log(
+                      `🎯 Retry: Collaboration mode - Using session experiences`
+                    );
                     console.log(`   Session ID: ${resolvedSessionIdForRetry}`);
                     // Use session-based generation
                     generatedExperiences =
-                      await ExperienceGenerationService.generateSessionExperiences({
-                        sessionId: resolvedSessionIdForRetry,
-                        userId: user?.id,
-                      });
+                      await ExperienceGenerationService.generateSessionExperiences(
+                        {
+                          sessionId: resolvedSessionIdForRetry,
+                          userId: user?.id,
+                        }
+                      );
                   } else {
-                    console.log(`🎯 Retry: Solo mode - Using individual experiences`);
+                    console.log(
+                      `🎯 Retry: Solo mode - Using individual experiences`
+                    );
                     // Use solo generation
                     const userPrefs: UserPreferences = user?.id
-                      ? (await ExperiencesService.getUserPreferences(user.id)) ??
-                        getDefaultPreferences()
+                      ? (await ExperiencesService.getUserPreferences(
+                          user.id
+                        )) ?? getDefaultPreferences()
                       : getDefaultPreferences();
 
                     generatedExperiences =
@@ -1091,6 +1222,8 @@ export default function SwipeableCards({
                       title: exp.title,
                       category: exp.category,
                       categoryIcon: exp.categoryIcon,
+                    lat: exp.lat,
+                    lng: exp.lng,
                       timeAway: exp.travelTime,
                       description: exp.description,
                       budget: exp.priceRange,
@@ -1161,28 +1294,40 @@ export default function SwipeableCards({
                   let generatedExperiences: any[] = [];
 
                   // Resolve session ID from currentMode if needed
-                  const resolvedSessionIdForRetry = currentMode !== "solo" 
-                    ? (currentSession?.id || availableSessions.find(s => s.id === currentMode || s.name === currentMode)?.id)
-                    : null;
-                  
+                  const resolvedSessionIdForRetry =
+                    currentMode !== "solo"
+                      ? currentSession?.id ||
+                        availableSessions.find(
+                          (s) => s.id === currentMode || s.name === currentMode
+                        )?.id
+                      : null;
+
                   // Check if we're in collaboration mode and have a session
-                  const isCollaborationMode = currentMode !== "solo" && resolvedSessionIdForRetry;
-                  
+                  const isCollaborationMode =
+                    currentMode !== "solo" && resolvedSessionIdForRetry;
+
                   if (isCollaborationMode) {
-                    console.log(`🎯 Retry: Collaboration mode - Using session experiences`);
+                    console.log(
+                      `🎯 Retry: Collaboration mode - Using session experiences`
+                    );
                     console.log(`   Session ID: ${resolvedSessionIdForRetry}`);
                     // Use session-based generation
                     generatedExperiences =
-                      await ExperienceGenerationService.generateSessionExperiences({
-                        sessionId: resolvedSessionIdForRetry,
-                        userId: user?.id,
-                      });
+                      await ExperienceGenerationService.generateSessionExperiences(
+                        {
+                          sessionId: resolvedSessionIdForRetry,
+                          userId: user?.id,
+                        }
+                      );
                   } else {
-                    console.log(`🎯 Retry: Solo mode - Using individual experiences`);
+                    console.log(
+                      `🎯 Retry: Solo mode - Using individual experiences`
+                    );
                     // Use solo generation
                     const userPrefs: UserPreferences = user?.id
-                      ? (await ExperiencesService.getUserPreferences(user.id)) ??
-                        getDefaultPreferences()
+                      ? (await ExperiencesService.getUserPreferences(
+                          user.id
+                        )) ?? getDefaultPreferences()
                       : getDefaultPreferences();
 
                     generatedExperiences =
@@ -1248,7 +1393,12 @@ export default function SwipeableCards({
 
   // Only show "all caught up" if we're NOT loading, NOT transitioning, and truly have no recommendations
   // This prevents showing the empty state during mode transitions
-  if (availableRecommendations.length === 0 && !loading && !isModeTransitioning && !isWaitingForSessionResolution) {
+  if (
+    availableRecommendations.length === 0 &&
+    !loading &&
+    !isModeTransitioning &&
+    !isWaitingForSessionResolution
+  ) {
     return (
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
@@ -1277,7 +1427,7 @@ export default function SwipeableCards({
       </View>
     );
   }
-  
+
   // If we have no recommendations but we're still loading/transitioning, show loader
   if (availableRecommendations.length === 0) {
     return (
@@ -1578,7 +1728,11 @@ export default function SwipeableCards({
                   {/* Address - Show in collaboration mode */}
                   {currentMode !== "solo" && currentRec.address && (
                     <View style={styles.addressRow}>
-                      <Ionicons name="location-outline" size={14} color="#6b7280" />
+                      <Ionicons
+                        name="location-outline"
+                        size={14}
+                        color="#6b7280"
+                      />
                       <Text style={styles.addressText} numberOfLines={1}>
                         {currentRec.address}
                       </Text>

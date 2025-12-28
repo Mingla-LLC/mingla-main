@@ -43,6 +43,39 @@ export interface ExpandedCardData {
   };
   // Date/time for weather and timeline
   selectedDateTime?: Date;
+  // Stroll-specific data
+  strollData?: {
+    anchor: {
+      id: string;
+      name: string;
+      location: { lat: number; lng: number };
+      address: string;
+    };
+    companionStops: Array<{
+      id: string;
+      name: string;
+      location: { lat: number; lng: number };
+      address: string;
+      rating?: number;
+      reviewCount?: number;
+      imageUrl?: string | null;
+      placeId: string;
+      type: string;
+    }>;
+    route: {
+      duration: number;
+      startLocation: { lat: number; lng: number };
+      endLocation: { lat: number; lng: number };
+    };
+    timeline: Array<{
+      step: number;
+      type: string;
+      title: string;
+      location: any;
+      description: string;
+      duration: number;
+    }>;
+  };
 }
 
 export interface WeatherData {

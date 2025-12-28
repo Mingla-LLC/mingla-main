@@ -206,7 +206,7 @@ class BusynessService {
       // Popularity field might not be available in older Places API
       // If not available, estimate from rating and review count
       let popularity = placeDetails.popularity;
-
+      console.log("popularity", popularity);
       if (popularity === undefined || popularity === null) {
         // Estimate popularity from rating (0-5) and review count
         const rating = placeDetails.rating || 0;
@@ -247,6 +247,7 @@ class BusynessService {
   private calculateBusynessLevel(
     popularity: number
   ): "Not Busy" | "Moderate" | "Busy" | "Very Busy" {
+    console.log("calculating busyness level", popularity);
     if (popularity < 25) return "Not Busy";
     if (popularity < 50) return "Moderate";
     if (popularity < 75) return "Busy";

@@ -7,6 +7,8 @@ import {
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  TouchableOpacity,
+  Text,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -55,6 +57,28 @@ export default function ImageGallery({
     }
   };
 
+  const goToPrevious = () => {
+    if (currentIndex > 0 && scrollViewRef.current) {
+      const newIndex = currentIndex - 1;
+      setCurrentIndex(newIndex);
+      scrollViewRef.current.scrollTo({
+        x: newIndex * containerWidth,
+        animated: true,
+      });
+    }
+  };
+
+  const goToNext = () => {
+    if (currentIndex < images.length - 1 && scrollViewRef.current) {
+      const newIndex = currentIndex + 1;
+      setCurrentIndex(newIndex);
+      scrollViewRef.current.scrollTo({
+        x: newIndex * containerWidth,
+        animated: true,
+      });
+    }
+  };
+
   if (!images || images.length === 0) {
     return (
       <View style={styles.container}>
@@ -90,6 +114,30 @@ export default function ImageGallery({
         ))}
       </ScrollView>
 
+      {/* Navigation Arrows */}
+      {images.length > 1 && (
+        <>
+          {currentIndex > 0 && (
+            <TouchableOpacity
+              style={[styles.navButton, styles.navButtonLeft]}
+              onPress={goToPrevious}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chevron-back" size={20} color="#ffffff" />
+            </TouchableOpacity>
+          )}
+          {currentIndex < images.length - 1 && (
+            <TouchableOpacity
+              style={[styles.navButton, styles.navButtonRight]}
+              onPress={goToNext}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chevron-forward" size={20} color="#ffffff" />
+            </TouchableOpacity>
+          )}
+        </>
+      )}
+
       {/* Dot Indicators */}
       {images.length > 1 && (
         <View style={styles.dotsContainer}>
@@ -102,15 +150,6 @@ export default function ImageGallery({
               ]}
             />
           ))}
-        </View>
-      )}
-
-      {/* Image Counter */}
-      {images.length > 1 && (
-        <View style={styles.counter}>
-          <Text style={styles.counterText}>
-            {currentIndex + 1} / {images.length}
-          </Text>
         </View>
       )}
     </View>
@@ -155,10 +194,12 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: '#6b7280',
   },
   dotActive: {
     width: 24,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#ffffff',
   },
   counter: {
@@ -174,6 +215,24 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '600',
+  },
+  navButton: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  navButtonLeft: {
+    left: 16,
+  },
+  navButtonRight: {
+    right: 16,
   },
 });
 

@@ -12,77 +12,17 @@ const corsHeaders = {
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 
-// Category to Google Places type mapping
-// Maps category IDs from preferences sheets to Google Places API types
-// All keys are lowercase to support case-insensitive lookups
-// Includes multiple format variations for each category
+// Category to Google Places type mapping (same as generate-experiences)
 const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
-  // Sip & Chill variations
-  "sip & chill": [
+  "Sip & Chill": [
     "bar",
     "wine_bar",
     "brewery",
     "cafe",
     "coffee_shop",
     "tea_house",
-    "cocktail_lounge",
   ],
-  sip_and_chill: [
-    "bar",
-    "wine_bar",
-    "brewery",
-    "cafe",
-    "coffee_shop",
-    "tea_house",
-    "cocktail_lounge",
-  ],
-  "sip-and-chill": [
-    "bar",
-    "wine_bar",
-    "brewery",
-    "cafe",
-    "coffee_shop",
-    "tea_house",
-    "cocktail_lounge",
-  ],
-  "sip&chill": [
-    "bar",
-    "wine_bar",
-    "brewery",
-    "cafe",
-    "coffee_shop",
-    "tea_house",
-    "cocktail_lounge",
-  ],
-  "sip_&_chill": [
-    "bar",
-    "wine_bar",
-    "brewery",
-    "cafe",
-    "coffee_shop",
-    "tea_house",
-    "cocktail_lounge",
-  ],
-  "sip-&-chill": [
-    "bar",
-    "wine_bar",
-    "brewery",
-    "cafe",
-    "coffee_shop",
-    "tea_house",
-    "cocktail_lounge",
-  ],
-  sipchill: [
-    "bar",
-    "wine_bar",
-    "brewery",
-    "cafe",
-    "coffee_shop",
-    "tea_house",
-    "cocktail_lounge",
-  ],
-  // Stroll variations
-  stroll: [
+  Stroll: [
     "park",
     "tourist_attraction",
     "point_of_interest",
@@ -90,173 +30,28 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "zoo",
     "aquarium",
     "botanical_garden",
-    "hiking_area",
-    "scenic_viewpoint",
   ],
-  "take a stroll": [
-    "park",
-    "tourist_attraction",
-    "point_of_interest",
-    "natural_feature",
-    "zoo",
-    "aquarium",
-    "botanical_garden",
-    "hiking_area",
-    "scenic_viewpoint",
-  ],
-  "take-a-stroll": [
-    "park",
-    "tourist_attraction",
-    "point_of_interest",
-    "natural_feature",
-    "zoo",
-    "aquarium",
-    "botanical_garden",
-    "hiking_area",
-    "scenic_viewpoint",
-  ],
-  take_a_stroll: [
-    "park",
-    "tourist_attraction",
-    "point_of_interest",
-    "natural_feature",
-    "zoo",
-    "aquarium",
-    "botanical_garden",
-    "hiking_area",
-    "scenic_viewpoint",
-  ],
-  // Dining Experiences variations
-  "dining experiences": [
+  Dining: [
     "restaurant",
     "fine_dining_restaurant",
     "steakhouse",
     "seafood_restaurant",
-    "italian_restaurant",
-    "french_restaurant",
-    "sushi_restaurant",
-    "rooftop_bar",
   ],
-  dining_experiences: [
-    "restaurant",
-    "fine_dining_restaurant",
-    "steakhouse",
-    "seafood_restaurant",
-    "italian_restaurant",
-    "french_restaurant",
-    "sushi_restaurant",
-    "rooftop_bar",
-  ],
-  "dining-experiences": [
-    "restaurant",
-    "fine_dining_restaurant",
-    "steakhouse",
-    "seafood_restaurant",
-    "italian_restaurant",
-    "french_restaurant",
-    "sushi_restaurant",
-    "rooftop_bar",
-  ],
-  dining: [
-    "restaurant",
-    "fine_dining_restaurant",
-    "steakhouse",
-    "seafood_restaurant",
-    "italian_restaurant",
-    "french_restaurant",
-    "sushi_restaurant",
-    "rooftop_bar",
-  ],
-  // Screen & Relax variations
-  "screen & relax": [
+  "Screen & Relax": [
     "movie_theater",
     "spa",
     "beauty_salon",
     "massage_therapist",
-    "hair_salon",
   ],
-  screen_relax: [
-    "movie_theater",
-    "spa",
-    "beauty_salon",
-    "massage_therapist",
-    "hair_salon",
-  ],
-  "screen-relax": [
-    "movie_theater",
-    "spa",
-    "beauty_salon",
-    "massage_therapist",
-    "hair_salon",
-  ],
-  screenrelax: [
-    "movie_theater",
-    "spa",
-    "beauty_salon",
-    "massage_therapist",
-    "hair_salon",
-  ],
-  screenRelax: [
-    "movie_theater",
-    "spa",
-    "beauty_salon",
-    "massage_therapist",
-    "hair_salon",
-  ],
-  // Creative & Hands-On variations
-  "creative & hands-on": [
+  Creative: [
     "art_gallery",
     "museum",
     "pottery_studio",
     "craft_store",
     "art_studio",
     "library",
-    "jewelry_store",
-    "book_store",
   ],
-  creative_and_hands_on: [
-    "art_gallery",
-    "museum",
-    "pottery_studio",
-    "craft_store",
-    "art_studio",
-    "library",
-    "jewelry_store",
-    "book_store",
-  ],
-  "creative-hands-on": [
-    "art_gallery",
-    "museum",
-    "pottery_studio",
-    "craft_store",
-    "art_studio",
-    "library",
-    "jewelry_store",
-    "book_store",
-  ],
-  "creative & hands on": [
-    "art_gallery",
-    "museum",
-    "pottery_studio",
-    "craft_store",
-    "art_studio",
-    "library",
-    "jewelry_store",
-    "book_store",
-  ],
-
-  creative: [
-    "art_gallery",
-    "museum",
-    "pottery_studio",
-    "craft_store",
-    "art_studio",
-    "library",
-    "jewelry_store",
-    "book_store",
-  ],
-  // Play & Move variations
-  "play & move": [
+  "Play & Move": [
     "bowling_alley",
     "gym",
     "sports_complex",
@@ -268,41 +63,8 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "climbing_gym",
     "skating_rink",
     "amusement_park",
-    "arcade",
-    "stadium",
   ],
-  play_and_move: [
-    "bowling_alley",
-    "gym",
-    "sports_complex",
-    "recreation_center",
-    "tennis_court",
-    "basketball_court",
-    "golf_course",
-    "mini_golf",
-    "climbing_gym",
-    "skating_rink",
-    "amusement_park",
-    "arcade",
-    "stadium",
-  ],
-  "play-move": [
-    "bowling_alley",
-    "gym",
-    "sports_complex",
-    "recreation_center",
-    "tennis_court",
-    "basketball_court",
-    "golf_course",
-    "mini_golf",
-    "climbing_gym",
-    "skating_rink",
-    "amusement_park",
-    "arcade",
-    "stadium",
-  ],
-  // Casual Eats variations
-  "casual eats": [
+  "Casual Eats": [
     "restaurant",
     "food_court",
     "meal_takeaway",
@@ -310,104 +72,8 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "food_truck",
     "sandwich_shop",
     "pizza_restaurant",
-    "cafe",
   ],
-  casual_eats: [
-    "restaurant",
-    "food_court",
-    "meal_takeaway",
-    "fast_food_restaurant",
-    "food_truck",
-    "sandwich_shop",
-    "pizza_restaurant",
-    "cafe",
-  ],
-  "casual-eats": [
-    "restaurant",
-    "food_court",
-    "meal_takeaway",
-    "fast_food_restaurant",
-    "food_truck",
-    "sandwich_shop",
-    "pizza_restaurant",
-    "cafe",
-  ],
-  "casual & eats": [
-    "restaurant",
-    "food_court",
-    "meal_takeaway",
-    "fast_food_restaurant",
-    "food_truck",
-    "sandwich_shop",
-    "pizza_restaurant",
-    "cafe",
-  ],
-  // Picnics variations
-  picnics: [
-    "park",
-    "botanical_garden",
-    "picnic_area",
-    "campground",
-    "beach",
-    "lake",
-    "natural_feature",
-  ],
-  picnic: [
-    "park",
-    "botanical_garden",
-    "picnic_area",
-    "campground",
-    "beach",
-    "lake",
-    "natural_feature",
-  ],
-  // Wellness Dates variations
-  "wellness dates": [
-    "spa",
-    "massage_therapist",
-    "beauty_salon",
-    "yoga_studio",
-    "fitness_center",
-    "meditation_center",
-    "hot_spring",
-    "park",
-    "botanical_garden",
-  ],
-  wellness_dates: [
-    "spa",
-    "massage_therapist",
-    "beauty_salon",
-    "yoga_studio",
-    "fitness_center",
-    "meditation_center",
-    "hot_spring",
-    "park",
-    "botanical_garden",
-  ],
-  "wellness-dates": [
-    "spa",
-    "massage_therapist",
-    "beauty_salon",
-    "yoga_studio",
-    "fitness_center",
-    "meditation_center",
-    "hot_spring",
-    "park",
-    "botanical_garden",
-  ],
-  wellness: [
-    "spa",
-    "massage_therapist",
-    "beauty_salon",
-    "yoga_studio",
-    "fitness_center",
-    "meditation_center",
-    "hot_spring",
-    "park",
-    "botanical_garden",
-  ],
-  // Freestyle variations
-  freestyle: [
+  Freestyle: [
     "restaurant",
     "bar",
     "cafe",
@@ -416,26 +82,6 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "museum",
     "park",
     "movie_theater",
-    "bowling_alley",
-    "spa",
-    "amusement_park",
-    "zoo",
-    "aquarium",
-  ],
-  "free style": [
-    "restaurant",
-    "bar",
-    "cafe",
-    "tourist_attraction",
-    "art_gallery",
-    "museum",
-    "park",
-    "movie_theater",
-    "bowling_alley",
-    "spa",
-    "amusement_park",
-    "zoo",
-    "aquarium",
   ],
 };
 
@@ -449,12 +95,23 @@ interface UserPreferences {
   travel_constraint_type: string;
   travel_constraint_value: number;
   datetime_pref: string;
+  location?: string;
 }
 
-interface GenerationRequest {
-  user_id: string;
-  preferences: UserPreferences;
-  location?: { lat: number; lng: number };
+interface AggregatedPreferences {
+  budget_min: number;
+  budget_max: number;
+  categories: string[];
+  travel_mode: string;
+  travel_constraint_type: string;
+  travel_constraint_value: number;
+  location: { lat: number; lng: number };
+  datetime_pref?: string;
+}
+
+interface SessionGenerationRequest {
+  session_id: string;
+  user_id?: string; // Optional: for auth
 }
 
 serve(async (req) => {
@@ -463,11 +120,9 @@ serve(async (req) => {
   }
 
   try {
-    console.log("🎯 Generate experiences endpoint called");
-    console.log("📥 Request method:", req.method);
-    console.log("📥 Request URL:", req.url);
+    console.log("🎯 Generate session experiences endpoint called");
 
-    let request: GenerationRequest;
+    let request: SessionGenerationRequest;
     try {
       request = await req.json();
     } catch (jsonError) {
@@ -484,39 +139,11 @@ serve(async (req) => {
         }
       );
     }
-    console.log(
-      "📝 Received request:",
-      JSON.stringify({
-        userId: request.user_id,
-        hasPreferences: !!request.preferences,
-        hasLocation: !!request.location,
-      })
-    );
 
-    const { preferences, location } = request;
-
-    // Detailed logging of preferences
-    console.log(
-      "📋 Full preferences object:",
-      JSON.stringify(preferences, null, 2)
-    );
-    console.log("📍 Location:", JSON.stringify(location, null, 2));
-    console.log("🏷️ Categories:", preferences?.categories);
-    console.log(
-      "💰 Budget:",
-      `$${preferences?.budget_min} - $${preferences?.budget_max}`
-    );
-    console.log("🚶 Travel mode:", preferences?.travel_mode);
-    console.log(
-      "⏱️ Travel constraint:",
-      `${preferences?.travel_constraint_type}: ${preferences?.travel_constraint_value}`
-    );
-
-    if (!preferences) {
-      console.error("❌ Preferences are required");
+    if (!request.session_id) {
       return new Response(
         JSON.stringify({
-          error: "Preferences are required",
+          error: "session_id is required",
           cards: [],
           meta: { totalResults: 0 },
         }),
@@ -527,11 +154,71 @@ serve(async (req) => {
       );
     }
 
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch all user preferences for this session
+    console.log(`📋 Fetching preferences for session: ${request.session_id}`);
+    const { data: allPreferences, error: prefsError } = await supabase
+      .from("board_session_preferences")
+      .select("*")
+      .eq("session_id", request.session_id);
+
+    if (prefsError) {
+      console.error("❌ Error fetching preferences:", prefsError);
+      return new Response(
+        JSON.stringify({
+          error: "Failed to fetch session preferences",
+          cards: [],
+          meta: { totalResults: 0 },
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (!allPreferences || allPreferences.length === 0) {
+      console.log("⚠️ No preferences found for session");
+      return new Response(
+        JSON.stringify({
+          cards: [],
+          meta: {
+            totalResults: 0,
+            message:
+              "No preferences found for this session. Users need to set their preferences first.",
+          },
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    console.log(
+      `✅ Found ${allPreferences.length} user preference(s) for session`
+    );
+
+    // Aggregate preferences
+    const aggregated = aggregatePreferences(allPreferences);
+    console.log(
+      "📊 Aggregated preferences:",
+      JSON.stringify(aggregated, null, 2)
+    );
+
+    // Find central location
+    const location = await findCentralLocation(
+      allPreferences,
+      aggregated.location
+    );
     if (!location) {
-      console.error("❌ Location is required");
       return new Response(
         JSON.stringify({
-          error: "Location is required",
+          error: "Could not determine a location for the session",
           cards: [],
           meta: { totalResults: 0 },
         }),
@@ -542,25 +229,39 @@ serve(async (req) => {
       );
     }
 
-    // Fetch places from Google Places API
+    console.log(`📍 Using central location: ${location.lat}, ${location.lng}`);
+
+    // Convert aggregated preferences to UserPreferences format
+    const preferences: UserPreferences = {
+      mode: "collaboration",
+      budget_min: aggregated.budget_min,
+      budget_max: aggregated.budget_max,
+      people_count: allPreferences.length, // Number of participants
+      categories: aggregated.categories,
+      travel_mode: aggregated.travel_mode,
+      travel_constraint_type: aggregated.travel_constraint_type,
+      travel_constraint_value: aggregated.travel_constraint_value,
+      datetime_pref: aggregated.datetime_pref || new Date().toISOString(),
+    };
+
+    // Fetch places from Google Places API (reuse logic from generate-experiences)
     let places: any[] = [];
     try {
       places = await fetchGooglePlaces(preferences, location);
       console.log(`✅ Fetched ${places.length} places from Google`);
     } catch (error) {
       console.error("❌ Error fetching Google Places:", error);
-      // Return empty result instead of crashing
       return new Response(
         JSON.stringify({
           cards: [],
           meta: {
             totalResults: 0,
             error: "Failed to fetch places from Google",
-            message: "No places found matching your preferences",
+            message: "No places found matching the aggregated preferences",
           },
         }),
         {
-          status: 200, // Return 200 with empty results instead of error
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
@@ -573,7 +274,7 @@ serve(async (req) => {
           cards: [],
           meta: {
             totalResults: 0,
-            message: "No places found matching your preferences",
+            message: "No places found matching the aggregated preferences",
           },
         }),
         {
@@ -598,7 +299,6 @@ serve(async (req) => {
         "❌ Error annotating with travel, using places without travel info:",
         error
       );
-      // Continue with places without travel info
       placesWithTravel = places.map((p) => ({
         ...p,
         distance: "Unknown",
@@ -636,7 +336,6 @@ serve(async (req) => {
         "❌ Error enriching with AI, using fallback content:",
         error
       );
-      // Use places with fallback descriptions
       enriched = topResults.map((place) => ({
         ...place,
         description: generateFallbackDescription(place),
@@ -653,6 +352,8 @@ serve(async (req) => {
         cards,
         meta: {
           totalResults: cards.length,
+          aggregatedPreferences: aggregated,
+          participantCount: allPreferences.length,
           processingTimeMs: Date.now(),
         },
       }),
@@ -661,12 +362,9 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("❌ Error generating experiences:", error);
+    console.error("❌ Error generating session experiences:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    const errorStack = error instanceof Error ? error.stack : String(error);
-
-    console.error("Error details:", errorStack);
 
     return new Response(
       JSON.stringify({
@@ -685,6 +383,270 @@ serve(async (req) => {
   }
 });
 
+/**
+ * Aggregate all user preferences into a single preference set
+ */
+function aggregatePreferences(allPreferences: any[]): AggregatedPreferences {
+  if (allPreferences.length === 0) {
+    // Return defaults if no preferences
+    return {
+      budget_min: 0,
+      budget_max: 1000,
+      categories: [],
+      travel_mode: "walking",
+      travel_constraint_type: "time",
+      travel_constraint_value: 30,
+      location: { lat: 0, lng: 0 },
+    };
+  }
+
+  // Budget: min = lowest min, max = highest max
+  const budget_min = Math.min(
+    ...allPreferences
+      .map((p) => p.budget_min ?? 0)
+      .filter((v) => typeof v === "number")
+  );
+  const budget_max = Math.max(
+    ...allPreferences
+      .map((p) => p.budget_max ?? 1000)
+      .filter((v) => typeof v === "number")
+  );
+
+  // Categories: union of all categories
+  const allCategories = new Set<string>();
+  allPreferences.forEach((p) => {
+    if (Array.isArray(p.categories)) {
+      p.categories.forEach((cat: string) => allCategories.add(cat));
+    }
+  });
+
+  // Travel mode: use most common, default to 'walking'
+  const travelModes = allPreferences
+    .map((p) => p.travel_mode || "walking")
+    .filter(Boolean);
+  const travelModeCounts: { [key: string]: number } = {};
+  travelModes.forEach((mode) => {
+    travelModeCounts[mode] = (travelModeCounts[mode] || 0) + 1;
+  });
+  const travel_mode =
+    Object.keys(travelModeCounts).reduce((a, b) =>
+      travelModeCounts[a] > travelModeCounts[b] ? a : b
+    ) || "walking";
+
+  // Travel constraint type: use most common, default to 'time'
+  const constraintTypes = allPreferences
+    .map((p) => p.travel_constraint_type || "time")
+    .filter(Boolean);
+  const constraintTypeCounts: { [key: string]: number } = {};
+  constraintTypes.forEach((type) => {
+    constraintTypeCounts[type] = (constraintTypeCounts[type] || 0) + 1;
+  });
+  const travel_constraint_type =
+    Object.keys(constraintTypeCounts).reduce((a, b) =>
+      constraintTypeCounts[a] > constraintTypeCounts[b] ? a : b
+    ) || "time";
+
+  // Travel constraint value: use most restrictive (lowest value)
+  const travel_constraint_value = Math.min(
+    ...allPreferences
+      .map((p) => p.travel_constraint_value ?? 30)
+      .filter((v) => typeof v === "number")
+  );
+
+  // Datetime: use the earliest preference if available
+  const datetimes = allPreferences
+    .map((p) => p.datetime_pref)
+    .filter(Boolean)
+    .sort();
+  const datetime_pref = datetimes.length > 0 ? datetimes[0] : undefined;
+
+  // Location will be calculated separately
+  return {
+    budget_min,
+    budget_max,
+    categories: Array.from(allCategories),
+    travel_mode,
+    travel_constraint_type,
+    travel_constraint_value,
+    location: { lat: 0, lng: 0 }, // Will be calculated
+    datetime_pref,
+  };
+}
+
+/**
+ * Find a central location that fits all users
+ * Strategy:
+ * 1. If all users have coordinates in their location field, calculate midpoint
+ * 2. If some have city names, geocode them and calculate midpoint
+ * 3. Fallback to first user's location or default
+ */
+async function findCentralLocation(
+  allPreferences: any[],
+  fallbackLocation: { lat: number; lng: number }
+): Promise<{ lat: number; lng: number } | null> {
+  const locations: { lat: number; lng: number }[] = [];
+
+  for (const pref of allPreferences) {
+    if (!pref.location) continue;
+
+    const locationStr = pref.location.trim();
+
+    // Check if it's coordinates (format: "lat, lng" or "lat,lng")
+    const coordMatch = locationStr.match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+    if (coordMatch) {
+      const lat = parseFloat(coordMatch[1]);
+      const lng = parseFloat(coordMatch[2]);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        locations.push({ lat, lng });
+        continue;
+      }
+    }
+
+    // Otherwise, treat as city name and geocode
+    try {
+      const geocoded = await geocodeLocation(locationStr);
+      if (geocoded) {
+        locations.push(geocoded);
+      } else {
+        // If geocoding fails, try to use a fallback location for this user
+        // This prevents the entire function from failing if one user's location can't be geocoded
+        console.warn(
+          `⚠️ Could not geocode "${locationStr}", skipping this location`
+        );
+      }
+    } catch (error) {
+      console.error(`Failed to geocode location "${locationStr}":`, error);
+      // Continue processing other locations even if one fails
+    }
+  }
+
+  if (locations.length === 0) {
+    console.warn(
+      "⚠️ No valid locations found after geocoding, trying fallbacks..."
+    );
+
+    // Fallback 1: use custom_lat/custom_lng if available
+    const firstWithCoords = allPreferences.find(
+      (p) => p.custom_lat && p.custom_lng
+    );
+    if (firstWithCoords) {
+      console.log(
+        `✅ Using custom coordinates: ${firstWithCoords.custom_lat}, ${firstWithCoords.custom_lng}`
+      );
+      return {
+        lat: firstWithCoords.custom_lat,
+        lng: firstWithCoords.custom_lng,
+      };
+    }
+
+    // Fallback 2: Try to use any location string as-is (might be coordinates already)
+    const firstLocationStr = allPreferences.find((p) => p.location)?.location;
+    if (firstLocationStr) {
+      // Check if it's already coordinates
+      const coordMatch = firstLocationStr.match(
+        /^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/
+      );
+      if (coordMatch) {
+        const lat = parseFloat(coordMatch[1]);
+        const lng = parseFloat(coordMatch[2]);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          console.log(
+            `✅ Using location string as coordinates: ${lat}, ${lng}`
+          );
+          return { lat, lng };
+        }
+      }
+    }
+
+    // Fallback 3: Use fallback location if provided
+    if (fallbackLocation.lat !== 0 && fallbackLocation.lng !== 0) {
+      console.log(
+        `✅ Using provided fallback location: ${fallbackLocation.lat}, ${fallbackLocation.lng}`
+      );
+      return fallbackLocation;
+    }
+
+    // Fallback 4: Use a default location (Lagos, Nigeria) if geocoding fails
+    // This ensures the function doesn't completely fail
+    console.warn(
+      "⚠️ All geocoding failed, using default location (Lagos, Nigeria)"
+    );
+    return {
+      lat: 6.5244, // Lagos, Nigeria coordinates
+      lng: 3.3792,
+    };
+  }
+
+  // Calculate midpoint (centroid) of all locations
+  const sumLat = locations.reduce((sum, loc) => sum + loc.lat, 0);
+  const sumLng = locations.reduce((sum, loc) => sum + loc.lng, 0);
+  const avgLat = sumLat / locations.length;
+  const avgLng = sumLng / locations.length;
+
+  return { lat: avgLat, lng: avgLng };
+}
+
+/**
+ * Geocode a location string (city name) to coordinates
+ */
+async function geocodeLocation(
+  locationStr: string
+): Promise<{ lat: number; lng: number } | null> {
+  if (!GOOGLE_API_KEY) {
+    console.error("Google API key not available for geocoding");
+    return null;
+  }
+
+  try {
+    const encodedLocation = encodeURIComponent(locationStr);
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedLocation}&key=${GOOGLE_API_KEY}`;
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`Geocoding API error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+
+    // Handle different response statuses
+    if (data.status === "OK" && data.results && data.results.length > 0) {
+      const location = data.results[0].geometry.location;
+      return {
+        lat: location.lat,
+        lng: location.lng,
+      };
+    }
+
+    // Log the error with more details
+    if (data.status === "REQUEST_DENIED") {
+      console.error(
+        `Geocoding API REQUEST_DENIED for "${locationStr}": ${
+          data.error_message ||
+          "API key may be invalid or Geocoding API not enabled"
+        }`
+      );
+      console.error(
+        `Check: 1) API key is valid, 2) Geocoding API is enabled in Google Cloud Console, 3) Billing is enabled, 4) API key restrictions allow this request`
+      );
+    } else if (data.status === "ZERO_RESULTS") {
+      console.warn(`No geocoding results found for "${locationStr}"`);
+    } else {
+      console.error(
+        `Geocoding failed for "${locationStr}": ${data.status} - ${
+          data.error_message || ""
+        }`
+      );
+    }
+
+    return null;
+  } catch (error) {
+    console.error(`Error geocoding "${locationStr}":`, error);
+    return null;
+  }
+}
+
+// Reuse all the helper functions from generate-experiences
 async function fetchGooglePlaces(
   preferences: UserPreferences,
   location: { lat: number; lng: number }
@@ -711,13 +673,10 @@ async function fetchGooglePlaces(
   );
   console.log(`📍 Search location: ${location.lat}, ${location.lng}`);
   console.log(`📏 Search radius: ${radius}m`);
-  console.log(`🔑 Google API Key present: ${!!GOOGLE_API_KEY}`);
 
   for (const category of preferences.categories || []) {
     console.log(`\n🏷️ Processing category: "${category}"`);
-    // Convert category to lowercase for case-insensitive lookup
-    const categoryKey = category.toLowerCase();
-    const placeTypes = CATEGORY_MAPPINGS[categoryKey] || ["tourist_attraction"];
+    const placeTypes = CATEGORY_MAPPINGS[category] || ["tourist_attraction"];
     console.log(`   Mapped to place types: ${placeTypes.join(", ")}`);
 
     for (const placeType of placeTypes.slice(0, 3)) {
@@ -736,7 +695,6 @@ async function fetchGooglePlaces(
         }
 
         const data = await response.json();
-        console.log(`   📊 API Response status: ${data.status}`);
 
         if (
           data.status &&
@@ -785,8 +743,6 @@ async function fetchGooglePlaces(
             placeId: place.place_id,
             openingHours: place.opening_hours,
             placeTypes: place.types || [],
-            // Convert Google price_level (0-4) to dollar ranges
-            // 0 = Free, 1 = $, 2 = $$, 3 = $$$, 4 = $$$$
             price_min:
               place.price_level === 0
                 ? 0
@@ -838,8 +794,6 @@ async function annotateWithTravel(
     }));
   }
 
-  // Distance Matrix API has a limit of 25 destinations per request
-  // Split into batches if needed
   const BATCH_SIZE = 25;
   const batches: any[][] = [];
   for (let i = 0; i < places.length; i += BATCH_SIZE) {
@@ -874,7 +828,6 @@ async function annotateWithTravel(
           `❌ Distance Matrix API error (batch ${batchIndex + 1}):`,
           response.status
         );
-        // Add places without travel info
         annotatedPlaces.push(
           ...batch.map((p) => ({
             ...p,
@@ -894,7 +847,6 @@ async function annotateWithTravel(
           `❌ Distance Matrix API returned error status: ${data.status}`,
           data.error_message
         );
-        // Add places without travel info
         annotatedPlaces.push(
           ...batch.map((p) => ({
             ...p,
@@ -921,7 +873,6 @@ async function annotateWithTravel(
             travelTimeMin,
           };
         }
-        // If status is not OK, return place without travel info
         return {
           ...place,
           distance: "Unknown",
@@ -938,7 +889,6 @@ async function annotateWithTravel(
         `❌ Error getting travel times for batch ${batchIndex + 1}:`,
         error
       );
-      // Add places without travel info on error
       annotatedPlaces.push(
         ...batch.map((p) => ({
           ...p,
@@ -962,193 +912,35 @@ function filterByConstraints(
   const initialCount = places.length;
 
   console.log(`\n🔍 Starting filter process with ${initialCount} places`);
-  console.log(`📋 Filter criteria:`, {
-    travel_constraint_type: preferences.travel_constraint_type,
-    travel_constraint_value: preferences.travel_constraint_value,
-    budget_min: preferences.budget_min,
-    budget_max: preferences.budget_max,
-    categories: preferences.categories,
-  });
 
   // Stage 1: Filter by travel constraint
-  const beforeTravelFilter = remaining.length;
-  const travelFilteredPlaces: any[] = [];
   remaining = remaining.filter((place) => {
     if (preferences.travel_constraint_type === "time" && place.travelTimeMin) {
-      if (place.travelTimeMin > preferences.travel_constraint_value) {
-        travelFilteredPlaces.push(place);
-        return false;
-      }
+      return place.travelTimeMin <= preferences.travel_constraint_value;
     } else if (
       preferences.travel_constraint_type === "distance" &&
       place.distanceKm
     ) {
-      if (place.distanceKm > preferences.travel_constraint_value) {
-        travelFilteredPlaces.push(place);
-        return false;
-      }
+      return place.distanceKm <= preferences.travel_constraint_value;
     }
-    console.log(
-      "preferenceConstraintValue",
-      preferences.travel_constraint_value
-    );
-    console.log("placeDistanceKm", place.distanceKm);
-    console.log("placeTravelTimeMin", place.travelTimeMin);
     return true;
   });
-  const afterTravelFilter = remaining.length;
-  const travelFilteredOut = beforeTravelFilter - afterTravelFilter;
-  if (travelFilteredOut > 0) {
-    console.log(
-      `   ⏱️  Travel constraint filter: ${beforeTravelFilter} → ${afterTravelFilter} (removed ${travelFilteredOut} places)`
-    );
-    console.log(
-      `      Constraint: ${preferences.travel_constraint_type} <= ${preferences.travel_constraint_value}`
-    );
-    if (travelFilteredPlaces.length > 0) {
-      const example = travelFilteredPlaces[0];
-      const constraintValue =
-        preferences.travel_constraint_type === "time"
-          ? `${example.travelTimeMin} min`
-          : `${example.distanceKm} km`;
-      console.log(
-        `      Example filtered place: "${example.name}" (${constraintValue})`
-      );
-    }
-  } else {
-    console.log(
-      `   ⏱️  Travel constraint filter: ${beforeTravelFilter} → ${afterTravelFilter} (no places removed)`
-    );
-  }
 
   // Stage 2: Filter by budget
-  const beforeBudgetFilter = remaining.length;
-  const budgetFilteredPlaces: any[] = [];
   remaining = remaining.filter((place) => {
-    if (
+    return !(
       place.price_min > preferences.budget_max ||
       place.price_max < preferences.budget_min
-    ) {
-      budgetFilteredPlaces.push(place);
-      return false;
-    }
-
-    console.log("placePriceMin", place.price_min);
-    console.log("placePriceMax", place.price_max);
-    console.log("budgetMin", preferences.budget_min);
-    console.log("budgetMax", preferences.budget_max);
-    return true;
+    );
   });
-  const afterBudgetFilter = remaining.length;
-  const budgetFilteredOut = beforeBudgetFilter - afterBudgetFilter;
-  if (budgetFilteredOut > 0) {
-    console.log(
-      `   💰 Budget filter: ${beforeBudgetFilter} → ${afterBudgetFilter} (removed ${budgetFilteredOut} places)`
-    );
-    console.log(
-      `      Budget range: $${preferences.budget_min} - $${preferences.budget_max}`
-    );
-    if (budgetFilteredPlaces.length > 0) {
-      console.log(
-        `      Example filtered place: "${budgetFilteredPlaces[0].name}" ($${budgetFilteredPlaces[0].price_min}-$${budgetFilteredPlaces[0].price_max})`
-      );
-    }
-  } else {
-    console.log(
-      `   💰 Budget filter: ${beforeBudgetFilter} → ${afterBudgetFilter} (no places removed)`
-    );
-  }
 
   // Stage 3: Filter by category
-  const beforeCategoryFilter = remaining.length;
-  const categoryFilteredPlaces: any[] = [];
   remaining = remaining.filter((place) => {
-    if (!preferences.categories.includes(place.category)) {
-      categoryFilteredPlaces.push(place);
-      return false;
-    }
-    console.log("placeCategory", place.category);
-    console.log("categories", preferences.categories);
-    return true;
+    return preferences.categories.includes(place.category);
   });
-  const afterCategoryFilter = remaining.length;
-
-  // Stage 3.5: Hard filter for stroll cards - must have valid anchor
-  const strollFilteredPlaces: any[] = [];
-  const beforeStrollFilter = remaining.length;
-  remaining = remaining.filter((place) => {
-    const categoryKey = place.category?.toLowerCase() || "";
-    const isStrollCard =
-      categoryKey.includes("stroll") ||
-      categoryKey === "take a stroll" ||
-      categoryKey === "take-a-stroll" ||
-      categoryKey === "take_a_stroll";
-
-    if (isStrollCard) {
-      // Hard filter: Stroll cards must have valid anchor (park, trail, scenic area)
-      const validAnchorTypes = [
-        "park",
-        "tourist_attraction",
-        "point_of_interest",
-        "natural_feature",
-        "zoo",
-        "aquarium",
-        "botanical_garden",
-        "hiking_area",
-        "scenic_viewpoint",
-      ];
-      const hasValidAnchor = place.placeTypes?.some((type: string) =>
-        validAnchorTypes.includes(type)
-      );
-
-      if (!hasValidAnchor) {
-        strollFilteredPlaces.push(place);
-        return false;
-      }
-    }
-    return true;
-  });
-  const afterStrollFilter = remaining.length;
-  const strollFilteredOut = beforeStrollFilter - afterStrollFilter;
-  if (strollFilteredOut > 0) {
-    console.log(
-      `   🚶 Stroll anchor filter: ${beforeStrollFilter} → ${afterStrollFilter} (removed ${strollFilteredOut} invalid stroll anchors)`
-    );
-  }
-  const categoryFilteredOut = beforeCategoryFilter - afterCategoryFilter;
-  if (categoryFilteredOut > 0) {
-    console.log(
-      `   🏷️  Category filter: ${beforeCategoryFilter} → ${afterCategoryFilter} (removed ${categoryFilteredOut} places)`
-    );
-    console.log(
-      `      Allowed categories: ${preferences.categories.join(", ")}`
-    );
-    if (categoryFilteredPlaces.length > 0) {
-      const categoryCounts: { [key: string]: number } = {};
-      categoryFilteredPlaces.forEach((place) => {
-        categoryCounts[place.category] =
-          (categoryCounts[place.category] || 0) + 1;
-      });
-      console.log(
-        `      Filtered categories: ${Object.entries(categoryCounts)
-          .map(([cat, count]) => `${cat} (${count})`)
-          .join(", ")}`
-      );
-    }
-  } else {
-    console.log(
-      `   🏷️  Category filter: ${beforeCategoryFilter} → ${afterCategoryFilter} (no places removed)`
-    );
-  }
 
   const finalCount = remaining.length;
-  const totalFilteredOut = initialCount - finalCount;
-  console.log(
-    `\n✅ Filter complete: ${initialCount} → ${finalCount} places (removed ${totalFilteredOut} total)`
-  );
-  console.log(
-    `   Breakdown: Travel=${travelFilteredOut}, Budget=${budgetFilteredOut}, Category=${categoryFilteredOut}\n`
-  );
+  console.log(`\n✅ Filter complete: ${initialCount} → ${finalCount} places`);
 
   return remaining;
 }
@@ -1296,7 +1088,6 @@ function calculateTimeScore(place: any, preferences: UserPreferences): number {
     timeScore += 0.6;
   }
 
-  // Duration alignment (simplified)
   timeScore += 0.3;
 
   return Math.max(0, Math.min(1, timeScore));
@@ -1348,7 +1139,6 @@ async function enrichWithAI(
   preferences: UserPreferences
 ): Promise<any[]> {
   if (!OPENAI_API_KEY) {
-    // Fallback descriptions
     return places.map((place) => ({
       ...place,
       description: generateFallbackDescription(place),
@@ -1356,7 +1146,6 @@ async function enrichWithAI(
     }));
   }
 
-  // Generate descriptions and highlights using OpenAI
   const enriched = await Promise.all(
     places.map(async (place) => {
       try {

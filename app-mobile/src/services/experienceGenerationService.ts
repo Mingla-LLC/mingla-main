@@ -27,6 +27,38 @@ export interface GeneratedExperience {
     time: number;
     popularity: number;
   };
+  strollData?: {
+    anchor: {
+      id: string;
+      name: string;
+      location: { lat: number; lng: number };
+      address: string;
+    };
+    companionStops: Array<{
+      id: string;
+      name: string;
+      location: { lat: number; lng: number };
+      address: string;
+      rating?: number;
+      reviewCount?: number;
+      imageUrl?: string | null;
+      placeId: string;
+      type: string;
+    }>;
+    route: {
+      duration: number;
+      startLocation: { lat: number; lng: number };
+      endLocation: { lat: number; lng: number };
+    };
+    timeline: Array<{
+      step: number;
+      type: string;
+      title: string;
+      location: any;
+      description: string;
+      duration: number;
+    }>;
+  };
 }
 
 export interface ExperienceGenerationRequest {
@@ -130,7 +162,42 @@ export class ExperienceGenerationService {
         time: 85,
         popularity: 85,
       },
+      // Preserve strollData if available
+      strollData: card.strollData,
     };
+  }
+
+  /**
+   * Fetch companion stop + stroll timeline for a given anchor (on-demand)
+   */
+  static async fetchCompanionStrollData(anchor: {
+    id: string;
+    name: string;
+    location: { lat: number; lng: number };
+    address?: string;
+  }): Promise<GeneratedExperience["strollData"] | null> {
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "get-companion-stops",
+        {
+          body: { anchor },
+        }
+      );
+
+      if (error) {
+        console.error("Error fetching companion stroll data:", error);
+        return null;
+      }
+
+      if (data?.strollData) {
+        return data.strollData;
+      }
+
+      return null;
+    } catch (err) {
+      console.error("Failed to fetch companion stroll data:", err);
+      return null;
+    }
   }
 
   /**

@@ -487,7 +487,6 @@ export default function App() {
       <ErrorBoundary>
         <OnboardingFlow
           onComplete={(data) => {
-            console.log("Onboarding completed:", data);
             setOnboardingData(data);
             // has_completed_onboarding is already set in database by OnboardingFlow
             // Just update local state
@@ -514,8 +513,6 @@ export default function App() {
             }
           }}
           onNavigateToSignUpForm={(accountType) => {
-            console.log("Navigating to sign-up form");
-
             setShowOnboardingFlow(false);
             setShowSignUpForm(true);
             // Store account_type for signup
@@ -723,13 +720,18 @@ export default function App() {
             onNavigateToSession={(sessionId: string) => {
               setBoardViewSessionId(sessionId);
             }}
-            onExitBoard={async (exitedSessionId?: string, exitedSessionName?: string) => {
+            onExitBoard={async (
+              exitedSessionId?: string,
+              exitedSessionName?: string
+            ) => {
               if (!user?.id) return;
 
               // OPTIMISTIC UPDATE: Remove board from list immediately
               if (exitedSessionId && boardsSessions) {
                 const updatedBoards = boardsSessions.filter(
-                  (board: any) => board.id !== exitedSessionId && (board as any).session_id !== exitedSessionId
+                  (board: any) =>
+                    board.id !== exitedSessionId &&
+                    (board as any).session_id !== exitedSessionId
                 );
                 updateBoardsSessions(updatedBoards);
               }
@@ -759,14 +761,22 @@ export default function App() {
                 }
 
                 // Refresh boards list from database to ensure consistency
-                const { BoardSessionService } = await import("../src/services/boardSessionService");
-                const boards = await BoardSessionService.fetchUserBoardSessions(user.id);
+                const { BoardSessionService } = await import(
+                  "../src/services/boardSessionService"
+                );
+                const boards = await BoardSessionService.fetchUserBoardSessions(
+                  user.id
+                );
                 updateBoardsSessions(boards);
-                
+
                 // Refresh active session from database
-                const { SessionService } = await import("../src/services/sessionService");
-                const activeSession = await SessionService.getActiveSession(user.id);
-                
+                const { SessionService } = await import(
+                  "../src/services/sessionService"
+                );
+                const activeSession = await SessionService.getActiveSession(
+                  user.id
+                );
+
                 // Update current mode based on active session
                 if (activeSession) {
                   state.setCurrentMode(activeSession.sessionName);
@@ -792,13 +802,10 @@ export default function App() {
       case "profile":
         return (
           <ProfilePage
-            onSignOut={() => {
-              console.log("App: Sign out called from ProfilePage");
-              console.log("App: handleSignOut type:", typeof handleSignOut);
+            onSignOut={async () => {
               if (handleSignOut) {
-                handleSignOut();
+                await handleSignOut();
               } else {
-                console.error("App: handleSignOut is undefined!");
               }
             }}
             onNavigateToActivity={(tab: "saved" | "boards" | "calendar") => {
@@ -810,16 +817,7 @@ export default function App() {
               setCurrentPage("connections");
             }}
             onNavigateToProfileSettings={() => {
-              console.log("Main App: Profile Settings button clicked");
-              console.log("Main App: Current userIdentity:", userIdentity);
-              console.log("Main App: Current user from useAuthSimple:", user);
-              console.log(
-                "Main App: Current profile from useAuthSimple:",
-                profile
-              );
-              console.log("Main App: Setting showProfileSettings to true");
               setShowProfileSettings(true);
-              console.log("Main App: showProfileSettings set to true");
             }}
             onNavigateToAccountSettings={() => setShowAccountSettings(true)}
             onNavigateToPrivacyPolicy={() => setShowPrivacyPolicy(true)}
@@ -968,30 +966,11 @@ export default function App() {
 
     // Show Profile Settings as full screen if profile settings are open
     if (showProfileSettings) {
-      console.log(
-        "Main App: Rendering ProfileSettings component with userIdentity:",
-        userIdentity
-      );
-      console.log(
-        "Main App: showProfileSettings is true, rendering ProfileSettings"
-      );
-      console.log(
-        "Main App: userIdentity keys:",
-        Object.keys(userIdentity || {})
-      );
-      console.log("Main App: userIdentity firstName:", userIdentity?.firstName);
-      console.log("Main App: userIdentity lastName:", userIdentity?.lastName);
-      console.log("Main App: userIdentity username:", userIdentity?.username);
-      console.log(
-        "Main App: userIdentity profileImage:",
-        userIdentity?.profileImage
-      );
       return (
         <ErrorBoundary>
           <ProfileSettings
             userIdentity={userIdentity}
             onUpdateIdentity={(updatedIdentity) => {
-              console.log("Profile identity updated:", updatedIdentity);
               handleUserIdentityUpdate(updatedIdentity);
               setShowProfileSettings(false);
             }}
@@ -1037,8 +1016,13 @@ export default function App() {
                       // Refresh boards list immediately after accepting invite
                       if (user?.id) {
                         try {
-                          const { BoardSessionService } = await import("../src/services/boardSessionService");
-                          const boards = await BoardSessionService.fetchUserBoardSessions(user.id);
+                          const { BoardSessionService } = await import(
+                            "../src/services/boardSessionService"
+                          );
+                          const boards =
+                            await BoardSessionService.fetchUserBoardSessions(
+                              user.id
+                            );
                           updateBoardsSessions(boards);
                         } catch (error) {
                           console.error("Error refreshing boards:", error);
