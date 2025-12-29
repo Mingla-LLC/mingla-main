@@ -705,13 +705,16 @@ async function fetchGooglePlaces(
       : 10000; // Default 10km
 
   console.log(
-    `🔍 Starting Google Places search for ${
+    `🔍 Starting Google Places API (New) search for ${
       preferences.categories?.length || 0
     } categories`
   );
   console.log(`📍 Search location: ${location.lat}, ${location.lng}`);
   console.log(`📏 Search radius: ${radius}m`);
   console.log(`🔑 Google API Key present: ${!!GOOGLE_API_KEY}`);
+
+  // Places API (New) base URL
+  const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
 
   for (const category of preferences.categories || []) {
     console.log(`\n🏷️ Processing category: "${category}"`);
@@ -722,95 +725,134 @@ async function fetchGooglePlaces(
 
     for (const placeType of placeTypes.slice(0, 3)) {
       try {
-        const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${location.lat},${location.lng}&radius=${radius}&type=${placeType}&key=${GOOGLE_API_KEY}`;
+        // Convert legacy place type to new API format (e.g., "restaurant" -> "restaurant")
+        // Most types remain the same, but we need to ensure proper format
+        const includedType = placeType;
+
+        // Field mask for Places API (New) - specify which fields we need
+        // Note: Use places.id (not places.placeId) for the place identifier
+        const fieldMask =
+          "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours";
+
+        const requestBody = {
+          includedTypes: [includedType],
+          maxResultCount: 10,
+          locationRestriction: {
+            circle: {
+              center: {
+                latitude: location.lat,
+                longitude: location.lng,
+              },
+              radius: radius,
+            },
+          },
+        };
+
         console.log(`   🔎 Searching for type: ${placeType}`);
 
-        const response = await fetch(url);
+        const response = await fetch(baseUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GOOGLE_API_KEY,
+            "X-Goog-FieldMask": fieldMask,
+          },
+          body: JSON.stringify(requestBody),
+        });
+
         if (!response.ok) {
+          const errorText = await response.text();
           console.error(
-            `Google Places API error for ${placeType}:`,
+            `Google Places API (New) error for ${placeType}:`,
             response.status,
-            response.statusText
+            response.statusText,
+            errorText
           );
           continue;
         }
 
         const data = await response.json();
-        console.log(`   📊 API Response status: ${data.status}`);
-
-        if (
-          data.status &&
-          data.status !== "OK" &&
-          data.status !== "ZERO_RESULTS"
-        ) {
-          console.error(
-            `   ❌ Google Places API returned error status: ${data.status}`,
-            data.error_message
-          );
-          continue;
-        }
-
-        if (data.status === "ZERO_RESULTS") {
-          console.log(`   ⚠️ No results found for ${placeType}`);
-          continue;
-        }
-
         console.log(
-          `   ✅ Found ${data.results?.length || 0} places for ${placeType}`
+          `   📊 API Response - Found ${
+            data.places?.length || 0
+          } places for ${placeType}`
         );
 
-        if (data.results?.length) {
-          const places = data.results.slice(0, 10).map((place: any) => ({
-            id: place.place_id,
-            name: place.name,
-            category,
-            location: {
-              lat: place.geometry.location.lat,
-              lng: place.geometry.location.lng,
-            },
-            address: place.vicinity || place.formatted_address,
-            priceLevel: place.price_level,
-            rating: place.rating,
-            reviewCount: place.user_ratings_total || 0,
-            imageUrl: place.photos?.[0]
-              ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${place.photos[0].photo_reference}&key=${GOOGLE_API_KEY}`
-              : null,
-            images:
+        if (data.places?.length) {
+          const places = data.places.map((place: any) => {
+            // Extract photo reference from new API format
+            // Photo name format: "places/{place_id}/photos/{photo_id}"
+            const primaryPhoto = place.photos?.[0];
+            const imageUrl = primaryPhoto?.name
+              ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
+              : null;
+
+            const images =
               place.photos
                 ?.slice(0, 5)
-                .map(
-                  (photo: any) =>
-                    `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${GOOGLE_API_KEY}`
-                ) || [],
-            placeId: place.place_id,
-            openingHours: place.opening_hours,
-            placeTypes: place.types || [],
-            // Convert Google price_level (0-4) to dollar ranges
+                .map((photo: any) => {
+                  return photo.name
+                    ? `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
+                    : null;
+                })
+                .filter((img: string | null) => img !== null) || [];
+
+            // Convert price level (0-4) to dollar ranges
             // 0 = Free, 1 = $, 2 = $$, 3 = $$$, 4 = $$$$
-            price_min:
-              place.price_level === 0
+            const priceLevel = place.priceLevel || 0;
+            const price_min =
+              priceLevel === 0
                 ? 0
-                : place.price_level === 1
+                : priceLevel === 1
                 ? 0
-                : place.price_level === 2
+                : priceLevel === 2
                 ? 15
-                : place.price_level === 3
+                : priceLevel === 3
                 ? 50
-                : 100,
-            price_max:
-              place.price_level === 0
+                : 100;
+            const price_max =
+              priceLevel === 0
                 ? 0
-                : place.price_level === 1
+                : priceLevel === 1
                 ? 25
-                : place.price_level === 2
+                : priceLevel === 2
                 ? 75
-                : place.price_level === 3
+                : priceLevel === 3
                 ? 150
-                : 500,
-          }));
+                : 500;
+
+            return {
+              id: place.id,
+              name: place.displayName?.text || "Unknown Place",
+              category,
+              location: {
+                lat: place.location?.latitude || location.lat,
+                lng: place.location?.longitude || location.lng,
+              },
+              address: place.formattedAddress || "",
+              priceLevel: priceLevel,
+              rating: place.rating || 0,
+              reviewCount: place.userRatingCount || 0,
+              imageUrl: imageUrl,
+              images: images.filter((img: string | null) => img !== null),
+              placeId: place.id, // In new API, place.id is the identifier
+              openingHours: place.regularOpeningHours
+                ? {
+                    open_now: place.regularOpeningHours.openNow || false,
+                    weekday_text:
+                      place.regularOpeningHours.weekdayDescriptions || [],
+                  }
+                : null,
+              placeTypes: place.types || [],
+              price_min,
+              price_max,
+            };
+          });
 
           allPlaces.push(...places);
           console.log(`   ➕ Added ${places.length} places from ${placeType}`);
+        } else {
+          console.log(`   ⚠️ No results found for ${placeType}`);
         }
       } catch (error) {
         console.error(`   ❌ Error fetching ${placeType}:`, error);

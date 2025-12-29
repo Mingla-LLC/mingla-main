@@ -644,52 +644,6 @@ serve(async (req) => {
       }));
     }
 
-    // Special handling for stroll cards: fetch companion stops
-    const strollCards = enriched.filter((place) => {
-      const categoryKey = place.category?.toLowerCase() || "";
-      return (
-        categoryKey.includes("stroll") ||
-        categoryKey === "take a stroll" ||
-        categoryKey === "take-a-stroll" ||
-        categoryKey === "take_a_stroll"
-      );
-    });
-
-    console.log(
-      `🚶 Found ${strollCards.length} stroll cards, fetching companion stops...`
-    );
-
-    // PARALLELIZE: Fetch companion stops for all stroll cards simultaneously
-    const strollCardPromises = strollCards.map(async (strollCard) => {
-      try {
-        const companionStops = await findCompanionStops(
-          strollCard.location,
-          500 // 500 meters max distance
-        );
-        if (companionStops.length > 0) {
-          strollCard.companionStops = companionStops;
-          console.log(
-            `   ✅ Found ${companionStops.length} companion stop for "${
-              strollCard.name
-            }": ${companionStops.map((cs) => cs.name).join(", ")}`
-          );
-        } else {
-          console.log(
-            `   ⚠️ No companion stops found for "${strollCard.name}"`
-          );
-        }
-      } catch (error) {
-        console.error(
-          `   ❌ Error fetching companion stops for "${strollCard.name}":`,
-          error
-        );
-      }
-      return strollCard;
-    });
-
-    // Wait for all stroll cards to be processed in parallel
-    await Promise.all(strollCardPromises);
-
     // Convert to card format
     const cards = enriched.map((place) => convertToCard(place, preferences));
     console.log(`✅ Converted ${cards.length} places to card format`);
@@ -751,13 +705,16 @@ async function fetchGooglePlaces(
       : 10000; // Default 10km
 
   console.log(
-    `🔍 Starting Google Places search for ${
+    `🔍 Starting Google Places API (New) search for ${
       preferences.categories?.length || 0
     } categories`
   );
   console.log(`📍 Search location: ${location.lat}, ${location.lng}`);
   console.log(`📏 Search radius: ${radius}m`);
   console.log(`🔑 Google API Key present: ${!!GOOGLE_API_KEY}`);
+
+  // Places API (New) base URL
+  const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
 
   for (const category of preferences.categories || []) {
     console.log(`\n🏷️ Processing category: "${category}"`);
@@ -768,95 +725,134 @@ async function fetchGooglePlaces(
 
     for (const placeType of placeTypes.slice(0, 3)) {
       try {
-        const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${location.lat},${location.lng}&radius=${radius}&type=${placeType}&key=${GOOGLE_API_KEY}`;
+        // Convert legacy place type to new API format (e.g., "restaurant" -> "restaurant")
+        // Most types remain the same, but we need to ensure proper format
+        const includedType = placeType;
+
+        // Field mask for Places API (New) - specify which fields we need
+        // Note: Use places.id (not places.placeId) for the place identifier
+        const fieldMask =
+          "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours";
+
+        const requestBody = {
+          includedTypes: [includedType],
+          maxResultCount: 10,
+          locationRestriction: {
+            circle: {
+              center: {
+                latitude: location.lat,
+                longitude: location.lng,
+              },
+              radius: radius,
+            },
+          },
+        };
+
         console.log(`   🔎 Searching for type: ${placeType}`);
 
-        const response = await fetch(url);
+        const response = await fetch(baseUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GOOGLE_API_KEY,
+            "X-Goog-FieldMask": fieldMask,
+          },
+          body: JSON.stringify(requestBody),
+        });
+
         if (!response.ok) {
+          const errorText = await response.text();
           console.error(
-            `Google Places API error for ${placeType}:`,
+            `Google Places API (New) error for ${placeType}:`,
             response.status,
-            response.statusText
+            response.statusText,
+            errorText
           );
           continue;
         }
 
         const data = await response.json();
-        console.log(`   📊 API Response status: ${data.status}`);
-
-        if (
-          data.status &&
-          data.status !== "OK" &&
-          data.status !== "ZERO_RESULTS"
-        ) {
-          console.error(
-            `   ❌ Google Places API returned error status: ${data.status}`,
-            data.error_message
-          );
-          continue;
-        }
-
-        if (data.status === "ZERO_RESULTS") {
-          console.log(`   ⚠️ No results found for ${placeType}`);
-          continue;
-        }
-
         console.log(
-          `   ✅ Found ${data.results?.length || 0} places for ${placeType}`
+          `   📊 API Response - Found ${
+            data.places?.length || 0
+          } places for ${placeType}`
         );
 
-        if (data.results?.length) {
-          const places = data.results.slice(0, 10).map((place: any) => ({
-            id: place.place_id,
-            name: place.name,
-            category,
-            location: {
-              lat: place.geometry.location.lat,
-              lng: place.geometry.location.lng,
-            },
-            address: place.vicinity || place.formatted_address,
-            priceLevel: place.price_level,
-            rating: place.rating,
-            reviewCount: place.user_ratings_total || 0,
-            imageUrl: place.photos?.[0]
-              ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${place.photos[0].photo_reference}&key=${GOOGLE_API_KEY}`
-              : null,
-            images:
+        if (data.places?.length) {
+          const places = data.places.map((place: any) => {
+            // Extract photo reference from new API format
+            // Photo name format: "places/{place_id}/photos/{photo_id}"
+            const primaryPhoto = place.photos?.[0];
+            const imageUrl = primaryPhoto?.name
+              ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
+              : null;
+
+            const images =
               place.photos
                 ?.slice(0, 5)
-                .map(
-                  (photo: any) =>
-                    `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${GOOGLE_API_KEY}`
-                ) || [],
-            placeId: place.place_id,
-            openingHours: place.opening_hours,
-            placeTypes: place.types || [],
-            // Convert Google price_level (0-4) to dollar ranges
+                .map((photo: any) => {
+                  return photo.name
+                    ? `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
+                    : null;
+                })
+                .filter((img: string | null) => img !== null) || [];
+
+            // Convert price level (0-4) to dollar ranges
             // 0 = Free, 1 = $, 2 = $$, 3 = $$$, 4 = $$$$
-            price_min:
-              place.price_level === 0
+            const priceLevel = place.priceLevel || 0;
+            const price_min =
+              priceLevel === 0
                 ? 0
-                : place.price_level === 1
+                : priceLevel === 1
                 ? 0
-                : place.price_level === 2
+                : priceLevel === 2
                 ? 15
-                : place.price_level === 3
+                : priceLevel === 3
                 ? 50
-                : 100,
-            price_max:
-              place.price_level === 0
+                : 100;
+            const price_max =
+              priceLevel === 0
                 ? 0
-                : place.price_level === 1
+                : priceLevel === 1
                 ? 25
-                : place.price_level === 2
+                : priceLevel === 2
                 ? 75
-                : place.price_level === 3
+                : priceLevel === 3
                 ? 150
-                : 500,
-          }));
+                : 500;
+
+            return {
+              id: place.id,
+              name: place.displayName?.text || "Unknown Place",
+              category,
+              location: {
+                lat: place.location?.latitude || location.lat,
+                lng: place.location?.longitude || location.lng,
+              },
+              address: place.formattedAddress || "",
+              priceLevel: priceLevel,
+              rating: place.rating || 0,
+              reviewCount: place.userRatingCount || 0,
+              imageUrl: imageUrl,
+              images: images.filter((img: string | null) => img !== null),
+              placeId: place.id, // In new API, place.id is the identifier
+              openingHours: place.regularOpeningHours
+                ? {
+                    open_now: place.regularOpeningHours.openNow || false,
+                    weekday_text:
+                      place.regularOpeningHours.weekdayDescriptions || [],
+                  }
+                : null,
+              placeTypes: place.types || [],
+              price_min,
+              price_max,
+            };
+          });
 
           allPlaces.push(...places);
           console.log(`   ➕ Added ${places.length} places from ${placeType}`);
+        } else {
+          console.log(`   ⚠️ No results found for ${placeType}`);
         }
       } catch (error) {
         console.error(`   ❌ Error fetching ${placeType}:`, error);
@@ -1540,147 +1536,8 @@ function generateFallbackHighlights(place: any): string[] {
   return highlights[place.category] || ["Great Experience", "Highly Rated"];
 }
 
-// Find companion stops (café/bakery/ice cream/food truck) near a stroll anchor
-async function findCompanionStops(
-  anchorLocation: { lat: number; lng: number },
-  maxDistance: number = 500 // meters
-): Promise<any[]> {
-  if (!GOOGLE_API_KEY) {
-    console.warn("⚠️ Google API key not available for companion stops");
-    return [];
-  }
-
-  const companionTypes = [
-    "cafe",
-    "coffee_shop",
-    "bakery",
-    "ice_cream_shop",
-    "gelato_shop",
-    "food_truck",
-    "restaurant",
-    "bistro",
-    "bar",
-    "wine_bar",
-    "juice_bar",
-    "smoothie_shop",
-    "tea_house",
-    "donut_shop",
-    "pastry_shop",
-    "deli",
-    "sandwich_shop",
-    "pizza_restaurant",
-    "fast_food_restaurant",
-    "meal_takeaway",
-  ];
-
-  // PARALLELIZE: Fetch all companion types simultaneously
-  const companionPromises = companionTypes.map(async (placeType) => {
-    try {
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${anchorLocation.lat},${anchorLocation.lng}&radius=${maxDistance}&type=${placeType}&key=${GOOGLE_API_KEY}`;
-
-      const response = await fetch(url);
-      if (!response.ok) return [];
-
-      const data = await response.json();
-      if (data.status === "OK" && data.results?.length) {
-        return data.results.slice(0, 2).map((place: any) => {
-          return {
-            id: place.place_id,
-            name: place.name,
-            location: {
-              lat: place.geometry.location.lat,
-              lng: place.geometry.location.lng,
-            },
-            address: place.vicinity || place.formatted_address,
-            rating: place.rating,
-            reviewCount: place.user_ratings_total || 0,
-            imageUrl: place.photos?.[0]
-              ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.photos[0].photo_reference}&key=${GOOGLE_API_KEY}`
-              : null,
-            placeId: place.place_id,
-            type: placeType,
-          };
-        });
-      }
-      return [];
-    } catch (error) {
-      console.error(`Error fetching companion stops for ${placeType}:`, error);
-      return [];
-    }
-  });
-
-  // Wait for all fetches in parallel
-  const results = await Promise.all(companionPromises);
-  const allCompanions = results.flat();
-
-  // Sort by rating and limit to top 1 (best match only)
-  return allCompanions
-    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-    .slice(0, 1);
-}
-
-// Build route timeline for stroll cards (solo mode)
-function buildStrollRouteTimeline(
-  companionStop: any,
-  anchor: any,
-  routeDuration: number
-): any[] {
-  const timeline: any[] = [];
-
-  // Start: Companion stop
-  timeline.push({
-    step: 1,
-    type: "start",
-    title: "Start",
-    location: companionStop,
-    description: `Begin at ${companionStop.name}`,
-    duration: 0,
-  });
-
-  // Walk: Anchor route (solo: 25-35 minutes, average 30)
-  const walkDuration = routeDuration - 5;
-  timeline.push({
-    step: 2,
-    type: "walk",
-    title: "Scenic Walk",
-    location: anchor,
-    description: `Walk to ${anchor.name}`,
-    duration: walkDuration,
-  });
-
-  // Optional Pause (only if route is long enough)
-  if (routeDuration >= 30) {
-    timeline.push({
-      step: 3,
-      type: "pause",
-      title: "Pause & Enjoy",
-      location: anchor,
-      description: `Take a moment to enjoy ${anchor.name}`,
-      duration: 5,
-    });
-  }
-
-  // Wrap-Up: End at anchor
-  timeline.push({
-    step: timeline.length + 1,
-    type: "wrap-up",
-    title: "Wrap-Up",
-    location: anchor,
-    description: `End at ${anchor.name}`,
-    duration: 0,
-  });
-
-  return timeline;
-}
-
-// Calculate route duration for solo mode (25-35 minutes)
-function calculateStrollRouteDuration(): number {
-  // Solo: 25-35 minutes, return average
-  return 30;
-}
-
 function convertToCard(place: any, preferences: UserPreferences): any {
-  const baseCard = {
+  return {
     id: place.id,
     title: place.name,
     category: place.category,
@@ -1702,48 +1559,6 @@ function convertToCard(place: any, preferences: UserPreferences): any {
     placeId: place.placeId,
     matchFactors: place.matchFactors || {},
   };
-
-  // Add stroll-specific data if this is a stroll card
-  const isStrollCategory =
-    place.category?.toLowerCase().includes("stroll") ||
-    place.category?.toLowerCase() === "take a stroll" ||
-    place.category?.toLowerCase() === "take-a-stroll" ||
-    place.category?.toLowerCase() === "take_a_stroll";
-
-  if (
-    isStrollCategory &&
-    place.companionStops &&
-    place.companionStops.length > 0
-  ) {
-    const routeDuration = calculateStrollRouteDuration();
-    const companionStop = place.companionStops[0]; // Use the first/best companion stop
-    const timeline = buildStrollRouteTimeline(
-      companionStop,
-      place,
-      routeDuration
-    );
-
-    return {
-      ...baseCard,
-      strollData: {
-        anchor: {
-          id: place.id,
-          name: place.name,
-          location: place.location,
-          address: place.address,
-        },
-        companionStops: place.companionStops,
-        route: {
-          duration: routeDuration,
-          startLocation: companionStop.location,
-          endLocation: place.location,
-        },
-        timeline,
-      },
-    };
-  }
-
-  return baseCard;
 }
 
 function formatPriceRange(min: number, max: number): string {

@@ -8,7 +8,7 @@
  */
 
 const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "";
-const GOOGLE_PLACES_BASE_URL = "https://maps.googleapis.com/maps/api/place";
+const GOOGLE_PLACES_BASE_URL = "https://places.googleapis.com/v1";
 
 export interface BusynessData {
   isBusy: boolean;
@@ -51,50 +51,95 @@ class BusynessService {
       else if (address) {
         // Combine name and address for more specific and accurate search
         const combinedQuery = `${venueName}, ${address}`;
-        const addressSearchUrl = `${GOOGLE_PLACES_BASE_URL}/textsearch/json?query=${encodeURIComponent(
-          combinedQuery
-        )}&location=${lat},${lng}&radius=500&key=${GOOGLE_PLACES_API_KEY}`;
 
-        const addressResponse = await fetch(addressSearchUrl);
-        const addressData = await addressResponse.json();
+        const searchTextUrl = `${GOOGLE_PLACES_BASE_URL}/places:searchText`;
+        const fieldMask = "places.id,places.displayName,places.location";
 
-        if (
-          addressData.status === "OK" &&
-          addressData.results &&
-          addressData.results.length > 0
-        ) {
-          // Use the first result (should be the most relevant)
-          foundPlaceId = addressData.results[0].place_id;
-        } else {
-          console.warn("⚠️ Combined search returned no matches:", {
-            status: addressData.status,
-            errorMessage: addressData.error_message,
-            firstResults: addressData.results?.slice(0, 3) || [],
+        const addressResponse = await fetch(searchTextUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+            "X-Goog-FieldMask": fieldMask,
+          },
+          body: JSON.stringify({
+            textQuery: combinedQuery,
+            locationBias: {
+              circle: {
+                center: {
+                  latitude: lat,
+                  longitude: lng,
+                },
+                radius: 500,
+              },
+            },
+            maxResultCount: 5,
+          }),
+        });
+
+        if (!addressResponse.ok) {
+          const errorText = await addressResponse.text();
+          console.warn("⚠️ Combined search HTTP error:", {
+            status: addressResponse.status,
+            error: errorText,
           });
+        } else {
+          const addressData = await addressResponse.json();
+
+          if (addressData.places && addressData.places.length > 0) {
+            // Use the first result (should be the most relevant)
+            foundPlaceId = addressData.places[0].id;
+          } else {
+            console.warn("⚠️ Combined search returned no matches:", {
+              places: addressData.places || [],
+            });
+          }
         }
       }
 
       // Step 3: Fall back to name-based search if address didn't work
       if (!foundPlaceId) {
-        const textSearchUrl = `${GOOGLE_PLACES_BASE_URL}/textsearch/json?query=${encodeURIComponent(
-          venueName
-        )}&location=${lat},${lng}&radius=2000&key=${GOOGLE_PLACES_API_KEY}`;
+        const searchTextUrl = `${GOOGLE_PLACES_BASE_URL}/places:searchText`;
+        const fieldMask = "places.id,places.displayName,places.location";
 
-        const textSearchResponse = await fetch(textSearchUrl);
-        const textSearchData = await textSearchResponse.json();
+        const textSearchResponse = await fetch(searchTextUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+            "X-Goog-FieldMask": fieldMask,
+          },
+          body: JSON.stringify({
+            textQuery: venueName,
+            locationBias: {
+              circle: {
+                center: {
+                  latitude: lat,
+                  longitude: lng,
+                },
+                radius: 2000,
+              },
+            },
+            maxResultCount: 5,
+          }),
+        });
 
-        if (
-          textSearchData.status === "OK" &&
-          textSearchData.results &&
-          textSearchData.results.length > 0
-        ) {
-          foundPlaceId = textSearchData.results[0].place_id;
-        } else {
-          console.warn("⚠️ Text Search returned no usable results:", {
-            status: textSearchData.status,
-            errorMessage: textSearchData.error_message,
-            firstResults: textSearchData.results?.slice(0, 3) || [],
+        if (!textSearchResponse.ok) {
+          const errorText = await textSearchResponse.text();
+          console.warn("⚠️ Text Search HTTP error:", {
+            status: textSearchResponse.status,
+            error: errorText,
           });
+        } else {
+          const textSearchData = await textSearchResponse.json();
+
+          if (textSearchData.places && textSearchData.places.length > 0) {
+            foundPlaceId = textSearchData.places[0].id;
+          } else {
+            console.warn("⚠️ Text Search returned no usable results:", {
+              places: textSearchData.places || [],
+            });
+          }
         }
 
         // Step 4: If Text Search fails, try Nearby Search as fallback
@@ -106,20 +151,49 @@ class BusynessService {
             "tourist_attraction",
           ];
 
-          for (const type of placeTypes) {
-            const nearbyUrl = `${GOOGLE_PLACES_BASE_URL}/nearbysearch/json?location=${lat},${lng}&radius=2000&type=${type}&key=${GOOGLE_PLACES_API_KEY}`;
+          const searchNearbyUrl = `${GOOGLE_PLACES_BASE_URL}/places:searchNearby`;
+          const fieldMask = "places.id,places.displayName,places.location";
 
-            const nearbyResponse = await fetch(nearbyUrl);
+          for (const type of placeTypes) {
+            const nearbyResponse = await fetch(searchNearbyUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+                "X-Goog-FieldMask": fieldMask,
+              },
+              body: JSON.stringify({
+                includedTypes: [type],
+                maxResultCount: 20,
+                locationRestriction: {
+                  circle: {
+                    center: {
+                      latitude: lat,
+                      longitude: lng,
+                    },
+                    radius: 2000,
+                  },
+                },
+              }),
+            });
+
+            if (!nearbyResponse.ok) {
+              const errorText = await nearbyResponse.text();
+              console.warn("⚠️ Nearby Search HTTP error:", {
+                type,
+                status: nearbyResponse.status,
+                error: errorText,
+              });
+              continue;
+            }
+
             const nearbyData = await nearbyResponse.json();
 
-            if (
-              nearbyData.status === "OK" &&
-              nearbyData.results &&
-              nearbyData.results.length > 0
-            ) {
+            if (nearbyData.places && nearbyData.places.length > 0) {
               // Try to find a match by name similarity
-              const matchedPlace = nearbyData.results.find((place: any) => {
-                const placeNameLower = place.name?.toLowerCase() || "";
+              const matchedPlace = nearbyData.places.find((place: any) => {
+                const placeNameLower =
+                  place.displayName?.text?.toLowerCase() || "";
                 const venueNameLower = venueName.toLowerCase();
                 return (
                   placeNameLower.includes(venueNameLower) ||
@@ -132,24 +206,23 @@ class BusynessService {
               });
 
               if (matchedPlace) {
-                foundPlaceId = matchedPlace.place_id;
+                foundPlaceId = matchedPlace.id;
                 break;
               } else {
                 console.warn(
                   "⚠️ Nearby Search had results but no close match:",
                   {
                     type,
-                    sampleNames: nearbyData.results
+                    sampleNames: nearbyData.places
                       .slice(0, 3)
-                      .map((result: any) => result.name),
+                      .map((result: any) => result.displayName?.text),
                   }
                 );
               }
             } else {
-              console.warn("⚠️ Nearby Search failed:", {
+              console.warn("⚠️ Nearby Search returned no results:", {
                 type,
-                status: nearbyData.status,
-                errorMessage: nearbyData.error_message,
+                places: nearbyData.places || [],
               });
             }
           }
@@ -173,11 +246,19 @@ class BusynessService {
       }
 
       // Step 5: Get detailed place information
-      // Note: 'popularity' field is not available in standard Places API, only in Places API (New)
-      // We'll estimate popularity from rating and review count instead
-      const detailsUrl = `${GOOGLE_PLACES_BASE_URL}/details/json?place_id=${foundPlaceId}&fields=name,rating,user_ratings_total,opening_hours,current_opening_hours&key=${GOOGLE_PLACES_API_KEY}`;
+      // Places API (New) - use places/{placeId} endpoint
+      const detailsUrl = `${GOOGLE_PLACES_BASE_URL}/places/${foundPlaceId}`;
+      const fieldMask =
+        "id,displayName,rating,userRatingCount,regularOpeningHours,currentOpeningHours";
 
-      const detailsResponse = await fetch(detailsUrl);
+      const detailsResponse = await fetch(detailsUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+          "X-Goog-FieldMask": fieldMask,
+        },
+      });
 
       if (!detailsResponse.ok) {
         const errorText = await detailsResponse.text();
@@ -189,38 +270,32 @@ class BusynessService {
         return this.getFallbackBusyness();
       }
 
-      const detailsData = await detailsResponse.json();
+      const placeDetails = await detailsResponse.json();
 
-      if (detailsData.status !== "OK" || !detailsData.result) {
+      if (placeDetails.error) {
         console.warn("📍 Invalid response from Google Places details:", {
-          status: detailsData.status,
-          errorMessage: detailsData.error_message,
-          candidates: detailsData.candidates,
-          htmlAttributions: detailsData.html_attributions,
+          error: placeDetails.error,
         });
         return this.getFallbackBusyness();
       }
 
-      const placeDetails = detailsData.result;
+      // Popularity field is not available in Places API (New) either
+      // Estimate from rating and review count
+      let popularity: number;
+      const rating = placeDetails.rating || 0;
+      const reviewCount = placeDetails.userRatingCount || 0;
 
-      // Popularity field might not be available in older Places API
-      // If not available, estimate from rating and review count
-      let popularity = placeDetails.popularity;
+      // Convert rating (0-5) to popularity (0-100)
+      // Higher rating = higher popularity
+      // More reviews = more popular (capped effect)
+      const ratingScore = (rating / 5) * 70; // Max 70 from rating
+      const reviewScore = Math.min(30, (reviewCount / 1000) * 30); // Max 30 from reviews
+      popularity = Math.round(ratingScore + reviewScore);
       console.log("popularity", popularity);
-      if (popularity === undefined || popularity === null) {
-        // Estimate popularity from rating (0-5) and review count
-        const rating = placeDetails.rating || 0;
-        const reviewCount = placeDetails.user_ratings_total || 0;
 
-        // Convert rating (0-5) to popularity (0-100)
-        // Higher rating = higher popularity
-        // More reviews = more popular (capped effect)
-        const ratingScore = (rating / 5) * 70; // Max 70 from rating
-        const reviewScore = Math.min(30, (reviewCount / 1000) * 30); // Max 30 from reviews
-        popularity = Math.round(ratingScore + reviewScore);
-      }
-
-      const openingHours = placeDetails.current_opening_hours;
+      // Use currentOpeningHours if available, otherwise regularOpeningHours
+      const openingHours =
+        placeDetails.currentOpeningHours || placeDetails.regularOpeningHours;
 
       // Calculate busyness level from popularity (0-100 scale)
       const busynessLevel = this.calculateBusynessLevel(popularity);
@@ -281,8 +356,9 @@ class BusynessService {
       let openHour = 9; // Default opening
       let closeHour = 21; // Default closing
 
-      if (openingHours?.weekday_text) {
-        const dayText = openingHours.weekday_text[dayIndex];
+      // Places API (New) uses weekdayDescriptions array instead of weekday_text
+      if (openingHours?.weekdayDescriptions) {
+        const dayText = openingHours.weekdayDescriptions[dayIndex];
         if (dayText && dayText.includes("Closed")) {
           isOpen = false;
         } else if (dayText) {

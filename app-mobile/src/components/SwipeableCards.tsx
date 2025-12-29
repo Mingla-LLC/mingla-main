@@ -38,6 +38,39 @@ const CARD_HEIGHT = Math.min(screenHeight * 0.72, 700);
 const IMAGE_SECTION_RATIO = 0.66;
 const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
 
+interface StrollData {
+  anchor: {
+    id: string;
+    name: string;
+    location: { lat: number; lng: number };
+    address: string;
+  };
+  companionStops: Array<{
+    id: string;
+    name: string;
+    location: { lat: number; lng: number };
+    address: string;
+    rating?: number;
+    reviewCount?: number;
+    imageUrl?: string | null;
+    placeId: string;
+    type: string;
+  }>;
+  route: {
+    duration: number;
+    startLocation: { lat: number; lng: number };
+    endLocation: { lat: number; lng: number };
+  };
+  timeline: Array<{
+    step: number;
+    type: string;
+    title: string;
+    location: any;
+    description: string;
+    duration: number;
+  }>;
+}
+
 const getDefaultPreferences = (): UserPreferences => ({
   mode: "explore",
   budget_min: 0,
@@ -149,7 +182,6 @@ export default function SwipeableCards({
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isFetchingCompanion, setIsFetchingCompanion] = useState(false);
   const [userLocation, setUserLocation] = useState<{
     lat: number;
     lng: number;
@@ -574,14 +606,6 @@ export default function SwipeableCards({
 
           // Transform to Recommendation format
           const transformedRecommendations = generatedExperiences.map((exp) => {
-            // Debug: Log strollData for stroll cards
-            if (exp.strollData) {
-              console.log("✅ strollData preserved in transformation:", {
-                cardTitle: exp.title,
-                hasCompanionStops: !!exp.strollData.companionStops?.length,
-                companionStopsCount: exp.strollData.companionStops?.length || 0,
-              });
-            }
             return {
               id: exp.id,
               title: exp.title,
@@ -619,8 +643,6 @@ export default function SwipeableCards({
                 time: 85,
                 popularity: 85,
               },
-              // Include strollData if available
-              strollData: exp.strollData,
             };
           });
 
@@ -835,59 +857,7 @@ export default function SwipeableCards({
 
   const handleCardExpand = async () => {
     if (!currentRec) return;
-
-    let strollData = (currentRec as any).strollData;
-
-    // If stroll card and we don't already have companion data, fetch it on demand
-    const categoryLower = currentRec.category?.toLowerCase() || "";
-    const isStrollCard =
-      categoryLower.includes("stroll") ||
-      categoryLower === "take a stroll" ||
-      categoryLower === "take-a-stroll" ||
-      categoryLower === "take_a_stroll";
-
-    if (!strollData && isStrollCard) {
-      const anchor =
-        strollData?.anchor ||
-        (currentRec.lat &&
-        currentRec.lng &&
-        currentRec.title
-          ? {
-              id: currentRec.id,
-              name: currentRec.title,
-              location: { lat: currentRec.lat, lng: currentRec.lng },
-              address: currentRec.address,
-            }
-          : null);
-
-      if (anchor) {
-        try {
-          setIsFetchingCompanion(true);
-          const fetchedStrollData =
-            await ExperienceGenerationService.fetchCompanionStrollData(anchor);
-          if (fetchedStrollData) {
-            strollData = fetchedStrollData;
-          }
-        } catch (err) {
-          console.error("Error fetching companion stroll data:", err);
-        } finally {
-          setIsFetchingCompanion(false);
-        }
-      }
-    }
-
-    // Debug: Log strollData when expanding
-    if (strollData) {
-      console.log("✅ strollData found when expanding card:", {
-        cardTitle: currentRec.title,
-        hasCompanionStops: !!strollData.companionStops?.length,
-        companionStopsCount: strollData.companionStops?.length || 0,
-        hasTimeline: !!strollData.timeline?.length,
-        timelineSteps: strollData.timeline?.length || 0,
-      });
-    } else {
-      console.log("⚠️ No strollData found for card:", currentRec.title);
-    }
+    setIsExpandedModalVisible(true);
 
     // Transform Recommendation to ExpandedCardData
     const expandedCardData: ExpandedCardData = {
@@ -911,21 +881,20 @@ export default function SwipeableCards({
       matchScore: currentRec.matchScore,
       matchFactors: currentRec.matchFactors,
       socialStats: currentRec.socialStats,
-      // Use anchor location for stroll cards, otherwise use user location
       location:
-        strollData?.anchor?.location ||
-        (userLocation
+        currentRec.lat && currentRec.lng
+          ? { lat: currentRec.lat, lng: currentRec.lng }
+          : userLocation
           ? { lat: userLocation.lat, lng: userLocation.lng }
-          : undefined),
+          : undefined,
       selectedDateTime: userPreferences?.datetime_pref
         ? new Date(userPreferences.datetime_pref)
         : new Date(),
-      // Include strollData if available
-      strollData: strollData,
+      // Include strollData if it already exists on the card
+      strollData: (currentRec as any).strollData,
     };
 
     setSelectedCardForExpansion(expandedCardData);
-    setIsExpandedModalVisible(true);
   };
 
   const handleCloseExpandedModal = () => {
@@ -1222,8 +1191,8 @@ export default function SwipeableCards({
                       title: exp.title,
                       category: exp.category,
                       categoryIcon: exp.categoryIcon,
-                    lat: exp.lat,
-                    lng: exp.lng,
+                      lat: exp.lat,
+                      lng: exp.lng,
                       timeAway: exp.travelTime,
                       description: exp.description,
                       budget: exp.priceRange,

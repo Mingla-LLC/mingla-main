@@ -1,8 +1,14 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { TimelineData } from '../../types/expandedCardTypes';
-import { generateTimeline } from '../../utils/timelineGenerator';
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Linking,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { TimelineData } from "../../types/expandedCardTypes";
+import { generateTimeline } from "../../utils/timelineGenerator";
 
 interface TimelineSectionProps {
   category: string;
@@ -21,6 +27,22 @@ interface TimelineSectionProps {
   routeDuration?: number;
 }
 
+interface StepData {
+  id: string;
+  stepNumber: number;
+  label: string;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  location?: {
+    name?: string;
+    address?: string;
+    lat?: number;
+    lng?: number;
+  };
+  isStart: boolean;
+}
+
 export default function TimelineSection({
   category,
   title,
@@ -30,132 +52,283 @@ export default function TimelineSection({
   strollTimeline,
   routeDuration,
 }: TimelineSectionProps) {
-  // Use stroll timeline if available, otherwise generate default timeline
-  let timeline: TimelineData;
-  
+  // State to track which steps are expanded (first step expanded by default)
+  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set([0]));
+
+  const toggleStep = (stepIndex: number) => {
+    const newExpanded = new Set(expandedSteps);
+    if (newExpanded.has(stepIndex)) {
+      newExpanded.delete(stepIndex);
+    } else {
+      newExpanded.add(stepIndex);
+    }
+    setExpandedSteps(newExpanded);
+  };
+
+  // Process stroll timeline data
+  let steps: StepData[] = [];
+
   if (strollTimeline && strollTimeline.length > 0) {
-    // Convert stroll timeline to TimelineData format
-    const totalDuration = routeDuration 
-      ? `${routeDuration} min`
-      : strollTimeline.reduce((sum, step) => sum + step.duration, 0) + ' min';
-    
-    timeline = {
-      category,
-      totalDuration,
-      costPerPerson: priceRange || 'Free',
-      steps: strollTimeline.map((step) => ({
-        id: `step-${step.step}`,
-        title: step.title,
+    steps = strollTimeline.map((step, index) => {
+      const isStart = step.type === "start" || index === 0;
+      const stepNumber = step.step || index + 1;
+
+      // Extract title and subtitle from step.title
+      // Format could be: "Arrival & Welcome" or "Start: Arrival & Welcome" or "Main Activity"
+      // Location name comes from step.location?.name
+      let stepTitle = step.title;
+      let stepSubtitle = "";
+
+      // Check if title contains a colon (e.g., "Start: Arrival & Welcome")
+      const titleParts = step.title.split(":");
+      if (titleParts.length > 1) {
+        stepTitle = titleParts.slice(1).join(":").trim();
+      } else {
+        stepTitle = step.title.trim();
+      }
+
+      // Subtitle comes from location name or address
+      if (step.location?.name) {
+        stepSubtitle = step.location.name;
+      } else if (step.location?.address) {
+        stepSubtitle = step.location.address;
+      }
+
+      return {
+        id: `step-${stepNumber}`,
+        stepNumber,
+        label: isStart ? "Start" : `Stop ${stepNumber}`,
+        title: stepTitle,
+        subtitle: stepSubtitle,
         description: step.description,
-        duration: step.duration > 0 ? `${step.duration} min` : undefined,
-        icon: step.type === 'start' ? 'cafe' 
-          : step.type === 'walk' ? 'walk'
-          : step.type === 'pause' ? 'happy'
-          : 'checkmark',
-        location: step.location?.name || step.location?.address || address,
-      })),
-    };
+        location: step.location,
+        isStart,
+      };
+    });
   } else {
-    timeline = generateTimeline({
+    // Fallback: generate default timeline and convert to StepData format
+    const timeline = generateTimeline({
       category,
       title,
       address,
       priceRange,
       travelTime,
     });
+
+    steps = timeline.steps.map((step, index) => {
+      const isStart = index === 0;
+      const titleParts = step.title.split(":");
+      const stepTitle =
+        titleParts.length > 1 ? titleParts[0].trim() : step.title;
+
+      return {
+        id: step.id,
+        stepNumber: index + 1,
+        label: isStart ? "Start" : `Stop ${index + 1}`,
+        title: stepTitle,
+        subtitle: step.location,
+        description: step.description,
+        location: step.location ? { address: step.location } : undefined,
+        isStart,
+      };
+    });
   }
 
-  // Get icon name from string
-  const getIconName = (icon: string | undefined): string => {
-    if (!icon) return 'ellipse';
-    const iconMap: { [key: string]: string } = {
-      cafe: 'cafe',
-      walk: 'walk',
-      eye: 'eye',
-      location: 'location',
-      happy: 'happy',
-      checkmark: 'checkmark-circle',
-      restaurant: 'restaurant',
-      film: 'film',
-      brush: 'brush',
-      camera: 'camera',
-      storefront: 'storefront',
-      car: 'car',
-      leaf: 'leaf',
-      'game-controller': 'game-controller',
-      basketball: 'basketball',
-      trophy: 'trophy',
-      wine: 'wine',
-      sparkles: 'sparkles',
-      compass: 'compass',
-      'add-circle': 'add-circle',
-      star: 'star',
-    };
-    return iconMap[icon] || 'ellipse';
+  const openInMaps = (location: {
+    lat?: number;
+    lng?: number;
+    address?: string;
+    name?: string;
+  }) => {
+    const address = location.address || location.name || "";
+    const lat = location.lat;
+    const lng = location.lng;
+
+    if (lat && lng) {
+      // Open in maps with coordinates
+      const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+      Linking.openURL(url).catch((err) =>
+        console.error("Error opening maps:", err)
+      );
+    } else if (address) {
+      // Open in maps with address
+      const encodedAddress = encodeURIComponent(address);
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
+      Linking.openURL(url).catch((err) =>
+        console.error("Error opening maps:", err)
+      );
+    }
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Ionicons name="time" size={20} color="#eb7825" />
-        <Text style={styles.title}>Timeline</Text>
-      </View>
-
-      {/* Timeline Summary */}
-      <View style={styles.summaryContainer}>
-        <View style={styles.summaryItem}>
-          <Ionicons name="hourglass" size={16} color="#6b7280" />
-          <Text style={styles.summaryLabel}>Duration</Text>
-          <Text style={styles.summaryValue}>{timeline.totalDuration}</Text>
-        </View>
-        <View style={styles.summaryItem}>
-          <Ionicons name="cash" size={16} color="#6b7280" />
-          <Text style={styles.summaryLabel}>Cost</Text>
-          <Text style={styles.summaryValue}>{timeline.costPerPerson}</Text>
-        </View>
-      </View>
-
       {/* Timeline Steps */}
       <View style={styles.stepsContainer}>
-        {timeline.steps.map((step, index) => (
-          <View key={step.id} style={styles.stepRow}>
-            {/* Timeline Line */}
-            {index < timeline.steps.length - 1 && (
-              <View style={styles.timelineLine} />
-            )}
+        {/* Orange vertical line */}
+        <View style={styles.timelineLine} />
 
-            {/* Step Icon */}
-            <View style={styles.stepIconContainer}>
-              <View style={styles.stepIconCircle}>
-                <Ionicons
-                  name={getIconName(step.icon) as any}
-                  size={20}
-                  color="#eb7825"
-                />
+        {steps.map((step, index) => {
+          const isExpanded = expandedSteps.has(index);
+          const isLast = index === steps.length - 1;
+
+          return (
+            <View key={step.id} style={styles.stepWrapper}>
+              {/* Step Icon */}
+              <View style={styles.stepIconContainer}>
+                <View
+                  style={[
+                    styles.stepIconCircle,
+                    isExpanded
+                      ? styles.stepIconCircleActive
+                      : styles.stepIconCircleInactive,
+                  ]}
+                >
+                  {step.isStart ? (
+                    <Ionicons
+                      name="flag"
+                      size={20}
+                      color={isExpanded ? "#ffffff" : "#9ca3af"}
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.stopIconInner,
+                        isExpanded && styles.stopIconInnerActive,
+                      ]}
+                    />
+                  )}
+                </View>
               </View>
-            </View>
 
-            {/* Step Content */}
-            <View style={styles.stepContent}>
-              <View style={styles.stepHeader}>
-                <Text style={styles.stepTitle}>{step.title}</Text>
-                {step.duration && (
-                  <View style={styles.durationBadge}>
-                    <Ionicons name="time-outline" size={12} color="#6b7280" />
-                    <Text style={styles.durationText}>{step.duration}</Text>
+              {/* Step Content */}
+              <View style={styles.stepContent}>
+                {/* Step Header - Always Visible */}
+                <TouchableOpacity
+                  style={styles.stepHeader}
+                  onPress={() => toggleStep(index)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.stepHeaderLeft}>
+                    {/* Orange pill label */}
+                    <View
+                      style={[
+                        styles.stepLabel,
+                        isExpanded && styles.stepLabelActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.stepLabelText,
+                          isExpanded && styles.stepLabelTextActive,
+                        ]}
+                      >
+                        {step.label}
+                      </Text>
+                    </View>
+
+                    {/* Location pin icon */}
+                    <Ionicons
+                      name="location"
+                      size={14}
+                      color={"#eb7825"}
+                      style={styles.locationPin}
+                    />
+
+                    {/* Title and Subtitle */}
+                    <View style={styles.stepTitleContainer}>
+                      <Text
+                        style={[
+                          styles.stepTitle,
+                          isExpanded && styles.stepTitleActive,
+                        ]}
+                      >
+                        {step.title}
+                      </Text>
+                      {step.subtitle && (
+                        <Text style={styles.stepSubtitle}>{step.subtitle}</Text>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Caret icon */}
+                  <Ionicons
+                    name={isExpanded ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color={isExpanded ? "#eb7825" : "#9ca3af"}
+                  />
+                </TouchableOpacity>
+
+                {/* Expanded Content */}
+                {isExpanded && (
+                  <View style={styles.expandedContent}>
+                    {/* Description */}
+                    {step.description && (
+                      <Text style={styles.stepDescription}>
+                        {step.description}
+                      </Text>
+                    )}
+
+                    {/* Location Card */}
+                    {step.location &&
+                      (step.location.address || step.location.name) && (
+                        <View style={styles.locationCard}>
+                          <View style={styles.locationCardContent}>
+                            <Ionicons
+                              name="location"
+                              size={16}
+                              color="#eb7825"
+                            />
+                            <Text style={styles.locationCardAddress}>
+                              {step.location.address || step.location.name}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.openMapsButton}
+                            onPress={() => openInMaps(step.location!)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons
+                              name="paper-plane"
+                              size={14}
+                              color="#eb7825"
+                            />
+                            <Text style={styles.openMapsText}>
+                              Open in Maps
+                            </Text>
+                            <Ionicons
+                              name="open-outline"
+                              size={12}
+                              color="#eb7825"
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+
+                    {/* "Then..." Separator */}
+                    {!isLast && (
+                      <View style={styles.separator}>
+                        <View style={styles.separatorLine} />
+                        <Text style={styles.separatorText}>Then...</Text>
+                        <View style={styles.separatorLine} />
+                      </View>
+                    )}
                   </View>
                 )}
+
+                {/* Collapsed State - Show minimal info */}
+                {/*  {!isExpanded && (
+                  <View style={styles.collapsedContent}>
+                    {step.subtitle && (
+                      <Text style={styles.collapsedSubtitle}>
+                        {step.subtitle}
+                      </Text>
+                    )}
+                  </View>
+                )} */}
               </View>
-              <Text style={styles.stepDescription}>{step.description}</Text>
-              {step.location && (
-                <View style={styles.locationContainer}>
-                  <Ionicons name="location-outline" size={12} color="#9ca3af" />
-                  <Text style={styles.locationText}>{step.location}</Text>
-                </View>
-              )}
             </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
     </View>
   );
@@ -163,129 +336,187 @@ export default function TimelineSection({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     paddingVertical: 20,
     borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    gap: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  summaryContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginBottom: 20,
-    gap: 16,
-  },
-  summaryItem: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f9fafb',
-    padding: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    fontWeight: '500',
-    marginRight: 'auto',
-  },
-  summaryValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
+    borderTopColor: "#f3f4f6",
   },
   stepsContainer: {
     paddingHorizontal: 16,
-    position: 'relative',
-  },
-  stepRow: {
-    flexDirection: 'row',
-    marginBottom: 24,
-    position: 'relative',
+    position: "relative",
   },
   timelineLine: {
-    position: 'absolute',
-    left: 20,
-    top: 40,
+    position: "absolute",
+    left: 30,
+    top: 10,
+    bottom: 24,
     width: 2,
-    height: '100%',
-    backgroundColor: '#e5e7eb',
+    backgroundColor: "#eb7825",
     zIndex: 0,
+  },
+  stepWrapper: {
+    flexDirection: "row",
+    marginBottom: 16,
+    position: "relative",
+    zIndex: 1,
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    padding: 16,
   },
   stepIconContainer: {
     width: 40,
-    alignItems: 'center',
-    zIndex: 1,
+    alignItems: "center",
+    zIndex: 2,
   },
   stepIconCircle: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#fef3e2',
-    borderWidth: 2,
-    borderColor: '#eb7825',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  stepIconCircleActive: {
+    backgroundColor: "#eb7825",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  stepIconCircleInactive: {
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  stopIconInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#9ca3af",
+  },
+  stopIconInnerActive: {
+    backgroundColor: "#ffffff",
   },
   stepContent: {
     flex: 1,
     marginLeft: 12,
-    paddingBottom: 8,
   },
   stepHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  stepHeaderLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  stepLabel: {
+    backgroundColor: "#e5e7eb",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  stepLabelActive: {
+    backgroundColor: "#eb7825",
+  },
+  stepLabelText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+  stepLabelTextActive: {
+    color: "#ffffff",
+  },
+  locationPin: {
+    marginLeft: 2,
+  },
+  stepTitleContainer: {
+    flex: 1,
+    minWidth: "100%",
   },
   stepTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 2,
   },
-  durationBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
+  stepTitleActive: {
+    color: "#eb7825",
   },
-  durationText: {
-    fontSize: 11,
-    color: '#6b7280',
-    fontWeight: '500',
+  stepSubtitle: {
+    fontSize: 14,
+    color: "#6b7280",
+  },
+  expandedContent: {
+    marginTop: 8,
   },
   stepDescription: {
     fontSize: 14,
-    color: '#6b7280',
+    color: "#6b7280",
     lineHeight: 20,
-    marginBottom: 4,
+    marginBottom: 12,
   },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  locationCard: {
+    backgroundColor: "#fef3e2",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  locationCardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  locationCardAddress: {
+    fontSize: 14,
+    color: "#111827",
+    flex: 1,
+  },
+  openMapsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  openMapsText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  separator: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 8,
+    gap: 8,
+  },
+  separatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#e5e7eb",
+  },
+  separatorText: {
+    fontSize: 12,
+    color: "#9ca3af",
+    fontWeight: "500",
+  },
+  collapsedContent: {
     marginTop: 4,
   },
-  locationText: {
-    fontSize: 12,
-    color: '#9ca3af',
-    fontStyle: 'italic',
+  collapsedSubtitle: {
+    fontSize: 13,
+    color: "#9ca3af",
   },
 });
-

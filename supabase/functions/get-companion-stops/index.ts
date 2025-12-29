@@ -45,7 +45,10 @@ serve(async (req) => {
     }
 
     // Fetch companion stops in parallel and keep only the top result
-    const companionStops = await findCompanionStops(anchor.location, maxDistance);
+    const companionStops = await findCompanionStops(
+      anchor.location,
+      maxDistance
+    );
 
     if (!companionStops.length) {
       return new Response(
@@ -85,10 +88,10 @@ serve(async (req) => {
   } catch (error) {
     console.error("Error in get-companion-stops:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
 
@@ -120,31 +123,73 @@ async function findCompanionStops(
     "meal_takeaway",
   ];
 
+  // Places API (New) base URL
+  const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
+
+  // Field mask for Places API (New) - specify which fields we need
+  const fieldMask =
+    "places.id,places.displayName,places.location,places.formattedAddress,places.rating,places.userRatingCount,places.photos";
+
   const companionPromises = companionTypes.map(async (placeType) => {
     try {
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${anchorLocation.lat},${anchorLocation.lng}&radius=${maxDistance}&type=${placeType}&key=${GOOGLE_API_KEY}`;
+      const requestBody = {
+        includedTypes: [placeType],
+        maxResultCount: 2,
+        locationRestriction: {
+          circle: {
+            center: {
+              latitude: anchorLocation.lat,
+              longitude: anchorLocation.lng,
+            },
+            radius: maxDistance,
+          },
+        },
+      };
 
-      const response = await fetch(url);
-      if (!response.ok) return [];
+      const response = await fetch(baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_API_KEY,
+          "X-Goog-FieldMask": fieldMask,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `Error fetching companion stops for ${placeType}:`,
+          response.status,
+          errorText
+        );
+        return [];
+      }
 
       const data = await response.json();
-      if (data.status === "OK" && data.results?.length) {
-        return data.results.slice(0, 2).map((place: any) => ({
-          id: place.place_id,
-          name: place.name,
-          location: {
-            lat: place.geometry.location.lat,
-            lng: place.geometry.location.lng,
-          },
-          address: place.vicinity || place.formatted_address,
-          rating: place.rating,
-          reviewCount: place.user_ratings_total || 0,
-          imageUrl: place.photos?.[0]
-            ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.photos[0].photo_reference}&key=${GOOGLE_API_KEY}`
-            : null,
-          placeId: place.place_id,
-          type: placeType,
-        }));
+      if (data.places?.length) {
+        return data.places.map((place: any) => {
+          // Extract photo reference from new API format
+          const primaryPhoto = place.photos?.[0];
+          const imageUrl = primaryPhoto?.name
+            ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=400&key=${GOOGLE_API_KEY}`
+            : null;
+
+          return {
+            id: place.id,
+            name: place.displayName?.text || "Unknown Place",
+            location: {
+              lat: place.location?.latitude || anchorLocation.lat,
+              lng: place.location?.longitude || anchorLocation.lng,
+            },
+            address: place.formattedAddress || "",
+            rating: place.rating || 0,
+            reviewCount: place.userRatingCount || 0,
+            imageUrl: imageUrl,
+            placeId: place.id, // In new API, place.id is the identifier
+            type: placeType,
+          };
+        });
       }
       return [];
     } catch (error) {
@@ -172,7 +217,7 @@ function buildStrollRouteTimeline(
   timeline.push({
     step: 1,
     type: "start",
-    title: "Start",
+    title: "Arrival & Welcome",
     location: companionStop,
     description: `Begin at ${companionStop.name}`,
     duration: 0,
@@ -182,7 +227,7 @@ function buildStrollRouteTimeline(
   timeline.push({
     step: 2,
     type: "walk",
-    title: "Scenic Walk",
+    title: "Main Activity",
     location: anchor,
     description: `Walk to ${anchor.name}`,
     duration: walkDuration,
@@ -202,7 +247,7 @@ function buildStrollRouteTimeline(
   timeline.push({
     step: timeline.length + 1,
     type: "wrap-up",
-    title: "Wrap-Up",
+    title: "Closing Touch",
     location: anchor,
     description: `End at ${anchor.name}`,
     duration: 0,
@@ -214,4 +259,3 @@ function buildStrollRouteTimeline(
 function calculateStrollRouteDuration(): number {
   return 30; // Solo: 25-35 minutes, average 30
 }
-

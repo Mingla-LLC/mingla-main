@@ -57,11 +57,13 @@ export default function WeatherSection({
       <View style={styles.container}>
         <View style={styles.card}>
           <View style={styles.header}>
-            <Ionicons name="cloudy" size={20} color="#9ca3af" />
+            <View style={styles.iconCircle}>
+              <Ionicons name="cloudy" size={20} color="#fed7aa" />
+            </View>
             <Text style={styles.title}>Weather Forecast</Text>
           </View>
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#6b7280" />
+            <ActivityIndicator size="small" color="#ea580c" />
             <Text style={styles.loadingText}>Loading weather...</Text>
           </View>
         </View>
@@ -82,14 +84,13 @@ export default function WeatherSection({
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.iconCircle}>
-            <Ionicons name={weatherIcon as any} size={20} color="#9ca3af" />
+            <Ionicons name={weatherIcon as any} size={20} color="#d6691f" />
           </View>
           <View style={styles.headerTextContainer}>
             <Text style={styles.title}>Weather Forecast</Text>
             <Text style={styles.condition}>{conditionText}</Text>
           </View>
           <View style={styles.metric}>
-            <Ionicons name="thermometer" size={16} color="#374151" />
             <Text style={styles.temperature}>
               {Math.round(weatherData.temperature)}°F
             </Text>
@@ -113,11 +114,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   card: {
-    backgroundColor: "#fbf9fa",
+    backgroundColor: "#eb78251a",
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#d1d5dc",
+    borderColor: "#eb782566",
   },
   header: {
     flexDirection: "row",
@@ -129,14 +130,9 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#fff",
+    backgroundColor: "#ffffff",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
   },
   headerTextContainer: {
     flex: 1,
@@ -144,13 +140,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#374151",
+    color: "#d6691f",
     marginBottom: 4,
   },
   condition: {
     fontSize: 16,
     fontWeight: "500",
-    color: "#374151",
+    color: "#4a5565",
   },
   loadingContainer: {
     flexDirection: "row",
@@ -161,35 +157,28 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "#ea580c",
   },
   metric: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "white",
-    borderRadius: 16,
-    padding: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
   },
   temperature: {
     fontSize: 16,
     fontWeight: "500",
-    color: "#374151",
+    color: "#ea580c",
   },
   recommendationBox: {
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#d1d5dc",
     padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#0a0a0a33",
   },
   recommendationText: {
     fontSize: 14,
-    color: "#374151",
+    color: "#ea580c",
     lineHeight: 20,
   },
 });

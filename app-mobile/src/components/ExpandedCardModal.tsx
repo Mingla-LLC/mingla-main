@@ -14,6 +14,7 @@ import { ExpandedCardModalProps } from "../types/expandedCardTypes";
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
 import { bookingService, BookingOption } from "../services/bookingService";
+import { ExperienceGenerationService } from "../services/experienceGenerationService";
 import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
 import ImageGallery from "./expandedCard/ImageGallery";
 import CardInfoSection from "./expandedCard/CardInfoSection";
@@ -46,16 +47,20 @@ export default function ExpandedCardModal({
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [loadingBusyness, setLoadingBusyness] = useState(false);
   const [loadingBooking, setLoadingBooking] = useState(false);
+  const [strollData, setStrollData] = useState(card?.strollData);
+  const [loadingStrollData, setLoadingStrollData] = useState(false);
 
   // Fetch additional data when modal opens
   useEffect(() => {
     if (visible && card) {
       fetchAdditionalData();
+      setStrollData(card.strollData);
     } else {
       // Reset state when modal closes
       setWeatherData(null);
       setBusynessData(null);
       setBookingOptions([]);
+      setStrollData(undefined);
     }
   }, [visible, card]);
 
@@ -123,9 +128,59 @@ export default function ExpandedCardModal({
     }
   };
 
+  const fetchStrollData = async () => {
+    if (!card) return;
+
+    const isStrollCard =
+      card.category?.toLowerCase().includes("stroll") ||
+      card.category?.toLowerCase() === "take a stroll" ||
+      card.category?.toLowerCase() === "take-a-stroll" ||
+      card.category?.toLowerCase() === "take_a_stroll";
+
+    if (!isStrollCard) return;
+
+    // Create anchor from card data
+    const anchor =
+      strollData?.anchor ||
+      (card.location && card.title
+        ? {
+            id: card.id,
+            name: card.title,
+            location: { lat: card.location.lat, lng: card.location.lng },
+            address: card.address,
+          }
+        : null);
+
+    if (!anchor) {
+      console.warn("⚠️ Cannot fetch stroll data: missing anchor information");
+      return;
+    }
+
+    setLoadingStrollData(true);
+    try {
+      const fetchedStrollData =
+        await ExperienceGenerationService.fetchCompanionStrollData(anchor);
+      if (fetchedStrollData) {
+        setStrollData(fetchedStrollData);
+        // Update the card's strollData if possible
+        if (card) {
+          (card as any).strollData = fetchedStrollData;
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching companion stroll data:", err);
+    } finally {
+      setLoadingStrollData(false);
+    }
+  };
+
   if (!card) {
     return null;
   }
+
+  const isStrollCard =
+    card.category === "Take a Stroll" ||
+    card.category?.toLowerCase().includes("stroll");
 
   return (
     <Modal
@@ -188,10 +243,10 @@ export default function ExpandedCardModal({
             />
 
             {/* Highlights Section */}
-            <HighlightsSection
+            {/*  <HighlightsSection
               highlights={card.highlights}
               category={card.category}
-            />
+            /> */}
 
             {/* Weather Section */}
             <WeatherSection
@@ -217,25 +272,92 @@ export default function ExpandedCardModal({
             />
 
             {/* Match Factors Breakdown */}
-            <MatchFactorsBreakdown matchFactors={card.matchFactors} />
+            {/*  <MatchFactorsBreakdown matchFactors={card.matchFactors} /> */}
 
             {/* Companion Stops Section (for stroll cards) */}
-            {card.strollData && card.strollData.companionStops && (
+            {strollData && strollData.companionStops && (
               <CompanionStopsSection
-                companionStops={card.strollData.companionStops}
+                companionStops={strollData.companionStops}
               />
             )}
 
-            {/* Timeline Section */}
-            <TimelineSection
-              category={card.category}
-              title={card.title}
-              address={card.address}
-              priceRange={card.priceRange}
-              travelTime={card.travelTime}
-              strollTimeline={card.strollData?.timeline}
-              routeDuration={card.strollData?.route?.duration}
-            />
+            {/* Timeline Section or "See Route Pairing" Button (only for Take a Stroll cards) */}
+            {isStrollCard && (
+              <>
+                {strollData && strollData.timeline ? (
+                  <TimelineSection
+                    category={card.category}
+                    title={card.title}
+                    address={card.address}
+                    priceRange={card.priceRange}
+                    travelTime={card.travelTime}
+                    strollTimeline={strollData.timeline}
+                    routeDuration={strollData.route?.duration}
+                  />
+                ) : (
+                  <View style={styles.routePairingSection}>
+                    {/* Header */}
+                    <View style={styles.routePairingHeader}>
+                      <View style={styles.routePairingIconContainer}>
+                        <Ionicons
+                          name="location-outline"
+                          size={20}
+                          color="#eb7825"
+                        />
+                        <View style={styles.routePairingIconDot} />
+                      </View>
+                      <Text style={styles.routePairingTitle}>
+                        Experience Route
+                      </Text>
+                    </View>
+
+                    {/* Description */}
+                    <Text style={styles.routePairingDescription}>
+                      Follow these stops for the complete journey
+                    </Text>
+
+                    {/* Action Button */}
+                    <TouchableOpacity
+                      style={styles.routePairingButton}
+                      onPress={fetchStrollData}
+                      disabled={loadingStrollData}
+                      activeOpacity={0.7}
+                    >
+                      {loadingStrollData ? (
+                        <>
+                          <ActivityIndicator
+                            size="small"
+                            color="#ffffff"
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={styles.routePairingButtonText}>
+                            Loading Route...
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Ionicons
+                            name="paper-plane"
+                            size={20}
+                            color="#ffffff"
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={styles.routePairingButtonText}>
+                            See Route Pairing
+                          </Text>
+                          <Ionicons
+                            name="open-outline"
+                            size={16}
+                            color="#ffffff"
+                            style={{ marginLeft: 8 }}
+                          />
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            )}
 
             {/* Action Buttons */}
             <ActionButtons
@@ -330,5 +452,65 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6b7280",
     marginBottom: 2,
+  },
+  routePairingSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+    backgroundColor: "#ffffff",
+  },
+  routePairingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 8,
+  },
+  routePairingIconContainer: {
+    position: "relative",
+    width: 24,
+    height: 24,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  routePairingIconDot: {
+    position: "absolute",
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#eb7825",
+    top: "50%",
+    left: "50%",
+    marginTop: -3,
+    marginLeft: -3,
+  },
+  routePairingTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  routePairingDescription: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginBottom: 16,
+  },
+  routePairingButton: {
+    backgroundColor: "#eb7825",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  routePairingButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

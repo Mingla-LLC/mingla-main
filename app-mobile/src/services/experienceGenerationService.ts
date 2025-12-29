@@ -80,13 +80,36 @@ export class ExperienceGenerationService {
     request: ExperienceGenerationRequest
   ): Promise<GeneratedExperience[]> {
     try {
+      // Filter out experience types from categories array
+      // Experience types are: "solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business"
+      const experienceTypeIds = new Set([
+        "solo-adventure",
+        "first-dates",
+        "romantic",
+        "friendly",
+        "group-fun",
+        "business",
+      ]);
+
+      const filteredCategories = request.preferences.categories
+        ? request.preferences.categories.filter(
+            (category) => !experienceTypeIds.has(category)
+          )
+        : request.preferences.categories;
+
+      // Create filtered preferences object
+      const filteredPreferences = {
+        ...request.preferences,
+        categories: filteredCategories,
+      };
+
       // Call Supabase edge function to generate experiences
       const { data, error } = await supabase.functions.invoke(
         "new-generate-experience-",
         {
           body: {
             user_id: request.userId,
-            preferences: request.preferences,
+            preferences: filteredPreferences,
             location: request.location,
           },
         }
@@ -95,7 +118,7 @@ export class ExperienceGenerationService {
       if (error) {
         console.error("Error generating experiences:", error);
         console.error("Error details:", JSON.stringify(error, null, 2));
-        
+
         // Check if it's a function error with a message
         if (error.message) {
           throw new Error(`Failed to generate experiences: ${error.message}`);
@@ -570,9 +593,11 @@ export class ExperienceGenerationService {
       if (error) {
         console.error("Error generating session experiences:", error);
         console.error("Error details:", JSON.stringify(error, null, 2));
-        
+
         if (error.message) {
-          throw new Error(`Failed to generate session experiences: ${error.message}`);
+          throw new Error(
+            `Failed to generate session experiences: ${error.message}`
+          );
         }
         throw error;
       }
@@ -587,7 +612,6 @@ export class ExperienceGenerationService {
         console.log("⚠️ No cards returned from session experience generation");
         return [];
       }
-
 
       // Transform the response to our format
       return data.cards.map((card: any) =>

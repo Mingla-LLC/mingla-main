@@ -1,6 +1,12 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Linking,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 interface PracticalDetailsSectionProps {
   address?: string;
@@ -17,14 +23,14 @@ export default function PracticalDetailsSection({
 }: PracticalDetailsSectionProps) {
   const handlePhonePress = () => {
     if (phone) {
-      Linking.openURL(`tel:${phone.replace(/[^0-9+]/g, '')}`);
+      Linking.openURL(`tel:${phone.replace(/[^0-9+]/g, "")}`);
     }
   };
 
   const handleWebsitePress = () => {
     if (website) {
       let url = website;
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      if (!url.startsWith("http://") && !url.startsWith("https://")) {
         url = `https://${url}`;
       }
       Linking.openURL(url);
@@ -43,7 +49,7 @@ export default function PracticalDetailsSection({
   // Parse opening hours if it's a string
   const formatOpeningHours = (hours: string | undefined): string[] => {
     if (!hours) return [];
-    
+
     // If it's already formatted as an array of strings, return as is
     if (Array.isArray(hours)) {
       return hours;
@@ -74,10 +80,10 @@ export default function PracticalDetailsSection({
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      {/* <View style={styles.header}>
         <Ionicons name="information-circle" size={20} color="#eb7825" />
         <Text style={styles.title}>Practical Details</Text>
-      </View>
+      </View> */}
 
       <View style={styles.detailsContainer}>
         {/* Address */}
@@ -148,7 +154,7 @@ export default function PracticalDetailsSection({
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Website</Text>
               <Text style={[styles.detailValue, styles.websiteText]}>
-                {website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                {website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
               </Text>
               <Text style={styles.detailAction}>Tap to visit</Text>
             </View>
@@ -162,42 +168,42 @@ export default function PracticalDetailsSection({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     paddingVertical: 20,
     borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    borderTopColor: "#f3f4f6",
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     marginBottom: 16,
     gap: 8,
   },
   title: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
   },
   detailsContainer: {
     paddingHorizontal: 16,
     gap: 0,
   },
   detailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: "#f3f4f6",
     gap: 12,
   },
   iconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f9fafb',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#f9fafb",
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 2,
   },
   detailContent: {
@@ -205,26 +211,25 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: 12,
-    color: '#6b7280',
-    fontWeight: '500',
+    color: "#6b7280",
+    fontWeight: "500",
     marginBottom: 4,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   detailValue: {
     fontSize: 15,
-    color: '#111827',
+    color: "#111827",
     lineHeight: 22,
     marginBottom: 4,
   },
   detailAction: {
     fontSize: 12,
-    color: '#eb7825',
-    fontWeight: '500',
+    color: "#eb7825",
+    fontWeight: "500",
     marginTop: 2,
   },
   websiteText: {
-    color: '#3b82f6',
+    color: "#3b82f6",
   },
 });
-

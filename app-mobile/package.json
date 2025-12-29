@@ -4,6 +4,12 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
+    "build-dev-android": "npx eas build --platform android --profile development",
+    "build-dev-ios": "npx eas build --platform ios --profile development",
+    "build-preview-android": "npx eas build --platform android --profile preview",
+    "build-preview-ios": "npx eas build --platform ios --profile preview",
+    "build-production-android": "npx eas build --platform android --profile production",
+    "build-production-ios": "npx eas build --platform ios --profile production",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
