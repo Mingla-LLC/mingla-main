@@ -231,13 +231,30 @@ serve(async (req) => {
 
     console.log(`📍 Using central location: ${location.lat}, ${location.lng}`);
 
+    // Filter out experience types from categories array
+    // Experience types are: "first-dates", "romantic", "friendly", "group-fun", "business"
+    const experienceTypeIds = new Set([
+      "first-dates",
+      "romantic",
+      "friendly",
+      "group-fun",
+      "business",
+      "solo-adventure", // Include for completeness, though not in collaboration
+    ]);
+
+    const filteredCategories = aggregated.categories
+      ? aggregated.categories.filter(
+          (category: string) => !experienceTypeIds.has(category)
+        )
+      : aggregated.categories;
+
     // Convert aggregated preferences to UserPreferences format
     const preferences: UserPreferences = {
       mode: "collaboration",
       budget_min: aggregated.budget_min,
       budget_max: aggregated.budget_max,
       people_count: allPreferences.length, // Number of participants
-      categories: aggregated.categories,
+      categories: filteredCategories,
       travel_mode: aggregated.travel_mode,
       travel_constraint_type: aggregated.travel_constraint_type,
       travel_constraint_value: aggregated.travel_constraint_value,

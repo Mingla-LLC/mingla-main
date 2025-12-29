@@ -983,12 +983,26 @@ function filterByConstraints(
   });
 
   // Stage 2: Filter by budget
-  remaining = remaining.filter((place) => {
-    return !(
-      place.price_min > preferences.budget_max ||
-      place.price_max < preferences.budget_min
-    );
-  });
+    remaining = remaining.filter((place) => {
+      // Check if this is a stroll card - skip budget filtering for stroll cards
+      const categoryKey = place.category?.toLowerCase() || "";
+      const isStrollCard =
+        categoryKey.includes("stroll") ||
+        categoryKey === "take a stroll" ||
+        categoryKey === "take-a-stroll" ||
+        categoryKey === "take_a_stroll";
+
+      // Skip budget filtering for stroll cards
+      if (isStrollCard) {
+        return true;
+      }
+
+      // Apply budget filter for non-stroll cards
+      return !(
+        place.price_min > preferences.budget_max ||
+        place.price_max < preferences.budget_min
+      );
+    });
 
   // Stage 3: Filter by category
   remaining = remaining.filter((place) => {

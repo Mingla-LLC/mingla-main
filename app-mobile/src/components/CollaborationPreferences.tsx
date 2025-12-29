@@ -548,53 +548,57 @@ export default function CollaborationPreferences({
           </View>
         </View>
 
-        {/* Budget per Person Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Budget per Person</Text>
-          <View style={styles.budgetInputsContainer}>
-            <View style={styles.budgetInputWrapper}>
-              <Text style={styles.inputLabel}>Min</Text>
-              <View style={styles.budgetInputContainer}>
-                <Text style={styles.dollarSign}>$</Text>
-                <TextInput
-                  value={budgetMin?.toString() || ""}
-                  onChangeText={(text) =>
-                    setBudgetMin(text ? Number(text) : "")
-                  }
-                  keyboardType="numeric"
-                  style={styles.budgetInput}
-                  placeholder="0"
-                />
+        {/* Budget per Person Section - Hide when only "Take a Stroll" is selected */}
+        {!(
+          selectedCategories.length === 1 && selectedCategories[0] === "Stroll"
+        ) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Budget per Person</Text>
+            <View style={styles.budgetInputsContainer}>
+              <View style={styles.budgetInputWrapper}>
+                <Text style={styles.inputLabel}>Min</Text>
+                <View style={styles.budgetInputContainer}>
+                  <Text style={styles.dollarSign}>$</Text>
+                  <TextInput
+                    value={budgetMin?.toString() || ""}
+                    onChangeText={(text) =>
+                      setBudgetMin(text ? Number(text) : "")
+                    }
+                    keyboardType="numeric"
+                    style={styles.budgetInput}
+                    placeholder="0"
+                  />
+                </View>
+              </View>
+              <View style={styles.budgetInputWrapper}>
+                <Text style={styles.inputLabel}>Max</Text>
+                <View style={styles.budgetInputContainer}>
+                  <Text style={styles.dollarSign}>$</Text>
+                  <TextInput
+                    value={budgetMax?.toString() || ""}
+                    onChangeText={(text) =>
+                      setBudgetMax(text ? Number(text) : "")
+                    }
+                    keyboardType="numeric"
+                    style={styles.budgetInput}
+                    placeholder="200"
+                  />
+                </View>
               </View>
             </View>
-            <View style={styles.budgetInputWrapper}>
-              <Text style={styles.inputLabel}>Max</Text>
-              <View style={styles.budgetInputContainer}>
-                <Text style={styles.dollarSign}>$</Text>
-                <TextInput
-                  value={budgetMax?.toString() || ""}
-                  onChangeText={(text) =>
-                    setBudgetMax(text ? Number(text) : "")
-                  }
-                  keyboardType="numeric"
-                  style={styles.budgetInput}
-                  placeholder="200"
-                />
-              </View>
+            <View style={styles.budgetPresetsContainer}>
+              {budgetPresets.map((preset) => (
+                <TouchableOpacity
+                  key={preset.label}
+                  onPress={() => setBudgetPreset(preset.min, preset.max)}
+                  style={styles.budgetPresetButton}
+                >
+                  <Text style={styles.budgetPresetText}>{preset.label}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
-          <View style={styles.budgetPresetsContainer}>
-            {budgetPresets.map((preset) => (
-              <TouchableOpacity
-                key={preset.label}
-                onPress={() => setBudgetPreset(preset.min, preset.max)}
-                style={styles.budgetPresetButton}
-              >
-                <Text style={styles.budgetPresetText}>{preset.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+        )}
 
         {/* Date & Time Section */}
         <View style={styles.section}>
