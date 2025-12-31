@@ -17,8 +17,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { PreferencesService } from "../services/preferencesService";
 import { locationService } from "../services/locationService";
+import { offlineService } from "../services/offlineService";
 import { Calendar } from "./ui/calendar";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface PreferencesSheetProps {
   onClose?: () => void;
@@ -158,6 +160,7 @@ export default function PreferencesSheet({
   accountPreferences,
 }: PreferencesSheetProps) {
   const { user } = useAuthSimple();
+  const queryClient = useQueryClient();
 
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
@@ -552,6 +555,27 @@ export default function PreferencesSheet({
       }
 
       const saveResult = await Promise.resolve(onSave(preferences));
+
+      // Update offline cache with new preferences before invalidating
+      // This ensures useUserLocation gets fresh data when it reads from cache
+      try {
+        if (user?.id) {
+          const updatedPrefs = await PreferencesService.getUserPreferences(
+            user.id
+          );
+          if (updatedPrefs) {
+            await offlineService.cacheUserPreferences(updatedPrefs);
+          }
+        }
+      } catch (error) {
+        console.error("Error updating offline cache:", error);
+      }
+
+      // Invalidate TanStack Query caches to trigger refetch
+      queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
+      queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+
       if (saveResult === true || saveResult === undefined) {
         if (onClose) onClose();
       }

@@ -15,6 +15,7 @@ import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
 import { bookingService, BookingOption } from "../services/bookingService";
 import { ExperienceGenerationService } from "../services/experienceGenerationService";
+import { useRecommendations } from "../contexts/RecommendationsContext";
 import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
 import ImageGallery from "./expandedCard/ImageGallery";
 import CardInfoSection from "./expandedCard/CardInfoSection";
@@ -41,6 +42,7 @@ export default function ExpandedCardModal({
   onShare,
   userPreferences,
 }: ExpandedCardModalProps) {
+  const { updateCardStrollData } = useRecommendations();
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [busynessData, setBusynessData] = useState<BusynessData | null>(null);
   const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
@@ -162,9 +164,9 @@ export default function ExpandedCardModal({
         await ExperienceGenerationService.fetchCompanionStrollData(anchor);
       if (fetchedStrollData) {
         setStrollData(fetchedStrollData);
-        // Update the card's strollData if possible
+        // Update the card's strollData in the context and cache
         if (card) {
-          (card as any).strollData = fetchedStrollData;
+          updateCardStrollData(card.id, fetchedStrollData);
         }
       }
     } catch (err) {

@@ -6,6 +6,7 @@ import { savedCardsService } from "../services/savedCardsService";
 import { BoardCardService } from "../services/boardCardService";
 import { toastManager } from "../components/ui/Toast";
 import { supabase } from "../services/supabase";
+import { offlineService } from "../services/offlineService";
 
 export function useAppHandlers(state: any) {
   const {
@@ -85,7 +86,8 @@ export function useAppHandlers(state: any) {
             const result = await SessionService.switchToSession(user.id, sessionId);
             
             if (result.success) {
-              setCurrentMode(mode);
+              // Pass sessionId to setCurrentMode for proper tracking
+              setCurrentMode(mode, sessionId);
             } else {
               console.error("Error switching to session:", result.error);
               // Fallback to solo if switch fails
@@ -100,6 +102,7 @@ export function useAppHandlers(state: any) {
           setCurrentMode("solo");
         }
       } else {
+        // No user, just set mode without sessionId
         setCurrentMode(mode);
       }
     }
@@ -631,6 +634,16 @@ export function useAppHandlers(state: any) {
         );
 
         if (success) {
+          // Update offline cache with new preferences so useUserLocation gets fresh data
+          try {
+            const updatedPrefs = await PreferencesService.getUserPreferences(user.id);
+            if (updatedPrefs) {
+              await offlineService.cacheUserPreferences(updatedPrefs);
+            }
+          } catch (cacheError) {
+            console.error("Error updating offline cache:", cacheError);
+          }
+
           // Trigger refresh of experiences by updating refresh key
           if (setPreferencesRefreshKey) {
             setPreferencesRefreshKey((prev: number) => prev + 1);

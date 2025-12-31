@@ -29,6 +29,8 @@ import SavedExperiencesPage from "../src/components/SavedExperiencesPage";
 import ConnectionsPage from "../src/components/ConnectionsPage";
 import { NavigationProvider } from "../src/contexts/NavigationContext";
 import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider";
+import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
+import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
 import EmailOTPVerificationScreen from "../src/components/EmailOTPVerificationScreen";
 import CoachMap from "../src/components/CoachMap";
 import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
@@ -37,6 +39,11 @@ import { useBoardSession } from "../hooks/useBoardSession";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
 import ShareModal from "../src/components/ShareModal";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
+import { SessionService } from "../src/services/sessionService";
+import { supabase } from "../src/services/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function App() {
   const state = useAppState();
@@ -217,7 +224,6 @@ export default function App() {
         if (accessToken && refreshToken) {
           console.log("Tokens found in deep link, setting session...");
           // Use supabase directly to set session
-          const { supabase } = await import("../src/services/supabase");
           const { useAppStore } = await import("../src/store/appStore");
           const { setProfile } = useAppStore.getState();
 
@@ -326,7 +332,6 @@ export default function App() {
     if (!user?.id || !profile) return;
 
     try {
-      const { supabase } = await import("../src/services/supabase");
       const { error } = await supabase
         .from("profiles")
         .update({ coach_map_tour_status: status })
@@ -369,16 +374,28 @@ export default function App() {
   // Get session ID when in collaboration mode
   useEffect(() => {
     const getSessionId = async () => {
-      if (currentMode !== "solo") {
+      // Check if solo mode is persisted in storage first
+      try {
+        const storedMode = await AsyncStorage.getItem("mingla_last_mode");
+        if (storedMode) {
+          const parsedMode = JSON.parse(storedMode);
+          if (parsedMode === "solo") {
+            // Solo mode is persisted, return early without fetching from database
+            setCurrentSessionId(null);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error checking last mode storage:", error);
+      }
+
+      if (currentMode !== "solo" && user?.id) {
         // Try to get from active session
-        const activeSession = await import(
-          "../src/services/sessionService"
-        ).then((module) => module.SessionService.getActiveSession());
+        const activeSession = await SessionService.getActiveSession(user.id);
         if (activeSession) {
           setCurrentSessionId(activeSession.sessionId);
         } else {
           // Fallback: find session by name
-          const { supabase } = await import("../src/services/supabase");
           const { data: sessions } = await supabase
             .from("collaboration_sessions")
             .select("id")
@@ -395,7 +412,7 @@ export default function App() {
     };
 
     getSessionId();
-  }, [currentMode]);
+  }, [currentMode, user?.id]);
 
   // Show loading while checking authentication status (with fallback)
   if (isLoadingAuth && !authTimeout) {
@@ -580,7 +597,7 @@ export default function App() {
             }}
             onOpenCollaboration={handlers.handleCollaborationOpen}
             onOpenCollabPreferences={() => setShowCollabPreferences(true)}
-            currentMode={currentMode}
+            currentMode={currentMode ?? "solo"}
             isHighlightingHeader={isHighlightingHeader}
             userPreferences={userPreferences}
             accountPreferences={{
@@ -634,7 +651,7 @@ export default function App() {
             onReportUser={handlers.handleReportUser}
             accountPreferences={accountPreferences}
             boardsSessions={boardsSessions}
-            currentMode={currentMode}
+            currentMode={currentMode ?? "solo"}
             onModeChange={handlers.handleModeChange}
             onUpdateBoardSession={(board: any) => {
               console.log("Updating board session:", board);
@@ -745,7 +762,6 @@ export default function App() {
               try {
                 // Remove user from session participants
                 if (exitedSessionId) {
-                  const { supabase } = await import("../src/services/supabase");
                   await supabase
                     .from("session_participants")
                     .delete()
@@ -770,16 +786,17 @@ export default function App() {
                 updateBoardsSessions(boards);
 
                 // Refresh active session from database
-                const { SessionService } = await import(
-                  "../src/services/sessionService"
-                );
                 const activeSession = await SessionService.getActiveSession(
                   user.id
                 );
 
                 // Update current mode based on active session
                 if (activeSession) {
-                  state.setCurrentMode(activeSession.sessionName);
+                  // Pass sessionId to setCurrentMode for proper tracking
+                  state.setCurrentMode(
+                    activeSession.sessionName,
+                    activeSession.sessionId
+                  );
                 } else {
                   state.setCurrentMode("solo");
                 }
@@ -845,7 +862,7 @@ export default function App() {
             }}
             onOpenCollaboration={handlers.handleCollaborationOpen}
             onOpenCollabPreferences={() => setShowCollabPreferences(true)}
-            currentMode={currentMode}
+            currentMode={currentMode ?? "solo"}
             isHighlightingHeader={isHighlightingHeader}
             userPreferences={userPreferences}
             accountPreferences={{
@@ -882,39 +899,55 @@ export default function App() {
     // Show CollaborationPreferences as full screen if collaboration preferences are open
     if (showCollabPreferences && currentMode !== "solo" && currentSessionId) {
       return (
-        <ErrorBoundary>
-          <CollaborationPreferences
-            isOpen={showCollabPreferences}
-            onClose={() => {
-              setShowCollabPreferences(false);
-            }}
-            sessionName={currentMode}
-            sessionId={currentSessionId} // Add this
-            participants={[]}
-            onSave={handlers.handleCollabPreferencesSave}
-          />
-        </ErrorBoundary>
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister: asyncStoragePersister,
+            maxAge: 24 * 60 * 60 * 1000, // 24 hours
+          }}
+        >
+          <ErrorBoundary>
+            <CollaborationPreferences
+              isOpen={showCollabPreferences}
+              onClose={() => {
+                setShowCollabPreferences(false);
+              }}
+              sessionName={currentMode ?? "solo"}
+              sessionId={currentSessionId} // Add this
+              participants={[]}
+              onSave={handlers.handleCollabPreferencesSave}
+            />
+          </ErrorBoundary>
+        </PersistQueryClientProvider>
       );
     }
 
     // Show PreferencesSheet as full screen if preferences are open
     if (showPreferences) {
       return (
-        <ErrorBoundary>
-          <PreferencesSheet
-            onClose={() => {
-              setShowPreferences(false);
-            }}
-            onSave={handlers.handleSavePreferences}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-          />
-        </ErrorBoundary>
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister: asyncStoragePersister,
+            maxAge: 24 * 60 * 60 * 1000, // 24 hours
+          }}
+        >
+          <ErrorBoundary>
+            <PreferencesSheet
+              onClose={() => {
+                setShowPreferences(false);
+              }}
+              onSave={handlers.handleSavePreferences}
+              accountPreferences={{
+                currency: accountPreferences?.currency || "USD",
+                measurementSystem:
+                  (accountPreferences?.measurementSystem as
+                    | "Metric"
+                    | "Imperial") || "Imperial",
+              }}
+            />
+          </ErrorBoundary>
+        </PersistQueryClientProvider>
       );
     }
 
@@ -982,252 +1015,290 @@ export default function App() {
 
     return (
       <>
-        <MobileFeaturesProvider>
-          <NavigationProvider>
-            <ErrorBoundary>
-              <SafeAreaView style={styles.safeArea}>
-                <StatusBar barStyle="dark-content" backgroundColor="white" />
-                <View style={styles.container}>
-                  {/* Main Content */}
-                  <View style={styles.mainContent}>{renderCurrentPage()}</View>
-
-                  {/* Collaboration Module */}
-                  <CollaborationModule
-                    isOpen={showCollaboration}
-                    onClose={() => {
-                      setShowCollaboration(false);
-                      setPreSelectedFriend(null);
-                    }}
-                    currentMode={currentMode}
-                    onModeChange={handlers.handleModeChange}
-                    preSelectedFriend={preSelectedFriend}
-                    boardsSessions={boardsSessions}
-                    onUpdateBoardSession={(updatedBoard: any) =>
-                      console.log("Update board session:", updatedBoard)
-                    }
-                    onCreateSession={(newSession: any) =>
-                      console.log("Create session:", newSession)
-                    }
-                    onNavigateToBoard={(board: any, discussionTab?: string) =>
-                      console.log("Navigate to board:", board, discussionTab)
-                    }
-                    availableFriends={[]}
-                    onRefreshBoards={async () => {
-                      // Refresh boards list immediately after accepting invite
-                      if (user?.id) {
-                        try {
-                          const { BoardSessionService } = await import(
-                            "../src/services/boardSessionService"
-                          );
-                          const boards =
-                            await BoardSessionService.fetchUserBoardSessions(
-                              user.id
-                            );
-                          updateBoardsSessions(boards);
-                        } catch (error) {
-                          console.error("Error refreshing boards:", error);
-                        }
-                      }
-                    }}
-                  />
-
-                  {/* Bottom Navigation - keep visible and above overlay when tabs are highlighted */}
-                  <View
-                    style={[
-                      styles.bottomNavigation,
-                      isHighlightingTabs && {
-                        zIndex: 1000,
-                        elevation: 1000,
-                      },
-                    ]}
-                  >
-                    <View style={styles.navigationContainer}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          console.log("Navigating to home");
-                          setCurrentPage("home");
-                        }}
-                        style={styles.navItem}
-                      >
-                        <Ionicons
-                          name="home"
-                          size={24}
-                          color={currentPage === "home" ? "#eb7825" : "#9CA3AF"}
-                        />
-                        <Text
-                          style={[
-                            styles.navText,
-                            currentPage === "home"
-                              ? styles.navTextActive
-                              : styles.navTextInactive,
-                          ]}
-                        >
-                          Home
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          console.log("Navigating to connections");
-                          setCurrentPage("connections");
-                        }}
-                        style={styles.navItem}
-                      >
-                        <View style={styles.navIconContainer}>
-                          <Ionicons
-                            name="people"
-                            size={24}
-                            color={
-                              currentPage === "connections"
-                                ? "#eb7825"
-                                : "#9CA3AF"
-                            }
-                          />
-                          {totalUnreadMessages > 0 && (
-                            <View style={styles.tabBadge}>
-                              <Text style={styles.tabBadgeText}>
-                                {totalUnreadMessages > 99
-                                  ? "99+"
-                                  : totalUnreadMessages}
-                              </Text>
-                            </View>
-                          )}
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister: asyncStoragePersister,
+            maxAge: 24 * 60 * 60 * 1000, // 24 hours
+          }}
+        >
+          <CardsCacheProvider>
+            <RecommendationsProvider
+              currentMode={currentMode ?? "solo"}
+              refreshKey={preferencesRefreshKey}
+            >
+              <MobileFeaturesProvider>
+                <NavigationProvider>
+                  <ErrorBoundary>
+                    <SafeAreaView style={styles.safeArea}>
+                      <StatusBar
+                        barStyle="dark-content"
+                        backgroundColor="white"
+                      />
+                      <View style={styles.container}>
+                        {/* Main Content */}
+                        <View style={styles.mainContent}>
+                          {renderCurrentPage()}
                         </View>
-                        <Text
-                          style={[
-                            styles.navText,
-                            currentPage === "connections"
-                              ? styles.navTextActive
-                              : styles.navTextInactive,
-                          ]}
-                        >
-                          Connections
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setCurrentPage("activity");
-                        }}
-                        style={styles.navItem}
-                      >
-                        <View style={styles.navIconContainer}>
-                          <Ionicons
-                            name="calendar"
-                            size={24}
-                            color={
-                              currentPage === "activity" ? "#eb7825" : "#9CA3AF"
+
+                        {/* Collaboration Module */}
+                        <CollaborationModule
+                          isOpen={showCollaboration}
+                          onClose={() => {
+                            setShowCollaboration(false);
+                            setPreSelectedFriend(null);
+                          }}
+                          currentMode={currentMode ?? "solo"}
+                          onModeChange={handlers.handleModeChange}
+                          preSelectedFriend={preSelectedFriend}
+                          boardsSessions={boardsSessions}
+                          onUpdateBoardSession={(updatedBoard: any) =>
+                            console.log("Update board session:", updatedBoard)
+                          }
+                          onCreateSession={(newSession: any) =>
+                            console.log("Create session:", newSession)
+                          }
+                          onNavigateToBoard={(
+                            board: any,
+                            discussionTab?: string
+                          ) =>
+                            console.log(
+                              "Navigate to board:",
+                              board,
+                              discussionTab
+                            )
+                          }
+                          availableFriends={[]}
+                          onRefreshBoards={async () => {
+                            // Refresh boards list immediately after accepting invite
+                            if (user?.id) {
+                              try {
+                                const { BoardSessionService } = await import(
+                                  "../src/services/boardSessionService"
+                                );
+                                const boards =
+                                  await BoardSessionService.fetchUserBoardSessions(
+                                    user.id
+                                  );
+                                updateBoardsSessions(boards);
+                              } catch (error) {
+                                console.error(
+                                  "Error refreshing boards:",
+                                  error
+                                );
+                              }
                             }
-                          />
-                          {totalUnreadBoardMessages > 0 && (
-                            <View style={styles.tabBadge}>
-                              <Text style={styles.tabBadgeText}>
-                                {totalUnreadBoardMessages > 99
-                                  ? "99+"
-                                  : totalUnreadBoardMessages}
+                          }}
+                        />
+
+                        {/* Bottom Navigation - keep visible and above overlay when tabs are highlighted */}
+                        <View
+                          style={[
+                            styles.bottomNavigation,
+                            isHighlightingTabs && {
+                              zIndex: 1000,
+                              elevation: 1000,
+                            },
+                          ]}
+                        >
+                          <View style={styles.navigationContainer}>
+                            <TouchableOpacity
+                              onPress={() => {
+                                console.log("Navigating to home");
+                                setCurrentPage("home");
+                              }}
+                              style={styles.navItem}
+                            >
+                              <Ionicons
+                                name="home"
+                                size={24}
+                                color={
+                                  currentPage === "home" ? "#eb7825" : "#9CA3AF"
+                                }
+                              />
+                              <Text
+                                style={[
+                                  styles.navText,
+                                  currentPage === "home"
+                                    ? styles.navTextActive
+                                    : styles.navTextInactive,
+                                ]}
+                              >
+                                Home
                               </Text>
-                            </View>
-                          )}
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                console.log("Navigating to connections");
+                                setCurrentPage("connections");
+                              }}
+                              style={styles.navItem}
+                            >
+                              <View style={styles.navIconContainer}>
+                                <Ionicons
+                                  name="people"
+                                  size={24}
+                                  color={
+                                    currentPage === "connections"
+                                      ? "#eb7825"
+                                      : "#9CA3AF"
+                                  }
+                                />
+                                {totalUnreadMessages > 0 && (
+                                  <View style={styles.tabBadge}>
+                                    <Text style={styles.tabBadgeText}>
+                                      {totalUnreadMessages > 99
+                                        ? "99+"
+                                        : totalUnreadMessages}
+                                    </Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text
+                                style={[
+                                  styles.navText,
+                                  currentPage === "connections"
+                                    ? styles.navTextActive
+                                    : styles.navTextInactive,
+                                ]}
+                              >
+                                Connections
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setCurrentPage("activity");
+                              }}
+                              style={styles.navItem}
+                            >
+                              <View style={styles.navIconContainer}>
+                                <Ionicons
+                                  name="calendar"
+                                  size={24}
+                                  color={
+                                    currentPage === "activity"
+                                      ? "#eb7825"
+                                      : "#9CA3AF"
+                                  }
+                                />
+                                {totalUnreadBoardMessages > 0 && (
+                                  <View style={styles.tabBadge}>
+                                    <Text style={styles.tabBadgeText}>
+                                      {totalUnreadBoardMessages > 99
+                                        ? "99+"
+                                        : totalUnreadBoardMessages}
+                                    </Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text
+                                style={[
+                                  styles.navText,
+                                  currentPage === "activity"
+                                    ? styles.navTextActive
+                                    : styles.navTextInactive,
+                                ]}
+                              >
+                                Activity
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                console.log("Navigating to saved");
+                                setCurrentPage("saved");
+                              }}
+                              style={styles.navItem}
+                            >
+                              <Ionicons
+                                name="bookmark"
+                                size={24}
+                                color={
+                                  currentPage === "saved"
+                                    ? "#eb7825"
+                                    : "#9CA3AF"
+                                }
+                              />
+                              <Text
+                                style={[
+                                  styles.navText,
+                                  currentPage === "saved"
+                                    ? styles.navTextActive
+                                    : styles.navTextInactive,
+                                ]}
+                              >
+                                Saved
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                console.log("Navigating to profile");
+                                setCurrentPage("profile");
+                              }}
+                              style={styles.navItem}
+                            >
+                              <Ionicons
+                                name="person"
+                                size={24}
+                                color={
+                                  currentPage === "profile"
+                                    ? "#eb7825"
+                                    : "#9CA3AF"
+                                }
+                              />
+                              <Text
+                                style={[
+                                  styles.navText,
+                                  currentPage === "profile"
+                                    ? styles.navTextActive
+                                    : styles.navTextInactive,
+                                ]}
+                              >
+                                Profile
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                        <Text
-                          style={[
-                            styles.navText,
-                            currentPage === "activity"
-                              ? styles.navTextActive
-                              : styles.navTextInactive,
-                          ]}
-                        >
-                          Activity
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          console.log("Navigating to saved");
-                          setCurrentPage("saved");
-                        }}
-                        style={styles.navItem}
-                      >
-                        <Ionicons
-                          name="bookmark"
-                          size={24}
-                          color={
-                            currentPage === "saved" ? "#eb7825" : "#9CA3AF"
-                          }
-                        />
-                        <Text
-                          style={[
-                            styles.navText,
-                            currentPage === "saved"
-                              ? styles.navTextActive
-                              : styles.navTextInactive,
-                          ]}
-                        >
-                          Saved
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          console.log("Navigating to profile");
-                          setCurrentPage("profile");
-                        }}
-                        style={styles.navItem}
-                      >
-                        <Ionicons
-                          name="person"
-                          size={24}
-                          color={
-                            currentPage === "profile" ? "#eb7825" : "#9CA3AF"
-                          }
-                        />
-                        <Text
-                          style={[
-                            styles.navText,
-                            currentPage === "profile"
-                              ? styles.navTextActive
-                              : styles.navTextInactive,
-                          ]}
-                        >
-                          Profile
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
+                      </View>
 
-                {/* Coach Map Overlay */}
-                <CoachMap
-                  visible={showCoachMap}
-                  onComplete={async () => {
-                    await updateCoachMapTourStatus("completed");
-                    setShowCoachMap(false);
-                    setCoachMapCurrentTarget(null);
-                  }}
-                  onSkip={async () => {
-                    await updateCoachMapTourStatus("skipped");
-                    setShowCoachMap(false);
-                    setCoachMapCurrentTarget(null);
-                  }}
-                  onStepChange={(stepIndex, target) => {
-                    // Reset target when coach map closes (stepIndex === -1)
-                    if (stepIndex === -1) {
-                      setCoachMapCurrentTarget(null);
-                    } else {
-                      setCoachMapCurrentTarget(target);
-                    }
-                  }}
-                />
+                      {/* Coach Map Overlay */}
+                      <CoachMap
+                        visible={showCoachMap}
+                        onComplete={async () => {
+                          await updateCoachMapTourStatus("completed");
+                          setShowCoachMap(false);
+                          setCoachMapCurrentTarget(null);
+                        }}
+                        onSkip={async () => {
+                          await updateCoachMapTourStatus("skipped");
+                          setShowCoachMap(false);
+                          setCoachMapCurrentTarget(null);
+                        }}
+                        onStepChange={(stepIndex, target) => {
+                          // Reset target when coach map closes (stepIndex === -1)
+                          if (stepIndex === -1) {
+                            setCoachMapCurrentTarget(null);
+                          } else {
+                            setCoachMapCurrentTarget(target);
+                          }
+                        }}
+                      />
 
-                {/* Share Modal */}
-                <ShareModal
-                  isOpen={showShareModal}
-                  onClose={() => setShowShareModal(false)}
-                  experienceData={shareData?.experienceData}
-                  dateTimePreferences={shareData?.dateTimePreferences}
-                  userPreferences={userPreferences}
-                  accountPreferences={accountPreferences}
-                />
-              </SafeAreaView>
-            </ErrorBoundary>
-          </NavigationProvider>
-        </MobileFeaturesProvider>
+                      {/* Share Modal */}
+                      <ShareModal
+                        isOpen={showShareModal}
+                        onClose={() => setShowShareModal(false)}
+                        experienceData={shareData?.experienceData}
+                        dateTimePreferences={shareData?.dateTimePreferences}
+                        userPreferences={userPreferences}
+                        accountPreferences={accountPreferences}
+                      />
+                    </SafeAreaView>
+                  </ErrorBoundary>
+                </NavigationProvider>
+              </MobileFeaturesProvider>
+            </RecommendationsProvider>
+          </CardsCacheProvider>
+        </PersistQueryClientProvider>
         <ToastContainer />
       </>
     );

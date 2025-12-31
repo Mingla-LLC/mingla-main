@@ -354,6 +354,7 @@ const SessionsTab = ({
       return; // Already active, don't switch
     }
     
+    // No need to clear anything - setCurrentMode will update mingla_last_mode automatically
     setSwitchingSessionId(session.id);
     try {
       if (onJoinSession) {
@@ -450,7 +451,10 @@ const SessionsTab = ({
           styles.soloExplorerCard,
           isSoloMode && styles.soloExplorerCardActive
         ]}
-        onPress={() => onModeChange('solo')}
+        onPress={() => {
+          // setCurrentMode will persist to mingla_last_mode automatically
+          onModeChange('solo');
+        }}
         activeOpacity={0.7}
       >
         <View style={styles.soloAvatar}>

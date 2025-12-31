@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useAppStore } from "../store/appStore";
 import { savedCardsService } from "../services/savedCardsService";
+import { SessionService } from "../services/sessionService";
 
 // Default data constants moved to separate module to prevent re-creation
 const DEFAULT_FRIENDS = [
@@ -168,7 +169,9 @@ export function useAppState() {
     | "terms-of-service"
     | "board-view"
   >("home");
-  const [boardViewSessionId, setBoardViewSessionId] = useState<string | null>(null);
+  const [boardViewSessionId, setBoardViewSessionId] = useState<string | null>(
+    null
+  );
   const [showPreferences, setShowPreferences] = useState(false);
   const [showCollaboration, setShowCollaboration] = useState(false);
   const [showCollabPreferences, setShowCollabPreferences] = useState(false);
@@ -179,13 +182,24 @@ export function useAppState() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
   const [showCoachMap, setShowCoachMap] = useState(false);
-  // Load currentMode from database (no AsyncStorage persistence)
-  const [currentMode, setCurrentModeState] = useState<"solo" | string>("solo");
-  
-  // Wrapper to update currentMode (no persistence - always fetch from DB)
-  const setCurrentMode = (mode: "solo" | string) => {
-    setCurrentModeState(mode);
-    // No AsyncStorage persistence - always fetch from database
+  // Load currentMode from storage first, then verify with database
+  const [currentMode, setCurrentModeState] = useState<"solo" | string | null>(
+    null
+  );
+
+  // Wrapper to update currentMode and persist to storage
+  const setCurrentMode = (mode: "solo" | string, sessionId?: string | null) => {
+    // Only update state if the mode actually changed
+    if (currentMode !== mode) {
+      setCurrentModeState(mode);
+    }
+
+    // Persist the last mode to storage with session ID
+    const modeData =
+      mode === "solo"
+        ? { mode: "solo", sessionId: null }
+        : { mode, sessionId: sessionId || null };
+    safeAsyncStorageSet("mingla_last_mode", modeData);
   };
   const [preSelectedFriend, setPreSelectedFriend] = useState<any>(null);
   const [activeSessionData, setActiveSessionData] = useState<any>(null);
@@ -254,7 +268,6 @@ export function useAppState() {
   // Force loading to false after timeout or if authLoading is false
   const isLoadingAuth = authLoading && !authTimeout;
 
-
   // Load onboarding data from profile (authentication handled by Supabase)
   useEffect(() => {
     // Check onboarding status from profile instead of AsyncStorage
@@ -278,7 +291,6 @@ export function useAppState() {
   // Update userIdentity when Supabase authentication changes
   useEffect(() => {
     if (user && profile) {
-
       // Use the actual first_name and last_name fields from the profile
       const updatedIdentity = {
         firstName: profile.first_name || user.email?.split("@")[0] || "User",
@@ -309,42 +321,81 @@ export function useAppState() {
     }
   }, [user, profile]);
 
-  // Load active session from database on user login (no AsyncStorage)
+  // Initialize mode from storage on mount
+  useEffect(() => {
+    const initializeMode = async () => {
+      const stored = await safeAsyncStorageGet("mingla_last_mode", "solo");
+      // Handle both old format (string) and new format (object)
+      const storedMode =
+        typeof stored === "string" ? stored : stored?.mode || "solo";
+      setCurrentModeState(storedMode);
+    };
+    initializeMode();
+  }, []); // Run once on mount
+
+  // Load active session from database on user login
   useEffect(() => {
     const loadActiveSession = async () => {
+      // Wait for initial mode to be loaded
+      if (currentMode === null) return;
+
       if (!user?.id) {
-        // No user, default to solo mode
-        setCurrentMode("solo");
+        // No user, ensure solo mode
+        if (currentMode !== "solo") {
+          setCurrentMode("solo");
+        }
         return;
       }
 
       try {
-        // Always fetch from database - no AsyncStorage
-        const sessionServiceModule = await import("../services/sessionService");
-        const { SessionService } = sessionServiceModule;
+        // If current mode is solo (from storage), use it and return early
+        if (currentMode === "solo") {
+          // Solo mode is persisted, no need to fetch from database
+          return;
+        }
+
+        // For collaboration modes, verify against database
         const activeSession = await SessionService.getActiveSession(user.id);
 
         if (activeSession) {
-          // Set the active session name as current mode
-          setCurrentMode(activeSession.sessionName);
+          // Get stored mode data to check session ID
+          const storedModeData = await safeAsyncStorageGet(
+            "mingla_last_mode",
+            null
+          );
+          const storedSessionId = storedModeData?.sessionId;
+
+          // Only update if:
+          // 1. Names don't match (normal case - different session)
+          // 2. Names match but IDs don't match (edge case - same name, different session)
+          // This prevents unnecessary updates when name and ID both match
+          const namesMatch = currentMode === activeSession.sessionName;
+          const idsMatch = storedSessionId === activeSession.sessionId;
+
+          if (!namesMatch || (namesMatch && !idsMatch)) {
+            // Update to the active session (either name changed or ID changed)
+            setCurrentMode(activeSession.sessionName, activeSession.sessionId);
+          }
+          // If both name and ID match, no update needed (no refetch)
         } else {
           // No valid active session, default to solo mode
-          setCurrentMode("solo");
+          if (currentMode !== "solo") {
+            setCurrentMode("solo");
+          }
         }
       } catch (error) {
         console.error("Error loading active session:", error);
         // On error, default to solo mode
-        setCurrentMode("solo");
+        if (currentMode !== "solo") {
+          setCurrentMode("solo");
+        }
       }
     };
 
-    if (user) {
+    if (user && currentMode !== null) {
       loadActiveSession();
-    } else {
-      // No user, default to solo
-      setCurrentMode("solo");
     }
-  }, [user?.id]);
+  }, [user?.id, currentMode]);
 
   // Load other data from AsyncStorage
   useEffect(() => {
@@ -457,46 +508,56 @@ export function useAppState() {
       try {
         const { CalendarService } = await import("../services/calendarService");
         const records = await CalendarService.fetchUserCalendarEntries(user.id);
-        
+
         // Normalize records into the shape used by CalendarTab
         const normalizedEntries = records
           .filter((record) => !record.archived_at) // Exclude archived entries
           .map((record) => {
             const cardData = record.card_data || {};
             const scheduledDate = new Date(record.scheduled_at);
-            const dateStr = scheduledDate.toLocaleDateString('en-US', {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric'
+            const dateStr = scheduledDate.toLocaleDateString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              year: "numeric",
             });
-            const timeStr = scheduledDate.toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true
+            const timeStr = scheduledDate.toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
             });
 
             return {
               id: record.id,
               card_id: record.card_id,
               board_card_id: record.board_card_id,
-              title: cardData.title || 'Saved Experience',
-              category: cardData.category || 'Experience',
-              categoryIcon: cardData.categoryIcon || 'star',
-              image: cardData.image || (Array.isArray(cardData.images) ? cardData.images[0] : ''),
-              images: cardData.images || (cardData.image ? [cardData.image] : []),
+              title: cardData.title || "Saved Experience",
+              category: cardData.category || "Experience",
+              categoryIcon: cardData.categoryIcon || "star",
+              image:
+                cardData.image ||
+                (Array.isArray(cardData.images) ? cardData.images[0] : ""),
+              images:
+                cardData.images || (cardData.image ? [cardData.image] : []),
               rating: cardData.rating || 0,
               reviewCount: cardData.reviewCount || 0,
               date: dateStr,
               time: timeStr,
-              source: record.source || 'solo',
-              sourceDetails: cardData.sessionName ? `From ${cardData.sessionName}` : 'Solo Experience',
-              priceRange: cardData.priceRange || 'TBD',
-              description: cardData.description || '',
-              fullDescription: cardData.fullDescription || cardData.description || '',
-              address: cardData.address || '',
+              source: record.source || "solo",
+              sourceDetails: cardData.sessionName
+                ? `From ${cardData.sessionName}`
+                : "Solo Experience",
+              priceRange: cardData.priceRange || "TBD",
+              description: cardData.description || "",
+              fullDescription:
+                cardData.fullDescription || cardData.description || "",
+              address: cardData.address || "",
               highlights: cardData.highlights || [],
-              socialStats: cardData.socialStats || { views: 0, likes: 0, saves: 0 },
+              socialStats: cardData.socialStats || {
+                views: 0,
+                likes: 0,
+                saves: 0,
+              },
               status: record.status,
               experience: {
                 ...cardData,
@@ -507,7 +568,7 @@ export function useAppState() {
               archived_at: record.archived_at,
             };
           });
-        
+
         setCalendarEntries(normalizedEntries);
         safeAsyncStorageSet("mingla_calendar_entries", normalizedEntries);
       } catch (error) {
@@ -534,8 +595,12 @@ export function useAppState() {
 
       setIsLoadingBoards(true);
       try {
-        const { BoardSessionService } = await import("../services/boardSessionService");
-        const boards = await BoardSessionService.fetchUserBoardSessions(user.id);
+        const { BoardSessionService } = await import(
+          "../services/boardSessionService"
+        );
+        const boards = await BoardSessionService.fetchUserBoardSessions(
+          user.id
+        );
         setBoardsSessions(boards);
         safeAsyncStorageSet("mingla_boards_sessions", boards);
         setProfileStats((prev) => ({
@@ -637,7 +702,6 @@ export function useAppState() {
     credentials: { email: string; password: string },
     role: "explorer" | "curator"
   ) => {
-
     try {
       // Use the signIn function from useAuthSimple
       const { data, error } = await signIn(
@@ -716,7 +780,6 @@ export function useAppState() {
       }
 
       if (data?.user) {
-
         // Reset showSignUpForm so onboarding can show properly
         setShowSignUpForm(false);
 

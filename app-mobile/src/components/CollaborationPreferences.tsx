@@ -16,6 +16,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { Calendar } from "./ui/calendar";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useBoardSession } from "../hooks/useBoardSession";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuthSimple } from "../hooks/useAuthSimple";
+import { offlineService } from "../services/offlineService";
+import { PreferencesService } from "../services/preferencesService";
 
 interface CollaborationPreferencesProps {
   isOpen: boolean;
@@ -155,6 +159,9 @@ export default function CollaborationPreferences({
   participants,
   onSave,
 }: CollaborationPreferencesProps) {
+  const queryClient = useQueryClient();
+  const { user } = useAuthSimple();
+
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
 
@@ -424,6 +431,29 @@ export default function CollaborationPreferences({
 
       // Save to database using useBoardSession hook
       await updatePreferences(dbPreferences);
+
+      // Update offline cache with new user preferences if location was changed
+      // This ensures useUserLocation gets fresh data when it reads from cache
+      // Note: For collaboration preferences, location is saved to board preferences,
+      // but we still update user preferences cache in case it affects location resolution
+      try {
+        if (user?.id && searchLocation) {
+          // If location was changed in collaboration preferences, update user preferences cache
+          // This ensures the location change is reflected in recommendations
+          const updatedPrefs = await PreferencesService.getUserPreferences(
+            user.id
+          );
+          if (updatedPrefs) {
+            await offlineService.cacheUserPreferences(updatedPrefs);
+          }
+        }
+      } catch (error) {
+        console.error("Error updating offline cache:", error);
+      }
+
+      // Invalidate TanStack Query caches to trigger refetch
+      queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["userLocation"] });
 
       // Also call the onSave callback for backward compatibility
       const preferences = {
