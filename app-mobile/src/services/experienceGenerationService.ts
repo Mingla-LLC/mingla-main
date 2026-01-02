@@ -223,6 +223,37 @@ export class ExperienceGenerationService {
     }
   }
 
+  static async fetchPicnicGroceryData(picnic: {
+    id: string;
+    name: string;
+    location: { lat: number; lng: number };
+    address?: string;
+    title?: string;
+  }): Promise<any | null> {
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "get-picnic-grocery",
+        {
+          body: { picnic },
+        }
+      );
+
+      if (error) {
+        console.error("Error fetching picnic grocery data:", error);
+        return null;
+      }
+
+      if (data?.picnicData) {
+        return data.picnicData;
+      }
+
+      return null;
+    } catch (err) {
+      console.error("Failed to fetch picnic grocery data:", err);
+      return null;
+    }
+  }
+
   /**
    * Calculate match score based on 5 factors
    */

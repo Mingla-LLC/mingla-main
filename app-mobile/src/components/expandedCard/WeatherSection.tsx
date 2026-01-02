@@ -13,8 +13,6 @@ interface WeatherSectionProps {
 export default function WeatherSection({
   weatherData,
   loading,
-  category,
-  selectedDateTime,
 }: WeatherSectionProps) {
   // Get weather icon name from OpenWeatherMap icon code
   const getWeatherIcon = (iconCode: string): string => {

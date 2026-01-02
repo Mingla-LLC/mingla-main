@@ -143,28 +143,76 @@ class WeatherService {
     const windSpeed = weather.wind_speed;
     const precipitation = weather.rain?.["1h"] || weather.snow?.["1h"] || 0;
 
-    // Temperature-based recommendations
-    if (temp < 50) {
-      return "Bundle up! Perfect for indoor activities or cozy spots.";
-    } else if (temp > 85) {
-      return "Hot day ahead! Great for indoor venues or shaded outdoor areas.";
+    // Combine temperature and condition for nuanced recommendations
+
+    // Rain conditions with temperature considerations
+    if (condition.includes("rain") || precipitation > 0) {
+      if (temp < 50) {
+        return "Cold and rainy. Perfect for cozy indoor experiences like cafes, museums, or workshops.";
+      } else if (temp > 75) {
+        return "Warm rain expected. Great for covered outdoor areas or indoor venues.";
+      } else {
+        return "Rain expected. Perfect for indoor experiences like cafes, museums, or workshops.";
+      }
     }
 
-    // Condition-based recommendations
-    if (condition.includes("rain") || precipitation > 0) {
-      return "Rain expected. Perfect for indoor experiences like cafes, museums, or workshops.";
-    } else if (condition.includes("snow")) {
-      return "Snowy conditions. Ideal for cozy indoor venues or winter activities.";
-    } else if (condition.includes("clear") || condition.includes("sun")) {
-      if (temp >= 60 && temp <= 80) {
-        return "Perfect weather! Great for outdoor activities, walks, and picnics.";
+    // Snow conditions with temperature considerations
+    if (condition.includes("snow")) {
+      if (temp < 32) {
+        return "Freezing with snow. Ideal for cozy indoor venues or winter activities.";
+      } else if (temp < 40) {
+        return "Cold and snowy. Perfect for indoor activities or winter sports.";
       } else {
-        return "Clear skies ahead. Suitable for both indoor and outdoor experiences.";
+        return "Snowy conditions. Ideal for cozy indoor venues or winter activities.";
       }
-    } else if (condition.includes("cloud")) {
-      return "Partly cloudy. Good conditions for most activities.";
-    } else if (windSpeed > 15) {
-      return "Windy conditions. Better suited for indoor venues.";
+    }
+
+    // Clear/Sunny conditions with temperature considerations
+    if (condition.includes("clear") || condition.includes("sun")) {
+      if (temp < 50) {
+        return "Clear but chilly. Great for brisk outdoor walks or indoor venues.";
+      } else if (temp >= 50 && temp < 60) {
+        return "Clear and cool. Good for outdoor activities with a light jacket.";
+      } else if (temp >= 60 && temp <= 80) {
+        return "Perfect weather! Great for outdoor activities, walks, and picnics.";
+      } else if (temp > 80 && temp <= 90) {
+        return "Clear and warm. Ideal for outdoor activities in shaded areas or early morning/evening.";
+      } else {
+        return "Clear but hot. Better for indoor venues or shaded outdoor areas.";
+      }
+    }
+
+    // Cloudy conditions with temperature considerations
+    if (condition.includes("cloud")) {
+      if (temp < 50) {
+        return "Cloudy and cool. Good for indoor activities or brisk outdoor walks.";
+      } else if (temp >= 50 && temp <= 75) {
+        return "Partly cloudy with comfortable temperatures. Great conditions for most activities.";
+      } else if (temp > 75 && temp <= 85) {
+        return "Cloudy but warm. Good for outdoor activities with some shade.";
+      } else if (temp > 85) {
+        return "Cloudy but hot. Better for indoor venues or shaded outdoor areas.";
+      } else {
+        return "Partly cloudy. Good conditions for most activities.";
+      }
+    }
+
+    // Windy conditions with temperature considerations
+    if (windSpeed > 15) {
+      if (temp < 50) {
+        return "Windy and cold. Better suited for indoor venues to stay warm.";
+      } else if (temp > 80) {
+        return "Windy but hot. The breeze helps, but indoor venues may be more comfortable.";
+      } else {
+        return "Windy conditions. Better suited for indoor venues or sheltered outdoor areas.";
+      }
+    }
+
+    // Default fallback with temperature consideration
+    if (temp < 50) {
+      return "Cool weather. Good for indoor activities or layered outdoor experiences.";
+    } else if (temp > 85) {
+      return "Warm weather. Great for indoor venues or shaded outdoor areas.";
     }
 
     return "Weather looks good for your planned activity!";
@@ -193,6 +241,8 @@ class WeatherService {
       }
 
       const data = await response.json();
+
+      /* console.log("data", data); */
 
       // Convert Current Weather API format to match One Call API format for recommendation
       const weatherForRecommendation = {

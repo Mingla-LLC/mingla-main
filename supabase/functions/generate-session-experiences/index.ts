@@ -14,15 +14,72 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 
 // Category to Google Places type mapping (same as generate-experiences)
 const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
-  "Sip & Chill": [
+  // Sip & Chill variations
+  "sip & chill": [
     "bar",
     "wine_bar",
     "brewery",
     "cafe",
     "coffee_shop",
     "tea_house",
+    "cocktail_lounge",
   ],
-  Stroll: [
+  sip_and_chill: [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  "sip-and-chill": [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  "sip&chill": [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  "sip_&_chill": [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  "sip-&-chill": [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  sipchill: [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  // Stroll variations
+  stroll: [
     "park",
     "tourist_attraction",
     "point_of_interest",
@@ -30,28 +87,173 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "zoo",
     "aquarium",
     "botanical_garden",
+    "hiking_area",
+    "scenic_viewpoint",
   ],
-  Dining: [
+  "take a stroll": [
+    "park",
+    "tourist_attraction",
+    "point_of_interest",
+    "natural_feature",
+    "zoo",
+    "aquarium",
+    "botanical_garden",
+    "hiking_area",
+    "scenic_viewpoint",
+  ],
+  "take-a-stroll": [
+    "park",
+    "tourist_attraction",
+    "point_of_interest",
+    "natural_feature",
+    "zoo",
+    "aquarium",
+    "botanical_garden",
+    "hiking_area",
+    "scenic_viewpoint",
+  ],
+  take_a_stroll: [
+    "park",
+    "tourist_attraction",
+    "point_of_interest",
+    "natural_feature",
+    "zoo",
+    "aquarium",
+    "botanical_garden",
+    "hiking_area",
+    "scenic_viewpoint",
+  ],
+  // Dining Experiences variations
+  "dining experiences": [
     "restaurant",
     "fine_dining_restaurant",
     "steakhouse",
     "seafood_restaurant",
+    "italian_restaurant",
+    "french_restaurant",
+    "sushi_restaurant",
+    "rooftop_bar",
   ],
-  "Screen & Relax": [
+  dining_experiences: [
+    "restaurant",
+    "fine_dining_restaurant",
+    "steakhouse",
+    "seafood_restaurant",
+    "italian_restaurant",
+    "french_restaurant",
+    "sushi_restaurant",
+    "rooftop_bar",
+  ],
+  "dining-experiences": [
+    "restaurant",
+    "fine_dining_restaurant",
+    "steakhouse",
+    "seafood_restaurant",
+    "italian_restaurant",
+    "french_restaurant",
+    "sushi_restaurant",
+    "rooftop_bar",
+  ],
+  dining: [
+    "restaurant",
+    "fine_dining_restaurant",
+    "steakhouse",
+    "seafood_restaurant",
+    "italian_restaurant",
+    "french_restaurant",
+    "sushi_restaurant",
+    "rooftop_bar",
+  ],
+  // Screen & Relax variations
+  "screen & relax": [
     "movie_theater",
     "spa",
     "beauty_salon",
     "massage_therapist",
+    "hair_salon",
   ],
-  Creative: [
+  screen_relax: [
+    "movie_theater",
+    "spa",
+    "beauty_salon",
+    "massage_therapist",
+    "hair_salon",
+  ],
+  "screen-relax": [
+    "movie_theater",
+    "spa",
+    "beauty_salon",
+    "massage_therapist",
+    "hair_salon",
+  ],
+  screenrelax: [
+    "movie_theater",
+    "spa",
+    "beauty_salon",
+    "massage_therapist",
+    "hair_salon",
+  ],
+  screenRelax: [
+    "movie_theater",
+    "spa",
+    "beauty_salon",
+    "massage_therapist",
+    "hair_salon",
+  ],
+  // Creative & Hands-On variations
+  "creative & hands-on": [
     "art_gallery",
     "museum",
     "pottery_studio",
     "craft_store",
     "art_studio",
     "library",
+    "jewelry_store",
+    "book_store",
   ],
-  "Play & Move": [
+  creative_and_hands_on: [
+    "art_gallery",
+    "museum",
+    "pottery_studio",
+    "craft_store",
+    "art_studio",
+    "library",
+    "jewelry_store",
+    "book_store",
+  ],
+  "creative-hands-on": [
+    "art_gallery",
+    "museum",
+    "pottery_studio",
+    "craft_store",
+    "art_studio",
+    "library",
+    "jewelry_store",
+    "book_store",
+  ],
+  "creative & hands on": [
+    "art_gallery",
+    "museum",
+    "pottery_studio",
+    "craft_store",
+    "art_studio",
+    "library",
+    "jewelry_store",
+    "book_store",
+  ],
+
+  creative: [
+    "art_gallery",
+    "museum",
+    "pottery_studio",
+    "craft_store",
+    "art_studio",
+    "library",
+    "jewelry_store",
+    "book_store",
+  ],
+  // Play & Move variations
+  "play & move": [
     "bowling_alley",
     "gym",
     "sports_complex",
@@ -63,8 +265,41 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "climbing_gym",
     "skating_rink",
     "amusement_park",
+    "arcade",
+    "stadium",
   ],
-  "Casual Eats": [
+  play_and_move: [
+    "bowling_alley",
+    "gym",
+    "sports_complex",
+    "recreation_center",
+    "tennis_court",
+    "basketball_court",
+    "golf_course",
+    "mini_golf",
+    "climbing_gym",
+    "skating_rink",
+    "amusement_park",
+    "arcade",
+    "stadium",
+  ],
+  "play-move": [
+    "bowling_alley",
+    "gym",
+    "sports_complex",
+    "recreation_center",
+    "tennis_court",
+    "basketball_court",
+    "golf_course",
+    "mini_golf",
+    "climbing_gym",
+    "skating_rink",
+    "amusement_park",
+    "arcade",
+    "stadium",
+  ],
+  // Casual Eats variations
+  "casual eats": [
     "restaurant",
     "food_court",
     "meal_takeaway",
@@ -72,8 +307,114 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "food_truck",
     "sandwich_shop",
     "pizza_restaurant",
+    "cafe",
   ],
-  Freestyle: [
+  casual_eats: [
+    "restaurant",
+    "food_court",
+    "meal_takeaway",
+    "fast_food_restaurant",
+    "food_truck",
+    "sandwich_shop",
+    "pizza_restaurant",
+    "cafe",
+  ],
+  "casual-eats": [
+    "restaurant",
+    "food_court",
+    "meal_takeaway",
+    "fast_food_restaurant",
+    "food_truck",
+    "sandwich_shop",
+    "pizza_restaurant",
+    "cafe",
+  ],
+  "casual & eats": [
+    "restaurant",
+    "food_court",
+    "meal_takeaway",
+    "fast_food_restaurant",
+    "food_truck",
+    "sandwich_shop",
+    "pizza_restaurant",
+    "cafe",
+  ],
+  // Picnics variations
+  picnics: [
+    "picnic_ground",
+    "garden",
+    "botanical_garden",
+    "national_park",
+    "campground",
+    "water_park",
+    "state_park",
+    "park",
+    "beach",
+    "picnic_area",
+    "lake",
+    "natural_feature",
+  ],
+  picnic: [
+    "picnic_ground",
+    "national_park",
+    "garden",
+    "botanical_garden",
+    "water_park",
+    "state_park",
+    "campground",
+    "park",
+    "beach",
+    "picnic_area",
+    "lake",
+    "natural_feature",
+  ],
+  // Wellness Dates variations
+  "wellness dates": [
+    "spa",
+    "massage_therapist",
+    "beauty_salon",
+    "yoga_studio",
+    "fitness_center",
+    "meditation_center",
+    "hot_spring",
+    "park",
+    "botanical_garden",
+  ],
+  wellness_dates: [
+    "spa",
+    "massage_therapist",
+    "beauty_salon",
+    "yoga_studio",
+    "fitness_center",
+    "meditation_center",
+    "hot_spring",
+    "park",
+    "botanical_garden",
+  ],
+  "wellness-dates": [
+    "spa",
+    "massage_therapist",
+    "beauty_salon",
+    "yoga_studio",
+    "fitness_center",
+    "meditation_center",
+    "hot_spring",
+    "park",
+    "botanical_garden",
+  ],
+  wellness: [
+    "spa",
+    "massage_therapist",
+    "beauty_salon",
+    "yoga_studio",
+    "fitness_center",
+    "meditation_center",
+    "hot_spring",
+    "park",
+    "botanical_garden",
+  ],
+  // Freestyle variations
+  freestyle: [
     "restaurant",
     "bar",
     "cafe",
@@ -82,6 +423,46 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "museum",
     "park",
     "movie_theater",
+    "bowling_alley",
+    "spa",
+    "amusement_park",
+    "zoo",
+    "aquarium",
+  ],
+  "free style": [
+    "restaurant",
+    "bar",
+    "cafe",
+    "tourist_attraction",
+    "art_gallery",
+    "museum",
+    "park",
+    "movie_theater",
+    "bowling_alley",
+    "spa",
+    "amusement_park",
+    "zoo",
+    "aquarium",
+  ],
+};
+
+// Excluded types for specific categories
+const EXCLUDED_TYPES: { [key: string]: string[] } = {
+  picnic: [
+    "dog_park",
+    "cycling_park",
+    "amusement_park",
+    "park_and_ride",
+    "bus_stop",
+    "bus_station",
+  ],
+  picnics: [
+    "dog_park",
+    "cycling_park",
+    "amusement_park",
+    "park_and_ride",
+    "bus_stop",
+    "bus_station",
   ],
 };
 
@@ -700,14 +1081,25 @@ async function fetchGooglePlaces(
 
   for (const category of preferences.categories || []) {
     console.log(`\n🏷️ Processing category: "${category}"`);
-    const placeTypes = CATEGORY_MAPPINGS[category] || ["tourist_attraction"];
+    // Convert category to lowercase for case-insensitive lookup
+    const categoryKey = category.toLowerCase();
+    const placeTypes = CATEGORY_MAPPINGS[categoryKey] ||
+      CATEGORY_MAPPINGS[category] || ["tourist_attraction"];
     console.log(`   Mapped to place types: ${placeTypes.join(", ")}`);
 
-    for (const placeType of placeTypes.slice(0, 3)) {
+    // For picnic categories, iterate through 8 types; otherwise use 3
+    const isPicnicCategory =
+      categoryKey === "picnic" || categoryKey === "picnics";
+    const maxTypes = isPicnicCategory ? 8 : 3;
+
+    for (const placeType of placeTypes.slice(0, maxTypes)) {
       try {
         console.log(`   🔎 Searching for type: ${placeType}`);
 
-        const requestBody = {
+        // Check if this category has excluded types (e.g., picnic)
+        const excludedTypes = EXCLUDED_TYPES[categoryKey] || null;
+
+        const requestBody: any = {
           includedTypes: [placeType],
           maxResultCount: 10,
           locationRestriction: {
@@ -720,6 +1112,11 @@ async function fetchGooglePlaces(
             },
           },
         };
+
+        // Add excludedTypes if this is a picnic category
+        if (excludedTypes && excludedTypes.length > 0) {
+          requestBody.excludedTypes = excludedTypes;
+        }
 
         const response = await fetch(baseUrl, {
           method: "POST",
@@ -983,26 +1380,26 @@ function filterByConstraints(
   });
 
   // Stage 2: Filter by budget
-    remaining = remaining.filter((place) => {
-      // Check if this is a stroll card - skip budget filtering for stroll cards
-      const categoryKey = place.category?.toLowerCase() || "";
-      const isStrollCard =
-        categoryKey.includes("stroll") ||
-        categoryKey === "take a stroll" ||
-        categoryKey === "take-a-stroll" ||
-        categoryKey === "take_a_stroll";
+  remaining = remaining.filter((place) => {
+    // Check if this is a stroll card - skip budget filtering for stroll cards
+    const categoryKey = place.category?.toLowerCase() || "";
+    const isStrollCard =
+      categoryKey.includes("stroll") ||
+      categoryKey === "take a stroll" ||
+      categoryKey === "take-a-stroll" ||
+      categoryKey === "take_a_stroll";
 
-      // Skip budget filtering for stroll cards
-      if (isStrollCard) {
-        return true;
-      }
+    // Skip budget filtering for stroll cards
+    if (isStrollCard) {
+      return true;
+    }
 
-      // Apply budget filter for non-stroll cards
-      return !(
-        place.price_min > preferences.budget_max ||
-        place.price_max < preferences.budget_min
-      );
-    });
+    // Apply budget filter for non-stroll cards
+    return !(
+      place.price_min > preferences.budget_max ||
+      place.price_max < preferences.budget_min
+    );
+  });
 
   // Stage 3: Filter by category
   remaining = remaining.filter((place) => {

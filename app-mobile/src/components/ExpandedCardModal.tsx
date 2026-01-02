@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Dimensions,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ExpandedCardModalProps } from "../types/expandedCardTypes";
@@ -51,18 +52,22 @@ export default function ExpandedCardModal({
   const [loadingBooking, setLoadingBooking] = useState(false);
   const [strollData, setStrollData] = useState(card?.strollData);
   const [loadingStrollData, setLoadingStrollData] = useState(false);
+  const [picnicData, setPicnicData] = useState(card?.picnicData);
+  const [loadingPicnicData, setLoadingPicnicData] = useState(false);
 
   // Fetch additional data when modal opens
   useEffect(() => {
     if (visible && card) {
       fetchAdditionalData();
       setStrollData(card.strollData);
+      setPicnicData(card.picnicData);
     } else {
       // Reset state when modal closes
       setWeatherData(null);
       setBusynessData(null);
       setBookingOptions([]);
       setStrollData(undefined);
+      setPicnicData(undefined);
     }
   }, [visible, card]);
 
@@ -176,6 +181,49 @@ export default function ExpandedCardModal({
     }
   };
 
+  const fetchPicnicData = async () => {
+    if (!card) return;
+
+    const isPicnicCard =
+      card.category?.toLowerCase().includes("picnic") ||
+      card.category?.toLowerCase() === "picnics";
+
+    if (!isPicnicCard) return;
+
+    // Create picnic object from card data
+    const picnic =
+      picnicData?.picnic ||
+      (card.location && card.title
+        ? {
+            id: card.id,
+            name: card.title,
+            title: card.title,
+            location: { lat: card.location.lat, lng: card.location.lng },
+            address: card.address,
+          }
+        : null);
+
+    if (!picnic) {
+      console.warn("⚠️ Cannot fetch picnic data: missing picnic information");
+      return;
+    }
+
+    setLoadingPicnicData(true);
+    try {
+      const fetchedPicnicData =
+        await ExperienceGenerationService.fetchPicnicGroceryData(picnic);
+      if (fetchedPicnicData) {
+        setPicnicData(fetchedPicnicData);
+        // TODO: Update the card's picnicData in the context and cache
+        // Similar to updateCardStrollData, we may need updateCardPicnicData
+      }
+    } catch (err) {
+      console.error("Error fetching picnic grocery data:", err);
+    } finally {
+      setLoadingPicnicData(false);
+    }
+  };
+
   if (!card) {
     return null;
   }
@@ -183,6 +231,10 @@ export default function ExpandedCardModal({
   const isStrollCard =
     card.category === "Take a Stroll" ||
     card.category?.toLowerCase().includes("stroll");
+
+  const isPicnicCard =
+    card.category?.toLowerCase().includes("picnic") ||
+    card.category?.toLowerCase() === "picnics";
 
   return (
     <Modal
@@ -283,7 +335,93 @@ export default function ExpandedCardModal({
               />
             )}
 
-            {/* Timeline Section or "See Route Pairing" Button (only for Take a Stroll cards) */}
+            {/* Grocery Store Section (for picnic cards) */}
+            {picnicData && picnicData.groceryStore && (
+              <View style={styles.groceryStoreSection}>
+                <View style={styles.groceryStoreHeader}>
+                  <Ionicons name="storefront" size={20} color="#eb7825" />
+                  <Text style={styles.groceryStoreTitle}>
+                    Start Your Picnic
+                  </Text>
+                </View>
+                <Text style={styles.groceryStoreSubtitle}>
+                  Pick up supplies at this nearby grocery store
+                </Text>
+                <View style={styles.groceryStoreCard}>
+                  {picnicData.groceryStore.imageUrl && (
+                    <Image
+                      source={{ uri: picnicData.groceryStore.imageUrl }}
+                      style={styles.groceryStoreImage}
+                      resizeMode="cover"
+                    />
+                  )}
+                  <View style={styles.groceryStoreContent}>
+                    <View style={styles.groceryStoreInfo}>
+                      <Ionicons
+                        name="storefront-outline"
+                        size={20}
+                        color="#eb7825"
+                      />
+                      <View style={styles.groceryStoreDetails}>
+                        <Text style={styles.groceryStoreName}>
+                          {picnicData.groceryStore.name}
+                        </Text>
+                        <Text style={styles.groceryStoreType}>
+                          {picnicData.groceryStore.type
+                            .replace(/_/g, " ")
+                            .replace(/\b\w/g, (l) => l.toUpperCase())}
+                        </Text>
+                      </View>
+                    </View>
+                    {picnicData.groceryStore.rating && (
+                      <View style={styles.groceryStoreRating}>
+                        <Ionicons name="star" size={14} color="#fbbf24" />
+                        <Text style={styles.ratingText}>
+                          {picnicData.groceryStore.rating.toFixed(1)}
+                        </Text>
+                        {picnicData.groceryStore.reviewCount && (
+                          <Text style={styles.reviewText}>
+                            ({picnicData.groceryStore.reviewCount} reviews)
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                    {picnicData.groceryStore.address && (
+                      <View style={styles.groceryStoreAddress}>
+                        <Ionicons
+                          name="location-outline"
+                          size={12}
+                          color="#9ca3af"
+                        />
+                        <Text style={styles.addressText} numberOfLines={1}>
+                          {picnicData.groceryStore.address}
+                        </Text>
+                      </View>
+                    )}
+                    {picnicData.groceryStore.distance && (
+                      <View style={styles.groceryStoreDistance}>
+                        <Ionicons
+                          name="walk-outline"
+                          size={12}
+                          color="#9ca3af"
+                        />
+                        <Text style={styles.distanceText}>
+                          {picnicData.groceryStore.distance < 1000
+                            ? `${Math.round(
+                                picnicData.groceryStore.distance
+                              )}m away`
+                            : `${(
+                                picnicData.groceryStore.distance / 1000
+                              ).toFixed(1)}km away`}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Timeline Section or "See Route Pairing" Button (for Take a Stroll cards) */}
             {isStrollCard && (
               <>
                 {strollData && strollData.timeline ? (
@@ -346,6 +484,82 @@ export default function ExpandedCardModal({
                           />
                           <Text style={styles.routePairingButtonText}>
                             See Route Pairing
+                          </Text>
+                          <Ionicons
+                            name="open-outline"
+                            size={16}
+                            color="#ffffff"
+                            style={{ marginLeft: 8 }}
+                          />
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* Timeline Section or "See Route Pairing" Button (for Picnic cards) */}
+            {isPicnicCard && (
+              <>
+                {picnicData && picnicData.timeline ? (
+                  <TimelineSection
+                    category={card.category}
+                    title={card.title}
+                    address={card.address}
+                    priceRange={card.priceRange}
+                    travelTime={card.travelTime}
+                    strollTimeline={picnicData.timeline}
+                    routeDuration={picnicData.route?.duration}
+                  />
+                ) : (
+                  <View style={styles.routePairingSection}>
+                    {/* Header */}
+                    <View style={styles.routePairingHeader}>
+                      <View style={styles.routePairingIconContainer}>
+                        <Ionicons
+                          name="basket-outline"
+                          size={20}
+                          color="#eb7825"
+                        />
+                        <View style={styles.routePairingIconDot} />
+                      </View>
+                      <Text style={styles.routePairingTitle}>Picnic Route</Text>
+                    </View>
+
+                    {/* Description */}
+                    <Text style={styles.routePairingDescription}>
+                      Find a grocery store near your picnic location
+                    </Text>
+
+                    {/* Action Button */}
+                    <TouchableOpacity
+                      style={styles.routePairingButton}
+                      onPress={fetchPicnicData}
+                      disabled={loadingPicnicData}
+                      activeOpacity={0.7}
+                    >
+                      {loadingPicnicData ? (
+                        <>
+                          <ActivityIndicator
+                            size="small"
+                            color="#ffffff"
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={styles.routePairingButtonText}>
+                            Loading Route...
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Ionicons
+                            name="storefront-outline"
+                            size={20}
+                            color="#ffffff"
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={styles.routePairingButtonText}>
+                            Find Grocery Store
                           </Text>
                           <Ionicons
                             name="open-outline"
@@ -514,5 +728,100 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  groceryStoreSection: {
+    backgroundColor: "#ffffff",
+    paddingVertical: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+  },
+  groceryStoreHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  groceryStoreTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  groceryStoreSubtitle: {
+    fontSize: 14,
+    color: "#6b7280",
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  groceryStoreCard: {
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+    marginHorizontal: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  groceryStoreImage: {
+    width: "100%",
+    height: 120,
+    backgroundColor: "#e5e7eb",
+  },
+  groceryStoreContent: {
+    padding: 12,
+  },
+  groceryStoreInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 12,
+  },
+  groceryStoreDetails: {
+    flex: 1,
+  },
+  groceryStoreName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  groceryStoreType: {
+    fontSize: 12,
+    color: "#6b7280",
+    textTransform: "capitalize",
+  },
+  groceryStoreRating: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 6,
+  },
+  groceryStoreAddress: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 4,
+  },
+  groceryStoreDistance: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  distanceText: {
+    fontSize: 12,
+    color: "#9ca3af",
+  },
+  ratingText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  reviewText: {
+    fontSize: 12,
+    color: "#9ca3af",
+  },
+  addressText: {
+    fontSize: 12,
+    color: "#9ca3af",
+    flex: 1,
   },
 });

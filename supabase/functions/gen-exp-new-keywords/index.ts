@@ -92,6 +92,115 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "botanical_garden",
     "hiking_area",
     "scenic_viewpoint",
+    "waterfront",
+    "riverfront",
+    "riverside",
+    "riverwalk",
+    "river_greenway",
+    "riverscape",
+    "creekside",
+    "streamside",
+    "lakefront",
+    "lakeside",
+    "lakeshore",
+    "beachfront",
+    "shoreline",
+    "coast",
+    "coastal",
+    "bayside",
+    "harbor",
+    "marina",
+    "pier",
+    "jetty",
+    "quay",
+    "embankment",
+    "inlet",
+    "estuary",
+    "boardwalk",
+    "boardwalk_trail",
+    "canal",
+    "canal_walk",
+    "promenade",
+    "esplanade",
+    "public_esplanade",
+    "civic_promenade",
+    "heritage_promenade",
+    "trail",
+    "walking_trail",
+    "walking_path",
+    "footpath",
+    "pathway",
+    "greenway",
+    "linear_park",
+    "urban_trail",
+    "city_walk",
+    "heritage_trail",
+    "interpretive_trail",
+    "discovery_trail",
+    "eco_trail",
+    "nature_trail",
+    "riverside_trail",
+    "lakeside_trail",
+    "paved_path",
+    "shared_use_path",
+    "multi_use_path",
+    "loop",
+    "walking_loop",
+    "scenic_loop",
+    "river_loop",
+    "lake_loop",
+    "perimeter_path",
+    "outer_loop",
+    "scenic_corridor",
+    "green_corridor",
+    "blueway",
+    "parkway",
+    "waterfront_greenway",
+    "linear_waterfront",
+    "scenic",
+    "viewpoint",
+    "view_point",
+    "overlook",
+    "lookout",
+    "vista",
+    "panorama",
+    "views",
+    "scenic_views",
+    "sunset",
+    "sunrise",
+    "golden_hour",
+    "garden",
+    "botanical",
+    "arboretum",
+    "conservatory",
+    "rose_garden",
+    "sculpture_garden",
+    "japanese_garden",
+    "botanical_park",
+    "nature_preserve",
+    "protected_area",
+    "wetlands",
+    "marsh",
+    "meadow",
+    "grove",
+    "woodland",
+    "foreshore",
+    "waterside",
+    "cliff_walk",
+    "coastal_path",
+    "headland",
+    "bluff",
+    "canopy_walk",
+    "tree_lined_path",
+    "shaded_path",
+    "urban_park",
+    "city_park",
+    "commons",
+    "green",
+    "plaza",
+    "square",
+    "civic_green",
+    "town_green",
   ],
   "take a stroll": [
     "park",
@@ -103,6 +212,115 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "botanical_garden",
     "hiking_area",
     "scenic_viewpoint",
+    "waterfront",
+    "riverfront",
+    "riverside",
+    "riverwalk",
+    "river_greenway",
+    "riverscape",
+    "creekside",
+    "streamside",
+    "lakefront",
+    "lakeside",
+    "lakeshore",
+    "beachfront",
+    "shoreline",
+    "coast",
+    "coastal",
+    "bayside",
+    "harbor",
+    "marina",
+    "pier",
+    "jetty",
+    "quay",
+    "embankment",
+    "inlet",
+    "estuary",
+    "boardwalk",
+    "boardwalk_trail",
+    "canal",
+    "canal_walk",
+    "promenade",
+    "esplanade",
+    "public_esplanade",
+    "civic_promenade",
+    "heritage_promenade",
+    "trail",
+    "walking_trail",
+    "walking_path",
+    "footpath",
+    "pathway",
+    "greenway",
+    "linear_park",
+    "urban_trail",
+    "city_walk",
+    "heritage_trail",
+    "interpretive_trail",
+    "discovery_trail",
+    "eco_trail",
+    "nature_trail",
+    "riverside_trail",
+    "lakeside_trail",
+    "paved_path",
+    "shared_use_path",
+    "multi_use_path",
+    "loop",
+    "walking_loop",
+    "scenic_loop",
+    "river_loop",
+    "lake_loop",
+    "perimeter_path",
+    "outer_loop",
+    "scenic_corridor",
+    "green_corridor",
+    "blueway",
+    "parkway",
+    "waterfront_greenway",
+    "linear_waterfront",
+    "scenic",
+    "viewpoint",
+    "view_point",
+    "overlook",
+    "lookout",
+    "vista",
+    "panorama",
+    "views",
+    "scenic_views",
+    "sunset",
+    "sunrise",
+    "golden_hour",
+    "garden",
+    "botanical",
+    "arboretum",
+    "conservatory",
+    "rose_garden",
+    "sculpture_garden",
+    "japanese_garden",
+    "botanical_park",
+    "nature_preserve",
+    "protected_area",
+    "wetlands",
+    "marsh",
+    "meadow",
+    "grove",
+    "woodland",
+    "foreshore",
+    "waterside",
+    "cliff_walk",
+    "coastal_path",
+    "headland",
+    "bluff",
+    "canopy_walk",
+    "tree_lined_path",
+    "shaded_path",
+    "urban_park",
+    "city_park",
+    "commons",
+    "green",
+    "plaza",
+    "square",
+    "civic_green",
+    "town_green",
   ],
   "take-a-stroll": [
     "park",
@@ -114,6 +332,115 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "botanical_garden",
     "hiking_area",
     "scenic_viewpoint",
+    "waterfront",
+    "riverfront",
+    "riverside",
+    "riverwalk",
+    "river_greenway",
+    "riverscape",
+    "creekside",
+    "streamside",
+    "lakefront",
+    "lakeside",
+    "lakeshore",
+    "beachfront",
+    "shoreline",
+    "coast",
+    "coastal",
+    "bayside",
+    "harbor",
+    "marina",
+    "pier",
+    "jetty",
+    "quay",
+    "embankment",
+    "inlet",
+    "estuary",
+    "boardwalk",
+    "boardwalk_trail",
+    "canal",
+    "canal_walk",
+    "promenade",
+    "esplanade",
+    "public_esplanade",
+    "civic_promenade",
+    "heritage_promenade",
+    "trail",
+    "walking_trail",
+    "walking_path",
+    "footpath",
+    "pathway",
+    "greenway",
+    "linear_park",
+    "urban_trail",
+    "city_walk",
+    "heritage_trail",
+    "interpretive_trail",
+    "discovery_trail",
+    "eco_trail",
+    "nature_trail",
+    "riverside_trail",
+    "lakeside_trail",
+    "paved_path",
+    "shared_use_path",
+    "multi_use_path",
+    "loop",
+    "walking_loop",
+    "scenic_loop",
+    "river_loop",
+    "lake_loop",
+    "perimeter_path",
+    "outer_loop",
+    "scenic_corridor",
+    "green_corridor",
+    "blueway",
+    "parkway",
+    "waterfront_greenway",
+    "linear_waterfront",
+    "scenic",
+    "viewpoint",
+    "view_point",
+    "overlook",
+    "lookout",
+    "vista",
+    "panorama",
+    "views",
+    "scenic_views",
+    "sunset",
+    "sunrise",
+    "golden_hour",
+    "garden",
+    "botanical",
+    "arboretum",
+    "conservatory",
+    "rose_garden",
+    "sculpture_garden",
+    "japanese_garden",
+    "botanical_park",
+    "nature_preserve",
+    "protected_area",
+    "wetlands",
+    "marsh",
+    "meadow",
+    "grove",
+    "woodland",
+    "foreshore",
+    "waterside",
+    "cliff_walk",
+    "coastal_path",
+    "headland",
+    "bluff",
+    "canopy_walk",
+    "tree_lined_path",
+    "shaded_path",
+    "urban_park",
+    "city_park",
+    "commons",
+    "green",
+    "plaza",
+    "square",
+    "civic_green",
+    "town_green",
   ],
   take_a_stroll: [
     "park",
@@ -125,6 +452,115 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "botanical_garden",
     "hiking_area",
     "scenic_viewpoint",
+    "waterfront",
+    "riverfront",
+    "riverside",
+    "riverwalk",
+    "river_greenway",
+    "riverscape",
+    "creekside",
+    "streamside",
+    "lakefront",
+    "lakeside",
+    "lakeshore",
+    "beachfront",
+    "shoreline",
+    "coast",
+    "coastal",
+    "bayside",
+    "harbor",
+    "marina",
+    "pier",
+    "jetty",
+    "quay",
+    "embankment",
+    "inlet",
+    "estuary",
+    "boardwalk",
+    "boardwalk_trail",
+    "canal",
+    "canal_walk",
+    "promenade",
+    "esplanade",
+    "public_esplanade",
+    "civic_promenade",
+    "heritage_promenade",
+    "trail",
+    "walking_trail",
+    "walking_path",
+    "footpath",
+    "pathway",
+    "greenway",
+    "linear_park",
+    "urban_trail",
+    "city_walk",
+    "heritage_trail",
+    "interpretive_trail",
+    "discovery_trail",
+    "eco_trail",
+    "nature_trail",
+    "riverside_trail",
+    "lakeside_trail",
+    "paved_path",
+    "shared_use_path",
+    "multi_use_path",
+    "loop",
+    "walking_loop",
+    "scenic_loop",
+    "river_loop",
+    "lake_loop",
+    "perimeter_path",
+    "outer_loop",
+    "scenic_corridor",
+    "green_corridor",
+    "blueway",
+    "parkway",
+    "waterfront_greenway",
+    "linear_waterfront",
+    "scenic",
+    "viewpoint",
+    "view_point",
+    "overlook",
+    "lookout",
+    "vista",
+    "panorama",
+    "views",
+    "scenic_views",
+    "sunset",
+    "sunrise",
+    "golden_hour",
+    "garden",
+    "botanical",
+    "arboretum",
+    "conservatory",
+    "rose_garden",
+    "sculpture_garden",
+    "japanese_garden",
+    "botanical_park",
+    "nature_preserve",
+    "protected_area",
+    "wetlands",
+    "marsh",
+    "meadow",
+    "grove",
+    "woodland",
+    "foreshore",
+    "waterside",
+    "cliff_walk",
+    "coastal_path",
+    "headland",
+    "bluff",
+    "canopy_walk",
+    "tree_lined_path",
+    "shaded_path",
+    "urban_park",
+    "city_park",
+    "commons",
+    "green",
+    "plaza",
+    "square",
+    "civic_green",
+    "town_green",
   ],
   // Dining Experiences variations
   "dining experiences": [
@@ -344,30 +780,20 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   ],
   // Picnics variations
   picnics: [
-    "picnic_ground",
-    "garden",
-    "botanical_garden",
-    "national_park",
-    "campground",
-    "water_park",
-    "state_park",
     "park",
-    "beach",
+    "botanical_garden",
     "picnic_area",
+    "campground",
+    "beach",
     "lake",
     "natural_feature",
   ],
   picnic: [
-    "picnic_ground",
-    "national_park",
-    "garden",
-    "botanical_garden",
-    "water_park",
-    "state_park",
-    "campground",
     "park",
-    "beach",
+    "botanical_garden",
     "picnic_area",
+    "campground",
+    "beach",
     "lake",
     "natural_feature",
   ],
@@ -449,24 +875,471 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   ],
 };
 
-// Excluded types for specific categories
+// Excluded place types per category
+// These types will be excluded from search results for better relevance
 const EXCLUDED_TYPES: { [key: string]: string[] } = {
-  picnic: [
-    "dog_park",
-    "cycling_park",
+  // Stroll variations - exclude commercial, loud, or non-walking-friendly places
+  stroll: [
+    "shopping_mall",
+    "parking",
+    "gas_station",
+    "restaurant",
+    "fast_food_restaurant",
+    "night_club",
+    "bar",
+    "casino",
     "amusement_park",
-    "park_and_ride",
-    "bus_stop",
+    "stadium",
+    "airport",
     "bus_station",
-  ],
-  picnics: [
+    "train_station",
+    "subway_station",
+    "hospital",
+    "funeral_home",
+    "cemetery",
     "dog_park",
-    "cycling_park",
-    "amusement_park",
-    "park_and_ride",
-    "bus_stop",
-    "bus_station",
+    "dog_run",
+    "dog_beach",
+    "pet_zone",
+    "canine_park",
+    "puppy_park",
+    "off_leash",
+    "leash_free",
+    "fenced_dog",
+    "agility",
+    "agility_course",
+    "obedience_training",
+    "dog_daycare",
+    "playground",
+    "splash_pad",
+    "play_area",
+    "kids_park",
+    "childrens_park",
+    "kiddie",
+    "kids_zone",
+    "childrens_play",
+    "daycare",
+    "nursery",
+    "family_fun_center",
+    "indoor_playground",
+    "soft_play",
+    "bounce_house",
+    "inflatable_park",
+    "campground",
+    "campsite",
+    "rv_park",
+    "trailer_park",
+    "caravan_park",
+    "motorhome_park",
+    "overnight_camping",
+    "summit",
+    "ridge",
+    "peak",
+    "backcountry",
+    "scramble",
+    "technical_trail",
+    "rock_scramble",
+    "mountaineering",
+    "via_ferrata",
+    "wilderness_access",
+    "trailhead_parking",
+    "extreme_trail",
+    "advanced_trail",
+    "expert_trail",
+    "black_diamond",
+    "double_black",
+    "endurance_route",
+    "ultramarathon",
+    "race_course",
+    "obstacle_course",
+    "mud_run",
+    "sports_complex",
+    "athletic_fields",
+    "football_fields",
+    "soccer_complex",
+    "baseball_complex",
+    "cricket_ground",
+    "track_and_field",
+    "velodrome",
+    "arena",
+    "ballpark",
+    "racetrack",
+    "speedway",
+    "motorsports_park",
+    "tournament",
+    "fairgrounds",
+    "expo_grounds",
+    "concert_venue",
+    "live_venue",
+    "music_festival",
+    "brewery",
+    "brewpub",
+    "taproom",
+    "beer_garden",
+    "cocktail",
+    "speakeasy",
+    "wine_bar",
+    "lounge",
+    "club",
+    "dj",
+    "dance_floor",
+    "bottle_service",
+    "steakhouse",
+    "fine_dining",
+    "tasting_menu",
+    "omakase",
+    "prix_fixe",
+    "chefs_table",
+    "wine_pairing",
+    "multi_course",
+    "reservation_required",
   ],
+  "take a stroll": [
+    "shopping_mall",
+    "parking",
+    "gas_station",
+    "restaurant",
+    "fast_food_restaurant",
+    "night_club",
+    "bar",
+    "casino",
+    "amusement_park",
+    "stadium",
+    "airport",
+    "bus_station",
+    "train_station",
+    "subway_station",
+    "hospital",
+    "funeral_home",
+    "cemetery",
+    "dog_park",
+    "dog_run",
+    "dog_beach",
+    "pet_zone",
+    "canine_park",
+    "puppy_park",
+    "off_leash",
+    "leash_free",
+    "fenced_dog",
+    "agility",
+    "agility_course",
+    "obedience_training",
+    "dog_daycare",
+    "playground",
+    "splash_pad",
+    "play_area",
+    "kids_park",
+    "childrens_park",
+    "kiddie",
+    "kids_zone",
+    "childrens_play",
+    "daycare",
+    "nursery",
+    "family_fun_center",
+    "indoor_playground",
+    "soft_play",
+    "bounce_house",
+    "inflatable_park",
+    "campground",
+    "campsite",
+    "rv_park",
+    "trailer_park",
+    "caravan_park",
+    "motorhome_park",
+    "overnight_camping",
+    "summit",
+    "ridge",
+    "peak",
+    "backcountry",
+    "scramble",
+    "technical_trail",
+    "rock_scramble",
+    "mountaineering",
+    "via_ferrata",
+    "wilderness_access",
+    "trailhead_parking",
+    "extreme_trail",
+    "advanced_trail",
+    "expert_trail",
+    "black_diamond",
+    "double_black",
+    "endurance_route",
+    "ultramarathon",
+    "race_course",
+    "obstacle_course",
+    "mud_run",
+    "sports_complex",
+    "athletic_fields",
+    "football_fields",
+    "soccer_complex",
+    "baseball_complex",
+    "cricket_ground",
+    "track_and_field",
+    "velodrome",
+    "arena",
+    "ballpark",
+    "racetrack",
+    "speedway",
+    "motorsports_park",
+    "tournament",
+    "fairgrounds",
+    "expo_grounds",
+    "concert_venue",
+    "live_venue",
+    "music_festival",
+    "brewery",
+    "brewpub",
+    "taproom",
+    "beer_garden",
+    "cocktail",
+    "speakeasy",
+    "wine_bar",
+    "lounge",
+    "club",
+    "dj",
+    "dance_floor",
+    "bottle_service",
+    "steakhouse",
+    "fine_dining",
+    "tasting_menu",
+    "omakase",
+    "prix_fixe",
+    "chefs_table",
+    "wine_pairing",
+    "multi_course",
+    "reservation_required",
+  ],
+  "take-a-stroll": [
+    "shopping_mall",
+    "parking",
+    "gas_station",
+    "restaurant",
+    "fast_food_restaurant",
+    "night_club",
+    "bar",
+    "casino",
+    "amusement_park",
+    "stadium",
+    "airport",
+    "bus_station",
+    "train_station",
+    "subway_station",
+    "hospital",
+    "funeral_home",
+    "cemetery",
+    "dog_park",
+    "dog_run",
+    "dog_beach",
+    "pet_zone",
+    "canine_park",
+    "puppy_park",
+    "off_leash",
+    "leash_free",
+    "fenced_dog",
+    "agility",
+    "agility_course",
+    "obedience_training",
+    "dog_daycare",
+    "playground",
+    "splash_pad",
+    "play_area",
+    "kids_park",
+    "childrens_park",
+    "kiddie",
+    "kids_zone",
+    "childrens_play",
+    "daycare",
+    "nursery",
+    "family_fun_center",
+    "indoor_playground",
+    "soft_play",
+    "bounce_house",
+    "inflatable_park",
+    "campground",
+    "campsite",
+    "rv_park",
+    "trailer_park",
+    "caravan_park",
+    "motorhome_park",
+    "overnight_camping",
+    "summit",
+    "ridge",
+    "peak",
+    "backcountry",
+    "scramble",
+    "technical_trail",
+    "rock_scramble",
+    "mountaineering",
+    "via_ferrata",
+    "wilderness_access",
+    "trailhead_parking",
+    "extreme_trail",
+    "advanced_trail",
+    "expert_trail",
+    "black_diamond",
+    "double_black",
+    "endurance_route",
+    "ultramarathon",
+    "race_course",
+    "obstacle_course",
+    "mud_run",
+    "sports_complex",
+    "athletic_fields",
+    "football_fields",
+    "soccer_complex",
+    "baseball_complex",
+    "cricket_ground",
+    "track_and_field",
+    "velodrome",
+    "arena",
+    "ballpark",
+    "racetrack",
+    "speedway",
+    "motorsports_park",
+    "tournament",
+    "fairgrounds",
+    "expo_grounds",
+    "concert_venue",
+    "live_venue",
+    "music_festival",
+    "brewery",
+    "brewpub",
+    "taproom",
+    "beer_garden",
+    "cocktail",
+    "speakeasy",
+    "wine_bar",
+    "lounge",
+    "club",
+    "dj",
+    "dance_floor",
+    "bottle_service",
+    "steakhouse",
+    "fine_dining",
+    "tasting_menu",
+    "omakase",
+    "prix_fixe",
+    "chefs_table",
+    "wine_pairing",
+    "multi_course",
+    "reservation_required",
+  ],
+  take_a_stroll: [
+    "shopping_mall",
+    "parking",
+    "gas_station",
+    "restaurant",
+    "fast_food_restaurant",
+    "night_club",
+    "bar",
+    "casino",
+    "amusement_park",
+    "stadium",
+    "airport",
+    "bus_station",
+    "train_station",
+    "subway_station",
+    "hospital",
+    "funeral_home",
+    "cemetery",
+    "dog_park",
+    "dog_run",
+    "dog_beach",
+    "pet_zone",
+    "canine_park",
+    "puppy_park",
+    "off_leash",
+    "leash_free",
+    "fenced_dog",
+    "agility",
+    "agility_course",
+    "obedience_training",
+    "dog_daycare",
+    "playground",
+    "splash_pad",
+    "play_area",
+    "kids_park",
+    "childrens_park",
+    "kiddie",
+    "kids_zone",
+    "childrens_play",
+    "daycare",
+    "nursery",
+    "family_fun_center",
+    "indoor_playground",
+    "soft_play",
+    "bounce_house",
+    "inflatable_park",
+    "campground",
+    "campsite",
+    "rv_park",
+    "trailer_park",
+    "caravan_park",
+    "motorhome_park",
+    "overnight_camping",
+    "summit",
+    "ridge",
+    "peak",
+    "backcountry",
+    "scramble",
+    "technical_trail",
+    "rock_scramble",
+    "mountaineering",
+    "via_ferrata",
+    "wilderness_access",
+    "trailhead_parking",
+    "extreme_trail",
+    "advanced_trail",
+    "expert_trail",
+    "black_diamond",
+    "double_black",
+    "endurance_route",
+    "ultramarathon",
+    "race_course",
+    "obstacle_course",
+    "mud_run",
+    "sports_complex",
+    "athletic_fields",
+    "football_fields",
+    "soccer_complex",
+    "baseball_complex",
+    "cricket_ground",
+    "track_and_field",
+    "velodrome",
+    "arena",
+    "ballpark",
+    "racetrack",
+    "speedway",
+    "motorsports_park",
+    "tournament",
+    "fairgrounds",
+    "expo_grounds",
+    "concert_venue",
+    "live_venue",
+    "music_festival",
+    "brewery",
+    "brewpub",
+    "taproom",
+    "beer_garden",
+    "cocktail",
+    "speakeasy",
+    "wine_bar",
+    "lounge",
+    "club",
+    "dj",
+    "dance_floor",
+    "bottle_service",
+    "steakhouse",
+    "fine_dining",
+    "tasting_menu",
+    "omakase",
+    "prix_fixe",
+    "chefs_table",
+    "wine_pairing",
+    "multi_course",
+    "reservation_required",
+  ],
+  // Add excluded types for other categories as needed
 };
 
 interface UserPreferences {
@@ -493,10 +1366,6 @@ serve(async (req) => {
   }
 
   try {
-    console.log("🎯 Generate experiences endpoint called");
-    console.log("📥 Request method:", req.method);
-    console.log("📥 Request URL:", req.url);
-
     let request: GenerationRequest;
     try {
       request = await req.json();
@@ -524,23 +1393,6 @@ serve(async (req) => {
     );
 
     const { preferences, location } = request;
-
-    // Detailed logging of preferences
-    console.log(
-      "📋 Full preferences object:",
-      JSON.stringify(preferences, null, 2)
-    );
-    console.log("📍 Location:", JSON.stringify(location, null, 2));
-    console.log("🏷️ Categories:", preferences?.categories);
-    console.log(
-      "💰 Budget:",
-      `$${preferences?.budget_min} - $${preferences?.budget_max}`
-    );
-    console.log("🚶 Travel mode:", preferences?.travel_mode);
-    console.log(
-      "⏱️ Travel constraint:",
-      `${preferences?.travel_constraint_type}: ${preferences?.travel_constraint_value}`
-    );
 
     if (!preferences) {
       console.error("❌ Preferences are required");
@@ -640,9 +1492,6 @@ serve(async (req) => {
 
     // Filter by constraints
     const filtered = filterByConstraints(placesWithTravel, preferences);
-    console.log(
-      `✅ Filtered to ${filtered.length} places matching constraints`
-    );
 
     // Calculate match scores
     const withMatchScores = filtered.map((place) => ({
@@ -653,14 +1502,12 @@ serve(async (req) => {
 
     // Sort by match score
     const sorted = withMatchScores.sort((a, b) => b.matchScore - a.matchScore);
-    console.log(`✅ Sorted ${sorted.length} places by match score`);
 
     // Generate AI content for top results
     const topResults = sorted.slice(0, 20);
     let enriched: any[] = [];
     try {
       enriched = await enrichWithAI(topResults, preferences);
-      console.log(`✅ Enriched ${enriched.length} places with AI content`);
     } catch (error) {
       console.error(
         "❌ Error enriching with AI, using fallback content:",
@@ -734,13 +1581,6 @@ async function fetchGooglePlaces(
       ? Math.min((preferences.travel_constraint_value || 5) * 1000, 50000)
       : 10000; // Default 10km
 
-  console.log(
-    `🔍 Starting Google Places API (New) search for ${
-      preferences.categories?.length || 0
-    } categories`
-  );
-  console.log(`📍 Search location: ${location.lat}, ${location.lng}`);
-  console.log(`📏 Search radius: ${radius}m`);
   console.log(`🔑 Google API Key present: ${!!GOOGLE_API_KEY}`);
 
   // Places API (New) base URL
@@ -751,155 +1591,148 @@ async function fetchGooglePlaces(
     // Convert category to lowercase for case-insensitive lookup
     const categoryKey = category.toLowerCase();
     const placeTypes = CATEGORY_MAPPINGS[categoryKey] || ["tourist_attraction"];
+    const excludedTypes = EXCLUDED_TYPES[categoryKey] || [];
     console.log(`   Mapped to place types: ${placeTypes.join(", ")}`);
+    if (excludedTypes.length > 0) {
+      console.log(`   Excluding types: ${excludedTypes.join(", ")}`);
+    }
 
-    // For picnic categories, iterate through 7 types; otherwise use 3
-    const isPicnicCategory =
-      categoryKey === "picnic" || categoryKey === "picnics";
-    const maxTypes = isPicnicCategory ? 8 : 3;
+    // Make a single API call with all place types for this category
+    try {
+      // Field mask for Places API (New) - specify which fields we need
+      // Note: Use places.id (not places.placeId) for the place identifier
+      const fieldMask =
+        "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours";
 
-    for (const placeType of placeTypes.slice(0, maxTypes)) {
-      try {
-        // Convert legacy place type to new API format (e.g., "restaurant" -> "restaurant")
-        // Most types remain the same, but we need to ensure proper format
-        const includedType = placeType;
-
-        // Field mask for Places API (New) - specify which fields we need
-        // Note: Use places.id (not places.placeId) for the place identifier
-        const fieldMask =
-          "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours";
-
-        // Check if this category has excluded types (e.g., picnic)
-        const excludedTypes = EXCLUDED_TYPES[categoryKey] || null;
-
-        const requestBody: any = {
-          includedTypes: [includedType],
-          maxResultCount: 10,
-          locationRestriction: {
-            circle: {
-              center: {
-                latitude: location.lat,
-                longitude: location.lng,
-              },
-              radius: radius,
+      const requestBody: any = {
+        includedTypes: placeTypes.slice(0, 50), // Pass all place types in one call
+        maxResultCount: 50, // Increased since we're getting results for multiple types
+        locationRestriction: {
+          circle: {
+            center: {
+              latitude: location.lat,
+              longitude: location.lng,
             },
+            radius: radius,
           },
-        };
+        },
+      };
 
-        // Add excludedTypes if this is a picnic category
-        if (excludedTypes && excludedTypes.length > 0) {
-          requestBody.excludedTypes = excludedTypes;
-        }
+      // Add excludedTypes if available for this category
+      if (excludedTypes.length > 0) {
+        requestBody.excludedTypes = excludedTypes.slice(0, 50);
+      }
 
-        console.log(`   🔎 Searching for type: ${placeType}`);
+      console.log(`   🔎 Searching for all types: ${placeTypes.join(", ")}`);
 
-        const response = await fetch(baseUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": GOOGLE_API_KEY,
-            "X-Goog-FieldMask": fieldMask,
-          },
-          body: JSON.stringify(requestBody),
+      const response = await fetch(baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_API_KEY,
+          "X-Goog-FieldMask": fieldMask,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `Google Places API (New) error for category "${category}":`,
+          response.status,
+          response.statusText,
+          errorText
+        );
+        continue;
+      }
+
+      const data = await response.json();
+      console.log(
+        `   📊 API Response - Found ${
+          data.places?.length || 0
+        } places for category "${category}"`
+      );
+
+      if (data.places?.length) {
+        const places = data.places.map((place: any) => {
+          // Extract photo reference from new API format
+          // Photo name format: "places/{place_id}/photos/{photo_id}"
+          const primaryPhoto = place.photos?.[0];
+          const imageUrl = primaryPhoto?.name
+            ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
+            : null;
+
+          const images =
+            place.photos
+              ?.slice(0, 5)
+              .map((photo: any) => {
+                return photo.name
+                  ? `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
+                  : null;
+              })
+              .filter((img: string | null) => img !== null) || [];
+
+          // Convert price level (0-4) to dollar ranges
+          // 0 = Free, 1 = $, 2 = $$, 3 = $$$, 4 = $$$$
+          const priceLevel = place.priceLevel || 0;
+          const price_min =
+            priceLevel === 0
+              ? 0
+              : priceLevel === 1
+              ? 0
+              : priceLevel === 2
+              ? 15
+              : priceLevel === 3
+              ? 50
+              : 100;
+          const price_max =
+            priceLevel === 0
+              ? 0
+              : priceLevel === 1
+              ? 25
+              : priceLevel === 2
+              ? 75
+              : priceLevel === 3
+              ? 150
+              : 500;
+
+          return {
+            id: place.id,
+            name: place.displayName?.text || "Unknown Place",
+            category,
+            location: {
+              lat: place.location?.latitude || location.lat,
+              lng: place.location?.longitude || location.lng,
+            },
+            address: place.formattedAddress || "",
+            priceLevel: priceLevel,
+            rating: place.rating || 0,
+            reviewCount: place.userRatingCount || 0,
+            imageUrl: imageUrl,
+            images: images.filter((img: string | null) => img !== null),
+            placeId: place.id, // In new API, place.id is the identifier
+            openingHours: place.regularOpeningHours
+              ? {
+                  open_now: place.regularOpeningHours.openNow || false,
+                  weekday_text:
+                    place.regularOpeningHours.weekdayDescriptions || [],
+                }
+              : null,
+            placeTypes: place.types || [],
+            price_min,
+            price_max,
+          };
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(
-            `Google Places API (New) error for ${placeType}:`,
-            response.status,
-            response.statusText,
-            errorText
-          );
-          continue;
-        }
-
-        const data = await response.json();
+        allPlaces.push(...places);
         console.log(
-          `   📊 API Response - Found ${
-            data.places?.length || 0
-          } places for ${placeType}`
+          `   ➕ Added ${places.length} places from category "${category}"`
         );
-
-        if (data.places?.length) {
-          const places = data.places.map((place: any) => {
-            // Extract photo reference from new API format
-            // Photo name format: "places/{place_id}/photos/{photo_id}"
-            const primaryPhoto = place.photos?.[0];
-            const imageUrl = primaryPhoto?.name
-              ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
-              : null;
-
-            const images =
-              place.photos
-                ?.slice(0, 5)
-                .map((photo: any) => {
-                  return photo.name
-                    ? `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
-                    : null;
-                })
-                .filter((img: string | null) => img !== null) || [];
-
-            // Convert price level (0-4) to dollar ranges
-            // 0 = Free, 1 = $, 2 = $$, 3 = $$$, 4 = $$$$
-            const priceLevel = place.priceLevel || 0;
-            const price_min =
-              priceLevel === 0
-                ? 0
-                : priceLevel === 1
-                ? 0
-                : priceLevel === 2
-                ? 15
-                : priceLevel === 3
-                ? 50
-                : 100;
-            const price_max =
-              priceLevel === 0
-                ? 0
-                : priceLevel === 1
-                ? 25
-                : priceLevel === 2
-                ? 75
-                : priceLevel === 3
-                ? 150
-                : 500;
-
-            return {
-              id: place.id,
-              name: place.displayName?.text || "Unknown Place",
-              category,
-              location: {
-                lat: place.location?.latitude || location.lat,
-                lng: place.location?.longitude || location.lng,
-              },
-              address: place.formattedAddress || "",
-              priceLevel: priceLevel,
-              rating: place.rating || 0,
-              reviewCount: place.userRatingCount || 0,
-              imageUrl: imageUrl,
-              images: images.filter((img: string | null) => img !== null),
-              placeId: place.id, // In new API, place.id is the identifier
-              openingHours: place.regularOpeningHours
-                ? {
-                    open_now: place.regularOpeningHours.openNow || false,
-                    weekday_text:
-                      place.regularOpeningHours.weekdayDescriptions || [],
-                  }
-                : null,
-              placeTypes: place.types || [],
-              price_min,
-              price_max,
-            };
-          });
-
-          allPlaces.push(...places);
-          console.log(`   ➕ Added ${places.length} places from ${placeType}`);
-        } else {
-          console.log(`   ⚠️ No results found for ${placeType}`);
-        }
-      } catch (error) {
-        console.error(`   ❌ Error fetching ${placeType}:`, error);
+      } else {
+        console.log(`   ⚠️ No results found for category "${category}"`);
       }
+    } catch (error) {
+      console.error(`   ❌ Error fetching category "${category}":`, error);
     }
   }
 
@@ -1046,15 +1879,6 @@ function filterByConstraints(
   let remaining = places;
   const initialCount = places.length;
 
-  console.log(`\n🔍 Starting filter process with ${initialCount} places`);
-  console.log(`📋 Filter criteria:`, {
-    travel_constraint_type: preferences.travel_constraint_type,
-    travel_constraint_value: preferences.travel_constraint_value,
-    budget_min: preferences.budget_min,
-    budget_max: preferences.budget_max,
-    categories: preferences.categories,
-  });
-
   // Stage 1: Filter by travel constraint
   const beforeTravelFilter = remaining.length;
   const travelFilteredPlaces: any[] = [];
@@ -1073,38 +1897,11 @@ function filterByConstraints(
         return false;
       }
     }
-    console.log(
-      "preferenceConstraintValue",
-      preferences.travel_constraint_value
-    );
-    console.log("placeDistanceKm", place.distanceKm);
-    console.log("placeTravelTimeMin", place.travelTimeMin);
+
     return true;
   });
   const afterTravelFilter = remaining.length;
   const travelFilteredOut = beforeTravelFilter - afterTravelFilter;
-  if (travelFilteredOut > 0) {
-    console.log(
-      `   ⏱️  Travel constraint filter: ${beforeTravelFilter} → ${afterTravelFilter} (removed ${travelFilteredOut} places)`
-    );
-    console.log(
-      `      Constraint: ${preferences.travel_constraint_type} <= ${preferences.travel_constraint_value}`
-    );
-    if (travelFilteredPlaces.length > 0) {
-      const example = travelFilteredPlaces[0];
-      const constraintValue =
-        preferences.travel_constraint_type === "time"
-          ? `${example.travelTimeMin} min`
-          : `${example.distanceKm} km`;
-      console.log(
-        `      Example filtered place: "${example.name}" (${constraintValue})`
-      );
-    }
-  } else {
-    console.log(
-      `   ⏱️  Travel constraint filter: ${beforeTravelFilter} → ${afterTravelFilter} (no places removed)`
-    );
-  }
 
   // Stage 2: Filter by budget (skip for stroll cards)
   const beforeBudgetFilter = remaining.length;
@@ -1131,32 +1928,10 @@ function filterByConstraints(
       budgetFilteredPlaces.push(place);
       return false;
     }
-
-    console.log("placePriceMin", place.price_min);
-    console.log("placePriceMax", place.price_max);
-    console.log("budgetMin", preferences.budget_min);
-    console.log("budgetMax", preferences.budget_max);
     return true;
   });
   const afterBudgetFilter = remaining.length;
   const budgetFilteredOut = beforeBudgetFilter - afterBudgetFilter;
-  if (budgetFilteredOut > 0) {
-    console.log(
-      `   💰 Budget filter: ${beforeBudgetFilter} → ${afterBudgetFilter} (removed ${budgetFilteredOut} places)`
-    );
-    console.log(
-      `      Budget range: $${preferences.budget_min} - $${preferences.budget_max}`
-    );
-    if (budgetFilteredPlaces.length > 0) {
-      console.log(
-        `      Example filtered place: "${budgetFilteredPlaces[0].name}" ($${budgetFilteredPlaces[0].price_min}-$${budgetFilteredPlaces[0].price_max})`
-      );
-    }
-  } else {
-    console.log(
-      `   💰 Budget filter: ${beforeBudgetFilter} → ${afterBudgetFilter} (no places removed)`
-    );
-  }
 
   // Stage 3: Filter by category
   const beforeCategoryFilter = remaining.length;
@@ -1166,8 +1941,7 @@ function filterByConstraints(
       categoryFilteredPlaces.push(place);
       return false;
     }
-    console.log("placeCategory", place.category);
-    console.log("categories", preferences.categories);
+
     return true;
   });
   const afterCategoryFilter = remaining.length;
@@ -1215,30 +1989,6 @@ function filterByConstraints(
     );
   }
   const categoryFilteredOut = beforeCategoryFilter - afterCategoryFilter;
-  if (categoryFilteredOut > 0) {
-    console.log(
-      `   🏷️  Category filter: ${beforeCategoryFilter} → ${afterCategoryFilter} (removed ${categoryFilteredOut} places)`
-    );
-    console.log(
-      `      Allowed categories: ${preferences.categories.join(", ")}`
-    );
-    if (categoryFilteredPlaces.length > 0) {
-      const categoryCounts: { [key: string]: number } = {};
-      categoryFilteredPlaces.forEach((place) => {
-        categoryCounts[place.category] =
-          (categoryCounts[place.category] || 0) + 1;
-      });
-      console.log(
-        `      Filtered categories: ${Object.entries(categoryCounts)
-          .map(([cat, count]) => `${cat} (${count})`)
-          .join(", ")}`
-      );
-    }
-  } else {
-    console.log(
-      `   🏷️  Category filter: ${beforeCategoryFilter} → ${afterCategoryFilter} (no places removed)`
-    );
-  }
 
   const finalCount = remaining.length;
   const totalFilteredOut = initialCount - finalCount;

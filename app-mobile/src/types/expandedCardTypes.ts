@@ -76,6 +76,40 @@ export interface ExpandedCardData {
       duration: number;
     }>;
   };
+  // Picnic-specific data
+  picnicData?: {
+    picnic: {
+      id: string;
+      name: string;
+      location: { lat: number; lng: number };
+      address: string;
+    };
+    groceryStore: {
+      id: string;
+      name: string;
+      location: { lat: number; lng: number };
+      address: string;
+      rating?: number;
+      reviewCount?: number;
+      imageUrl?: string | null;
+      placeId: string;
+      type: string;
+      distance: number;
+    };
+    route: {
+      duration: number;
+      startLocation: { lat: number; lng: number };
+      endLocation: { lat: number; lng: number };
+    };
+    timeline: Array<{
+      step: number;
+      type: string;
+      title: string;
+      location: any;
+      description: string;
+      duration: number;
+    }>;
+  };
 }
 
 export interface WeatherData {
