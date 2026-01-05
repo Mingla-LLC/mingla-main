@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Text,
   View,
@@ -8,10 +8,16 @@ import {
   StatusBar,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { locationService } from "../../services/locationService";
+import {
+  geocodingService,
+  AutocompleteSuggestion,
+} from "../../services/geocodingService";
 
 interface LocationSetupStepProps {
   onNext: () => void | Promise<void>;
@@ -32,14 +38,29 @@ const LocationSetupStep = ({
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [locationInput, setLocationInput] = useState("");
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const isSelectingSuggestion = useRef(false);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sync location prop to input when it changes externally (e.g., from "Use my current location")
   // Only update if location prop has a value (not empty string)
   useEffect(() => {
     if (location && location.trim().length > 0) {
       setLocationInput(location);
+      setShowSuggestions(false);
     }
   }, [location]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const styles = StyleSheet.create({
     container: {
@@ -235,6 +256,42 @@ const LocationSetupStep = ({
     nextButtonTextDisabled: {
       color: "#6b7280",
     },
+    suggestionsContainer: {
+      backgroundColor: "white",
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "#e5e7eb",
+      marginTop: 4,
+      marginBottom: 8,
+      maxHeight: 200,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    suggestionItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: "#f3f4f6",
+    },
+    suggestionTextContainer: {
+      flex: 1,
+      marginLeft: 12,
+    },
+    suggestionText: {
+      fontSize: 15,
+      color: "#111827",
+      fontWeight: "500",
+    },
+    suggestionSubtext: {
+      fontSize: 13,
+      color: "#6b7280",
+      marginTop: 2,
+    },
   });
 
   const popularLocations = [
@@ -255,6 +312,67 @@ const LocationSetupStep = ({
     if (onLocationChange) {
       onLocationChange(text);
     }
+
+    // Clear previous timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Clear suggestions if text is too short
+    if (text.trim().length < 4) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    // Debounce the API call
+    debounceTimeoutRef.current = setTimeout(async () => {
+      setIsLoadingSuggestions(true);
+      try {
+        const results = await geocodingService.autocomplete(text.trim());
+        setSuggestions(results);
+        setShowSuggestions(results.length > 0);
+      } catch (error) {
+        console.error("Error fetching suggestions:", error);
+        setSuggestions([]);
+        setShowSuggestions(false);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    }, 300);
+  };
+
+  // Handle selecting a suggestion
+  const handleSuggestionSelect = (suggestion: AutocompleteSuggestion) => {
+    // Mark that we're selecting to prevent blur handler from interfering
+    isSelectingSuggestion.current = true;
+
+    // Update input with displayName for better UX (shorter, more readable)
+
+    setLocationInput(suggestion.displayName);
+    setShowSuggestions(false);
+    setIsInputFocused(false);
+
+    // Pass fullAddress to parent for geocoding/backend processing
+    if (onLocationChange) {
+      onLocationChange(suggestion.fullAddress);
+    }
+
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      isSelectingSuggestion.current = false;
+    }, 300);
+  };
+
+  // Handle input blur with delay to allow clicks on suggestions
+  const handleInputBlur = () => {
+    setTimeout(() => {
+      // Don't hide suggestions if user is selecting one
+      if (!isSelectingSuggestion.current) {
+        setIsInputFocused(false);
+        setShowSuggestions(false);
+      }
+    }, 200);
   };
 
   // Handle popular location selection
@@ -290,7 +408,9 @@ const LocationSetupStep = ({
               }
             } else {
               // Fallback to coordinates if reverse geocode fails
-              const locationString = `${locationData.latitude.toFixed(4)}, ${locationData.longitude.toFixed(4)}`;
+              const locationString = `${locationData.latitude.toFixed(
+                4
+              )}, ${locationData.longitude.toFixed(4)}`;
               setLocationInput(locationString);
               if (onLocationChange) {
                 onLocationChange(locationString);
@@ -343,162 +463,229 @@ const LocationSetupStep = ({
         </View>
       </View>
 
-      {/* Scrollable Content */}
-      <ScrollView
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={true}
-        nestedScrollEnabled={true}
       >
-        {/* Title Section */}
-        <View style={styles.titleSection}>
-          <Text style={styles.title}>Where are you?</Text>
-          <Text style={styles.subtitle}>
-            We'll show you experiences near your location
-          </Text>
-        </View>
-
-        {/* Use My Current Location Button */}
-        <TouchableOpacity
-          style={styles.useLocationButton}
-          onPress={handleUseCurrentLocation}
-          disabled={isRequestingLocation}
-          activeOpacity={0.7}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={true}
+          nestedScrollEnabled={true}
+          keyboardShouldPersistTaps="handled"
         >
-          {isRequestingLocation ? (
-            <ActivityIndicator size="small" color="#eb7825" />
-          ) : (
-            <Ionicons name="send-outline" size={20} color="#eb7825" />
-          )}
-          <Text style={styles.useLocationButtonText}>
-            {isRequestingLocation
-              ? "Getting location..."
-              : "Use my current location"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Separator */}
-        <View style={styles.separator}>
-          <Text style={styles.separatorText}>or</Text>
-        </View>
-
-        {/* Location Input Field */}
-        <View
-          style={[
-            styles.inputContainer,
-            isInputFocused && styles.inputContainerFocused,
-          ]}
-        >
-          <Ionicons
-            name="location"
-            size={20}
-            color={isInputFocused ? "#eb7825" : "#6b7280"}
-            style={styles.inputIcon}
-          />
-          <TextInput
-            style={styles.textInput}
-            placeholder="Enter your city or address"
-            placeholderTextColor="#9ca3af"
-            value={locationInput}
-            onChangeText={handleLocationInputChange}
-            onFocus={() => setIsInputFocused(true)}
-            onBlur={() => setIsInputFocused(false)}
-            autoCapitalize="words"
-            returnKeyType="done"
-          />
-        </View>
-
-        {/* Helper Text */}
-        <Text style={styles.helperText}>
-          We use your location to find experiences nearby
-        </Text>
-
-        {/* Popular Locations Section */}
-        <View style={styles.popularLocationsSection}>
-          <Text style={styles.popularLocationsTitle}>Popular locations:</Text>
-          <View style={styles.popularLocationsContainer}>
-            {popularLocations.map((loc) => (
-              <TouchableOpacity
-                key={loc}
-                style={styles.popularLocationChip}
-                onPress={() => handlePopularLocationSelect(loc)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.popularLocationChipText}>{loc}</Text>
-              </TouchableOpacity>
-            ))}
+          {/* Title Section */}
+          <View style={styles.titleSection}>
+            <Text style={styles.title}>Where are you?</Text>
+            <Text style={styles.subtitle}>
+              We'll show you experiences near your location
+            </Text>
           </View>
-        </View>
-      </ScrollView>
 
-      {/* Navigation Buttons */}
-      <View style={styles.navigationContainer}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={18} color="#111827" />
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
+          {/* Use My Current Location Button */}
+          <TouchableOpacity
+            style={styles.useLocationButton}
+            onPress={handleUseCurrentLocation}
+            disabled={isRequestingLocation}
+            activeOpacity={0.7}
+          >
+            {isRequestingLocation ? (
+              <ActivityIndicator size="small" color="#eb7825" />
+            ) : (
+              <Ionicons name="send-outline" size={20} color="#eb7825" />
+            )}
+            <Text style={styles.useLocationButtonText}>
+              {isRequestingLocation
+                ? "Getting location..."
+                : "Use my current location"}
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[
-            styles.nextButton,
-            hasLocation && !isLoading
-              ? styles.nextButtonEnabled
-              : styles.nextButtonDisabled,
-          ]}
-          onPress={async () => {
-            // Prevent onPress from firing if no location is entered or already loading
-            if (!hasLocation || isLoading) {
-              return;
-            }
+          {/* Separator */}
+          <View style={styles.separator}>
+            <Text style={styles.separatorText}>or</Text>
+          </View>
 
-            setIsLoading(true);
-            try {
-              // Call onNext and wait for it if it returns a promise
-              const result = onNext();
-              if (result instanceof Promise) {
-                await result;
-              }
-            } catch (error) {
-              console.error("Error in onNext:", error);
-            } finally {
-              setIsLoading(false);
-            }
-          }}
-          disabled={!hasLocation || isLoading}
-          activeOpacity={!hasLocation || isLoading ? 1 : 0.7}
-        >
-          {isLoading ? (
-            <>
-              <ActivityIndicator
-                size="small"
-                color="#ffffff"
-                style={{ marginRight: 8 }}
-              />
-              <Text style={[styles.nextButtonText, styles.nextButtonTextEnabled]}>
-                Saving...
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text
-                style={[
-                  styles.nextButtonText,
-                  hasLocation
-                    ? styles.nextButtonTextEnabled
-                    : styles.nextButtonTextDisabled,
-                ]}
+          {/* Location Input Field */}
+          <View
+            style={[
+              styles.inputContainer,
+              isInputFocused && styles.inputContainerFocused,
+            ]}
+          >
+            <Ionicons
+              name="location"
+              size={20}
+              color={isInputFocused ? "#eb7825" : "#6b7280"}
+              style={styles.inputIcon}
+            />
+            <TextInput
+              style={styles.textInput}
+              placeholder="Enter your city or address"
+              placeholderTextColor="#9ca3af"
+              value={locationInput}
+              onChangeText={handleLocationInputChange}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={handleInputBlur}
+              autoCapitalize="words"
+              returnKeyType="done"
+            />
+          </View>
+
+          {/* Suggestions Dropdown */}
+          {showSuggestions &&
+            (suggestions.length > 0 || isLoadingSuggestions) && (
+              <ScrollView
+                style={styles.suggestionsContainer}
+                nestedScrollEnabled={true}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={true}
               >
-                Next
-              </Text>
-              <Ionicons
-                name="arrow-forward"
-                size={18}
-                color={hasLocation ? "#ffffff" : "#6b7280"}
-              />
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
+                {isLoadingSuggestions ? (
+                  <View style={styles.suggestionItem}>
+                    <ActivityIndicator size="small" color="#eb7825" />
+                    <Text style={styles.suggestionText}>Searching...</Text>
+                  </View>
+                ) : (
+                  suggestions.map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.suggestionItem}
+                      onPress={() => {
+                        console.log(
+                          "TouchableOpacity onPress fired for:",
+                          suggestion.displayName
+                        );
+                        handleSuggestionSelect(suggestion);
+                      }}
+                      onPressIn={() => {
+                        console.log(
+                          "TouchableOpacity onPressIn fired for:",
+                          suggestion.displayName
+                        );
+                        isSelectingSuggestion.current = true;
+                      }}
+                      activeOpacity={0.7}
+                      delayPressIn={0}
+                    >
+                      <Ionicons
+                        name="location-outline"
+                        size={18}
+                        color="#6b7280"
+                      />
+                      <View style={styles.suggestionTextContainer}>
+                        <Text style={styles.suggestionText}>
+                          {suggestion.displayName}
+                        </Text>
+                        {suggestion.fullAddress !== suggestion.displayName && (
+                          <Text
+                            style={styles.suggestionSubtext}
+                            numberOfLines={1}
+                          >
+                            {suggestion.fullAddress}
+                          </Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+            )}
+
+          {/* Helper Text */}
+          <Text style={styles.helperText}>
+            We use your location to find experiences nearby
+          </Text>
+
+          {/* Popular Locations Section */}
+          <View style={styles.popularLocationsSection}>
+            <Text style={styles.popularLocationsTitle}>Popular locations:</Text>
+            <View style={styles.popularLocationsContainer}>
+              {popularLocations.map((loc) => (
+                <TouchableOpacity
+                  key={loc}
+                  style={styles.popularLocationChip}
+                  onPress={() => handlePopularLocationSelect(loc)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.popularLocationChipText}>{loc}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* Navigation Buttons */}
+        <View style={styles.navigationContainer}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack}>
+            <Ionicons name="arrow-back" size={18} color="#111827" />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.nextButton,
+              hasLocation && !isLoading
+                ? styles.nextButtonEnabled
+                : styles.nextButtonDisabled,
+            ]}
+            onPress={async () => {
+              // Prevent onPress from firing if no location is entered or already loading
+              if (!hasLocation || isLoading) {
+                return;
+              }
+
+              setIsLoading(true);
+              try {
+                // Call onNext and wait for it if it returns a promise
+                const result = onNext();
+                if (result instanceof Promise) {
+                  await result;
+                }
+              } catch (error) {
+                console.error("Error in onNext:", error);
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            disabled={!hasLocation || isLoading}
+            activeOpacity={!hasLocation || isLoading ? 1 : 0.7}
+          >
+            {isLoading ? (
+              <>
+                <ActivityIndicator
+                  size="small"
+                  color="#ffffff"
+                  style={{ marginRight: 8 }}
+                />
+                <Text
+                  style={[styles.nextButtonText, styles.nextButtonTextEnabled]}
+                >
+                  Saving...
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text
+                  style={[
+                    styles.nextButtonText,
+                    hasLocation
+                      ? styles.nextButtonTextEnabled
+                      : styles.nextButtonTextDisabled,
+                  ]}
+                >
+                  Next
+                </Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={18}
+                  color={hasLocation ? "#ffffff" : "#6b7280"}
+                />
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
