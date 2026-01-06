@@ -4,13 +4,15 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface BudgetRangeStepProps {
   onNext: () => void | Promise<void>;
@@ -27,13 +29,13 @@ const BudgetRangeStep = ({
 }: BudgetRangeStepProps) => {
   // Check if initial budgetRange is the default (0-1000)
   const initialIsDefault = budgetRange?.min === 0 && budgetRange?.max === 1000;
-  
+
   // If it's the default range, show empty inputs to indicate no selection
   const [minValue, setMinValue] = useState<string>(
-    initialIsDefault ? "" : (budgetRange?.min?.toString() || "")
+    initialIsDefault ? "" : budgetRange?.min?.toString() || ""
   );
   const [maxValue, setMaxValue] = useState<string>(
-    initialIsDefault ? "" : (budgetRange?.max?.toString() || "")
+    initialIsDefault ? "" : budgetRange?.max?.toString() || ""
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isMinFocused, setIsMinFocused] = useState(false);
@@ -52,8 +54,7 @@ const BudgetRangeStep = ({
   const checkIfPopularRangeSelected = () => {
     if (!budgetRange) return false;
     return popularRanges.some(
-      (range) =>
-        budgetRange.min === range.min && budgetRange.max === range.max
+      (range) => budgetRange.min === range.min && budgetRange.max === range.max
     );
   };
 
@@ -64,7 +65,8 @@ const BudgetRangeStep = ({
   useEffect(() => {
     if (budgetRange) {
       // Check if this is different from default, which means user has made a selection
-      const currentIsDefault = budgetRange.min === 0 && budgetRange.max === 1000;
+      const currentIsDefault =
+        budgetRange.min === 0 && budgetRange.max === 1000;
       if (!currentIsDefault) {
         setHasUserInteracted(true);
       }
@@ -133,7 +135,6 @@ const BudgetRangeStep = ({
     },
     progressSection: {
       paddingHorizontal: 24,
-      paddingTop: 8,
       paddingBottom: 8,
     },
     progressBarContainer: {
@@ -352,13 +353,16 @@ const BudgetRangeStep = ({
   // 1. The range is still the default (0-1000), OR
   // 2. Range is invalid (min > max when max is set), OR
   // 3. Min value is not set or is invalid
-  const hasValidMin = budgetRange?.min !== undefined && budgetRange?.min !== null && !isNaN(budgetRange.min);
-  
+  const hasValidMin =
+    budgetRange?.min !== undefined &&
+    budgetRange?.min !== null &&
+    !isNaN(budgetRange.min);
+
   const isNextDisabled = isDefaultRange || isInvalidRange || !hasValidMin;
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
+      {/*  <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       {/* Progress Bar Section */}
       <View style={styles.progressSection}>
@@ -373,180 +377,186 @@ const BudgetRangeStep = ({
         </View>
       </View>
 
-      {/* Scrollable Content */}
-      <ScrollView
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={true}
-        nestedScrollEnabled={true}
       >
-        {/* Title Section */}
-        <View style={styles.titleSection}>
-          <Text style={styles.title}>What's your budget?</Text>
-          <Text style={styles.subtitle}>
-            Set your typical spending range per person
-          </Text>
-        </View>
+        {/* Scrollable Content */}
 
-        {/* Popular Ranges Section */}
-        <View style={styles.popularRangesSection}>
-          <Text style={styles.popularRangesLabel}>Popular ranges:</Text>
-          <View style={styles.popularRangesContainer}>
-            {popularRanges.map((range) => {
-              const isSelected = isPopularRangeSelected(range);
-              return (
-                <TouchableOpacity
-                  key={range.label}
-                  style={[
-                    styles.popularRangeButton,
-                    isSelected && styles.popularRangeButtonSelected,
-                  ]}
-                  onPress={() =>
-                    handlePopularRangeSelect(range.min, range.max)
-                  }
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.popularRangeButtonText,
-                      isSelected && styles.popularRangeButtonTextSelected,
-                    ]}
-                  >
-                    {range.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Separator */}
-        <View style={styles.separator}>
-          <Text style={styles.separatorText}>or custom range</Text>
-        </View>
-
-        {/* Custom Range Inputs */}
-        <View style={styles.customRangeSection}>
-          <View style={styles.customRangeRow}>
-            {/* Min Input */}
-            <View style={styles.customRangeInputContainer}>
-              <Text style={styles.customRangeLabel}>Min per person</Text>
-              <View
-                style={[
-                  styles.customRangeInputWrapper,
-                  isMinFocused && styles.customRangeInputWrapperFocused,
-                ]}
-              >
-                <Text style={styles.dollarSign}>$</Text>
-                <TextInput
-                  style={styles.customRangeInput}
-                  value={minValue}
-                  onChangeText={handleMinChange}
-                  onFocus={() => setIsMinFocused(true)}
-                  onBlur={() => setIsMinFocused(false)}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
-            </View>
-
-            {/* Max Input */}
-            <View
-              style={[
-                styles.customRangeInputContainer,
-                styles.customRangeInputContainerLast,
-              ]}
-            >
-              <Text style={styles.customRangeLabel}>Max per person</Text>
-              <View
-                style={[
-                  styles.customRangeInputWrapper,
-                  isMaxFocused && styles.customRangeInputWrapperFocused,
-                ]}
-              >
-                <Text style={styles.dollarSign}>$</Text>
-                <TextInput
-                  style={styles.customRangeInput}
-                  value={maxValue}
-                  onChangeText={handleMaxChange}
-                  onFocus={() => setIsMaxFocused(true)}
-                  onBlur={() => setIsMaxFocused(false)}
-                  keyboardType="numeric"
-                  placeholder="100"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Helper Text */}
-        <Text style={styles.helperText}>
-          Free experiences will always be shown
-        </Text>
-      </ScrollView>
-
-      {/* Navigation Buttons */}
-      <View style={styles.navigationContainer}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={18} color="#111827" />
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.nextButton,
-            isNextDisabled && styles.nextButtonDisabled,
-          ]}
-          onPress={async () => {
-            if (isLoading || isNextDisabled) {
-              return;
-            }
-
-            setIsLoading(true);
-            try {
-              const result = onNext();
-              if (result instanceof Promise) {
-                await result;
-              }
-            } catch (error) {
-              console.error("Error in onNext:", error);
-            } finally {
-              setIsLoading(false);
-            }
-          }}
-          disabled={isNextDisabled || isLoading}
-          activeOpacity={isNextDisabled || isLoading ? 1 : 0.7}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={true}
+          nestedScrollEnabled={true}
         >
-          {isLoading ? (
-            <>
-              <ActivityIndicator
-                size="small"
-                color="#ffffff"
-                style={{ marginRight: 8 }}
-              />
-              <Text style={styles.nextButtonText}>Saving...</Text>
-            </>
-          ) : (
-            <>
-              <Text
+          {/* Title Section */}
+          <View style={styles.titleSection}>
+            <Text style={styles.title}>What's your budget?</Text>
+            <Text style={styles.subtitle}>
+              Set your typical spending range per person
+            </Text>
+          </View>
+
+          {/* Popular Ranges Section */}
+          <View style={styles.popularRangesSection}>
+            <Text style={styles.popularRangesLabel}>Popular ranges:</Text>
+            <View style={styles.popularRangesContainer}>
+              {popularRanges.map((range) => {
+                const isSelected = isPopularRangeSelected(range);
+                return (
+                  <TouchableOpacity
+                    key={range.label}
+                    style={[
+                      styles.popularRangeButton,
+                      isSelected && styles.popularRangeButtonSelected,
+                    ]}
+                    onPress={() =>
+                      handlePopularRangeSelect(range.min, range.max)
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.popularRangeButtonText,
+                        isSelected && styles.popularRangeButtonTextSelected,
+                      ]}
+                    >
+                      {range.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Separator */}
+          <View style={styles.separator}>
+            <Text style={styles.separatorText}>or custom range</Text>
+          </View>
+
+          {/* Custom Range Inputs */}
+          <View style={styles.customRangeSection}>
+            <View style={styles.customRangeRow}>
+              {/* Min Input */}
+              <View style={styles.customRangeInputContainer}>
+                <Text style={styles.customRangeLabel}>Min per person</Text>
+                <View
+                  style={[
+                    styles.customRangeInputWrapper,
+                    isMinFocused && styles.customRangeInputWrapperFocused,
+                  ]}
+                >
+                  <Text style={styles.dollarSign}>$</Text>
+                  <TextInput
+                    style={styles.customRangeInput}
+                    value={minValue}
+                    onChangeText={handleMinChange}
+                    onFocus={() => setIsMinFocused(true)}
+                    onBlur={() => setIsMinFocused(false)}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    placeholderTextColor="#9ca3af"
+                  />
+                </View>
+              </View>
+
+              {/* Max Input */}
+              <View
                 style={[
-                  styles.nextButtonText,
-                  isNextDisabled && styles.nextButtonTextDisabled,
+                  styles.customRangeInputContainer,
+                  styles.customRangeInputContainerLast,
                 ]}
               >
-                Next
-              </Text>
-              <Ionicons
-                name="arrow-forward"
-                size={18}
-                color={isNextDisabled ? "#6b7280" : "#ffffff"}
-              />
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
+                <Text style={styles.customRangeLabel}>Max per person</Text>
+                <View
+                  style={[
+                    styles.customRangeInputWrapper,
+                    isMaxFocused && styles.customRangeInputWrapperFocused,
+                  ]}
+                >
+                  <Text style={styles.dollarSign}>$</Text>
+                  <TextInput
+                    style={styles.customRangeInput}
+                    value={maxValue}
+                    onChangeText={handleMaxChange}
+                    onFocus={() => setIsMaxFocused(true)}
+                    onBlur={() => setIsMaxFocused(false)}
+                    keyboardType="numeric"
+                    placeholder="100"
+                    placeholderTextColor="#9ca3af"
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Helper Text */}
+          <Text style={styles.helperText}>
+            Free experiences will always be shown
+          </Text>
+        </ScrollView>
+
+        {/* Navigation Buttons */}
+        <View style={styles.navigationContainer}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack}>
+            <Ionicons name="arrow-back" size={18} color="#111827" />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.nextButton,
+              isNextDisabled && styles.nextButtonDisabled,
+            ]}
+            onPress={async () => {
+              if (isLoading || isNextDisabled) {
+                return;
+              }
+
+              setIsLoading(true);
+              try {
+                const result = onNext();
+                if (result instanceof Promise) {
+                  await result;
+                }
+              } catch (error) {
+                console.error("Error in onNext:", error);
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            disabled={isNextDisabled || isLoading}
+            activeOpacity={isNextDisabled || isLoading ? 1 : 0.7}
+          >
+            {isLoading ? (
+              <>
+                <ActivityIndicator
+                  size="small"
+                  color="#ffffff"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={styles.nextButtonText}>Saving...</Text>
+              </>
+            ) : (
+              <>
+                <Text
+                  style={[
+                    styles.nextButtonText,
+                    isNextDisabled && styles.nextButtonTextDisabled,
+                  ]}
+                >
+                  Next
+                </Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={18}
+                  color={isNextDisabled ? "#6b7280" : "#ffffff"}
+                />
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

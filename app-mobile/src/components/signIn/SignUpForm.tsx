@@ -448,7 +448,6 @@ export default function SignUpForm({
         style={{ flex: 1 }}
       >
         <ScrollView
-          style={{ flex: 1 }}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}

@@ -4,13 +4,15 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface TravelConstraintStepProps {
   onNext: () => void | Promise<void>;
@@ -69,7 +71,6 @@ const TravelConstraintStep = ({
     },
     progressSection: {
       paddingHorizontal: 24,
-      paddingTop: 8,
       paddingBottom: 8,
     },
     progressBarContainer: {
@@ -297,7 +298,7 @@ const TravelConstraintStep = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
+      {/*    <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       {/* Progress Bar Section */}
       <View style={styles.progressSection}>
@@ -312,215 +313,223 @@ const TravelConstraintStep = ({
         </View>
       </View>
 
-      {/* Scrollable Content */}
-      <ScrollView
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={true}
-        nestedScrollEnabled={true}
       >
-        {/* Title Section */}
-        <View style={styles.titleSection}>
-          <Text style={styles.title}>How far will you go?</Text>
-          <Text style={styles.subtitle}>Set your preferred travel limit</Text>
-        </View>
+        {/* Scrollable Content */}
 
-        {/* Tab Selection - Two separate buttons */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              constraintType === "time"
-                ? styles.tabSelected
-                : styles.tabUnselected,
-            ]}
-            onPress={() => onConstraintTypeChange("time")}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name="time-outline"
-              size={18}
-              color={constraintType === "time" ? "#eb7825" : "#6b7280"}
-              style={styles.tabIcon}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                constraintType === "time"
-                  ? styles.tabTextSelected
-                  : styles.tabTextUnselected,
-              ]}
-            >
-              By Time
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tab,
-              styles.tabLast,
-              constraintType === "distance"
-                ? styles.tabSelected
-                : styles.tabUnselected,
-            ]}
-            onPress={() => onConstraintTypeChange("distance")}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name="paper-plane-outline"
-              size={18}
-              color={constraintType === "distance" ? "#eb7825" : "#6b7280"}
-              style={styles.tabIcon}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                constraintType === "distance"
-                  ? styles.tabTextSelected
-                  : styles.tabTextUnselected,
-              ]}
-            >
-              By Distance
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Input Section */}
-        <View style={styles.inputSection}>
-          <Text style={styles.inputLabel}>
-            {constraintType === "time"
-              ? "Maximum travel time (minutes)"
-              : "Maximum travel distance (km)"}
-          </Text>
-
-          <View
-            style={[
-              styles.inputContainer,
-              isInputFocused && styles.inputContainerFocused,
-            ]}
-          >
-            <Ionicons
-              name={
-                constraintType === "time" ? "time-outline" : "location-outline"
-              }
-              size={20}
-              color={isInputFocused ? "#eb7825" : "#6b7280"}
-              style={styles.inputIcon}
-            />
-            <TextInput
-              style={styles.input}
-              value={inputValue}
-              onChangeText={handleInputChange}
-              onFocus={() => setIsInputFocused(true)}
-              onBlur={() => setIsInputFocused(false)}
-              keyboardType="numeric"
-              placeholder={constraintType === "time" ? "30" : "10"}
-              placeholderTextColor="#9ca3af"
-            />
-          </View>
-
-          <Text style={styles.inputHelperText}>
-            {constraintType === "time"
-              ? "How many minutes are you willing to travel?"
-              : "How many kilometers are you willing to travel?"}
-          </Text>
-
-          {/* Quick Selection Options */}
-          <View style={styles.quickOptionsContainer}>
-            {currentQuickOptions.map((value, index) => {
-              const isSelected = constraintValue === value;
-              const isLast = index === currentQuickOptions.length - 1;
-              return (
-                <TouchableOpacity
-                  key={value}
-                  style={[
-                    styles.quickOption,
-                    isLast && styles.quickOptionLast,
-                    isSelected
-                      ? styles.quickOptionSelected
-                      : styles.quickOptionUnselected,
-                  ]}
-                  onPress={() => handleQuickSelect(value)}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.quickOptionText,
-                      isSelected
-                        ? styles.quickOptionTextSelected
-                        : styles.quickOptionTextUnselected,
-                    ]}
-                  >
-                    {value}
-                    {constraintType === "time" ? " min" : " km"}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Navigation Buttons */}
-      <View style={styles.navigationContainer}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Ionicons name="arrow-back" size={18} color="#111827" />
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.nextButton,
-            isNextDisabled && styles.nextButtonDisabled,
-          ]}
-          onPress={async () => {
-            if (isLoading || isNextDisabled) {
-              return;
-            }
-
-            setIsLoading(true);
-            try {
-              const result = onNext();
-              if (result instanceof Promise) {
-                await result;
-              }
-            } catch (error) {
-              console.error("Error in onNext:", error);
-            } finally {
-              setIsLoading(false);
-            }
-          }}
-          disabled={isNextDisabled || isLoading}
-          activeOpacity={isNextDisabled || isLoading ? 1 : 0.7}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={true}
+          nestedScrollEnabled={true}
         >
-          {isLoading ? (
-            <>
-              <ActivityIndicator
-                size="small"
-                color="#ffffff"
-                style={{ marginRight: 8 }}
+          {/* Title Section */}
+          <View style={styles.titleSection}>
+            <Text style={styles.title}>How far will you go?</Text>
+            <Text style={styles.subtitle}>Set your preferred travel limit</Text>
+          </View>
+
+          {/* Tab Selection - Two separate buttons */}
+          <View style={styles.tabsContainer}>
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                constraintType === "time"
+                  ? styles.tabSelected
+                  : styles.tabUnselected,
+              ]}
+              onPress={() => onConstraintTypeChange("time")}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="time-outline"
+                size={18}
+                color={constraintType === "time" ? "#eb7825" : "#6b7280"}
+                style={styles.tabIcon}
               />
-              <Text style={styles.nextButtonText}>Saving...</Text>
-            </>
-          ) : (
-            <>
               <Text
                 style={[
-                  styles.nextButtonText,
-                  isNextDisabled && styles.nextButtonTextDisabled,
+                  styles.tabText,
+                  constraintType === "time"
+                    ? styles.tabTextSelected
+                    : styles.tabTextUnselected,
                 ]}
               >
-                Next
+                By Time
               </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                styles.tabLast,
+                constraintType === "distance"
+                  ? styles.tabSelected
+                  : styles.tabUnselected,
+              ]}
+              onPress={() => onConstraintTypeChange("distance")}
+              activeOpacity={0.7}
+            >
               <Ionicons
-                name="arrow-forward"
+                name="paper-plane-outline"
                 size={18}
-                color={isNextDisabled ? "#6b7280" : "#ffffff"}
+                color={constraintType === "distance" ? "#eb7825" : "#6b7280"}
+                style={styles.tabIcon}
               />
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
+              <Text
+                style={[
+                  styles.tabText,
+                  constraintType === "distance"
+                    ? styles.tabTextSelected
+                    : styles.tabTextUnselected,
+                ]}
+              >
+                By Distance
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Input Section */}
+          <View style={styles.inputSection}>
+            <Text style={styles.inputLabel}>
+              {constraintType === "time"
+                ? "Maximum travel time (minutes)"
+                : "Maximum travel distance (km)"}
+            </Text>
+
+            <View
+              style={[
+                styles.inputContainer,
+                isInputFocused && styles.inputContainerFocused,
+              ]}
+            >
+              <Ionicons
+                name={
+                  constraintType === "time"
+                    ? "time-outline"
+                    : "location-outline"
+                }
+                size={20}
+                color={isInputFocused ? "#eb7825" : "#6b7280"}
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                value={inputValue}
+                onChangeText={handleInputChange}
+                onFocus={() => setIsInputFocused(true)}
+                onBlur={() => setIsInputFocused(false)}
+                keyboardType="numeric"
+                placeholder={constraintType === "time" ? "30" : "10"}
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <Text style={styles.inputHelperText}>
+              {constraintType === "time"
+                ? "How many minutes are you willing to travel?"
+                : "How many kilometers are you willing to travel?"}
+            </Text>
+
+            {/* Quick Selection Options */}
+            <View style={styles.quickOptionsContainer}>
+              {currentQuickOptions.map((value, index) => {
+                const isSelected = constraintValue === value;
+                const isLast = index === currentQuickOptions.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={value}
+                    style={[
+                      styles.quickOption,
+                      isLast && styles.quickOptionLast,
+                      isSelected
+                        ? styles.quickOptionSelected
+                        : styles.quickOptionUnselected,
+                    ]}
+                    onPress={() => handleQuickSelect(value)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.quickOptionText,
+                        isSelected
+                          ? styles.quickOptionTextSelected
+                          : styles.quickOptionTextUnselected,
+                      ]}
+                    >
+                      {value}
+                      {constraintType === "time" ? " min" : " km"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* Navigation Buttons */}
+        <View style={styles.navigationContainer}>
+          <TouchableOpacity style={styles.backButton} onPress={onBack}>
+            <Ionicons name="arrow-back" size={18} color="#111827" />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.nextButton,
+              isNextDisabled && styles.nextButtonDisabled,
+            ]}
+            onPress={async () => {
+              if (isLoading || isNextDisabled) {
+                return;
+              }
+
+              setIsLoading(true);
+              try {
+                const result = onNext();
+                if (result instanceof Promise) {
+                  await result;
+                }
+              } catch (error) {
+                console.error("Error in onNext:", error);
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            disabled={isNextDisabled || isLoading}
+            activeOpacity={isNextDisabled || isLoading ? 1 : 0.7}
+          >
+            {isLoading ? (
+              <>
+                <ActivityIndicator
+                  size="small"
+                  color="#ffffff"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={styles.nextButtonText}>Saving...</Text>
+              </>
+            ) : (
+              <>
+                <Text
+                  style={[
+                    styles.nextButtonText,
+                    isNextDisabled && styles.nextButtonTextDisabled,
+                  ]}
+                >
+                  Next
+                </Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={18}
+                  color={isNextDisabled ? "#6b7280" : "#ffffff"}
+                />
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

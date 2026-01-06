@@ -4,12 +4,13 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   ActivityIndicator,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface TravelModeStepProps {
   onNext: () => void | Promise<void>;
@@ -32,7 +33,7 @@ const TravelModeStep = ({
     },
     progressSection: {
       paddingHorizontal: 24,
-      paddingTop: 8,
+
       paddingBottom: 8,
     },
     progressBarContainer: {
@@ -218,7 +219,7 @@ const TravelModeStep = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
+      {/* <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       {/* Progress Bar Section */}
       <View style={styles.progressSection}>
@@ -232,7 +233,7 @@ const TravelModeStep = ({
           </View>
         </View>
       </View>
-
+      <KeyboardAvoidingView></KeyboardAvoidingView>
       {/* Scrollable Content */}
       <ScrollView
         style={{ flex: 1 }}
@@ -257,10 +258,7 @@ const TravelModeStep = ({
               <TouchableOpacity
                 key={mode.id}
                 onPress={() => onTravelModeChange(mode.id)}
-                style={[
-                  styles.modeCard,
-                  isSelected && styles.modeCardSelected,
-                ]}
+                style={[styles.modeCard, isSelected && styles.modeCardSelected]}
                 activeOpacity={0.7}
               >
                 {/* Checkmark (only for selected) */}

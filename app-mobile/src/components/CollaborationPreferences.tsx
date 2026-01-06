@@ -10,6 +10,7 @@ import {
   StatusBar,
   Platform,
   Modal,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +21,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { offlineService } from "../services/offlineService";
 import { PreferencesService } from "../services/preferencesService";
+import {
+  geocodingService,
+  AutocompleteSuggestion,
+} from "../services/geocodingService";
 
 interface CollaborationPreferencesProps {
   isOpen: boolean;
@@ -200,6 +205,14 @@ export default function CollaborationPreferences({
   const [useLocation, setUseLocation] = useState<"gps" | "search">("gps");
   const [searchLocation, setSearchLocation] = useState<string>("");
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+
+  // Location autocomplete suggestions
+  const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isSelectingSuggestion = useRef(false);
 
   // Loading states
   const [isSaving, setIsSaving] = useState(false);
@@ -406,6 +419,64 @@ export default function CollaborationPreferences({
     }
   };
 
+  // Handle location input change with autocomplete
+  const handleLocationInputChange = (text: string) => {
+    setSearchLocation(text);
+
+    // Clear any existing debounce timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    if (text.trim().length >= 4) {
+      // Set a new timeout to fetch suggestions after 300ms of no typing
+      debounceTimeoutRef.current = setTimeout(async () => {
+        setIsLoadingSuggestions(true);
+        try {
+          const results = await geocodingService.autocomplete(text);
+          setSuggestions(results);
+          setShowSuggestions(results.length > 0);
+        } catch (error) {
+          console.error("Error fetching suggestions:", error);
+          setSuggestions([]);
+          setShowSuggestions(false);
+        } finally {
+          setIsLoadingSuggestions(false);
+        }
+      }, 300);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  // Handle selecting a suggestion
+  const handleSuggestionSelect = (suggestion: AutocompleteSuggestion) => {
+    // Mark that we're selecting to prevent blur handler from interfering
+    isSelectingSuggestion.current = true;
+
+    // Update input with displayName for better UX (shorter, more readable)
+    setSearchLocation(suggestion.displayName);
+    setShowSuggestions(false);
+    setIsInputFocused(false);
+
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      isSelectingSuggestion.current = false;
+    }, 300);
+  };
+
+  // Handle input blur with delay to allow clicks on suggestions
+  const handleInputBlur = () => {
+    setTimeout(() => {
+      // Don't hide suggestions if user is selecting one
+      if (!isSelectingSuggestion.current) {
+        setIsInputFocused(false);
+        setShowSuggestions(false);
+      }
+    }, 200);
+  };
+
   const handleApplyPreferences = async () => {
     setIsSaving(true);
     try {
@@ -503,497 +574,567 @@ export default function CollaborationPreferences({
           Collaboration Preferences for "{sessionName}"
         </Text>
       </View>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
       >
-        {/* Experience Type Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Experience Type</Text>
-          <Text style={styles.sectionSubtitle}>
-            Date Idea / Friends / Romantic / Group Fun
-          </Text>
-          <View style={styles.experienceTypesContainer}>
-            {experienceTypes.map((type) => {
-              const isSelected = selectedIntents.includes(type.id);
-              return (
-                <TouchableOpacity
-                  key={type.id}
-                  onPress={() => handleIntentToggle(type.id)}
-                  style={[
-                    styles.experienceTypeButton,
-                    isSelected && styles.experienceTypeButtonSelected,
-                  ]}
-                >
-                  <Ionicons
-                    name={type.icon as any}
-                    size={16}
-                    color={isSelected ? "#ffffff" : "#6b7280"}
-                  />
-                  <Text
-                    style={[
-                      styles.experienceTypeText,
-                      isSelected && styles.experienceTypeTextSelected,
-                    ]}
-                  >
-                    {type.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Categories Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Categories</Text>
-          <View style={styles.categoriesContainer}>
-            {filteredCategories.map((category) => {
-              const isSelected = selectedCategories.includes(category.id);
-              return (
-                <TouchableOpacity
-                  key={category.id}
-                  onPress={() => handleCategoryToggle(category.id)}
-                  style={[
-                    styles.categoryButton,
-                    isSelected && styles.categoryButtonSelected,
-                  ]}
-                >
-                  <Ionicons
-                    name={category.icon as any}
-                    size={20}
-                    color={isSelected ? "#eb7825" : "#6b7280"}
-                  />
-                  <Text
-                    style={[
-                      styles.categoryText,
-                      isSelected && styles.categoryTextSelected,
-                    ]}
-                  >
-                    {category.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Budget per Person Section - Hide when only "Take a Stroll" is selected */}
-        {!(
-          selectedCategories.length === 1 && selectedCategories[0] === "Stroll"
-        ) && (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Experience Type Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Budget per Person</Text>
-            <View style={styles.budgetInputsContainer}>
-              <View style={styles.budgetInputWrapper}>
-                <Text style={styles.inputLabel}>Min</Text>
-                <View style={styles.budgetInputContainer}>
-                  <Text style={styles.dollarSign}>$</Text>
-                  <TextInput
-                    value={budgetMin?.toString() || ""}
-                    onChangeText={(text) =>
-                      setBudgetMin(text ? Number(text) : "")
-                    }
-                    keyboardType="numeric"
-                    style={styles.budgetInput}
-                    placeholder="0"
-                  />
-                </View>
-              </View>
-              <View style={styles.budgetInputWrapper}>
-                <Text style={styles.inputLabel}>Max</Text>
-                <View style={styles.budgetInputContainer}>
-                  <Text style={styles.dollarSign}>$</Text>
-                  <TextInput
-                    value={budgetMax?.toString() || ""}
-                    onChangeText={(text) =>
-                      setBudgetMax(text ? Number(text) : "")
-                    }
-                    keyboardType="numeric"
-                    style={styles.budgetInput}
-                    placeholder="200"
-                  />
-                </View>
-              </View>
-            </View>
-            <View style={styles.budgetPresetsContainer}>
-              {budgetPresets.map((preset) => (
-                <TouchableOpacity
-                  key={preset.label}
-                  onPress={() => setBudgetPreset(preset.min, preset.max)}
-                  style={styles.budgetPresetButton}
-                >
-                  <Text style={styles.budgetPresetText}>{preset.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Date & Time Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Date & Time</Text>
-          <Text style={styles.sectionQuestion}>When do you want to go?</Text>
-          <View style={styles.dateOptionsGrid}>
-            {dateOptions.map((option) => {
-              const isSelected = selectedDateOption === option.id;
-              return (
-                <TouchableOpacity
-                  key={option.id}
-                  onPress={() =>
-                    handleDateOptionSelect(option.id as DateOption)
-                  }
-                  style={[
-                    styles.dateOptionCard,
-                    isSelected && styles.dateOptionCardSelected,
-                  ]}
-                >
-                  <View style={styles.dateOptionContent}>
-                    <Text
-                      style={[
-                        styles.dateOptionLabel,
-                        isSelected && styles.dateOptionLabelSelected,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.dateOptionDescription,
-                        isSelected && styles.dateOptionDescriptionSelected,
-                      ]}
-                    >
-                      {option.description}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Weekend Info Card (only for "This Weekend") */}
-          {selectedDateOption === "This Weekend" && (
-            <TouchableOpacity style={styles.weekendInfoCard}>
-              <Ionicons
-                name="calendar"
-                size={24}
-                color="#0369a1"
-                style={styles.weekendInfoIcon}
-              />
-              <View style={styles.weekendInfoContent}>
-                <Text style={styles.weekendInfoLabel}>This Weekend</Text>
-                <Text style={styles.weekendInfoDescription}>
-                  Includes Friday, Saturday & Sunday
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
-
-          {/* Calendar for "Pick a Date" */}
-          {selectedDateOption === "Pick a Date" && (
-            <TouchableOpacity
-              style={styles.dateInputField}
-              onPress={() => setShowCalendar(true)}
-            >
-              <Ionicons name="calendar" size={20} color="#eb7825" />
-              {selectedDate ? (
-                <Text style={styles.dateInputText}>
-                  {formatDateForDisplay(selectedDate)}
-                </Text>
-              ) : (
-                <Text style={styles.dateInputPlaceholder}>mm/dd/yyyy</Text>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* Time Slots Section (shown for "Today", "This Weekend", and "Pick a Date") */}
-          {selectedDateOption && selectedDateOption !== "Now" && (
-            <>
-              <Text style={styles.quickPresetsLabel}>Quick Presets</Text>
-              <View style={styles.timeSlotsContainer}>
-                {timeSlots.map((slot) => {
-                  const isSelected = selectedTimeSlot === slot.id;
-                  return (
-                    <TouchableOpacity
-                      key={slot.id}
-                      onPress={() => handleTimeSlotSelect(slot.id as TimeSlot)}
-                      style={[
-                        styles.timeSlotCard,
-                        isSelected && styles.timeSlotCardSelected,
-                      ]}
-                    >
-                      <View style={styles.timeSlotContent}>
-                        <Ionicons
-                          name={slot.icon as any}
-                          size={24}
-                          color={isSelected ? "#ffffff" : "#6b7280"}
-                          style={styles.timeSlotIcon}
-                        />
-                        <Text
-                          style={[
-                            styles.timeSlotLabel,
-                            isSelected && styles.timeSlotLabelSelected,
-                          ]}
-                        >
-                          {slot.label}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.timeSlotTime,
-                            isSelected && styles.timeSlotTimeSelected,
-                          ]}
-                        >
-                          {slot.time}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {/* Or Set Exact Time Section */}
-              <View style={styles.exactTimeSection}>
-                <Text style={styles.exactTimeLabel}>Or Set Exact Time</Text>
-                <TouchableOpacity
-                  style={styles.exactTimeInput}
-                  onPress={() => setShowTimePicker(true)}
-                >
-                  <Ionicons
-                    name="time-outline"
-                    size={20}
-                    color={exactTime ? "#eb7825" : "#9ca3af"}
-                  />
-                  {exactTime ? (
-                    <Text style={styles.exactTimeInputTextSelected}>
-                      {exactTime}
-                    </Text>
-                  ) : (
-                    <Text style={styles.exactTimeInputText}>HH:MM AM/PM</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* Travel Mode Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Travel Mode</Text>
-          <Text style={styles.sectionQuestion}>How will you get there?</Text>
-          <View style={styles.travelModesGrid}>
-            {travelModes.map((mode) => {
-              const isSelected = travelMode === mode.id;
-              return (
-                <TouchableOpacity
-                  key={mode.id}
-                  onPress={() => setTravelMode(mode.id)}
-                  style={[
-                    styles.travelModeCard,
-                    isSelected && styles.travelModeCardSelected,
-                  ]}
-                >
-                  <Ionicons
-                    name={mode.icon as any}
-                    size={24}
-                    color={isSelected ? "#ffffff" : "#6b7280"}
-                  />
-                  <Text
+            <Text style={styles.sectionTitle}>Experience Type</Text>
+            <Text style={styles.sectionSubtitle}>
+              Date Idea / Friends / Romantic / Group Fun
+            </Text>
+            <View style={styles.experienceTypesContainer}>
+              {experienceTypes.map((type) => {
+                const isSelected = selectedIntents.includes(type.id);
+                return (
+                  <TouchableOpacity
+                    key={type.id}
+                    onPress={() => handleIntentToggle(type.id)}
                     style={[
-                      styles.travelModeLabel,
-                      isSelected && styles.travelModeLabelSelected,
+                      styles.experienceTypeButton,
+                      isSelected && styles.experienceTypeButtonSelected,
                     ]}
                   >
-                    {mode.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Travel Limit Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderWithBadge}>
-            <Text style={styles.sectionTitle}>Travel Limit</Text>
-            <View style={styles.requiredBadge}>
-              <Text style={styles.requiredBadgeText}>Required</Text>
+                    <Ionicons
+                      name={type.icon as any}
+                      size={16}
+                      color={isSelected ? "#ffffff" : "#6b7280"}
+                    />
+                    <Text
+                      style={[
+                        styles.experienceTypeText,
+                        isSelected && styles.experienceTypeTextSelected,
+                      ]}
+                    >
+                      {type.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
-          <Text style={styles.sectionQuestion}>
-            How far are you willing to travel?
-          </Text>
-          <View style={styles.constraintTypeContainer}>
-            <TouchableOpacity
-              onPress={() => setConstraintType("time")}
-              style={[
-                styles.constraintTypeButton,
-                constraintType === "time" &&
-                  styles.constraintTypeButtonSelected,
-              ]}
-            >
-              <Ionicons
-                name="time-outline"
-                size={20}
-                color={constraintType === "time" ? "#ffffff" : "#6b7280"}
-              />
-              <Text
-                style={[
-                  styles.constraintTypeText,
-                  constraintType === "time" &&
-                    styles.constraintTypeTextSelected,
-                ]}
-              >
-                By Time
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setConstraintType("distance")}
-              style={[
-                styles.constraintTypeButton,
-                constraintType === "distance" &&
-                  styles.constraintTypeButtonSelected,
-              ]}
-            >
-              <Ionicons
-                name="location-outline"
-                size={20}
-                color={constraintType === "distance" ? "#ffffff" : "#6b7280"}
-              />
-              <Text
-                style={[
-                  styles.constraintTypeText,
-                  constraintType === "distance" &&
-                    styles.constraintTypeTextSelected,
-                ]}
-              >
-                By Distance
-              </Text>
-            </TouchableOpacity>
+
+          {/* Categories Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Categories</Text>
+            <View style={styles.categoriesContainer}>
+              {filteredCategories.map((category) => {
+                const isSelected = selectedCategories.includes(category.id);
+                return (
+                  <TouchableOpacity
+                    key={category.id}
+                    onPress={() => handleCategoryToggle(category.id)}
+                    style={[
+                      styles.categoryButton,
+                      isSelected && styles.categoryButtonSelected,
+                    ]}
+                  >
+                    <Ionicons
+                      name={category.icon as any}
+                      size={20}
+                      color={isSelected ? "#eb7825" : "#6b7280"}
+                    />
+                    <Text
+                      style={[
+                        styles.categoryText,
+                        isSelected && styles.categoryTextSelected,
+                      ]}
+                    >
+                      {category.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
-          <View style={styles.constraintInputSection}>
-            <Text style={styles.constraintInputLabel}>
-              {constraintType === "time"
-                ? "Maximum travel time (minutes)"
-                : "Maximum travel distance (km)"}
+
+          {/* Budget per Person Section - Hide when only "Take a Stroll" is selected */}
+          {!(
+            selectedCategories.length === 1 &&
+            selectedCategories[0] === "Stroll"
+          ) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Budget per Person</Text>
+              <View style={styles.budgetInputsContainer}>
+                <View style={styles.budgetInputWrapper}>
+                  <Text style={styles.inputLabel}>Min</Text>
+                  <View style={styles.budgetInputContainer}>
+                    <Text style={styles.dollarSign}>$</Text>
+                    <TextInput
+                      value={budgetMin?.toString() || ""}
+                      onChangeText={(text) =>
+                        setBudgetMin(text ? Number(text) : "")
+                      }
+                      keyboardType="numeric"
+                      style={styles.budgetInput}
+                      placeholder="0"
+                    />
+                  </View>
+                </View>
+                <View style={styles.budgetInputWrapper}>
+                  <Text style={styles.inputLabel}>Max</Text>
+                  <View style={styles.budgetInputContainer}>
+                    <Text style={styles.dollarSign}>$</Text>
+                    <TextInput
+                      value={budgetMax?.toString() || ""}
+                      onChangeText={(text) =>
+                        setBudgetMax(text ? Number(text) : "")
+                      }
+                      keyboardType="numeric"
+                      style={styles.budgetInput}
+                      placeholder="200"
+                    />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.budgetPresetsContainer}>
+                {budgetPresets.map((preset) => (
+                  <TouchableOpacity
+                    key={preset.label}
+                    onPress={() => setBudgetPreset(preset.min, preset.max)}
+                    style={styles.budgetPresetButton}
+                  >
+                    <Text style={styles.budgetPresetText}>{preset.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Date & Time Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Date & Time</Text>
+            <Text style={styles.sectionQuestion}>When do you want to go?</Text>
+            <View style={styles.dateOptionsGrid}>
+              {dateOptions.map((option) => {
+                const isSelected = selectedDateOption === option.id;
+                return (
+                  <TouchableOpacity
+                    key={option.id}
+                    onPress={() =>
+                      handleDateOptionSelect(option.id as DateOption)
+                    }
+                    style={[
+                      styles.dateOptionCard,
+                      isSelected && styles.dateOptionCardSelected,
+                    ]}
+                  >
+                    <View style={styles.dateOptionContent}>
+                      <Text
+                        style={[
+                          styles.dateOptionLabel,
+                          isSelected && styles.dateOptionLabelSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.dateOptionDescription,
+                          isSelected && styles.dateOptionDescriptionSelected,
+                        ]}
+                      >
+                        {option.description}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Weekend Info Card (only for "This Weekend") */}
+            {selectedDateOption === "This Weekend" && (
+              <TouchableOpacity style={styles.weekendInfoCard}>
+                <Ionicons
+                  name="calendar"
+                  size={24}
+                  color="#0369a1"
+                  style={styles.weekendInfoIcon}
+                />
+                <View style={styles.weekendInfoContent}>
+                  <Text style={styles.weekendInfoLabel}>This Weekend</Text>
+                  <Text style={styles.weekendInfoDescription}>
+                    Includes Friday, Saturday & Sunday
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* Calendar for "Pick a Date" */}
+            {selectedDateOption === "Pick a Date" && (
+              <TouchableOpacity
+                style={styles.dateInputField}
+                onPress={() => setShowCalendar(true)}
+              >
+                <Ionicons name="calendar" size={20} color="#eb7825" />
+                {selectedDate ? (
+                  <Text style={styles.dateInputText}>
+                    {formatDateForDisplay(selectedDate)}
+                  </Text>
+                ) : (
+                  <Text style={styles.dateInputPlaceholder}>mm/dd/yyyy</Text>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* Time Slots Section (shown for "Today", "This Weekend", and "Pick a Date") */}
+            {selectedDateOption && selectedDateOption !== "Now" && (
+              <>
+                <Text style={styles.quickPresetsLabel}>Quick Presets</Text>
+                <View style={styles.timeSlotsContainer}>
+                  {timeSlots.map((slot) => {
+                    const isSelected = selectedTimeSlot === slot.id;
+                    return (
+                      <TouchableOpacity
+                        key={slot.id}
+                        onPress={() =>
+                          handleTimeSlotSelect(slot.id as TimeSlot)
+                        }
+                        style={[
+                          styles.timeSlotCard,
+                          isSelected && styles.timeSlotCardSelected,
+                        ]}
+                      >
+                        <View style={styles.timeSlotContent}>
+                          <Ionicons
+                            name={slot.icon as any}
+                            size={24}
+                            color={isSelected ? "#ffffff" : "#6b7280"}
+                            style={styles.timeSlotIcon}
+                          />
+                          <Text
+                            style={[
+                              styles.timeSlotLabel,
+                              isSelected && styles.timeSlotLabelSelected,
+                            ]}
+                          >
+                            {slot.label}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.timeSlotTime,
+                              isSelected && styles.timeSlotTimeSelected,
+                            ]}
+                          >
+                            {slot.time}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Or Set Exact Time Section */}
+                <View style={styles.exactTimeSection}>
+                  <Text style={styles.exactTimeLabel}>Or Set Exact Time</Text>
+                  <TouchableOpacity
+                    style={styles.exactTimeInput}
+                    onPress={() => setShowTimePicker(true)}
+                  >
+                    <Ionicons
+                      name="time-outline"
+                      size={20}
+                      color={exactTime ? "#eb7825" : "#9ca3af"}
+                    />
+                    {exactTime ? (
+                      <Text style={styles.exactTimeInputTextSelected}>
+                        {exactTime}
+                      </Text>
+                    ) : (
+                      <Text style={styles.exactTimeInputText}>HH:MM AM/PM</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+
+          {/* Travel Mode Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Travel Mode</Text>
+            <Text style={styles.sectionQuestion}>How will you get there?</Text>
+            <View style={styles.travelModesGrid}>
+              {travelModes.map((mode) => {
+                const isSelected = travelMode === mode.id;
+                return (
+                  <TouchableOpacity
+                    key={mode.id}
+                    onPress={() => setTravelMode(mode.id)}
+                    style={[
+                      styles.travelModeCard,
+                      isSelected && styles.travelModeCardSelected,
+                    ]}
+                  >
+                    <Ionicons
+                      name={mode.icon as any}
+                      size={24}
+                      color={isSelected ? "#ffffff" : "#6b7280"}
+                    />
+                    <Text
+                      style={[
+                        styles.travelModeLabel,
+                        isSelected && styles.travelModeLabelSelected,
+                      ]}
+                    >
+                      {mode.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Travel Limit Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderWithBadge}>
+              <Text style={styles.sectionTitle}>Travel Limit</Text>
+              <View style={styles.requiredBadge}>
+                <Text style={styles.requiredBadgeText}>Required</Text>
+              </View>
+            </View>
+            <Text style={styles.sectionQuestion}>
+              How far are you willing to travel?
             </Text>
+            <View style={styles.constraintTypeContainer}>
+              <TouchableOpacity
+                onPress={() => setConstraintType("time")}
+                style={[
+                  styles.constraintTypeButton,
+                  constraintType === "time" &&
+                    styles.constraintTypeButtonSelected,
+                ]}
+              >
+                <Ionicons
+                  name="time-outline"
+                  size={20}
+                  color={constraintType === "time" ? "#ffffff" : "#6b7280"}
+                />
+                <Text
+                  style={[
+                    styles.constraintTypeText,
+                    constraintType === "time" &&
+                      styles.constraintTypeTextSelected,
+                  ]}
+                >
+                  By Time
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setConstraintType("distance")}
+                style={[
+                  styles.constraintTypeButton,
+                  constraintType === "distance" &&
+                    styles.constraintTypeButtonSelected,
+                ]}
+              >
+                <Ionicons
+                  name="location-outline"
+                  size={20}
+                  color={constraintType === "distance" ? "#ffffff" : "#6b7280"}
+                />
+                <Text
+                  style={[
+                    styles.constraintTypeText,
+                    constraintType === "distance" &&
+                      styles.constraintTypeTextSelected,
+                  ]}
+                >
+                  By Distance
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.constraintInputSection}>
+              <Text style={styles.constraintInputLabel}>
+                {constraintType === "time"
+                  ? "Maximum travel time (minutes)"
+                  : "Maximum travel distance (km)"}
+              </Text>
+              <View
+                style={[
+                  styles.constraintInputContainer,
+                  false && styles.constraintInputContainerFocused,
+                ]}
+              >
+                <Ionicons
+                  name={
+                    constraintType === "time"
+                      ? "time-outline"
+                      : "paper-plane-outline"
+                  }
+                  size={20}
+                  color="#6b7280"
+                  style={styles.constraintInputIcon}
+                />
+                <TextInput
+                  value={constraintValue?.toString() || ""}
+                  onChangeText={(text) => {
+                    const numericValue = text.replace(/[^0-9]/g, "");
+                    setConstraintValue(
+                      numericValue ? Number(numericValue) : ""
+                    );
+                  }}
+                  keyboardType="numeric"
+                  style={styles.constraintInput}
+                  placeholder={constraintType === "time" ? "e.g. 20" : "e.g. 5"}
+                />
+              </View>
+
+              {/* Quick selection options */}
+              <Text style={styles.quickOptionsLabel}>Quick Options</Text>
+              <View style={styles.quickOptionsContainer}>
+                {(constraintType === "time"
+                  ? [15, 30, 45, 60]
+                  : [5, 10, 15, 20]
+                ).map((value, index, array) => (
+                  <TouchableOpacity
+                    key={value}
+                    style={[
+                      styles.quickOption,
+                      index === array.length - 1 && styles.quickOptionLast,
+                      constraintValue === value && styles.quickOptionSelected,
+                      constraintValue !== value && styles.quickOptionUnselected,
+                    ]}
+                    onPress={() => setConstraintValue(value)}
+                  >
+                    <Text
+                      style={[
+                        styles.quickOptionText,
+                        constraintValue === value &&
+                          styles.quickOptionTextSelected,
+                        constraintValue !== value &&
+                          styles.quickOptionTextUnselected,
+                      ]}
+                    >
+                      {value}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+
+          {/* Starting Location Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Starting Location</Text>
+            <Text style={styles.sectionSubtitle}>
+              Your starting point will shape travel time & distance results.
+            </Text>
+
+            {/* Use My Current Location Button */}
+            <TouchableOpacity
+              style={styles.useLocationButton}
+              onPress={handleUseCurrentLocation}
+              disabled={isRequestingLocation}
+              activeOpacity={0.7}
+            >
+              {isRequestingLocation ? (
+                <ActivityIndicator size="small" color="#eb7825" />
+              ) : (
+                <Ionicons name="send-outline" size={20} color="#eb7825" />
+              )}
+              <Text style={styles.useLocationButtonText}>
+                {isRequestingLocation
+                  ? "Getting location..."
+                  : "Use my current location"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Separator */}
+            <View style={styles.separator}>
+              <Text style={styles.separatorText}>or</Text>
+            </View>
+
+            {/* Location Input Field */}
             <View
               style={[
-                styles.constraintInputContainer,
-                false && styles.constraintInputContainerFocused,
+                styles.locationInputContainer,
+                isInputFocused && styles.locationInputContainerFocused,
               ]}
             >
               <Ionicons
-                name={
-                  constraintType === "time"
-                    ? "time-outline"
-                    : "paper-plane-outline"
-                }
+                name="location"
                 size={20}
                 color="#6b7280"
-                style={styles.constraintInputIcon}
+                style={styles.locationInputIcon}
               />
               <TextInput
-                value={constraintValue?.toString() || ""}
-                onChangeText={(text) => {
-                  const numericValue = text.replace(/[^0-9]/g, "");
-                  setConstraintValue(numericValue ? Number(numericValue) : "");
+                style={styles.locationTextInput}
+                placeholder="Enter your city or address"
+                placeholderTextColor="#9ca3af"
+                value={searchLocation}
+                onChangeText={handleLocationInputChange}
+                onFocus={() => {
+                  setIsInputFocused(true);
+                  if (suggestions.length > 0) {
+                    setShowSuggestions(true);
+                  }
                 }}
-                keyboardType="numeric"
-                style={styles.constraintInput}
-                placeholder={constraintType === "time" ? "e.g. 20" : "e.g. 5"}
+                onBlur={handleInputBlur}
+                autoCapitalize="words"
+                returnKeyType="done"
               />
             </View>
 
-            {/* Quick selection options */}
-            <Text style={styles.quickOptionsLabel}>Quick Options</Text>
-            <View style={styles.quickOptionsContainer}>
-              {(constraintType === "time"
-                ? [15, 30, 45, 60]
-                : [5, 10, 15, 20]
-              ).map((value, index, array) => (
-                <TouchableOpacity
-                  key={value}
-                  style={[
-                    styles.quickOption,
-                    index === array.length - 1 && styles.quickOptionLast,
-                    constraintValue === value && styles.quickOptionSelected,
-                    constraintValue !== value && styles.quickOptionUnselected,
-                  ]}
-                  onPress={() => setConstraintValue(value)}
+            {/* Suggestions Dropdown */}
+            {showSuggestions &&
+              (suggestions.length > 0 || isLoadingSuggestions) && (
+                <ScrollView
+                  style={styles.suggestionsContainer}
+                  nestedScrollEnabled={true}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={true}
                 >
-                  <Text
-                    style={[
-                      styles.quickOptionText,
-                      constraintValue === value &&
-                        styles.quickOptionTextSelected,
-                      constraintValue !== value &&
-                        styles.quickOptionTextUnselected,
-                    ]}
-                  >
-                    {value}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  {isLoadingSuggestions ? (
+                    <View style={styles.suggestionItem}>
+                      <ActivityIndicator size="small" color="#eb7825" />
+                      <Text style={styles.suggestionText}>Searching...</Text>
+                    </View>
+                  ) : (
+                    suggestions.map((suggestion, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.suggestionItem}
+                        onPress={() => {
+                          handleSuggestionSelect(suggestion);
+                        }}
+                        onPressIn={() => {
+                          isSelectingSuggestion.current = true;
+                        }}
+                        activeOpacity={0.7}
+                        delayPressIn={0}
+                      >
+                        <Ionicons
+                          name="location-outline"
+                          size={18}
+                          color="#6b7280"
+                        />
+                        <View style={styles.suggestionTextContainer}>
+                          <Text style={styles.suggestionText}>
+                            {suggestion.displayName}
+                          </Text>
+                          {suggestion.fullAddress !==
+                            suggestion.displayName && (
+                            <Text
+                              style={styles.suggestionSubtext}
+                              numberOfLines={1}
+                            >
+                              {suggestion.fullAddress}
+                            </Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </ScrollView>
+              )}
           </View>
-        </View>
-
-        {/* Starting Location Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Starting Location</Text>
-          <Text style={styles.sectionSubtitle}>
-            Your starting point will shape travel time & distance results.
-          </Text>
-
-          {/* Use My Current Location Button */}
-          <TouchableOpacity
-            style={styles.useLocationButton}
-            onPress={handleUseCurrentLocation}
-            disabled={isRequestingLocation}
-            activeOpacity={0.7}
-          >
-            {isRequestingLocation ? (
-              <ActivityIndicator size="small" color="#eb7825" />
-            ) : (
-              <Ionicons name="send-outline" size={20} color="#eb7825" />
-            )}
-            <Text style={styles.useLocationButtonText}>
-              {isRequestingLocation
-                ? "Getting location..."
-                : "Use my current location"}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Separator */}
-          <View style={styles.separator}>
-            <Text style={styles.separatorText}>or</Text>
-          </View>
-
-          {/* Location Input Field */}
-          <View
-            style={[
-              styles.locationInputContainer,
-              false && styles.locationInputContainerFocused,
-            ]}
-          >
-            <Ionicons
-              name="location"
-              size={20}
-              color="#6b7280"
-              style={styles.locationInputIcon}
-            />
-            <TextInput
-              style={styles.locationTextInput}
-              placeholder="Enter your city or address"
-              placeholderTextColor="#9ca3af"
-              value={searchLocation}
-              onChangeText={setSearchLocation}
-              autoCapitalize="words"
-              returnKeyType="done"
-            />
-          </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Apply Button */}
       <View style={styles.footer}>
@@ -1638,6 +1779,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#111827",
     padding: 0,
+  },
+  suggestionsContainer: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    marginTop: 4,
+    marginBottom: 8,
+    maxHeight: 200,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  suggestionTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  suggestionText: {
+    fontSize: 15,
+    color: "#111827",
+    fontWeight: "500",
+  },
+  suggestionSubtext: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
   },
   footer: {
     position: "absolute",

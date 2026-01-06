@@ -4,11 +4,11 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   StatusBar,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface InviteFriendsStepProps {
   onNext: () => void | Promise<void>;
@@ -30,7 +30,7 @@ const InviteFriendsStep = ({
     },
     progressSection: {
       paddingHorizontal: 24,
-      paddingTop: 8,
+
       paddingBottom: 8,
     },
     progressBarContainer: {
@@ -235,7 +235,7 @@ const InviteFriendsStep = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
+      {/*  <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       {/* Progress Bar Section */}
       <View style={styles.progressSection}>

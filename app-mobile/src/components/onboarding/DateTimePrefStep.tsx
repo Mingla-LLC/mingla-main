@@ -4,7 +4,6 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   Platform,
@@ -13,6 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Calendar } from "../ui/calendar";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface DateTimePrefStepProps {
   onNext: () => void | Promise<void>;
@@ -64,13 +64,13 @@ const DateTimePrefStep = ({
         weekendDay: null,
       };
     }
-      return {
-        dateOption: dateTimePref.dateOption || null,
-        timeSlot: dateTimePref.timeSlot || null,
-        selectedDate: dateTimePref.selectedDate || null,
-        weekendDay: dateTimePref.weekendDay || null,
-        exactTime: (dateTimePref as any).exactTime || null,
-      };
+    return {
+      dateOption: dateTimePref.dateOption || null,
+      timeSlot: dateTimePref.timeSlot || null,
+      selectedDate: dateTimePref.selectedDate || null,
+      weekendDay: dateTimePref.weekendDay || null,
+      exactTime: (dateTimePref as any).exactTime || null,
+    };
   };
 
   const [selectedDateOption, setSelectedDateOption] =
@@ -309,7 +309,7 @@ const DateTimePrefStep = ({
     if (Platform.OS === "android") {
       setShowTimePicker(false);
     }
-    
+
     if (selectedDate) {
       setSelectedTime(selectedDate);
       const formattedTime = formatTimeForDisplay(selectedDate);
@@ -319,7 +319,7 @@ const DateTimePrefStep = ({
       // Pass the formatted time directly to ensure it's used immediately
       updateParentPref({ exactTime: formattedTime, timeSlot: null });
     }
-    
+
     if (Platform.OS === "ios") {
       // On iOS, keep picker open until user confirms
       if (event.type === "dismissed") {
@@ -336,7 +336,6 @@ const DateTimePrefStep = ({
     // Pass the formatted time directly to ensure it's used immediately
     updateParentPref({ exactTime: formattedTime, timeSlot: null });
   };
-
 
   const handleWeekendDaySelect = (day: WeekendDay) => {
     setSelectedWeekendDay(day);
@@ -363,17 +362,19 @@ const DateTimePrefStep = ({
     if (selectedDateOption) {
       // Mark that this is an internal update to prevent useEffect from overwriting our state
       isInternalUpdate.current = true;
-      
+
       onDateTimePrefChange({
         dateOption: selectedDateOption,
-        timeSlot: overrides?.timeSlot !== undefined 
-          ? (overrides.timeSlot || undefined)
-          : (selectedTimeSlot || undefined),
+        timeSlot:
+          overrides?.timeSlot !== undefined
+            ? overrides.timeSlot || undefined
+            : selectedTimeSlot || undefined,
         selectedDate: selectedDate?.toISOString() || undefined,
         weekendDay: selectedWeekendDay || undefined,
-        exactTime: overrides?.exactTime !== undefined 
-          ? overrides.exactTime 
-          : (exactTime || undefined),
+        exactTime:
+          overrides?.exactTime !== undefined
+            ? overrides.exactTime
+            : exactTime || undefined,
       });
     }
   };
@@ -403,7 +404,7 @@ const DateTimePrefStep = ({
     },
     progressSection: {
       paddingHorizontal: 24,
-      paddingTop: 8,
+      /*       paddingTop: 8, */
       paddingBottom: 8,
     },
     progressBarContainer: {
@@ -756,8 +757,8 @@ const DateTimePrefStep = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
-      
+      {/* <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
+
       {/* Progress Bar Section */}
       <View style={styles.progressSection}>
         <View style={styles.progressBarContainer}>
@@ -838,7 +839,7 @@ const DateTimePrefStep = ({
               </View>
             </TouchableOpacity>
           )}
-          
+
           <Text style={styles.instructionText}>
             You can adjust this preference anytime
           </Text>
@@ -866,79 +867,81 @@ const DateTimePrefStep = ({
 
         {/* Time Slots Section (shown for "Today", "This Weekend", and "Pick a Date") */}
         {selectedDateOption && selectedDateOption !== "Now" && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Select Time</Text>
-              <Text style={styles.quickPresetsLabel}>Quick Presets</Text>
-              <View style={styles.timeSlotsContainer}>
-                {timeSlots.map((slot) => {
-                  const isSelected = selectedTimeSlot === slot.id;
-                  return (
-                    <TouchableOpacity
-                      key={slot.id}
-                      style={[
-                        styles.timeSlotCard,
-                        isSelected && styles.timeSlotCardSelected,
-                      ]}
-                      onPress={() => handleTimeSlotSelect(slot.id)}
-                    >
-                      <View style={styles.timeSlotContent}>
-                        <Ionicons
-                          name={
-                            slot.icon === "cafe"
-                              ? "cafe-outline"
-                              : slot.icon === "sunny"
-                              ? "sunny-outline"
-                              : slot.icon === "restaurant"
-                              ? "restaurant-outline"
-                              : "moon-outline"
-                          }
-                          size={24}
-                          color={isSelected ? "#ffffff" : "#6b7280"}
-                          style={styles.timeSlotIcon}
-                        />
-                        <Text
-                          style={[
-                            styles.timeSlotLabel,
-                            isSelected && styles.timeSlotLabelSelected,
-                          ]}
-                        >
-                          {slot.label}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.timeSlotTime,
-                            isSelected && styles.timeSlotTimeSelected,
-                          ]}
-                        >
-                          {slot.time}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {/* Or Set Exact Time Section */}
-              <View style={styles.exactTimeSection}>
-                <Text style={styles.exactTimeLabel}>Or Set Exact Time</Text>
-                <TouchableOpacity
-                  style={styles.exactTimeInput}
-                  onPress={() => setShowTimePicker(true)}
-                >
-                  <Ionicons name="time-outline" size={20} color={exactTime ? "#eb7825" : "#9ca3af"} />
-                  {exactTime ? (
-                    <Text style={styles.exactTimeInputTextSelected}>
-                      {exactTime}
-                    </Text>
-                  ) : (
-                    <Text style={styles.exactTimeInputText}>
-                      HH:MM AM/PM
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Select Time</Text>
+            <Text style={styles.quickPresetsLabel}>Quick Presets</Text>
+            <View style={styles.timeSlotsContainer}>
+              {timeSlots.map((slot) => {
+                const isSelected = selectedTimeSlot === slot.id;
+                return (
+                  <TouchableOpacity
+                    key={slot.id}
+                    style={[
+                      styles.timeSlotCard,
+                      isSelected && styles.timeSlotCardSelected,
+                    ]}
+                    onPress={() => handleTimeSlotSelect(slot.id)}
+                  >
+                    <View style={styles.timeSlotContent}>
+                      <Ionicons
+                        name={
+                          slot.icon === "cafe"
+                            ? "cafe-outline"
+                            : slot.icon === "sunny"
+                            ? "sunny-outline"
+                            : slot.icon === "restaurant"
+                            ? "restaurant-outline"
+                            : "moon-outline"
+                        }
+                        size={24}
+                        color={isSelected ? "#ffffff" : "#6b7280"}
+                        style={styles.timeSlotIcon}
+                      />
+                      <Text
+                        style={[
+                          styles.timeSlotLabel,
+                          isSelected && styles.timeSlotLabelSelected,
+                        ]}
+                      >
+                        {slot.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.timeSlotTime,
+                          isSelected && styles.timeSlotTimeSelected,
+                        ]}
+                      >
+                        {slot.time}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          )}
+
+            {/* Or Set Exact Time Section */}
+            <View style={styles.exactTimeSection}>
+              <Text style={styles.exactTimeLabel}>Or Set Exact Time</Text>
+              <TouchableOpacity
+                style={styles.exactTimeInput}
+                onPress={() => setShowTimePicker(true)}
+              >
+                <Ionicons
+                  name="time-outline"
+                  size={20}
+                  color={exactTime ? "#eb7825" : "#9ca3af"}
+                />
+                {exactTime ? (
+                  <Text style={styles.exactTimeInputTextSelected}>
+                    {exactTime}
+                  </Text>
+                ) : (
+                  <Text style={styles.exactTimeInputText}>HH:MM AM/PM</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {/* Calendar Modal */}
@@ -970,8 +973,8 @@ const DateTimePrefStep = ({
       </Modal>
 
       {/* Time Picker */}
-      {showTimePicker && (
-        Platform.OS === "ios" ? (
+      {showTimePicker &&
+        (Platform.OS === "ios" ? (
           <Modal
             visible={showTimePicker}
             transparent={true}
@@ -1008,8 +1011,7 @@ const DateTimePrefStep = ({
             display="default"
             onChange={handleTimePickerChange}
           />
-        )
-      )}
+        ))}
 
       {/* Navigation Buttons */}
       <View style={styles.navigationContainer}>

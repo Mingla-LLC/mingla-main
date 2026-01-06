@@ -69,7 +69,7 @@ const LocationSetupStep = ({
     },
     progressSection: {
       paddingHorizontal: 24,
-      paddingTop: 8,
+
       paddingBottom: 8,
     },
     progressBarContainer: {
@@ -448,7 +448,7 @@ const LocationSetupStep = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
+      {/*     <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       {/* Progress Bar Section */}
       <View style={styles.progressSection}>

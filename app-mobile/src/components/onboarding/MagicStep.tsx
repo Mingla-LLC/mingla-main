@@ -4,13 +4,13 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import minglaLogo from "../../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface MagicStepProps {
   onComplete: (onboardingData: any) => void | Promise<void>;
@@ -33,7 +33,6 @@ const MagicStep = ({
     scrollContent: {
       flexGrow: 1,
       paddingHorizontal: 24,
-      paddingTop: 40,
       paddingBottom: 140,
     },
     logoContainer: {
@@ -212,7 +211,10 @@ const MagicStep = ({
   };
 
   const formatTravelLimit = () => {
-    if (!onboardingData.travelConstraintType || !onboardingData.travelConstraintValue) {
+    if (
+      !onboardingData.travelConstraintType ||
+      !onboardingData.travelConstraintValue
+    ) {
       return "Not set";
     }
     const { travelConstraintType, travelConstraintValue } = onboardingData;
@@ -227,7 +229,8 @@ const MagicStep = ({
     if (!onboardingData.dateTimePref) {
       return "Not set";
     }
-    const { dateOption, timeSlot, selectedDate, exactTime } = onboardingData.dateTimePref;
+    const { dateOption, timeSlot, selectedDate, exactTime } =
+      onboardingData.dateTimePref;
 
     if (dateOption === "Now") {
       return "Now";
@@ -344,7 +347,7 @@ const MagicStep = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
+      {/* <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       {/* Scrollable Content */}
       <ScrollView
@@ -355,11 +358,7 @@ const MagicStep = ({
       >
         {/* Logo */}
         <View style={styles.logoContainer}>
-          <Image
-            source={minglaLogo}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+          <Image source={minglaLogo} style={styles.logo} resizeMode="contain" />
         </View>
 
         {/* Title Section */}
