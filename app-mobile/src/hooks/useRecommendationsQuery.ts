@@ -1,7 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
-import { ExperienceGenerationService } from '../services/experienceGenerationService';
-import { ExperiencesService, UserPreferences } from '../services/experiencesService';
-import { Recommendation } from '../contexts/RecommendationsContext';
+import { useQuery } from "@tanstack/react-query";
+import { ExperienceGenerationService } from "../services/experienceGenerationService";
+import {
+  ExperiencesService,
+  UserPreferences,
+} from "../services/experiencesService";
+import { Recommendation } from "../contexts/RecommendationsContext";
 
 interface FetchRecommendationsParams {
   userId: string | undefined;
@@ -15,13 +18,13 @@ interface FetchRecommendationsParams {
 }
 
 const getDefaultPreferences = (): UserPreferences => ({
-  mode: 'explore',
+  mode: "explore",
   budget_min: 0,
   budget_max: 1000,
   people_count: 1,
-  categories: ['Sip & Chill', 'Stroll'],
-  travel_mode: 'walking',
-  travel_constraint_type: 'time',
+  categories: ["Sip & Chill", "Stroll"],
+  travel_mode: "walking",
+  travel_constraint_type: "time",
   travel_constraint_value: 30,
   datetime_pref: new Date().toISOString(),
 });
@@ -40,7 +43,7 @@ const fetchRecommendations = async (
   } = params;
 
   if (!userLocation) {
-    throw new Error('User location is required');
+    throw new Error("User location is required");
   }
 
   // Get actual user preferences
@@ -54,7 +57,7 @@ const fetchRecommendations = async (
         userPrefs = getDefaultPreferences();
       }
     } catch (error) {
-      console.error('Error loading user preferences:', error);
+      console.error("Error loading user preferences:", error);
       userPrefs = getDefaultPreferences();
     }
   } else {
@@ -73,7 +76,7 @@ const fetchRecommendations = async (
   }
 
   if (!userPrefs) {
-    throw new Error('Unable to load preferences');
+    throw new Error("Unable to load preferences");
   }
 
   // Generate experiences
@@ -86,11 +89,10 @@ const fetchRecommendations = async (
         userId: userId,
       });
   } else {
-    if (currentMode === 'solo') {
-      console.log('🎯 Solo mode detected - Generating individual experiences');
+    if (currentMode === "solo") {
       generatedExperiences =
         await ExperienceGenerationService.generateExperiences({
-          userId: userId || 'anonymous',
+          userId: userId || "anonymous",
           preferences: userPrefs,
           location: userLocation,
         });
@@ -123,7 +125,7 @@ const fetchRecommendations = async (
       highlights: exp.highlights || [],
       fullDescription: exp.description,
       address: exp.address,
-      openingHours: '',
+      openingHours: "",
       tags: exp.highlights || [],
       matchScore: exp.matchScore,
       reviewCount: exp.reviewCount,
@@ -167,14 +169,14 @@ export const useRecommendationsQuery = (
 
   // Create a stable query key that includes all relevant parameters
   const queryKey = [
-    'recommendations',
+    "recommendations",
     userId,
     currentMode,
     userLocation?.lat,
     userLocation?.lng,
     resolvedSessionId,
     isBoardSession,
-    boardPreferences?.categories?.join(','),
+    boardPreferences?.categories?.join(","),
     boardPreferences?.budget_min,
     boardPreferences?.budget_max,
     boardPreferences?.group_size,
@@ -187,7 +189,7 @@ export const useRecommendationsQuery = (
       enabled &&
       !!userLocation &&
       !params.isWaitingForSessionResolution &&
-      (currentMode === 'solo' || !!params.resolvedSessionId),
+      (currentMode === "solo" || !!params.resolvedSessionId),
     staleTime: 60 * 60 * 1000, // 1 hour - data stays fresh for 1 hour
     gcTime: 24 * 60 * 60 * 1000, // 24 hours - keep in cache for 24 hours
     refetchOnMount: false, // Don't refetch when component mounts if data exists
@@ -197,4 +199,3 @@ export const useRecommendationsQuery = (
     retry: 1,
   });
 };
-

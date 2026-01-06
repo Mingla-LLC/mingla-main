@@ -271,9 +271,6 @@ export const RecommendationsProvider: React.FC<
       previousModeRef.current !== currentMode;
 
     if (modeChanged) {
-      console.log(
-        `🔄 Mode changed from "${previousModeRef.current}" to "${currentMode}"`
-      );
       setIsModeTransitioning(true);
       setRecommendations([]);
       // Invalidate recommendations query to trigger refetch

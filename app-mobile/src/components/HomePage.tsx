@@ -57,7 +57,7 @@ export default function HomePage({
   isHighlightingHeader,
 }: HomePageProps) {
   return (
-    <SafeAreaView style={styles.safeArea} edges={["bottom", "left", "right"]}>
+    <SafeAreaView style={styles.safeArea} edges={[]}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         {/* Top Navigation - Fixed */}

@@ -656,9 +656,51 @@ export class ExperienceGenerationService {
 
   /**
    * Helper: Get category icon
+   * Handles variations like "stroll", "Stroll", "take-a-stroll", "Take a Stroll"
    */
   private static getCategoryIcon(category: string): string {
-    const iconMap: { [key: string]: string } = {
+    if (!category) return "walk";
+
+    // Normalize the category string: lowercase, replace hyphens with spaces, trim, remove extra spaces
+    const normalized = category
+      .toLowerCase()
+      .replace(/-/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Core category keywords that map to icons
+    const categoryKeywords: { [key: string]: string } = {
+      stroll: "walk",
+      sip: "cafe",
+      chill: "cafe",
+      casual: "restaurant",
+      eats: "restaurant",
+      screen: "film",
+      relax: "film",
+      creative: "brush",
+      play: "basketball",
+      move: "basketball",
+      dining: "wine",
+      experience: "wine",
+      freestyle: "sparkles",
+      picnic: "basket",
+      picnics: "basket",
+    };
+
+    // Check for exact normalized matches first
+    if (categoryKeywords[normalized]) {
+      return categoryKeywords[normalized];
+    }
+
+    // Check if normalized string contains any keyword
+    for (const [keyword, icon] of Object.entries(categoryKeywords)) {
+      if (normalized.includes(keyword)) {
+        return icon;
+      }
+    }
+
+    // Fallback to original exact match (case-sensitive) for backward compatibility
+    const exactMap: { [key: string]: string } = {
       Stroll: "walk",
       "Sip & Chill": "cafe",
       "Casual Eats": "restaurant",
@@ -667,7 +709,10 @@ export class ExperienceGenerationService {
       "Play & Move": "basketball",
       "Dining experience": "wine",
       Freestyle: "sparkles",
+      Picnic: "basket",
+      Picnics: "basket",
     };
-    return iconMap[category] || "location";
+
+    return exactMap[category] || "location";
   }
 }

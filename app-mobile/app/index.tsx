@@ -1110,7 +1110,7 @@ export default function App() {
                               style={styles.navItem}
                             >
                               <Ionicons
-                                name="home"
+                                name="home-outline"
                                 size={24}
                                 color={
                                   currentPage === "home" ? "#eb7825" : "#9CA3AF"
@@ -1136,7 +1136,7 @@ export default function App() {
                             >
                               <View style={styles.navIconContainer}>
                                 <Ionicons
-                                  name="people"
+                                  name="people-outline"
                                   size={24}
                                   color={
                                     currentPage === "connections"
@@ -1173,7 +1173,7 @@ export default function App() {
                             >
                               <View style={styles.navIconContainer}>
                                 <Ionicons
-                                  name="calendar"
+                                  name="calendar-outline"
                                   size={24}
                                   color={
                                     currentPage === "activity"
@@ -1202,7 +1202,7 @@ export default function App() {
                                 Activity
                               </Text>
                             </TouchableOpacity>
-                            <TouchableOpacity
+                            {/*    <TouchableOpacity
                               onPress={() => {
                                 console.log("Navigating to saved");
                                 setCurrentPage("saved");
@@ -1228,7 +1228,7 @@ export default function App() {
                               >
                                 Saved
                               </Text>
-                            </TouchableOpacity>
+                            </TouchableOpacity> */}
                             <TouchableOpacity
                               onPress={() => {
                                 console.log("Navigating to profile");
@@ -1237,7 +1237,7 @@ export default function App() {
                               style={styles.navItem}
                             >
                               <Ionicons
-                                name="person"
+                                name="person-outline"
                                 size={24}
                                 color={
                                   currentPage === "profile"

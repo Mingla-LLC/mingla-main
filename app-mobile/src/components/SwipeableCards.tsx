@@ -37,7 +37,7 @@ import {
 } from "../contexts/RecommendationsContext";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
-const CARD_HEIGHT = Math.min(screenHeight * 0.72, 700);
+const CARD_HEIGHT = Math.min(screenHeight * 0.72, 800);
 const IMAGE_SECTION_RATIO = 0.66;
 const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
 
@@ -109,6 +109,35 @@ interface SwipeableCardsProps {
 // Real data will be fetched from Supabase
 
 const getIconComponent = (iconName: string) => {
+  // If iconName is already an Ionicons name (from getCategoryIcon), return it directly
+  const ioniconsNames = [
+    "walk",
+    "cafe",
+    "restaurant",
+    "film",
+    "brush",
+    "basketball",
+    "wine",
+    "sparkles",
+    "basket",
+    "location",
+    "leaf",
+    "fitness",
+    "eye",
+    "heart",
+    "calendar",
+    "time",
+    "star",
+    "navigate",
+    "color-palette",
+    "bookmark",
+  ];
+
+  if (ioniconsNames.includes(iconName)) {
+    return iconName;
+  }
+
+  // Map component names to Ionicons names (for backward compatibility)
   const iconMap: { [key: string]: string } = {
     Coffee: "cafe",
     TreePine: "leaf",
@@ -126,7 +155,7 @@ const getIconComponent = (iconName: string) => {
     Bookmark: "bookmark",
   };
 
-  return iconMap[iconName] || "heart";
+  return iconMap[iconName] || iconName || "heart";
 };
 
 export default function SwipeableCards({
@@ -843,7 +872,7 @@ export default function SwipeableCards({
   const CategoryIcon = getIconComponent(currentRec.categoryIcon);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         <View style={styles.cardContainer}>
@@ -1032,7 +1061,7 @@ export default function SwipeableCards({
                   <Ionicons
                     name="star"
                     size={14}
-                    color="#1f2937"
+                    color="#eb7825"
                     style={{ marginRight: 4 }}
                   />
                   <Text style={styles.matchText}>
@@ -1094,12 +1123,12 @@ export default function SwipeableCards({
                   </View>
 
                   {/* Description - 2 lines max */}
-                  <Text style={styles.description} numberOfLines={2}>
+                  <Text style={styles.description}>
                     {currentRec.description}
                   </Text>
 
                   {/* Address - Show in collaboration mode */}
-                  {currentMode !== "solo" && currentRec.address && (
+                  {/*   {currentMode !== "solo" && currentRec.address && (
                     <View style={styles.addressRow}>
                       <Ionicons
                         name="location-outline"
@@ -1111,9 +1140,9 @@ export default function SwipeableCards({
                       </Text>
                     </View>
                   )}
-
+ */}
                   {/* Top 2 Highlights */}
-                  {currentRec.highlights &&
+                  {/*     {currentRec.highlights &&
                     currentRec.highlights.length > 0 && (
                       <View style={styles.highlightsContainer}>
                         {currentRec.highlights
@@ -1126,7 +1155,7 @@ export default function SwipeableCards({
                             </View>
                           ))}
                       </View>
-                    )}
+                    )} */}
                 </View>
 
                 {/* Share Button - Centered at bottom */}
@@ -1135,7 +1164,11 @@ export default function SwipeableCards({
                   onPress={handleShare}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="share-outline" size={18} color="#6b7280" />
+                  <Ionicons
+                    name="share-social-outline"
+                    size={18}
+                    color="#6b7280"
+                  />
                   <Text style={styles.shareButtonText}>Share</Text>
                 </TouchableOpacity>
               </View>
@@ -1166,28 +1199,27 @@ export default function SwipeableCards({
         }}
         userPreferences={userPreferences}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f9fafb",
   },
   container: {
     flex: 1,
     width: "100%",
     justifyContent: "center",
     alignItems: "center",
-    paddingTop: 24,
-    paddingBottom: 12,
+    paddingVertical: 8,
   },
   cardContainer: {
     width: screenWidth * 0.92,
-    height: CARD_HEIGHT,
+    /*   height: CARD_HEIGHT, */
     maxWidth: 400,
     position: "relative",
+    flex: 1,
   },
   card: {
     position: "absolute",
