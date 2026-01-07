@@ -92,11 +92,13 @@ export default function HomePage({
           </View>
 
           <View style={styles.headerCenter}>
-            <Image
-              source={minglaLogo}
-              style={styles.logo}
-              resizeMode="contain"
-            />
+            <View style={styles.logoContainer}>
+              <Image
+                source={minglaLogo}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
           </View>
 
           <View style={styles.headerRight}>
@@ -169,8 +171,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -184,6 +184,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 3,
     elevation: 2,
+    paddingVertical: 8,
   },
   headerLeft: {
     flexDirection: "row",
@@ -207,10 +208,18 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    /*  aspectRatio: 3.4, */
+  },
+  logoContainer: {
+    height: 50, // Smaller than logo height to crop top/bottom
+    width: 180, // Smaller than logo width to crop left/right
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
   },
   logo: {
-    height: 40,
-    width: 200,
+    height: 100,
+    width: 220,
     resizeMode: "contain",
   },
   headerRight: {
