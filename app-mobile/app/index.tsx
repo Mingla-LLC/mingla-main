@@ -496,7 +496,6 @@ export default function App() {
 
     // Ensure onboarding flow is shown (only if not navigating to sign-up)
     if (!showOnboardingFlow && needsOnboarding && !showSignUpForm) {
-      console.log("This is running", needsOnboarding);
       setShowOnboardingFlow(true);
     }
 

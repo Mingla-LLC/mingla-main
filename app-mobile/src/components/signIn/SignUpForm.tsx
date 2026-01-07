@@ -10,6 +10,9 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Image,
+  Keyboard,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Input } from "../ui/input";
@@ -20,6 +23,8 @@ import {
   sanitizeUsername,
 } from "../../utils/usernameUtils";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+const logo = require("../../../assets/mobile_logo.png");
 
 interface SignUpFormProps {
   onSignUp: (userData: {
@@ -43,35 +48,33 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: "transparent",
+    paddingHorizontal: 12,
+    backgroundColor: "white",
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f1f5f9",
+  },
+  backButtonText: {
+    color: "#6b7280",
+    fontSize: 16,
+    fontWeight: "500",
+    marginLeft: 4,
   },
   headerCenter: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  minglaText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#eb7825",
-    letterSpacing: 0.3,
+  logo: {
+    width: 150,
+    height: 40,
+    resizeMode: "contain",
   },
   formContainer: {
     flex: 1,
     paddingHorizontal: 24,
     paddingTop: 16,
-    paddingBottom: 40,
+    justifyContent: "center",
   },
   formWrapper: {
     width: "100%",
@@ -79,21 +82,15 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   formHeader: {
-    marginBottom: 48,
+    marginBottom: 32,
     paddingHorizontal: 4,
-  },
-  formTitle: {
-    fontSize: 36,
-    fontWeight: "800",
-    color: "#0a0a0a",
-    marginBottom: 12,
-    letterSpacing: -1,
-    lineHeight: 44,
   },
   formSubtitle: {
     fontSize: 16,
     color: "#64748b",
     lineHeight: 24,
+    textAlign: "center",
+    marginTop: 32,
   },
   inputContainer: {
     marginBottom: 28,
@@ -101,7 +98,7 @@ const styles = StyleSheet.create({
   inputLabel: {
     color: "#0f172a",
     fontWeight: "600",
-    fontSize: 14,
+    fontSize: 16,
     marginBottom: 8,
     letterSpacing: -0.2,
   },
@@ -119,7 +116,7 @@ const styles = StyleSheet.create({
   passwordToggle: {
     position: "absolute",
     right: 12,
-    top: 13,
+    top: 8,
     padding: 8,
     zIndex: 1,
     borderRadius: 8,
@@ -128,10 +125,15 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "#eb7825",
     paddingVertical: 18,
-    borderRadius: 14,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 8,
+    flexDirection: "row",
+    gap: 8,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
   },
   submitButtonText: {
     color: "white",
@@ -139,18 +141,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     letterSpacing: 0.2,
   },
-  submitButtonContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
   alternativeAction: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 32,
-    paddingVertical: 12,
+    marginTop: 18,
   },
   alternativeText: {
     color: "#64748b",
@@ -186,7 +181,7 @@ const styles = StyleSheet.create({
   usernameStatusIcon: {
     position: "absolute",
     right: 12,
-    top: 14,
+    top: 8,
     padding: 4,
     zIndex: 1,
   },
@@ -233,6 +228,9 @@ export default function SignUpForm({
 
   const nameDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const usernameCheckDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const submitButtonRef = useRef<View>(null);
 
   // Auto-generate username when name changes
   useEffect(() => {
@@ -319,6 +317,47 @@ export default function SignUpForm({
       }
     };
   }, [formData.username]);
+
+  // Store button position
+  const [buttonY, setButtonY] = useState(0);
+
+  // Keyboard event listeners
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        // Scroll to show the button just above keyboard
+        if (buttonY > 0) {
+          setTimeout(() => {
+            const screenHeight = Dimensions.get("window").height;
+            const visibleArea = screenHeight - e.endCoordinates.height;
+            const buttonBottom = buttonY + 80; // Approximate button height + margin
+
+            // If button is below visible area, scroll to show it with some padding
+            if (buttonBottom > visibleArea - 60) {
+              scrollViewRef.current?.scrollTo({
+                y: Math.max(0, buttonBottom - visibleArea + 60),
+                animated: true,
+              });
+            }
+          }, 100);
+        }
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, [buttonY]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -440,35 +479,39 @@ export default function SignUpForm({
   };
 
   return (
-    <SafeAreaView edges={["top"]} style={styles.container}>
-      {/*   <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-       */}
+    <SafeAreaView style={styles.container}>
+      {/*   <StatusBar barStyle="dark-content" backgroundColor="#ffffff" /> */}
+
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          ref={scrollViewRef}
+          style={{ flex: 1 }}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 50 : 0 },
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={onBack} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={22} color="#475569" />
+            <TouchableOpacity style={styles.backButton} onPress={onBack}>
+              <Ionicons name="arrow-back" size={20} color="#6b7280" />
+              <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
-            <View style={styles.headerCenter}>
-              <Text style={styles.minglaText}>Mingla</Text>
-            </View>
-            <View style={{ width: 40 }} />
           </View>
 
           {/* Form Content */}
           <View style={styles.formContainer}>
+            <View style={styles.headerCenter}>
+              <Image source={logo} style={styles.logo} resizeMode="contain" />
+            </View>
             <View style={styles.formWrapper}>
               {/* Form Header */}
               <View style={styles.formHeader}>
-                <Text style={styles.formTitle}>Create Account</Text>
                 <Text style={styles.formSubtitle}>
                   Start discovering amazing experiences today
                 </Text>
@@ -492,7 +535,7 @@ export default function SignUpForm({
                     placeholderTextColor="#cbd5e1"
                     required
                     style={{
-                      backgroundColor: "#f8fafc",
+                      backgroundColor: "#f1f5f9",
                       borderWidth: 0,
                       borderRadius: 12,
                       paddingHorizontal: 16,
@@ -540,7 +583,7 @@ export default function SignUpForm({
                     placeholderTextColor="#cbd5e1"
                     autoCapitalize="none"
                     style={{
-                      backgroundColor: "#f8fafc",
+                      backgroundColor: "#f1f5f9",
                       borderRadius: 12,
                       paddingHorizontal: 16,
                       paddingLeft: 48,
@@ -666,7 +709,7 @@ export default function SignUpForm({
                     placeholderTextColor="#cbd5e1"
                     required
                     style={{
-                      backgroundColor: "#f8fafc",
+                      backgroundColor: "#f1f5f9",
                       borderWidth: 0,
                       borderRadius: 12,
                       paddingHorizontal: 16,
@@ -726,19 +769,28 @@ export default function SignUpForm({
               </View>
 
               {/* Submit Button */}
-              <TouchableOpacity
-                onPress={handleSubmit}
-                style={styles.submitButton}
-                activeOpacity={0.8}
-                disabled={isLoading}
+              <View
+                ref={submitButtonRef}
+                onLayout={(event) => {
+                  const { y } = event.nativeEvent.layout;
+                  setButtonY(y);
+                }}
               >
-                <View style={styles.submitButtonContent}>
-                  {isLoading && (
+                <TouchableOpacity
+                  onPress={handleSubmit}
+                  style={[
+                    styles.submitButton,
+                    isLoading && styles.submitButtonDisabled,
+                  ]}
+                  activeOpacity={0.8}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
                     <ActivityIndicator size="small" color="white" />
-                  )}
+                  ) : null}
                   <Text style={styles.submitButtonText}>Create Account</Text>
-                </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
+              </View>
 
               {/* Alternative Action */}
               <View style={styles.alternativeAction}>

@@ -14,7 +14,10 @@ import {
   KeyboardAvoidingView,
   Keyboard,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { PreferencesService } from "../services/preferencesService";
@@ -167,6 +170,7 @@ export default function PreferencesSheet({
 }: PreferencesSheetProps) {
   const { user } = useAuthSimple();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
 
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
@@ -1303,7 +1307,12 @@ export default function PreferencesSheet({
           )}
         </ScrollView>
         {/* Apply Button */}
-        <View style={styles.footer}>
+        <View
+          style={[
+            styles.footer,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ]}
+        >
           <TouchableOpacity
             onPress={handleApplyPreferences}
             style={[styles.applyButton, isSaving && styles.applyButtonDisabled]}

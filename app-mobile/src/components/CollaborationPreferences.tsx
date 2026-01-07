@@ -12,7 +12,10 @@ import {
   Modal,
   KeyboardAvoidingView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Calendar } from "./ui/calendar";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -166,6 +169,7 @@ export default function CollaborationPreferences({
 }: CollaborationPreferencesProps) {
   const queryClient = useQueryClient();
   const { user } = useAuthSimple();
+  const insets = useSafeAreaInsets();
 
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
@@ -1137,7 +1141,9 @@ export default function CollaborationPreferences({
       </KeyboardAvoidingView>
 
       {/* Apply Button */}
-      <View style={styles.footer}>
+      <View
+        style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}
+      >
         <TouchableOpacity
           onPress={handleApplyPreferences}
           style={[styles.applyButton, isSaving && styles.applyButtonDisabled]}
