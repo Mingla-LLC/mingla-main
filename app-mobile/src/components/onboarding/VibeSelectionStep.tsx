@@ -438,9 +438,7 @@ const VibeSelectionStep = ({
   }, [vibes, vibeOptions]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
-
+    <View style={styles.container}>
       {/* Progress Bar Section */}
       <View style={styles.progressSection}>
         <View style={styles.progressBarContainer}>
@@ -586,7 +584,7 @@ const VibeSelectionStep = ({
           )}
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 

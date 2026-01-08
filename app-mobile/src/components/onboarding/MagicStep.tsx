@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import minglaLogo from "../../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 interface MagicStepProps {
   onComplete: (onboardingData: any) => void | Promise<void>;
@@ -37,11 +36,14 @@ const MagicStep = ({
     },
     logoContainer: {
       alignItems: "center",
+      justifyContent: "center",
       marginBottom: 24,
+      height: 60,
+      overflow: "hidden",
     },
     logo: {
       width: 120,
-      height: 40,
+      height: 100,
       resizeMode: "contain",
     },
     titleSection: {
@@ -346,7 +348,7 @@ const MagicStep = ({
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       {/* Scrollable Content */}
@@ -431,7 +433,7 @@ const MagicStep = ({
           <Ionicons name="arrow-forward" size={20} color="#ffffff" />
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 

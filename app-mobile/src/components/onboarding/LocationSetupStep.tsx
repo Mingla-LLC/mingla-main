@@ -447,7 +447,7 @@ const LocationSetupStep = ({
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/*     <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       {/* Progress Bar Section */}
@@ -686,7 +686,7 @@ const LocationSetupStep = ({
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 };
 

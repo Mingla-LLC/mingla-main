@@ -33,7 +33,6 @@ const IntentSelectionStep = ({
     },
     progressSection: {
       paddingHorizontal: 24,
-      paddingTop: 8,
       paddingBottom: 8,
     },
     progressBarContainer: {
@@ -257,9 +256,7 @@ const IntentSelectionStep = ({
     intents && Array.isArray(intents) && intents.length > 0;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
-
+    <View style={styles.container}>
       {/* Progress Bar Section */}
       <View style={styles.progressSection}>
         <View style={styles.progressBarContainer}>
@@ -403,7 +400,7 @@ const IntentSelectionStep = ({
           )}
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 

@@ -756,7 +756,7 @@ const DateTimePrefStep = ({
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       {/* Progress Bar Section */}
@@ -1072,7 +1072,7 @@ const DateTimePrefStep = ({
           )}
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 

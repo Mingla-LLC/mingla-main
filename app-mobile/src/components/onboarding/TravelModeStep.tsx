@@ -218,7 +218,7 @@ const TravelModeStep = ({
   ];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
 
       {/* Progress Bar Section */}
@@ -342,7 +342,7 @@ const TravelModeStep = ({
           )}
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 

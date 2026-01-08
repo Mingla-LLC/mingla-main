@@ -400,11 +400,6 @@ export const useFriends = () => {
           if (userById) {
             receiverEmail = userById.email || receiverEmail;
             receiverUsernameFinal = userById.username || receiverUsernameFinal;
-            console.log("User found by ID (from search results):", {
-              receiverId,
-              receiverEmail,
-              userExists,
-            });
           } else {
             // This shouldn't happen - user was in search results but not found
             throw new Error("User not found. Please try searching again.");
