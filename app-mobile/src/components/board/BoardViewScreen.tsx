@@ -10,7 +10,7 @@ import {
   Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
+
 import { BoardHeader } from "./BoardHeader";
 import { BoardTabs, BoardTab } from "./BoardTabs";
 import { Participant } from "./ParticipantAvatars";
@@ -975,11 +975,11 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
 
   if (sessionLoading || sessionValid === null || hasPermission === null) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#eb7825" />
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -996,7 +996,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       : { userFriendlyMessage: "Session not found" };
 
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={48} color="#FF3B30" />
           <Text style={styles.errorText}>
@@ -1008,12 +1008,12 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
             </TouchableOpacity>
           )}
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={[]}>
+    <View style={styles.container}>
       {/* Network Error Banner */}
       {showNetworkBanner && (
         <View style={styles.networkBanner}>
@@ -1207,7 +1207,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
           </View>
         </TouchableOpacity>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -1277,12 +1277,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
   },
   sessionCardsTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 24,
+    fontWeight: "700",
     color: "#111827",
   },
   sessionCardsNav: {

@@ -1,8 +1,18 @@
-import * as React from 'react';
-import { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { ImageWithFallback } from '../figma/ImageWithFallback';
+import * as React from "react";
+import { useState } from "react";
+import {
+  Text,
+  View,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  StatusBar,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { ImageWithFallback } from "../figma/ImageWithFallback";
+import { SafeAreaView } from "react-native-safe-area-context";
 // import profileImage from '../../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
 
 interface ProfileSettingsProps {
@@ -16,31 +26,31 @@ interface ProfileSettingsProps {
   onNavigateBack: () => void;
 }
 
-export default function ProfileSettings({ 
-  userIdentity, 
-  onUpdateIdentity, 
-  onNavigateBack 
+export default function ProfileSettings({
+  userIdentity,
+  onUpdateIdentity,
+  onNavigateBack,
 }: ProfileSettingsProps) {
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [tempValues, setTempValues] = useState({
     firstName: userIdentity.firstName,
     lastName: userIdentity.lastName,
-    username: userIdentity.username
+    username: userIdentity.username,
   });
   const [profileImageSrc] = useState(userIdentity.profileImage || null);
 
   const handleEditField = (field: string) => {
     setIsEditing(field);
-    setTempValues(prev => ({
+    setTempValues((prev) => ({
       ...prev,
-      [field]: userIdentity[field as keyof typeof userIdentity]
+      [field]: userIdentity[field as keyof typeof userIdentity],
     }));
   };
 
   const handleSaveField = (field: string) => {
     const updatedIdentity = {
       ...userIdentity,
-      [field]: tempValues[field as keyof typeof tempValues]
+      [field]: tempValues[field as keyof typeof tempValues],
     };
     onUpdateIdentity(updatedIdentity);
     setIsEditing(null);
@@ -50,7 +60,7 @@ export default function ProfileSettings({
     setTempValues({
       firstName: userIdentity.firstName,
       lastName: userIdentity.lastName,
-      username: userIdentity.username
+      username: userIdentity.username,
     });
     setIsEditing(null);
   };
@@ -59,49 +69,52 @@ export default function ProfileSettings({
     // In React Native, you would use a library like react-native-image-picker
     // For now, we'll show an alert with options
     Alert.alert(
-      'Change Profile Photo',
-      'Choose how you want to update your profile photo',
+      "Change Profile Photo",
+      "Choose how you want to update your profile photo",
       [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Take Photo', 
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Take Photo",
           onPress: () => {
             // In a real app, this would open the camera
-            Alert.alert('Camera', 'Camera functionality would be implemented here');
-          }
+            Alert.alert(
+              "Camera",
+              "Camera functionality would be implemented here"
+            );
+          },
         },
-        { 
-          text: 'Choose from Gallery', 
+        {
+          text: "Choose from Gallery",
           onPress: () => {
             // In a real app, this would open the image picker
-            Alert.alert('Gallery', 'Image picker functionality would be implemented here');
-          }
-        }
+            Alert.alert(
+              "Gallery",
+              "Image picker functionality would be implemented here"
+            );
+          },
+        },
       ]
     );
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setTempValues(prev => ({
+    setTempValues((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
   };
 
   // Removed unused handleKeyPress function
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <StatusBar barStyle="dark-content" />
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <TouchableOpacity
-            onPress={onNavigateBack}
-            style={styles.backButton}
-          >
+          <TouchableOpacity onPress={onNavigateBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={20} color="#6b7280" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile Settings</Text>
         </View>
       </View>
 
@@ -110,7 +123,7 @@ export default function ProfileSettings({
         {/* Profile Photo Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Profile Photo</Text>
-          
+
           <View style={styles.profilePhotoContainer}>
             <View style={styles.avatarContainer}>
               <TouchableOpacity
@@ -118,13 +131,19 @@ export default function ProfileSettings({
                 style={styles.avatarButton}
               >
                 <ImageWithFallback
-                  source={profileImageSrc ? { uri: profileImageSrc } : { uri: 'https://via.placeholder.com/80x80/6b7280/ffffff?text=User' }}
+                  source={
+                    profileImageSrc
+                      ? { uri: profileImageSrc }
+                      : {
+                          uri: "https://via.placeholder.com/80x80/6b7280/ffffff?text=User",
+                        }
+                  }
                   style={{
-                    width: '100%',
-                    height: '100%',
+                    width: "100%",
+                    height: "100%",
                     borderRadius: 50,
                     borderWidth: 4,
-                    borderColor: '#e5e7eb'
+                    borderColor: "#e5e7eb",
                   }}
                 />
                 {/* Camera overlay */}
@@ -133,7 +152,7 @@ export default function ProfileSettings({
                 </View>
               </TouchableOpacity>
             </View>
-            
+
             <View style={styles.photoActions}>
               <TouchableOpacity
                 onPress={handleAvatarChange}
@@ -151,24 +170,26 @@ export default function ProfileSettings({
         {/* Personal Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
-          
+
           <View style={styles.formFields}>
             {/* First Name */}
             <View style={styles.formField}>
               <View style={styles.fieldContainer}>
                 <Text style={styles.fieldLabel}>First Name</Text>
-                {isEditing === 'firstName' ? (
+                {isEditing === "firstName" ? (
                   <View style={styles.editContainer}>
                     <TextInput
                       value={tempValues.firstName}
-                      onChangeText={(text) => handleInputChange('firstName', text)}
+                      onChangeText={(text) =>
+                        handleInputChange("firstName", text)
+                      }
                       style={styles.textInput}
                       autoFocus
                       placeholder="Enter first name"
                     />
                     <View style={styles.actionButtons}>
                       <TouchableOpacity
-                        onPress={() => handleSaveField('firstName')}
+                        onPress={() => handleSaveField("firstName")}
                         style={styles.saveButton}
                       >
                         <Ionicons name="checkmark" size={16} color="white" />
@@ -183,9 +204,11 @@ export default function ProfileSettings({
                   </View>
                 ) : (
                   <View style={styles.fieldRow}>
-                    <Text style={styles.fieldValue}>{userIdentity.firstName}</Text>
+                    <Text style={styles.fieldValue}>
+                      {userIdentity.firstName}
+                    </Text>
                     <TouchableOpacity
-                      onPress={() => handleEditField('firstName')}
+                      onPress={() => handleEditField("firstName")}
                       style={styles.editButton}
                     >
                       <Ionicons name="create" size={16} color="#6b7280" />
@@ -199,18 +222,20 @@ export default function ProfileSettings({
             <View style={styles.formField}>
               <View style={styles.fieldContainer}>
                 <Text style={styles.fieldLabel}>Last Name</Text>
-                {isEditing === 'lastName' ? (
+                {isEditing === "lastName" ? (
                   <View style={styles.editContainer}>
                     <TextInput
                       value={tempValues.lastName}
-                      onChangeText={(text) => handleInputChange('lastName', text)}
+                      onChangeText={(text) =>
+                        handleInputChange("lastName", text)
+                      }
                       style={styles.textInput}
                       autoFocus
                       placeholder="Enter last name"
                     />
                     <View style={styles.actionButtons}>
                       <TouchableOpacity
-                        onPress={() => handleSaveField('lastName')}
+                        onPress={() => handleSaveField("lastName")}
                         style={styles.saveButton}
                       >
                         <Ionicons name="checkmark" size={16} color="white" />
@@ -225,9 +250,11 @@ export default function ProfileSettings({
                   </View>
                 ) : (
                   <View style={styles.fieldRow}>
-                    <Text style={styles.fieldValue}>{userIdentity.lastName}</Text>
+                    <Text style={styles.fieldValue}>
+                      {userIdentity.lastName}
+                    </Text>
                     <TouchableOpacity
-                      onPress={() => handleEditField('lastName')}
+                      onPress={() => handleEditField("lastName")}
                       style={styles.editButton}
                     >
                       <Ionicons name="create" size={16} color="#6b7280" />
@@ -241,13 +268,18 @@ export default function ProfileSettings({
             <View style={styles.formField}>
               <View style={styles.fieldContainer}>
                 <Text style={styles.fieldLabel}>Username</Text>
-                {isEditing === 'username' ? (
+                {isEditing === "username" ? (
                   <View style={styles.editContainer}>
                     <View style={styles.usernameInputContainer}>
                       <Text style={styles.usernamePrefix}>@</Text>
                       <TextInput
                         value={tempValues.username}
-                        onChangeText={(text) => handleInputChange('username', text.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                        onChangeText={(text) =>
+                          handleInputChange(
+                            "username",
+                            text.toLowerCase().replace(/[^a-z0-9_]/g, "")
+                          )
+                        }
                         style={styles.textInput}
                         autoFocus
                         placeholder="username"
@@ -256,7 +288,7 @@ export default function ProfileSettings({
                     </View>
                     <View style={styles.actionButtons}>
                       <TouchableOpacity
-                        onPress={() => handleSaveField('username')}
+                        onPress={() => handleSaveField("username")}
                         style={styles.saveButton}
                       >
                         <Ionicons name="checkmark" size={16} color="white" />
@@ -271,18 +303,21 @@ export default function ProfileSettings({
                   </View>
                 ) : (
                   <View style={styles.fieldRow}>
-                    <Text style={styles.fieldValue}>@{userIdentity.username}</Text>
+                    <Text style={styles.fieldValue}>
+                      @{userIdentity.username}
+                    </Text>
                     <TouchableOpacity
-                      onPress={() => handleEditField('username')}
+                      onPress={() => handleEditField("username")}
                       style={styles.editButton}
                     >
                       <Ionicons name="create" size={16} color="#6b7280" />
                     </TouchableOpacity>
                   </View>
                 )}
-                {isEditing === 'username' && (
+                {isEditing === "username" && (
                   <Text style={styles.usernameHint}>
-                    Username can only contain lowercase letters, numbers, and underscores.
+                    Username can only contain lowercase letters, numbers, and
+                    underscores.
                   </Text>
                 )}
               </View>
@@ -290,97 +325,94 @@ export default function ProfileSettings({
           </View>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: "#f9fafb",
   },
   header: {
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: "#e5e7eb",
     paddingHorizontal: 16,
-    paddingVertical: 16,
   },
   headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   backButton: {
-    padding: 8,
+    paddingTop: 8,
     borderRadius: 20,
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
   },
   content: {
     flex: 1,
     padding: 16,
   },
   section: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: "#e5e7eb",
     padding: 24,
     marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
     marginBottom: 16,
   },
   profilePhotoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 16,
   },
   avatarContainer: {
-    position: 'relative',
+    position: "relative",
   },
   avatarButton: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   cameraOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
     borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   photoActions: {
     flex: 1,
   },
   changePhotoButton: {
-    backgroundColor: '#eb7825',
+    backgroundColor: "#eb7825",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   changePhotoButtonText: {
-    color: 'white',
-    fontWeight: '500',
+    color: "white",
+    fontWeight: "500",
     fontSize: 16,
   },
   photoHint: {
     fontSize: 14,
-    color: '#6b7280',
+    color: "#6b7280",
     marginTop: 8,
     lineHeight: 20,
   },
@@ -390,26 +422,26 @@ const styles = StyleSheet.create({
   formField: {
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: "#f3f4f6",
   },
   fieldContainer: {
     flex: 1,
   },
   fieldLabel: {
-    color: '#374151',
-    fontWeight: '500',
+    color: "#374151",
+    fontWeight: "500",
     fontSize: 14,
     marginBottom: 8,
   },
   fieldValue: {
     fontSize: 16,
-    color: '#111827',
-    fontWeight: '500',
+    color: "#111827",
+    fontWeight: "500",
   },
   fieldRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   editContainer: {
     gap: 12,
@@ -419,56 +451,56 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: "#d1d5db",
     borderRadius: 8,
     fontSize: 16,
-    color: '#111827',
-    backgroundColor: 'white',
+    color: "#111827",
+    backgroundColor: "white",
   },
   usernameInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: "#d1d5db",
     borderRadius: 8,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     paddingHorizontal: 12,
   },
   usernamePrefix: {
     fontSize: 16,
-    color: '#6b7280',
+    color: "#6b7280",
     marginRight: 4,
   },
   usernameHint: {
     fontSize: 12,
-    color: '#6b7280',
+    color: "#6b7280",
     marginTop: 4,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   actionButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
-    alignSelf: 'flex-end',
+    alignSelf: "flex-end",
   },
   saveButton: {
     padding: 8,
     borderRadius: 6,
-    backgroundColor: '#10b981',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#10b981",
+    alignItems: "center",
+    justifyContent: "center",
   },
   cancelButton: {
     padding: 8,
     borderRadius: 6,
-    backgroundColor: '#ef4444',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#ef4444",
+    alignItems: "center",
+    justifyContent: "center",
   },
   editButton: {
     padding: 8,
     borderRadius: 6,
-    backgroundColor: '#f3f4f6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

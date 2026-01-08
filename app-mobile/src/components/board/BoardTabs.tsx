@@ -88,10 +88,8 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: "row",
-    paddingHorizontal: 8,
     backgroundColor: "#f3f4f6",
-    borderRadius: 24,
-    paddingVertical: 4,
+    borderRadius: 12,
     marginVertical: 16,
   },
   tab: {
@@ -100,11 +98,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
+    borderRadius: 12,
     marginHorizontal: 4,
   },
   tabActive: {
-    backgroundColor: "white",
+    backgroundColor: "#eb7825",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -115,14 +113,14 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   tabLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "500",
-    color: "#666",
+    color: "#6B7280",
   },
   tabLabelActive: {
-    color: "#eb7825",
-    fontWeight: "600",
+    color: "#FFFFFF",
   },
+
   tabContent: {
     flexDirection: "row",
     alignItems: "center",

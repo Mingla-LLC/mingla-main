@@ -318,7 +318,7 @@ export default function AddFriendModal({
                 <Ionicons
                   name="person-add"
                   size={16}
-                  color={activeTab === "add" ? "#eb7825" : "#6b7280"}
+                  color={activeTab === "add" ? "#FFFFFF" : "#6b7280"}
                 />
                 <Text
                   style={[
@@ -794,7 +794,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "#f3f4f6",
     borderRadius: 12,
-    padding: 4,
   },
   tab: {
     flex: 1,
@@ -804,10 +803,10 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   tabActive: {
-    backgroundColor: "white",
+    backgroundColor: "#eb7825",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -820,7 +819,7 @@ const styles = StyleSheet.create({
     color: "#6b7280",
   },
   tabTextActive: {
-    color: "#eb7825",
+    color: "#FFFFFF",
   },
   tabBadge: {
     position: "absolute",

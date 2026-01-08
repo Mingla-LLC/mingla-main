@@ -1029,7 +1029,7 @@ export default function App() {
               <MobileFeaturesProvider>
                 <NavigationProvider>
                   <ErrorBoundary>
-                    <SafeAreaView style={styles.safeArea}>
+                    <SafeAreaView style={styles.safeArea} edges={["top"]}>
                       <StatusBar
                         barStyle="dark-content"
                         backgroundColor="white"

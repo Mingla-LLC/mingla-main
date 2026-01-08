@@ -59,7 +59,6 @@ export default function MessagesTab({
 }: MessagesTabProps & { currentUserId?: string }) {
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
 
-  console.log("Current User ID:", currentUserId);
   // Filter conversations based on message search query
   const filteredConversations = conversations.filter((conversation) => {
     if (!messageSearchQuery.trim()) return true;
@@ -190,8 +189,8 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   title: {
-    fontSize: 20,
-    fontWeight: "600",
+    fontSize: 24,
+    fontWeight: "700",
     color: "#111827",
   },
   searchContainer: {

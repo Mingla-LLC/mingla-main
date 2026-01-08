@@ -57,7 +57,7 @@ export default function HomePage({
   isHighlightingHeader,
 }: HomePageProps) {
   return (
-    <SafeAreaView style={styles.safeArea} edges={[]}>
+    <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         {/* Top Navigation - Fixed */}
@@ -153,7 +153,7 @@ export default function HomePage({
           />
         </View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

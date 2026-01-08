@@ -129,7 +129,9 @@ export default function CollaborationModule({
   const [activeTab, setActiveTab] = useState<"sessions" | "invites" | "create">(
     "sessions"
   );
-  const [invitesTabType, setInvitesTabType] = useState<"sent" | "received">("received");
+  const [invitesTabType, setInvitesTabType] = useState<"sent" | "received">(
+    "received"
+  );
   const { user } = useAppStore();
   const {
     friends: dbFriends,
@@ -406,18 +408,22 @@ export default function CollaborationModule({
         return;
       }
 
-      const sessionIdsFromParticipants = participations?.map((p) => p.session_id) || [];
+      const sessionIdsFromParticipants =
+        participations?.map((p) => p.session_id) || [];
 
       // Also get sessions where user is the creator (fallback for edge cases)
-      const { data: createdSessions, error: createdSessionsError } = await supabase
-        .from("collaboration_sessions")
-        .select("id")
-        .eq("created_by", user.id)
-        .is("archived_at", null);
+      const { data: createdSessions, error: createdSessionsError } =
+        await supabase
+          .from("collaboration_sessions")
+          .select("id")
+          .eq("created_by", user.id)
+          .is("archived_at", null);
 
       // Combine both sets of session IDs
       const createdSessionIds = createdSessions?.map((s) => s.id) || [];
-      const allSessionIds = [...new Set([...sessionIdsFromParticipants, ...createdSessionIds])];
+      const allSessionIds = [
+        ...new Set([...sessionIdsFromParticipants, ...createdSessionIds]),
+      ];
 
       if (allSessionIds.length === 0) {
         setUserSessions([]);
@@ -444,7 +450,9 @@ export default function CollaborationModule({
       }
 
       // Filter out archived sessions only (matching BoardSessionService)
-      const sessions = (allSessions || []).filter((s) => s.archived_at === null);
+      const sessions = (allSessions || []).filter(
+        (s) => s.archived_at === null
+      );
 
       // Load participants separately for better reliability
       // Only load participants who have accepted the invite
@@ -601,7 +609,10 @@ export default function CollaborationModule({
 
       if (preferencesError && preferencesError.code !== "23505") {
         // 23505 is unique violation - preferences might already exist, which is fine
-        console.error("Error creating preferences for accepting user:", preferencesError);
+        console.error(
+          "Error creating preferences for accepting user:",
+          preferencesError
+        );
         // Don't fail - preferences can be created later when user opens preferences sheet
       }
 
@@ -861,12 +872,14 @@ export default function CollaborationModule({
       width: "100%",
       maxHeight: "95%",
       minHeight: "90%",
+      paddingHorizontal: 16,
     },
     header: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: 24,
+      paddingVertical: 24,
+      paddingHorizontal: 16,
       borderBottomWidth: 1,
       borderBottomColor: "#f3f4f6",
     },
@@ -886,24 +899,20 @@ export default function CollaborationModule({
     },
     tabsContainer: {
       flexDirection: "row",
-      backgroundColor: "#F3F4F6",
-      paddingHorizontal: 24,
-      paddingTop: 16,
-      paddingBottom: 16,
-      paddingVertical: 8,
-      gap: 8,
+      backgroundColor: "#f3f4f6",
+      borderRadius: 12,
     },
     tab: {
       flex: 1,
-      paddingVertical: 8,
+      paddingVertical: 12,
       paddingHorizontal: 16,
+      borderRadius: 12,
       alignItems: "center",
       justifyContent: "center",
       position: "relative",
-      borderRadius: 6,
     },
     tabActive: {
-      backgroundColor: "#FFFFFF",
+      backgroundColor: "#eb7825",
       shadowColor: "#000",
       shadowOffset: {
         width: 0,
@@ -914,13 +923,12 @@ export default function CollaborationModule({
       elevation: 2,
     },
     tabText: {
-      fontSize: 15,
+      fontSize: 16,
       fontWeight: "500",
       color: "#6B7280",
     },
     tabTextActive: {
-      color: "#111827",
-      fontWeight: "600",
+      color: "#ffffff",
     },
     tabNotificationDot: {
       position: "absolute",
@@ -935,7 +943,7 @@ export default function CollaborationModule({
       flex: 1,
     },
     contentContainer: {
-      padding: 24,
+      paddingVertical: 16,
       paddingBottom: 40,
     },
   });

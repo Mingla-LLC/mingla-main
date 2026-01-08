@@ -48,7 +48,7 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
             style={styles.backButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
+            <Ionicons name="arrow-back" size={20} color="#6b7280" />
           </TouchableOpacity>
         )}
 
@@ -71,7 +71,7 @@ export const BoardHeader: React.FC<BoardHeaderProps> = ({
             onPress={onSettingsPress}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="ellipsis-horizontal" size={24} color="#1a1a1a" />
+            <Ionicons name="ellipsis-horizontal" size={24} color="#6b7280" />
           </TouchableOpacity>
         )}
       </View>
@@ -88,7 +88,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
 
-    paddingBottom: 12,
     gap: 12,
   },
   title: {
@@ -106,7 +105,7 @@ const styles = StyleSheet.create({
   sessionName: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#1a1a1a",
+    color: "#6b7280",
     marginBottom: 2,
   },
   sessionSubtitle: {

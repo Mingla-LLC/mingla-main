@@ -199,11 +199,7 @@ export default function ActivityPage({
   // Fetch board-specific saved cards when a board is open and Saved tab is active
   useEffect(() => {
     const fetchBoardSavedCards = async () => {
-      if (
-        activeBoardSessionId &&
-        activeTab === "saved" &&
-        !showBoardDetails
-      ) {
+      if (activeBoardSessionId && activeTab === "saved" && !showBoardDetails) {
         setLoadingBoardCards(true);
         try {
           const { data, error } = await BoardCardService.getSessionSavedCards(
@@ -216,7 +212,8 @@ export default function ActivityPage({
           } else {
             // Transform board saved cards to match SavedTab format
             const transformedCards = (data || []).map((boardCard: any) => {
-              const cardData = boardCard.card_data || boardCard.experience_data || {};
+              const cardData =
+                boardCard.card_data || boardCard.experience_data || {};
               return {
                 id: cardData.id || boardCard.id,
                 title: cardData.title || cardData.name || "Untitled",
@@ -229,7 +226,8 @@ export default function ActivityPage({
                 priceRange: cardData.priceRange || cardData.price || "$",
                 travelTime: cardData.travelTime || "",
                 description: cardData.description || "",
-                fullDescription: cardData.fullDescription || cardData.description || "",
+                fullDescription:
+                  cardData.fullDescription || cardData.description || "",
                 address: cardData.address || cardData.location || "",
                 highlights: cardData.highlights || [],
                 matchScore: cardData.matchScore || 0,
@@ -241,7 +239,9 @@ export default function ActivityPage({
                 dateAdded: boardCard.saved_at || new Date().toISOString(),
                 source: "collaboration" as const,
                 sessionName: boardsSessions.find(
-                  (b) => (b as any).session_id === activeBoardSessionId || b.id === activeBoardSessionId
+                  (b) =>
+                    (b as any).session_id === activeBoardSessionId ||
+                    b.id === activeBoardSessionId
                 )?.name,
                 purchaseOptions: cardData.purchaseOptions || [],
               };
@@ -367,9 +367,9 @@ export default function ActivityPage({
       backgroundColor: "white",
       borderBottomWidth: 1,
       borderBottomColor: "#f3f4f6",
-      paddingHorizontal: 24,
-      paddingTop: 24,
-      paddingBottom: 16,
+      paddingHorizontal: 16,
+
+      paddingTop: 16,
     },
     headerTitle: {
       fontSize: 20,
@@ -381,29 +381,29 @@ export default function ActivityPage({
       flexDirection: "row",
       backgroundColor: "#f3f4f6",
       borderRadius: 12,
-      padding: 4,
     },
     tab: {
       flex: 1,
-      paddingVertical: 8,
+      paddingVertical: 12,
       paddingHorizontal: 16,
-      borderRadius: 8,
       alignItems: "center",
     },
     tabActive: {
-      backgroundColor: "white",
+      backgroundColor: "#eb7825",
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.1,
       shadowRadius: 2,
       elevation: 1,
+      borderRadius: 12,
     },
     tabText: {
-      fontSize: 14,
+      fontSize: 16,
       fontWeight: "500",
+      color: "#6B7280",
     },
     tabTextActive: {
-      color: "#111827",
+      color: "#FFFFFF",
     },
     tabTextInactive: {
       color: "#6b7280",
@@ -413,7 +413,7 @@ export default function ActivityPage({
       overflow: "hidden",
     },
     contentContainer: {
-      paddingHorizontal: 24,
+      paddingHorizontal: 16,
       paddingVertical: 24,
     },
     modalOverlay: {
@@ -469,8 +469,6 @@ export default function ActivityPage({
       {/* Header */}
       {!selectedBoard && (
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Activity</Text>
-
           {/* Tab Navigation */}
           <View style={styles.tabContainer}>
             <TouchableOpacity
@@ -567,7 +565,12 @@ export default function ActivityPage({
                 }
                 scheduledCardIds={calendarEntries
                   .filter((entry: any) => !entry.archived_at)
-                  .map((entry: any) => entry.card_id || entry.experience?.id || entry.card_data?.id)}
+                  .map(
+                    (entry: any) =>
+                      entry.card_id ||
+                      entry.experience?.id ||
+                      entry.card_data?.id
+                  )}
                 onScheduleFromSaved={onScheduleFromSaved || (() => {})}
                 onPurchaseFromSaved={handleOpenPurchase}
                 onShareCard={onShareCard || (() => {})}

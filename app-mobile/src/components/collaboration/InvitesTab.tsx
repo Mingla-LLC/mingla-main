@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   inviteTypeTabTextActive: {
-    color: "#111827",
+    color: "#eb7825",
   },
   inviteTypeTabTextInactive: {
     color: "#6b7280",
