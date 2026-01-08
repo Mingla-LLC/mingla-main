@@ -104,6 +104,7 @@ interface SwipeableCardsProps {
   generateNewMockCard?: () => any;
   onboardingData?: any;
   refreshKey?: number | string; // Key that changes to trigger refresh
+  savedCards?: any[]; // Array of saved card IDs or card objects
 }
 
 // Real data will be fetched from Supabase
@@ -171,6 +172,7 @@ export default function SwipeableCards({
   generateNewMockCard,
   onboardingData,
   refreshKey,
+  savedCards = [],
 }: SwipeableCardsProps) {
   // Use recommendations from context
   const {
@@ -559,10 +561,12 @@ export default function SwipeableCards({
               console.warn(
                 "Experience already saved for this user, skipping duplicate save"
               );
+              // Don't throw - consider this a success (already saved)
             } else {
               console.error("Error saving experience:", saveError);
+              // Re-throw other errors so they can be handled by the caller
+              throw saveError;
             }
-            // Continue with local save even if Supabase fails
           }
 
           // If in a board session, save to board_saved_cards
@@ -1182,9 +1186,45 @@ export default function SwipeableCards({
         visible={isExpandedModalVisible}
         card={selectedCardForExpansion}
         onClose={handleCloseExpandedModal}
-        onSave={(card) => {
-          onCardLike?.(card);
-          handleCloseExpandedModal();
+        isSaved={
+          selectedCardForExpansion
+            ? savedCards.some(
+                (savedCard) =>
+                  savedCard?.id === selectedCardForExpansion.id ||
+                  savedCard === selectedCardForExpansion.id
+              )
+            : false
+        }
+        onSave={async (card) => {
+          try {
+            // Save the card (same as swipe right)
+            if (currentRec && card.id === currentRec.id) {
+              // Add to removed cards
+              setRemovedCards((prev) => {
+                const newSet = new Set([...prev, card.id]);
+                return newSet;
+              });
+              
+              // Move to next card
+              setCurrentCardIndex(0);
+              
+              // Handle swipe logic (tracking, saving, etc.) - await to catch errors
+              await handleSwipe("right", currentRec);
+            } else {
+              // Fallback: just call onCardLike if card doesn't match
+              onCardLike?.(card);
+            }
+            
+            // Close the modal only on success
+            handleCloseExpandedModal();
+          } catch (error: any) {
+            // Re-throw error so ActionButtons can handle it
+            // If it's the "already saved" error (code 23505), we still want to close
+            if (error?.code === "23505") {
+              handleCloseExpandedModal();
+            }
+            throw error; // Re-throw so ActionButtons can show error message if needed
+          }
         }}
         onSchedule={(card) => {
           onAddToCalendar?.(card);

@@ -150,6 +150,7 @@ export default function HomePage({
             generateNewMockCard={generateNewMockCard}
             onboardingData={onboardingData}
             refreshKey={refreshKey}
+            savedCards={savedCards}
           />
         </View>
       </View>

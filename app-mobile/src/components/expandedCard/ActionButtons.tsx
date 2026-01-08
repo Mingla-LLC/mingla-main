@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ExpandedCardData, BookingOption } from "../../types/expandedCardTypes";
@@ -13,10 +14,12 @@ import { ExpandedCardData, BookingOption } from "../../types/expandedCardTypes";
 interface ActionButtonsProps {
   card: ExpandedCardData;
   bookingOptions: BookingOption[];
-  onSave?: (card: ExpandedCardData) => void;
+  onSave: (card: ExpandedCardData) => Promise<void> | void;
   onSchedule?: (card: ExpandedCardData) => void;
   onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;
   onShare?: (card: ExpandedCardData) => void;
+  onClose?: () => void;
+  isSaved?: boolean;
 }
 
 export default function ActionButtons({
@@ -26,12 +29,24 @@ export default function ActionButtons({
   onSchedule,
   onPurchase,
   onShare,
+  onClose,
+  isSaved = false,
 }: ActionButtonsProps) {
-  const handleSave = () => {
-    if (onSave) {
-      onSave(card);
-    } else {
-      Alert.alert("Saved", `${card.title} has been saved to your collection`);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (isSaving) return; // Prevent multiple saves
+
+    setIsSaving(true);
+    try {
+      // onSave will handle saving, moving to next card, and closing modal
+      await onSave(card);
+    } catch (error: any) {
+      // Error saving - show alert but don't close modal
+      // (onSave already handles 23505 "already saved" case and closes modal)
+      Alert.alert("Error", "Failed to save the card. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -188,11 +203,20 @@ export default function ActionButtons({
             <Ionicons name="share-outline" size={18} color="#6b7280" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.iconButton}
+            style={[styles.iconButton, isSaved && styles.iconButtonSaved]}
             onPress={handleSave}
             activeOpacity={0.7}
+            disabled={isSaving || isSaved}
           >
-            <Ionicons name="bookmark-outline" size={18} color="#6b7280" />
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#eb7825" />
+            ) : (
+              <Ionicons
+                name={isSaved ? "bookmark" : "bookmark-outline"}
+                size={18}
+                color={isSaved ? "#eb7825" : "#6b7280"}
+              />
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -278,6 +302,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+  },
+  iconButtonSaved: {
+    opacity: 0.6,
   },
   navigateButton: {
     flexDirection: "row",
