@@ -366,7 +366,6 @@ export default function SwipeableCards({
 
   // Update cache when card index or removed cards change
   useEffect(() => {
-    console.log("re rendering");
     if (currentCacheKeyRef.current && recommendations.length > 0) {
       cardsCache.updateCacheEntry(currentCacheKeyRef.current, {
         currentCardIndex,
