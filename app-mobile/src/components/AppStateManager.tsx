@@ -1,9 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useAppStore } from "../store/appStore";
 import { savedCardsService } from "../services/savedCardsService";
 import { SessionService } from "../services/sessionService";
+import { useSavedCards } from "../hooks/useSavedCards";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCalendarEntries } from "../hooks/useCalendarEntries";
 
 // Default data constants moved to separate module to prevent re-creation
 const DEFAULT_FRIENDS = [
@@ -235,10 +238,37 @@ export function useAppState() {
   });
 
   // Large data arrays with lazy initialization
-  const [calendarEntries, setCalendarEntries] = useState([]);
-  const [savedCards, setSavedCards] = useState([]);
-  const [isLoadingSavedCards, setIsLoadingSavedCards] = useState(false);
   const [removedCardIds, setRemovedCardIds] = useState([]);
+
+  // Use TanStack Query for saved cards and calendar entries
+  const queryClient = useQueryClient();
+  const { data: savedCards = [], isLoading: isLoadingSavedCards } =
+    useSavedCards(user?.id);
+  const { data: calendarEntriesRaw = [], isLoading: isLoadingCalendarEntries } =
+    useCalendarEntries(user?.id);
+
+  // Wrapper function to update saved cards (invalidates query to refetch)
+  // This maintains backward compatibility with code that calls setSavedCards
+  const setSavedCards = (
+    cardsOrUpdater: any[] | ((prev: any[]) => any[]) | any
+  ) => {
+    if (typeof cardsOrUpdater === "function") {
+      // If it's a function, we need to get current data, apply the function, then invalidate
+      const currentData =
+        queryClient.getQueryData<any[]>(["savedCards", user?.id]) || [];
+      const updated = cardsOrUpdater(currentData);
+      queryClient.setQueryData(["savedCards", user?.id], updated);
+    } else if (Array.isArray(cardsOrUpdater)) {
+      // If it's an array, set it directly
+      queryClient.setQueryData(["savedCards", user?.id], cardsOrUpdater);
+    } else {
+      // If it's something else (like empty object), just invalidate to refetch
+      queryClient.invalidateQueries({ queryKey: ["savedCards", user?.id] });
+      return;
+    }
+    // Invalidate to ensure fresh data on next fetch
+    queryClient.invalidateQueries({ queryKey: ["savedCards", user?.id] });
+  };
   const [friendsList, setFriendsList] = useState(DEFAULT_FRIENDS);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [boardsSessions, setBoardsSessions] = useState(DEFAULT_BOARDS_SESSIONS);
@@ -405,8 +435,7 @@ export function useAppState() {
           notificationsEnabledData,
           userIdentityData,
           accountPreferencesData,
-          calendarEntriesData,
-          savedCardsData,
+          /*  savedCardsData, */
           removedCardIdsData,
           friendsListData,
           blockedUsersData,
@@ -425,8 +454,7 @@ export function useAppState() {
             currency: "USD",
             measurementSystem: "Imperial",
           }),
-          safeAsyncStorageGet("mingla_calendar_entries", []),
-          safeAsyncStorageGet("mingla_saved_cards", []),
+          /*  safeAsyncStorageGet("mingla_saved_cards", []), */
           safeAsyncStorageGet("mingla_removed_cards", []),
           safeAsyncStorageGet("mingla_friends_list", DEFAULT_FRIENDS),
           safeAsyncStorageGet("mingla_blocked_users", []),
@@ -442,16 +470,20 @@ export function useAppState() {
           setUserIdentity(userIdentityData);
         }
         setAccountPreferences(accountPreferencesData);
-        setCalendarEntries(calendarEntriesData);
-        setSavedCards(savedCardsData);
+        // Note: calendarEntries are now managed by TanStack Query via useCalendarEntries hook
+        // The query will handle fetching fresh data from Supabase
+        // Note: savedCards are now managed by TanStack Query, but we can set initial cache
+        // The query will handle fetching fresh data
+        /*  queryClient.setQueryData(["savedCards", user?.id], savedCardsData); */
         setRemovedCardIds(removedCardIdsData);
         setFriendsList(friendsListData);
         setBlockedUsers(blockedUsersData);
         setBoardsSessions(boardsSessionsData);
 
         // Update profile stats based on loaded data
+        // Note: savedExperiences will be updated when savedCards query loads
         setProfileStats({
-          savedExperiences: savedCardsData.length,
+          savedExperiences: savedCards.length, // Use React Query data
           boardsCount: boardsSessionsData.length,
           connectionsCount: friendsListData.length,
           placesVisited: 0,
@@ -464,120 +496,95 @@ export function useAppState() {
     loadStoredData();
   }, []);
 
+  // Update profile stats when saved cards change
   useEffect(() => {
-    const syncSavedCardsWithSupabase = async () => {
-      setIsLoadingSavedCards(true);
-      if (!user?.id) {
-        setSavedCards([]);
-        safeAsyncStorageSet("mingla_saved_cards", []);
-        setProfileStats((prev) => ({
-          ...prev,
-          savedExperiences: 0,
-        }));
-        setIsLoadingSavedCards(false);
-        return;
-      }
+    setProfileStats((prev) => ({
+      ...prev,
+      savedExperiences: savedCards.length,
+    }));
+  }, [savedCards]);
 
-      try {
-        const cards = await savedCardsService.fetchSavedCards(user.id);
-        setSavedCards(cards);
-        safeAsyncStorageSet("mingla_saved_cards", cards);
-        setProfileStats((prev) => ({
-          ...prev,
-          savedExperiences: cards.length,
-        }));
-      } catch (error) {
-        console.error("Error syncing saved cards:", error);
-      } finally {
-        setIsLoadingSavedCards(false);
-      }
-    };
+  // Normalize calendar entries from React Query into the shape used by CalendarTab
+  const calendarEntries = useMemo(() => {
+    if (!calendarEntriesRaw || calendarEntriesRaw.length === 0) {
+      return [];
+    }
 
-    syncSavedCardsWithSupabase();
-  }, [user?.id]);
+    return calendarEntriesRaw
+      .filter((record) => !record.archived_at) // Exclude archived entries
+      .map((record) => {
+        const cardData = record.card_data || {};
+        const scheduledDate = new Date(record.scheduled_at);
+        const dateStr = scheduledDate.toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+        const timeStr = scheduledDate.toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        });
 
-  // Sync calendar entries from Supabase so scheduling is consistent across devices
-  useEffect(() => {
-    const syncCalendarEntriesWithSupabase = async () => {
-      if (!user?.id) {
-        setCalendarEntries([]);
-        safeAsyncStorageSet("mingla_calendar_entries", []);
-        return;
-      }
+        return {
+          id: record.id,
+          card_id: record.card_id,
+          board_card_id: record.board_card_id,
+          title: cardData.title || "Saved Experience",
+          category: cardData.category || "Experience",
+          categoryIcon: cardData.categoryIcon || "star",
+          image:
+            cardData.image ||
+            (Array.isArray(cardData.images) ? cardData.images[0] : ""),
+          images: cardData.images || (cardData.image ? [cardData.image] : []),
+          rating: cardData.rating || 0,
+          reviewCount: cardData.reviewCount || 0,
+          date: dateStr,
+          time: timeStr,
+          source: record.source || "solo",
+          sourceDetails: cardData.sessionName
+            ? `From ${cardData.sessionName}`
+            : "Solo Experience",
+          priceRange: cardData.priceRange || "TBD",
+          description: cardData.description || "",
+          fullDescription:
+            cardData.fullDescription || cardData.description || "",
+          address: cardData.address || "",
+          highlights: cardData.highlights || [],
+          socialStats: cardData.socialStats || {
+            views: 0,
+            likes: 0,
+            saves: 0,
+          },
+          status: record.status,
+          experience: {
+            ...cardData,
+            id: record.card_id || cardData.id,
+          },
+          suggestedDates: [record.scheduled_at],
+          sessionName: cardData.sessionName,
+          archived_at: record.archived_at,
+        };
+      });
+  }, [calendarEntriesRaw]);
 
-      try {
-        const { CalendarService } = await import("../services/calendarService");
-        const records = await CalendarService.fetchUserCalendarEntries(user.id);
-
-        // Normalize records into the shape used by CalendarTab
-        const normalizedEntries = records
-          .filter((record) => !record.archived_at) // Exclude archived entries
-          .map((record) => {
-            const cardData = record.card_data || {};
-            const scheduledDate = new Date(record.scheduled_at);
-            const dateStr = scheduledDate.toLocaleDateString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            });
-            const timeStr = scheduledDate.toLocaleTimeString("en-US", {
-              hour: "numeric",
-              minute: "2-digit",
-              hour12: true,
-            });
-
-            return {
-              id: record.id,
-              card_id: record.card_id,
-              board_card_id: record.board_card_id,
-              title: cardData.title || "Saved Experience",
-              category: cardData.category || "Experience",
-              categoryIcon: cardData.categoryIcon || "star",
-              image:
-                cardData.image ||
-                (Array.isArray(cardData.images) ? cardData.images[0] : ""),
-              images:
-                cardData.images || (cardData.image ? [cardData.image] : []),
-              rating: cardData.rating || 0,
-              reviewCount: cardData.reviewCount || 0,
-              date: dateStr,
-              time: timeStr,
-              source: record.source || "solo",
-              sourceDetails: cardData.sessionName
-                ? `From ${cardData.sessionName}`
-                : "Solo Experience",
-              priceRange: cardData.priceRange || "TBD",
-              description: cardData.description || "",
-              fullDescription:
-                cardData.fullDescription || cardData.description || "",
-              address: cardData.address || "",
-              highlights: cardData.highlights || [],
-              socialStats: cardData.socialStats || {
-                views: 0,
-                likes: 0,
-                saves: 0,
-              },
-              status: record.status,
-              experience: {
-                ...cardData,
-                id: record.card_id || cardData.id,
-              },
-              suggestedDates: [record.scheduled_at],
-              sessionName: cardData.sessionName,
-              archived_at: record.archived_at,
-            };
-          });
-
-        setCalendarEntries(normalizedEntries);
-        safeAsyncStorageSet("mingla_calendar_entries", normalizedEntries);
-      } catch (error) {
-        console.error("Error syncing calendar entries:", error);
-      }
-    };
-
-    syncCalendarEntriesWithSupabase();
-  }, [user?.id]);
+  // Wrapper function to update calendar entries (invalidates query to refetch)
+  // This maintains backward compatibility with code that calls setCalendarEntries
+  const setCalendarEntries = (updater: any) => {
+    if (typeof updater === "function") {
+      // If it's a function, we can't easily update React Query cache this way
+      // Instead, invalidate the query to trigger a refetch
+      queryClient.invalidateQueries({
+        queryKey: ["calendarEntries", user?.id],
+      });
+    } else {
+      // If it's a direct value, invalidate to refetch
+      queryClient.invalidateQueries({
+        queryKey: ["calendarEntries", user?.id],
+      });
+    }
+  };
 
   // Sync board sessions from database
   useEffect(() => {
@@ -900,7 +907,6 @@ export function useAppState() {
     setProfileStats,
     preferencesRefreshKey,
     setPreferencesRefreshKey,
-    isLoadingSavedCards,
     boardViewSessionId,
     setBoardViewSessionId,
 

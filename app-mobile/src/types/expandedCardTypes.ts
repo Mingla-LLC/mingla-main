@@ -178,10 +178,10 @@ export interface ExpandedCardModalProps {
   card: ExpandedCardData | null;
   onClose: () => void;
   onSave: (card: ExpandedCardData) => Promise<void> | void;
-  onSchedule?: (card: ExpandedCardData) => void;
   onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;
   onShare?: (card: ExpandedCardData) => void;
   userPreferences?: any;
   isSaved?: boolean;
+  currentMode?: string;
 }
 

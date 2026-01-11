@@ -38,11 +38,11 @@ export default function ExpandedCardModal({
   card,
   onClose,
   onSave,
-  onSchedule,
   onPurchase,
   onShare,
   userPreferences,
   isSaved,
+  currentMode = "solo",
 }: ExpandedCardModalProps) {
   const { updateCardStrollData } = useRecommendations();
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
@@ -581,11 +581,12 @@ export default function ExpandedCardModal({
               card={card}
               bookingOptions={bookingOptions}
               onSave={onSave}
-              onSchedule={onSchedule}
               onPurchase={onPurchase}
               onShare={onShare}
               onClose={onClose}
               isSaved={isSaved}
+              userPreferences={userPreferences}
+              currentMode={currentMode}
             />
           </ScrollView>
         </View>

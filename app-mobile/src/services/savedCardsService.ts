@@ -90,15 +90,53 @@ export const savedCardsService = {
     }
   },
 
-  async removeCard(profileId: string, experienceId: string) {
-    const { error } = await supabase
+  async removeCard(
+    profileId: string,
+    experienceId: string,
+    source?: "solo" | "collaboration"
+  ) {
+    console.log(
+      "Removing card from saved_cards service",
+      profileId,
+      experienceId,
+      source
+    );
+    // Remove from saved_card table (solo mode)
+    const { error: soloError } = await supabase
       .from("saved_card")
       .delete()
       .eq("profile_id", profileId)
       .eq("experience_id", experienceId);
 
-    if (error) {
-      throw error;
+    if (soloError) {
+      console.error("Error removing card from saved_card:", soloError);
+      // Don't throw - continue to try board_saved_cards
+    }
+
+    // Remove from board_saved_cards table (collaboration mode)
+    // Only remove if source is "collaboration" or if source is not specified (try both)
+    if (!source || source === "collaboration") {
+      const { error: boardError } = await supabase
+        .from("board_saved_cards")
+        .delete()
+        .eq("saved_by", profileId)
+        .eq("experience_id", experienceId);
+
+      if (boardError) {
+        /*   console.error(
+          "Error removing card from board_saved_cards:",
+          boardError
+        ); */
+        // If we had an error on both, throw the last one
+        if (soloError) {
+          throw boardError;
+        }
+      }
+    }
+
+    // If we had an error on solo and didn't try board (or source was solo), throw solo error
+    if (soloError && (source === "solo" || !source)) {
+      throw soloError;
     }
   },
 
@@ -106,8 +144,9 @@ export const savedCardsService = {
     // Fetch ALL cards saved by the user:
     // 1. Solo mode saves from saved_card table
     // 2. Collaboration/board mode saves from board_saved_cards table
-    
+
     // Fetch cards from saved_card table (solo mode saves)
+    // PAGINATION: For now, fetch only 1 card
     const { data: soloCards, error: soloError } = await supabase
       .from("saved_card")
       .select("*")
@@ -121,9 +160,11 @@ export const savedCardsService = {
 
     // Fetch cards from board_saved_cards table (collaboration/board mode saves)
     // Only include cards where this user saved them (saved_by = profileId)
+    // PAGINATION: For now, fetch only 1 card
     const { data: boardCards, error: boardError } = await supabase
       .from("board_saved_cards")
-      .select(`
+      .select(
+        `
         id,
         session_id,
         experience_id,
@@ -132,7 +173,8 @@ export const savedCardsService = {
         saved_at,
         card_data,
         collaboration_sessions!inner(name)
-      `)
+      `
+      )
       .eq("saved_by", profileId)
       .order("saved_at", { ascending: false });
 
@@ -142,18 +184,21 @@ export const savedCardsService = {
     }
 
     // Normalize solo cards - ensure source is set to "solo"
-    const normalizedSoloCards = ((soloCards as SavedCardRecord[]) || []).map((record) => {
-      const normalized = normalizeRecord(record);
-      return {
-        ...normalized,
-        source: "solo" as const,
-      };
-    });
+    const normalizedSoloCards = ((soloCards as SavedCardRecord[]) || []).map(
+      (record) => {
+        const normalized = normalizeRecord(record);
+        return {
+          ...normalized,
+          source: "solo" as const,
+        };
+      }
+    );
 
     // Normalize board cards - ensure source is set to "collaboration"
     const normalizedBoardCards = (boardCards || []).map((record: any) => {
       const cardData = record.card_data || {};
-      const sessionName = record.collaboration_sessions?.name || "Board Session";
+      const sessionName =
+        record.collaboration_sessions?.name || "Board Session";
 
       return {
         ...cardData,
@@ -180,14 +225,14 @@ export const savedCardsService = {
     // Deduplicate by experience ID - if same card saved in both solo and board, prefer board version
     // (board version has more context like session name)
     const uniqueCards = new Map<string, SavedCardModel>();
-    
+
     // Add board cards first (they take precedence if duplicate)
     normalizedBoardCards.forEach((card) => {
       if (card.id) {
         uniqueCards.set(card.id, card);
       }
     });
-    
+
     // Add solo cards - include all, even if duplicate (will be overwritten by board version if exists)
     normalizedSoloCards.forEach((card) => {
       if (card.id && !uniqueCards.has(card.id)) {
@@ -204,4 +249,3 @@ export const savedCardsService = {
     });
   },
 };
-

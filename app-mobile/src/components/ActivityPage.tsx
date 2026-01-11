@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import { BoardMessageService } from "../services/boardMessageService";
 import { BoardCardService } from "../services/boardCardService";
 import { useAppStore } from "../store/appStore";
@@ -7,7 +13,7 @@ import {
   View,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
+  InteractionManager,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import BoardsTab from "./activity/BoardsTab";
@@ -58,6 +64,7 @@ interface ActivityPageProps {
   };
   calendarEntries?: any[];
   savedCards?: any[];
+  isLoadingSavedCards?: boolean;
   onScheduleFromSaved?: (savedCard: any) => void;
   onPurchaseFromSaved?: (card: any, purchaseOption: any) => void;
   onRemoveFromCalendar?: (entry: any) => void;
@@ -87,6 +94,7 @@ export default function ActivityPage({
   accountPreferences,
   calendarEntries = [],
   savedCards = [],
+  isLoadingSavedCards = false,
   onScheduleFromSaved,
   onPurchaseFromSaved,
   onRemoveFromCalendar,
@@ -151,6 +159,7 @@ export default function ActivityPage({
   );
   const [boardSavedCards, setBoardSavedCards] = useState<any[]>([]);
   const [loadingBoardCards, setLoadingBoardCards] = useState(false);
+  const fetchCancelledRef = useRef(false);
 
   // Fetch unread counts for each board
   useEffect(() => {
@@ -198,13 +207,36 @@ export default function ActivityPage({
 
   // Fetch board-specific saved cards when a board is open and Saved tab is active
   useEffect(() => {
-    const fetchBoardSavedCards = async () => {
-      if (activeBoardSessionId && activeTab === "saved" && !showBoardDetails) {
+    if (!activeBoardSessionId || activeTab !== "saved" || showBoardDetails) {
+      // Clear board cards when not viewing a board or not on Saved tab
+      setBoardSavedCards([]);
+      fetchCancelledRef.current = true;
+      return;
+    }
+
+    // Reset cancellation flag
+    fetchCancelledRef.current = false;
+
+    // Defer the fetch until after the tab switch animation completes
+    // This ensures the tab switch is immediate and the fetch happens in the background
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      // Check if fetch was cancelled (e.g., user switched tabs before fetch completed)
+      if (fetchCancelledRef.current) {
+        return;
+      }
+
+      const fetchBoardSavedCards = async () => {
         setLoadingBoardCards(true);
         try {
           const { data, error } = await BoardCardService.getSessionSavedCards(
             activeBoardSessionId
           );
+
+          // Check again if cancelled after async operation
+          if (fetchCancelledRef.current) {
+            console.log("Cancelled");
+            return;
+          }
 
           if (error) {
             console.error("Error fetching board saved cards:", error);
@@ -250,17 +282,26 @@ export default function ActivityPage({
           }
         } catch (error) {
           console.error("Error fetching board saved cards:", error);
-          setBoardSavedCards([]);
+          if (!fetchCancelledRef.current) {
+            setBoardSavedCards([]);
+          }
         } finally {
-          setLoadingBoardCards(false);
+          if (!fetchCancelledRef.current) {
+            setLoadingBoardCards(false);
+          }
         }
-      } else {
-        // Clear board cards when not viewing a board or not on Saved tab
-        setBoardSavedCards([]);
+      };
+
+      fetchBoardSavedCards();
+    });
+
+    // Cleanup: cancel the fetch if the component unmounts or dependencies change
+    return () => {
+      fetchCancelledRef.current = true;
+      if (interactionTask && typeof interactionTask.cancel === "function") {
+        interactionTask.cancel();
       }
     };
-
-    fetchBoardSavedCards();
   }, [activeBoardSessionId, activeTab, showBoardDetails, boardsSessions]);
 
   const handleVote = (cardId: string, vote: "yes" | "no") => {};
@@ -412,10 +453,6 @@ export default function ActivityPage({
       flex: 1,
       overflow: "hidden",
     },
-    contentContainer: {
-      paddingHorizontal: 16,
-      paddingVertical: 24,
-    },
     modalOverlay: {
       position: "absolute",
       top: 0,
@@ -463,6 +500,23 @@ export default function ActivityPage({
   // Show all boards (no filtering by status - user wants to see all boards they're a member of)
   const activeBoards =
     boardsWithUnreadCounts.length > 0 ? boardsWithUnreadCounts : boardsSessions;
+
+  // PERFORMANCE OPTIMIZATION: Memoize scheduledCardIds to avoid creating new array on every render
+  const scheduledCardIdsMemo = useMemo(() => {
+    return calendarEntries
+      .filter((entry: any) => !entry.archived_at)
+      .map(
+        (entry: any) =>
+          entry.card_id || entry.experience?.id || entry.card_data?.id
+      );
+  }, [calendarEntries]);
+
+  // PERFORMANCE OPTIMIZATION: Memoize cardsToDisplay to avoid new references on every render
+  const cardsToDisplay = useMemo(() => {
+    return activeBoardSessionId && !showBoardDetails
+      ? boardSavedCards
+      : savedCards;
+  }, [activeBoardSessionId, showBoardDetails, boardSavedCards, savedCards]);
 
   return (
     <View style={styles.container}>
@@ -542,7 +596,7 @@ export default function ActivityPage({
             ) : null;
           })()
         ) : (
-          <ScrollView style={styles.contentContainer}>
+          <>
             {activeTab === "boards" && (
               <BoardsTab
                 boards={activeBoards}
@@ -558,19 +612,13 @@ export default function ActivityPage({
             )}
             {activeTab === "saved" && (
               <SavedTab
-                savedCards={
+                savedCards={cardsToDisplay}
+                isLoading={
                   activeBoardSessionId && !showBoardDetails
-                    ? boardSavedCards
-                    : savedCards
+                    ? loadingBoardCards
+                    : isLoadingSavedCards
                 }
-                scheduledCardIds={calendarEntries
-                  .filter((entry: any) => !entry.archived_at)
-                  .map(
-                    (entry: any) =>
-                      entry.card_id ||
-                      entry.experience?.id ||
-                      entry.card_data?.id
-                  )}
+                scheduledCardIds={scheduledCardIdsMemo}
                 onScheduleFromSaved={onScheduleFromSaved || (() => {})}
                 onPurchaseFromSaved={handleOpenPurchase}
                 onShareCard={onShareCard || (() => {})}
@@ -589,7 +637,7 @@ export default function ActivityPage({
                 accountPreferences={accountPreferences}
               />
             )}
-          </ScrollView>
+          </>
         )}
       </View>
 

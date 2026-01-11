@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,32 +7,99 @@ import {
   Alert,
   Linking,
   ActivityIndicator,
+  Modal,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { ExpandedCardData, BookingOption } from "../../types/expandedCardTypes";
+import { savedCardsService } from "../../services/savedCardsService";
+import { CalendarService } from "../../services/calendarService";
+import { useAppStore } from "../../store/appStore";
+import { useCalendarEntries } from "../../hooks/useCalendarEntries";
+import { toastManager } from "../ui/Toast";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 
 interface ActionButtonsProps {
   card: ExpandedCardData;
   bookingOptions: BookingOption[];
   onSave: (card: ExpandedCardData) => Promise<void> | void;
-  onSchedule?: (card: ExpandedCardData) => void;
   onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;
   onShare?: (card: ExpandedCardData) => void;
   onClose?: () => void;
   isSaved?: boolean;
+  userPreferences?: any;
+  currentMode?: string;
 }
 
 export default function ActionButtons({
   card,
   bookingOptions,
   onSave,
-  onSchedule,
   onPurchase,
   onShare,
   onClose,
   isSaved = false,
+  userPreferences,
+  currentMode = "solo",
 }: ActionButtonsProps) {
   const [isSaving, setIsSaving] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [showDateTimePicker, setShowDateTimePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedTime, setSelectedTime] = useState<Date>(new Date());
+  const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
+  const { user } = useAppStore();
+  const queryClient = useQueryClient();
+  const { data: calendarEntries = [] } = useCalendarEntries(user?.id);
+
+  // Check if card is already scheduled
+  const isScheduled = useMemo(() => {
+    return calendarEntries.some(
+      (entry) =>
+        (entry.card_id === card.id ||
+          entry.card_data?.id === card.id ||
+          entry.card_data?.experience_id === card.id) &&
+        entry.status === "pending" &&
+        !entry.archived_at
+    );
+  }, [calendarEntries, card.id]);
+
+  // Helper function to generate suggested dates
+  const generateSuggestedDates = (dateTimePrefs: any) => {
+    const suggestions = [];
+    const today = new Date();
+
+    for (let i = 0; i < 3; i++) {
+      const futureDate = new Date(today);
+
+      if (dateTimePrefs?.planningTimeframe === "This week") {
+        futureDate.setDate(today.getDate() + (i + 1) * 2);
+      } else if (dateTimePrefs?.planningTimeframe === "This month") {
+        futureDate.setDate(today.getDate() + (i + 1) * 7);
+      } else {
+        futureDate.setDate(today.getDate() + (i + 1) * 14);
+      }
+
+      if (dateTimePrefs?.dayOfWeek === "Weekend") {
+        const dayOfWeek = futureDate.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+          futureDate.setDate(futureDate.getDate() + (6 - dayOfWeek));
+        }
+      }
+
+      let hour = 14;
+      if (dateTimePrefs?.timeOfDay === "Morning") hour = 10;
+      else if (dateTimePrefs?.timeOfDay === "Evening") hour = 18;
+
+      futureDate.setHours(hour, 0, 0, 0);
+      suggestions.push(futureDate.toISOString());
+    }
+
+    return suggestions;
+  };
 
   const handleSave = async () => {
     if (isSaving) return; // Prevent multiple saves
@@ -51,10 +118,164 @@ export default function ActionButtons({
   };
 
   const handleSchedule = () => {
-    if (onSchedule) {
-      onSchedule(card);
+    if (isScheduling || isScheduled || !user?.id) return;
+
+    // Show date/time picker first
+    // Initialize with a suggested date based on user preferences
+    const dateTimePrefs = userPreferences
+      ? {
+          timeOfDay: userPreferences.timeOfDay || "Afternoon",
+          dayOfWeek: userPreferences.dayOfWeek || "Weekend",
+          planningTimeframe: userPreferences.planningTimeframe || "This month",
+        }
+      : {
+          timeOfDay: "Afternoon",
+          dayOfWeek: "Weekend",
+          planningTimeframe: "This month",
+        };
+
+    const suggestedDates = generateSuggestedDates(dateTimePrefs);
+    const suggestedDate = new Date(suggestedDates[0]);
+    setSelectedDate(suggestedDate);
+    setSelectedTime(suggestedDate);
+    setPickerMode("date");
+    setShowDateTimePicker(true);
+  };
+
+  const handleDateTimePickerChange = (event: any, date?: Date) => {
+    if (Platform.OS === "android") {
+      if (event.type === "dismissed") {
+        setShowDateTimePicker(false);
+        return;
+      }
+
+      if (date) {
+        if (pickerMode === "date") {
+          // Date selected on Android - show time picker next
+          setSelectedDate(date);
+          setSelectedTime(date);
+          setPickerMode("time");
+          // Keep picker visible for time selection
+        } else {
+          // Time selected on Android - proceed with scheduling
+          const combinedDateTime = new Date(selectedDate);
+          combinedDateTime.setHours(date.getHours());
+          combinedDateTime.setMinutes(date.getMinutes());
+          setSelectedTime(combinedDateTime);
+          setShowDateTimePicker(false);
+          proceedWithScheduling(combinedDateTime);
+        }
+      }
     } else {
-      Alert.alert("Scheduled", `${card.title} has been added to your calendar`);
+      // iOS flow
+      if (date) {
+        if (pickerMode === "date") {
+          setSelectedDate(date);
+          setSelectedTime(date);
+          setPickerMode("time");
+        } else {
+          // Time selected - wait for Done button
+          const combinedDateTime = new Date(selectedDate);
+          combinedDateTime.setHours(date.getHours());
+          combinedDateTime.setMinutes(date.getMinutes());
+          setSelectedTime(combinedDateTime);
+        }
+      }
+    }
+  };
+
+  const handleTimePickerConfirm = () => {
+    const combinedDateTime = new Date(selectedDate);
+    combinedDateTime.setHours(selectedTime.getHours());
+    combinedDateTime.setMinutes(selectedTime.getMinutes());
+    setShowDateTimePicker(false);
+    proceedWithScheduling(combinedDateTime);
+  };
+
+  const proceedWithScheduling = async (scheduledDateTime: Date) => {
+    if (!user?.id) {
+      Alert.alert("Error", "You must be logged in to schedule cards.");
+      setIsScheduling(false);
+      return;
+    }
+
+    setIsScheduling(true);
+    try {
+      const scheduledDateISO = scheduledDateTime.toISOString();
+
+      // Determine source based on current mode
+      const source: "solo" | "collaboration" =
+        currentMode === "solo" ? "solo" : "collaboration";
+
+      // If the card is saved, remove it from saved_cards table when scheduling
+      if (isSaved) {
+        try {
+          // Use currentMode to determine source instead of card.source
+          console.log(
+            "Removing card from saved_cards service",
+            user.id,
+            card.id,
+            source
+          );
+          await savedCardsService.removeCard(user.id, card.id, source);
+          // Invalidate savedCards query to refresh the list
+          queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
+        } catch (error) {
+          // Log error but don't block scheduling
+          console.error(
+            "Error removing card from saved_cards when scheduling:",
+            error
+          );
+        }
+      }
+
+      // Prepare card data with source
+      const cardWithSource = {
+        ...card,
+        source,
+      };
+
+      // Add to calendar in Supabase (lockedIn)
+      const record = await CalendarService.addEntryFromSavedCard(
+        user.id,
+        cardWithSource,
+        scheduledDateISO
+      );
+
+      // Invalidate calendar entries query to refresh after adding to lockedIn
+      queryClient.invalidateQueries({ queryKey: ["calendarEntries", user.id] });
+
+      // Add to device calendar
+      try {
+        const deviceEvent = DeviceCalendarService.createEventFromCard(
+          card,
+          scheduledDateTime,
+          record.duration_minutes || 120
+        );
+        await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
+      } catch (deviceCalendarError) {
+        // Don't fail the whole operation if device calendar fails
+        console.warn("Failed to add to device calendar:", deviceCalendarError);
+      }
+
+      // Show success toast
+      toastManager.success(
+        `Scheduled! ${card.title} has been moved to your calendar`,
+        3000
+      );
+
+      // Close modal only on success
+      if (onClose) {
+        onClose();
+      }
+    } catch (error) {
+      console.error("Error scheduling card:", error);
+      Alert.alert(
+        "Schedule failed",
+        "We couldn't add this to your calendar. Please try again."
+      );
+    } finally {
+      setIsScheduling(false);
     }
   };
 
@@ -182,15 +403,89 @@ export default function ActionButtons({
 
   return (
     <View style={styles.container}>
+      {/* Date/Time Picker Modal */}
+      {showDateTimePicker && (
+        <>
+          {Platform.OS === "ios" ? (
+            <Modal
+              visible={showDateTimePicker}
+              transparent={true}
+              animationType="slide"
+              onRequestClose={() => setShowDateTimePicker(false)}
+            >
+              <View style={styles.modalOverlay}>
+                <SafeAreaView style={styles.modalContent}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>
+                      {pickerMode === "date" ? "Select Date" : "Select Time"}
+                    </Text>
+                    <View style={styles.modalHeaderButtons}>
+                      <TouchableOpacity
+                        style={styles.modalCancelButton}
+                        onPress={() => setShowDateTimePicker(false)}
+                      >
+                        <Text style={styles.modalCancelText}>Cancel</Text>
+                      </TouchableOpacity>
+                      {pickerMode === "time" && (
+                        <TouchableOpacity
+                          style={styles.modalConfirmButton}
+                          onPress={handleTimePickerConfirm}
+                        >
+                          <Text style={styles.modalConfirmText}>Done</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                  <DateTimePicker
+                    value={pickerMode === "date" ? selectedDate : selectedTime}
+                    mode={pickerMode}
+                    is24Hour={false}
+                    display="spinner"
+                    onChange={handleDateTimePickerChange}
+                    minimumDate={new Date()}
+                    style={styles.dateTimePicker}
+                  />
+                </SafeAreaView>
+              </View>
+            </Modal>
+          ) : (
+            <DateTimePicker
+              value={pickerMode === "date" ? selectedDate : selectedTime}
+              mode={pickerMode}
+              is24Hour={false}
+              display="default"
+              onChange={handleDateTimePickerChange}
+              minimumDate={new Date()}
+            />
+          )}
+        </>
+      )}
+
       {/* Top Row: Schedule Button + Share/Bookmark Button */}
       <View style={styles.topRow}>
         <TouchableOpacity
-          style={styles.scheduleButton}
+          style={[
+            styles.scheduleButton,
+            (isScheduling || isScheduled) && styles.scheduleButtonDisabled,
+          ]}
           onPress={handleSchedule}
           activeOpacity={0.7}
+          disabled={isScheduling || isScheduled}
         >
-          <Ionicons name="calendar-outline" size={20} color="#ffffff" />
-          <Text style={styles.scheduleButtonText}>Schedule</Text>
+          {isScheduling ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <>
+              <Ionicons
+                name={isScheduled ? "checkmark-circle" : "calendar-outline"}
+                size={20}
+                color="#ffffff"
+              />
+              <Text style={styles.scheduleButtonText}>
+                {isScheduled ? "Scheduled" : "Schedule"}
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
 
         {/* Share and Bookmark Button */}
@@ -284,6 +579,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 8,
   },
+  scheduleButtonDisabled: {
+    opacity: 0.6,
+    backgroundColor: "#eb7825",
+  },
   scheduleButtonText: {
     fontSize: 16,
     fontWeight: "600",
@@ -362,5 +661,54 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#6b7280",
     fontWeight: "500",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  modalHeaderButtons: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  modalCancelButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: "#6b7280",
+  },
+  modalConfirmButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  modalConfirmText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  dateTimePicker: {
+    height: 200,
   },
 });

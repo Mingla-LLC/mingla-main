@@ -45,7 +45,7 @@ import { SessionService } from "../src/services/sessionService";
 import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export default function App() {
+function AppContent() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
   const [coachMapCurrentTarget, setCoachMapCurrentTarget] = useState<
@@ -671,6 +671,7 @@ export default function App() {
             boardsSessions={boardsSessions}
             isLoadingBoards={isLoadingBoards}
             savedCards={savedCards}
+            isLoadingSavedCards={isLoadingSavedCards}
             calendarEntries={calendarEntries}
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
@@ -690,10 +691,7 @@ export default function App() {
               console.log("Purchasing from saved:", card, purchaseOption);
               // Handle purchase logic here
             }}
-            onRemoveFromCalendar={(entry: any) => {
-              console.log("Removing from calendar:", entry);
-              // Handle removal logic here
-            }}
+            onRemoveFromCalendar={handlers.handleRemoveFromCalendar}
             onRemoveSaved={handlers.handleRemoveSavedCard}
             onShareCard={handlers.handleShareCard}
             onUpdateBoardSession={(board: any) => {
@@ -898,55 +896,39 @@ export default function App() {
     // Show CollaborationPreferences as full screen if collaboration preferences are open
     if (showCollabPreferences && currentMode !== "solo" && currentSessionId) {
       return (
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{
-            persister: asyncStoragePersister,
-            maxAge: 24 * 60 * 60 * 1000, // 24 hours
-          }}
-        >
-          <ErrorBoundary>
-            <CollaborationPreferences
-              isOpen={showCollabPreferences}
-              onClose={() => {
-                setShowCollabPreferences(false);
-              }}
-              sessionName={currentMode ?? "solo"}
-              sessionId={currentSessionId} // Add this
-              participants={[]}
-              onSave={handlers.handleCollabPreferencesSave}
-            />
-          </ErrorBoundary>
-        </PersistQueryClientProvider>
+        <ErrorBoundary>
+          <CollaborationPreferences
+            isOpen={showCollabPreferences}
+            onClose={() => {
+              setShowCollabPreferences(false);
+            }}
+            sessionName={currentMode ?? "solo"}
+            sessionId={currentSessionId} // Add this
+            participants={[]}
+            onSave={handlers.handleCollabPreferencesSave}
+          />
+        </ErrorBoundary>
       );
     }
 
     // Show PreferencesSheet as full screen if preferences are open
     if (showPreferences) {
       return (
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{
-            persister: asyncStoragePersister,
-            maxAge: 24 * 60 * 60 * 1000, // 24 hours
-          }}
-        >
-          <ErrorBoundary>
-            <PreferencesSheet
-              onClose={() => {
-                setShowPreferences(false);
-              }}
-              onSave={handlers.handleSavePreferences}
-              accountPreferences={{
-                currency: accountPreferences?.currency || "USD",
-                measurementSystem:
-                  (accountPreferences?.measurementSystem as
-                    | "Metric"
-                    | "Imperial") || "Imperial",
-              }}
-            />
-          </ErrorBoundary>
-        </PersistQueryClientProvider>
+        <ErrorBoundary>
+          <PreferencesSheet
+            onClose={() => {
+              setShowPreferences(false);
+            }}
+            onSave={handlers.handleSavePreferences}
+            accountPreferences={{
+              currency: accountPreferences?.currency || "USD",
+              measurementSystem:
+                (accountPreferences?.measurementSystem as
+                  | "Metric"
+                  | "Imperial") || "Imperial",
+            }}
+          />
+        </ErrorBoundary>
       );
     }
 
@@ -1014,194 +996,187 @@ export default function App() {
 
     return (
       <>
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{
-            persister: asyncStoragePersister,
-            maxAge: 24 * 60 * 60 * 1000, // 24 hours
-          }}
-        >
-          <CardsCacheProvider>
-            <RecommendationsProvider
-              currentMode={currentMode ?? "solo"}
-              refreshKey={preferencesRefreshKey}
-            >
-              <MobileFeaturesProvider>
-                <NavigationProvider>
-                  <ErrorBoundary>
-                    <SafeAreaView style={styles.safeArea} edges={["top"]}>
-                      <StatusBar
-                        barStyle="dark-content"
-                        backgroundColor="white"
-                      />
-                      <View style={styles.container}>
-                        {/* Main Content */}
-                        <View style={styles.mainContent}>
-                          {renderCurrentPage()}
-                        </View>
+        <CardsCacheProvider>
+          <RecommendationsProvider
+            currentMode={currentMode ?? "solo"}
+            refreshKey={preferencesRefreshKey}
+          >
+            <MobileFeaturesProvider>
+              <NavigationProvider>
+                <ErrorBoundary>
+                  <SafeAreaView
+                    style={styles.safeArea}
+                    edges={["top", "bottom"]}
+                  >
+                    <StatusBar
+                      barStyle="dark-content"
+                      backgroundColor="white"
+                    />
+                    <View style={styles.container}>
+                      {/* Main Content */}
+                      <View style={styles.mainContent}>
+                        {renderCurrentPage()}
+                      </View>
 
-                        {/* Collaboration Module */}
-                        <CollaborationModule
-                          isOpen={showCollaboration}
-                          onClose={() => {
-                            setShowCollaboration(false);
-                            setPreSelectedFriend(null);
-                          }}
-                          currentMode={currentMode ?? "solo"}
-                          onModeChange={handlers.handleModeChange}
-                          preSelectedFriend={preSelectedFriend}
-                          boardsSessions={boardsSessions}
-                          onUpdateBoardSession={(updatedBoard: any) =>
-                            console.log("Update board session:", updatedBoard)
-                          }
-                          onCreateSession={(newSession: any) =>
-                            console.log("Create session:", newSession)
-                          }
-                          onNavigateToBoard={(
-                            board: any,
-                            discussionTab?: string
-                          ) =>
-                            console.log(
-                              "Navigate to board:",
-                              board,
-                              discussionTab
-                            )
-                          }
-                          availableFriends={[]}
-                          onRefreshBoards={async () => {
-                            // Refresh boards list immediately after accepting invite
-                            if (user?.id) {
-                              try {
-                                const { BoardSessionService } = await import(
-                                  "../src/services/boardSessionService"
+                      {/* Collaboration Module */}
+                      <CollaborationModule
+                        isOpen={showCollaboration}
+                        onClose={() => {
+                          setShowCollaboration(false);
+                          setPreSelectedFriend(null);
+                        }}
+                        currentMode={currentMode ?? "solo"}
+                        onModeChange={handlers.handleModeChange}
+                        preSelectedFriend={preSelectedFriend}
+                        boardsSessions={boardsSessions}
+                        onUpdateBoardSession={(updatedBoard: any) =>
+                          console.log("Update board session:", updatedBoard)
+                        }
+                        onCreateSession={(newSession: any) =>
+                          console.log("Create session:", newSession)
+                        }
+                        onNavigateToBoard={(
+                          board: any,
+                          discussionTab?: string
+                        ) =>
+                          console.log(
+                            "Navigate to board:",
+                            board,
+                            discussionTab
+                          )
+                        }
+                        availableFriends={[]}
+                        onRefreshBoards={async () => {
+                          // Refresh boards list immediately after accepting invite
+                          if (user?.id) {
+                            try {
+                              const { BoardSessionService } = await import(
+                                "../src/services/boardSessionService"
+                              );
+                              const boards =
+                                await BoardSessionService.fetchUserBoardSessions(
+                                  user.id
                                 );
-                                const boards =
-                                  await BoardSessionService.fetchUserBoardSessions(
-                                    user.id
-                                  );
-                                updateBoardsSessions(boards);
-                              } catch (error) {
-                                console.error(
-                                  "Error refreshing boards:",
-                                  error
-                                );
-                              }
+                              updateBoardsSessions(boards);
+                            } catch (error) {
+                              console.error("Error refreshing boards:", error);
                             }
-                          }}
-                        />
+                          }
+                        }}
+                      />
 
-                        {/* Bottom Navigation - keep visible and above overlay when tabs are highlighted */}
-                        <View
-                          style={[
-                            styles.bottomNavigation,
-                            isHighlightingTabs && {
-                              zIndex: 1000,
-                              elevation: 1000,
-                            },
-                          ]}
-                        >
-                          <View style={styles.navigationContainer}>
-                            <TouchableOpacity
-                              onPress={() => {
-                                console.log("Navigating to home");
-                                setCurrentPage("home");
-                              }}
-                              style={styles.navItem}
+                      {/* Bottom Navigation - keep visible and above overlay when tabs are highlighted */}
+                      <View
+                        style={[
+                          styles.bottomNavigation,
+                          isHighlightingTabs && {
+                            zIndex: 1000,
+                            elevation: 1000,
+                          },
+                        ]}
+                      >
+                        <View style={styles.navigationContainer}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              console.log("Navigating to home");
+                              setCurrentPage("home");
+                            }}
+                            style={styles.navItem}
+                          >
+                            <Ionicons
+                              name="home-outline"
+                              size={24}
+                              color={
+                                currentPage === "home" ? "#eb7825" : "#9CA3AF"
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.navText,
+                                currentPage === "home"
+                                  ? styles.navTextActive
+                                  : styles.navTextInactive,
+                              ]}
                             >
+                              Home
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              console.log("Navigating to connections");
+                              setCurrentPage("connections");
+                            }}
+                            style={styles.navItem}
+                          >
+                            <View style={styles.navIconContainer}>
                               <Ionicons
-                                name="home-outline"
+                                name="people-outline"
                                 size={24}
                                 color={
-                                  currentPage === "home" ? "#eb7825" : "#9CA3AF"
+                                  currentPage === "connections"
+                                    ? "#eb7825"
+                                    : "#9CA3AF"
                                 }
                               />
-                              <Text
-                                style={[
-                                  styles.navText,
-                                  currentPage === "home"
-                                    ? styles.navTextActive
-                                    : styles.navTextInactive,
-                                ]}
-                              >
-                                Home
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => {
-                                console.log("Navigating to connections");
-                                setCurrentPage("connections");
-                              }}
-                              style={styles.navItem}
+                              {totalUnreadMessages > 0 && (
+                                <View style={styles.tabBadge}>
+                                  <Text style={styles.tabBadgeText}>
+                                    {totalUnreadMessages > 99
+                                      ? "99+"
+                                      : totalUnreadMessages}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text
+                              style={[
+                                styles.navText,
+                                currentPage === "connections"
+                                  ? styles.navTextActive
+                                  : styles.navTextInactive,
+                              ]}
                             >
-                              <View style={styles.navIconContainer}>
-                                <Ionicons
-                                  name="people-outline"
-                                  size={24}
-                                  color={
-                                    currentPage === "connections"
-                                      ? "#eb7825"
-                                      : "#9CA3AF"
-                                  }
-                                />
-                                {totalUnreadMessages > 0 && (
-                                  <View style={styles.tabBadge}>
-                                    <Text style={styles.tabBadgeText}>
-                                      {totalUnreadMessages > 99
-                                        ? "99+"
-                                        : totalUnreadMessages}
-                                    </Text>
-                                  </View>
-                                )}
-                              </View>
-                              <Text
-                                style={[
-                                  styles.navText,
-                                  currentPage === "connections"
-                                    ? styles.navTextActive
-                                    : styles.navTextInactive,
-                                ]}
-                              >
-                                Connections
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setCurrentPage("activity");
-                              }}
-                              style={styles.navItem}
-                            >
-                              <View style={styles.navIconContainer}>
-                                <Ionicons
-                                  name="calendar-outline"
-                                  size={24}
-                                  color={
-                                    currentPage === "activity"
-                                      ? "#eb7825"
-                                      : "#9CA3AF"
-                                  }
-                                />
-                                {totalUnreadBoardMessages > 0 && (
-                                  <View style={styles.tabBadge}>
-                                    <Text style={styles.tabBadgeText}>
-                                      {totalUnreadBoardMessages > 99
-                                        ? "99+"
-                                        : totalUnreadBoardMessages}
-                                    </Text>
-                                  </View>
-                                )}
-                              </View>
-                              <Text
-                                style={[
-                                  styles.navText,
+                              Connections
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setCurrentPage("activity");
+                            }}
+                            style={styles.navItem}
+                          >
+                            <View style={styles.navIconContainer}>
+                              <Ionicons
+                                name="calendar-outline"
+                                size={24}
+                                color={
                                   currentPage === "activity"
-                                    ? styles.navTextActive
-                                    : styles.navTextInactive,
-                                ]}
-                              >
-                                Activity
-                              </Text>
-                            </TouchableOpacity>
-                            {/*    <TouchableOpacity
+                                    ? "#eb7825"
+                                    : "#9CA3AF"
+                                }
+                              />
+                              {totalUnreadBoardMessages > 0 && (
+                                <View style={styles.tabBadge}>
+                                  <Text style={styles.tabBadgeText}>
+                                    {totalUnreadBoardMessages > 99
+                                      ? "99+"
+                                      : totalUnreadBoardMessages}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text
+                              style={[
+                                styles.navText,
+                                currentPage === "activity"
+                                  ? styles.navTextActive
+                                  : styles.navTextInactive,
+                              ]}
+                            >
+                              Activity
+                            </Text>
+                          </TouchableOpacity>
+                          {/*    <TouchableOpacity
                               onPress={() => {
                                 console.log("Navigating to saved");
                                 setCurrentPage("saved");
@@ -1228,76 +1203,75 @@ export default function App() {
                                 Saved
                               </Text>
                             </TouchableOpacity> */}
-                            <TouchableOpacity
-                              onPress={() => {
-                                console.log("Navigating to profile");
-                                setCurrentPage("profile");
-                              }}
-                              style={styles.navItem}
+                          <TouchableOpacity
+                            onPress={() => {
+                              console.log("Navigating to profile");
+                              setCurrentPage("profile");
+                            }}
+                            style={styles.navItem}
+                          >
+                            <Ionicons
+                              name="person-outline"
+                              size={24}
+                              color={
+                                currentPage === "profile"
+                                  ? "#eb7825"
+                                  : "#9CA3AF"
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.navText,
+                                currentPage === "profile"
+                                  ? styles.navTextActive
+                                  : styles.navTextInactive,
+                              ]}
                             >
-                              <Ionicons
-                                name="person-outline"
-                                size={24}
-                                color={
-                                  currentPage === "profile"
-                                    ? "#eb7825"
-                                    : "#9CA3AF"
-                                }
-                              />
-                              <Text
-                                style={[
-                                  styles.navText,
-                                  currentPage === "profile"
-                                    ? styles.navTextActive
-                                    : styles.navTextInactive,
-                                ]}
-                              >
-                                Profile
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
+                              Profile
+                            </Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
+                    </View>
 
-                      {/* Coach Map Overlay */}
-                      <CoachMap
-                        visible={showCoachMap}
-                        onComplete={async () => {
-                          await updateCoachMapTourStatus("completed");
-                          setShowCoachMap(false);
+                    {/* Coach Map Overlay */}
+                    <CoachMap
+                      visible={showCoachMap}
+                      onComplete={async () => {
+                        await updateCoachMapTourStatus("completed");
+                        setShowCoachMap(false);
+                        setCoachMapCurrentTarget(null);
+                      }}
+                      onSkip={async () => {
+                        await updateCoachMapTourStatus("skipped");
+                        setShowCoachMap(false);
+                        setCoachMapCurrentTarget(null);
+                      }}
+                      onStepChange={(stepIndex, target) => {
+                        // Reset target when coach map closes (stepIndex === -1)
+                        if (stepIndex === -1) {
                           setCoachMapCurrentTarget(null);
-                        }}
-                        onSkip={async () => {
-                          await updateCoachMapTourStatus("skipped");
-                          setShowCoachMap(false);
-                          setCoachMapCurrentTarget(null);
-                        }}
-                        onStepChange={(stepIndex, target) => {
-                          // Reset target when coach map closes (stepIndex === -1)
-                          if (stepIndex === -1) {
-                            setCoachMapCurrentTarget(null);
-                          } else {
-                            setCoachMapCurrentTarget(target);
-                          }
-                        }}
-                      />
+                        } else {
+                          setCoachMapCurrentTarget(target);
+                        }
+                      }}
+                    />
 
-                      {/* Share Modal */}
-                      <ShareModal
-                        isOpen={showShareModal}
-                        onClose={() => setShowShareModal(false)}
-                        experienceData={shareData?.experienceData}
-                        dateTimePreferences={shareData?.dateTimePreferences}
-                        userPreferences={userPreferences}
-                        accountPreferences={accountPreferences}
-                      />
-                    </SafeAreaView>
-                  </ErrorBoundary>
-                </NavigationProvider>
-              </MobileFeaturesProvider>
-            </RecommendationsProvider>
-          </CardsCacheProvider>
-        </PersistQueryClientProvider>
+                    {/* Share Modal */}
+                    <ShareModal
+                      isOpen={showShareModal}
+                      onClose={() => setShowShareModal(false)}
+                      experienceData={shareData?.experienceData}
+                      dateTimePreferences={shareData?.dateTimePreferences}
+                      userPreferences={userPreferences}
+                      accountPreferences={accountPreferences}
+                    />
+                  </SafeAreaView>
+                </ErrorBoundary>
+              </NavigationProvider>
+            </MobileFeaturesProvider>
+          </RecommendationsProvider>
+        </CardsCacheProvider>
         <ToastContainer />
       </>
     );
@@ -1370,3 +1344,34 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
   },
 });
+
+export default function App() {
+  return (
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister: asyncStoragePersister,
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+
+        dehydrateOptions: {
+          // Exclude savedCards and calendarEntries queries from persistence
+          shouldDehydrateQuery: (query) => {
+            const queryKey = query.queryKey;
+
+            // Don't persist queries with queryKey starting with "savedCards" or "calendarEntries"
+            if (Array.isArray(queryKey)) {
+              const firstKey = queryKey[0];
+              if (firstKey === "savedCards" || firstKey === "calendarEntries") {
+                return false;
+              }
+            }
+            // Persist all other queries
+            return true;
+          },
+        },
+      }}
+    >
+      <AppContent />
+    </PersistQueryClientProvider>
+  );
+}

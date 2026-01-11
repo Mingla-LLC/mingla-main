@@ -366,6 +366,7 @@ export default function SwipeableCards({
 
   // Update cache when card index or removed cards change
   useEffect(() => {
+    console.log("re rendering");
     if (currentCacheKeyRef.current && recommendations.length > 0) {
       cardsCache.updateCacheEntry(currentCacheKeyRef.current, {
         currentCardIndex,
@@ -1195,6 +1196,7 @@ export default function SwipeableCards({
               )
             : false
         }
+        currentMode={currentMode}
         onSave={async (card) => {
           try {
             // Save the card (same as swipe right)
@@ -1204,17 +1206,17 @@ export default function SwipeableCards({
                 const newSet = new Set([...prev, card.id]);
                 return newSet;
               });
-              
+
               // Move to next card
               setCurrentCardIndex(0);
-              
+
               // Handle swipe logic (tracking, saving, etc.) - await to catch errors
               await handleSwipe("right", currentRec);
             } else {
               // Fallback: just call onCardLike if card doesn't match
               onCardLike?.(card);
             }
-            
+
             // Close the modal only on success
             handleCloseExpandedModal();
           } catch (error: any) {
@@ -1225,10 +1227,6 @@ export default function SwipeableCards({
             }
             throw error; // Re-throw so ActionButtons can show error message if needed
           }
-        }}
-        onSchedule={(card) => {
-          onAddToCalendar?.(card);
-          handleCloseExpandedModal();
         }}
         onPurchase={(card, bookingOption) => {
           onPurchaseComplete?.(card, bookingOption);

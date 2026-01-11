@@ -65,6 +65,21 @@ export class CalendarService {
 
     return data as CalendarEntryRecord;
   }
+
+  static async deleteEntry(entryId: string, userId: string): Promise<boolean> {
+    const { error } = await supabase
+      .from("calendar_entries")
+      .delete()
+      .eq("id", entryId)
+      .eq("user_id", userId); // Ensure user can only delete their own entries
+
+    if (error) {
+      console.error("Error deleting calendar entry:", error);
+      throw error;
+    }
+
+    return true;
+  }
 }
 
 

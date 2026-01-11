@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -6,12 +6,12 @@ import {
   Animated,
   TouchableOpacity,
   Dimensions,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
-export type ToastType = 'success' | 'error' | 'info' | 'warning';
+export type ToastType = "success" | "error" | "info" | "warning";
 
 interface ToastProps {
   message: string;
@@ -23,7 +23,7 @@ interface ToastProps {
 
 export const Toast: React.FC<ToastProps> = ({
   message,
-  type = 'info',
+  type = "info",
   duration = 3000,
   onClose,
   visible,
@@ -78,38 +78,32 @@ export const Toast: React.FC<ToastProps> = ({
 
   const getIcon = () => {
     switch (type) {
-      case 'success':
+      case "success":
         // Use a calendar icon for scheduling to match design
-        if (message.includes('has been moved to your calendar')) {
-          return 'calendar';
+        if (message.includes("has been moved to your calendar")) {
+          return "calendar";
         }
-        return 'checkmark-circle';
-      case 'error':
-        return 'close-circle';
-      case 'warning':
-        return 'warning';
+        return "checkmark-circle";
+      case "error":
+        return "close-circle";
+      case "warning":
+        return "warning";
       default:
-        return 'information-circle';
+        return "information-circle";
     }
   };
 
   const getColor = () => {
     switch (type) {
-      case 'success':
+      case "success":
         // Use brand orange for board save and calendar schedule confirmations
-        if (
-          message.includes('Added to Board!') ||
-          message.includes('has been moved to your calendar')
-        ) {
-          return '#EB7825';
-        }
-        return '#10B981';
-      case 'error':
-        return '#EF4444';
-      case 'warning':
-        return '#F59E0B';
+        return "#EB7825";
+      case "error":
+        return "#EF4444";
+      case "warning":
+        return "#F59E0B";
       default:
-        return '#3B82F6';
+        return "#3B82F6";
     }
   };
 
@@ -146,10 +140,11 @@ interface ToastManagerState {
 }
 
 class ToastManager {
-  private listeners: Set<(toasts: ToastManagerState['toasts']) => void> = new Set();
-  private toasts: ToastManagerState['toasts'] = [];
+  private listeners: Set<(toasts: ToastManagerState["toasts"]) => void> =
+    new Set();
+  private toasts: ToastManagerState["toasts"] = [];
 
-  show(message: string, type: ToastType = 'info', duration?: number) {
+  show(message: string, type: ToastType = "info", duration?: number) {
     const id = Date.now().toString();
     const toast = { id, message, type, duration };
     this.toasts = [...this.toasts, toast];
@@ -162,11 +157,11 @@ class ToastManager {
   }
 
   remove(id: string) {
-    this.toasts = this.toasts.filter(t => t.id !== id);
+    this.toasts = this.toasts.filter((t) => t.id !== id);
     this.notifyListeners();
   }
 
-  subscribe(listener: (toasts: ToastManagerState['toasts']) => void) {
+  subscribe(listener: (toasts: ToastManagerState["toasts"]) => void) {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -174,23 +169,23 @@ class ToastManager {
   }
 
   private notifyListeners() {
-    this.listeners.forEach(listener => listener(this.toasts));
+    this.listeners.forEach((listener) => listener(this.toasts));
   }
 
   success(message: string, duration?: number) {
-    this.show(message, 'success', duration);
+    this.show(message, "success", duration);
   }
 
   error(message: string, duration?: number) {
-    this.show(message, 'error', duration);
+    this.show(message, "error", duration);
   }
 
   info(message: string, duration?: number) {
-    this.show(message, 'info', duration);
+    this.show(message, "info", duration);
   }
 
   warning(message: string, duration?: number) {
-    this.show(message, 'warning', duration);
+    this.show(message, "warning", duration);
   }
 }
 
@@ -198,18 +193,18 @@ export const toastManager = new ToastManager();
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
+    position: "absolute",
     top: 50,
     left: 16,
     right: 16,
     zIndex: 9999,
   },
   toast: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
     borderRadius: 12,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
@@ -217,9 +212,9 @@ const styles = StyleSheet.create({
   },
   message: {
     flex: 1,
-    color: 'white',
+    color: "white",
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     marginLeft: 12,
   },
   closeButton: {
@@ -227,4 +222,3 @@ const styles = StyleSheet.create({
     padding: 4,
   },
 });
-

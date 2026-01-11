@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Text,
   View,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   ActivityIndicator,
+  FlatList,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
+import { useSavedCards } from "@/src/hooks/useSavedCards";
+import { useAppStore } from "../../store/appStore";
 
 interface SavedCard {
   id: string;
@@ -49,6 +51,7 @@ interface SavedCard {
 
 interface SavedTabProps {
   savedCards: SavedCard[];
+  isLoading?: boolean;
   onScheduleFromSaved: (card: SavedCard) => void | Promise<void>;
   onPurchaseFromSaved: (card: SavedCard, purchaseOption: any) => void;
   onShareCard: (card: SavedCard) => void;
@@ -59,6 +62,7 @@ interface SavedTabProps {
 
 const SavedTab = ({
   savedCards,
+  isLoading = false,
   onScheduleFromSaved,
   onPurchaseFromSaved,
   onShareCard,
@@ -69,18 +73,13 @@ const SavedTab = ({
   const [selectedCardForModal, setSelectedCardForModal] =
     useState<ExpandedCardData | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(true);
   const [schedulingCardId, setSchedulingCardId] = useState<string | null>(null);
 
-  // Show loader briefly while processing cards (non-blocking)
-  useEffect(() => {
-    setIsProcessing(true);
-    // Use a small timeout to allow render, then process
-    const timer = setTimeout(() => {
-      setIsProcessing(false);
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [savedCards]);
+  // Convert scheduledCardIds to Set for O(1) lookups
+  const scheduledCardIdsSet = useMemo(
+    () => new Set(scheduledCardIds || []),
+    [scheduledCardIds]
+  );
 
   const getMatchScore = (card: SavedCard): number | null => {
     if (typeof card?.matchScore === "number") return card.matchScore;
@@ -95,7 +94,13 @@ const SavedTab = ({
 
   const styles = StyleSheet.create({
     container: {
+      flex: 1,
+    },
+    listContent: {
       gap: 16,
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 62, // Add padding to prevent tab bar from touching last card
     },
     experienceCard: {
       backgroundColor: "white",
@@ -458,7 +463,7 @@ const SavedTab = ({
   };
 
   const handleSchedule = async (card: SavedCard) => {
-    if (scheduledCardIds.includes(card.id)) {
+    if (scheduledCardIdsSet.has(card.id)) {
       return;
     }
 
@@ -494,27 +499,6 @@ const SavedTab = ({
       }, 500);
     }
   };
-
-  if (isProcessing) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#eb7825" />
-        <Text style={styles.loadingText}>Loading saved experiences...</Text>
-      </View>
-    );
-  }
-
-  if (savedCards.length === 0) {
-    return (
-      <View style={styles.emptyState}>
-        <Ionicons name="heart" size={48} color="#d1d5db" />
-        <Text style={styles.emptyStateTitle}>No Saved Experiences</Text>
-        <Text style={styles.emptyStateSubtitle}>
-          Start swiping to save experiences you love
-        </Text>
-      </View>
-    );
-  }
 
   const handleCardPress = (card: SavedCard) => {
     const matchScore = getMatchScore(card);
@@ -567,193 +551,203 @@ const SavedTab = ({
     setSelectedCardForModal(null);
   };
 
-  return (
-    <View style={styles.container}>
-      {savedCards.map((card) => {
-        const isScheduled = scheduledCardIds.includes(card.id);
-        return (
-          <View key={card.id} style={styles.experienceCard}>
-            <TouchableOpacity
-              onPress={() => handleCardPress(card)}
-              activeOpacity={0.7}
-              style={styles.cardContent}
-            >
-              <View style={styles.cardHeader}>
-                <View style={styles.cardImage}>
-                  <ImageWithFallback
-                    src={card.image}
-                    alt={card.title}
-                    style={{ width: "100%", height: "100%" }}
-                  />
+  const renderCard = ({ item: card }: { item: SavedCard }) => {
+    const isScheduled = scheduledCardIdsSet.has(card.id);
+    return (
+      <View style={styles.experienceCard}>
+        <TouchableOpacity
+          onPress={() => handleCardPress(card)}
+          activeOpacity={0.7}
+          style={styles.cardContent}
+        >
+          <View style={styles.cardHeader}>
+            <View style={styles.cardImage}>
+              <ImageWithFallback
+                source={{ uri: card.image }}
+                alt={card.title}
+                style={{ width: "100%", height: "100%" }}
+              />
+            </View>
+
+            <View style={styles.cardInfo}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  marginBottom: 4,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>{card.title}</Text>
+                  {/* Subtitle - use category or a default subtitle */}
+                  <Text style={styles.cardSubtitle}>
+                    {(card as any).subtitle || card.category || "Experience"}
+                  </Text>
                 </View>
-
-                <View style={styles.cardInfo}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "flex-start",
-                      justifyContent: "space-between",
-                      marginBottom: 4,
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.cardTitle}>{card.title}</Text>
-                      {/* Subtitle - use category or a default subtitle */}
-                      <Text style={styles.cardSubtitle}>
-                        {(card as any).subtitle ||
-                          card.category ||
-                          "Experience"}
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: "flex-end" }}>
-                      <Text style={styles.recentlySavedText}>
-                        Recently saved
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Stats row: Rating, Duration, Price, Chevron */}
-                  <View style={styles.cardMeta}>
-                    <View style={styles.cardStats}>
-                      <View style={styles.statItem}>
-                        <Ionicons name="star" size={14} color="#fbbf24" />
-                        <Text style={styles.statText}>
-                          {card.rating || "4.5"}
-                        </Text>
-                      </View>
-                      <View style={styles.statItem}>
-                        <Ionicons
-                          name="paper-plane"
-                          size={14}
-                          color="#6b7280"
-                        />
-                        <Text style={styles.statText}>
-                          {card.travelTime || "15m"}
-                        </Text>
-                      </View>
-                      <Text style={styles.priceText}>
-                        {card.priceRange || "$25-50"}
-                      </Text>
-                    </View>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={16}
-                      color="#9ca3af"
-                    />
-                  </View>
-
-                  {/* Source badge */}
-                  <View style={styles.sourceIndicator}>
-                    <View
-                      style={[
-                        styles.sourceBadge,
-                        card.source === "solo"
-                          ? styles.soloBadge
-                          : styles.collaborationBadge,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.sourceText,
-                          card.source === "solo"
-                            ? styles.soloText
-                            : styles.collaborationText,
-                        ]}
-                      >
-                        {card.source === "solo"
-                          ? "Solo Discovery"
-                          : `From ${card.sessionName}`}
-                      </Text>
-                    </View>
-                  </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={styles.recentlySavedText}>Recently saved</Text>
                 </View>
               </View>
-            </TouchableOpacity>
 
-            {/* Quick Actions */}
-            <View style={styles.quickActions}>
-              <View style={styles.actionsRow}>
-                {/* Conditional Buy Now/Schedule button */}
-                {card.purchaseOptions && card.purchaseOptions.length > 0 ? (
-                  <TouchableOpacity
-                    onPress={() =>
-                      onPurchaseFromSaved(card, card.purchaseOptions?.[0])
-                    }
-                    style={styles.primaryButton}
-                  >
-                    <Ionicons name="bag" size={16} color="white" />
-                    <Text style={styles.primaryButtonText}>Buy Now</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => handleSchedule(card)}
+              {/* Stats row: Rating, Duration, Price, Chevron */}
+              <View style={styles.cardMeta}>
+                <View style={styles.cardStats}>
+                  <View style={styles.statItem}>
+                    <Ionicons name="star" size={14} color="#fbbf24" />
+                    <Text style={styles.statText}>{card.rating || "4.5"}</Text>
+                  </View>
+                  <View style={styles.statItem}>
+                    <Ionicons name="paper-plane" size={14} color="#6b7280" />
+                    <Text style={styles.statText}>
+                      {card.travelTime || "15m"}
+                    </Text>
+                  </View>
+                  <Text style={styles.priceText}>
+                    {card.priceRange || "$25-50"}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+              </View>
+
+              {/* Source badge */}
+              <View style={styles.sourceIndicator}>
+                <View
+                  style={[
+                    styles.sourceBadge,
+                    card.source === "solo"
+                      ? styles.soloBadge
+                      : styles.collaborationBadge,
+                  ]}
+                >
+                  <Text
                     style={[
-                      styles.primaryButton,
-                      (schedulingCardId === card.id || isScheduled) &&
-                        styles.primaryButtonDisabled,
+                      styles.sourceText,
+                      card.source === "solo"
+                        ? styles.soloText
+                        : styles.collaborationText,
                     ]}
-                    disabled={schedulingCardId === card.id || isScheduled}
                   >
-                    {schedulingCardId === card.id ? (
-                      <ActivityIndicator size="small" color="white" />
-                    ) : (
-                      <>
-                        <Ionicons name="calendar" size={16} color="white" />
-                        <Text style={styles.primaryButtonText}>
-                          {isScheduled ? "Scheduled" : "Schedule"}
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity
-                  onPress={() => onShareCard(card)}
-                  style={styles.shareButton}
-                >
-                  <Ionicons
-                    name="share-social-outline"
-                    size={18}
-                    color="#374151"
-                  />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => onRemoveSaved(card)}
-                  style={styles.deleteButton}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                </TouchableOpacity>
+                    {card.source === "solo"
+                      ? "Solo Discovery"
+                      : `From ${card.sessionName}`}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
-        );
-      })}
+        </TouchableOpacity>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <View style={styles.actionsRow}>
+            {/* Conditional Buy Now/Schedule button */}
+            {card.purchaseOptions && card.purchaseOptions.length > 0 ? (
+              <TouchableOpacity
+                onPress={() =>
+                  onPurchaseFromSaved(card, card.purchaseOptions?.[0])
+                }
+                style={styles.primaryButton}
+              >
+                <Ionicons name="bag" size={16} color="white" />
+                <Text style={styles.primaryButtonText}>Buy Now</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => handleSchedule(card)}
+                style={[
+                  styles.primaryButton,
+                  (schedulingCardId === card.id || isScheduled) &&
+                    styles.primaryButtonDisabled,
+                ]}
+                disabled={schedulingCardId === card.id || isScheduled}
+              >
+                {schedulingCardId === card.id ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <Ionicons name="calendar" size={16} color="white" />
+                    <Text style={styles.primaryButtonText}>
+                      {isScheduled ? "Scheduled" : "Schedule"}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              onPress={() => onShareCard(card)}
+              style={styles.shareButton}
+            >
+              <Ionicons name="share-social-outline" size={18} color="#374151" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => onRemoveSaved(card)}
+              style={styles.deleteButton}
+            >
+              <Ionicons name="trash-outline" size={18} color="#ef4444" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderEmptyComponent = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#eb7825" />
+          <Text style={styles.loadingText}>Loading saved experiences...</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.emptyState}>
+        <Ionicons name="heart" size={48} color="#d1d5db" />
+        <Text style={styles.emptyStateTitle}>No Saved Experiences</Text>
+        <Text style={styles.emptyStateSubtitle}>
+          Start swiping to save experiences you love
+        </Text>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <FlatList
+        data={savedCards}
+        renderItem={renderCard}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={renderEmptyComponent}
+        showsVerticalScrollIndicator={false}
+      />
 
       {/* Expanded Card Modal */}
-      <ExpandedCardModal
-        visible={isModalVisible}
-        card={selectedCardForModal}
-        onClose={handleCloseModal}
-        isSaved={true}
-        onSave={async (card) => {
-          // Card is already saved, just close the modal
-          handleCloseModal();
-        }}
-        onSchedule={(card) => {
-          handleCloseModal();
-          onScheduleFromSaved(card as any);
-        }}
-        onPurchase={(card, bookingOption) => {
-          handleCloseModal();
-          onPurchaseFromSaved(card as any, bookingOption);
-        }}
-        onShare={(card) => {
-          handleCloseModal();
-          onShareCard(card as any);
-        }}
-        userPreferences={userPreferences}
-      />
+      {isModalVisible && selectedCardForModal && (
+        <ExpandedCardModal
+          visible={isModalVisible}
+          card={selectedCardForModal}
+          onClose={handleCloseModal}
+          isSaved={true}
+          onSave={async (card) => {
+            // Card is already saved, just close the modal
+            handleCloseModal();
+          }}
+          onPurchase={(card, bookingOption) => {
+            handleCloseModal();
+            onPurchaseFromSaved(card as any, bookingOption);
+          }}
+          onShare={(card) => {
+            handleCloseModal();
+            onShareCard(card as any);
+          }}
+          userPreferences={userPreferences}
+        />
+      )}
     </View>
   );
 };

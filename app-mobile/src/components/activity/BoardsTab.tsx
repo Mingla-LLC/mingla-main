@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  FlatList,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -64,8 +65,13 @@ const BoardsTab = ({
 }: BoardsTabProps) => {
   const styles = StyleSheet.create({
     container: {
+      flex: 1,
+    },
+    listContent: {
       gap: 16,
       paddingBottom: 62, // Add padding to prevent tab bar from touching last card
+      paddingHorizontal: 16,
+      paddingTop: 16,
     },
     boardCard: {
       backgroundColor: "white",
@@ -324,15 +330,99 @@ const BoardsTab = ({
     }
   };
 
-  if (isLoading) {
+  const renderBoardCard = ({ item: board }: { item: Board }) => {
+    const IconComponent = getIconComponent(board.icon);
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#eb7825" />
+      <View style={styles.boardCard}>
+        <View style={styles.boardContent}>
+          {/* Header Section */}
+          <View style={styles.boardHeader}>
+            <View style={styles.boardInfo}>
+              <View style={styles.boardNameRow}>
+                <Text style={styles.boardName}>{board.name}</Text>
+                {board.unreadMessages > 0 && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>
+                      {board.unreadMessages > 99 ? "99+" : board.unreadMessages}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.boardDescription}>{board.description}</Text>
+            </View>
+
+            {/* Status Badge */}
+            <View style={styles.statusBadge}>{renderStatusBadge(board)}</View>
+          </View>
+
+          {/* Stats Row */}
+          <View style={styles.statsRow}>
+            <View style={styles.statsContainer}>
+              <View style={styles.statItem}>
+                <Text style={styles.statNumber}>
+                  {board.participants.length}
+                </Text>
+                <Text style={styles.statLabel}>MEMBERS</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statNumber}>{board.cardsCount}</Text>
+                <Text style={styles.statLabel}>EXPERIENCES</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Actions Section */}
+          <View style={styles.actionsContainer}>
+            {/* Primary Action */}
+            <TouchableOpacity
+              onPress={() => onOpenBoard(board.id)}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonText}>Open Board</Text>
+            </TouchableOpacity>
+
+            {/* Admin Actions */}
+            {isUserAdmin(board) && (
+              <TouchableOpacity
+                onPress={() => onInviteToSession(board.id, board.name)}
+                style={[styles.secondaryButton, styles.adminButton]}
+              >
+                <Ionicons name="person-add" size={16} color="#eb7825" />
+              </TouchableOpacity>
+            )}
+
+            {/* Board Menu - would need DropdownMenu component */}
+            <TouchableOpacity
+              style={[styles.secondaryButton, styles.menuButton]}
+            >
+              <Ionicons name="ellipsis-horizontal" size={16} color="#6b7280" />
+            </TouchableOpacity>
+
+            {/* Leave Board */}
+            {!isUserAdmin(board) && (
+              <TouchableOpacity
+                onPress={() => onLeaveBoard(board.id, board.name)}
+                style={[styles.secondaryButton, styles.leaveButton]}
+              >
+                <Ionicons name="log-out" size={16} color="#ef4444" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
       </View>
     );
-  }
+  };
 
-  if (boards.length === 0) {
+  const renderEmptyComponent = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#eb7825" />
+        </View>
+      );
+    }
+
     return (
       <View style={styles.emptyState}>
         <Ionicons name="calendar" size={48} color="#d1d5db" />
@@ -342,103 +432,18 @@ const BoardsTab = ({
         </Text>
       </View>
     );
-  }
+  };
 
   return (
     <View style={styles.container}>
-      {boards.map((board) => {
-        const IconComponent = getIconComponent(board.icon);
-        return (
-          <View key={board.id} style={styles.boardCard}>
-            <View style={styles.boardContent}>
-              {/* Header Section */}
-              <View style={styles.boardHeader}>
-                <View style={styles.boardInfo}>
-                  <View style={styles.boardNameRow}>
-                    <Text style={styles.boardName}>{board.name}</Text>
-                    {board.unreadMessages > 0 && (
-                      <View style={styles.unreadBadge}>
-                        <Text style={styles.unreadBadgeText}>
-                          {board.unreadMessages > 99
-                            ? "99+"
-                            : board.unreadMessages}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.boardDescription}>
-                    {board.description}
-                  </Text>
-                </View>
-
-                {/* Status Badge */}
-                <View style={styles.statusBadge}>
-                  {renderStatusBadge(board)}
-                </View>
-              </View>
-
-              {/* Stats Row */}
-              <View style={styles.statsRow}>
-                <View style={styles.statsContainer}>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statNumber}>
-                      {board.participants.length}
-                    </Text>
-                    <Text style={styles.statLabel}>MEMBERS</Text>
-                  </View>
-                  <View style={styles.statDivider} />
-                  <View style={styles.statItem}>
-                    <Text style={styles.statNumber}>{board.cardsCount}</Text>
-                    <Text style={styles.statLabel}>EXPERIENCES</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Actions Section */}
-              <View style={styles.actionsContainer}>
-                {/* Primary Action */}
-                <TouchableOpacity
-                  onPress={() => onOpenBoard(board.id)}
-                  style={styles.primaryButton}
-                >
-                  <Text style={styles.primaryButtonText}>Open Board</Text>
-                </TouchableOpacity>
-
-                {/* Admin Actions */}
-                {isUserAdmin(board) && (
-                  <TouchableOpacity
-                    onPress={() => onInviteToSession(board.id, board.name)}
-                    style={[styles.secondaryButton, styles.adminButton]}
-                  >
-                    <Ionicons name="person-add" size={16} color="#eb7825" />
-                  </TouchableOpacity>
-                )}
-
-                {/* Board Menu - would need DropdownMenu component */}
-                <TouchableOpacity
-                  style={[styles.secondaryButton, styles.menuButton]}
-                >
-                  <Ionicons
-                    name="ellipsis-horizontal"
-                    size={16}
-                    color="#6b7280"
-                  />
-                </TouchableOpacity>
-
-                {/* Leave Board */}
-                {!isUserAdmin(board) && (
-                  <TouchableOpacity
-                    onPress={() => onLeaveBoard(board.id, board.name)}
-                    style={[styles.secondaryButton, styles.leaveButton]}
-                  >
-                    <Ionicons name="log-out" size={16} color="#ef4444" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          </View>
-        );
-      })}
+      <FlatList
+        data={boards}
+        renderItem={renderBoardCard}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={renderEmptyComponent}
+        showsVerticalScrollIndicator={false}
+      />
     </View>
   );
 };

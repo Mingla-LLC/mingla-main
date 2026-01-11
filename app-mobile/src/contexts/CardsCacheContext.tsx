@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useRef,
   useEffect,
+  useMemo,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -105,19 +106,25 @@ export const CardsCacheProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isCacheLoaded, setIsCacheLoaded] = useState(false);
 
   // Save cache to AsyncStorage
-  const saveCacheToStorage = useCallback(async (cache?: Map<string, CardsCacheEntry>) => {
-    try {
-      const cacheToSave = cache || cacheRef.current;
-      // Convert Map to plain object for JSON serialization
-      const cacheObject: Record<string, CardsCacheEntry> = {};
-      cacheToSave.forEach((value, key) => {
-        cacheObject[key] = value;
-      });
-      await AsyncStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(cacheObject));
-    } catch (error) {
-      console.error("Error saving cache to storage:", error);
-    }
-  }, []);
+  const saveCacheToStorage = useCallback(
+    async (cache?: Map<string, CardsCacheEntry>) => {
+      try {
+        const cacheToSave = cache || cacheRef.current;
+        // Convert Map to plain object for JSON serialization
+        const cacheObject: Record<string, CardsCacheEntry> = {};
+        cacheToSave.forEach((value, key) => {
+          cacheObject[key] = value;
+        });
+        await AsyncStorage.setItem(
+          CACHE_STORAGE_KEY,
+          JSON.stringify(cacheObject)
+        );
+      } catch (error) {
+        console.error("Error saving cache to storage:", error);
+      }
+    },
+    []
+  );
 
   // Load cache from AsyncStorage on mount
   useEffect(() => {
@@ -125,7 +132,8 @@ export const CardsCacheProvider: React.FC<{ children: React.ReactNode }> = ({
       try {
         const stored = await AsyncStorage.getItem(CACHE_STORAGE_KEY);
         if (stored) {
-          const parsedCache: Record<string, CardsCacheEntry> = JSON.parse(stored);
+          const parsedCache: Record<string, CardsCacheEntry> =
+            JSON.parse(stored);
           const now = Date.now();
 
           // Filter out expired entries and restore valid ones
@@ -259,7 +267,7 @@ export const CardsCacheProvider: React.FC<{ children: React.ReactNode }> = ({
       };
 
       cacheRef.current.set(cacheKey, entry);
-      
+
       // Save to AsyncStorage (async, don't await to avoid blocking)
       saveCacheToStorage();
     },
@@ -284,7 +292,7 @@ export const CardsCacheProvider: React.FC<{ children: React.ReactNode }> = ({
           entry.removedCardIds = updates.removedCardIds;
         }
         cacheRef.current.set(cacheKey, entry);
-        
+
         // Save to AsyncStorage (async, don't await to avoid blocking)
         saveCacheToStorage();
       }
@@ -300,21 +308,31 @@ export const CardsCacheProvider: React.FC<{ children: React.ReactNode }> = ({
       } else {
         cacheRef.current.clear();
       }
-      
+
       // Save to AsyncStorage (async, don't await to avoid blocking)
       saveCacheToStorage();
     },
     [saveCacheToStorage]
   );
 
-  const value: CardsCacheContextType = {
-    getCachedCards,
-    setCachedCards,
-    clearCache,
-    generateCacheKey,
-    updateCacheEntry,
-    isCacheLoaded,
-  };
+  const value: CardsCacheContextType = useMemo(
+    () => ({
+      getCachedCards,
+      setCachedCards,
+      clearCache,
+      generateCacheKey,
+      updateCacheEntry,
+      isCacheLoaded,
+    }),
+    [
+      getCachedCards,
+      setCachedCards,
+      clearCache,
+      generateCacheKey,
+      updateCacheEntry,
+      isCacheLoaded,
+    ]
+  );
 
   return (
     <CardsCacheContext.Provider value={value}>
