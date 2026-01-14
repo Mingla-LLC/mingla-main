@@ -189,4 +189,5 @@ export interface ExpandedCardModalProps {
   userPreferences?: any;
   isSaved?: boolean;
   currentMode?: string;
+  onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
 }

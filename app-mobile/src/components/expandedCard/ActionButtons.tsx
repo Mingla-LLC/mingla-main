@@ -32,6 +32,7 @@ interface ActionButtonsProps {
   isSaved?: boolean;
   userPreferences?: any;
   currentMode?: string;
+  onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
 }
 
 export default function ActionButtons({
@@ -44,6 +45,7 @@ export default function ActionButtons({
   isSaved = false,
   userPreferences,
   currentMode = "solo",
+  onCardRemoved,
 }: ActionButtonsProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
@@ -51,6 +53,12 @@ export default function ActionButtons({
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedTime, setSelectedTime] = useState<Date>(new Date());
   const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
+  const [selectedDateTime, setSelectedDateTime] = useState<Date | null>(null);
+  const [availabilityCheck, setAvailabilityCheck] = useState<{
+    isOpen: boolean;
+    isAssumption: boolean;
+    reason?: string;
+  } | null>(null);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
   const { data: calendarEntries = [] } = useCalendarEntries(user?.id);
@@ -67,16 +75,130 @@ export default function ActionButtons({
     );
   }, [calendarEntries, card.id]);
 
-  // Check if place is currently open
-  const isPlaceOpen =
-    (card.openingHours as { open_now?: boolean })?.open_now ?? true;
+  // Parse time string like "9:00 AM" to minutes since midnight
+  const parseTimeString = (timeStr: string): number => {
+    const trimmed = timeStr.trim();
+    const match = trimmed.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!match) return 0;
 
-  // Check if openingHours data is available
-  const hasOpeningHoursData =
-    card.openingHours &&
-    typeof card.openingHours === "object" &&
-    card.openingHours !== null &&
-    "open_now" in card.openingHours;
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const period = match[3].toUpperCase();
+
+    // Convert to 24-hour format
+    if (period === "AM") {
+      if (hours === 12) hours = 0; // 12 AM = midnight
+    } else {
+      // PM
+      if (hours !== 12) hours += 12; // 1 PM = 13:00, but 12 PM stays 12
+    }
+
+    return hours * 60 + minutes; // Return minutes since midnight
+  };
+
+  // Check if place is open at the selected date/time
+  const checkPlaceAvailability = (
+    dateToCheck: Date
+  ): {
+    isOpen: boolean;
+    isAssumption: boolean;
+    reason?: string;
+  } => {
+    if (!card || !dateToCheck) {
+      return {
+        isOpen: true,
+        isAssumption: true,
+        reason: "No card or time selected",
+      };
+    }
+
+    const openingHours = card.openingHours;
+
+    // If no opening hours data, assume open (user schedules at own risk)
+    if (
+      !openingHours ||
+      typeof openingHours !== "object" ||
+      openingHours === null ||
+      !Array.isArray(openingHours.weekday_text) ||
+      openingHours.weekday_text.length === 0
+    ) {
+      return {
+        isOpen: true,
+        isAssumption: true,
+        reason: "Opening hours data not available",
+      };
+    }
+
+    // Get the day of the week from date (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
+    const dayOfWeek = dateToCheck.getDay();
+    const dayNames = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    const selectedDayName = dayNames[dayOfWeek];
+
+    // Find the opening hours for the selected day
+    const dayHours = openingHours.weekday_text.find((entry: string) =>
+      entry.startsWith(selectedDayName)
+    );
+
+    if (!dayHours) {
+      // No hours found for this day, assume closed
+      return {
+        isOpen: false,
+        isAssumption: false,
+      };
+    }
+
+    // Parse the time range (e.g., "Monday: 9:00 AM – 12:00 AM")
+    const timeRangeMatch = dayHours.match(/:\s*(.+?)\s*–\s*(.+)$/);
+    if (!timeRangeMatch) {
+      // Can't parse the time range, assume open
+      return {
+        isOpen: true,
+        isAssumption: true,
+        reason: "Could not parse opening hours format",
+      };
+    }
+
+    const openTimeStr = timeRangeMatch[1].trim();
+    const closeTimeStr = timeRangeMatch[2].trim();
+
+    // Parse times to minutes since midnight
+    const openTimeMinutes = parseTimeString(openTimeStr);
+    const closeTimeMinutes = parseTimeString(closeTimeStr);
+
+    // Get selected time in minutes since midnight
+    const selectedHours = dateToCheck.getHours();
+    const selectedMinutes = dateToCheck.getMinutes();
+    const selectedTimeMinutes = selectedHours * 60 + selectedMinutes;
+
+    // Handle case where closing time is midnight (12:00 AM)
+    if (closeTimeMinutes === 0) {
+      const isOpen = selectedTimeMinutes >= openTimeMinutes;
+      return { isOpen, isAssumption: false };
+    }
+
+    // Normal case: check if selected time is within the range
+    if (openTimeMinutes < closeTimeMinutes) {
+      // Normal case: opening and closing on same day (e.g., 9 AM - 6 PM)
+      const isOpen =
+        selectedTimeMinutes >= openTimeMinutes &&
+        selectedTimeMinutes < closeTimeMinutes;
+      return { isOpen, isAssumption: false };
+    } else {
+      // Case where closing time is next day (e.g., 9 PM - 2 AM)
+      const isOpen =
+        selectedTimeMinutes >= openTimeMinutes ||
+        selectedTimeMinutes < closeTimeMinutes;
+      return { isOpen, isAssumption: false };
+    }
+  };
 
   // Helper function to generate suggested dates
   const generateSuggestedDates = (dateTimePrefs: any) => {
@@ -129,26 +251,30 @@ export default function ActionButtons({
   };
 
   const handleSchedule = () => {
-    if (isScheduling || isScheduled || !user?.id || !isPlaceOpen) return;
+    if (isScheduling || isScheduled || !user?.id) return;
 
-    // Show date/time picker first
-    // Initialize with a suggested date based on user preferences
-    const dateTimePrefs = userPreferences
-      ? {
-          timeOfDay: userPreferences.timeOfDay || "Afternoon",
-          dayOfWeek: userPreferences.dayOfWeek || "Weekend",
-          planningTimeframe: userPreferences.planningTimeframe || "This month",
-        }
-      : {
-          timeOfDay: "Afternoon",
-          dayOfWeek: "Weekend",
-          planningTimeframe: "This month",
-        };
+    // If we have a selected date/time and availability was checked, proceed with scheduling
+    if (selectedDateTime && availabilityCheck) {
+      if (availabilityCheck.isOpen) {
+        // Place is open at selected time, proceed with scheduling
+        proceedWithScheduling(selectedDateTime);
+        return;
+      } else {
+        // Place is closed, reset and show picker again
+        setSelectedDateTime(null);
+        setAvailabilityCheck(null);
+      }
+    }
 
-    const suggestedDates = generateSuggestedDates(dateTimePrefs);
-    const suggestedDate = new Date(suggestedDates[0]);
-    setSelectedDate(suggestedDate);
-    setSelectedTime(suggestedDate);
+    // Reset availability check when showing picker
+    setAvailabilityCheck(null);
+    setSelectedDateTime(null);
+
+    // Show date/time picker
+    // Initialize with current date and time
+    const now = new Date();
+    setSelectedDate(now);
+    setSelectedTime(now);
     setPickerMode("date");
     setShowDateTimePicker(true);
   };
@@ -168,13 +294,22 @@ export default function ActionButtons({
           setPickerMode("time");
           // Keep picker visible for time selection
         } else {
-          // Time selected on Android - proceed with scheduling
+          // Time selected on Android - check availability
           const combinedDateTime = new Date(selectedDate);
           combinedDateTime.setHours(date.getHours());
           combinedDateTime.setMinutes(date.getMinutes());
           setSelectedTime(combinedDateTime);
+          setSelectedDateTime(combinedDateTime);
           setShowDateTimePicker(false);
-          proceedWithScheduling(combinedDateTime);
+
+          // Check availability
+          const availability = checkPlaceAvailability(combinedDateTime);
+          setAvailabilityCheck(availability);
+
+          // If open, proceed with scheduling
+          if (availability.isOpen) {
+            proceedWithScheduling(combinedDateTime);
+          }
         }
       }
     } else {
@@ -199,8 +334,17 @@ export default function ActionButtons({
     const combinedDateTime = new Date(selectedDate);
     combinedDateTime.setHours(selectedTime.getHours());
     combinedDateTime.setMinutes(selectedTime.getMinutes());
+    setSelectedDateTime(combinedDateTime);
     setShowDateTimePicker(false);
-    proceedWithScheduling(combinedDateTime);
+
+    // Check availability
+    const availability = checkPlaceAvailability(combinedDateTime);
+    setAvailabilityCheck(availability);
+
+    // If open, proceed with scheduling
+    if (availability.isOpen) {
+      proceedWithScheduling(combinedDateTime);
+    }
   };
 
   const proceedWithScheduling = async (scheduledDateTime: Date) => {
@@ -274,6 +418,11 @@ export default function ActionButtons({
         `Scheduled! ${card.title} has been moved to your calendar`,
         3000
       );
+
+      // Remove card from deck if callback is provided
+      if (onCardRemoved) {
+        onCardRemoved(card.id);
+      }
 
       // Close modal only on success
       if (onClose) {
@@ -478,12 +627,11 @@ export default function ActionButtons({
           <TouchableOpacity
             style={[
               styles.scheduleButton,
-              (isScheduling || isScheduled || !isPlaceOpen) &&
-                styles.scheduleButtonDisabled,
+              (isScheduling || isScheduled) && styles.scheduleButtonDisabled,
             ]}
             onPress={handleSchedule}
             activeOpacity={0.7}
-            disabled={isScheduling || isScheduled || !isPlaceOpen}
+            disabled={isScheduling || isScheduled}
           >
             {isScheduling ? (
               <ActivityIndicator size="small" color="#ffffff" />
@@ -500,14 +648,16 @@ export default function ActionButtons({
               </>
             )}
           </TouchableOpacity>
-          {!isPlaceOpen && (
+          {availabilityCheck && !availabilityCheck.isOpen && (
             <Text style={styles.closedMessage}>
-              This place is currently closed
+              This place is closed at the selected date and time. Please choose
+              a different time.
             </Text>
           )}
-          {!hasOpeningHoursData && (
+          {availabilityCheck && availabilityCheck.isAssumption && (
             <Text style={styles.warningMessage}>
-              Opening hours not available - schedule at your own risk
+              {availabilityCheck.reason ||
+                "Opening hours data not available - schedule at your own risk"}
             </Text>
           )}
         </View>

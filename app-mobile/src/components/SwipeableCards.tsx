@@ -1235,6 +1235,17 @@ export default function SwipeableCards({
         onShare={(card) => {
           onShareCard?.(card);
         }}
+        onCardRemoved={(cardId) => {
+          // Remove card from deck when scheduled
+          if (currentRec && cardId === currentRec.id) {
+            setRemovedCards((prev) => {
+              const newSet = new Set([...prev, cardId]);
+              return newSet;
+            });
+            // Move to next card
+            setCurrentCardIndex(0);
+          }
+        }}
         userPreferences={userPreferences}
       />
     </View>
