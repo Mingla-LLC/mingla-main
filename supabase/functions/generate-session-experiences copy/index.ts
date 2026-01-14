@@ -14,15 +14,72 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 
 // Category to Google Places type mapping (same as generate-experiences)
 const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
-  "Sip & Chill": [
+  // Sip & Chill variations
+  "sip & chill": [
     "bar",
     "wine_bar",
     "brewery",
     "cafe",
     "coffee_shop",
     "tea_house",
+    "cocktail_lounge",
   ],
-  Stroll: [
+  sip_and_chill: [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  "sip-and-chill": [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  "sip&chill": [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  "sip_&_chill": [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  "sip-&-chill": [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  sipchill: [
+    "bar",
+    "wine_bar",
+    "brewery",
+    "cafe",
+    "coffee_shop",
+    "tea_house",
+    "cocktail_lounge",
+  ],
+  // Stroll variations
+  stroll: [
     "park",
     "tourist_attraction",
     "point_of_interest",
@@ -30,28 +87,173 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "zoo",
     "aquarium",
     "botanical_garden",
+    "hiking_area",
+    "scenic_viewpoint",
   ],
-  Dining: [
+  "take a stroll": [
+    "park",
+    "tourist_attraction",
+    "point_of_interest",
+    "natural_feature",
+    "zoo",
+    "aquarium",
+    "botanical_garden",
+    "hiking_area",
+    "scenic_viewpoint",
+  ],
+  "take-a-stroll": [
+    "park",
+    "tourist_attraction",
+    "point_of_interest",
+    "natural_feature",
+    "zoo",
+    "aquarium",
+    "botanical_garden",
+    "hiking_area",
+    "scenic_viewpoint",
+  ],
+  take_a_stroll: [
+    "park",
+    "tourist_attraction",
+    "point_of_interest",
+    "natural_feature",
+    "zoo",
+    "aquarium",
+    "botanical_garden",
+    "hiking_area",
+    "scenic_viewpoint",
+  ],
+  // Dining Experiences variations
+  "dining experiences": [
     "restaurant",
     "fine_dining_restaurant",
     "steakhouse",
     "seafood_restaurant",
+    "italian_restaurant",
+    "french_restaurant",
+    "sushi_restaurant",
+    "rooftop_bar",
   ],
-  "Screen & Relax": [
+  dining_experiences: [
+    "restaurant",
+    "fine_dining_restaurant",
+    "steakhouse",
+    "seafood_restaurant",
+    "italian_restaurant",
+    "french_restaurant",
+    "sushi_restaurant",
+    "rooftop_bar",
+  ],
+  "dining-experiences": [
+    "restaurant",
+    "fine_dining_restaurant",
+    "steakhouse",
+    "seafood_restaurant",
+    "italian_restaurant",
+    "french_restaurant",
+    "sushi_restaurant",
+    "rooftop_bar",
+  ],
+  dining: [
+    "restaurant",
+    "fine_dining_restaurant",
+    "steakhouse",
+    "seafood_restaurant",
+    "italian_restaurant",
+    "french_restaurant",
+    "sushi_restaurant",
+    "rooftop_bar",
+  ],
+  // Screen & Relax variations
+  "screen & relax": [
     "movie_theater",
     "spa",
     "beauty_salon",
     "massage_therapist",
+    "hair_salon",
   ],
-  Creative: [
+  screen_relax: [
+    "movie_theater",
+    "spa",
+    "beauty_salon",
+    "massage_therapist",
+    "hair_salon",
+  ],
+  "screen-relax": [
+    "movie_theater",
+    "spa",
+    "beauty_salon",
+    "massage_therapist",
+    "hair_salon",
+  ],
+  screenrelax: [
+    "movie_theater",
+    "spa",
+    "beauty_salon",
+    "massage_therapist",
+    "hair_salon",
+  ],
+  screenRelax: [
+    "movie_theater",
+    "spa",
+    "beauty_salon",
+    "massage_therapist",
+    "hair_salon",
+  ],
+  // Creative & Hands-On variations
+  "creative & hands-on": [
     "art_gallery",
     "museum",
     "pottery_studio",
     "craft_store",
     "art_studio",
     "library",
+    "jewelry_store",
+    "book_store",
   ],
-  "Play & Move": [
+  creative_and_hands_on: [
+    "art_gallery",
+    "museum",
+    "pottery_studio",
+    "craft_store",
+    "art_studio",
+    "library",
+    "jewelry_store",
+    "book_store",
+  ],
+  "creative-hands-on": [
+    "art_gallery",
+    "museum",
+    "pottery_studio",
+    "craft_store",
+    "art_studio",
+    "library",
+    "jewelry_store",
+    "book_store",
+  ],
+  "creative & hands on": [
+    "art_gallery",
+    "museum",
+    "pottery_studio",
+    "craft_store",
+    "art_studio",
+    "library",
+    "jewelry_store",
+    "book_store",
+  ],
+
+  creative: [
+    "art_gallery",
+    "museum",
+    "pottery_studio",
+    "craft_store",
+    "art_studio",
+    "library",
+    "jewelry_store",
+    "book_store",
+  ],
+  // Play & Move variations
+  "play & move": [
     "bowling_alley",
     "gym",
     "sports_complex",
@@ -63,8 +265,41 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "climbing_gym",
     "skating_rink",
     "amusement_park",
+    "arcade",
+    "stadium",
   ],
-  "Casual Eats": [
+  play_and_move: [
+    "bowling_alley",
+    "gym",
+    "sports_complex",
+    "recreation_center",
+    "tennis_court",
+    "basketball_court",
+    "golf_course",
+    "mini_golf",
+    "climbing_gym",
+    "skating_rink",
+    "amusement_park",
+    "arcade",
+    "stadium",
+  ],
+  "play-move": [
+    "bowling_alley",
+    "gym",
+    "sports_complex",
+    "recreation_center",
+    "tennis_court",
+    "basketball_court",
+    "golf_course",
+    "mini_golf",
+    "climbing_gym",
+    "skating_rink",
+    "amusement_park",
+    "arcade",
+    "stadium",
+  ],
+  // Casual Eats variations
+  "casual eats": [
     "restaurant",
     "food_court",
     "meal_takeaway",
@@ -72,8 +307,114 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "food_truck",
     "sandwich_shop",
     "pizza_restaurant",
+    "cafe",
   ],
-  Freestyle: [
+  casual_eats: [
+    "restaurant",
+    "food_court",
+    "meal_takeaway",
+    "fast_food_restaurant",
+    "food_truck",
+    "sandwich_shop",
+    "pizza_restaurant",
+    "cafe",
+  ],
+  "casual-eats": [
+    "restaurant",
+    "food_court",
+    "meal_takeaway",
+    "fast_food_restaurant",
+    "food_truck",
+    "sandwich_shop",
+    "pizza_restaurant",
+    "cafe",
+  ],
+  "casual & eats": [
+    "restaurant",
+    "food_court",
+    "meal_takeaway",
+    "fast_food_restaurant",
+    "food_truck",
+    "sandwich_shop",
+    "pizza_restaurant",
+    "cafe",
+  ],
+  // Picnics variations
+  picnics: [
+    "picnic_ground",
+    "garden",
+    "botanical_garden",
+    "national_park",
+    "campground",
+    "water_park",
+    "state_park",
+    "park",
+    "beach",
+    "picnic_area",
+    "lake",
+    "natural_feature",
+  ],
+  picnic: [
+    "picnic_ground",
+    "national_park",
+    "garden",
+    "botanical_garden",
+    "water_park",
+    "state_park",
+    "campground",
+    "park",
+    "beach",
+    "picnic_area",
+    "lake",
+    "natural_feature",
+  ],
+  // Wellness Dates variations
+  "wellness dates": [
+    "spa",
+    "massage_therapist",
+    "beauty_salon",
+    "yoga_studio",
+    "fitness_center",
+    "meditation_center",
+    "hot_spring",
+    "park",
+    "botanical_garden",
+  ],
+  wellness_dates: [
+    "spa",
+    "massage_therapist",
+    "beauty_salon",
+    "yoga_studio",
+    "fitness_center",
+    "meditation_center",
+    "hot_spring",
+    "park",
+    "botanical_garden",
+  ],
+  "wellness-dates": [
+    "spa",
+    "massage_therapist",
+    "beauty_salon",
+    "yoga_studio",
+    "fitness_center",
+    "meditation_center",
+    "hot_spring",
+    "park",
+    "botanical_garden",
+  ],
+  wellness: [
+    "spa",
+    "massage_therapist",
+    "beauty_salon",
+    "yoga_studio",
+    "fitness_center",
+    "meditation_center",
+    "hot_spring",
+    "park",
+    "botanical_garden",
+  ],
+  // Freestyle variations
+  freestyle: [
     "restaurant",
     "bar",
     "cafe",
@@ -82,6 +423,46 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "museum",
     "park",
     "movie_theater",
+    "bowling_alley",
+    "spa",
+    "amusement_park",
+    "zoo",
+    "aquarium",
+  ],
+  "free style": [
+    "restaurant",
+    "bar",
+    "cafe",
+    "tourist_attraction",
+    "art_gallery",
+    "museum",
+    "park",
+    "movie_theater",
+    "bowling_alley",
+    "spa",
+    "amusement_park",
+    "zoo",
+    "aquarium",
+  ],
+};
+
+// Excluded types for specific categories
+const EXCLUDED_TYPES: { [key: string]: string[] } = {
+  picnic: [
+    "dog_park",
+    "cycling_park",
+    "amusement_park",
+    "park_and_ride",
+    "bus_stop",
+    "bus_station",
+  ],
+  picnics: [
+    "dog_park",
+    "cycling_park",
+    "amusement_park",
+    "park_and_ride",
+    "bus_stop",
+    "bus_station",
   ],
 };
 
@@ -120,8 +501,6 @@ serve(async (req) => {
   }
 
   try {
-    console.log("🎯 Generate session experiences endpoint called");
-
     let request: SessionGenerationRequest;
     try {
       request = await req.json();
@@ -160,7 +539,6 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Fetch all user preferences for this session
-    console.log(`📋 Fetching preferences for session: ${request.session_id}`);
     const { data: allPreferences, error: prefsError } = await supabase
       .from("board_session_preferences")
       .select("*")
@@ -182,7 +560,6 @@ serve(async (req) => {
     }
 
     if (!allPreferences || allPreferences.length === 0) {
-      console.log("⚠️ No preferences found for session");
       return new Response(
         JSON.stringify({
           cards: [],
@@ -199,16 +576,8 @@ serve(async (req) => {
       );
     }
 
-    console.log(
-      `✅ Found ${allPreferences.length} user preference(s) for session`
-    );
-
     // Aggregate preferences
     const aggregated = aggregatePreferences(allPreferences);
-    console.log(
-      "📊 Aggregated preferences:",
-      JSON.stringify(aggregated, null, 2)
-    );
 
     // Find central location
     const location = await findCentralLocation(
@@ -228,8 +597,6 @@ serve(async (req) => {
         }
       );
     }
-
-    console.log(`📍 Using central location: ${location.lat}, ${location.lng}`);
 
     // Filter out experience types from categories array
     // Experience types are: "first-dates", "romantic", "friendly", "group-fun", "business"
@@ -265,7 +632,6 @@ serve(async (req) => {
     let places: any[] = [];
     try {
       places = await fetchGooglePlaces(preferences, location);
-      console.log(`✅ Fetched ${places.length} places from Google`);
     } catch (error) {
       console.error("❌ Error fetching Google Places:", error);
       return new Response(
@@ -285,7 +651,6 @@ serve(async (req) => {
     }
 
     if (places.length === 0) {
-      console.log("⚠️ No places found, returning empty result");
       return new Response(
         JSON.stringify({
           cards: [],
@@ -308,9 +673,6 @@ serve(async (req) => {
         location,
         preferences.travel_mode
       );
-      console.log(
-        `✅ Annotated ${placesWithTravel.length} places with travel info`
-      );
     } catch (error) {
       console.error(
         "❌ Error annotating with travel, using places without travel info:",
@@ -327,9 +689,6 @@ serve(async (req) => {
 
     // Filter by constraints
     const filtered = filterByConstraints(placesWithTravel, preferences);
-    console.log(
-      `✅ Filtered to ${filtered.length} places matching constraints`
-    );
 
     // Calculate match scores
     const withMatchScores = filtered.map((place) => ({
@@ -340,14 +699,12 @@ serve(async (req) => {
 
     // Sort by match score
     const sorted = withMatchScores.sort((a, b) => b.matchScore - a.matchScore);
-    console.log(`✅ Sorted ${sorted.length} places by match score`);
 
     // Generate AI content for top results
     const topResults = sorted.slice(0, 20);
     let enriched: any[] = [];
     try {
       enriched = await enrichWithAI(topResults, preferences);
-      console.log(`✅ Enriched ${enriched.length} places with AI content`);
     } catch (error) {
       console.error(
         "❌ Error enriching with AI, using fallback content:",
@@ -362,7 +719,6 @@ serve(async (req) => {
 
     // Convert to card format
     const cards = enriched.map((place) => convertToCard(place, preferences));
-    console.log(`✅ Converted ${cards.length} places to card format`);
 
     return new Response(
       JSON.stringify({
@@ -527,9 +883,6 @@ async function findCentralLocation(
       } else {
         // If geocoding fails, try to use a fallback location for this user
         // This prevents the entire function from failing if one user's location can't be geocoded
-        console.warn(
-          `⚠️ Could not geocode "${locationStr}", skipping this location`
-        );
       }
     } catch (error) {
       console.error(`Failed to geocode location "${locationStr}":`, error);
@@ -547,9 +900,6 @@ async function findCentralLocation(
       (p) => p.custom_lat && p.custom_lng
     );
     if (firstWithCoords) {
-      console.log(
-        `✅ Using custom coordinates: ${firstWithCoords.custom_lat}, ${firstWithCoords.custom_lng}`
-      );
       return {
         lat: firstWithCoords.custom_lat,
         lng: firstWithCoords.custom_lng,
@@ -567,9 +917,6 @@ async function findCentralLocation(
         const lat = parseFloat(coordMatch[1]);
         const lng = parseFloat(coordMatch[2]);
         if (!isNaN(lat) && !isNaN(lng)) {
-          console.log(
-            `✅ Using location string as coordinates: ${lat}, ${lng}`
-          );
           return { lat, lng };
         }
       }
@@ -577,9 +924,6 @@ async function findCentralLocation(
 
     // Fallback 3: Use fallback location if provided
     if (fallbackLocation.lat !== 0 && fallbackLocation.lng !== 0) {
-      console.log(
-        `✅ Using provided fallback location: ${fallbackLocation.lat}, ${fallbackLocation.lng}`
-      );
       return fallbackLocation;
     }
 
@@ -683,14 +1027,6 @@ async function fetchGooglePlaces(
       ? Math.min((preferences.travel_constraint_value || 5) * 1000, 50000)
       : 10000; // Default 10km
 
-  console.log(
-    `🔍 Starting Google Places search for ${
-      preferences.categories?.length || 0
-    } categories`
-  );
-  console.log(`📍 Search location: ${location.lat}, ${location.lng}`);
-  console.log(`📏 Search radius: ${radius}m`);
-
   // Places API (New) base URL
   const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
 
@@ -699,15 +1035,22 @@ async function fetchGooglePlaces(
     "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours";
 
   for (const category of preferences.categories || []) {
-    console.log(`\n🏷️ Processing category: "${category}"`);
-    const placeTypes = CATEGORY_MAPPINGS[category] || ["tourist_attraction"];
-    console.log(`   Mapped to place types: ${placeTypes.join(", ")}`);
+    // Convert category to lowercase for case-insensitive lookup
+    const categoryKey = category.toLowerCase();
+    const placeTypes = CATEGORY_MAPPINGS[categoryKey] ||
+      CATEGORY_MAPPINGS[category] || ["tourist_attraction"];
 
-    for (const placeType of placeTypes.slice(0, 3)) {
+    // For picnic categories, iterate through 8 types; otherwise use 3
+    const isPicnicCategory =
+      categoryKey === "picnic" || categoryKey === "picnics";
+    const maxTypes = isPicnicCategory ? 8 : 3;
+
+    for (const placeType of placeTypes.slice(0, maxTypes)) {
       try {
-        console.log(`   🔎 Searching for type: ${placeType}`);
+        // Check if this category has excluded types (e.g., picnic)
+        const excludedTypes = EXCLUDED_TYPES[categoryKey] || null;
 
-        const requestBody = {
+        const requestBody: any = {
           includedTypes: [placeType],
           maxResultCount: 10,
           locationRestriction: {
@@ -720,6 +1063,11 @@ async function fetchGooglePlaces(
             },
           },
         };
+
+        // Add excludedTypes if this is a picnic category
+        if (excludedTypes && excludedTypes.length > 0) {
+          requestBody.excludedTypes = excludedTypes;
+        }
 
         const response = await fetch(baseUrl, {
           method: "POST",
@@ -746,15 +1094,11 @@ async function fetchGooglePlaces(
 
         if (data.error) {
           console.error(
-            `   ❌ Google Places API returned error:`,
+            `Google Places API returned error:`,
             data.error.message || data.error
           );
           continue;
         }
-
-        console.log(
-          `   ✅ Found ${data.places?.length || 0} places for ${placeType}`
-        );
 
         if (data.places?.length) {
           const places = data.places.slice(0, 10).map((place: any) => {
@@ -789,8 +1133,9 @@ async function fetchGooglePlaces(
               placeId: place.id, // In new API, place.id is the identifier
               openingHours: place.regularOpeningHours
                 ? {
-                    openNow: place.regularOpeningHours.openNow,
-                    weekdayText: place.regularOpeningHours.weekdayDescriptions,
+                    open_now: place.regularOpeningHours.openNow || false,
+                    weekday_text:
+                      place.regularOpeningHours.weekdayDescriptions || [],
                   }
                 : null,
               placeTypes: place.types || [],
@@ -822,7 +1167,6 @@ async function fetchGooglePlaces(
           });
 
           allPlaces.push(...places);
-          console.log(`   ➕ Added ${places.length} places from ${placeType}`);
         }
       } catch (error) {
         console.error(`   ❌ Error fetching ${placeType}:`, error);
@@ -830,7 +1174,6 @@ async function fetchGooglePlaces(
     }
   }
 
-  console.log(`\n📦 Total places fetched: ${allPlaces.length}`);
   return allPlaces;
 }
 
@@ -840,7 +1183,6 @@ async function annotateWithTravel(
   travelMode: string
 ): Promise<any[]> {
   if (!GOOGLE_API_KEY) {
-    console.log("⚠️ No Google API key, skipping travel annotation");
     return places.map((p) => ({
       ...p,
       distance: "Unknown",
@@ -855,10 +1197,6 @@ async function annotateWithTravel(
   for (let i = 0; i < places.length; i += BATCH_SIZE) {
     batches.push(places.slice(i, i + BATCH_SIZE));
   }
-
-  console.log(
-    `📦 Processing ${batches.length} batch(es) for travel annotation`
-  );
 
   const mode =
     travelMode === "walking"
@@ -939,7 +1277,6 @@ async function annotateWithTravel(
       });
 
       annotatedPlaces.push(...batchAnnotated);
-      console.log(`✅ Annotated batch ${batchIndex + 1}/${batches.length}`);
     } catch (error) {
       console.error(
         `❌ Error getting travel times for batch ${batchIndex + 1}:`,
@@ -965,9 +1302,6 @@ function filterByConstraints(
   preferences: UserPreferences
 ): any[] {
   let remaining = places;
-  const initialCount = places.length;
-
-  console.log(`\n🔍 Starting filter process with ${initialCount} places`);
 
   // Stage 1: Filter by travel constraint
   remaining = remaining.filter((place) => {
@@ -984,6 +1318,20 @@ function filterByConstraints(
 
   // Stage 2: Filter by budget
   remaining = remaining.filter((place) => {
+    // Check if this is a stroll card - skip budget filtering for stroll cards
+    const categoryKey = place.category?.toLowerCase() || "";
+    const isStrollCard =
+      categoryKey.includes("stroll") ||
+      categoryKey === "take a stroll" ||
+      categoryKey === "take-a-stroll" ||
+      categoryKey === "take_a_stroll";
+
+    // Skip budget filtering for stroll cards
+    if (isStrollCard) {
+      return true;
+    }
+
+    // Apply budget filter for non-stroll cards
     return !(
       place.price_min > preferences.budget_max ||
       place.price_max < preferences.budget_min
@@ -994,9 +1342,6 @@ function filterByConstraints(
   remaining = remaining.filter((place) => {
     return preferences.categories.includes(place.category);
   });
-
-  const finalCount = remaining.length;
-  console.log(`\n✅ Filter complete: ${initialCount} → ${finalCount} places`);
 
   return remaining;
 }
@@ -1139,7 +1484,7 @@ function calculateCategoryScore(
 function calculateTimeScore(place: any, preferences: UserPreferences): number {
   let timeScore = 0;
   // Places API (New) uses regularOpeningHours.openNow instead of opening_hours.open_now
-  const isOpenNow = place.openingHours?.openNow || false;
+  const isOpenNow = place.openingHours?.open_now || false;
 
   if (isOpenNow) {
     timeScore += 0.6;
@@ -1362,6 +1707,7 @@ function convertToCard(place: any, preferences: UserPreferences): any {
     lng: place.location.lng,
     placeId: place.placeId,
     matchFactors: place.matchFactors || {},
+    openingHours: place.openingHours || null,
   };
 }
 

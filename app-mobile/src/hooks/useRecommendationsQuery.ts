@@ -125,7 +125,7 @@ const fetchRecommendations = async (
       highlights: exp.highlights || [],
       fullDescription: exp.description,
       address: exp.address,
-      openingHours: "",
+      openingHours: exp.openingHours || null,
       tags: exp.highlights || [],
       matchScore: exp.matchScore,
       reviewCount: exp.reviewCount,

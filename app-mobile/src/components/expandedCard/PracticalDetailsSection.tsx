@@ -10,7 +10,13 @@ import { Ionicons } from "@expo/vector-icons";
 
 interface PracticalDetailsSectionProps {
   address?: string;
-  openingHours?: string;
+  openingHours?:
+    | string
+    | {
+        open_now?: boolean;
+        weekday_text?: string[];
+      }
+    | null;
   phone?: string;
   website?: string;
 }
@@ -46,28 +52,56 @@ export default function PracticalDetailsSection({
     }
   };
 
-  // Parse opening hours if it's a string
-  const formatOpeningHours = (hours: string | undefined): string[] => {
+  // Parse opening hours - handles both string and object formats
+  const formatOpeningHours = (
+    hours:
+      | string
+      | { open_now?: boolean; weekday_text?: string[] }
+      | null
+      | undefined
+  ): string[] => {
     if (!hours) return [];
+
+    // If it's an object with weekday_text array, use that
+    if (typeof hours === "object" && !Array.isArray(hours) && hours !== null) {
+      if (hours.weekday_text && Array.isArray(hours.weekday_text)) {
+        return hours.weekday_text;
+      }
+      return [];
+    }
 
     // If it's already formatted as an array of strings, return as is
     if (Array.isArray(hours)) {
       return hours;
     }
 
-    // Try to parse different formats
-    try {
-      // If it's JSON string, parse it
-      const parsed = JSON.parse(hours);
-      if (Array.isArray(parsed)) {
-        return parsed;
+    // If it's a string, try to parse it
+    if (typeof hours === "string") {
+      // Try to parse different formats
+      try {
+        // If it's JSON string, parse it
+        const parsed = JSON.parse(hours);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+        // If parsed is an object with weekday_text
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          parsed.weekday_text &&
+          Array.isArray(parsed.weekday_text)
+        ) {
+          return parsed.weekday_text;
+        }
+      } catch {
+        // Not JSON, treat as plain string
       }
-    } catch {
-      // Not JSON, treat as plain string
+
+      // Split by newlines or commas
+      return hours.split(/\n|, /).filter((h) => h.trim().length > 0);
     }
 
-    // Split by newlines or commas
-    return hours.split(/\n|, /).filter((h) => h.trim().length > 0);
+    return [];
   };
 
   const hoursArray = formatOpeningHours(openingHours);
@@ -106,7 +140,7 @@ export default function PracticalDetailsSection({
         )}
 
         {/* Opening Hours */}
-        {hoursArray.length > 0 && (
+        {/*         {hoursArray.length > 0 && (
           <View style={styles.detailRow}>
             <View style={styles.iconContainer}>
               <Ionicons name="time" size={20} color="#6b7280" />
@@ -121,7 +155,7 @@ export default function PracticalDetailsSection({
             </View>
           </View>
         )}
-
+ */}
         {/* Phone */}
         {phone && (
           <TouchableOpacity

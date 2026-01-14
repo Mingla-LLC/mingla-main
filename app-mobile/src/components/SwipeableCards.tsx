@@ -586,6 +586,7 @@ export default function SwipeableCards({
                 description: card.description,
                 fullDescription: card.fullDescription,
                 address: card.address,
+                openingHours: card.openingHours,
                 highlights: card.highlights,
                 matchScore: card.matchScore,
                 socialStats: card.socialStats,

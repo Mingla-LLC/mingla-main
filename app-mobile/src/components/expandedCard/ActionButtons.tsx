@@ -67,6 +67,17 @@ export default function ActionButtons({
     );
   }, [calendarEntries, card.id]);
 
+  // Check if place is currently open
+  const isPlaceOpen =
+    (card.openingHours as { open_now?: boolean })?.open_now ?? true;
+
+  // Check if openingHours data is available
+  const hasOpeningHoursData =
+    card.openingHours &&
+    typeof card.openingHours === "object" &&
+    card.openingHours !== null &&
+    "open_now" in card.openingHours;
+
   // Helper function to generate suggested dates
   const generateSuggestedDates = (dateTimePrefs: any) => {
     const suggestions = [];
@@ -118,7 +129,7 @@ export default function ActionButtons({
   };
 
   const handleSchedule = () => {
-    if (isScheduling || isScheduled || !user?.id) return;
+    if (isScheduling || isScheduled || !user?.id || !isPlaceOpen) return;
 
     // Show date/time picker first
     // Initialize with a suggested date based on user preferences
@@ -463,30 +474,43 @@ export default function ActionButtons({
 
       {/* Top Row: Schedule Button + Share/Bookmark Button */}
       <View style={styles.topRow}>
-        <TouchableOpacity
-          style={[
-            styles.scheduleButton,
-            (isScheduling || isScheduled) && styles.scheduleButtonDisabled,
-          ]}
-          onPress={handleSchedule}
-          activeOpacity={0.7}
-          disabled={isScheduling || isScheduled}
-        >
-          {isScheduling ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <>
-              <Ionicons
-                name={isScheduled ? "checkmark-circle" : "calendar-outline"}
-                size={20}
-                color="#ffffff"
-              />
-              <Text style={styles.scheduleButtonText}>
-                {isScheduled ? "Scheduled" : "Schedule"}
-              </Text>
-            </>
+        <View style={styles.scheduleButtonContainer}>
+          <TouchableOpacity
+            style={[
+              styles.scheduleButton,
+              (isScheduling || isScheduled || !isPlaceOpen) &&
+                styles.scheduleButtonDisabled,
+            ]}
+            onPress={handleSchedule}
+            activeOpacity={0.7}
+            disabled={isScheduling || isScheduled || !isPlaceOpen}
+          >
+            {isScheduling ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <>
+                <Ionicons
+                  name={isScheduled ? "checkmark-circle" : "calendar-outline"}
+                  size={20}
+                  color="#ffffff"
+                />
+                <Text style={styles.scheduleButtonText}>
+                  {isScheduled ? "Scheduled" : "Schedule"}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+          {!isPlaceOpen && (
+            <Text style={styles.closedMessage}>
+              This place is currently closed
+            </Text>
           )}
-        </TouchableOpacity>
+          {!hasOpeningHoursData && (
+            <Text style={styles.warningMessage}>
+              Opening hours not available - schedule at your own risk
+            </Text>
+          )}
+        </View>
 
         {/* Share and Bookmark Button */}
         <View style={styles.iconButtonsContainer}>
@@ -568,6 +592,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     alignItems: "flex-start",
+  },
+  scheduleButtonContainer: {
+    flex: 1,
+    gap: 6,
   },
   scheduleButton: {
     flex: 1,
@@ -710,5 +738,19 @@ const styles = StyleSheet.create({
   },
   dateTimePicker: {
     height: 200,
+  },
+  closedMessage: {
+    fontSize: 12,
+    color: "#ef4444",
+    textAlign: "center",
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  warningMessage: {
+    fontSize: 12,
+    color: "#f59e0b",
+    textAlign: "center",
+    marginTop: 4,
+    fontWeight: "500",
   },
 });

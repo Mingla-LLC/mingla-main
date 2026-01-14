@@ -141,6 +141,10 @@ const safeAsyncStorageSet = async (key: string, value: any) => {
   }
 };
 
+// Stable empty array constants to prevent infinite loops in useEffect dependencies
+const EMPTY_SAVED_CARDS: any[] = [];
+const EMPTY_CALENDAR_ENTRIES: any[] = [];
+
 export function useAppState() {
   // Supabase authentication
   const {
@@ -242,10 +246,14 @@ export function useAppState() {
 
   // Use TanStack Query for saved cards and calendar entries
   const queryClient = useQueryClient();
-  const { data: savedCards = [], isLoading: isLoadingSavedCards } =
+  const { data: savedCardsData, isLoading: isLoadingSavedCards } =
     useSavedCards(user?.id);
-  const { data: calendarEntriesRaw = [], isLoading: isLoadingCalendarEntries } =
+  const { data: calendarEntriesRawData, isLoading: isLoadingCalendarEntries } =
     useCalendarEntries(user?.id);
+
+  // Use stable empty array constants to prevent infinite loops
+  const savedCards = savedCardsData ?? EMPTY_SAVED_CARDS;
+  const calendarEntriesRaw = calendarEntriesRawData ?? EMPTY_CALENDAR_ENTRIES;
 
   // Wrapper function to update saved cards (invalidates query to refetch)
   // This maintains backward compatibility with code that calls setSavedCards
@@ -497,12 +505,13 @@ export function useAppState() {
   }, []);
 
   // Update profile stats when saved cards change
+  // Use savedCards.length instead of savedCards array reference to prevent infinite loops
   useEffect(() => {
     setProfileStats((prev) => ({
       ...prev,
       savedExperiences: savedCards.length,
     }));
-  }, [savedCards]);
+  }, [savedCards.length]);
 
   // Normalize calendar entries from React Query into the shape used by CalendarTab
   const calendarEntries = useMemo(() => {

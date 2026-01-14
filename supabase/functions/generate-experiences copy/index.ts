@@ -344,20 +344,30 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   ],
   // Picnics variations
   picnics: [
-    "park",
+    "picnic_ground",
+    "garden",
     "botanical_garden",
-    "picnic_area",
+    "national_park",
     "campground",
+    "water_park",
+    "state_park",
+    "park",
     "beach",
+    "picnic_area",
     "lake",
     "natural_feature",
   ],
   picnic: [
-    "park",
+    "picnic_ground",
+    "national_park",
+    "garden",
     "botanical_garden",
-    "picnic_area",
+    "water_park",
+    "state_park",
     "campground",
+    "park",
     "beach",
+    "picnic_area",
     "lake",
     "natural_feature",
   ],
@@ -439,6 +449,26 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   ],
 };
 
+// Excluded types for specific categories
+const EXCLUDED_TYPES: { [key: string]: string[] } = {
+  picnic: [
+    "dog_park",
+    "cycling_park",
+    "amusement_park",
+    "park_and_ride",
+    "bus_stop",
+    "bus_station",
+  ],
+  picnics: [
+    "dog_park",
+    "cycling_park",
+    "amusement_park",
+    "park_and_ride",
+    "bus_stop",
+    "bus_station",
+  ],
+};
+
 interface UserPreferences {
   mode: string;
   budget_min: number;
@@ -463,15 +493,11 @@ serve(async (req) => {
   }
 
   try {
-    console.log("🎯 Generate experiences endpoint called");
-    console.log("📥 Request method:", req.method);
-    console.log("📥 Request URL:", req.url);
-
     let request: GenerationRequest;
     try {
       request = await req.json();
     } catch (jsonError) {
-      console.error("❌ Error parsing JSON request:", jsonError);
+      console.error("Error parsing JSON request:", jsonError);
       return new Response(
         JSON.stringify({
           error: "Invalid JSON in request body",
@@ -484,36 +510,11 @@ serve(async (req) => {
         }
       );
     }
-    console.log(
-      "📝 Received request:",
-      JSON.stringify({
-        userId: request.user_id,
-        hasPreferences: !!request.preferences,
-        hasLocation: !!request.location,
-      })
-    );
 
     const { preferences, location } = request;
 
-    // Detailed logging of preferences
-    console.log(
-      "📋 Full preferences object:",
-      JSON.stringify(preferences, null, 2)
-    );
-    console.log("📍 Location:", JSON.stringify(location, null, 2));
-    console.log("🏷️ Categories:", preferences?.categories);
-    console.log(
-      "💰 Budget:",
-      `$${preferences?.budget_min} - $${preferences?.budget_max}`
-    );
-    console.log("🚶 Travel mode:", preferences?.travel_mode);
-    console.log(
-      "⏱️ Travel constraint:",
-      `${preferences?.travel_constraint_type}: ${preferences?.travel_constraint_value}`
-    );
-
     if (!preferences) {
-      console.error("❌ Preferences are required");
+      console.error("Preferences are required");
       return new Response(
         JSON.stringify({
           error: "Preferences are required",
@@ -528,7 +529,7 @@ serve(async (req) => {
     }
 
     if (!location) {
-      console.error("❌ Location is required");
+      console.error("Location is required");
       return new Response(
         JSON.stringify({
           error: "Location is required",
@@ -546,9 +547,8 @@ serve(async (req) => {
     let places: any[] = [];
     try {
       places = await fetchGooglePlaces(preferences, location);
-      console.log(`✅ Fetched ${places.length} places from Google`);
     } catch (error) {
-      console.error("❌ Error fetching Google Places:", error);
+      console.error("Error fetching Google Places:", error);
       // Return empty result instead of crashing
       return new Response(
         JSON.stringify({
@@ -567,7 +567,6 @@ serve(async (req) => {
     }
 
     if (places.length === 0) {
-      console.log("⚠️ No places found, returning empty result");
       return new Response(
         JSON.stringify({
           cards: [],
@@ -590,12 +589,9 @@ serve(async (req) => {
         location,
         preferences.travel_mode
       );
-      console.log(
-        `✅ Annotated ${placesWithTravel.length} places with travel info`
-      );
     } catch (error) {
       console.error(
-        "❌ Error annotating with travel, using places without travel info:",
+        "Error annotating with travel, using places without travel info:",
         error
       );
       // Continue with places without travel info
@@ -610,9 +606,6 @@ serve(async (req) => {
 
     // Filter by constraints
     const filtered = filterByConstraints(placesWithTravel, preferences);
-    console.log(
-      `✅ Filtered to ${filtered.length} places matching constraints`
-    );
 
     // Calculate match scores
     const withMatchScores = filtered.map((place) => ({
@@ -623,19 +616,14 @@ serve(async (req) => {
 
     // Sort by match score
     const sorted = withMatchScores.sort((a, b) => b.matchScore - a.matchScore);
-    console.log(`✅ Sorted ${sorted.length} places by match score`);
 
     // Generate AI content for top results
     const topResults = sorted.slice(0, 20);
     let enriched: any[] = [];
     try {
       enriched = await enrichWithAI(topResults, preferences);
-      console.log(`✅ Enriched ${enriched.length} places with AI content`);
     } catch (error) {
-      console.error(
-        "❌ Error enriching with AI, using fallback content:",
-        error
-      );
+      console.error("Error enriching with AI, using fallback content:", error);
       // Use places with fallback descriptions
       enriched = topResults.map((place) => ({
         ...place,
@@ -646,7 +634,6 @@ serve(async (req) => {
 
     // Convert to card format
     const cards = enriched.map((place) => convertToCard(place, preferences));
-    console.log(`✅ Converted ${cards.length} places to card format`);
 
     return new Response(
       JSON.stringify({
@@ -661,12 +648,9 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("❌ Error generating experiences:", error);
+    console.error("Error generating experiences:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    const errorStack = error instanceof Error ? error.stack : String(error);
-
-    console.error("Error details:", errorStack);
 
     return new Response(
       JSON.stringify({
@@ -690,9 +674,7 @@ async function fetchGooglePlaces(
   location: { lat: number; lng: number }
 ): Promise<any[]> {
   if (!GOOGLE_API_KEY) {
-    console.error(
-      "❌ Google API key not available - check environment variables"
-    );
+    console.error("Google API key not available - check environment variables");
     throw new Error(
       "Google Maps API key is not configured. Please set GOOGLE_MAPS_API_KEY in Supabase Edge Functions secrets."
     );
@@ -704,26 +686,20 @@ async function fetchGooglePlaces(
       ? Math.min((preferences.travel_constraint_value || 5) * 1000, 50000)
       : 10000; // Default 10km
 
-  console.log(
-    `🔍 Starting Google Places API (New) search for ${
-      preferences.categories?.length || 0
-    } categories`
-  );
-  console.log(`📍 Search location: ${location.lat}, ${location.lng}`);
-  console.log(`📏 Search radius: ${radius}m`);
-  console.log(`🔑 Google API Key present: ${!!GOOGLE_API_KEY}`);
-
   // Places API (New) base URL
   const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
 
   for (const category of preferences.categories || []) {
-    console.log(`\n🏷️ Processing category: "${category}"`);
     // Convert category to lowercase for case-insensitive lookup
     const categoryKey = category.toLowerCase();
     const placeTypes = CATEGORY_MAPPINGS[categoryKey] || ["tourist_attraction"];
-    console.log(`   Mapped to place types: ${placeTypes.join(", ")}`);
 
-    for (const placeType of placeTypes.slice(0, 3)) {
+    // For picnic categories, iterate through 7 types; otherwise use 3
+    const isPicnicCategory =
+      categoryKey === "picnic" || categoryKey === "picnics";
+    const maxTypes = isPicnicCategory ? 8 : 3;
+
+    for (const placeType of placeTypes.slice(0, maxTypes)) {
       try {
         // Convert legacy place type to new API format (e.g., "restaurant" -> "restaurant")
         // Most types remain the same, but we need to ensure proper format
@@ -734,7 +710,10 @@ async function fetchGooglePlaces(
         const fieldMask =
           "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours";
 
-        const requestBody = {
+        // Check if this category has excluded types (e.g., picnic)
+        const excludedTypes = EXCLUDED_TYPES[categoryKey] || null;
+
+        const requestBody: any = {
           includedTypes: [includedType],
           maxResultCount: 10,
           locationRestriction: {
@@ -748,7 +727,10 @@ async function fetchGooglePlaces(
           },
         };
 
-        console.log(`   🔎 Searching for type: ${placeType}`);
+        // Add excludedTypes if this is a picnic category
+        if (excludedTypes && excludedTypes.length > 0) {
+          requestBody.excludedTypes = excludedTypes;
+        }
 
         const response = await fetch(baseUrl, {
           method: "POST",
@@ -763,7 +745,7 @@ async function fetchGooglePlaces(
         if (!response.ok) {
           const errorText = await response.text();
           console.error(
-            `Google Places API (New) error for ${placeType}:`,
+            `Google Places API error for ${placeType}:`,
             response.status,
             response.statusText,
             errorText
@@ -772,11 +754,6 @@ async function fetchGooglePlaces(
         }
 
         const data = await response.json();
-        console.log(
-          `   📊 API Response - Found ${
-            data.places?.length || 0
-          } places for ${placeType}`
-        );
 
         if (data.places?.length) {
           const places = data.places.map((place: any) => {
@@ -850,17 +827,13 @@ async function fetchGooglePlaces(
           });
 
           allPlaces.push(...places);
-          console.log(`   ➕ Added ${places.length} places from ${placeType}`);
-        } else {
-          console.log(`   ⚠️ No results found for ${placeType}`);
         }
       } catch (error) {
-        console.error(`   ❌ Error fetching ${placeType}:`, error);
+        console.error(`Error fetching ${placeType}:`, error);
       }
     }
   }
 
-  console.log(`\n📦 Total places fetched: ${allPlaces.length}`);
   return allPlaces;
 }
 
@@ -870,7 +843,6 @@ async function annotateWithTravel(
   travelMode: string
 ): Promise<any[]> {
   if (!GOOGLE_API_KEY) {
-    console.log("⚠️ No Google API key, skipping travel annotation");
     return places.map((p) => ({
       ...p,
       distance: "Unknown",
@@ -887,10 +859,6 @@ async function annotateWithTravel(
   for (let i = 0; i < places.length; i += BATCH_SIZE) {
     batches.push(places.slice(i, i + BATCH_SIZE));
   }
-
-  console.log(
-    `📦 Processing ${batches.length} batch(es) for travel annotation`
-  );
 
   const mode =
     travelMode === "walking"
@@ -913,7 +881,7 @@ async function annotateWithTravel(
       const response = await fetch(url);
       if (!response.ok) {
         console.error(
-          `❌ Distance Matrix API error (batch ${batchIndex + 1}):`,
+          `Distance Matrix API error (batch ${batchIndex + 1}):`,
           response.status
         );
         // Add places without travel info
@@ -933,7 +901,7 @@ async function annotateWithTravel(
 
       if (data.status && data.status !== "OK") {
         console.error(
-          `❌ Distance Matrix API returned error status: ${data.status}`,
+          `Distance Matrix API returned error status: ${data.status}`,
           data.error_message
         );
         // Add places without travel info
@@ -974,10 +942,9 @@ async function annotateWithTravel(
       });
 
       annotatedPlaces.push(...batchAnnotated);
-      console.log(`✅ Annotated batch ${batchIndex + 1}/${batches.length}`);
     } catch (error) {
       console.error(
-        `❌ Error getting travel times for batch ${batchIndex + 1}:`,
+        `Error getting travel times for batch ${batchIndex + 1}:`,
         error
       );
       // Add places without travel info on error
@@ -1001,24 +968,11 @@ function filterByConstraints(
   preferences: UserPreferences
 ): any[] {
   let remaining = places;
-  const initialCount = places.length;
-
-  console.log(`\n🔍 Starting filter process with ${initialCount} places`);
-  console.log(`📋 Filter criteria:`, {
-    travel_constraint_type: preferences.travel_constraint_type,
-    travel_constraint_value: preferences.travel_constraint_value,
-    budget_min: preferences.budget_min,
-    budget_max: preferences.budget_max,
-    categories: preferences.categories,
-  });
 
   // Stage 1: Filter by travel constraint
-  const beforeTravelFilter = remaining.length;
-  const travelFilteredPlaces: any[] = [];
   remaining = remaining.filter((place) => {
     if (preferences.travel_constraint_type === "time" && place.travelTimeMin) {
       if (place.travelTimeMin > preferences.travel_constraint_value) {
-        travelFilteredPlaces.push(place);
         return false;
       }
     } else if (
@@ -1026,46 +980,13 @@ function filterByConstraints(
       place.distanceKm
     ) {
       if (place.distanceKm > preferences.travel_constraint_value) {
-        travelFilteredPlaces.push(place);
         return false;
       }
     }
-    console.log(
-      "preferenceConstraintValue",
-      preferences.travel_constraint_value
-    );
-    console.log("placeDistanceKm", place.distanceKm);
-    console.log("placeTravelTimeMin", place.travelTimeMin);
     return true;
   });
-  const afterTravelFilter = remaining.length;
-  const travelFilteredOut = beforeTravelFilter - afterTravelFilter;
-  if (travelFilteredOut > 0) {
-    console.log(
-      `   ⏱️  Travel constraint filter: ${beforeTravelFilter} → ${afterTravelFilter} (removed ${travelFilteredOut} places)`
-    );
-    console.log(
-      `      Constraint: ${preferences.travel_constraint_type} <= ${preferences.travel_constraint_value}`
-    );
-    if (travelFilteredPlaces.length > 0) {
-      const example = travelFilteredPlaces[0];
-      const constraintValue =
-        preferences.travel_constraint_type === "time"
-          ? `${example.travelTimeMin} min`
-          : `${example.distanceKm} km`;
-      console.log(
-        `      Example filtered place: "${example.name}" (${constraintValue})`
-      );
-    }
-  } else {
-    console.log(
-      `   ⏱️  Travel constraint filter: ${beforeTravelFilter} → ${afterTravelFilter} (no places removed)`
-    );
-  }
 
   // Stage 2: Filter by budget (skip for stroll cards)
-  const beforeBudgetFilter = remaining.length;
-  const budgetFilteredPlaces: any[] = [];
   remaining = remaining.filter((place) => {
     // Check if this is a stroll card - skip budget filtering for stroll cards
     const categoryKey = place.category?.toLowerCase() || "";
@@ -1085,53 +1006,21 @@ function filterByConstraints(
       place.price_min > preferences.budget_max ||
       place.price_max < preferences.budget_min
     ) {
-      budgetFilteredPlaces.push(place);
       return false;
     }
 
-    console.log("placePriceMin", place.price_min);
-    console.log("placePriceMax", place.price_max);
-    console.log("budgetMin", preferences.budget_min);
-    console.log("budgetMax", preferences.budget_max);
     return true;
   });
-  const afterBudgetFilter = remaining.length;
-  const budgetFilteredOut = beforeBudgetFilter - afterBudgetFilter;
-  if (budgetFilteredOut > 0) {
-    console.log(
-      `   💰 Budget filter: ${beforeBudgetFilter} → ${afterBudgetFilter} (removed ${budgetFilteredOut} places)`
-    );
-    console.log(
-      `      Budget range: $${preferences.budget_min} - $${preferences.budget_max}`
-    );
-    if (budgetFilteredPlaces.length > 0) {
-      console.log(
-        `      Example filtered place: "${budgetFilteredPlaces[0].name}" ($${budgetFilteredPlaces[0].price_min}-$${budgetFilteredPlaces[0].price_max})`
-      );
-    }
-  } else {
-    console.log(
-      `   💰 Budget filter: ${beforeBudgetFilter} → ${afterBudgetFilter} (no places removed)`
-    );
-  }
 
   // Stage 3: Filter by category
-  const beforeCategoryFilter = remaining.length;
-  const categoryFilteredPlaces: any[] = [];
   remaining = remaining.filter((place) => {
     if (!preferences.categories.includes(place.category)) {
-      categoryFilteredPlaces.push(place);
       return false;
     }
-    console.log("placeCategory", place.category);
-    console.log("categories", preferences.categories);
     return true;
   });
-  const afterCategoryFilter = remaining.length;
 
   // Stage 3.5: Hard filter for stroll cards - must have valid anchor
-  const strollFilteredPlaces: any[] = [];
-  const beforeStrollFilter = remaining.length;
   remaining = remaining.filter((place) => {
     const categoryKey = place.category?.toLowerCase() || "";
     const isStrollCard =
@@ -1158,53 +1047,11 @@ function filterByConstraints(
       );
 
       if (!hasValidAnchor) {
-        strollFilteredPlaces.push(place);
         return false;
       }
     }
     return true;
   });
-  const afterStrollFilter = remaining.length;
-  const strollFilteredOut = beforeStrollFilter - afterStrollFilter;
-  if (strollFilteredOut > 0) {
-    console.log(
-      `   🚶 Stroll anchor filter: ${beforeStrollFilter} → ${afterStrollFilter} (removed ${strollFilteredOut} invalid stroll anchors)`
-    );
-  }
-  const categoryFilteredOut = beforeCategoryFilter - afterCategoryFilter;
-  if (categoryFilteredOut > 0) {
-    console.log(
-      `   🏷️  Category filter: ${beforeCategoryFilter} → ${afterCategoryFilter} (removed ${categoryFilteredOut} places)`
-    );
-    console.log(
-      `      Allowed categories: ${preferences.categories.join(", ")}`
-    );
-    if (categoryFilteredPlaces.length > 0) {
-      const categoryCounts: { [key: string]: number } = {};
-      categoryFilteredPlaces.forEach((place) => {
-        categoryCounts[place.category] =
-          (categoryCounts[place.category] || 0) + 1;
-      });
-      console.log(
-        `      Filtered categories: ${Object.entries(categoryCounts)
-          .map(([cat, count]) => `${cat} (${count})`)
-          .join(", ")}`
-      );
-    }
-  } else {
-    console.log(
-      `   🏷️  Category filter: ${beforeCategoryFilter} → ${afterCategoryFilter} (no places removed)`
-    );
-  }
-
-  const finalCount = remaining.length;
-  const totalFilteredOut = initialCount - finalCount;
-  console.log(
-    `\n✅ Filter complete: ${initialCount} → ${finalCount} places (removed ${totalFilteredOut} total)`
-  );
-  console.log(
-    `   Breakdown: Travel=${travelFilteredOut}, Budget=${budgetFilteredOut}, Category=${categoryFilteredOut}\n`
-  );
 
   return remaining;
 }
@@ -1572,6 +1419,7 @@ function convertToCard(place: any, preferences: UserPreferences): any {
     lng: place.location.lng,
     placeId: place.placeId,
     matchFactors: place.matchFactors || {},
+    openingHours: place.openingHours || null,
   };
 }
 

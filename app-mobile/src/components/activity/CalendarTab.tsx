@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Text,
   View,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
+import ProposeDateTimeModal from "./ProposeDateTimeModal";
 
 interface CalendarEntry {
   id: string;
@@ -73,6 +74,64 @@ const CalendarTab = ({
     [cardId: string]: number;
   }>({});
   const [removingEntryId, setRemovingEntryId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"active" | "archive">("active");
+  const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
+    useState(false);
+  const [entryToReschedule, setEntryToReschedule] =
+    useState<CalendarEntry | null>(null);
+
+  // Filter entries into Active and Archive based on scheduled date
+  const { activeEntries, archiveEntries } = useMemo(() => {
+    const now = new Date();
+    const active: CalendarEntry[] = [];
+    const archive: CalendarEntry[] = [];
+
+    calendarEntries.forEach((entry) => {
+      // Check if entry has a scheduled date
+      const scheduledDate = entry.suggestedDates?.[0]
+        ? new Date(entry.suggestedDates[0])
+        : entry.date && entry.time
+        ? new Date(`${entry.date}T${entry.time}`)
+        : null;
+
+      if (scheduledDate && scheduledDate < now) {
+        // Past date - add to archive
+        archive.push(entry);
+      } else {
+        // Future date or no date - add to active
+        active.push(entry);
+      }
+    });
+
+    return { activeEntries: active, archiveEntries: archive };
+  }, [calendarEntries]);
+
+  // Get entries for current tab
+  const currentEntries =
+    activeTab === "active" ? activeEntries : archiveEntries;
+
+  const handleReschedule = (entry: CalendarEntry) => {
+    setEntryToReschedule(entry);
+    setShowProposeDateTimeModal(true);
+  };
+
+  const handleProposeDateTime = (
+    date: Date,
+    dateOption: "now" | "today" | "weekend" | "custom"
+  ) => {
+    if (!entryToReschedule) return;
+
+    setShowProposeDateTimeModal(false);
+    // Update the calendar entry with new date
+    // This will need to call a service to update the entry
+    const updatedEntry = {
+      ...entryToReschedule,
+      suggestedDates: [date.toISOString()],
+    };
+    // Call onAddToCalendar to update the entry
+    onAddToCalendar(updatedEntry);
+    setEntryToReschedule(null);
+  };
 
   const styles = StyleSheet.create({
     container: {
@@ -196,6 +255,14 @@ const CalendarTab = ({
     },
     collaborationText: {
       color: "#7c3aed",
+    },
+    sourceText: {
+      fontSize: 12,
+      fontWeight: "500",
+    },
+    statusText: {
+      fontSize: 12,
+      fontWeight: "500",
     },
     statusBadge: {
       paddingHorizontal: 8,
@@ -538,6 +605,60 @@ const CalendarTab = ({
       textAlign: "center",
       marginBottom: 24,
     },
+    tabsContainer: {
+      flexDirection: "row",
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 8,
+      backgroundColor: "white",
+      borderBottomWidth: 1,
+      borderBottomColor: "#e5e7eb",
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      borderBottomWidth: 2,
+      borderBottomColor: "transparent",
+    },
+    tabActive: {
+      borderBottomColor: "#ea580c",
+    },
+    tabText: {
+      fontSize: 16,
+      fontWeight: "500",
+      color: "#6b7280",
+    },
+    tabTextActive: {
+      color: "#ea580c",
+      fontWeight: "600",
+    },
+    tabCount: {
+      fontSize: 12,
+      color: "#9ca3af",
+      marginTop: 2,
+    },
+    tabCountActive: {
+      color: "#ea580c",
+    },
+    rescheduleButton: {
+      flex: 1,
+      backgroundColor: "#eb7825",
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      marginTop: 12,
+    },
+    rescheduleButtonText: {
+      color: "white",
+      fontSize: 16,
+      fontWeight: "600",
+    },
   });
 
   const getIconComponent = (iconName: any) => {
@@ -624,7 +745,7 @@ const CalendarTab = ({
           <View style={styles.cardHeader}>
             <View style={styles.cardImage}>
               <ImageWithFallback
-                src={entry.experience?.image || entry.image}
+                source={{ uri: entry.experience?.image || entry.image }}
                 alt={entry.experience?.title || entry.title}
                 style={{ width: "100%", height: "100%" }}
               />
@@ -835,58 +956,75 @@ const CalendarTab = ({
           {/* Calendar Actions */}
           <View style={styles.actionsContainer}>
             <View style={styles.actionsRow}>
-              <TouchableOpacity
-                onPress={() =>
-                  handleOpenMaps(
-                    entry.experience?.address || "Current Location"
-                  )
-                }
-                style={styles.primaryButton}
-              >
-                <Ionicons name="location" size={20} color="white" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => onAddToCalendar(entry)}
-                style={styles.secondaryButton}
-              >
-                <Ionicons name="calendar" size={20} color="#eb7825" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => onShareCard(entry.experience)}
-                style={styles.tertiaryButton}
-              >
-                <Ionicons name="share" size={20} color="#6b7280" />
-              </TouchableOpacity>
-
-              {/* Show remove button only for non-purchased entries */}
-              {!entry.purchaseOption && !entry.isPurchased ? (
+              {/* Show Re Schedule button for archived entries */}
+              {activeTab === "archive" ? (
                 <TouchableOpacity
-                  onPress={() => handleRemoveFromCalendar(entry)}
-                  style={styles.tertiaryButton}
-                  disabled={removingEntryId === entry.id}
+                  onPress={() => handleReschedule(entry)}
+                  style={styles.rescheduleButton}
                 >
-                  {removingEntryId === entry.id ? (
-                    <ActivityIndicator size="small" color="#6b7280" />
-                  ) : (
-                    <Ionicons name="close" size={20} color="#6b7280" />
-                  )}
+                  <Ionicons name="calendar" size={20} color="white" />
+                  <Text style={styles.rescheduleButtonText}>Re Schedule</Text>
                 </TouchableOpacity>
               ) : (
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <View style={styles.purchasedButton}>
-                    <Ionicons name="lock-closed" size={20} color="#059669" />
-                  </View>
-
-                  {/* QR Code Button for Purchased Items */}
+                <>
                   <TouchableOpacity
-                    onPress={() => onShowQRCode(entry.id)}
-                    style={styles.qrButton}
+                    onPress={() =>
+                      handleOpenMaps(
+                        entry.experience?.address || "Current Location"
+                      )
+                    }
+                    style={styles.primaryButton}
                   >
-                    <Ionicons name="qr-code" size={20} color="#2563eb" />
+                    <Ionicons name="location" size={20} color="white" />
                   </TouchableOpacity>
-                </View>
+
+                  <TouchableOpacity
+                    onPress={() => onAddToCalendar(entry)}
+                    style={styles.secondaryButton}
+                  >
+                    <Ionicons name="calendar" size={20} color="#eb7825" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => onShareCard(entry.experience)}
+                    style={styles.tertiaryButton}
+                  >
+                    <Ionicons name="share" size={20} color="#6b7280" />
+                  </TouchableOpacity>
+
+                  {/* Show remove button only for non-purchased entries */}
+                  {!entry.purchaseOption && !entry.isPurchased ? (
+                    <TouchableOpacity
+                      onPress={() => handleRemoveFromCalendar(entry)}
+                      style={styles.tertiaryButton}
+                      disabled={removingEntryId === entry.id}
+                    >
+                      {removingEntryId === entry.id ? (
+                        <ActivityIndicator size="small" color="#6b7280" />
+                      ) : (
+                        <Ionicons name="close" size={20} color="#6b7280" />
+                      )}
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <View style={styles.purchasedButton}>
+                        <Ionicons
+                          name="lock-closed"
+                          size={20}
+                          color="#059669"
+                        />
+                      </View>
+
+                      {/* QR Code Button for Purchased Items */}
+                      <TouchableOpacity
+                        onPress={() => onShowQRCode(entry.id)}
+                        style={styles.qrButton}
+                      >
+                        <Ionicons name="qr-code" size={20} color="#2563eb" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
               )}
             </View>
           </View>
@@ -900,11 +1038,11 @@ const CalendarTab = ({
                   <View style={styles.imageGallery}>
                     <View style={styles.galleryImage}>
                       <ImageWithFallback
-                        src={
-                          entry.experience.images[
+                        source={{
+                          uri: entry.experience.images[
                             currentImageIndex[entry.id] || 0
-                          ]
-                        }
+                          ],
+                        }}
                         alt={entry.experience.title}
                         style={{ width: "100%", height: "100%" }}
                       />
@@ -944,17 +1082,19 @@ const CalendarTab = ({
 
                           {/* Image indicators */}
                           <View style={styles.imageIndicators}>
-                            {entry.experience.images.map((_, index) => (
-                              <View
-                                key={index}
-                                style={[
-                                  styles.indicator,
-                                  index === (currentImageIndex[entry.id] || 0)
-                                    ? styles.activeIndicator
-                                    : styles.inactiveIndicator,
-                                ]}
-                              />
-                            ))}
+                            {entry.experience.images.map(
+                              (_: any, index: number) => (
+                                <View
+                                  key={index}
+                                  style={[
+                                    styles.indicator,
+                                    index === (currentImageIndex[entry.id] || 0)
+                                      ? styles.activeIndicator
+                                      : styles.inactiveIndicator,
+                                  ]}
+                                />
+                              )
+                            )}
                           </View>
                         </>
                       )}
@@ -978,13 +1118,15 @@ const CalendarTab = ({
                     <View style={styles.highlightsContainer}>
                       <Text style={styles.sectionTitle}>Highlights</Text>
                       <View style={styles.highlightsList}>
-                        {entry.experience.highlights.map((highlight, index) => (
-                          <View key={index} style={styles.highlightTag}>
-                            <Text style={styles.highlightText}>
-                              {highlight}
-                            </Text>
-                          </View>
-                        ))}
+                        {entry.experience.highlights.map(
+                          (highlight: string, index: number) => (
+                            <View key={index} style={styles.highlightTag}>
+                              <Text style={styles.highlightText}>
+                                {highlight}
+                              </Text>
+                            </View>
+                          )
+                        )}
                       </View>
                     </View>
                   )}
@@ -1099,10 +1241,101 @@ const CalendarTab = ({
     );
   };
 
+  // Convert CalendarEntry to SavedCard format for ProposeDateTimeModal
+  const entryToCard = (entry: CalendarEntry) => {
+    return {
+      id: entry.id,
+      title: entry.experience?.title || entry.title,
+      category: entry.experience?.category || entry.category,
+      categoryIcon: entry.experience?.categoryIcon || entry.categoryIcon,
+      image: entry.experience?.image || entry.image,
+      images: entry.experience?.images || entry.images,
+      rating: entry.experience?.rating || entry.rating,
+      reviewCount: entry.experience?.reviewCount || entry.reviewCount,
+      priceRange: entry.experience?.priceRange || entry.priceRange,
+      travelTime: entry.experience?.travelTime,
+      description: entry.experience?.description || entry.description,
+      fullDescription:
+        entry.experience?.fullDescription || entry.fullDescription,
+      address: entry.experience?.address || entry.address,
+      openingHours: entry.experience?.openingHours,
+      highlights: entry.experience?.highlights || entry.highlights,
+      matchScore: entry.experience?.matchScore,
+      socialStats: entry.experience?.socialStats || entry.socialStats,
+      source: entry.source || "solo",
+      dateAdded: entry.suggestedDates?.[0] || entry.date,
+    };
+  };
+
   return (
     <View style={styles.container}>
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "active" && styles.tabActive]}
+          onPress={() => setActiveTab("active")}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "active" && styles.tabTextActive,
+            ]}
+          >
+            Active
+          </Text>
+          <Text
+            style={[
+              styles.tabCount,
+              activeTab === "active" && styles.tabCountActive,
+            ]}
+          >
+            ({activeEntries.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "archive" && styles.tabActive]}
+          onPress={() => setActiveTab("archive")}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "archive" && styles.tabTextActive,
+            ]}
+          >
+            Archives
+          </Text>
+          <Text
+            style={[
+              styles.tabCount,
+              activeTab === "archive" && styles.tabCountActive,
+            ]}
+          >
+            ({archiveEntries.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Propose Date & Time Modal */}
+      {entryToReschedule && (
+        <ProposeDateTimeModal
+          visible={showProposeDateTimeModal}
+          onClose={() => {
+            setShowProposeDateTimeModal(false);
+            setEntryToReschedule(null);
+          }}
+          card={entryToCard(entryToReschedule)}
+          currentScheduledDate={
+            entryToReschedule.suggestedDates?.[0] ||
+            (entryToReschedule.date && entryToReschedule.time
+              ? `${entryToReschedule.date}T${entryToReschedule.time}`
+              : null)
+          }
+          onProposeDateTime={handleProposeDateTime}
+        />
+      )}
+
       <FlatList
-        data={calendarEntries}
+        data={currentEntries}
         renderItem={renderCalendarEntry}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}

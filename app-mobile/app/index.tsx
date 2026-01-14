@@ -634,7 +634,6 @@ function AppContent() {
               console.log("Purchasing from saved:", card, option);
             }}
             onShareCard={handlers.handleShareCard}
-            onRemoveSaved={handlers.handleRemoveSavedCard}
           />
         );
       case "connections":
@@ -670,7 +669,6 @@ function AppContent() {
           <ActivityPage
             boardsSessions={boardsSessions}
             isLoadingBoards={isLoadingBoards}
-            savedCards={savedCards}
             isLoadingSavedCards={isLoadingSavedCards}
             calendarEntries={calendarEntries}
             userPreferences={userPreferences}
@@ -692,7 +690,6 @@ function AppContent() {
               // Handle purchase logic here
             }}
             onRemoveFromCalendar={handlers.handleRemoveFromCalendar}
-            onRemoveSaved={handlers.handleRemoveSavedCard}
             onShareCard={handlers.handleShareCard}
             onUpdateBoardSession={(board: any) => {
               console.log("Updating board session:", board);

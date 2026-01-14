@@ -6,6 +6,9 @@ import {
   StyleSheet,
   ActivityIndicator,
   FlatList,
+  Modal,
+  Platform,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
@@ -13,6 +16,13 @@ import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 import { useSavedCards } from "@/src/hooks/useSavedCards";
 import { useAppStore } from "../../store/appStore";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAppState } from "../AppStateManager";
+import { CalendarService } from "../../services/calendarService";
+import { savedCardsService } from "../../services/savedCardsService";
+import { toastManager } from "../ui/Toast";
+import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
+import ProposeDateTimeModal from "./ProposeDateTimeModal";
 
 interface SavedCard {
   id: string;
@@ -38,6 +48,7 @@ interface SavedCard {
   dateAdded: string;
   source: "solo" | "collaboration";
   sessionName?: string;
+  sessionId?: string; // Session ID where the card was saved
   purchaseOptions?: Array<{
     id: string;
     title: string;
@@ -50,30 +61,46 @@ interface SavedCard {
 }
 
 interface SavedTabProps {
-  savedCards: SavedCard[];
   isLoading?: boolean;
   onScheduleFromSaved: (card: SavedCard) => void | Promise<void>;
   onPurchaseFromSaved: (card: SavedCard, purchaseOption: any) => void;
   onShareCard: (card: SavedCard) => void;
-  onRemoveSaved: (card: SavedCard) => void;
   userPreferences?: any;
   scheduledCardIds?: string[];
+  boardSavedCards?: SavedCard[]; // Optional: board-specific saved cards
+  activeBoardSessionId?: string | null; // Session ID for invalidating board cards query
 }
 
 const SavedTab = ({
-  savedCards,
   isLoading = false,
   onScheduleFromSaved,
   onPurchaseFromSaved,
   onShareCard,
-  onRemoveSaved,
   userPreferences,
   scheduledCardIds = [],
+  boardSavedCards,
+  activeBoardSessionId,
 }: SavedTabProps) => {
+  const {
+    savedCards: contextSavedCards,
+    isLoadingSavedCards: contextIsLoadingSavedCards,
+    calendarEntries,
+  } = useAppState();
+  const effectiveIsLoading = isLoading || contextIsLoadingSavedCards;
+  // Use boardSavedCards if provided, otherwise use savedCards from context
+  const savedCards = boardSavedCards ?? contextSavedCards;
   const [selectedCardForModal, setSelectedCardForModal] =
     useState<ExpandedCardData | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [schedulingCardId, setSchedulingCardId] = useState<string | null>(null);
+  const [removingCardIds, setRemovingCardIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
+    useState(false);
+  const [cardToSchedule, setCardToSchedule] = useState<SavedCard | null>(null);
+  const { user } = useAppStore();
+  const queryClient = useQueryClient();
 
   // Convert scheduledCardIds to Set for O(1) lookups
   const scheduledCardIdsSet = useMemo(
@@ -220,6 +247,10 @@ const SavedTab = ({
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
+    },
+    scheduleButtonContainer: {
+      flex: 1,
+      gap: 6,
     },
     primaryButton: {
       flex: 1,
@@ -427,6 +458,69 @@ const SavedTab = ({
       color: "#6b7280",
       marginTop: 8,
     },
+    closedMessage: {
+      fontSize: 12,
+      color: "#ef4444",
+      textAlign: "center",
+      marginTop: 4,
+      fontWeight: "500",
+    },
+    warningMessage: {
+      fontSize: 12,
+      color: "#f59e0b",
+      textAlign: "center",
+      marginTop: 4,
+      fontWeight: "500",
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      justifyContent: "flex-end",
+    },
+    modalContent: {
+      backgroundColor: "white",
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingBottom: 20,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: "#e5e7eb",
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: "#111827",
+    },
+    modalHeaderButtons: {
+      flexDirection: "row",
+      gap: 16,
+    },
+    modalCancelButton: {
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+    },
+    modalCancelText: {
+      fontSize: 16,
+      color: "#6b7280",
+    },
+    modalConfirmButton: {
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+    },
+    modalConfirmText: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#eb7825",
+    },
+    dateTimePicker: {
+      height: 200,
+    },
   });
 
   const getIconComponent = (iconName: any) => {
@@ -462,47 +556,203 @@ const SavedTab = ({
     return iconMap[iconName] || "heart";
   };
 
-  const handleSchedule = async (card: SavedCard) => {
+  // Helper function to generate suggested dates
+  const generateSuggestedDates = (dateTimePrefs: any) => {
+    const suggestions = [];
+    const today = new Date();
+
+    for (let i = 0; i < 3; i++) {
+      const futureDate = new Date(today);
+
+      if (dateTimePrefs?.planningTimeframe === "This week") {
+        futureDate.setDate(today.getDate() + (i + 1) * 2);
+      } else if (dateTimePrefs?.planningTimeframe === "This month") {
+        futureDate.setDate(today.getDate() + (i + 1) * 7);
+      } else {
+        futureDate.setDate(today.getDate() + (i + 1) * 14);
+      }
+
+      if (dateTimePrefs?.dayOfWeek === "Weekend") {
+        const dayOfWeek = futureDate.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+          futureDate.setDate(futureDate.getDate() + (6 - dayOfWeek));
+        }
+      }
+
+      let hour = 14;
+      if (dateTimePrefs?.timeOfDay === "Morning") hour = 10;
+      else if (dateTimePrefs?.timeOfDay === "Evening") hour = 18;
+
+      futureDate.setHours(hour, 0, 0, 0);
+      suggestions.push(futureDate.toISOString());
+    }
+
+    return suggestions;
+  };
+
+  const handleSchedule = (card: SavedCard) => {
     if (scheduledCardIdsSet.has(card.id)) {
       return;
     }
 
-    setSchedulingCardId(card.id);
+    // Check if place is open
+    const isPlaceOpen =
+      ((card as any).openingHours as { open_now?: boolean })?.open_now ?? true;
+
+    if (!isPlaceOpen) {
+      Alert.alert(
+        "Place Closed",
+        "This place is currently closed. Please schedule for when it's open."
+      );
+      return;
+    }
+
+    // Show the propose date/time modal
+    setCardToSchedule(card);
+    setShowProposeDateTimeModal(true);
+  };
+
+  // Get current scheduled date for a card if it exists
+  const getCurrentScheduledDate = (cardId: string): Date | null => {
+    if (!calendarEntries) return null;
+    const entry = calendarEntries.find(
+      (entry: any) => entry.experience?.id === cardId || entry.id === cardId
+    );
+    if (entry && entry.date && entry.time) {
+      // Combine date and time strings into a Date object
+      const dateTimeString = `${entry.date}T${entry.time}`;
+      return new Date(dateTimeString);
+    }
+    return null;
+  };
+
+  // Handle date/time proposal from modal
+  const handleProposeDateTime = (
+    date: Date,
+    dateOption: "now" | "today" | "weekend" | "custom"
+  ) => {
+    setShowProposeDateTimeModal(false);
+    // For now, immediately proceed with scheduling
+    // In the future, this could trigger AI compatibility check
+    proceedWithScheduling(date);
+  };
+
+  const proceedWithScheduling = async (scheduledDateTime: Date) => {
+    if (!cardToSchedule || !user?.id) {
+      Alert.alert("Error", "You must be logged in to schedule cards.");
+      setCardToSchedule(null);
+      return;
+    }
+
+    setSchedulingCardId(cardToSchedule.id);
     try {
-      await onScheduleFromSaved(card);
+      const scheduledDateISO = scheduledDateTime.toISOString();
+
+      // Determine source from card
+      const source: "solo" | "collaboration" =
+        cardToSchedule.source === "solo" ? "solo" : "collaboration";
+
+      // Remove card from saved_cards table when scheduling
+      try {
+        await savedCardsService.removeCard(
+          user.id,
+          cardToSchedule.id,
+          source,
+          cardToSchedule.sessionId || undefined
+        );
+        queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
+      } catch (error) {
+        console.error(
+          "Error removing card from saved_cards when scheduling:",
+          error
+        );
+      }
+
+      // Transform card to ExpandedCardData format for calendar entry
+      const cardData: ExpandedCardData = {
+        id: cardToSchedule.id,
+        title: cardToSchedule.title,
+        category: cardToSchedule.category,
+        categoryIcon: cardToSchedule.categoryIcon,
+        description: cardToSchedule.description,
+        fullDescription:
+          cardToSchedule.fullDescription || cardToSchedule.description,
+        image: cardToSchedule.image,
+        images: cardToSchedule.images || [cardToSchedule.image],
+        rating: cardToSchedule.rating || 4.5,
+        reviewCount: cardToSchedule.reviewCount || 0,
+        priceRange: cardToSchedule.priceRange || "$25-50",
+        distance: (cardToSchedule as any).distance || "",
+        travelTime: cardToSchedule.travelTime || "15 min",
+        address: cardToSchedule.address || "",
+        openingHours: (cardToSchedule as any).openingHours,
+        highlights: cardToSchedule.highlights || [],
+        tags: (cardToSchedule as any).tags || [],
+        matchScore: cardToSchedule.matchScore || 0,
+        matchFactors: (cardToSchedule as any).matchFactors || {
+          location: 0,
+          budget: 0,
+          category: 0,
+          time: 0,
+          popularity: 0,
+        },
+        socialStats: {
+          views: cardToSchedule.socialStats?.views || 0,
+          likes: cardToSchedule.socialStats?.likes || 0,
+          saves: cardToSchedule.socialStats?.saves || 0,
+          shares: (cardToSchedule.socialStats as any)?.shares || 0,
+        },
+        location: (cardToSchedule as any).location,
+      };
+
+      const cardWithSource = {
+        ...cardData,
+        source,
+      };
+
+      // Add to calendar in Supabase (lockedIn)
+      const record = await CalendarService.addEntryFromSavedCard(
+        user.id,
+        cardWithSource,
+        scheduledDateISO
+      );
+
+      // Invalidate calendar entries query to refresh after adding to lockedIn
+      queryClient.invalidateQueries({ queryKey: ["calendarEntries", user.id] });
 
       // Add to device calendar
       try {
-        const dateTimePrefs = userPreferences
-          ? {
-              timeOfDay: userPreferences.timeOfDay || "Afternoon",
-              dayOfWeek: userPreferences.dayOfWeek || "Weekend",
-              planningTimeframe:
-                userPreferences.planningTimeframe || "This month",
-            }
-          : {
-              timeOfDay: "Afternoon",
-              dayOfWeek: "Weekend",
-              planningTimeframe: "This month",
-            };
-
-        // This would integrate with calendar utilities
-      } catch (error) {
-        console.error("Error adding to device calendar:", error);
+        const deviceEvent = DeviceCalendarService.createEventFromCard(
+          cardData,
+          scheduledDateTime,
+          record.duration_minutes || 120
+        );
+        await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
+      } catch (deviceCalendarError) {
+        console.warn("Failed to add to device calendar:", deviceCalendarError);
       }
+
+      // Show success toast
+      toastManager.success(
+        `Scheduled! ${cardToSchedule.title} has been moved to your calendar`,
+        3000
+      );
+
+      // Call the original handler if provided (for any additional logic)
     } catch (error) {
       console.error("Error scheduling card:", error);
+      Alert.alert(
+        "Schedule failed",
+        "We couldn't add this to your calendar. Please try again."
+      );
     } finally {
-      // Small delay to show success feedback
-      setTimeout(() => {
-        setSchedulingCardId(null);
-      }, 500);
+      setSchedulingCardId(null);
+      setCardToSchedule(null);
     }
   };
 
   const handleCardPress = (card: SavedCard) => {
     const matchScore = getMatchScore(card);
-
     // Transform saved card to ExpandedCardData format
     const expandedCardData: ExpandedCardData = {
       id: card.id,
@@ -515,9 +765,9 @@ const SavedTab = ({
       images: card.images || [card.image],
       rating: card.rating || 4.5,
       reviewCount: card.reviewCount || 0,
-      priceRange: card.priceRange || "$25-50",
+      priceRange: card.priceRange || "N/A",
       distance: (card as any).distance || "",
-      travelTime: card.travelTime || "15 min",
+      travelTime: card.travelTime || "N/A",
       address: card.address || "",
       openingHours: (card as any).openingHours,
       highlights: card.highlights || [],
@@ -537,9 +787,9 @@ const SavedTab = ({
         shares: (card.socialStats as any)?.shares || 0,
       },
       location: (card as any).location,
-      selectedDateTime: userPreferences?.datetime_pref
-        ? new Date(userPreferences.datetime_pref)
-        : new Date(),
+      selectedDateTime: (card as any)?.dateAdded
+        ? new Date((card as any).dateAdded)
+        : "N/A",
     };
 
     setSelectedCardForModal(expandedCardData);
@@ -551,8 +801,53 @@ const SavedTab = ({
     setSelectedCardForModal(null);
   };
 
+  const handleRemoveSaved = async (card: SavedCard) => {
+    if (!user?.id) return;
+
+    setRemovingCardIds((prev) => new Set(prev).add(card.id));
+    try {
+      await savedCardsService.removeCard(
+        user.id,
+        card.id,
+        card.source,
+        card.sessionId || undefined
+      );
+
+      // Invalidate savedCards query to trigger a refetch (for solo mode)
+      queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
+
+      // If this is a board card, invalidate the board saved cards query
+      if (boardSavedCards !== undefined && activeBoardSessionId) {
+        queryClient.invalidateQueries({
+          queryKey: ["boardSavedCards", activeBoardSessionId],
+        });
+      }
+    } catch (error) {
+      console.error("Error removing saved card:", error);
+    } finally {
+      setRemovingCardIds((prev) => {
+        const next = new Set(prev);
+        next.delete(card.id);
+        return next;
+      });
+    }
+  };
+
   const renderCard = ({ item: card }: { item: SavedCard }) => {
     const isScheduled = scheduledCardIdsSet.has(card.id);
+    const isRemoving = removingCardIds.has(card.id);
+
+    // Check if place is currently open
+    const isPlaceOpen =
+      ((card as any).openingHours as { open_now?: boolean })?.open_now ?? true;
+
+    // Check if openingHours data is available
+    const hasOpeningHoursData =
+      (card as any).openingHours &&
+      typeof (card as any).openingHours === "object" &&
+      (card as any).openingHours !== null &&
+      "open_now" in (card as any).openingHours;
+
     return (
       <View style={styles.experienceCard}>
         <TouchableOpacity
@@ -653,26 +948,42 @@ const SavedTab = ({
                 <Text style={styles.primaryButtonText}>Buy Now</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity
-                onPress={() => handleSchedule(card)}
-                style={[
-                  styles.primaryButton,
-                  (schedulingCardId === card.id || isScheduled) &&
-                    styles.primaryButtonDisabled,
-                ]}
-                disabled={schedulingCardId === card.id || isScheduled}
-              >
-                {schedulingCardId === card.id ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <>
-                    <Ionicons name="calendar" size={16} color="white" />
-                    <Text style={styles.primaryButtonText}>
-                      {isScheduled ? "Scheduled" : "Schedule"}
-                    </Text>
-                  </>
+              <View style={styles.scheduleButtonContainer}>
+                <TouchableOpacity
+                  onPress={() => handleSchedule(card)}
+                  style={[
+                    styles.primaryButton,
+                    (schedulingCardId === card.id ||
+                      isScheduled ||
+                      !isPlaceOpen) &&
+                      styles.primaryButtonDisabled,
+                  ]}
+                  disabled={
+                    schedulingCardId === card.id || isScheduled || !isPlaceOpen
+                  }
+                >
+                  {schedulingCardId === card.id ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <>
+                      <Ionicons name="calendar" size={16} color="white" />
+                      <Text style={styles.primaryButtonText}>
+                        {isScheduled ? "Scheduled" : "Schedule"}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                {!isPlaceOpen && (
+                  <Text style={styles.closedMessage}>
+                    This place is currently closed
+                  </Text>
                 )}
-              </TouchableOpacity>
+                {/*    {!hasOpeningHoursData && (
+                  <Text style={styles.warningMessage}>
+                    Opening hours not available - schedule at your own risk
+                  </Text>
+                )} */}
+              </View>
             )}
 
             <TouchableOpacity
@@ -683,10 +994,15 @@ const SavedTab = ({
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => onRemoveSaved(card)}
+              onPress={() => handleRemoveSaved(card)}
               style={styles.deleteButton}
+              disabled={isRemoving}
             >
-              <Ionicons name="trash-outline" size={18} color="#ef4444" />
+              {isRemoving ? (
+                <ActivityIndicator size="small" color="#ef4444" />
+              ) : (
+                <Ionicons name="trash-outline" size={18} color="#ef4444" />
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -695,7 +1011,7 @@ const SavedTab = ({
   };
 
   const renderEmptyComponent = () => {
-    if (isLoading) {
+    if (effectiveIsLoading) {
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#eb7825" />
@@ -717,6 +1033,19 @@ const SavedTab = ({
 
   return (
     <View style={styles.container}>
+      {/* Date/Time Picker Modal */}
+      {/* Propose Date & Time Modal */}
+      <ProposeDateTimeModal
+        visible={showProposeDateTimeModal}
+        onClose={() => {
+          setShowProposeDateTimeModal(false);
+          setCardToSchedule(null);
+        }}
+        card={cardToSchedule}
+        currentScheduledDate={cardToSchedule?.dateAdded}
+        onProposeDateTime={handleProposeDateTime}
+      />
+
       <FlatList
         data={savedCards}
         renderItem={renderCard}

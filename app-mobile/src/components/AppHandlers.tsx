@@ -865,6 +865,7 @@ export function useAppHandlers(state: any) {
           description: card.description,
           fullDescription: card.fullDescription,
           address: card.address,
+          openingHours: card.openingHours,
           highlights: card.highlights,
           matchScore: card.matchScore,
           socialStats: card.socialStats,
@@ -914,18 +915,6 @@ export function useAppHandlers(state: any) {
     }
   };
 
-  const handleRemoveSavedCard = async (card: any) => {
-    if (!user?.id) return;
-
-    try {
-      await savedCardsService.removeCard(user.id, card.id);
-
-      // Invalidate savedCards query to trigger a refetch
-      queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
-    } catch (error) {
-      console.error("Error removing saved card:", error);
-    }
-  };
 
   const handleScheduleFromSaved = async (card: any) => {
     // Generate a suggested date based on user preferences
@@ -1157,7 +1146,6 @@ export function useAppHandlers(state: any) {
     handleNavigateToConnections,
     handleShareCard,
     handleSaveCard,
-    handleRemoveSavedCard,
     handleScheduleFromSaved,
     handleRemoveFromCalendar,
     generateSuggestedDates,

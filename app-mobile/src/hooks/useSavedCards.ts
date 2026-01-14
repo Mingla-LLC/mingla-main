@@ -27,7 +27,6 @@ const safeAsyncStorageSet = async (key: string, value: any) => {
 const fetchSavedCards = async (
   userId: string | undefined
 ): Promise<SavedCardModel[]> => {
-  console.log("fetching saved cards for user:", userId);
   if (!userId) {
     // Clear AsyncStorage when no user (don't await - do in background)
     /*     safeAsyncStorageSet("mingla_saved_cards", []).catch(() => {}); */

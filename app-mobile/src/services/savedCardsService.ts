@@ -93,50 +93,96 @@ export const savedCardsService = {
   async removeCard(
     profileId: string,
     experienceId: string,
-    source?: "solo" | "collaboration"
+    source?: "solo" | "collaboration",
+    sessionId?: string
   ) {
-    console.log(
-      "Removing card from saved_cards service",
-      profileId,
-      experienceId,
-      source
-    );
-    // Remove from saved_card table (solo mode)
-    const { error: soloError } = await supabase
-      .from("saved_card")
-      .delete()
-      .eq("profile_id", profileId)
-      .eq("experience_id", experienceId);
+    try {
+      console.log(
+        "Removing card from saved_cards service",
+        profileId,
+        experienceId,
+        source,
+        sessionId
+      );
 
-    if (soloError) {
-      console.error("Error removing card from saved_card:", soloError);
-      // Don't throw - continue to try board_saved_cards
-    }
+      // If source is specified, only delete from that specific mode
+      if (source === "solo") {
+        const { error } = await supabase
+          .from("saved_card")
+          .delete()
+          .eq("profile_id", profileId)
+          .eq("experience_id", experienceId);
 
-    // Remove from board_saved_cards table (collaboration mode)
-    // Only remove if source is "collaboration" or if source is not specified (try both)
-    if (!source || source === "collaboration") {
-      const { error: boardError } = await supabase
-        .from("board_saved_cards")
+        if (error) {
+          console.error("Error removing card from saved_card:", error);
+          throw error;
+        }
+        return;
+      }
+
+      if (source === "collaboration") {
+        // Query by card_data->>'id' since experience_id is UUID and may be null
+        // The Google Places ID is stored in card_data JSONB
+        // IMPORTANT: Also filter by session_id to ensure we delete from the correct session
+        let query = supabase
+          .from("board_saved_cards")
+          .delete()
+          .eq("saved_by", profileId)
+          .eq("card_data->>id", experienceId);
+
+        // Add session_id filter if provided
+        if (sessionId) {
+          query = query.eq("session_id", sessionId);
+        }
+
+        const { error } = await query;
+
+        if (error) {
+          console.error("Error removing card from board_saved_cards:", error);
+          throw error;
+        }
+        console.log("Card removed from board_saved_cards");
+        return;
+      }
+
+      // If source is undefined, try solo first, then board only if solo fails
+      // Try solo mode first
+      const { error: soloErr } = await supabase
+        .from("saved_card")
         .delete()
-        .eq("saved_by", profileId)
+        .eq("profile_id", profileId)
         .eq("experience_id", experienceId);
 
-      if (boardError) {
-        /*   console.error(
-          "Error removing card from board_saved_cards:",
-          boardError
-        ); */
-        // If we had an error on both, throw the last one
-        if (soloError) {
-          throw boardError;
-        }
-      }
-    }
+      if (soloErr) {
+        console.log("Error removing card from saved_card:", soloErr);
+        // Only try board mode if solo failed
+        let query = supabase
+          .from("board_saved_cards")
+          .delete()
+          .eq("saved_by", profileId)
+          .eq("card_data->>id", experienceId);
 
-    // If we had an error on solo and didn't try board (or source was solo), throw solo error
-    if (soloError && (source === "solo" || !source)) {
-      throw soloError;
+        // Add session_id filter if provided to ensure we delete from the correct session
+        if (sessionId) {
+          query = query.eq("session_id", sessionId);
+        }
+
+        const { error: boardErr } = await query;
+
+        if (boardErr) {
+          console.error(
+            "Error removing card from board_saved_cards:",
+            boardErr
+          );
+          // Both failed, throw the last error
+          throw boardErr;
+        }
+        // Board deletion succeeded, that's fine
+      }
+      // Solo deletion succeeded, no need to try board
+    } catch (error) {
+      console.error("Error in removeCard:", error);
+      throw error;
     }
   },
 

@@ -17,7 +17,13 @@ export interface ExpandedCardData {
   distance: string;
   travelTime: string;
   address: string;
-  openingHours?: string;
+  openingHours?:
+    | string
+    | {
+        open_now?: boolean;
+        weekday_text?: string[];
+      }
+    | null;
   phone?: string;
   website?: string;
   highlights: string[];
@@ -42,7 +48,7 @@ export interface ExpandedCardData {
     lng: number;
   };
   // Date/time for weather and timeline
-  selectedDateTime?: Date;
+  selectedDateTime?: Date | string;
   // Stroll-specific data
   strollData?: {
     anchor: {
@@ -134,7 +140,7 @@ export interface WeatherData {
 
 export interface BusynessData {
   isBusy: boolean;
-  busynessLevel: 'Not Busy' | 'Moderate' | 'Busy' | 'Very Busy';
+  busynessLevel: "Not Busy" | "Moderate" | "Busy" | "Very Busy";
   currentPopularity: number;
   popularTimes: Array<{
     day: string;
@@ -143,12 +149,12 @@ export interface BusynessData {
   message: string;
   trafficInfo?: {
     currentTravelTime: string;
-    trafficCondition: 'Light' | 'Moderate' | 'Heavy';
+    trafficCondition: "Light" | "Moderate" | "Heavy";
   };
 }
 
 export interface BookingOption {
-  provider: 'opentable' | 'eventbrite' | 'viator' | 'website' | 'phone';
+  provider: "opentable" | "eventbrite" | "viator" | "website" | "phone";
   available: boolean;
   url?: string;
   phone?: string;
@@ -184,4 +190,3 @@ export interface ExpandedCardModalProps {
   isSaved?: boolean;
   currentMode?: string;
 }
-

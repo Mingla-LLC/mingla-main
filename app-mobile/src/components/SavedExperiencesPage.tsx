@@ -19,7 +19,6 @@ interface SavedExperiencesPageProps {
   onScheduleFromSaved: (card: any) => void;
   onPurchaseFromSaved: (card: any, option: any) => void;
   onShareCard: (card: any) => void;
-  onRemoveSaved: (card: any) => void;
 }
 
 type DateRangeFilter = "all" | "7" | "30";
@@ -173,7 +172,6 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
   onScheduleFromSaved,
   onPurchaseFromSaved,
   onShareCard,
-  onRemoveSaved,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -368,7 +366,6 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
             onScheduleFromSaved={onScheduleFromSaved}
             onPurchaseFromSaved={onPurchaseFromSaved}
             onShareCard={onShareCard}
-            onRemoveSaved={onRemoveSaved}
             userPreferences={userPreferences}
           />
         </View>

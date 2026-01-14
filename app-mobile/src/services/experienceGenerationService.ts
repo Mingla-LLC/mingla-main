@@ -27,6 +27,10 @@ export interface GeneratedExperience {
     time: number;
     popularity: number;
   };
+  openingHours?: {
+    open_now?: boolean;
+    weekday_text?: string[];
+  } | null;
   strollData?: {
     anchor: {
       id: string;
@@ -185,6 +189,8 @@ export class ExperienceGenerationService {
         time: 85,
         popularity: 85,
       },
+      // Preserve openingHours if available
+      openingHours: card.openingHours || null,
       // Preserve strollData if available
       strollData: card.strollData,
     };
