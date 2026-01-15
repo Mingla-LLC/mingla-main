@@ -1723,7 +1723,7 @@ const OnboardingFlow = ({
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {renderStep()}
     </SafeAreaView>
   );
