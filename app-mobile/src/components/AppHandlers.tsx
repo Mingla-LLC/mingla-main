@@ -777,17 +777,6 @@ export function useAppHandlers(state: any) {
       ? (currentSession as any).session_id || currentSession.id
       : null;
 
-    // Debug: Log session info
-    if (isInSession && currentSession) {
-      console.log("💾 Saving card to board session:", {
-        currentMode,
-        boardId: currentSession.id,
-        sessionId: sessionId,
-        boardName: currentSession.name,
-        hasSessionId: !!(currentSession as any).session_id,
-      });
-    }
-
     // If in a session, check if card is already saved in that session
     if (isInSession && currentSession && sessionId) {
       try {
@@ -870,6 +859,8 @@ export function useAppHandlers(state: any) {
           matchScore: card.matchScore,
           socialStats: card.socialStats,
           matchFactors: card.matchFactors,
+          lat: card.lat,
+          lng: card.lng,
         };
 
         const { error: boardError } = await BoardCardService.saveCardToBoard({
@@ -914,7 +905,6 @@ export function useAppHandlers(state: any) {
       );
     }
   };
-
 
   const handleScheduleFromSaved = async (card: any) => {
     // Generate a suggested date based on user preferences

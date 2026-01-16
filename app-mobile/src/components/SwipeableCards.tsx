@@ -91,7 +91,7 @@ const getDefaultPreferences = (): UserPreferences => ({
 interface SwipeableCardsProps {
   userPreferences?: any;
   currentMode?: string;
-  onCardLike?: (card: any) => void;
+  onCardLike: (card: any) => void;
   accountPreferences?: {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
@@ -569,45 +569,8 @@ export default function SwipeableCards({
             }
           }
 
-          // If in a board session, save to board_saved_cards
-          if (isBoardSession && currentSession?.id) {
-            try {
-              const experienceData = {
-                id: card.id,
-                title: card.title,
-                category: card.category,
-                categoryIcon: card.categoryIcon,
-                image: card.image,
-                images: card.images,
-                rating: card.rating,
-                reviewCount: card.reviewCount,
-                travelTime: card.travelTime,
-                priceRange: card.priceRange,
-                description: card.description,
-                fullDescription: card.fullDescription,
-                address: card.address,
-                openingHours: card.openingHours,
-                highlights: card.highlights,
-                matchScore: card.matchScore,
-                socialStats: card.socialStats,
-                matchFactors: card.matchFactors,
-              };
-
-              await BoardCardService.saveCardToBoard({
-                sessionId: currentSession.id,
-                experienceId: card.id,
-                experienceData,
-                userId: user.id,
-              });
-            } catch (boardSaveError) {
-              console.error("Error saving card to board:", boardSaveError);
-              // Continue even if board save fails
-            }
-          }
-
-          if (onCardLike) {
-            onCardLike(card);
-          }
+          // Call onCardLike which handles saving to board or solo saved_cards
+          onCardLike(card);
         } else {
           // Track dislike
           try {

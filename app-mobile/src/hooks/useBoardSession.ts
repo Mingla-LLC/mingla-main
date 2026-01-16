@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../services/supabase';
-import { useAppStore } from '../store/appStore';
-import { realtimeService } from '../services/realtimeService';
-import { BoardInviteService } from '../services/boardInviteService';
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "../services/supabase";
+import { useAppStore } from "../store/appStore";
+import { realtimeService } from "../services/realtimeService";
+import { BoardInviteService } from "../services/boardInviteService";
 
 export interface BoardSession {
   id: string;
   name: string;
-  session_type: 'board' | 'collaboration';
+  session_type: "board" | "collaboration";
   board_id?: string;
   invite_code?: string;
   invite_link?: string;
@@ -30,44 +30,48 @@ export interface BoardSessionPreferences {
 
 export const useBoardSession = (sessionId?: string) => {
   const [session, setSession] = useState<BoardSession | null>(null);
-  const [preferences, setPreferences] = useState<BoardSessionPreferences | null>(null);
+  const [preferences, setPreferences] =
+    useState<BoardSessionPreferences | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAppStore();
 
   // Load session data
-  const loadSession = useCallback(async (id: string) => {
-    if (!id || !user) return;
+  const loadSession = useCallback(
+    async (id: string) => {
+      if (!id || !user) return;
 
-    setLoading(true);
-    setError(null);
+      setLoading(true);
+      setError(null);
 
-    try {
-      // Load session
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('collaboration_sessions')
-        .select('*')
-        .eq('id', id)
-        .single();
+      try {
+        // Load session
+        const { data: sessionData, error: sessionError } = await supabase
+          .from("collaboration_sessions")
+          .select("*")
+          .eq("id", id)
+          .single();
 
-      if (sessionError) throw sessionError;
+        if (sessionError) throw sessionError;
 
-      // Load preferences for the current user
-      const { data: prefsData, error: prefsError } = await supabase
-        .from('board_session_preferences')
-        .select('*')
-        .eq('session_id', id)
-        .eq('user_id', user?.id || '')
-        .single();
+        // Load preferences for the current user
+        const { data: prefsData, error: prefsError } = await supabase
+          .from("board_session_preferences")
+          .select("*")
+          .eq("session_id", id)
+          .eq("user_id", user?.id || "")
+          .single();
 
-      if (prefsError && prefsError.code !== 'PGRST116') {
-        console.error('Error loading preferences:', prefsError);
-      }
+        if (prefsError && prefsError.code !== "PGRST116") {
+          console.error("Error loading preferences:", prefsError);
+        }
 
-      // Load participants
-      const { data: participantsData, error: participantsError } = await supabase
-        .from('session_participants')
-        .select(`
+        // Load participants
+        const { data: participantsData, error: participantsError } =
+          await supabase
+            .from("session_participants")
+            .select(
+              `
           *,
           profiles (
             id,
@@ -77,56 +81,69 @@ export const useBoardSession = (sessionId?: string) => {
             last_name,
             avatar_url
           )
-        `)
-        .eq('session_id', id);
+        `
+            )
+            .eq("session_id", id);
 
-      if (participantsError) {
-        console.error('Error loading participants:', participantsError);
+        if (participantsError) {
+          console.error("Error loading participants:", participantsError);
+        }
+
+        setSession({
+          ...sessionData,
+          participants: participantsData || [],
+        } as BoardSession);
+
+        if (prefsData) {
+          setPreferences(prefsData as BoardSessionPreferences);
+        }
+      } catch (err: any) {
+        setError(err.message || "Failed to load session");
+        console.error("Error loading session:", err);
+      } finally {
+        setLoading(false);
       }
-
-      setSession({
-        ...sessionData,
-        participants: participantsData || [],
-      } as BoardSession);
-
-      if (prefsData) {
-        setPreferences(prefsData as BoardSessionPreferences);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load session');
-      console.error('Error loading session:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+    },
+    [user]
+  );
 
   // Update preferences
-  const updatePreferences = useCallback(async (newPreferences: Partial<BoardSessionPreferences>) => {
-    if (!sessionId || !user) return;
+  const updatePreferences = useCallback(
+    async (newPreferences: Partial<BoardSessionPreferences>) => {
+      if (!sessionId || !user) return;
+      console.log("newPreferences", newPreferences);
+      console.log("sessionId", sessionId);
+      try {
+        const { error } = await supabase
+          .from("board_session_preferences")
+          .upsert(
+            {
+              session_id: sessionId,
+              user_id: user.id,
+              ...newPreferences,
+            },
+            {
+              onConflict: "session_id,user_id",
+            }
+          );
 
-    try {
-      const { error } = await supabase
-        .from('board_session_preferences')
-        .upsert({
-          session_id: sessionId,
-          user_id: user.id,
-          ...newPreferences,
-        }, {
-          onConflict: 'session_id,user_id',
-        });
+        if (error) throw error;
 
-      if (error) throw error;
-
-      setPreferences(prev => ({
-        ...prev,
-        ...newPreferences,
-        session_id: sessionId,
-      } as BoardSessionPreferences));
-    } catch (err: any) {
-      setError(err.message || 'Failed to update preferences');
-      throw err;
-    }
-  }, [sessionId, user]);
+        setPreferences(
+          (prev) =>
+            ({
+              ...prev,
+              ...newPreferences,
+              session_id: sessionId,
+            } as BoardSessionPreferences)
+        );
+      } catch (err: any) {
+        setError(err.message || "Failed to update preferences");
+        throw err;
+      }
+    },
+    [sessionId, user]
+  );
 
   // Get invite link
   const getInviteLink = useCallback(async () => {
@@ -142,13 +159,13 @@ export const useBoardSession = (sessionId?: string) => {
 
     const channel = realtimeService.subscribeToBoardSession(sessionId, {
       onSessionUpdated: (updatedSession) => {
-        setSession(prev => prev ? { ...prev, ...updatedSession } : null);
+        setSession((prev) => (prev ? { ...prev, ...updatedSession } : null));
       },
       onParticipantJoined: (participant) => {
-        setSession(prev => {
+        setSession((prev) => {
           if (!prev) return null;
           const existing = prev.participants || [];
-          if (existing.find(p => p.user_id === participant.user_id)) {
+          if (existing.find((p) => p.user_id === participant.user_id)) {
             return prev;
           }
           return {
@@ -158,12 +175,12 @@ export const useBoardSession = (sessionId?: string) => {
         });
       },
       onParticipantLeft: (participant) => {
-        setSession(prev => {
+        setSession((prev) => {
           if (!prev) return null;
           return {
             ...prev,
             participants: (prev.participants || []).filter(
-              p => p.user_id !== participant.user_id
+              (p) => p.user_id !== participant.user_id
             ),
           };
         });
@@ -192,4 +209,3 @@ export const useBoardSession = (sessionId?: string) => {
     getInviteLink,
   };
 };
-

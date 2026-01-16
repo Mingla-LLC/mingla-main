@@ -485,6 +485,7 @@ export default function CollaborationPreferences({
     setIsSaving(true);
     try {
       // Transform preferences to database format
+   
       const dbPreferences: any = {
         categories: selectedCategories,
         budget_min: typeof budgetMin === "number" ? budgetMin : 0,

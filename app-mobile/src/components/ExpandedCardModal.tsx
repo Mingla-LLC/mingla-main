@@ -44,6 +44,7 @@ export default function ExpandedCardModal({
   isSaved,
   currentMode = "solo",
   onCardRemoved,
+  onStrollDataFetched,
 }: ExpandedCardModalProps) {
   const { updateCardStrollData } = useRecommendations();
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
@@ -80,10 +81,18 @@ export default function ExpandedCardModal({
     if (card.location) {
       setLoadingWeather(true);
       try {
+        // Convert selectedDateTime to Date if it's a string
+        const dateTime =
+          card.selectedDateTime instanceof Date
+            ? card.selectedDateTime
+            : typeof card.selectedDateTime === "string"
+            ? new Date(card.selectedDateTime)
+            : undefined;
+
         const weather = await weatherService.getWeatherForecast(
           card.location.lat,
           card.location.lng,
-          card.selectedDateTime
+          dateTime
         );
         setWeatherData(weather);
       } catch (error) {
@@ -160,6 +169,8 @@ export default function ExpandedCardModal({
           }
         : null);
 
+    console.log("card", card);
+
     if (!anchor) {
       console.warn("⚠️ Cannot fetch stroll data: missing anchor information");
       return;
@@ -174,6 +185,10 @@ export default function ExpandedCardModal({
         // Update the card's strollData in the context and cache
         if (card) {
           updateCardStrollData(card.id, fetchedStrollData);
+          // Persist to database if callback is provided (for saved cards)
+          if (onStrollDataFetched) {
+            await onStrollDataFetched(card, fetchedStrollData);
+          }
         }
       }
     } catch (err) {
@@ -309,7 +324,13 @@ export default function ExpandedCardModal({
               weatherData={weatherData}
               loading={loadingWeather}
               category={card.category}
-              selectedDateTime={card.selectedDateTime}
+              selectedDateTime={
+                card.selectedDateTime instanceof Date
+                  ? card.selectedDateTime
+                  : typeof card.selectedDateTime === "string"
+                  ? new Date(card.selectedDateTime)
+                  : undefined
+              }
             />
 
             {/* Busyness Section */}

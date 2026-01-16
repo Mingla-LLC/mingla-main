@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { ExpandedCardData } from "../types/expandedCardTypes";
 
 export interface SavedCardRecord {
   id: string;
@@ -293,5 +294,60 @@ export const savedCardsService = {
       const dateB = new Date(b.dateAdded || 0).getTime();
       return dateB - dateA;
     });
+  },
+
+  async updateCardStrollData(
+    profileId: string,
+    cardData: ExpandedCardData,
+    strollData: ExpandedCardData["strollData"],
+    source: "solo" | "collaboration",
+    sessionId?: string
+  ) {
+    try {
+      // Merge strollData into the existing card data
+      const updatedCardData = {
+        ...cardData,
+        strollData,
+      };
+
+      if (source === "solo") {
+        const { error: updateError } = await supabase
+          .from("saved_card")
+          .update({ card_data: updatedCardData })
+          .eq("profile_id", profileId)
+          .eq("experience_id", cardData.id);
+
+        if (updateError) {
+          console.error("Error updating solo card stroll data:", updateError);
+          throw updateError;
+        }
+
+        return;
+      }
+
+      if (source === "collaboration") {
+        let updateQuery = supabase
+          .from("board_saved_cards")
+          .update({ card_data: updatedCardData })
+          .eq("saved_by", profileId)
+          .eq("card_data->>id", cardData.id);
+
+        if (sessionId) {
+          updateQuery = updateQuery.eq("session_id", sessionId);
+        }
+
+        const { error: updateError } = await updateQuery;
+
+        if (updateError) {
+          console.error("Error updating board card stroll data:", updateError);
+          throw updateError;
+        }
+
+        return;
+      }
+    } catch (error) {
+      console.error("Error in updateCardStrollData:", error);
+      throw error;
+    }
   },
 };

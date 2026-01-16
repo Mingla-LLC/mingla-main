@@ -42,6 +42,7 @@ export interface ExpandedCardData {
     saves: number;
     shares: number;
   };
+  
   // Location data for API calls
   location?: {
     lat: number;
@@ -190,4 +191,8 @@ export interface ExpandedCardModalProps {
   isSaved?: boolean;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
+  onStrollDataFetched?: (
+    card: ExpandedCardData,
+    strollData: ExpandedCardData["strollData"]
+  ) => Promise<void> | void; // Callback to persist stroll data to database
 }

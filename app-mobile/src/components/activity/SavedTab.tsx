@@ -58,6 +58,9 @@ interface SavedCard {
     features: string[];
     popular?: boolean;
   }>;
+
+  lat: number;
+  lng: number;
 }
 
 interface SavedTabProps {
@@ -91,6 +94,9 @@ const SavedTab = ({
   const savedCards = boardSavedCards ?? contextSavedCards;
   const [selectedCardForModal, setSelectedCardForModal] =
     useState<ExpandedCardData | null>(null);
+  const [originalSavedCard, setOriginalSavedCard] = useState<SavedCard | null>(
+    null
+  );
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [schedulingCardId, setSchedulingCardId] = useState<string | null>(null);
   const [removingCardIds, setRemovingCardIds] = useState<Set<string>>(
@@ -754,6 +760,7 @@ const SavedTab = ({
   const handleCardPress = (card: SavedCard) => {
     const matchScore = getMatchScore(card);
     // Transform saved card to ExpandedCardData format
+
     const expandedCardData: ExpandedCardData = {
       id: card.id,
       title: card.title,
@@ -786,19 +793,75 @@ const SavedTab = ({
         saves: card.socialStats?.saves || 0,
         shares: (card.socialStats as any)?.shares || 0,
       },
-      location: (card as any).location,
+      location: { lat: card.lat, lng: card.lng },
       selectedDateTime: (card as any)?.dateAdded
         ? new Date((card as any).dateAdded)
         : "N/A",
+      // Include strollData if available from saved card
+      strollData: (card as any).strollData,
     };
 
     setSelectedCardForModal(expandedCardData);
+    setOriginalSavedCard(card);
     setIsModalVisible(true);
   };
 
   const handleCloseModal = () => {
     setIsModalVisible(false);
     setSelectedCardForModal(null);
+    setOriginalSavedCard(null);
+  };
+
+  const handleStrollDataFetched = async (
+    card: ExpandedCardData,
+    strollData: ExpandedCardData["strollData"]
+  ) => {
+    // Persist stroll data to the appropriate table based on source
+    if (!user?.id || !strollData || !originalSavedCard) return;
+
+    const source: "solo" | "collaboration" = originalSavedCard.source;
+    try {
+      await savedCardsService.updateCardStrollData(
+        user.id,
+        card,
+        strollData,
+        source,
+        originalSavedCard.sessionId || undefined
+      );
+
+      // Invalidate queries to refresh the saved cards list
+      queryClient.invalidateQueries({
+        queryKey: ["savedCards", user.id],
+      });
+      if (originalSavedCard.sessionId) {
+        queryClient.invalidateQueries({
+          queryKey: ["boardSavedCards", originalSavedCard.sessionId],
+        });
+      }
+    } catch (error) {
+      console.error("Error persisting stroll data:", error);
+      // Don't show error to user - data is still in modal state
+    }
+  };
+
+  const handleModalSave = async (card: ExpandedCardData) => {
+    // Card is already saved, just close the modal
+    handleCloseModal();
+  };
+
+  const handleModalPurchase = (card: ExpandedCardData, bookingOption: any) => {
+    handleCloseModal();
+    onPurchaseFromSaved(card as any, bookingOption);
+  };
+
+  const handleModalShare = (card: ExpandedCardData) => {
+    handleCloseModal();
+    onShareCard(card as any);
+  };
+
+  const handleCloseProposeDateTimeModal = () => {
+    setShowProposeDateTimeModal(false);
+    setCardToSchedule(null);
   };
 
   const handleRemoveSaved = async (card: SavedCard) => {
@@ -1037,10 +1100,7 @@ const SavedTab = ({
       {/* Propose Date & Time Modal */}
       <ProposeDateTimeModal
         visible={showProposeDateTimeModal}
-        onClose={() => {
-          setShowProposeDateTimeModal(false);
-          setCardToSchedule(null);
-        }}
+        onClose={handleCloseProposeDateTimeModal}
         card={cardToSchedule}
         currentScheduledDate={cardToSchedule?.dateAdded}
         onProposeDateTime={handleProposeDateTime}
@@ -1062,19 +1122,11 @@ const SavedTab = ({
           card={selectedCardForModal}
           onClose={handleCloseModal}
           isSaved={true}
-          onSave={async (card) => {
-            // Card is already saved, just close the modal
-            handleCloseModal();
-          }}
-          onPurchase={(card, bookingOption) => {
-            handleCloseModal();
-            onPurchaseFromSaved(card as any, bookingOption);
-          }}
-          onShare={(card) => {
-            handleCloseModal();
-            onShareCard(card as any);
-          }}
+          onSave={handleModalSave}
+          onPurchase={handleModalPurchase}
+          onShare={handleModalShare}
           userPreferences={userPreferences}
+          onStrollDataFetched={handleStrollDataFetched}
         />
       )}
     </View>
