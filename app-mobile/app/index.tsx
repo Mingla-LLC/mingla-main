@@ -814,10 +814,7 @@ function AppContent() {
         return (
           <ProfilePage
             onSignOut={async () => {
-              if (handleSignOut) {
-                await handleSignOut();
-              } else {
-              }
+              await handleSignOut();
             }}
             onNavigateToActivity={(tab: "saved" | "boards" | "calendar") => {
               console.log("Navigate to activity:", tab);

@@ -142,11 +142,13 @@ export default function HomePage({
             accountPreferences={accountPreferences}
             currentMode={currentMode}
             onAddToCalendar={onAddToCalendar}
-            onCardLike={onSaveCard}
+            onCardLike={onSaveCard || (() => {})}
             onShareCard={onShareCard}
             onPurchaseComplete={onPurchaseComplete}
             removedCardIds={removedCardIds}
             onResetCards={onResetCards}
+            onOpenPreferences={onOpenPreferences}
+            onOpenCollabPreferences={onOpenCollabPreferences}
             generateNewMockCard={generateNewMockCard}
             onboardingData={onboardingData}
             refreshKey={refreshKey}

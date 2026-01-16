@@ -812,27 +812,46 @@ export function useAppState() {
   const handleSignOut = async () => {
     try {
       // Clear all user data from the store immediately
-      const { useAppStore } = await import("../store/appStore");
       const store = useAppStore.getState();
       store.clearUserData();
-    } catch (error) {
-      console.error("Error clearing store data:", error);
-    }
 
-    // Also clear local state
-    setUserIdentity({
-      firstName: "",
-      lastName: "",
-      username: "",
-      profileImage: null,
-      email: "",
-      id: "",
-    });
-    // Try Supabase sign out in background (non-blocking)
-    try {
+      // Clear card state (removedCards and currentCardIndex) from AsyncStorage
+      const allKeys = await AsyncStorage.getAllKeys();
+      const cardStateKeys = allKeys.filter((key) =>
+        key.startsWith("mingla_card_state_")
+      );
+      if (cardStateKeys.length > 0) {
+        await AsyncStorage.multiRemove(cardStateKeys);
+        console.log(
+          "✅ Cleared card state from AsyncStorage:",
+          cardStateKeys.length,
+          "keys"
+        );
+      }
+
+      // Clear local state
+      setUserIdentity({
+        firstName: "",
+        lastName: "",
+        username: "",
+        profileImage: null,
+        email: "",
+        id: "",
+      });
+
+      // Try Supabase sign out (non-blocking - continue even if it fails)
       await signOut();
     } catch (error) {
-      // Background sign out failed - non-critical
+      console.error("Error during sign out:", error);
+      // Continue with local state clearing even if other operations fail
+      setUserIdentity({
+        firstName: "",
+        lastName: "",
+        username: "",
+        profileImage: null,
+        email: "",
+        id: "",
+      });
     }
   };
 

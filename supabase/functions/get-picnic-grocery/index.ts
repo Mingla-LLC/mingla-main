@@ -110,11 +110,15 @@ async function findGroceryStore(
   maxDistance: number = 2000 // meters
 ): Promise<any | null> {
   const groceryTypes = [
-    "grocery_store",
     "supermarket",
     "food_store",
     "convenience_store",
     "store",
+    "grocery_store",
+    "meal_takeaway",
+    "ice_cream_shop",
+    "bakery",
+    "deli",
   ];
 
   // Places API (New) base URL

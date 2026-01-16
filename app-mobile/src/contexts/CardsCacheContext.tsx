@@ -218,7 +218,10 @@ export const CardsCacheProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // Check if cache has expired
       const now = Date.now();
-      if (now - entry.timestamp > CACHE_EXPIRATION_MS) {
+      const age = now - entry.timestamp;
+      const isExpired = age > CACHE_EXPIRATION_MS;
+
+      if (isExpired) {
         cacheRef.current.delete(cacheKey);
         return null;
       }

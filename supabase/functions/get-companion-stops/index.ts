@@ -101,26 +101,15 @@ async function findCompanionStops(
   maxDistance: number = 500 // meters
 ): Promise<any[]> {
   const companionTypes = [
-    "cafe",
-    "coffee_shop",
-    "bakery",
-    "ice_cream_shop",
-    "gelato_shop",
-    "food_truck",
-    "restaurant",
-    "bistro",
-    "bar",
-    "wine_bar",
-    "juice_bar",
-    "smoothie_shop",
-    "tea_house",
-    "donut_shop",
-    "pastry_shop",
-    "deli",
-    "sandwich_shop",
-    "pizza_restaurant",
-    "fast_food_restaurant",
+    "supermarket",
+    "food_store",
+    "convenience_store",
+    "store",
+    "grocery_store",
     "meal_takeaway",
+    "ice_cream_shop",
+    "bakery",
+    "deli",
   ];
 
   // Places API (New) base URL
@@ -128,82 +117,85 @@ async function findCompanionStops(
 
   // Field mask for Places API (New) - specify which fields we need
   const fieldMask =
-    "places.id,places.displayName,places.location,places.formattedAddress,places.rating,places.userRatingCount,places.photos";
+    "places.id,places.displayName,places.location,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.types";
 
-  const companionPromises = companionTypes.map(async (placeType) => {
-    try {
-      const requestBody = {
-        includedTypes: [placeType],
-        maxResultCount: 2,
-        locationRestriction: {
-          circle: {
-            center: {
-              latitude: anchorLocation.lat,
-              longitude: anchorLocation.lng,
-            },
-            radius: maxDistance,
+  try {
+    const requestBody = {
+      includedTypes: companionTypes,
+      maxResultCount: 20, // Get more results since we're requesting all types at once
+      locationRestriction: {
+        circle: {
+          center: {
+            latitude: anchorLocation.lat,
+            longitude: anchorLocation.lng,
           },
+          radius: maxDistance,
         },
-      };
+      },
+    };
 
-      const response = await fetch(baseUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": GOOGLE_API_KEY,
-          "X-Goog-FieldMask": fieldMask,
-        },
-        body: JSON.stringify(requestBody),
-      });
+    const response = await fetch(baseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY,
+        "X-Goog-FieldMask": fieldMask,
+      },
+      body: JSON.stringify(requestBody),
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          `Error fetching companion stops for ${placeType}:`,
-          response.status,
-          errorText
-        );
-        return [];
-      }
-
-      const data = await response.json();
-      if (data.places?.length) {
-        return data.places.map((place: any) => {
-          // Extract photo reference from new API format
-          const primaryPhoto = place.photos?.[0];
-          const imageUrl = primaryPhoto?.name
-            ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=400&key=${GOOGLE_API_KEY}`
-            : null;
-
-          return {
-            id: place.id,
-            name: place.displayName?.text || "Unknown Place",
-            location: {
-              lat: place.location?.latitude || anchorLocation.lat,
-              lng: place.location?.longitude || anchorLocation.lng,
-            },
-            address: place.formattedAddress || "",
-            rating: place.rating || 0,
-            reviewCount: place.userRatingCount || 0,
-            imageUrl: imageUrl,
-            placeId: place.id, // In new API, place.id is the identifier
-            type: placeType,
-          };
-        });
-      }
-      return [];
-    } catch (error) {
-      console.error(`Error fetching companion stops for ${placeType}:`, error);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        `Error fetching companion stops:`,
+        response.status,
+        errorText
+      );
       return [];
     }
-  });
 
-  const results = await Promise.all(companionPromises);
-  const allCompanions = results.flat();
+    const data = await response.json();
+    if (!data.places?.length) {
+      return [];
+    }
 
-  return allCompanions
-    .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-    .slice(0, 1);
+    // Map places to our format
+    const allCompanions = data.places.map((place: any) => {
+      // Extract photo reference from new API format
+      const primaryPhoto = place.photos?.[0];
+      const imageUrl = primaryPhoto?.name
+        ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=400&key=${GOOGLE_API_KEY}`
+        : null;
+
+      // Determine the type by matching place types with companion types
+      const placeTypes = place.types || [];
+      const matchedType =
+        companionTypes.find((type) => placeTypes.includes(type)) ||
+        companionTypes[0]; // Fallback to first type if no match
+
+      return {
+        id: place.id,
+        name: place.displayName?.text || "Unknown Place",
+        location: {
+          lat: place.location?.latitude || anchorLocation.lat,
+          lng: place.location?.longitude || anchorLocation.lng,
+        },
+        address: place.formattedAddress || "",
+        rating: place.rating || 0,
+        reviewCount: place.userRatingCount || 0,
+        imageUrl: imageUrl,
+        placeId: place.id, // In new API, place.id is the identifier
+        type: matchedType,
+      };
+    });
+
+    return allCompanions
+      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+      .slice(0, 1);
+  } catch (error) {
+    console.error(`Error fetching companion stops:`, error);
+    return [];
+  }
 }
 
 // Build route timeline for stroll cards (solo mode)

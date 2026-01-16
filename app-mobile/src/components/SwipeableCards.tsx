@@ -3,6 +3,7 @@ import {
   Text,
   View,
   TouchableOpacity,
+  Pressable,
   Image,
   StyleSheet,
   Dimensions,
@@ -11,6 +12,7 @@ import {
   StatusBar,
   ActivityIndicator,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { formatCurrency, formatDistance } from "./utils/formatters";
@@ -30,7 +32,6 @@ import { BoardCardService } from "../services/boardCardService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useCardsCache } from "../contexts/CardsCacheContext";
 import {
   useRecommendations,
   Recommendation,
@@ -101,6 +102,8 @@ interface SwipeableCardsProps {
   onPurchaseComplete?: (experienceData: any, purchaseOption: any) => void;
   removedCardIds?: string[];
   onResetCards?: () => void;
+  onOpenPreferences?: () => void;
+  onOpenCollabPreferences?: () => void;
   generateNewMockCard?: () => any;
   onboardingData?: any;
   refreshKey?: number | string; // Key that changes to trigger refresh
@@ -169,6 +172,8 @@ export default function SwipeableCards({
   onPurchaseComplete,
   removedCardIds = [],
   onResetCards,
+  onOpenPreferences,
+  onOpenCollabPreferences,
   generateNewMockCard,
   onboardingData,
   refreshKey,
@@ -190,7 +195,9 @@ export default function SwipeableCards({
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   const spinValue = useRef(new Animated.Value(0)).current;
-  const currentCacheKeyRef = useRef<string | null>(null);
+  const hasRestoredStateRef = useRef(false);
+  const previousRefreshKeyRef = useRef<number | string | undefined>(refreshKey);
+  const previousModeRef = useRef<string>(currentMode);
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
@@ -203,7 +210,15 @@ export default function SwipeableCards({
     loading: sessionsLoading,
   } = useSessionManagement();
   const { user } = useAuthSimple();
-  const cardsCache = useCardsCache();
+
+  // Storage keys for persisting card state
+  const getStorageKeys = () => {
+    const baseKey = `mingla_card_state_${currentMode}_${refreshKey || 0}`;
+    return {
+      index: `${baseKey}_index`,
+      removedCards: `${baseKey}_removed`,
+    };
+  };
 
   // Resolve session ID from currentMode if currentSession is not available
   // currentMode can be either "solo", a session name, or a session ID
@@ -364,15 +379,130 @@ export default function SwipeableCards({
     }
   }, [availableRecommendations.length, currentCardIndex]);
 
-  // Update cache when card index or removed cards change
+  // Load saved state from AsyncStorage when recommendations are ready
   useEffect(() => {
-    if (currentCacheKeyRef.current && recommendations.length > 0) {
-      cardsCache.updateCacheEntry(currentCacheKeyRef.current, {
-        currentCardIndex,
-        removedCardIds: Array.from(removedCards),
-      });
+    // Wait for recommendations to be available
+    if (!recommendations.length) {
+      return;
     }
-  }, [currentCardIndex, removedCards, recommendations.length, cardsCache]);
+
+    const checkAndRestoreState = async () => {
+      // Check if refreshKey OR mode changed - reset state
+      const preferencesChanged = previousRefreshKeyRef.current !== refreshKey;
+      const modeChanged = previousModeRef.current !== currentMode;
+
+      if (preferencesChanged || modeChanged) {
+        // Preferences or mode changed - reset state and clear old storage
+        console.log(
+          "🔄 State reset - Preferences changed:",
+          preferencesChanged,
+          "Mode changed:",
+          modeChanged
+        );
+        setRemovedCards(new Set());
+        setCurrentCardIndex(0);
+
+        // Clear old storage keys (from previous refreshKey/mode) before updating the refs
+        if (
+          previousRefreshKeyRef.current !== undefined ||
+          previousModeRef.current !== currentMode
+        ) {
+          const oldRefreshKey = previousRefreshKeyRef.current;
+          const oldMode = previousModeRef.current;
+          const oldBaseKey = `mingla_card_state_${oldMode}_${oldRefreshKey}`;
+          await AsyncStorage.multiRemove([
+            `${oldBaseKey}_index`,
+            `${oldBaseKey}_removed`,
+          ]);
+        }
+
+        previousRefreshKeyRef.current = refreshKey;
+        previousModeRef.current = currentMode;
+        hasRestoredStateRef.current = true;
+        return;
+      }
+
+      // Update previous refs
+      previousRefreshKeyRef.current = refreshKey;
+      previousModeRef.current = currentMode;
+
+      // Only restore once per refreshKey
+      if (hasRestoredStateRef.current) {
+        return;
+      }
+
+      // Load saved state from AsyncStorage
+      try {
+        const keys = getStorageKeys();
+        const [savedIndex, savedRemovedCards] = await AsyncStorage.multiGet([
+          keys.index,
+          keys.removedCards,
+        ]);
+
+        if (savedIndex[1] !== null || savedRemovedCards[1] !== null) {
+          const index = savedIndex[1] ? parseInt(savedIndex[1], 10) : 0;
+          const removedCardsArray = savedRemovedCards[1]
+            ? JSON.parse(savedRemovedCards[1])
+            : [];
+
+          // Validate index is within bounds
+          const availableCount = recommendations.filter(
+            (r) =>
+              !removedCardsArray.includes(r.id) &&
+              !removedCardIds.includes(r.id)
+          ).length;
+
+          const restoredIndex =
+            availableCount > 0
+              ? Math.min(Math.max(0, index), availableCount - 1)
+              : 0;
+
+          console.log(
+            "✅ Restored state from AsyncStorage - Index:",
+            restoredIndex,
+            "Removed:",
+            removedCardsArray.length
+          );
+          setRemovedCards(new Set(removedCardsArray));
+          setCurrentCardIndex(restoredIndex);
+        }
+        hasRestoredStateRef.current = true;
+      } catch (error) {
+        console.error("Error loading state from AsyncStorage:", error);
+        hasRestoredStateRef.current = true;
+      }
+    };
+
+    checkAndRestoreState();
+  }, [recommendations.length, refreshKey, currentMode, removedCardIds]);
+
+  // Save state to AsyncStorage whenever it changes
+  useEffect(() => {
+    // Don't save until we've restored (to avoid saving default values)
+    if (!hasRestoredStateRef.current || !recommendations.length) {
+      return;
+    }
+
+    const saveState = async () => {
+      try {
+        const keys = getStorageKeys();
+        await AsyncStorage.multiSet([
+          [keys.index, currentCardIndex.toString()],
+          [keys.removedCards, JSON.stringify(Array.from(removedCards))],
+        ]);
+      } catch (error) {
+        console.error("Error saving state to AsyncStorage:", error);
+      }
+    };
+
+    saveState();
+  }, [
+    currentCardIndex,
+    removedCards,
+    recommendations.length,
+    currentMode,
+    refreshKey,
+  ]);
 
   // PanResponder for swipe gestures
   const panResponder = useRef(
@@ -625,6 +755,31 @@ export default function SwipeableCards({
     }
   };
 
+  const handleOpenPreferences = () => {
+    if (currentMode === "solo") {
+      onOpenPreferences?.();
+    } else {
+      onOpenCollabPreferences?.();
+    }
+  };
+
+  const handleViewCardsAgain = async () => {
+    // Clear local state
+    setRemovedCards(new Set());
+    setCurrentCardIndex(0);
+    position.setValue({ x: 0, y: 0 });
+
+    // Clear AsyncStorage for current mode and refreshKey
+    try {
+      const keys = getStorageKeys();
+      await AsyncStorage.multiRemove([keys.index, keys.removedCards]);
+    } catch (error) {
+      console.error("Error clearing card state from AsyncStorage:", error);
+    }
+
+    onResetCards?.();
+  };
+
   // Loading state with spinner and rotating tips
   // Show loader if: loading, transitioning modes, or waiting for session resolution
   if (loading || isModeTransitioning || isWaitingForSessionResolution) {
@@ -776,22 +931,22 @@ export default function SwipeableCards({
           </View>
           <Text style={styles.noCardsTitle}>You're all caught up!</Text>
           <Text style={styles.noCardsSubtitle}>
-            You've reviewed all available recommendations. Check back later for
-            more personalized suggestions!
+            You've reviewed all available recommendations. You can{" "}
+            <Text
+              style={styles.actionButtonText}
+              onPress={handleOpenPreferences}
+            >
+              update your preferences
+            </Text>{" "}
+            to see new suggestions or{" "}
+            <Text
+              style={styles.actionButtonText}
+              onPress={handleViewCardsAgain}
+            >
+              view your cards again
+            </Text>
+            .
           </Text>
-          <TouchableOpacity
-            onPress={() => {
-              setRemovedCards(new Set());
-              setCurrentCardIndex(0);
-              position.setValue({ x: 0, y: 0 });
-              onResetCards?.();
-            }}
-            style={styles.startOverButton}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Text style={styles.startOverButtonText}>Start Over</Text>
-          </TouchableOpacity>
         </View>
       </View>
     );
@@ -1598,6 +1753,12 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     lineHeight: 22,
     marginBottom: 20,
+  },
+  actionButtonText: {
+    color: "#eb7825",
+    fontSize: 16,
+    fontWeight: "600",
+    textDecorationLine: "underline",
   },
   startOverButton: {
     backgroundColor: "#eb7825",

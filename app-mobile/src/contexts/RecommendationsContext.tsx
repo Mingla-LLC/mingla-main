@@ -229,14 +229,44 @@ export const RecommendationsProvider: React.FC<
           userPrefs,
           refreshKey
         );
-        cardsCache.setCachedCards(
-          cacheKey,
-          recommendationsData,
-          0,
-          [],
-          currentMode,
-          userLocation
-        );
+
+        // Check if there's an existing cache entry with matching recommendations
+        const existingCache = cardsCache.getCachedCards(cacheKey);
+        const currentCardIds = new Set(recommendationsData.map((r) => r.id));
+        const cachedCardIds = existingCache
+          ? new Set(existingCache.cards.map((c) => c.id))
+          : null;
+
+        // If cache exists and recommendations match, preserve existing state
+        if (
+          existingCache &&
+          cachedCardIds &&
+          currentCardIds.size === cachedCardIds.size &&
+          [...currentCardIds].every((id) => cachedCardIds.has(id))
+        ) {
+          // Recommendations match - preserve existing cache entry
+          // Only update the cards array if it's different, but keep state
+
+          cardsCache.setCachedCards(
+            cacheKey,
+            recommendationsData,
+            existingCache.currentCardIndex,
+            existingCache.removedCardIds || [],
+            currentMode,
+            userLocation
+          );
+        } else {
+          // New recommendations or cache doesn't exist - initialize with defaults
+
+          cardsCache.setCachedCards(
+            cacheKey,
+            recommendationsData,
+            0,
+            [],
+            currentMode,
+            userLocation
+          );
+        }
         currentCacheKeyRef.current = cacheKey;
 
         // Track interaction
