@@ -97,8 +97,8 @@ export class ExperienceGenerationService {
 
       const filteredCategories = request.preferences.categories
         ? request.preferences.categories.filter(
-            (category) => !experienceTypeIds.has(category)
-          )
+          (category) => !experienceTypeIds.has(category)
+        )
         : request.preferences.categories;
 
       // Create filtered preferences object
@@ -118,6 +118,8 @@ export class ExperienceGenerationService {
           },
         }
       );
+
+
 
       if (error) {
         console.error("Error generating experiences:", error);
@@ -546,9 +548,9 @@ export class ExperienceGenerationService {
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(this.toRad(lat1)) *
-        Math.cos(this.toRad(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
+      Math.cos(this.toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }

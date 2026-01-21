@@ -195,4 +195,8 @@ export interface ExpandedCardModalProps {
     card: ExpandedCardData,
     strollData: ExpandedCardData["strollData"]
   ) => Promise<void> | void; // Callback to persist stroll data to database
+  onPicnicDataFetched?: (
+    card: ExpandedCardData,
+    picnicData: ExpandedCardData["picnicData"]
+  ) => Promise<void> | void; // Callback to persist picnic data to database
 }

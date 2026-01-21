@@ -10,6 +10,7 @@ import {
   ExperiencesService,
   UserPreferences,
 } from "../services/experiencesService";
+import { ExperienceGenerationService } from "../services/experienceGenerationService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -216,14 +217,39 @@ export const RecommendationsProvider: React.FC<
     ),
   });
 
+  // Get stable references to cache methods to avoid dependency issues
+  const generateCacheKey = cardsCache.generateCacheKey;
+  const getCachedCards = cardsCache.getCachedCards;
+  const setCachedCards = cardsCache.setCachedCards;
+
+  // Track previous recommendations to prevent unnecessary updates
+  const previousRecommendationsRef = useRef<Recommendation[] | undefined>(undefined);
+
   // Sync recommendations from TanStack Query to local state and CardsCache
   useEffect(() => {
-    if (recommendationsData && recommendationsData.length > 0) {
+    // Handle undefined or empty recommendations
+    if (!recommendationsData) {
+      return; // Don't update state if data is still loading
+    }
+
+    // Check if recommendations have actually changed
+    const prevRecs = previousRecommendationsRef.current;
+    const hasChanged = !prevRecs || 
+      prevRecs.length !== recommendationsData.length ||
+      prevRecs.some((prev, idx) => prev.id !== recommendationsData[idx]?.id);
+
+    if (!hasChanged) {
+      return; // No change, skip update
+    }
+
+    previousRecommendationsRef.current = recommendationsData;
+
+    if (recommendationsData.length > 0) {
       setRecommendations(recommendationsData);
 
       // Also cache in CardsCacheContext for card state management
       if (userLocation && userPrefs) {
-        const cacheKey = cardsCache.generateCacheKey(
+        const cacheKey = generateCacheKey(
           currentMode,
           userLocation,
           userPrefs,
@@ -231,10 +257,10 @@ export const RecommendationsProvider: React.FC<
         );
 
         // Check if there's an existing cache entry with matching recommendations
-        const existingCache = cardsCache.getCachedCards(cacheKey);
-        const currentCardIds = new Set(recommendationsData.map((r) => r.id));
+        const existingCache = getCachedCards(cacheKey);
+        const currentCardIds = new Set(recommendationsData.map((r: Recommendation) => r.id));
         const cachedCardIds = existingCache
-          ? new Set(existingCache.cards.map((c) => c.id))
+          ? new Set(existingCache.cards.map((c: Recommendation) => c.id))
           : null;
 
         // If cache exists and recommendations match, preserve existing state
@@ -242,12 +268,12 @@ export const RecommendationsProvider: React.FC<
           existingCache &&
           cachedCardIds &&
           currentCardIds.size === cachedCardIds.size &&
-          [...currentCardIds].every((id) => cachedCardIds.has(id))
+          Array.from(currentCardIds).every((id) => cachedCardIds.has(id))
         ) {
           // Recommendations match - preserve existing cache entry
           // Only update the cards array if it's different, but keep state
 
-          cardsCache.setCachedCards(
+          setCachedCards(
             cacheKey,
             recommendationsData,
             existingCache.currentCardIndex,
@@ -258,7 +284,7 @@ export const RecommendationsProvider: React.FC<
         } else {
           // New recommendations or cache doesn't exist - initialize with defaults
 
-          cardsCache.setCachedCards(
+          setCachedCards(
             cacheKey,
             recommendationsData,
             0,
@@ -280,8 +306,11 @@ export const RecommendationsProvider: React.FC<
           });
         }
       }
-    } else if (recommendationsData && recommendationsData.length === 0) {
-      setRecommendations([]);
+    } else if (recommendationsData.length === 0) {
+      // Empty array - clear recommendations only if not already empty
+      if (recommendations.length > 0) {
+        setRecommendations([]);
+      }
     }
   }, [
     recommendationsData,
@@ -290,7 +319,9 @@ export const RecommendationsProvider: React.FC<
     currentMode,
     refreshKey,
     user?.id,
-    cardsCache,
+    generateCacheKey,
+    getCachedCards,
+    setCachedCards,
   ]);
 
   // Handle mode transitions

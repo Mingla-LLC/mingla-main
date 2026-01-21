@@ -371,6 +371,14 @@ export default function SwipeableCards({
 
   // Reset index if we're beyond the available cards
   useEffect(() => {
+    if (availableRecommendations.length === 0) {
+      // No cards available - reset index to 0 if it's not already 0
+      if (currentCardIndex !== 0) {
+        setCurrentCardIndex(0);
+      }
+      return;
+    }
+
     if (
       currentCardIndex >= availableRecommendations.length &&
       availableRecommendations.length > 0

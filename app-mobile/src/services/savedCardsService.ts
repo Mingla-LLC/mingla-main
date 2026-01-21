@@ -246,7 +246,7 @@ export const savedCardsService = {
       const cardData = record.card_data || {};
       const sessionName =
         record.collaboration_sessions?.name || "Board Session";
-
+      /* console.log("cardDataP", cardData.picnicData) */
       return {
         ...cardData,
         id:
@@ -347,6 +347,64 @@ export const savedCardsService = {
       }
     } catch (error) {
       console.error("Error in updateCardStrollData:", error);
+      throw error;
+    }
+  },
+
+  async updateCardPicnicData(
+    profileId: string,
+    cardData: ExpandedCardData,
+    picnicData: ExpandedCardData["picnicData"],
+    source: "solo" | "collaboration",
+    sessionId?: string
+  ) {
+    try {
+      // Merge picnicData into the existing card data
+      // Ensure location is preserved - it should be in cardData.location
+      const updatedCardData = {
+        ...cardData,
+        picnicData,
+        // Explicitly preserve location if it exists in cardData
+        location: cardData.location,
+      };
+      if (source === "solo") {
+        const { error: updateError } = await supabase
+          .from("saved_card")
+          .update({ card_data: updatedCardData })
+          .eq("profile_id", profileId)
+          .eq("experience_id", cardData.id);
+
+        if (updateError) {
+          console.error("Error updating solo card picnic data:", updateError);
+          throw updateError;
+        }
+
+        return;
+      }
+
+      if (source === "collaboration") {
+
+        let updateQuery = supabase
+          .from("board_saved_cards")
+          .update({ card_data: updatedCardData })
+          .eq("saved_by", profileId)
+          .eq("card_data->>id", cardData.id);
+
+        if (sessionId) {
+          updateQuery = updateQuery.eq("session_id", sessionId);
+        }
+
+        const { error: updateError } = await updateQuery;
+
+        if (updateError) {
+          console.error("Error updating board card picnic data:", updateError);
+          throw updateError;
+        }
+
+        return;
+      }
+    } catch (error) {
+      console.error("Error in updateCardPicnicData:", error);
       throw error;
     }
   },

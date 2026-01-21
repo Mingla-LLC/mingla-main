@@ -2046,6 +2046,7 @@ interface GenerationRequest {
   user_id: string;
   preferences: UserPreferences;
   location?: { lat: number; lng: number };
+  pageToken?: string;
 }
 
 serve(async (req) => {
@@ -2072,7 +2073,7 @@ serve(async (req) => {
       );
     }
 
-    const { preferences, location } = request;
+    const { preferences, location, pageToken } = request;
 
     if (!preferences) {
       console.error("Preferences are required");
@@ -2106,8 +2107,11 @@ serve(async (req) => {
 
     // Fetch places from Google Places API
     let places: any[] = [];
+    let nextPageToken: string | undefined;
     try {
-      places = await fetchGooglePlaces(preferences, location);
+      const result = await fetchGooglePlaces(preferences, location, pageToken);
+      places = result.places;
+      nextPageToken = result.nextPageToken;
     } catch (error) {
       console.error("Error fetching Google Places:", error);
       // Return empty result instead of crashing
@@ -2134,6 +2138,7 @@ serve(async (req) => {
           meta: {
             totalResults: 0,
             message: "No places found matching your preferences",
+            nextPageToken: nextPageToken,
           },
         }),
         {
@@ -2202,6 +2207,7 @@ serve(async (req) => {
         meta: {
           totalResults: cards.length,
           processingTimeMs: Date.now(),
+          nextPageToken: nextPageToken,
         },
       }),
       {
@@ -2232,8 +2238,9 @@ serve(async (req) => {
 
 async function fetchGooglePlaces(
   preferences: UserPreferences,
-  location: { lat: number; lng: number }
-): Promise<any[]> {
+  location: { lat: number; lng: number },
+  pageToken?: string
+): Promise<{ places: any[]; nextPageToken?: string }> {
   if (!GOOGLE_API_KEY) {
     console.error("Google API key not available - check environment variables");
     throw new Error(
@@ -2246,8 +2253,8 @@ async function fetchGooglePlaces(
       ? Math.min((preferences.travel_constraint_value || 5) * 1000, 50000)
       : 10000; // Default 10km
 
-  // Places API (New) base URL
-  const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
+  // Places API (New) base URL - using textSearch for pagination support
+  const baseUrl = "https://places.googleapis.com/v1/places:searchText";
 
   // Collect all place types from all categories
   const allIncludedTypes: string[] = [];
@@ -2269,7 +2276,7 @@ async function fetchGooglePlaces(
   const uniqueIncludedTypes = Array.from(new Set(allIncludedTypes));
 
   if (uniqueIncludedTypes.length === 0) {
-    return [];
+    return { places: [], nextPageToken: undefined };
   }
 
   // Remove any excluded types that conflict with included types
@@ -2278,15 +2285,27 @@ async function fetchGooglePlaces(
     (type) => !includedTypesSet.has(type)
   );
 
+  // Construct text query from categories (for textSearch endpoint)
+  // Fallback to a generic query if no categories
+  const categoryNames = preferences.categories || [];
+
+  const textQuery = categoryNames.length > 0
+
+    ? `please recommend me ${Array.from(includedTypesSet).join(", ")} places for these categories ${categoryNames.join(", ")}`
+    : "places near me";
+
   try {
     // Field mask for Places API (New) - specify which fields we need
-    const fieldMask =
-      "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours";
+    const fieldMask = "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours,nextPageToken";
 
+
+    // Text Search API doesn't support includedTypes/excludedTypes in request
+    // We'll filter results after receiving them
+    // Request more results than needed to account for filtering
     const requestBody: any = {
-      includedTypes: uniqueIncludedTypes.slice(0, 50),
-      maxResultCount: 20,
-      locationRestriction: {
+      textQuery: textQuery,
+      maxResultCount: 60, // Text Search supports up to 60 results
+      locationBias: {
         circle: {
           center: {
             latitude: location.lat,
@@ -2297,9 +2316,9 @@ async function fetchGooglePlaces(
       },
     };
 
-    // Add excludedTypes if we have any (after filtering conflicts)
-    if (filteredExcludedTypes.length > 0) {
-      requestBody.excludedTypes = filteredExcludedTypes.slice(0, 50);
+    // Add pageToken if provided (for pagination)
+    if (pageToken) {
+      requestBody.pageToken = pageToken;
     }
 
     const response = await fetch(baseUrl, {
@@ -2320,17 +2339,43 @@ async function fetchGooglePlaces(
         response.statusText,
         errorText
       );
-      return [];
+      return { places: [], nextPageToken: undefined };
     }
 
     const data = await response.json();
 
+    // Extract nextPageToken from response for pagination
+    const nextPageToken = data.nextPageToken;
+
+
     if (!data.places?.length) {
-      return [];
+      return { places: [], nextPageToken };
+    }
+
+    // Filter places by included/excluded types (textSearch doesn't support this in request)
+    const filteredPlaces = data.places.filter((place: any) => {
+      const placeTypeSet = new Set(place.types || []);
+
+      // Check if place matches any included types
+      const matchesIncludedType = uniqueIncludedTypes.some((type) =>
+        placeTypeSet.has(type)
+      );
+
+      // Check if place matches any excluded types
+      const matchesExcludedType = filteredExcludedTypes.some((type) =>
+        placeTypeSet.has(type)
+      );
+
+      // Include place if it matches included types and doesn't match excluded types
+      return matchesIncludedType && !matchesExcludedType;
+    });
+
+    if (!filteredPlaces.length) {
+      return { places: [], nextPageToken: nextPageToken };
     }
 
     // Map places to our format
-    const places = data.places.map((place: any) => {
+    const places = filteredPlaces.map((place: any) => {
       // Extract photo reference from new API format
       const primaryPhoto = place.photos?.[0];
       const imageUrl = primaryPhoto?.name
@@ -2353,22 +2398,22 @@ async function fetchGooglePlaces(
         priceLevel === 0
           ? 0
           : priceLevel === 1
-          ? 0
-          : priceLevel === 2
-          ? 15
-          : priceLevel === 3
-          ? 50
-          : 100;
+            ? 0
+            : priceLevel === 2
+              ? 15
+              : priceLevel === 3
+                ? 50
+                : 100;
       const price_max =
         priceLevel === 0
           ? 0
           : priceLevel === 1
-          ? 25
-          : priceLevel === 2
-          ? 75
-          : priceLevel === 3
-          ? 150
-          : 500;
+            ? 25
+            : priceLevel === 2
+              ? 75
+              : priceLevel === 3
+                ? 150
+                : 500;
 
       // Determine category based on place types - match to user's selected categories
       const placeTypeSet = new Set(place.types || []);
@@ -2401,9 +2446,9 @@ async function fetchGooglePlaces(
         placeId: place.id,
         openingHours: place.regularOpeningHours
           ? {
-              open_now: place.regularOpeningHours.openNow || false,
-              weekday_text: place.regularOpeningHours.weekdayDescriptions || [],
-            }
+            open_now: place.regularOpeningHours.openNow || false,
+            weekday_text: place.regularOpeningHours.weekdayDescriptions || [],
+          }
           : null,
         placeTypes: place.types || [],
         price_min,
@@ -2411,10 +2456,18 @@ async function fetchGooglePlaces(
       };
     });
 
-    return places;
+    // Return all filtered results - pagination is handled via pageToken
+
+    console.log("returned", places.length, nextPageToken);
+
+
+    return {
+      places: places,
+      nextPageToken: nextPageToken,
+    };
   } catch (error) {
     console.error(`Error fetching Google Places:`, error);
-    return [];
+    return { places: [], nextPageToken: undefined };
   }
 }
 
@@ -2445,8 +2498,8 @@ async function annotateWithTravel(
     travelMode === "walking"
       ? "walking"
       : travelMode === "driving"
-      ? "driving"
-      : "transit";
+        ? "driving"
+        : "transit";
 
   const annotatedPlaces: any[] = [];
 

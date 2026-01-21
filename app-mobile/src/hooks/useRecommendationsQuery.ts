@@ -125,7 +125,7 @@ const fetchRecommendations = async (
       highlights: exp.highlights || [],
       fullDescription: exp.description,
       address: exp.address,
-      openingHours: exp.openingHours || null,
+      openingHours: exp.openingHours ? JSON.stringify(exp.openingHours) : "",
       tags: exp.highlights || [],
       matchScore: exp.matchScore,
       reviewCount: exp.reviewCount,

@@ -793,12 +793,17 @@ const SavedTab = ({
         saves: card.socialStats?.saves || 0,
         shares: (card.socialStats as any)?.shares || 0,
       },
-      location: { lat: card.lat, lng: card.lng },
+      // Handle location - could be in card.location object or card.lat/lng properties
+      location: (card as any).location || 
+                ((card as any).lat && (card as any).lng 
+                  ? { lat: (card as any).lat, lng: (card as any).lng }
+                  : undefined),
       selectedDateTime: (card as any)?.dateAdded
         ? new Date((card as any).dateAdded)
         : "N/A",
-      // Include strollData if available from saved card
+      // Include strollData and picnicData if available from saved card
       strollData: (card as any).strollData,
+      picnicData: (card as any).picnicData, // Include picnicData from saved card
     };
 
     setSelectedCardForModal(expandedCardData);
@@ -840,6 +845,38 @@ const SavedTab = ({
       }
     } catch (error) {
       console.error("Error persisting stroll data:", error);
+      // Don't show error to user - data is still in modal state
+    }
+  };
+
+  const handlePicnicDataFetched = async (
+    card: ExpandedCardData,
+    picnicData: ExpandedCardData["picnicData"]
+  ) => {
+    // Persist picnic data to the appropriate table based on source
+    if (!user?.id || !picnicData || !originalSavedCard) return;
+    const source: "solo" | "collaboration" = originalSavedCard.source;
+   
+    try {
+      await savedCardsService.updateCardPicnicData(
+        user.id,
+        card,
+        picnicData,
+        source,
+        originalSavedCard.sessionId || undefined
+      );
+
+      // Invalidate queries to refresh the saved cards list
+      queryClient.invalidateQueries({
+        queryKey: ["savedCards", user.id],
+      });
+      if (originalSavedCard.sessionId) {
+        queryClient.invalidateQueries({
+          queryKey: ["boardSavedCards", originalSavedCard.sessionId],
+        });
+      }
+    } catch (error) {
+      console.error("Error persisting picnic data:", error);
       // Don't show error to user - data is still in modal state
     }
   };
@@ -1127,6 +1164,7 @@ const SavedTab = ({
           onShare={handleModalShare}
           userPreferences={userPreferences}
           onStrollDataFetched={handleStrollDataFetched}
+          onPicnicDataFetched={handlePicnicDataFetched}
         />
       )}
     </View>

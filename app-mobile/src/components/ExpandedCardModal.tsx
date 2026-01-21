@@ -45,6 +45,7 @@ export default function ExpandedCardModal({
   currentMode = "solo",
   onCardRemoved,
   onStrollDataFetched,
+  onPicnicDataFetched,
 }: ExpandedCardModalProps) {
   const { updateCardStrollData } = useRecommendations();
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
@@ -169,7 +170,6 @@ export default function ExpandedCardModal({
           }
         : null);
 
-    console.log("card", card);
 
     if (!anchor) {
       console.warn("⚠️ Cannot fetch stroll data: missing anchor information");
@@ -227,12 +227,16 @@ export default function ExpandedCardModal({
 
     setLoadingPicnicData(true);
     try {
+
+   
       const fetchedPicnicData =
         await ExperienceGenerationService.fetchPicnicGroceryData(picnic);
       if (fetchedPicnicData) {
         setPicnicData(fetchedPicnicData);
-        // TODO: Update the card's picnicData in the context and cache
-        // Similar to updateCardStrollData, we may need updateCardPicnicData
+        // Persist to database if callback is provided (for saved cards)
+        if (onPicnicDataFetched) {
+          await onPicnicDataFetched(card, fetchedPicnicData);
+        }
       }
     } catch (err) {
       console.error("Error fetching picnic grocery data:", err);
