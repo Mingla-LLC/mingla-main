@@ -117,7 +117,7 @@ const CalendarTab = ({
 
   const handleProposeDateTime = (
     date: Date,
-    dateOption: "now" | "today" | "weekend" | "custom"
+    dateOption: "now" | "today" | "weekend" | "custom",
   ) => {
     if (!entryToReschedule) return;
 
@@ -736,7 +736,7 @@ const CalendarTab = ({
 
   const renderCalendarEntry = ({ item: entry }: { item: CalendarEntry }) => {
     const ExperienceIcon = getIconComponent(
-      entry.experience?.categoryIcon || entry.categoryIcon
+      entry.experience?.categoryIcon || entry.categoryIcon,
     );
 
     return (
@@ -776,7 +776,7 @@ const CalendarTab = ({
                     {entry.suggestedDates?.[0]
                       ? new Date(entry.suggestedDates[0]).toLocaleDateString(
                           "en-US",
-                          { month: "short", day: "numeric" }
+                          { month: "short", day: "numeric" },
                         )
                       : "TBD"}
                   </Text>
@@ -784,7 +784,7 @@ const CalendarTab = ({
                     {entry.suggestedDates?.[0]
                       ? new Date(entry.suggestedDates[0]).toLocaleTimeString(
                           "en-US",
-                          { hour: "numeric", minute: "2-digit", hour12: true }
+                          { hour: "numeric", minute: "2-digit", hour12: true },
                         )
                       : ""}
                   </Text>
@@ -817,7 +817,7 @@ const CalendarTab = ({
                         entry.purchaseOption.price,
                         entry.purchaseOption.currency ||
                           accountPreferences?.currency ||
-                          "USD"
+                          "USD",
                       )}
                     </Text>
                   </View>
@@ -851,8 +851,8 @@ const CalendarTab = ({
                         : styles.collaborationText,
                     ]}
                   >
-                    {entry.sessionType === "solo"
-                      ? "Solo Plan"
+                    {entry.source === "solo"
+                      ? "Solo Discovery"
                       : entry.sessionName || "Group Plan"}
                   </Text>
                 </View>
@@ -910,7 +910,7 @@ const CalendarTab = ({
                         entry.purchaseOption.price,
                         entry.purchaseOption.currency ||
                           accountPreferences?.currency ||
-                          "USD"
+                          "USD",
                       )}
                     </Text>
                   </View>
@@ -970,7 +970,7 @@ const CalendarTab = ({
                   <TouchableOpacity
                     onPress={() =>
                       handleOpenMaps(
-                        entry.experience?.address || "Current Location"
+                        entry.experience?.address || "Current Location",
                       )
                     }
                     style={styles.primaryButton}
@@ -1053,7 +1053,7 @@ const CalendarTab = ({
                             onPress={() =>
                               prevImage(
                                 entry.id,
-                                entry.experience.images.length
+                                entry.experience.images.length,
                               )
                             }
                             style={[styles.imageNavigation, styles.leftNav]}
@@ -1068,7 +1068,7 @@ const CalendarTab = ({
                             onPress={() =>
                               nextImage(
                                 entry.id,
-                                entry.experience.images.length
+                                entry.experience.images.length,
                               )
                             }
                             style={[styles.imageNavigation, styles.rightNav]}
@@ -1093,7 +1093,7 @@ const CalendarTab = ({
                                       : styles.inactiveIndicator,
                                   ]}
                                 />
-                              )
+                              ),
                             )}
                           </View>
                         </>
@@ -1125,7 +1125,7 @@ const CalendarTab = ({
                                 {highlight}
                               </Text>
                             </View>
-                          )
+                          ),
                         )}
                       </View>
                     </View>
@@ -1145,7 +1145,7 @@ const CalendarTab = ({
                               year: "numeric",
                               month: "long",
                               day: "numeric",
-                            }
+                            },
                           )
                         : "Date to be determined"}
                     </Text>
@@ -1160,7 +1160,7 @@ const CalendarTab = ({
                               hour: "numeric",
                               minute: "2-digit",
                               hour12: true,
-                            }
+                            },
                           )
                         : "Time to be determined"}
                     </Text>

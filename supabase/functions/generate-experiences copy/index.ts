@@ -2983,6 +2983,13 @@ function convertToCard(place: any, preferences: UserPreferences): any {
     id: place.id,
     title: place.name,
     category: place.category,
+
+
+
+    
+
+
+    
     matchScore: place.matchScore,
     image:
       place.imageUrl ||

@@ -206,6 +206,12 @@ class BoardSessionService {
           // Since role column doesn't exist, creator is the only admin
           const admins = [session.created_by];
 
+
+
+
+          console.log("admins", admins          )
+          console.log("session", session)
+
           // Format dates
           const createdAt = session.created_at
             ? this.formatRelativeTime(new Date(session.created_at))

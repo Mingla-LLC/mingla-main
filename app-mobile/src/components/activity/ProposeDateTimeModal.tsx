@@ -26,7 +26,7 @@ interface ProposeDateTimeModalProps {
   currentScheduledDate?: Date | string | null;
   onProposeDateTime: (
     date: Date,
-    dateOption: "now" | "today" | "weekend" | "custom"
+    dateOption: "now" | "today" | "weekend" | "custom",
   ) => void;
 }
 
@@ -56,7 +56,7 @@ export default function ProposeDateTimeModal({
   >(null);
 
   const handleDateOptionSelect = (
-    option: "now" | "today" | "weekend" | "custom"
+    option: "now" | "today" | "weekend" | "custom",
   ) => {
     setSelectedDateOption(option);
     setSelectedWeekendDay(null); // Reset weekend day selection
@@ -165,7 +165,7 @@ export default function ProposeDateTimeModal({
   };
 
   const checkPlaceAvailability = (
-    dateToCheck: Date | null = null
+    dateToCheck: Date | null = null,
   ): {
     isOpen: boolean;
     isAssumption: boolean;
@@ -181,15 +181,28 @@ export default function ProposeDateTimeModal({
       };
     }
 
-    const openingHours = (card as any).openingHours;
+    let openingHours = (card as any).openingHours;
+
+    // If openingHours is a string, parse it to an object
+    if (typeof openingHours === "string") {
+      try {
+        openingHours = JSON.parse(openingHours);
+        console.log("Parsed openingHours from string:", openingHours);
+      } catch (error) {
+        console.error("Failed to parse openingHours string:", error);
+        return {
+          isOpen: true,
+          isAssumption: true,
+          reason: "Invalid opening hours data format",
+        };
+      }
+    }
 
     // If no opening hours data, assume open (user schedules at own risk)
     if (
       !openingHours ||
-      typeof openingHours !== "object" ||
       openingHours === null ||
-      !Array.isArray(openingHours.weekday_text) ||
-      openingHours.weekday_text.length === 0
+      typeof openingHours !== "object"
     ) {
       return {
         isOpen: true,
@@ -212,8 +225,8 @@ export default function ProposeDateTimeModal({
     const selectedDayName = dayNames[dayOfWeek];
 
     // Find the opening hours for the selected day
-    const dayHours = openingHours.weekday_text.find((entry: string) =>
-      entry.startsWith(selectedDayName)
+    const dayHours = openingHours.weekday_text?.find((entry: string) =>
+      entry.startsWith(selectedDayName),
     );
 
     if (!dayHours) {
@@ -224,10 +237,45 @@ export default function ProposeDateTimeModal({
       };
     }
 
+    // Ensure dayHours is a string
+    if (typeof dayHours !== "string") {
+      return {
+        isOpen: true,
+        isAssumption: true,
+        reason: "Invalid opening hours data format",
+      };
+    }
+
+    // Handle special case: "Open 24 hours"
+    if (/open\s*24\s*hours?/i.test(dayHours)) {
+      return {
+        isOpen: true,
+        isAssumption: false,
+      };
+    }
+
+    // Handle special case: "Closed"
+    if (/closed/i.test(dayHours)) {
+      return {
+        isOpen: false,
+        isAssumption: false,
+      };
+    }
+
     // Parse the time range (e.g., "Monday: 9:00 AM – 12:00 AM")
-    const timeRangeMatch = dayHours.match(/:\s*(.+?)\s*–\s*(.+)$/);
+    // Try different patterns to handle various formats
+    let timeRangeMatch = dayHours.match(/:\s*(.+?)\s*–\s*(.+)$/);
+
+    // If that doesn't work, try with different dash characters
     if (!timeRangeMatch) {
-      // Can't parse the time range, assume open
+      timeRangeMatch = dayHours.match(/:\s*(.+?)\s*-\s*(.+)$/); // Regular dash
+    }
+    if (!timeRangeMatch) {
+      timeRangeMatch = dayHours.match(/:\s*(.+?)\s*to\s*(.+)$/i); // "to" separator
+    }
+    if (!timeRangeMatch) {
+      // Can't parse the time range, assume open with warning
+      console.log("Failed to parse dayHours:", dayHours);
       return {
         isOpen: true,
         isAssumption: true,
@@ -361,7 +409,7 @@ export default function ProposeDateTimeModal({
       const result = checkPlaceAvailability(proposedDate);
       setIsPlaceOpen(result.isOpen);
       setAvailabilityAssumption(
-        result.isAssumption ? result.reason || "Availability assumed" : null
+        result.isAssumption ? result.reason || "Availability assumed" : null,
       );
       setIsAvailabilityChecked(true);
       setIsCheckingAvailability(false);

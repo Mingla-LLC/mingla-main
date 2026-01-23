@@ -180,6 +180,7 @@ export default function SwipeableCards({
   savedCards = [],
 }: SwipeableCardsProps) {
   // Use recommendations from context
+
   const {
     recommendations,
     loading,
@@ -195,6 +196,7 @@ export default function SwipeableCards({
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   const spinValue = useRef(new Animated.Value(0)).current;
+
   const hasRestoredStateRef = useRef(false);
   const previousRefreshKeyRef = useRef<number | string | undefined>(refreshKey);
   const previousModeRef = useRef<string>(currentMode);
@@ -230,7 +232,7 @@ export default function SwipeableCards({
 
     // Otherwise, try to find session by name or ID from availableSessions
     const session = availableSessions.find(
-      (s) => s.id === currentMode || s.name === currentMode
+      (s) => s.id === currentMode || s.name === currentMode,
     );
     return session?.id || null;
   }, [currentMode, currentSession, availableSessions]);
@@ -244,7 +246,7 @@ export default function SwipeableCards({
   // Load board preferences if in board session
   // Use hook unconditionally (React rules) but pass undefined when not in board session
   const boardSessionResult = useBoardSession(
-    isBoardSession && currentSession?.id ? currentSession.id : undefined
+    isBoardSession && currentSession?.id ? currentSession.id : undefined,
   );
   const boardPreferences = boardSessionResult?.preferences || null;
 
@@ -346,7 +348,7 @@ export default function SwipeableCards({
         toValue: 1,
         duration: 2000,
         useNativeDriver: true,
-      })
+      }),
     );
 
     spinAnimation.start();
@@ -363,7 +365,7 @@ export default function SwipeableCards({
 
   // Filter out removed cards
   const availableRecommendations = recommendations.filter(
-    (rec) => !removedCards.has(rec.id) && !removedCardIds.includes(rec.id)
+    (rec) => !removedCards.has(rec.id) && !removedCardIds.includes(rec.id),
   );
 
   // Always use currentCardIndex to track position in the deck
@@ -405,7 +407,7 @@ export default function SwipeableCards({
           "🔄 State reset - Preferences changed:",
           preferencesChanged,
           "Mode changed:",
-          modeChanged
+          modeChanged,
         );
         setRemovedCards(new Set());
         setCurrentCardIndex(0);
@@ -457,7 +459,7 @@ export default function SwipeableCards({
           const availableCount = recommendations.filter(
             (r) =>
               !removedCardsArray.includes(r.id) &&
-              !removedCardIds.includes(r.id)
+              !removedCardIds.includes(r.id),
           ).length;
 
           const restoredIndex =
@@ -469,7 +471,7 @@ export default function SwipeableCards({
             "✅ Restored state from AsyncStorage - Index:",
             restoredIndex,
             "Removed:",
-            removedCardsArray.length
+            removedCardsArray.length,
           );
           setRemovedCards(new Set(removedCardsArray));
           setCurrentCardIndex(restoredIndex);
@@ -535,7 +537,7 @@ export default function SwipeableCards({
         const availableCards = recommendationsRef.current.filter(
           (rec) =>
             !removedCardsRef.current.has(rec.id) &&
-            !removedCardIds.includes(rec.id)
+            !removedCardIds.includes(rec.id),
         );
         const cardToRemove = availableCards[currentCardIndexRef.current];
 
@@ -602,7 +604,7 @@ export default function SwipeableCards({
           }).start();
         }
       },
-    })
+    }),
   ).current;
 
   const handleCardTap = () => {
@@ -663,7 +665,7 @@ export default function SwipeableCards({
 
   const handleSwipe = async (
     direction: "left" | "right",
-    card: Recommendation
+    card: Recommendation,
   ) => {
     if (!card) return;
 
@@ -683,7 +685,7 @@ export default function SwipeableCards({
               time_of_day: userPreferences?.timeOfDay || "Afternoon",
               budget_range: `${card.priceRange}`,
               location: userPreferences?.location || "San Francisco",
-            }
+            },
           );
         } catch (trackingError) {
           console.error("Error tracking interaction:", trackingError);
@@ -697,7 +699,7 @@ export default function SwipeableCards({
           } catch (saveError: any) {
             if (saveError?.code === "23505") {
               console.warn(
-                "Experience already saved for this user, skipping duplicate save"
+                "Experience already saved for this user, skipping duplicate save",
               );
               // Don't throw - consider this a success (already saved)
             } else {
@@ -715,7 +717,7 @@ export default function SwipeableCards({
             await ExperiencesService.saveExperience(
               user.id,
               card.id,
-              "disliked"
+              "disliked",
             );
           } catch (dislikeError) {
             console.error("Error tracking dislike:", dislikeError);
@@ -1318,7 +1320,7 @@ export default function SwipeableCards({
             ? savedCards.some(
                 (savedCard) =>
                   savedCard?.id === selectedCardForExpansion.id ||
-                  savedCard === selectedCardForExpansion.id
+                  savedCard === selectedCardForExpansion.id,
               )
             : false
         }

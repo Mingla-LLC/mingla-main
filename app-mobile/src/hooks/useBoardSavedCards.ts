@@ -34,6 +34,11 @@ interface SavedCard {
     features: string[];
     popular?: boolean;
   }>;
+  openingHours?: {
+    open_now?: boolean;
+    weekday_text?: string[];
+  } | null;
+  [key: string]: any; // Allow additional fields from card_data
 }
 
 const transformBoardCard = (
@@ -43,6 +48,9 @@ const transformBoardCard = (
 ): SavedCard => {
   const cardData = boardCard.card_data || boardCard.experience_data || {};
   return {
+    // Spread cardData first to preserve all fields including openingHours
+    ...cardData,
+    // Then override with specific mappings and defaults
     id: cardData.id || boardCard.id,
     title: cardData.title || cardData.name || "Untitled",
     category: cardData.category || cardData.type || "Experience",
@@ -68,6 +76,8 @@ const transformBoardCard = (
     sessionName,
     sessionId: boardCard.session_id || sessionId, // Include session_id from boardCard
     purchaseOptions: cardData.purchaseOptions || [],
+    // Explicitly preserve openingHours
+    openingHours: cardData.openingHours || null,
   };
 };
 

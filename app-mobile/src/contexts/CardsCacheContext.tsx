@@ -216,6 +216,15 @@ export const CardsCacheProvider: React.FC<{ children: React.ReactNode }> = ({
         return null;
       }
 
+
+
+
+
+
+
+      
+
+
       // Check if cache has expired
       const now = Date.now();
       const age = now - entry.timestamp;
