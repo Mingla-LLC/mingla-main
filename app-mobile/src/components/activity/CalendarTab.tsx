@@ -117,7 +117,7 @@ const CalendarTab = ({
 
   const handleProposeDateTime = (
     date: Date,
-    dateOption: "now" | "today" | "weekend" | "custom",
+    dateOption: "now" | "today" | "weekend" | "custom"
   ) => {
     if (!entryToReschedule) return;
 
@@ -176,59 +176,25 @@ const CalendarTab = ({
       fontSize: 16,
       fontWeight: "600",
       color: "#111827",
+      marginBottom: 4,
+    },
+    cardSubtitle: {
+      fontSize: 14,
+      color: "#6b7280",
       marginBottom: 8,
     },
-    cardCategory: {
-      flexDirection: "row",
-      alignItems: "center",
+    eventDetailsContainer: {
       gap: 8,
       marginBottom: 8,
     },
-    categoryIcon: {
-      width: 16,
-      height: 16,
-      color: "#eb7825",
+    eventDetailRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
     },
-    categoryText: {
+    eventDetailText: {
       fontSize: 14,
-      color: "#6b7280",
-    },
-    dateTimeInfo: {
-      alignItems: "flex-end",
-    },
-    dateText: {
-      fontSize: 14,
-      fontWeight: "500",
       color: "#111827",
-    },
-    timeText: {
-      fontSize: 12,
-      color: "#6b7280",
-    },
-    cardMeta: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 16,
-      marginBottom: 8,
-    },
-    metaItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-    },
-    metaIcon: {
-      width: 16,
-      height: 16,
-      color: "#eb7825",
-    },
-    metaText: {
-      fontSize: 14,
-      color: "#6b7280",
-    },
-    priceText: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: "#eb7825",
     },
     statusIndicators: {
       flexDirection: "row",
@@ -355,25 +321,49 @@ const CalendarTab = ({
       color: "#047857",
     },
     actionsContainer: {
-      paddingHorizontal: 16,
       paddingBottom: 16,
+      marginTop: 16,
     },
     actionsRow: {
       flexDirection: "row",
       gap: 8,
-    },
-    primaryButton: {
-      flex: 1,
-      backgroundColor: "#eb7825",
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
       alignItems: "center",
     },
-    primaryButtonText: {
+    proposeDateButton: {
+      flex: 1,
+      backgroundColor: "#eb7825",
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      borderRadius: 24,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+    },
+    proposeDateButtonText: {
       color: "white",
       fontSize: 16,
-      fontWeight: "500",
+      fontWeight: "600",
+    },
+    shareButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "white",
+      borderWidth: 1,
+      borderColor: "#e5e7eb",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    deleteButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "#fee2e2",
+      borderWidth: 1,
+      borderColor: "#fca5a5",
+      alignItems: "center",
+      justifyContent: "center",
     },
     secondaryButton: {
       flex: 1,
@@ -735,9 +725,34 @@ const CalendarTab = ({
   };
 
   const renderCalendarEntry = ({ item: entry }: { item: CalendarEntry }) => {
-    const ExperienceIcon = getIconComponent(
-      entry.experience?.categoryIcon || entry.categoryIcon,
-    );
+    // Format date and time for display
+    const scheduledDate = entry.suggestedDates?.[0]
+      ? new Date(entry.suggestedDates[0])
+      : null;
+
+    const formattedDate = scheduledDate
+      ? scheduledDate.toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        })
+      : "TBD";
+
+    const formattedTime = scheduledDate
+      ? scheduledDate.toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        })
+      : "";
+
+    // Get subtitle/organizer - could be from entry or experience
+    const subtitle =
+      (entry as any).organizer ||
+      (entry.experience as any)?.organizer ||
+      entry.experience?.category ||
+      entry.category ||
+      "Experience";
 
     return (
       <View style={styles.calendarCard}>
@@ -757,131 +772,46 @@ const CalendarTab = ({
                   flexDirection: "row",
                   alignItems: "flex-start",
                   justifyContent: "space-between",
-                  marginBottom: 8,
+                  marginBottom: 4,
                 }}
               >
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardTitle}>
                     {entry.experience?.title || entry.title}
                   </Text>
-                  <View style={styles.cardCategory}>
-                    <Ionicons name={ExperienceIcon} size={16} color="#eb7825" />
-                    <Text style={styles.categoryText}>
-                      {entry.experience?.category || entry.category}
-                    </Text>
-                  </View>
+                  {/* Subtitle instead of category */}
+                  <Text style={styles.cardSubtitle}>{subtitle}</Text>
                 </View>
-                <View style={styles.dateTimeInfo}>
-                  <Text style={styles.dateText}>
-                    {entry.suggestedDates?.[0]
-                      ? new Date(entry.suggestedDates[0]).toLocaleDateString(
-                          "en-US",
-                          { month: "short", day: "numeric" },
-                        )
-                      : "TBD"}
-                  </Text>
-                  <Text style={styles.timeText}>
-                    {entry.suggestedDates?.[0]
-                      ? new Date(entry.suggestedDates[0]).toLocaleTimeString(
-                          "en-US",
-                          { hour: "numeric", minute: "2-digit", hour12: true },
-                        )
-                      : ""}
+              </View>
+
+              {/* Event Details: Date, Time, Location with orange icons */}
+              <View style={styles.eventDetailsContainer}>
+                <View style={styles.eventDetailRow}>
+                  <Ionicons name="calendar" size={16} color="#eb7825" />
+                  <Text style={styles.eventDetailText}>{formattedDate}</Text>
+                </View>
+                {formattedTime ? (
+                  <View style={styles.eventDetailRow}>
+                    <Ionicons name="time" size={16} color="#eb7825" />
+                    <Text style={styles.eventDetailText}>{formattedTime}</Text>
+                  </View>
+                ) : null}
+                <View style={styles.eventDetailRow}>
+                  <Ionicons name="location" size={16} color="#eb7825" />
+                  <Text style={styles.eventDetailText}>
+                    {entry.experience?.address ||
+                      entry.address ||
+                      "Location TBD"}
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.cardMeta}>
-                <View style={styles.metaItem}>
-                  <Ionicons name="star" size={16} color="#eb7825" />
-                  <Text style={styles.metaText}>
-                    {entry.experience?.rating || "4.5"}
-                  </Text>
-                </View>
-                <View style={styles.metaItem}>
-                  <Ionicons name="navigate" size={16} color="#eb7825" />
-                  <Text style={styles.metaText}>
-                    {entry.experience?.travelTime || "15 min"}
-                  </Text>
-                </View>
-                {entry.purchaseOption ? (
-                  <View style={styles.metaItem}>
-                    <Ionicons name="bag" size={16} color="#16a34a" />
-                    <Text
-                      style={[
-                        styles.metaText,
-                        { color: "#16a34a", fontWeight: "600" },
-                      ]}
-                    >
-                      {formatCurrency(
-                        entry.purchaseOption.price,
-                        entry.purchaseOption.currency ||
-                          accountPreferences?.currency ||
-                          "USD",
-                      )}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text style={styles.priceText}>
-                    {entry.experience?.priceRange || "$25-50"}
-                  </Text>
-                )}
-              </View>
-
-              {/* Session type and status indicators */}
+              {/* Solo Plan Badge */}
               <View style={styles.statusIndicators}>
-                <View
-                  style={[
-                    styles.sessionBadge,
-                    entry.sessionType === "solo"
-                      ? styles.soloBadge
-                      : styles.collaborationBadge,
-                  ]}
-                >
-                  <Ionicons
-                    name={entry.sessionType === "solo" ? "eye" : "people"}
-                    size={12}
-                    color={entry.sessionType === "solo" ? "#1e40af" : "#7c3aed"}
-                  />
-                  <Text
-                    style={[
-                      styles.sourceText,
-                      entry.sessionType === "solo"
-                        ? styles.soloText
-                        : styles.collaborationText,
-                    ]}
-                  >
-                    {entry.source === "solo"
-                      ? "Solo Discovery"
-                      : entry.sessionName || "Group Plan"}
-                  </Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.statusBadge,
-                    entry.status === "confirmed"
-                      ? styles.confirmedBadge
-                      : entry.status === "completed"
-                      ? styles.completedBadge
-                      : styles.pendingBadge,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.statusText,
-                      entry.status === "confirmed"
-                        ? styles.confirmedText
-                        : entry.status === "completed"
-                        ? styles.completedText
-                        : styles.pendingText,
-                    ]}
-                  >
-                    {entry.status === "confirmed"
-                      ? "Confirmed"
-                      : entry.status === "completed"
-                      ? "Completed"
-                      : "Pending"}
+                <View style={[styles.sessionBadge, styles.soloBadge]}>
+                  <Ionicons name="eye" size={12} color="#1e40af" />
+                  <Text style={[styles.sourceText, styles.soloText]}>
+                    Solo Plan
                   </Text>
                 </View>
               </View>
@@ -910,7 +840,7 @@ const CalendarTab = ({
                         entry.purchaseOption.price,
                         entry.purchaseOption.currency ||
                           accountPreferences?.currency ||
-                          "USD",
+                          "USD"
                       )}
                     </Text>
                   </View>
@@ -956,76 +886,42 @@ const CalendarTab = ({
           {/* Calendar Actions */}
           <View style={styles.actionsContainer}>
             <View style={styles.actionsRow}>
-              {/* Show Re Schedule button for archived entries */}
-              {activeTab === "archive" ? (
-                <TouchableOpacity
-                  onPress={() => handleReschedule(entry)}
-                  style={styles.rescheduleButton}
-                >
-                  <Ionicons name="calendar" size={20} color="white" />
-                  <Text style={styles.rescheduleButtonText}>Re Schedule</Text>
-                </TouchableOpacity>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    onPress={() =>
-                      handleOpenMaps(
-                        entry.experience?.address || "Current Location",
-                      )
-                    }
-                    style={styles.primaryButton}
-                  >
-                    <Ionicons name="location" size={20} color="white" />
-                  </TouchableOpacity>
+              {/* Propose Date Button - Large orange button */}
+              <TouchableOpacity
+                onPress={() => {
+                  setEntryToReschedule(entry);
+                  setShowProposeDateTimeModal(true);
+                }}
+                style={styles.proposeDateButton}
+              >
+                <Ionicons name="calendar" size={18} color="white" />
+                <Text style={styles.proposeDateButtonText}>Propose Date</Text>
+              </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={() => onAddToCalendar(entry)}
-                    style={styles.secondaryButton}
-                  >
-                    <Ionicons name="calendar" size={20} color="#eb7825" />
-                  </TouchableOpacity>
+              {/* Share Button - Small circular */}
+              <TouchableOpacity
+                onPress={() => onShareCard(entry.experience || entry)}
+                style={styles.shareButton}
+              >
+                <Ionicons
+                  name="share-social-outline"
+                  size={18}
+                  color="#374151"
+                />
+              </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={() => onShareCard(entry.experience)}
-                    style={styles.tertiaryButton}
-                  >
-                    <Ionicons name="share" size={20} color="#6b7280" />
-                  </TouchableOpacity>
-
-                  {/* Show remove button only for non-purchased entries */}
-                  {!entry.purchaseOption && !entry.isPurchased ? (
-                    <TouchableOpacity
-                      onPress={() => handleRemoveFromCalendar(entry)}
-                      style={styles.tertiaryButton}
-                      disabled={removingEntryId === entry.id}
-                    >
-                      {removingEntryId === entry.id ? (
-                        <ActivityIndicator size="small" color="#6b7280" />
-                      ) : (
-                        <Ionicons name="close" size={20} color="#6b7280" />
-                      )}
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={{ flexDirection: "row", gap: 8 }}>
-                      <View style={styles.purchasedButton}>
-                        <Ionicons
-                          name="lock-closed"
-                          size={20}
-                          color="#059669"
-                        />
-                      </View>
-
-                      {/* QR Code Button for Purchased Items */}
-                      <TouchableOpacity
-                        onPress={() => onShowQRCode(entry.id)}
-                        style={styles.qrButton}
-                      >
-                        <Ionicons name="qr-code" size={20} color="#2563eb" />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </>
-              )}
+              {/* Delete Button - Small circular */}
+              <TouchableOpacity
+                onPress={() => handleRemoveFromCalendar(entry)}
+                style={styles.deleteButton}
+                disabled={removingEntryId === entry.id}
+              >
+                {removingEntryId === entry.id ? (
+                  <ActivityIndicator size="small" color="#ef4444" />
+                ) : (
+                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                )}
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -1053,7 +949,7 @@ const CalendarTab = ({
                             onPress={() =>
                               prevImage(
                                 entry.id,
-                                entry.experience.images.length,
+                                entry.experience.images.length
                               )
                             }
                             style={[styles.imageNavigation, styles.leftNav]}
@@ -1068,7 +964,7 @@ const CalendarTab = ({
                             onPress={() =>
                               nextImage(
                                 entry.id,
-                                entry.experience.images.length,
+                                entry.experience.images.length
                               )
                             }
                             style={[styles.imageNavigation, styles.rightNav]}
@@ -1093,7 +989,7 @@ const CalendarTab = ({
                                       : styles.inactiveIndicator,
                                   ]}
                                 />
-                              ),
+                              )
                             )}
                           </View>
                         </>
@@ -1125,7 +1021,7 @@ const CalendarTab = ({
                                 {highlight}
                               </Text>
                             </View>
-                          ),
+                          )
                         )}
                       </View>
                     </View>
@@ -1145,7 +1041,7 @@ const CalendarTab = ({
                               year: "numeric",
                               month: "long",
                               day: "numeric",
-                            },
+                            }
                           )
                         : "Date to be determined"}
                     </Text>
@@ -1160,7 +1056,7 @@ const CalendarTab = ({
                               hour: "numeric",
                               minute: "2-digit",
                               hour12: true,
-                            },
+                            }
                           )
                         : "Time to be determined"}
                     </Text>

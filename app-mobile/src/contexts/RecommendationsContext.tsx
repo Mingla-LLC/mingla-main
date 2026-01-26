@@ -106,6 +106,7 @@ const getDefaultPreferences = (): UserPreferences => ({
 interface RecommendationsContextType {
   recommendations: Recommendation[];
   loading: boolean;
+  isFetching: boolean;
   error: string | null;
   userLocation: { lat: number; lng: number } | null;
   isModeTransitioning: boolean;
@@ -138,6 +139,8 @@ export const RecommendationsProvider: React.FC<
 }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
+  const [hasCompletedFetchForCurrentMode, setHasCompletedFetchForCurrentMode] =
+    useState(false);
   const currentMode = propCurrentMode;
   const refreshKey = propRefreshKey;
   const currentCacheKeyRef = useRef<string | null>(null);
@@ -159,14 +162,42 @@ export const RecommendationsProvider: React.FC<
   const resolvedSessionId = React.useMemo(() => {
     if (currentMode === "solo") return null;
     if (currentSession?.id) return currentSession.id;
+
+    // Check if currentMode itself looks like a UUID (session ID)
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(currentMode)) return currentMode;
+
     const session = availableSessions.find(
       (s) => s.id === currentMode || s.name === currentMode
     );
     return session?.id || null;
   }, [currentMode, currentSession, availableSessions]);
 
+  // Add a state to track if we've given up on session resolution
+  const [hasTimedOutWaitingForSession, setHasTimedOutWaitingForSession] =
+    useState(false);
+
+  useEffect(() => {
+    if (currentMode !== "solo" && !resolvedSessionId && sessionsLoading) {
+      const timer = setTimeout(() => {
+        console.warn(
+          "Timed out waiting for session resolution for:",
+          currentMode
+        );
+        setHasTimedOutWaitingForSession(true);
+      }, 5000);
+      return () => clearTimeout(timer);
+    } else {
+      setHasTimedOutWaitingForSession(false);
+    }
+  }, [currentMode, resolvedSessionId, sessionsLoading]);
+
   const isWaitingForSessionResolution =
-    currentMode !== "solo" && !resolvedSessionId && sessionsLoading;
+    currentMode !== "solo" &&
+    !resolvedSessionId &&
+    sessionsLoading &&
+    !hasTimedOutWaitingForSession;
 
   const isBoardSession =
     !isInSolo && (currentSession as any)?.session_type === "board";
@@ -223,7 +254,9 @@ export const RecommendationsProvider: React.FC<
   const setCachedCards = cardsCache.setCachedCards;
 
   // Track previous recommendations to prevent unnecessary updates
-  const previousRecommendationsRef = useRef<Recommendation[] | undefined>(undefined);
+  const previousRecommendationsRef = useRef<Recommendation[] | undefined>(
+    undefined
+  );
 
   // Sync recommendations from TanStack Query to local state and CardsCache
   useEffect(() => {
@@ -234,7 +267,8 @@ export const RecommendationsProvider: React.FC<
 
     // Check if recommendations have actually changed
     const prevRecs = previousRecommendationsRef.current;
-    const hasChanged = !prevRecs || 
+    const hasChanged =
+      !prevRecs ||
       prevRecs.length !== recommendationsData.length ||
       prevRecs.some((prev, idx) => prev.id !== recommendationsData[idx]?.id);
 
@@ -258,7 +292,9 @@ export const RecommendationsProvider: React.FC<
 
         // Check if there's an existing cache entry with matching recommendations
         const existingCache = getCachedCards(cacheKey);
-        const currentCardIds = new Set(recommendationsData.map((r: Recommendation) => r.id));
+        const currentCardIds = new Set(
+          recommendationsData.map((r: Recommendation) => r.id)
+        );
         const cachedCardIds = existingCache
           ? new Set(existingCache.cards.map((c: Recommendation) => c.id))
           : null;
@@ -307,8 +343,9 @@ export const RecommendationsProvider: React.FC<
         }
       }
     } else if (recommendationsData.length === 0) {
-      // Empty array - clear recommendations only if not already empty
-      if (recommendations.length > 0) {
+      // Empty array - always sync to state to ensure consistency
+      // This is important during mode transitions to show the correct state
+      if (recommendations.length !== 0) {
         setRecommendations([]);
       }
     }
@@ -326,27 +363,137 @@ export const RecommendationsProvider: React.FC<
 
   // Handle mode transitions
   const previousModeRef = useRef<string | undefined>(undefined);
+  const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     const modeChanged =
       previousModeRef.current !== undefined &&
       previousModeRef.current !== currentMode;
 
     if (modeChanged) {
+      // Clear any existing timeout
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+        completionTimeoutRef.current = null;
+      }
+
       setIsModeTransitioning(true);
       setRecommendations([]);
-      // Invalidate recommendations query to trigger refetch
+      setHasCompletedFetchForCurrentMode(false);
+
+      // Reset the previous recommendations ref so new data is properly detected
+      previousRecommendationsRef.current = undefined;
+
+      // Set a safety timeout to force completion after 5 seconds
+      // This prevents infinite loading if something goes wrong
+      completionTimeoutRef.current = setTimeout(() => {
+        console.warn("Recommendations fetch timeout - forcing completion");
+        setHasCompletedFetchForCurrentMode(true);
+        setIsModeTransitioning(false);
+      }, 5000);
+
+      // Invalidate recommendations query to trigger refetch for new mode
+      // Since query keys include currentMode, different modes get separate cache entries
+      // This prevents stale data from previous mode while allowing in-flight queries to complete gracefully
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
     }
 
     previousModeRef.current = currentMode;
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+      }
+    };
   }, [currentMode, queryClient]);
 
-  // Reset mode transitioning when recommendations are loaded
+  // Compute loading and error states from TanStack Query (moved up for use in effect)
+  const loading =
+    isLoadingLocation || isLoadingPreferences || isLoadingRecommendations;
+  const isFetching = isFetchingRecommendations;
+
+  // Reset mode transitioning and mark fetch as complete when query finishes
   useEffect(() => {
-    if (recommendationsData && recommendationsData.length > 0) {
-      setIsModeTransitioning(false);
+    // Don't mark as complete if we're waiting for session resolution or query is disabled
+    const queryEnabled = Boolean(
+      userLocation &&
+        !isWaitingForSessionResolution &&
+        (currentMode === "solo" || !!resolvedSessionId) &&
+        Boolean(cardsCache.isCacheLoaded)
+    );
+
+    // Clear timeout if we're marking as complete
+    if (hasCompletedFetchForCurrentMode && completionTimeoutRef.current) {
+      clearTimeout(completionTimeoutRef.current);
+      completionTimeoutRef.current = null;
     }
-  }, [recommendationsData]);
+
+    // Only process if we're currently transitioning or haven't completed fetch for this mode
+    if (isModeTransitioning || !hasCompletedFetchForCurrentMode) {
+      // Check if query has finished (either with data, empty array, or error)
+      const queryFinished =
+        !isLoadingRecommendations && !isFetchingRecommendations;
+
+      // CRITICAL: During mode transitions, we MUST wait for the query to actually run
+      // and return data for the new mode before marking as complete.
+      // We cannot mark complete if:
+      // 1. We're transitioning AND the query hasn't returned data yet (recommendationsData is undefined)
+      // 2. We're transitioning AND we don't have recommendations in state yet
+      //
+      // Mark as complete ONLY if:
+      // 1. Query was enabled AND it has finished AND we have data (even if empty array)
+      //    - This ensures the query actually ran and returned a result for the current mode
+      // 2. OR we already have recommendations in state (from cache or previous fetch) AND not transitioning
+      // 3. OR the query had an error AND finished AND we're not transitioning (error is valid result)
+      //
+      // CRITICAL: During transitions, we MUST wait for recommendationsData to be defined
+      // This ensures we don't mark complete before the new mode's query runs
+      const isInTransition = isModeTransitioning;
+      const hasQueryResult = recommendationsData !== undefined;
+      const hasRecommendationsInState = recommendations.length > 0;
+
+      const shouldMarkComplete =
+        // Case 1: Query ran and finished (enabled + finished + has data)
+        (queryEnabled && queryFinished && hasQueryResult) ||
+        // Case 2: We have recommendations AND we're not transitioning (from cache/previous)
+        (hasRecommendationsInState &&
+          !isInTransition &&
+          !isLoadingRecommendations) ||
+        // Case 3: Query had an error AND finished AND we have a result (error is a valid completion)
+        (!!recommendationsError && queryFinished && hasQueryResult);
+
+      if (shouldMarkComplete) {
+        // Mark fetch as completed
+        setHasCompletedFetchForCurrentMode(true);
+        // Reset transitioning flag
+        if (isModeTransitioning) {
+          setIsModeTransitioning(false);
+        }
+        // Clear timeout since we completed
+        if (completionTimeoutRef.current) {
+          clearTimeout(completionTimeoutRef.current);
+          completionTimeoutRef.current = null;
+        }
+      }
+    }
+  }, [
+    isModeTransitioning,
+    hasCompletedFetchForCurrentMode,
+    isLoadingRecommendations,
+    isFetchingRecommendations,
+    recommendationsData,
+    recommendationsError,
+    recommendations.length,
+    userLocation,
+    isWaitingForSessionResolution,
+    currentMode,
+    resolvedSessionId,
+    cardsCache.isCacheLoaded,
+    sessionsLoading,
+    loading,
+    isFetching,
+  ]);
 
   const updateCardStrollData = useCallback(
     (cardId: string, strollData: Recommendation["strollData"]) => {
@@ -380,12 +527,6 @@ export const RecommendationsProvider: React.FC<
     [cardsCache]
   );
 
-  // Compute loading and error states from TanStack Query
-  const loading =
-    isLoadingLocation ||
-    isLoadingPreferences ||
-    isLoadingRecommendations ||
-    isFetchingRecommendations;
   const error = recommendationsError
     ? (recommendationsError as Error).message === "no_matches"
       ? "no_matches"
@@ -394,10 +535,13 @@ export const RecommendationsProvider: React.FC<
     ? "Failed to load location"
     : null;
 
+  // Compute hasCompletedInitialFetch - must not be transitioning and must have completed fetch for current mode
+  // Mark as complete if we've successfully finished our initial work for this mode
   const hasCompletedInitialFetch =
-    !isLoadingRecommendations &&
-    !isFetchingRecommendations &&
-    (recommendations.length > 0 || recommendationsData?.length === 0);
+    !isModeTransitioning &&
+    !isWaitingForSessionResolution &&
+    hasCompletedFetchForCurrentMode &&
+    !isLoadingRecommendations;
 
   const refreshRecommendations = useCallback(() => {
     // Invalidate queries to trigger refetch
@@ -414,6 +558,7 @@ export const RecommendationsProvider: React.FC<
   const value: RecommendationsContextType = {
     recommendations,
     loading,
+    isFetching,
     error,
     userLocation,
     isModeTransitioning,

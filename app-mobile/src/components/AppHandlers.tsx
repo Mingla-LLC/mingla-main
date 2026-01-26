@@ -1,6 +1,7 @@
 import { Alert, Platform, ToastAndroid } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 import { formatCurrency } from "./utils/formatters";
 import { PreferencesService } from "../services/preferencesService";
 import { savedCardsService } from "../services/savedCardsService";
@@ -12,8 +13,12 @@ import { offlineService } from "../services/offlineService";
 export function useAppHandlers(state: any) {
   const queryClient = useQueryClient();
 
+  // Use a ref to always have access to the latest state object
+  // This ensures handleSaveCard always reads the latest currentMode
+  const stateRef = useRef(state);
+  stateRef.current = state; // Update ref on every render
+
   const {
-    currentMode,
     setCurrentMode,
     setActiveSessionData,
     setShowCollabPreferences,
@@ -761,14 +766,22 @@ export function useAppHandlers(state: any) {
       return;
     }
 
+    // CRITICAL FIX: Read currentMode and boardsSessions from stateRef.current to get the absolute latest values
+    // stateRef is updated on every render, so stateRef.current always has the latest state
+    // This ensures we always get the current mode, even if the handler was created earlier
+    const latestState = stateRef.current;
+    const latestCurrentMode = latestState?.currentMode ?? "solo";
+    const latestBoardsSessions = latestState?.boardsSessions ?? [];
+
     // Check if we're in a session (not solo mode)
-    const isInSession = currentMode !== "solo";
+    const isInSession = latestCurrentMode !== "solo";
+
     const currentSession = isInSession
-      ? boardsSessions.find(
+      ? latestBoardsSessions.find(
           (s: any) =>
-            s.id === currentMode ||
-            s.name === currentMode ||
-            (s as any).session_id === currentMode
+            s.id === latestCurrentMode ||
+            s.name === latestCurrentMode ||
+            (s as any).session_id === latestCurrentMode
         )
       : null;
 
@@ -885,7 +898,9 @@ export function useAppHandlers(state: any) {
         );
       } else {
         // Solo mode: save to general saved_experiences
-        await savedCardsService.saveCard(user.id, card);
+        // IMPORTANT: Pass explicit source="solo" to ensure we use the current mode
+        // Don't rely on card.source which might be stale from when card was created
+        await savedCardsService.saveCard(user.id, card, "solo");
 
         // Invalidate savedCards query to trigger a refetch
         queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });

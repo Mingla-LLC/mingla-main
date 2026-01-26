@@ -49,8 +49,6 @@ class BoardSessionService {
         .eq("user_id", userId)
         .eq("has_accepted", true);
 
-     
-
       if (participationError) {
         console.error("❌ Error fetching participations:", participationError);
         return [];
@@ -78,11 +76,9 @@ class BoardSessionService {
       // Only exclude archived sessions
       const sessions = (allSessions || []).filter((s) => {
         const notArchived = s.archived_at === null;
-       
+
         return notArchived;
       });
-
-  
 
       if (!sessions || sessions.length === 0) {
         console.log(
@@ -98,10 +94,9 @@ class BoardSessionService {
       }
 
       // 4. For each session, get participants and card count
-   
+
       const boardSessionsData: BoardSessionData[] = await Promise.all(
         sessions.map(async (session) => {
-      
           // Get participants
           const { data: participantsData, error: participantsError } =
             await supabase
@@ -205,12 +200,6 @@ class BoardSessionService {
           // Get admins (creator is always admin, and any other admins if role column exists)
           // Since role column doesn't exist, creator is the only admin
           const admins = [session.created_by];
-
-
-
-
-          console.log("admins", admins          )
-          console.log("session", session)
 
           // Format dates
           const createdAt = session.created_at

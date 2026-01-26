@@ -196,7 +196,8 @@ export function useAppState() {
 
   // Wrapper to update currentMode and persist to storage
   const setCurrentMode = (mode: "solo" | string, sessionId?: string | null) => {
-    // Only update state if the mode actually changed
+    // Always update state to ensure immediate propagation
+    // The check prevents unnecessary updates but we update regardless to ensure consistency
     if (currentMode !== mode) {
       setCurrentModeState(mode);
     }

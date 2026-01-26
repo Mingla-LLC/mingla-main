@@ -184,6 +184,7 @@ export default function SwipeableCards({
   const {
     recommendations,
     loading,
+    isFetching,
     error,
     userLocation,
     isModeTransitioning,
@@ -191,6 +192,11 @@ export default function SwipeableCards({
     hasCompletedInitialFetch,
     refreshRecommendations,
   } = useRecommendations();
+
+  // Combine all loading states for UI consistency and to prevent animation freezing
+  // Note: We only block the UI for initial loading (loading), not background refetches (isFetching)
+  const isAnyLoading =
+    loading || isModeTransitioning || isWaitingForSessionResolution;
 
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -232,7 +238,7 @@ export default function SwipeableCards({
 
     // Otherwise, try to find session by name or ID from availableSessions
     const session = availableSessions.find(
-      (s) => s.id === currentMode || s.name === currentMode,
+      (s) => s.id === currentMode || s.name === currentMode
     );
     return session?.id || null;
   }, [currentMode, currentSession, availableSessions]);
@@ -246,7 +252,7 @@ export default function SwipeableCards({
   // Load board preferences if in board session
   // Use hook unconditionally (React rules) but pass undefined when not in board session
   const boardSessionResult = useBoardSession(
-    isBoardSession && currentSession?.id ? currentSession.id : undefined,
+    isBoardSession && currentSession?.id ? currentSession.id : undefined
   );
   const boardPreferences = boardSessionResult?.preferences || null;
 
@@ -328,33 +334,48 @@ export default function SwipeableCards({
   // Shuffle tips array for random order
   const shuffledTips = useRef(tips.sort(() => Math.random() - 0.5)).current;
 
+  // Filter out removed cards (needed for shouldShowLoader calculation)
+  // Note: removedCards is a state variable, so we need to use it carefully
+  const availableRecommendations = React.useMemo(
+    () =>
+      (recommendations || []).filter(
+        (rec) => !removedCards.has(rec.id) && !removedCardIds.includes(rec.id)
+      ),
+    [recommendations, removedCards, removedCardIds]
+  );
+
+  // Combine all conditions that should show a loader
+  const shouldShowLoader =
+    isAnyLoading ||
+    (!hasCompletedInitialFetch && availableRecommendations.length === 0);
+
   // Rotate tips every 5 seconds
   useEffect(() => {
-    if (!loading) return;
+    if (!shouldShowLoader) return;
 
     const tipInterval = setInterval(() => {
       setCurrentTipIndex((prev) => (prev + 1) % shuffledTips.length);
     }, 5000);
 
     return () => clearInterval(tipInterval);
-  }, [loading, shuffledTips.length]);
+  }, [shouldShowLoader, shuffledTips.length]);
 
   // Animate spinner
   useEffect(() => {
-    if (!loading) return;
+    if (!shouldShowLoader) return;
 
     const spinAnimation = Animated.loop(
       Animated.timing(spinValue, {
         toValue: 1,
         duration: 2000,
         useNativeDriver: true,
-      }),
+      })
     );
 
     spinAnimation.start();
 
     return () => spinAnimation.stop();
-  }, [loading, spinValue]);
+  }, [shouldShowLoader, spinValue]);
 
   const spin = spinValue.interpolate({
     inputRange: [0, 1],
@@ -362,11 +383,6 @@ export default function SwipeableCards({
   });
 
   // Location and fetching are now handled by RecommendationsContext
-
-  // Filter out removed cards
-  const availableRecommendations = recommendations.filter(
-    (rec) => !removedCards.has(rec.id) && !removedCardIds.includes(rec.id),
-  );
 
   // Always use currentCardIndex to track position in the deck
   const currentRec = availableRecommendations[currentCardIndex];
@@ -407,7 +423,7 @@ export default function SwipeableCards({
           "🔄 State reset - Preferences changed:",
           preferencesChanged,
           "Mode changed:",
-          modeChanged,
+          modeChanged
         );
         setRemovedCards(new Set());
         setCurrentCardIndex(0);
@@ -459,7 +475,7 @@ export default function SwipeableCards({
           const availableCount = recommendations.filter(
             (r) =>
               !removedCardsArray.includes(r.id) &&
-              !removedCardIds.includes(r.id),
+              !removedCardIds.includes(r.id)
           ).length;
 
           const restoredIndex =
@@ -471,7 +487,7 @@ export default function SwipeableCards({
             "✅ Restored state from AsyncStorage - Index:",
             restoredIndex,
             "Removed:",
-            removedCardsArray.length,
+            removedCardsArray.length
           );
           setRemovedCards(new Set(removedCardsArray));
           setCurrentCardIndex(restoredIndex);
@@ -537,7 +553,7 @@ export default function SwipeableCards({
         const availableCards = recommendationsRef.current.filter(
           (rec) =>
             !removedCardsRef.current.has(rec.id) &&
-            !removedCardIds.includes(rec.id),
+            !removedCardIds.includes(rec.id)
         );
         const cardToRemove = availableCards[currentCardIndexRef.current];
 
@@ -604,7 +620,7 @@ export default function SwipeableCards({
           }).start();
         }
       },
-    }),
+    })
   ).current;
 
   const handleCardTap = () => {
@@ -665,7 +681,7 @@ export default function SwipeableCards({
 
   const handleSwipe = async (
     direction: "left" | "right",
-    card: Recommendation,
+    card: Recommendation
   ) => {
     if (!card) return;
 
@@ -685,7 +701,7 @@ export default function SwipeableCards({
               time_of_day: userPreferences?.timeOfDay || "Afternoon",
               budget_range: `${card.priceRange}`,
               location: userPreferences?.location || "San Francisco",
-            },
+            }
           );
         } catch (trackingError) {
           console.error("Error tracking interaction:", trackingError);
@@ -699,7 +715,7 @@ export default function SwipeableCards({
           } catch (saveError: any) {
             if (saveError?.code === "23505") {
               console.warn(
-                "Experience already saved for this user, skipping duplicate save",
+                "Experience already saved for this user, skipping duplicate save"
               );
               // Don't throw - consider this a success (already saved)
             } else {
@@ -717,7 +733,7 @@ export default function SwipeableCards({
             await ExperiencesService.saveExperience(
               user.id,
               card.id,
-              "disliked",
+              "disliked"
             );
           } catch (dislikeError) {
             console.error("Error tracking dislike:", dislikeError);
@@ -792,7 +808,7 @@ export default function SwipeableCards({
 
   // Loading state with spinner and rotating tips
   // Show loader if: loading, transitioning modes, or waiting for session resolution
-  if (loading || isModeTransitioning || isWaitingForSessionResolution) {
+  if (shouldShowLoader) {
     return (
       <View style={styles.loadingContainer}>
         <View style={styles.loadingContent}>
@@ -957,42 +973,6 @@ export default function SwipeableCards({
             </Text>
             .
           </Text>
-        </View>
-      </View>
-    );
-  }
-
-  // If we have no recommendations but haven't completed initial fetch yet, show loader
-  // (This handles the case where we're waiting for location or initial fetch to start)
-  if (availableRecommendations.length === 0 && !hasCompletedInitialFetch) {
-    return (
-      <View style={styles.loadingContainer}>
-        <View style={styles.loadingContent}>
-          {/* Animated Spinner */}
-          <Animated.View
-            style={[
-              styles.spinnerContainer,
-              {
-                transform: [{ rotate: spin }],
-              },
-            ]}
-          >
-            <View style={styles.spinnerOuter}>
-              <View style={styles.spinnerInner}>
-                <Ionicons name="sparkles" size={32} color="#eb7825" />
-              </View>
-            </View>
-          </Animated.View>
-
-          {/* Loading Text */}
-          <Text style={styles.loadingTitle}>
-            Finding your perfect experiences...
-          </Text>
-
-          {/* Rotating Tip */}
-          <View style={styles.tipContainer}>
-            <Text style={styles.tipText}>{shuffledTips[currentTipIndex]}</Text>
-          </View>
         </View>
       </View>
     );
@@ -1320,7 +1300,7 @@ export default function SwipeableCards({
             ? savedCards.some(
                 (savedCard) =>
                   savedCard?.id === selectedCardForExpansion.id ||
-                  savedCard === selectedCardForExpansion.id,
+                  savedCard === selectedCardForExpansion.id
               )
             : false
         }

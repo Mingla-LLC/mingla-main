@@ -63,7 +63,11 @@ const normalizeRecord = (record: SavedCardRecord): SavedCardModel => {
 };
 
 export const savedCardsService = {
-  async saveCard(profileId: string, card: any) {
+  async saveCard(profileId: string, card: any, source?: "solo" | "collaboration") {
+    // Use explicit source parameter if provided, otherwise fall back to card.source or "solo"
+    // This ensures we always use the current mode, not a stale source from the card object
+    const cardSource = source || card.source || "solo";
+    
     const payload = {
       profile_id: profileId,
       experience_id: card.id,
@@ -74,7 +78,7 @@ export const savedCardsService = {
       card_data: {
         ...card,
         dateAdded: new Date().toISOString(),
-        source: card.source || "solo",
+        source: cardSource,
       },
     };
 
@@ -383,7 +387,6 @@ export const savedCardsService = {
       }
 
       if (source === "collaboration") {
-
         let updateQuery = supabase
           .from("board_saved_cards")
           .update({ card_data: updatedCardData })
