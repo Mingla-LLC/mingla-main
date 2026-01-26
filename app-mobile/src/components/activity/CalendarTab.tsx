@@ -811,7 +811,9 @@ const CalendarTab = ({
                 <View style={[styles.sessionBadge, styles.soloBadge]}>
                   <Ionicons name="eye" size={12} color="#1e40af" />
                   <Text style={[styles.sourceText, styles.soloText]}>
-                    Solo Plan
+                    {entry.source === "solo"
+                      ? "Solo Discovery"
+                      : `${entry.sessionName}`}
                   </Text>
                 </View>
               </View>
