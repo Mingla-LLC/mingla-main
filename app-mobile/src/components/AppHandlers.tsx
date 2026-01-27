@@ -1100,22 +1100,66 @@ export function useAppHandlers(state: any) {
 
     try {
       const { CalendarService } = await import("../services/calendarService");
+      const { DeviceCalendarService } = await import(
+        "../services/deviceCalendarService"
+      );
+      const { savedCardsService } = await import("../services/savedCardsService");
 
-      // Delete from Supabase
+      // Get the card data from the entry to re-save it
+      const cardData = entry.experience || entry.card_data || entry;
+      const scheduledDate = entry.suggestedDates?.[0]
+        ? new Date(entry.suggestedDates[0])
+        : entry.date && entry.time
+        ? new Date(`${entry.date}T${entry.time}`)
+        : null;
+
+      // 1. Remove from device calendar (best effort - don't fail if this doesn't work)
+      if (scheduledDate && cardData.title) {
+        try {
+          await DeviceCalendarService.removeEventByTitleAndDate(
+            cardData.title,
+            scheduledDate
+          );
+        } catch (deviceCalendarError) {
+          // Log but don't fail - device calendar removal is best effort
+          console.warn(
+            "Failed to remove from device calendar:",
+            deviceCalendarError
+          );
+        }
+      }
+
+      // 2. Re-save the card back to Saved (using the original source)
+      try {
+        const source = entry.source || "solo";
+        await savedCardsService.saveCard(user.id, cardData, source);
+        
+        // Invalidate saved cards query to refresh the Saved tab
+        queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
+      } catch (saveError: any) {
+        // Log but don't fail - the card might already be saved
+        console.warn("Failed to re-save card to Saved:", saveError);
+        // If it's a duplicate error, that's fine - card is already saved
+        if (saveError?.code !== "23505") {
+          // Only show error if it's not a duplicate
+          console.error("Error re-saving card:", saveError);
+        }
+      }
+
+      // 3. Delete from Supabase calendar
       await CalendarService.deleteEntry(entry.id, user.id);
 
-      // Remove from local state
+      // 4. Remove from local state
       setCalendarEntries((prev: any[]) =>
         prev.filter((e: any) => e.id !== entry.id)
       );
 
-      // Invalidate calendar entries query to refresh React Query cache
-      // This ensures components using useCalendarEntries hook get updated data
+      // 5. Invalidate calendar entries query to refresh React Query cache
       queryClient.invalidateQueries({ queryKey: ["calendarEntries", user.id] });
 
-      // Show success message
+      // 6. Show success message
       toastManager.success(
-        `${entry.title || "Experience"} removed from calendar`,
+        `${entry.title || "Experience"} moved back to Saved`,
         3000
       );
     } catch (error: any) {

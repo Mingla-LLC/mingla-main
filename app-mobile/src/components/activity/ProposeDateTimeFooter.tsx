@@ -16,6 +16,7 @@ interface ProposeDateTimeFooterProps {
   isCheckingAvailability: boolean;
   onCheckAvailability: () => void;
   onSchedule: () => void;
+  isScheduling?: boolean;
 }
 
 export default function ProposeDateTimeFooter({
@@ -26,18 +27,29 @@ export default function ProposeDateTimeFooter({
   isCheckingAvailability,
   onCheckAvailability,
   onSchedule,
+  isScheduling = false,
 }: ProposeDateTimeFooterProps) {
   // Show Schedule button only if availability is checked and place is open
   if (isAvailabilityChecked && isPlaceOpen) {
     return (
       <View style={styles.footer}>
         <TouchableOpacity
-          style={styles.scheduleButton}
+          style={[
+            styles.scheduleButton,
+            isScheduling && styles.scheduleButtonDisabled,
+          ]}
           onPress={onSchedule}
+          disabled={isScheduling}
           activeOpacity={0.7}
         >
-          <Ionicons name="calendar" size={20} color="white" />
-          <Text style={styles.scheduleButtonText}>Schedule</Text>
+          {isScheduling ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Ionicons name="calendar" size={20} color="white" />
+          )}
+          <Text style={styles.scheduleButtonText}>
+            {isScheduling ? "Scheduling..." : "Schedule"}
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -109,5 +121,8 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "600",
+  },
+  scheduleButtonDisabled: {
+    opacity: 0.7,
   },
 });

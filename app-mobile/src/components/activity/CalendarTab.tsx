@@ -7,12 +7,17 @@ import {
   Linking,
   FlatList,
   ActivityIndicator,
+  ScrollView,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
+import { useAppStore } from "../../store/appStore";
+import { useQueryClient } from "@tanstack/react-query";
+import { toastManager } from "../ui/Toast";
 
 interface CalendarEntry {
   id: string;
@@ -47,6 +52,7 @@ interface CalendarEntry {
   dateTimePreferences?: any;
   phoneNumber?: string;
   website?: string;
+  duration_minutes?: number;
 }
 
 interface CalendarTabProps {
@@ -76,7 +82,9 @@ const CalendarTab = ({
     [cardId: string]: number;
   }>({});
   const [removingEntryId, setRemovingEntryId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"active" | "archive">("active");
+  const [expandedAccordionItems, setExpandedAccordionItems] = useState<
+    string[]
+  >(["active"]); // Start with Active expanded
   const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
     useState(false);
   const [entryToReschedule, setEntryToReschedule] =
@@ -84,6 +92,9 @@ const CalendarTab = ({
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
+  const [isScheduling, setIsScheduling] = useState(false);
+  const { user } = useAppStore();
+  const queryClient = useQueryClient();
 
   // Filter entries into Active and Archive based on scheduled date
   const { activeEntries, archiveEntries } = useMemo(() => {
@@ -111,42 +122,105 @@ const CalendarTab = ({
     return { activeEntries: active, archiveEntries: archive };
   }, [calendarEntries]);
 
-  // Get entries for current tab
-  const currentEntries =
-    activeTab === "active" ? activeEntries : archiveEntries;
-
   const handleReschedule = (entry: CalendarEntry) => {
     setEntryToReschedule(entry);
     setShowProposeDateTimeModal(true);
   };
 
-  const handleProposeDateTime = (
+  const handleProposeDateTime = async (
     date: Date,
     dateOption: "now" | "today" | "weekend" | "custom"
   ) => {
-    if (!entryToReschedule) return;
+    if (!entryToReschedule || !user?.id) {
+      Alert.alert("Error", "Unable to reschedule. Please try again.");
+      setShowProposeDateTimeModal(false);
+      setEntryToReschedule(null);
+      return;
+    }
 
-    setShowProposeDateTimeModal(false);
-    // Update the calendar entry with new date
-    // This will need to call a service to update the entry
-    const updatedEntry = {
-      ...entryToReschedule,
-      suggestedDates: [date.toISOString()],
-    };
-    // Call onAddToCalendar to update the entry
-    onAddToCalendar(updatedEntry);
-    setEntryToReschedule(null);
+    setIsScheduling(true);
+    try {
+      const { CalendarService } = await import("../../services/calendarService");
+      const { DeviceCalendarService } = await import(
+        "../../services/deviceCalendarService"
+      );
+
+      const scheduledDateISO = date.toISOString();
+
+      // 1. Update the calendar entry in Supabase
+      await CalendarService.updateEntry(entryToReschedule.id, user.id, {
+        scheduled_at: scheduledDateISO,
+      });
+
+      // 2. Update device calendar (remove old event, add new one)
+      try {
+        // Get the card data for creating the new device event
+        const cardData = entryToReschedule.experience || entryToReschedule;
+        
+        // Remove old device calendar event
+        if (cardData.title) {
+          const oldDate = entryToReschedule.suggestedDates?.[0]
+            ? new Date(entryToReschedule.suggestedDates[0])
+            : entryToReschedule.date && entryToReschedule.time
+            ? new Date(`${entryToReschedule.date}T${entryToReschedule.time}`)
+            : null;
+          
+          if (oldDate) {
+            await DeviceCalendarService.removeEventByTitleAndDate(
+              cardData.title,
+              oldDate
+            );
+          }
+        }
+
+        // Add new device calendar event
+        const deviceEvent = DeviceCalendarService.createEventFromCard(
+          cardData,
+          date,
+          (entryToReschedule as any).duration_minutes || 120
+        );
+        await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
+      } catch (deviceCalendarError) {
+        // Don't fail the whole operation if device calendar fails
+        console.warn("Failed to update device calendar:", deviceCalendarError);
+      }
+
+      // 3. Invalidate calendar entries query to refresh the list
+      queryClient.invalidateQueries({ queryKey: ["calendarEntries", user.id] });
+
+      // 4. Show success message
+      toastManager.success(
+        `${entryToReschedule.title || "Experience"} rescheduled successfully`,
+        3000
+      );
+
+      // 5. Close modal and reset state
+      setShowProposeDateTimeModal(false);
+      setEntryToReschedule(null);
+    } catch (error: any) {
+      console.error("Error rescheduling calendar entry:", error);
+      Alert.alert(
+        "Reschedule Failed",
+        error.message ||
+          "We couldn't reschedule this experience. Please try again."
+      );
+      setShowProposeDateTimeModal(false);
+      setEntryToReschedule(null);
+    } finally {
+      setIsScheduling(false);
+    }
   };
 
   const styles = StyleSheet.create({
     container: {
       flex: 1,
+      backgroundColor: "white",
     },
     listContent: {
       gap: 16,
-      paddingHorizontal: 16,
       paddingTop: 16,
-      paddingBottom: 62, // Add padding to prevent tab bar from touching last card
+      paddingBottom: 100, // Increased padding to ensure last card is fully visible
+      paddingHorizontal: 16,
     },
     calendarCard: {
       backgroundColor: "white",
@@ -328,6 +402,7 @@ const CalendarTab = ({
     actionsContainer: {
       paddingBottom: 16,
       marginTop: 16,
+      paddingHorizontal: 8,
     },
     actionsRow: {
       flexDirection: "row",
@@ -600,42 +675,42 @@ const CalendarTab = ({
       textAlign: "center",
       marginBottom: 24,
     },
-    tabsContainer: {
+    mainScrollView: {
+      flex: 1,
+    },
+    mainScrollContent: {
+      paddingBottom: 100,
+    },
+    accordionHeader: {
       flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
       paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 8,
-      backgroundColor: "white",
+      paddingVertical: 16,
       borderBottomWidth: 1,
       borderBottomColor: "#e5e7eb",
+      backgroundColor: "white",
     },
-    tab: {
-      flex: 1,
-      paddingVertical: 12,
+    accordionTitleContainer: {
+      flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
-      borderBottomWidth: 2,
-      borderBottomColor: "transparent",
     },
-    tabActive: {
-      borderBottomColor: "#ea580c",
-    },
-    tabText: {
+    accordionTitle: {
       fontSize: 16,
       fontWeight: "500",
+      color: "#111827",
+    },
+    accordionCount: {
+      fontSize: 14,
       color: "#6b7280",
+      marginLeft: 8,
     },
-    tabTextActive: {
-      color: "#ea580c",
-      fontWeight: "600",
+    accordionContentContainer: {
+      backgroundColor: "#f9fafb",
     },
-    tabCount: {
-      fontSize: 12,
-      color: "#9ca3af",
-      marginTop: 2,
-    },
-    tabCountActive: {
-      color: "#ea580c",
+    cardWrapper: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
     },
     rescheduleButton: {
       flex: 1,
@@ -1270,51 +1345,89 @@ const CalendarTab = ({
 
   return (
     <View style={styles.container}>
-      {/* Tabs */}
-      <View style={styles.tabsContainer}>
+      <ScrollView
+        style={styles.mainScrollView}
+        contentContainerStyle={styles.mainScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Active Section */}
         <TouchableOpacity
-          style={[styles.tab, activeTab === "active" && styles.tabActive]}
-          onPress={() => setActiveTab("active")}
+          style={styles.accordionHeader}
+          onPress={() =>
+            setExpandedAccordionItems((prev) =>
+              prev.includes("active")
+                ? prev.filter((i) => i !== "active")
+                : [...prev, "active"]
+            )
+          }
+          activeOpacity={0.7}
         >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "active" && styles.tabTextActive,
-            ]}
-          >
-            Active
-          </Text>
-          <Text
-            style={[
-              styles.tabCount,
-              activeTab === "active" && styles.tabCountActive,
-            ]}
-          >
-            ({activeEntries.length})
-          </Text>
+          <View style={styles.accordionTitleContainer}>
+            <Text style={styles.accordionTitle}>Active</Text>
+            <Text style={styles.accordionCount}>({activeEntries.length})</Text>
+          </View>
+          <Ionicons
+            name={
+              expandedAccordionItems.includes("active")
+                ? "chevron-down"
+                : "chevron-forward"
+            }
+            size={20}
+            color="#9ca3af"
+          />
         </TouchableOpacity>
+
+        {expandedAccordionItems.includes("active") && (
+          <View style={styles.accordionContentContainer}>
+            {activeEntries.length === 0
+              ? renderEmptyComponent()
+              : activeEntries.map((entry) => (
+                  <View key={entry.id} style={styles.cardWrapper}>
+                    {renderCalendarEntry({ item: entry })}
+                  </View>
+                ))}
+          </View>
+        )}
+
+        {/* Archive Section */}
         <TouchableOpacity
-          style={[styles.tab, activeTab === "archive" && styles.tabActive]}
-          onPress={() => setActiveTab("archive")}
+          style={styles.accordionHeader}
+          onPress={() =>
+            setExpandedAccordionItems((prev) =>
+              prev.includes("archive")
+                ? prev.filter((i) => i !== "archive")
+                : [...prev, "archive"]
+            )
+          }
+          activeOpacity={0.7}
         >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "archive" && styles.tabTextActive,
-            ]}
-          >
-            Archives
-          </Text>
-          <Text
-            style={[
-              styles.tabCount,
-              activeTab === "archive" && styles.tabCountActive,
-            ]}
-          >
-            ({archiveEntries.length})
-          </Text>
+          <View style={styles.accordionTitleContainer}>
+            <Text style={styles.accordionTitle}>Archives</Text>
+            <Text style={styles.accordionCount}>({archiveEntries.length})</Text>
+          </View>
+          <Ionicons
+            name={
+              expandedAccordionItems.includes("archive")
+                ? "chevron-down"
+                : "chevron-forward"
+            }
+            size={20}
+            color="#9ca3af"
+          />
         </TouchableOpacity>
-      </View>
+
+        {expandedAccordionItems.includes("archive") && (
+          <View style={styles.accordionContentContainer}>
+            {archiveEntries.length === 0
+              ? renderEmptyComponent()
+              : archiveEntries.map((entry) => (
+                  <View key={entry.id} style={styles.cardWrapper}>
+                    {renderCalendarEntry({ item: entry })}
+                  </View>
+                ))}
+          </View>
+        )}
+      </ScrollView>
 
       {/* Propose Date & Time Modal */}
       {entryToReschedule && (
@@ -1323,6 +1436,7 @@ const CalendarTab = ({
           onClose={() => {
             setShowProposeDateTimeModal(false);
             setEntryToReschedule(null);
+            setIsScheduling(false);
           }}
           card={entryToCard(entryToReschedule)}
           currentScheduledDate={
@@ -1332,6 +1446,7 @@ const CalendarTab = ({
               : null)
           }
           onProposeDateTime={handleProposeDateTime}
+          isScheduling={isScheduling}
         />
       )}
 
@@ -1354,15 +1469,6 @@ const CalendarTab = ({
           }
         />
       )}
-
-      <FlatList
-        data={currentEntries}
-        renderItem={renderCalendarEntry}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={renderEmptyComponent}
-        showsVerticalScrollIndicator={false}
-      />
     </View>
   );
 };
