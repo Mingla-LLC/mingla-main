@@ -11,6 +11,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
+import ExpandedCardModal from "../ExpandedCardModal";
+import { ExpandedCardData } from "../../types/expandedCardTypes";
 
 interface CalendarEntry {
   id: string;
@@ -79,6 +81,9 @@ const CalendarTab = ({
     useState(false);
   const [entryToReschedule, setEntryToReschedule] =
     useState<CalendarEntry | null>(null);
+  const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
+  const [selectedCardForExpansion, setSelectedCardForExpansion] =
+    useState<ExpandedCardData | null>(null);
 
   // Filter entries into Active and Archive based on scheduled date
   const { activeEntries, archiveEntries } = useMemo(() => {
@@ -724,6 +729,96 @@ const CalendarTab = ({
     }
   };
 
+  const handleCardExpand = (entry: CalendarEntry) => {
+    // Transform CalendarEntry to ExpandedCardData format
+    const experience = entry.experience || entry;
+    const ExperienceIcon = getIconComponent(
+      experience.categoryIcon || entry.categoryIcon,
+    );
+
+    const expandedCardData: ExpandedCardData = {
+      id: entry.id,
+      title: experience.title || entry.title,
+      category: experience.category || entry.category || "Experience",
+      categoryIcon: ExperienceIcon,
+      description: experience.description || entry.description || "",
+      fullDescription:
+        experience.fullDescription ||
+        experience.description ||
+        entry.fullDescription ||
+        entry.description ||
+        "",
+      image: experience.image || entry.image || "",
+      images: experience.images || entry.images || [experience.image || entry.image || ""],
+      rating: experience.rating || entry.rating || 4.5,
+      reviewCount: experience.reviewCount || entry.reviewCount || 0,
+      priceRange: experience.priceRange || entry.priceRange || "N/A",
+      distance: (experience as any).distance || "",
+      travelTime: experience.travelTime || "N/A",
+      address: experience.address || entry.address || "",
+      openingHours: (experience as any).openingHours,
+      phone: experience.phoneNumber || entry.phoneNumber,
+      website: experience.website || entry.website,
+      highlights: experience.highlights || entry.highlights || [],
+      tags: (experience as any).tags || [],
+      matchScore: experience.matchScore || (entry as any).matchScore || 0,
+      matchFactors: (experience as any).matchFactors || {
+        location: 0,
+        budget: 0,
+        category: 0,
+        time: 0,
+        popularity: 0,
+      },
+      socialStats: experience.socialStats || entry.socialStats || {
+        views: 0,
+        likes: 0,
+        saves: 0,
+        shares: 0,
+      },
+      location:
+        (experience as any).location ||
+        ((experience as any).lat && (experience as any).lng
+          ? { lat: (experience as any).lat, lng: (experience as any).lng }
+          : undefined),
+      selectedDateTime: entry.suggestedDates?.[0]
+        ? new Date(entry.suggestedDates[0])
+        : entry.date && entry.time
+        ? new Date(`${entry.date}T${entry.time}`)
+        : new Date(),
+      strollData: (experience as any).strollData,
+      picnicData: (experience as any).picnicData,
+    };
+
+    setSelectedCardForExpansion(expandedCardData);
+    setIsExpandedModalVisible(true);
+  };
+
+  const handleCloseExpandedModal = () => {
+    setIsExpandedModalVisible(false);
+    setSelectedCardForExpansion(null);
+  };
+
+  const handleSaveFromModal = async (card: ExpandedCardData) => {
+    // Card is already saved (it's in calendar), so this might be a no-op
+    // or could trigger a re-save/update
+    handleCloseExpandedModal();
+  };
+
+  const handlePurchaseFromModal = (
+    card: ExpandedCardData,
+    bookingOption: any,
+  ) => {
+    // Handle purchase if needed
+    // Could open external link or show purchase flow
+    if (bookingOption.url) {
+      Linking.openURL(bookingOption.url);
+    }
+  };
+
+  const handleShareFromModal = (card: ExpandedCardData) => {
+    onShareCard(card);
+  };
+
   const renderCalendarEntry = ({ item: entry }: { item: CalendarEntry }) => {
     // Format date and time for display
     const scheduledDate = entry.suggestedDates?.[0]
@@ -756,15 +851,23 @@ const CalendarTab = ({
 
     return (
       <View style={styles.calendarCard}>
-        <View style={styles.cardContent}>
+        <TouchableOpacity
+          onPress={() => handleCardExpand(entry)}
+          activeOpacity={0.7}
+          style={styles.cardContent}
+        >
           <View style={styles.cardHeader}>
-            <View style={styles.cardImage}>
+            <TouchableOpacity
+              onPress={() => handleCardExpand(entry)}
+              activeOpacity={0.8}
+              style={styles.cardImage}
+            >
               <ImageWithFallback
                 source={{ uri: entry.experience?.image || entry.image }}
                 alt={entry.experience?.title || entry.title}
                 style={{ width: "100%", height: "100%" }}
               />
-            </View>
+            </TouchableOpacity>
 
             <View style={styles.cardInfo}>
               <View
@@ -776,11 +879,16 @@ const CalendarTab = ({
                 }}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>
-                    {entry.experience?.title || entry.title}
-                  </Text>
-                  {/* Subtitle instead of category */}
-                  <Text style={styles.cardSubtitle}>{subtitle}</Text>
+                  <TouchableOpacity
+                    onPress={() => handleCardExpand(entry)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.cardTitle}>
+                      {entry.experience?.title || entry.title}
+                    </Text>
+                    {/* Subtitle instead of category */}
+                    <Text style={styles.cardSubtitle}>{subtitle}</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -819,8 +927,9 @@ const CalendarTab = ({
               </View>
             </View>
           </View>
+        </TouchableOpacity>
 
-          {/* Purchase Details Section */}
+        {/* Purchase Details Section */}
           {entry.purchaseOption && (
             <View style={styles.purchaseDetails}>
               <View style={styles.purchaseCard}>
@@ -890,7 +999,8 @@ const CalendarTab = ({
             <View style={styles.actionsRow}>
               {/* Propose Date Button - Large orange button */}
               <TouchableOpacity
-                onPress={() => {
+                onPress={(e) => {
+                  e.stopPropagation(); // Prevent card expansion
                   setEntryToReschedule(entry);
                   setShowProposeDateTimeModal(true);
                 }}
@@ -902,7 +1012,10 @@ const CalendarTab = ({
 
               {/* Share Button - Small circular */}
               <TouchableOpacity
-                onPress={() => onShareCard(entry.experience || entry)}
+                onPress={(e) => {
+                  e.stopPropagation(); // Prevent card expansion
+                  onShareCard(entry.experience || entry);
+                }}
                 style={styles.shareButton}
               >
                 <Ionicons
@@ -914,7 +1027,10 @@ const CalendarTab = ({
 
               {/* Delete Button - Small circular */}
               <TouchableOpacity
-                onPress={() => handleRemoveFromCalendar(entry)}
+                onPress={(e) => {
+                  e.stopPropagation(); // Prevent card expansion
+                  handleRemoveFromCalendar(entry);
+                }}
                 style={styles.deleteButton}
                 disabled={removingEntryId === entry.id}
               >
@@ -1229,6 +1345,26 @@ const CalendarTab = ({
               : null)
           }
           onProposeDateTime={handleProposeDateTime}
+        />
+      )}
+
+      {/* Expanded Card Modal - Global instance */}
+      {selectedCardForExpansion && (
+        <ExpandedCardModal
+          visible={isExpandedModalVisible}
+          card={selectedCardForExpansion}
+          onClose={handleCloseExpandedModal}
+          onSave={handleSaveFromModal}
+          onPurchase={handlePurchaseFromModal}
+          onShare={handleShareFromModal}
+          userPreferences={userPreferences}
+          isSaved={true}
+          currentMode={
+            calendarEntries.find((e) => e.id === selectedCardForExpansion.id)
+              ?.source === "solo"
+              ? "solo"
+              : "collaboration"
+          }
         />
       )}
 
