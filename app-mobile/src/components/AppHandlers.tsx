@@ -876,6 +876,7 @@ export function useAppHandlers(state: any) {
           lng: card.lng,
         };
 
+      
         const { error: boardError } = await BoardCardService.saveCardToBoard({
           sessionId: sessionId!,
           experienceId: card.id,

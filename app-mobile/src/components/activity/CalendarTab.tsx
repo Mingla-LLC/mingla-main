@@ -733,7 +733,7 @@ const CalendarTab = ({
     // Transform CalendarEntry to ExpandedCardData format
     const experience = entry.experience || entry;
     const ExperienceIcon = getIconComponent(
-      experience.categoryIcon || entry.categoryIcon,
+      experience.categoryIcon || entry.categoryIcon
     );
 
     const expandedCardData: ExpandedCardData = {
@@ -749,7 +749,8 @@ const CalendarTab = ({
         entry.description ||
         "",
       image: experience.image || entry.image || "",
-      images: experience.images || entry.images || [experience.image || entry.image || ""],
+      images: experience.images ||
+        entry.images || [experience.image || entry.image || ""],
       rating: experience.rating || entry.rating || 4.5,
       reviewCount: experience.reviewCount || entry.reviewCount || 0,
       priceRange: experience.priceRange || entry.priceRange || "N/A",
@@ -769,12 +770,13 @@ const CalendarTab = ({
         time: 0,
         popularity: 0,
       },
-      socialStats: experience.socialStats || entry.socialStats || {
-        views: 0,
-        likes: 0,
-        saves: 0,
-        shares: 0,
-      },
+      socialStats: experience.socialStats ||
+        entry.socialStats || {
+          views: 0,
+          likes: 0,
+          saves: 0,
+          shares: 0,
+        },
       location:
         (experience as any).location ||
         ((experience as any).lat && (experience as any).lng
@@ -788,6 +790,8 @@ const CalendarTab = ({
       strollData: (experience as any).strollData,
       picnicData: (experience as any).picnicData,
     };
+
+    /*  console.log("expandedCardData", expandedCardData.lat); */
 
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
@@ -806,7 +810,7 @@ const CalendarTab = ({
 
   const handlePurchaseFromModal = (
     card: ExpandedCardData,
-    bookingOption: any,
+    bookingOption: any
   ) => {
     // Handle purchase if needed
     // Could open external link or show purchase flow
@@ -930,315 +934,298 @@ const CalendarTab = ({
         </TouchableOpacity>
 
         {/* Purchase Details Section */}
-          {entry.purchaseOption && (
-            <View style={styles.purchaseDetails}>
-              <View style={styles.purchaseCard}>
-                <View style={styles.purchaseHeader}>
-                  <Ionicons name="bag" size={16} color="#059669" />
-                  <Text style={styles.purchaseTitle}>Purchase Details</Text>
-                </View>
-                <View style={styles.purchaseDetailsList}>
-                  <View style={styles.purchaseDetailRow}>
-                    <Text style={styles.purchaseLabel}>Option:</Text>
-                    <Text style={styles.purchaseValue}>
-                      {entry.purchaseOption.title}
-                    </Text>
-                  </View>
-                  <View style={styles.purchaseDetailRow}>
-                    <Text style={styles.purchaseLabel}>Price:</Text>
-                    <Text style={styles.purchaseValue}>
-                      {formatCurrency(
-                        entry.purchaseOption.price,
-                        entry.purchaseOption.currency ||
-                          accountPreferences?.currency ||
-                          "USD"
-                      )}
-                    </Text>
-                  </View>
-                  {entry.purchaseOption.duration && (
-                    <View style={styles.purchaseDetailRow}>
-                      <Text style={styles.purchaseLabel}>Duration:</Text>
-                      <Text style={styles.purchaseValue}>
-                        {entry.purchaseOption.duration}
-                      </Text>
-                    </View>
-                  )}
-                  {entry.purchaseOption.includes &&
-                    entry.purchaseOption.includes.length > 0 && (
-                      <View style={styles.purchaseFeatures}>
-                        <Text style={styles.purchaseFeaturesTitle}>
-                          Includes:
-                        </Text>
-                        <View style={styles.purchaseFeaturesList}>
-                          {entry.purchaseOption.includes
-                            .slice(0, 3)
-                            .map((item: string, index: number) => (
-                              <View key={index} style={styles.purchaseFeature}>
-                                <Text style={styles.purchaseFeatureText}>
-                                  {item}
-                                </Text>
-                              </View>
-                            ))}
-                          {entry.purchaseOption.includes.length > 3 && (
-                            <View style={styles.purchaseFeature}>
-                              <Text style={styles.purchaseFeatureText}>
-                                +{entry.purchaseOption.includes.length - 3} more
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    )}
-                </View>
+        {entry.purchaseOption && (
+          <View style={styles.purchaseDetails}>
+            <View style={styles.purchaseCard}>
+              <View style={styles.purchaseHeader}>
+                <Ionicons name="bag" size={16} color="#059669" />
+                <Text style={styles.purchaseTitle}>Purchase Details</Text>
               </View>
-            </View>
-          )}
-
-          {/* Calendar Actions */}
-          <View style={styles.actionsContainer}>
-            <View style={styles.actionsRow}>
-              {/* Propose Date Button - Large orange button */}
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent card expansion
-                  setEntryToReschedule(entry);
-                  setShowProposeDateTimeModal(true);
-                }}
-                style={styles.proposeDateButton}
-              >
-                <Ionicons name="calendar" size={18} color="white" />
-                <Text style={styles.proposeDateButtonText}>Propose Date</Text>
-              </TouchableOpacity>
-
-              {/* Share Button - Small circular */}
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent card expansion
-                  onShareCard(entry.experience || entry);
-                }}
-                style={styles.shareButton}
-              >
-                <Ionicons
-                  name="share-social-outline"
-                  size={18}
-                  color="#374151"
-                />
-              </TouchableOpacity>
-
-              {/* Delete Button - Small circular */}
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent card expansion
-                  handleRemoveFromCalendar(entry);
-                }}
-                style={styles.deleteButton}
-                disabled={removingEntryId === entry.id}
-              >
-                {removingEntryId === entry.id ? (
-                  <ActivityIndicator size="small" color="#ef4444" />
-                ) : (
-                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Expanded Calendar Details */}
-          {expandedCard === entry.id && (
-            <View style={styles.expandedContent}>
-              {/* Image Gallery */}
-              {entry.experience?.images &&
-                entry.experience.images.length > 0 && (
-                  <View style={styles.imageGallery}>
-                    <View style={styles.galleryImage}>
-                      <ImageWithFallback
-                        source={{
-                          uri: entry.experience.images[
-                            currentImageIndex[entry.id] || 0
-                          ],
-                        }}
-                        alt={entry.experience.title}
-                        style={{ width: "100%", height: "100%" }}
-                      />
-
-                      {entry.experience.images.length > 1 && (
-                        <>
-                          <TouchableOpacity
-                            onPress={() =>
-                              prevImage(
-                                entry.id,
-                                entry.experience.images.length
-                              )
-                            }
-                            style={[styles.imageNavigation, styles.leftNav]}
-                          >
-                            <Ionicons
-                              name="chevron-back"
-                              size={16}
-                              color="white"
-                            />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() =>
-                              nextImage(
-                                entry.id,
-                                entry.experience.images.length
-                              )
-                            }
-                            style={[styles.imageNavigation, styles.rightNav]}
-                          >
-                            <Ionicons
-                              name="chevron-forward"
-                              size={16}
-                              color="white"
-                            />
-                          </TouchableOpacity>
-
-                          {/* Image indicators */}
-                          <View style={styles.imageIndicators}>
-                            {entry.experience.images.map(
-                              (_: any, index: number) => (
-                                <View
-                                  key={index}
-                                  style={[
-                                    styles.indicator,
-                                    index === (currentImageIndex[entry.id] || 0)
-                                      ? styles.activeIndicator
-                                      : styles.inactiveIndicator,
-                                  ]}
-                                />
-                              )
-                            )}
-                          </View>
-                        </>
-                      )}
-                    </View>
-                  </View>
-                )}
-
-              {/* Details */}
-              <View style={styles.detailsSection}>
-                <View>
-                  <Text style={styles.sectionTitle}>About this experience</Text>
-                  <Text style={styles.sectionText}>
-                    {entry.experience?.fullDescription ||
-                      entry.experience?.description ||
-                      "Join us for this amazing experience! Perfect for creating memorable moments."}
+              <View style={styles.purchaseDetailsList}>
+                <View style={styles.purchaseDetailRow}>
+                  <Text style={styles.purchaseLabel}>Option:</Text>
+                  <Text style={styles.purchaseValue}>
+                    {entry.purchaseOption.title}
                   </Text>
                 </View>
-
-                {entry.experience?.highlights &&
-                  entry.experience.highlights.length > 0 && (
-                    <View style={styles.highlightsContainer}>
-                      <Text style={styles.sectionTitle}>Highlights</Text>
-                      <View style={styles.highlightsList}>
-                        {entry.experience.highlights.map(
-                          (highlight: string, index: number) => (
-                            <View key={index} style={styles.highlightTag}>
-                              <Text style={styles.highlightText}>
-                                {highlight}
+                <View style={styles.purchaseDetailRow}>
+                  <Text style={styles.purchaseLabel}>Price:</Text>
+                  <Text style={styles.purchaseValue}>
+                    {formatCurrency(
+                      entry.purchaseOption.price,
+                      entry.purchaseOption.currency ||
+                        accountPreferences?.currency ||
+                        "USD"
+                    )}
+                  </Text>
+                </View>
+                {entry.purchaseOption.duration && (
+                  <View style={styles.purchaseDetailRow}>
+                    <Text style={styles.purchaseLabel}>Duration:</Text>
+                    <Text style={styles.purchaseValue}>
+                      {entry.purchaseOption.duration}
+                    </Text>
+                  </View>
+                )}
+                {entry.purchaseOption.includes &&
+                  entry.purchaseOption.includes.length > 0 && (
+                    <View style={styles.purchaseFeatures}>
+                      <Text style={styles.purchaseFeaturesTitle}>
+                        Includes:
+                      </Text>
+                      <View style={styles.purchaseFeaturesList}>
+                        {entry.purchaseOption.includes
+                          .slice(0, 3)
+                          .map((item: string, index: number) => (
+                            <View key={index} style={styles.purchaseFeature}>
+                              <Text style={styles.purchaseFeatureText}>
+                                {item}
                               </Text>
                             </View>
-                          )
+                          ))}
+                        {entry.purchaseOption.includes.length > 3 && (
+                          <View style={styles.purchaseFeature}>
+                            <Text style={styles.purchaseFeatureText}>
+                              +{entry.purchaseOption.includes.length - 3} more
+                            </Text>
+                          </View>
                         )}
                       </View>
                     </View>
                   )}
+              </View>
+            </View>
+          </View>
+        )}
 
-                {/* Date & Time Details */}
-                <View style={styles.scheduleDetails}>
-                  <Text style={styles.sectionTitle}>Schedule Details</Text>
-                  <View style={styles.scheduleRow}>
-                    <Ionicons name="calendar" size={16} color="#eb7825" />
-                    <Text style={styles.scheduleText}>
-                      {entry.suggestedDates?.[0]
-                        ? new Date(entry.suggestedDates[0]).toLocaleDateString(
-                            "en-US",
-                            {
-                              weekday: "long",
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                            }
+        {/* Calendar Actions */}
+        <View style={styles.actionsContainer}>
+          <View style={styles.actionsRow}>
+            {/* Propose Date Button - Large orange button */}
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation(); // Prevent card expansion
+                setEntryToReschedule(entry);
+                setShowProposeDateTimeModal(true);
+              }}
+              style={styles.proposeDateButton}
+            >
+              <Ionicons name="calendar" size={18} color="white" />
+              <Text style={styles.proposeDateButtonText}>Propose Date</Text>
+            </TouchableOpacity>
+
+            {/* Share Button - Small circular */}
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation(); // Prevent card expansion
+                onShareCard(entry.experience || entry);
+              }}
+              style={styles.shareButton}
+            >
+              <Ionicons name="share-social-outline" size={18} color="#374151" />
+            </TouchableOpacity>
+
+            {/* Delete Button - Small circular */}
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation(); // Prevent card expansion
+                handleRemoveFromCalendar(entry);
+              }}
+              style={styles.deleteButton}
+              disabled={removingEntryId === entry.id}
+            >
+              {removingEntryId === entry.id ? (
+                <ActivityIndicator size="small" color="#ef4444" />
+              ) : (
+                <Ionicons name="trash-outline" size={18} color="#ef4444" />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Expanded Calendar Details */}
+        {expandedCard === entry.id && (
+          <View style={styles.expandedContent}>
+            {/* Image Gallery */}
+            {entry.experience?.images && entry.experience.images.length > 0 && (
+              <View style={styles.imageGallery}>
+                <View style={styles.galleryImage}>
+                  <ImageWithFallback
+                    source={{
+                      uri: entry.experience.images[
+                        currentImageIndex[entry.id] || 0
+                      ],
+                    }}
+                    alt={entry.experience.title}
+                    style={{ width: "100%", height: "100%" }}
+                  />
+
+                  {entry.experience.images.length > 1 && (
+                    <>
+                      <TouchableOpacity
+                        onPress={() =>
+                          prevImage(entry.id, entry.experience.images.length)
+                        }
+                        style={[styles.imageNavigation, styles.leftNav]}
+                      >
+                        <Ionicons name="chevron-back" size={16} color="white" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() =>
+                          nextImage(entry.id, entry.experience.images.length)
+                        }
+                        style={[styles.imageNavigation, styles.rightNav]}
+                      >
+                        <Ionicons
+                          name="chevron-forward"
+                          size={16}
+                          color="white"
+                        />
+                      </TouchableOpacity>
+
+                      {/* Image indicators */}
+                      <View style={styles.imageIndicators}>
+                        {entry.experience.images.map(
+                          (_: any, index: number) => (
+                            <View
+                              key={index}
+                              style={[
+                                styles.indicator,
+                                index === (currentImageIndex[entry.id] || 0)
+                                  ? styles.activeIndicator
+                                  : styles.inactiveIndicator,
+                              ]}
+                            />
                           )
-                        : "Date to be determined"}
-                    </Text>
-                  </View>
-                  <View style={styles.scheduleRow}>
-                    <Ionicons name="time" size={16} color="#eb7825" />
-                    <Text style={styles.scheduleText}>
-                      {entry.suggestedDates?.[0]
-                        ? new Date(entry.suggestedDates[0]).toLocaleTimeString(
-                            "en-US",
-                            {
-                              hour: "numeric",
-                              minute: "2-digit",
-                              hour12: true,
-                            }
-                          )
-                        : "Time to be determined"}
-                    </Text>
-                  </View>
-                  <View style={styles.scheduleRow}>
-                    <Ionicons name="location" size={16} color="#eb7825" />
-                    <Text style={styles.scheduleText}>
-                      {entry.experience?.address ||
-                        "Location details will be provided"}
-                    </Text>
-                  </View>
+                        )}
+                      </View>
+                    </>
+                  )}
                 </View>
+              </View>
+            )}
 
-                {/* Date/Time Preferences Applied */}
-                {entry.dateTimePreferences && (
-                  <View style={styles.preferencesContainer}>
-                    <Text style={styles.preferencesTitle}>
-                      Your Preferences Applied
-                    </Text>
-                    <View style={styles.preferencesList}>
-                      <View style={styles.preferenceTag}>
-                        <Text style={styles.preferenceText}>
-                          {entry.dateTimePreferences.timeOfDay}
-                        </Text>
-                      </View>
-                      <View style={styles.preferenceTag}>
-                        <Text style={styles.preferenceText}>
-                          {entry.dateTimePreferences.dayOfWeek}
-                        </Text>
-                      </View>
-                      <View style={styles.preferenceTag}>
-                        <Text style={styles.preferenceText}>
-                          {entry.dateTimePreferences.planningTimeframe}
-                        </Text>
-                      </View>
+            {/* Details */}
+            <View style={styles.detailsSection}>
+              <View>
+                <Text style={styles.sectionTitle}>About this experience</Text>
+                <Text style={styles.sectionText}>
+                  {entry.experience?.fullDescription ||
+                    entry.experience?.description ||
+                    "Join us for this amazing experience! Perfect for creating memorable moments."}
+                </Text>
+              </View>
+
+              {entry.experience?.highlights &&
+                entry.experience.highlights.length > 0 && (
+                  <View style={styles.highlightsContainer}>
+                    <Text style={styles.sectionTitle}>Highlights</Text>
+                    <View style={styles.highlightsList}>
+                      {entry.experience.highlights.map(
+                        (highlight: string, index: number) => (
+                          <View key={index} style={styles.highlightTag}>
+                            <Text style={styles.highlightText}>
+                              {highlight}
+                            </Text>
+                          </View>
+                        )
+                      )}
                     </View>
                   </View>
                 )}
 
-                {/* Contact Information */}
-                {(entry.experience?.phoneNumber ||
-                  entry.experience?.website) && (
-                  <View style={styles.contactContainer}>
-                    <Text style={styles.contactTitle}>Contact Information</Text>
-                    {entry.experience.phoneNumber && (
-                      <View style={styles.contactRow}>
-                        <Text>📞</Text>
-                        <Text style={styles.contactText}>
-                          {entry.experience.phoneNumber}
-                        </Text>
-                      </View>
-                    )}
-                    {entry.experience.website && (
-                      <View style={styles.contactRow}>
-                        <Ionicons name="link" size={16} color="#eb7825" />
-                        <Text style={styles.contactLink}>Visit Website</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
+              {/* Date & Time Details */}
+              <View style={styles.scheduleDetails}>
+                <Text style={styles.sectionTitle}>Schedule Details</Text>
+                <View style={styles.scheduleRow}>
+                  <Ionicons name="calendar" size={16} color="#eb7825" />
+                  <Text style={styles.scheduleText}>
+                    {entry.suggestedDates?.[0]
+                      ? new Date(entry.suggestedDates[0]).toLocaleDateString(
+                          "en-US",
+                          {
+                            weekday: "long",
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          }
+                        )
+                      : "Date to be determined"}
+                  </Text>
+                </View>
+                <View style={styles.scheduleRow}>
+                  <Ionicons name="time" size={16} color="#eb7825" />
+                  <Text style={styles.scheduleText}>
+                    {entry.suggestedDates?.[0]
+                      ? new Date(entry.suggestedDates[0]).toLocaleTimeString(
+                          "en-US",
+                          {
+                            hour: "numeric",
+                            minute: "2-digit",
+                            hour12: true,
+                          }
+                        )
+                      : "Time to be determined"}
+                  </Text>
+                </View>
+                <View style={styles.scheduleRow}>
+                  <Ionicons name="location" size={16} color="#eb7825" />
+                  <Text style={styles.scheduleText}>
+                    {entry.experience?.address ||
+                      "Location details will be provided"}
+                  </Text>
+                </View>
               </View>
+
+              {/* Date/Time Preferences Applied */}
+              {entry.dateTimePreferences && (
+                <View style={styles.preferencesContainer}>
+                  <Text style={styles.preferencesTitle}>
+                    Your Preferences Applied
+                  </Text>
+                  <View style={styles.preferencesList}>
+                    <View style={styles.preferenceTag}>
+                      <Text style={styles.preferenceText}>
+                        {entry.dateTimePreferences.timeOfDay}
+                      </Text>
+                    </View>
+                    <View style={styles.preferenceTag}>
+                      <Text style={styles.preferenceText}>
+                        {entry.dateTimePreferences.dayOfWeek}
+                      </Text>
+                    </View>
+                    <View style={styles.preferenceTag}>
+                      <Text style={styles.preferenceText}>
+                        {entry.dateTimePreferences.planningTimeframe}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* Contact Information */}
+              {(entry.experience?.phoneNumber || entry.experience?.website) && (
+                <View style={styles.contactContainer}>
+                  <Text style={styles.contactTitle}>Contact Information</Text>
+                  {entry.experience.phoneNumber && (
+                    <View style={styles.contactRow}>
+                      <Text>📞</Text>
+                      <Text style={styles.contactText}>
+                        {entry.experience.phoneNumber}
+                      </Text>
+                    </View>
+                  )}
+                  {entry.experience.website && (
+                    <View style={styles.contactRow}>
+                      <Ionicons name="link" size={16} color="#eb7825" />
+                      <Text style={styles.contactLink}>Visit Website</Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
-          )}
-        </View>
+          </View>
+        )}
       </View>
     );
   };

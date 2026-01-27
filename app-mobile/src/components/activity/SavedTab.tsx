@@ -95,12 +95,12 @@ const SavedTab = ({
   const [selectedCardForModal, setSelectedCardForModal] =
     useState<ExpandedCardData | null>(null);
   const [originalSavedCard, setOriginalSavedCard] = useState<SavedCard | null>(
-    null,
+    null
   );
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [schedulingCardId, setSchedulingCardId] = useState<string | null>(null);
   const [removingCardIds, setRemovingCardIds] = useState<Set<string>>(
-    new Set(),
+    new Set()
   );
   const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
     useState(false);
@@ -111,7 +111,7 @@ const SavedTab = ({
   // Convert scheduledCardIds to Set for O(1) lookups
   const scheduledCardIdsSet = useMemo(
     () => new Set(scheduledCardIds || []),
-    [scheduledCardIds],
+    [scheduledCardIds]
   );
 
   const getMatchScore = (card: SavedCard): number | null => {
@@ -597,6 +597,8 @@ const SavedTab = ({
   };
 
   const handleSchedule = (card: SavedCard) => {
+    /*     console.log("card", card.lat);
+    console.log("card", card.lng); */
     if (scheduledCardIdsSet.has(card.id)) {
       return;
     }
@@ -608,7 +610,7 @@ const SavedTab = ({
     if (!isPlaceOpen) {
       Alert.alert(
         "Place Closed",
-        "This place is currently closed. Please schedule for when it's open.",
+        "This place is currently closed. Please schedule for when it's open."
       );
       return;
     }
@@ -622,7 +624,7 @@ const SavedTab = ({
   const getCurrentScheduledDate = (cardId: string): Date | null => {
     if (!calendarEntries) return null;
     const entry = calendarEntries.find(
-      (entry: any) => entry.experience?.id === cardId || entry.id === cardId,
+      (entry: any) => entry.experience?.id === cardId || entry.id === cardId
     );
     if (entry && entry.date && entry.time) {
       // Combine date and time strings into a Date object
@@ -635,7 +637,7 @@ const SavedTab = ({
   // Handle date/time proposal from modal
   const handleProposeDateTime = (
     date: Date,
-    dateOption: "now" | "today" | "weekend" | "custom",
+    dateOption: "now" | "today" | "weekend" | "custom"
   ) => {
     setShowProposeDateTimeModal(false);
     // For now, immediately proceed with scheduling
@@ -649,6 +651,9 @@ const SavedTab = ({
       setCardToSchedule(null);
       return;
     }
+
+    console.log("cardToSchedule", cardToSchedule.lat);
+    console.log("cardToSchedule", cardToSchedule.lng);
 
     setSchedulingCardId(cardToSchedule.id);
     try {
@@ -664,17 +669,18 @@ const SavedTab = ({
           user.id,
           cardToSchedule.id,
           source,
-          cardToSchedule.sessionId || undefined,
+          cardToSchedule.sessionId || undefined
         );
         queryClient.invalidateQueries({ queryKey: ["savedCards", user.id] });
       } catch (error) {
         console.error(
           "Error removing card from saved_cards when scheduling:",
-          error,
+          error
         );
       }
 
       // Transform card to ExpandedCardData format for calendar entry
+
       const cardData: ExpandedCardData = {
         id: cardToSchedule.id,
         title: cardToSchedule.title,
@@ -708,7 +714,11 @@ const SavedTab = ({
           saves: cardToSchedule.socialStats?.saves || 0,
           shares: (cardToSchedule.socialStats as any)?.shares || 0,
         },
-        location: (cardToSchedule as any).location,
+        location: (cardToSchedule as any).location
+          ? (cardToSchedule as any).location
+          : cardToSchedule.lat && cardToSchedule.lng
+          ? { lat: cardToSchedule.lat, lng: cardToSchedule.lng }
+          : undefined,
         // Add sessionName if it's a collaboration card
         ...(source === "collaboration" && cardToSchedule.sessionName
           ? { sessionName: cardToSchedule.sessionName }
@@ -724,7 +734,7 @@ const SavedTab = ({
       const record = await CalendarService.addEntryFromSavedCard(
         user.id,
         cardWithSource,
-        scheduledDateISO,
+        scheduledDateISO
       );
 
       // Invalidate calendar entries query to refresh after adding to lockedIn
@@ -735,7 +745,7 @@ const SavedTab = ({
         const deviceEvent = DeviceCalendarService.createEventFromCard(
           cardData,
           scheduledDateTime,
-          record.duration_minutes || 120,
+          record.duration_minutes || 120
         );
         await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
       } catch (deviceCalendarError) {
@@ -745,7 +755,7 @@ const SavedTab = ({
       // Show success toast
       toastManager.success(
         `Scheduled! ${cardToSchedule.title} has been moved to your calendar`,
-        3000,
+        3000
       );
 
       // Call the original handler if provided (for any additional logic)
@@ -753,7 +763,7 @@ const SavedTab = ({
       console.error("Error scheduling card:", error);
       Alert.alert(
         "Schedule failed",
-        "We couldn't add this to your calendar. Please try again.",
+        "We couldn't add this to your calendar. Please try again."
       );
     } finally {
       setSchedulingCardId(null);
@@ -824,7 +834,7 @@ const SavedTab = ({
 
   const handleStrollDataFetched = async (
     card: ExpandedCardData,
-    strollData: ExpandedCardData["strollData"],
+    strollData: ExpandedCardData["strollData"]
   ) => {
     // Persist stroll data to the appropriate table based on source
     if (!user?.id || !strollData || !originalSavedCard) return;
@@ -836,7 +846,7 @@ const SavedTab = ({
         card,
         strollData,
         source,
-        originalSavedCard.sessionId || undefined,
+        originalSavedCard.sessionId || undefined
       );
 
       // Invalidate queries to refresh the saved cards list
@@ -856,7 +866,7 @@ const SavedTab = ({
 
   const handlePicnicDataFetched = async (
     card: ExpandedCardData,
-    picnicData: ExpandedCardData["picnicData"],
+    picnicData: ExpandedCardData["picnicData"]
   ) => {
     // Persist picnic data to the appropriate table based on source
     if (!user?.id || !picnicData || !originalSavedCard) return;
@@ -868,7 +878,7 @@ const SavedTab = ({
         card,
         picnicData,
         source,
-        originalSavedCard.sessionId || undefined,
+        originalSavedCard.sessionId || undefined
       );
 
       // Invalidate queries to refresh the saved cards list
@@ -915,7 +925,7 @@ const SavedTab = ({
         user.id,
         card.id,
         card.source,
-        card.sessionId || undefined,
+        card.sessionId || undefined
       );
 
       // Invalidate savedCards query to trigger a refetch (for solo mode)
