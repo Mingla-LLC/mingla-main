@@ -9,6 +9,7 @@ import {
   Modal,
   Platform,
   Alert,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
@@ -105,6 +106,12 @@ const SavedTab = ({
   const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
     useState(false);
   const [cardToSchedule, setCardToSchedule] = useState<SavedCard | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedWhen, setSelectedWhen] = useState<
+    "all" | "today" | "this_week" | "this_month" | "upcoming"
+  >("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
 
@@ -113,6 +120,88 @@ const SavedTab = ({
     () => new Set(scheduledCardIds || []),
     [scheduledCardIds]
   );
+
+  // Apply search and filter controls
+  const filteredCards = useMemo(() => {
+    const normalize = (value: string | undefined | null) =>
+      (value || "").toLowerCase();
+
+    const matchesSearch = (card: SavedCard) => {
+      if (!searchQuery.trim()) return true;
+      const q = normalize(searchQuery);
+      const title = normalize(card.title);
+      const category = normalize(card.category || "");
+      const sessionName = normalize(card.sessionName || "");
+      return (
+        title.includes(q) ||
+        category.includes(q) ||
+        sessionName.includes(q)
+      );
+    };
+
+    const getDateAdded = (card: SavedCard): Date | null => {
+      if (!card.dateAdded) return null;
+      try {
+        return new Date(card.dateAdded);
+      } catch {
+        return null;
+      }
+    };
+
+    const matchesWhen = (card: SavedCard) => {
+      if (selectedWhen === "all") return true;
+      const dateAdded = getDateAdded(card);
+      if (!dateAdded) return false;
+      const now = new Date();
+
+      const isSameDay =
+        dateAdded.getFullYear() === now.getFullYear() &&
+        dateAdded.getMonth() === now.getMonth() &&
+        dateAdded.getDate() === now.getDate();
+
+      if (selectedWhen === "today") return isSameDay;
+
+      if (selectedWhen === "this_week") {
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 7);
+        return dateAdded >= startOfWeek && dateAdded < endOfWeek;
+      }
+
+      if (selectedWhen === "this_month") {
+        return (
+          dateAdded.getFullYear() === now.getFullYear() &&
+          dateAdded.getMonth() === now.getMonth()
+        );
+      }
+
+      if (selectedWhen === "upcoming") {
+        return dateAdded >= now;
+      }
+
+      return true;
+    };
+
+    const matchesCategory = (card: SavedCard) => {
+      if (selectedCategory === "all") return true;
+      const category = card.category || "";
+      return category === selectedCategory;
+    };
+
+    const applyAllFilters = (card: SavedCard) =>
+      matchesSearch(card) &&
+      matchesWhen(card) &&
+      matchesCategory(card);
+
+    return savedCards.filter(applyAllFilters);
+  }, [
+    savedCards,
+    searchQuery,
+    selectedWhen,
+    selectedCategory,
+  ]);
 
   const getMatchScore = (card: SavedCard): number | null => {
     if (typeof card?.matchScore === "number") return card.matchScore;
@@ -134,6 +223,75 @@ const SavedTab = ({
       paddingHorizontal: 16,
       paddingTop: 16,
       paddingBottom: 62, // Add padding to prevent tab bar from touching last card
+    },
+    filterCard: {
+      backgroundColor: "white",
+      marginTop: 16,
+      borderRadius: 16,
+      padding: 16,
+    },
+    filterHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    searchInputContainer: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#f9fafb",
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: "#e5e7eb",
+    },
+    searchIcon: {
+      marginRight: 8,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 14,
+      color: "#111827",
+      paddingVertical: 0,
+    },
+    filterButton: {
+      marginLeft: 12,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: "#f97316",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    filterSection: {
+      marginTop: 12,
+    },
+    filterLabel: {
+      fontSize: 12,
+      color: "#6b7280",
+      marginBottom: 8,
+    },
+    filterPillRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    filterPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: "#f3f4f6",
+    },
+    filterPillSelected: {
+      backgroundColor: "#f97316",
+    },
+    filterPillText: {
+      fontSize: 13,
+      color: "#4b5563",
+    },
+    filterPillTextSelected: {
+      color: "white",
+      fontWeight: "600",
     },
     experienceCard: {
       backgroundColor: "white",
@@ -1158,8 +1316,128 @@ const SavedTab = ({
         onProposeDateTime={handleProposeDateTime}
       />
 
+      {/* Search & Filters */}
+      <View style={styles.filterCard}>
+        <View style={styles.filterHeaderRow}>
+          <View style={styles.searchInputContainer}>
+            <Ionicons
+              name="search-outline"
+              size={18}
+              color="#9ca3af"
+              style={styles.searchIcon}
+            />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by name, date, or type..."
+              placeholderTextColor="#9ca3af"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+          <TouchableOpacity
+            style={styles.filterButton}
+            activeOpacity={0.7}
+            onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
+          >
+            <Ionicons
+              name={isFiltersExpanded ? "chevron-up" : "chevron-down"}
+              size={18}
+              color="white"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {isFiltersExpanded && (
+          <>
+            {/* When */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterLabel}>When</Text>
+              <View style={styles.filterPillRow}>
+                {[
+                  { key: "all", label: "All Dates" },
+                  { key: "today", label: "Today" },
+                  { key: "this_week", label: "This Week" },
+                  { key: "this_month", label: "This Month" },
+                  { key: "upcoming", label: "Upcoming" },
+                ].map((option) => {
+                  const selected = selectedWhen === option.key;
+                  return (
+                    <TouchableOpacity
+                      key={option.key}
+                      style={[
+                        styles.filterPill,
+                        selected && styles.filterPillSelected,
+                      ]}
+                      onPress={() =>
+                        setSelectedWhen(option.key as typeof selectedWhen)
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.filterPillText,
+                          selected && styles.filterPillTextSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Category */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterLabel}>Category</Text>
+              <View style={styles.filterPillRow}>
+                {[
+                  "Take a Stroll",
+                  "Sip & Chill",
+                  "Casual Eats",
+                  "Screen & Relax",
+                  "Creative & Hands-On",
+                  "Picnics",
+                  "Play & Move",
+                  "Dining Experiences",
+                  "Wellness Dates",
+                  "Freestyle",
+                ].map((label) => {
+                  const key = label;
+                  const selected = selectedCategory === key;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.filterPill,
+                        selected && styles.filterPillSelected,
+                      ]}
+                      onPress={() =>
+                        setSelectedCategory(
+                          selected ? "all" : (key as typeof selectedCategory)
+                        )
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.filterPillText,
+                          selected && styles.filterPillTextSelected,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </>
+        )}
+      </View>
+
       <FlatList
-        data={savedCards}
+        data={filteredCards}
         renderItem={renderCard}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}

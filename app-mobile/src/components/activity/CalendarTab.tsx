@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
@@ -93,6 +94,12 @@ const CalendarTab = ({
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedWhen, setSelectedWhen] = useState<
+    "all" | "today" | "this_week" | "this_month" | "upcoming"
+  >("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
 
@@ -121,6 +128,94 @@ const CalendarTab = ({
 
     return { activeEntries: active, archiveEntries: archive };
   }, [calendarEntries]);
+
+  // Apply search and filter controls
+  const { filteredActiveEntries, filteredArchiveEntries } = useMemo(() => {
+    const normalize = (value: string | undefined | null) =>
+      (value || "").toLowerCase();
+
+    const matchesSearch = (entry: CalendarEntry) => {
+      if (!searchQuery.trim()) return true;
+      const q = normalize(searchQuery);
+      const title = normalize(entry.experience?.title || entry.title);
+      const category = normalize(
+        entry.experience?.category || entry.category || ""
+      );
+      const sessionName = normalize(entry.sessionName || "");
+      return (
+        title.includes(q) ||
+        category.includes(q) ||
+        sessionName.includes(q)
+      );
+    };
+
+    const getScheduledDate = (entry: CalendarEntry): Date | null => {
+      const iso = entry.suggestedDates?.[0];
+      if (iso) return new Date(iso);
+      if (entry.date && entry.time) {
+        return new Date(`${entry.date}T${entry.time}`);
+      }
+      return null;
+    };
+
+    const matchesWhen = (entry: CalendarEntry) => {
+      if (selectedWhen === "all") return true;
+      const scheduled = getScheduledDate(entry);
+      if (!scheduled) return false;
+      const now = new Date();
+
+      const isSameDay =
+        scheduled.getFullYear() === now.getFullYear() &&
+        scheduled.getMonth() === now.getMonth() &&
+        scheduled.getDate() === now.getDate();
+
+      if (selectedWhen === "today") return isSameDay;
+
+      if (selectedWhen === "this_week") {
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 7);
+        return scheduled >= startOfWeek && scheduled < endOfWeek;
+      }
+
+      if (selectedWhen === "this_month") {
+        return (
+          scheduled.getFullYear() === now.getFullYear() &&
+          scheduled.getMonth() === now.getMonth()
+        );
+      }
+
+      if (selectedWhen === "upcoming") {
+        return scheduled >= now;
+      }
+
+      return true;
+    };
+
+    const matchesCategory = (entry: CalendarEntry) => {
+      if (selectedCategory === "all") return true;
+      const category = entry.experience?.category || entry.category || "";
+      return category === selectedCategory;
+    };
+
+    const applyAllFilters = (entry: CalendarEntry) =>
+      matchesSearch(entry) &&
+      matchesWhen(entry) &&
+      matchesCategory(entry);
+
+    return {
+      filteredActiveEntries: activeEntries.filter(applyAllFilters),
+      filteredArchiveEntries: archiveEntries.filter(applyAllFilters),
+    };
+  }, [
+    activeEntries,
+    archiveEntries,
+    searchQuery,
+    selectedWhen,
+    selectedCategory,
+  ]);
 
   const handleReschedule = (entry: CalendarEntry) => {
     setEntryToReschedule(entry);
@@ -674,6 +769,75 @@ const CalendarTab = ({
       color: "#6b7280",
       textAlign: "center",
       marginBottom: 24,
+    },
+    filterCard: {
+      backgroundColor: "white",
+      marginTop: 16,
+      borderRadius: 16,
+      padding: 16,
+    },
+    filterHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    searchInputContainer: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#f9fafb",
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: "#e5e7eb",
+    },
+    searchIcon: {
+      marginRight: 8,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 14,
+      color: "#111827",
+      paddingVertical: 0,
+    },
+    filterButton: {
+      marginLeft: 12,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: "#f97316",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    filterSection: {
+      marginTop: 12,
+    },
+    filterLabel: {
+      fontSize: 12,
+      color: "#6b7280",
+      marginBottom: 8,
+    },
+    filterPillRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    filterPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: "#f3f4f6",
+    },
+    filterPillSelected: {
+      backgroundColor: "#f97316",
+    },
+    filterPillText: {
+      fontSize: 13,
+      color: "#4b5563",
+    },
+    filterPillTextSelected: {
+      color: "white",
+      fontWeight: "600",
     },
     mainScrollView: {
       flex: 1,
@@ -1350,6 +1514,126 @@ const CalendarTab = ({
         contentContainerStyle={styles.mainScrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Search & Filters */}
+        <View style={styles.filterCard}>
+          <View style={styles.filterHeaderRow}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons
+                name="search-outline"
+                size={18}
+                color="#9ca3af"
+                style={styles.searchIcon}
+              />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search by name, date, or type..."
+                placeholderTextColor="#9ca3af"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.filterButton}
+              activeOpacity={0.7}
+              onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
+            >
+              <Ionicons
+                name={isFiltersExpanded ? "chevron-up" : "chevron-down"}
+                size={18}
+                color="white"
+              />
+            </TouchableOpacity>
+          </View>
+
+          {isFiltersExpanded && (
+            <>
+              {/* When */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>When</Text>
+                <View style={styles.filterPillRow}>
+                  {[
+                    { key: "all", label: "All Dates" },
+                    { key: "today", label: "Today" },
+                    { key: "this_week", label: "This Week" },
+                    { key: "this_month", label: "This Month" },
+                    { key: "upcoming", label: "Upcoming" },
+                  ].map((option) => {
+                    const selected = selectedWhen === option.key;
+                    return (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[
+                          styles.filterPill,
+                          selected && styles.filterPillSelected,
+                        ]}
+                        onPress={() =>
+                          setSelectedWhen(option.key as typeof selectedWhen)
+                        }
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.filterPillText,
+                            selected && styles.filterPillTextSelected,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Category */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>Category</Text>
+                <View style={styles.filterPillRow}>
+                  {[
+                    "Take a Stroll",
+                    "Sip & Chill",
+                    "Casual Eats",
+                    "Screen & Relax",
+                    "Creative & Hands-On",
+                    "Picnics",
+                    "Play & Move",
+                    "Dining Experiences",
+                    "Wellness Dates",
+                    "Freestyle",
+                  ].map((label) => {
+                    const key = label;
+                    const selected = selectedCategory === key;
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        style={[
+                          styles.filterPill,
+                          selected && styles.filterPillSelected,
+                        ]}
+                        onPress={() =>
+                          setSelectedCategory(
+                            selected ? "all" : (key as typeof selectedCategory)
+                          )
+                        }
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.filterPillText,
+                            selected && styles.filterPillTextSelected,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+
         {/* Active Section */}
         <TouchableOpacity
           style={styles.accordionHeader}
@@ -1364,7 +1648,9 @@ const CalendarTab = ({
         >
           <View style={styles.accordionTitleContainer}>
             <Text style={styles.accordionTitle}>Active</Text>
-            <Text style={styles.accordionCount}>({activeEntries.length})</Text>
+            <Text style={styles.accordionCount}>
+              ({filteredActiveEntries.length})
+            </Text>
           </View>
           <Ionicons
             name={
@@ -1379,9 +1665,9 @@ const CalendarTab = ({
 
         {expandedAccordionItems.includes("active") && (
           <View style={styles.accordionContentContainer}>
-            {activeEntries.length === 0
+            {filteredActiveEntries.length === 0
               ? renderEmptyComponent()
-              : activeEntries.map((entry) => (
+              : filteredActiveEntries.map((entry) => (
                   <View key={entry.id} style={styles.cardWrapper}>
                     {renderCalendarEntry({ item: entry })}
                   </View>
@@ -1403,7 +1689,9 @@ const CalendarTab = ({
         >
           <View style={styles.accordionTitleContainer}>
             <Text style={styles.accordionTitle}>Archives</Text>
-            <Text style={styles.accordionCount}>({archiveEntries.length})</Text>
+            <Text style={styles.accordionCount}>
+              ({filteredArchiveEntries.length})
+            </Text>
           </View>
           <Ionicons
             name={
@@ -1418,9 +1706,9 @@ const CalendarTab = ({
 
         {expandedAccordionItems.includes("archive") && (
           <View style={styles.accordionContentContainer}>
-            {archiveEntries.length === 0
+            {filteredArchiveEntries.length === 0
               ? renderEmptyComponent()
-              : archiveEntries.map((entry) => (
+              : filteredArchiveEntries.map((entry) => (
                   <View key={entry.id} style={styles.cardWrapper}>
                     {renderCalendarEntry({ item: entry })}
                   </View>
