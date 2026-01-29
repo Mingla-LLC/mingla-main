@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Image, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ImageWithFallback } from './figma/ImageWithFallback';
@@ -50,7 +50,20 @@ export default function ProfilePage({
   const [currentLocation, setCurrentLocation] = useState('Raleigh, North Carolina, United States');
   const [profileImageSrc, setProfileImageSrc] = useState(userIdentity?.profileImage || null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
-
+  
+  // Animated value for toggle
+  const toggleAnim = useRef(new Animated.Value(notificationsEnabled ? 20 : 2)).current;
+  
+  // Animate toggle when notificationsEnabled changes
+  useEffect(() => {
+    Animated.timing(toggleAnim, {
+      toValue: notificationsEnabled ? 20 : 2,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [notificationsEnabled]);
+  
+  console.log('userIdentity in ProfilePage:', userIdentity);
   // Auto-update location on component mount
   useEffect(() => {
     updateLocation();
@@ -273,16 +286,16 @@ export default function ProfilePage({
             <View style={styles.notificationHeader}>
               <View style={styles.notificationTitleContainer}>
                 <Ionicons name="notifications" size={20} color="#eb7825" />
-                <Text style={styles.sectionTitle}>Notifications</Text>
+                <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Notifications</Text>
               </View>
               <TouchableOpacity
                 onPress={() => handleNotificationsToggle(!notificationsEnabled)}
                 style={[styles.toggle, { backgroundColor: notificationsEnabled ? '#eb7825' : '#d1d5db' }]}
               >
-                <View
+                <Animated.View
                   style={[
                     styles.toggleThumb,
-                    { transform: [{ translateX: notificationsEnabled ? 20 : 2 }] }
+                    { transform: [{ translateX: toggleAnim }] }
                   ]}
                 />
               </TouchableOpacity>
@@ -588,6 +601,7 @@ const styles = StyleSheet.create({
   notificationTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start',
     gap: 8,
   },
   notificationDescription: {
