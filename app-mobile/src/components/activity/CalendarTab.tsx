@@ -1234,12 +1234,11 @@ const CalendarTab = ({
                       </View>
                     )}
                   </View>
-                )}
+          )}
               </View>
             </View>
           )}
         </View>
-      </View>
     );
   };
 

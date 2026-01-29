@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import Feather from "@expo/vector-icons/Feather";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -7,6 +8,8 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Modal,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
@@ -44,6 +47,7 @@ import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
 import { SessionService } from "../src/services/sessionService";
 import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { colors } from "../src/constants/colors";
 
 function AppContent() {
   const state = useAppState();
@@ -55,6 +59,9 @@ function AppContent() {
   const [totalUnreadMessages, setTotalUnreadMessages] = useState<number>(0);
   const [totalUnreadBoardMessages, setTotalUnreadBoardMessages] =
     useState<number>(0);
+  const [showHelpButton, setShowHelpButton] = useState<boolean>(false);
+  const [showWelcomeDialog, setShowWelcomeDialog] = useState<boolean>(false);
+  const helpButtonDismissedRef = useRef<boolean>(false);
 
   // Destructure commonly used state
   const {
@@ -370,6 +377,52 @@ function AppContent() {
       return () => clearTimeout(timer);
     }
   }, [isAuthenticated, user, profile, setShowCoachMap]);
+
+  // Show floating help button for new users (if not dismissed)
+  useEffect(() => {
+    const checkHelpButtonStatus = async () => {
+      if (
+        isAuthenticated &&
+        user &&
+        profile &&
+        profile.has_completed_onboarding === true &&
+        !helpButtonDismissedRef.current
+      ) {
+        try {
+          const dismissed = await AsyncStorage.getItem("mingla_help_button_dismissed");
+          if (dismissed !== "true") {
+            // Show help button after a delay (after coach map might appear)
+            const timer = setTimeout(() => {
+              setShowHelpButton(true);
+            }, 1500);
+            return () => clearTimeout(timer);
+          }
+        } catch (error) {
+          console.error("Error checking help button status:", error);
+        }
+      }
+    };
+
+    checkHelpButtonStatus();
+  }, [isAuthenticated, user, profile]);
+
+  // Function to dismiss the help button permanently
+  const dismissHelpButton = async () => {
+    try {
+      await AsyncStorage.setItem("mingla_help_button_dismissed", "true");
+      helpButtonDismissedRef.current = true;
+      setShowHelpButton(false);
+    } catch (error) {
+      console.error("Error dismissing help button:", error);
+    }
+  };
+
+  // Function to handle starting the tour
+  const handleStartTour = async () => {
+    setShowWelcomeDialog(false);
+    // Start the coach map tour
+    setShowCoachMap(true);
+  };
 
   // Get session ID when in collaboration mode
   useEffect(() => {
@@ -1260,6 +1313,73 @@ function AppContent() {
                       userPreferences={userPreferences}
                       accountPreferences={accountPreferences}
                     />
+
+                    {/* Floating Help Button */}
+                    {showHelpButton && !showCoachMap && (
+                      <View style={styles.floatingButtonContainer}>
+                        {/* Dismiss X button */}
+                        <TouchableOpacity
+                          style={styles.dismissButton}
+                          onPress={dismissHelpButton}
+                        >
+                          <Ionicons name="close" size={12} color="white" />
+                        </TouchableOpacity>
+                        {/* Main help button */}
+                        <TouchableOpacity
+                          style={styles.floatingButton}
+                          onPress={() => setShowWelcomeDialog(true)}
+                        >
+                          <Feather name="help-circle" size={24} color="white" />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* Welcome Dialog */}
+                    <Modal
+                      visible={showWelcomeDialog}
+                      transparent={true}
+                      animationType="fade"
+                      onRequestClose={() => setShowWelcomeDialog(false)}
+                    >
+                      <View style={styles.modalOverlay}>
+                        <View style={styles.dialogContainer}>
+                          {/* Logo */}
+                          <Image
+                            source={require('../assets/mingla_logo.png')}
+                            style={styles.dialogLogo}
+                            resizeMode="contain"
+                          />
+
+                          {/* Title with wave emoji */}
+                          <View style={styles.dialogTitleContainer}>
+                            <Text style={styles.dialogTitle}>Welcome to Mingla</Text>
+                            <Text style={styles.waveEmoji}>👋</Text>
+                          </View>
+
+                          {/* Description */}
+                          <Text style={styles.dialogDescription}>
+                            Let's show you the essentials (takes 30 seconds)
+                          </Text>
+
+                          {/* Buttons */}
+                          <View style={styles.dialogButtonsContainer}>
+                            <TouchableOpacity
+                              style={styles.startTourButton}
+                              onPress={handleStartTour}
+                            >
+                              <Text style={styles.startTourButtonText}>Start tour</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.skipButton}
+                              onPress={() => setShowWelcomeDialog(false)}
+                            >
+                              <Text style={styles.skipButtonText}>Skip</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    </Modal>
                   </SafeAreaView>
                 </ErrorBoundary>
               </NavigationProvider>
@@ -1336,6 +1456,109 @@ const styles = StyleSheet.create({
   },
   navTextInactive: {
     color: "#9CA3AF",
+  },
+  // Floating Help Button styles
+  floatingButtonContainer: {
+    position: "absolute",
+    bottom: 130,
+    right: 24,
+  },
+  floatingButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  dismissButton: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#6b7280",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
+    borderWidth: 2,
+    borderColor: "white",
+  },
+  // Welcome Dialog styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  dialogContainer: {
+    backgroundColor: "white",
+    borderRadius: 24,
+    padding: 32,
+    width: "100%",
+    maxWidth: 340,
+    alignItems: "center",
+  },
+  dialogLogo: {
+    width: 80,
+    height: 80,
+    marginBottom: 24,
+  },
+  dialogTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  dialogTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#111827",
+  },
+  waveEmoji: {
+    fontSize: 22,
+  },
+  dialogDescription: {
+    fontSize: 16,
+    color: "#6b7280",
+    textAlign: "center",
+    marginBottom: 32,
+    lineHeight: 24,
+  },
+  dialogButtonsContainer: {
+    width: "100%",
+    gap: 12,
+  },
+  startTourButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  startTourButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  skipButton: {
+    backgroundColor: "transparent",
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  skipButtonText: {
+    color: "#374151",
+    fontSize: 16,
+    fontWeight: "500",
   },
 });
 

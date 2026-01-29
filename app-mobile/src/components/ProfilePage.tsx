@@ -3,6 +3,7 @@ import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Image } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import Feather from '@expo/vector-icons/Feather';
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -164,7 +165,7 @@ export default function ProfilePage({
       onClick: () => onNavigateToPrivacyPolicy?.() 
     },
     { 
-      icon: 'document-text', 
+      icon: 'file-text', 
       label: 'Terms of Service', 
       description: 'Terms and conditions for using Mingla',
       onClick: () => onNavigateToTermsOfService?.() 
@@ -302,7 +303,7 @@ export default function ProfilePage({
                 style={styles.settingsItem}
               >
                 <View style={styles.settingsIconContainer}>
-                  <Ionicons name={item.icon as any} size={20} color="#6b7280" />
+                  <Feather name={item.icon as any} size={20} color="#6b7280" />
                 </View>
                 <View style={styles.settingsContent}>
                   <Text style={styles.settingsLabel}>{item.label}</Text>
@@ -322,7 +323,7 @@ export default function ProfilePage({
             <View style={styles.blockedUsersCard}>
               <View style={styles.blockedUsersHeader}>
                 <View style={styles.blockedUsersIconContainer}>
-                  <Ionicons name="shield" size={20} color="#6b7280" />
+                  <Feather name="shield" size={20} color="#6b7280" />
                 </View>
                 <View style={styles.blockedUsersInfo}>
                   <Text style={styles.blockedUsersTitle}>Blocked Users</Text>
@@ -373,7 +374,7 @@ export default function ProfilePage({
                 style={styles.legalItem}
               >
                 <View style={styles.legalIconContainer}>
-                  <Ionicons name={item.icon as any} size={20} color="#6b7280" />
+                  <Feather name={item.icon as any} size={20} color="#6b7280" />
                 </View>
                 <View style={styles.legalContent}>
                   <Text style={styles.legalLabel}>{item.label}</Text>
@@ -495,6 +496,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#f3f4f6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 5,
   },
   statValue: {
     fontSize: 24,
@@ -518,6 +524,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   sectionTitle: {
     fontSize: 16,
@@ -609,6 +620,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   settingsIconContainer: {
     width: 40,
@@ -641,6 +657,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   blockedUsersHeader: {
     flexDirection: 'row',
