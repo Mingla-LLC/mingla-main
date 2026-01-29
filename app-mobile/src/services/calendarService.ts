@@ -66,6 +66,35 @@ export class CalendarService {
     return data as CalendarEntryRecord;
   }
 
+  static async updateEntry(
+    entryId: string,
+    userId: string,
+    updates: {
+      scheduled_at?: string;
+      status?: "pending" | "confirmed" | "completed" | "cancelled";
+      duration_minutes?: number;
+      notes?: string;
+    }
+  ): Promise<CalendarEntryRecord> {
+    const { data, error } = await supabase
+      .from("calendar_entries")
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", entryId)
+      .eq("user_id", userId) // Ensure user can only update their own entries
+      .select("*")
+      .single();
+
+    if (error) {
+      console.error("Error updating calendar entry:", error);
+      throw error;
+    }
+
+    return data as CalendarEntryRecord;
+  }
+
   static async deleteEntry(entryId: string, userId: string): Promise<boolean> {
     const { error } = await supabase
       .from("calendar_entries")

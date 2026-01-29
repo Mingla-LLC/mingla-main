@@ -14,7 +14,11 @@ import { Ionicons } from "@expo/vector-icons";
 import Feather from '@expo/vector-icons/Feather';
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { colors } from "../../constants/colors";
+import ProfileAccountSection from "./ProfileAccountSection";
+import ProfilePrivacySection from "./ProfilePrivacySection";
+import ProfilePhotoSection from "./ProfilePhotoSection";
+import ProfilePersonalInfoSection from "./ProfilePersonalInfoSection";
+import { colors } from "@/src/constants/colors";
 // import profileImage from '../../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
 
 interface ProfileSettingsProps {
@@ -35,82 +39,6 @@ export default function ProfileSettings({
   onUpdateIdentity,
   onNavigateBack,
 }: ProfileSettingsProps) {
-  const [isEditing, setIsEditing] = useState<string | null>(null);
-  const [focusedField, setFocusedField] = useState<string | null>(null);
-  const [tempValues, setTempValues] = useState({
-    firstName: userIdentity.firstName,
-    lastName: userIdentity.lastName,
-    username: userIdentity.username,
-    email: userIdentity.email,
-  });
-  const [profileImageSrc] = useState(userIdentity.profileImage || null);
-
-  const handleEditField = (field: string) => {
-    setIsEditing(field);
-    setTempValues((prev) => ({
-      ...prev,
-      [field]: userIdentity[field as keyof typeof userIdentity],
-    }));
-  };
-
-  const handleSaveField = (field: string) => {
-    const updatedIdentity = {
-      ...userIdentity,
-      [field]: tempValues[field as keyof typeof tempValues],
-    };
-    onUpdateIdentity(updatedIdentity);
-    setIsEditing(null);
-  };
-
-  const handleCancelEdit = () => {
-    setTempValues({
-      firstName: userIdentity.firstName,
-      lastName: userIdentity.lastName,
-      username: userIdentity.username,
-      email: userIdentity.email,
-    });
-    setIsEditing(null);
-  };
-
-  const handleAvatarChange = () => {
-    // In React Native, you would use a library like react-native-image-picker
-    // For now, we'll show an alert with options
-    Alert.alert(
-      "Change Profile Photo",
-      "Choose how you want to update your profile photo",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Take Photo",
-          onPress: () => {
-            // In a real app, this would open the camera
-            Alert.alert(
-              "Camera",
-              "Camera functionality would be implemented here"
-            );
-          },
-        },
-        {
-          text: "Choose from Gallery",
-          onPress: () => {
-            // In a real app, this would open the image picker
-            Alert.alert(
-              "Gallery",
-              "Image picker functionality would be implemented here"
-            );
-          },
-        },
-      ]
-    );
-  };
-
-  const handleInputChange = (field: string, value: string) => {
-    setTempValues((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
   // Removed unused handleKeyPress function
 
   return (
@@ -128,351 +56,27 @@ export default function ProfileSettings({
       {/* Content */}
       <ScrollView style={styles.content}>
         {/* Profile Photo Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Profile Photo</Text>
-
-          <View style={styles.profilePhotoContainer}>
-            <View style={styles.avatarContainer}>
-              <TouchableOpacity
-                onPress={handleAvatarChange}
-                style={styles.avatarButton}
-              >
-                <ImageWithFallback
-                  source={
-                    profileImageSrc
-                      ? { uri: profileImageSrc }
-                      : {
-                          uri: "https://via.placeholder.com/80x80/6b7280/ffffff?text=User",
-                        }
-                  }
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    borderRadius: 50,
-                    borderWidth: 4,
-                    borderColor: "#e5e7eb",
-                  }}
-                />
-                {/* Camera overlay */}
-                <View style={styles.cameraOverlay}>
-                  <Ionicons name="camera" size={24} color="white" />
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.photoActions}>
-              <TouchableOpacity
-                onPress={handleAvatarChange}
-                style={styles.changePhotoButton}
-              >
-                <Text style={styles.changePhotoButtonText}>Change Photo</Text>
-              </TouchableOpacity>
-              <Text style={styles.photoHint}>
-                Upload a new profile photo. Changes are saved automatically.
-              </Text>
-            </View>
-          </View>
-        </View>
+        <ProfilePhotoSection
+          profileImageSrc={userIdentity.profileImage}
+          onProfileImageUpdate={(newImageUrl) => {
+            // Update local userIdentity state
+            const updatedIdentity = {
+              ...userIdentity,
+              profileImage: newImageUrl,
+            };
+            onUpdateIdentity(updatedIdentity);
+          }}
+        />
 
         {/* Personal Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Personal Information</Text>
-          <Text style={styles.photoHint}>Your personal details are private and only used to personalize your experience.</Text>
+        <ProfilePersonalInfoSection
+          userIdentity={userIdentity}
+          onUpdateIdentity={onUpdateIdentity}
+        />
 
-          <View style={styles.formFields}>
-            {/* First Name */}
-            <View style={styles.formField}>
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>First Name</Text>
-                {isEditing === "firstName" ? (
-                  <View style={styles.editContainer}>
-                    <TextInput
-                      value={tempValues.firstName}
-                      onChangeText={(text) =>
-                        handleInputChange("firstName", text)
-                      }
-                      style={[styles.textInput, focusedField === "firstName" && styles.textInputFocused]}
-                      autoFocus
-                      placeholder="Enter first name"
-                      onFocus={() => setFocusedField("firstName")}
-                      onBlur={() => setFocusedField(null)}
-                    />
-                    <View style={styles.actionButtons}>
-                      <TouchableOpacity
-                        onPress={() => handleSaveField("firstName")}
-                        style={styles.saveButton}
-                      >
-                        <Ionicons name="checkmark" size={16} color="#10b981" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={handleCancelEdit}
-                        style={styles.cancelButton}
-                      >
-                        <Ionicons name="close" size={16} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldValue}>
-                      {userIdentity.firstName}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => handleEditField("firstName")}
-                      style={styles.editButton}
-                    >
-                      <Feather name="edit-3" size={16} color="#6b7280" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            {/* Last Name */}
-            <View style={styles.formField}>
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Last Name</Text>
-                {isEditing === "lastName" ? (
-                  <View style={styles.editContainer}>
-                    <TextInput
-                      value={tempValues.lastName}
-                      onChangeText={(text) =>
-                        handleInputChange("lastName", text)
-                      }
-                      style={[styles.textInput, focusedField === "lastName" && styles.textInputFocused]}
-                      autoFocus
-                      placeholder="Enter last name"
-                      onFocus={() => setFocusedField("lastName")}
-                      onBlur={() => setFocusedField(null)}
-                    />
-                    <View style={styles.actionButtons}>
-                      <TouchableOpacity
-                        onPress={() => handleSaveField("lastName")}
-                        style={styles.saveButton}
-                      >
-                        <Ionicons name="checkmark" size={16} color="#10b981" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={handleCancelEdit}
-                        style={styles.cancelButton}
-                      >
-                        <Ionicons name="close" size={16} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldValue}>
-                      {userIdentity.lastName}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => handleEditField("lastName")}
-                      style={styles.editButton}
-                    >
-                      <Feather name="edit-3" size={16} color="#6b7280" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            {/* Username */}
-            <View style={styles.formField}>
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Username</Text>
-                {isEditing === "username" ? (
-                  <View style={styles.editContainer}>
-                    <View style={[styles.usernameInputContainer, focusedField === "username" && styles.usernameInputContainerFocused]}>
-                      <Text style={styles.usernamePrefix}>@</Text>
-                      <TextInput
-                        value={tempValues.username}
-                        onChangeText={(text) =>
-                          handleInputChange(
-                            "username",
-                            text.toLowerCase().replace(/[^a-z0-9_]/g, "")
-                          )
-                        }
-                        style={styles.usernameTextInput}
-                        autoFocus
-                        placeholder="username"
-                        autoCapitalize="none"
-                        onFocus={() => setFocusedField("username")}
-                        onBlur={() => setFocusedField(null)}
-                      />
-                    </View>
-                    <View style={styles.actionButtons}>
-                      <TouchableOpacity
-                        onPress={() => handleSaveField("username")}
-                        style={styles.saveButton}
-                      >
-                        <Ionicons name="checkmark" size={16} color="#10b981" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={handleCancelEdit}
-                        style={styles.cancelButton}
-                      >
-                        <Ionicons name="close" size={16} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldValue}>
-                      @{userIdentity.username}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => handleEditField("username")}
-                      style={styles.editButton}
-                    >
-                      <Feather name="edit-3" size={16} color="#6b7280" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {isEditing === "username" && (
-                  <Text style={styles.usernameHint}>
-                    Username can only contain lowercase letters, numbers, and
-                    underscores.
-                  </Text>
-                )}
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Account Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account Information</Text>
-          <Text style={styles.photoHint}>Manage your account information and preferences.</Text>
-
-          <View style={styles.formFields}>
-            {/* Email */}
-            <View style={styles.formField}>
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Email</Text>
-                {isEditing === "email" ? (
-                  <View style={styles.editContainer}>
-                    <TextInput
-                      value={tempValues.email}
-                      onChangeText={(text) =>
-                        handleInputChange("email", text)
-                      }
-                      style={[styles.textInput, focusedField === "email" && styles.textInputFocused]}
-                      autoFocus
-                      placeholder="Enter email"
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      onFocus={() => setFocusedField("email")}
-                      onBlur={() => setFocusedField(null)}
-                    />
-                    <View style={styles.actionButtons}>
-                      <TouchableOpacity
-                        onPress={() => handleSaveField("email")}
-                        style={styles.saveButton}
-                      >
-                        <Ionicons name="checkmark" size={16} color="#10b981" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={handleCancelEdit}
-                        style={styles.cancelButton}
-                      >
-                        <Ionicons name="close" size={16} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldValue}>
-                      {userIdentity.email}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => handleEditField("email")}
-                      style={styles.editButton}
-                    >
-                      <Feather name="edit-3" size={16} color="#6b7280" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            {/* Member Since */}
-            <View style={styles.formField}>
-              <View style={styles.fieldContainer}>
-                <View style={styles.fieldRow}>
-                  <Text style={styles.inlineFieldLabel}>Member Since</Text>
-                  <Text style={styles.fieldValue}>
-                    {userIdentity.memberSince}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Account Status */}
-            <View style={styles.formField}>
-              <View style={styles.fieldContainer}>
-                <View style={styles.fieldRow}>
-                  <Text style={styles.inlineFieldLabel}>Account Status</Text>
-                  <View style={styles.statusBadge}>
-                    <Text style={styles.statusBadgeText}>Active</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Privacy and Visibility */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Privacy and Visibility</Text>
-          <Text style={styles.photoHint}>Control how others see your profile and activity.</Text>
-
-          <View style={styles.formFields}>
-            {/* Profile Visibility */}
-            <View style={styles.formField}>
-              <View style={styles.fieldContainer}>
-                <View style={styles.fieldRow}>
-                  <View style={styles.labelDescriptionContainer}>
-                    <Text style={styles.inlineFieldLabel}>Profile Visibility</Text>
-                    <Text style={styles.fieldDescription}>Who can see your profile</Text>
-                  </View>
-                  <Text style={styles.primaryValueText}>Friends only</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Activity Status */}
-            <View style={styles.formField}>
-              <View style={styles.fieldContainer}>
-                <View style={styles.fieldRow}>
-                  <View style={styles.labelDescriptionContainer}>
-                    <Text style={styles.inlineFieldLabel}>Activity Status</Text>
-                    <Text style={styles.fieldDescription}>Show when you're online</Text>
-                  </View>
-                  <View style={styles.onlineIndicator} />
-                </View>
-              </View>
-            </View>
-
-            {/* Saved Experiences */}
-            <View style={styles.formField}>
-              <View style={styles.fieldContainer}>
-                <View style={styles.fieldRow}>
-                  <View style={styles.labelDescriptionContainer}>
-                    <Text style={styles.inlineFieldLabel}>Saved Experiences</Text>
-                    <Text style={styles.fieldDescription}>Share your saved experiences</Text>
-                  </View>
-                  <Text style={styles.primaryValueText}>Private</Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.noteSection}>
-              <Text style={styles.noteText}>
-                <Text style={{fontWeight: '700'}}>Note:</Text> These settings affect how your profile appears to other Mingla users. Your personal information is always kept.
-              </Text>
-            </View>
-          </View>
-        </View>
+        {/* Account Information & Privacy Sections */}
+        <ProfileAccountSection />
+        <ProfilePrivacySection />
       </ScrollView>
     </SafeAreaView>
   );
@@ -482,7 +86,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f9fafb",
-    paddingBottom: 50
+    paddingBottom: 64,
   },
   header: {
     borderBottomColor: "#e5e7eb",

@@ -1033,7 +1033,6 @@ function AppContent() {
             userIdentity={userIdentity}
             onUpdateIdentity={(updatedIdentity) => {
               handleUserIdentityUpdate(updatedIdentity);
-              setShowProfileSettings(false);
             }}
             onNavigateBack={() => setShowProfileSettings(false)}
           />

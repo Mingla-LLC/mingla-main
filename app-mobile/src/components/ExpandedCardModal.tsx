@@ -83,12 +83,7 @@ export default function ExpandedCardModal({
       setLoadingWeather(true);
       try {
         // Convert selectedDateTime to Date if it's a string
-        const dateTime =
-          card.selectedDateTime instanceof Date
-            ? card.selectedDateTime
-            : typeof card.selectedDateTime === "string"
-            ? new Date(card.selectedDateTime)
-            : undefined;
+        const dateTime = new Date();
 
         const weather = await weatherService.getWeatherForecast(
           card.location.lat,
@@ -170,7 +165,6 @@ export default function ExpandedCardModal({
           }
         : null);
 
-
     if (!anchor) {
       console.warn("⚠️ Cannot fetch stroll data: missing anchor information");
       return;
@@ -227,8 +221,6 @@ export default function ExpandedCardModal({
 
     setLoadingPicnicData(true);
     try {
-
-   
       const fetchedPicnicData =
         await ExperienceGenerationService.fetchPicnicGroceryData(picnic);
       if (fetchedPicnicData) {

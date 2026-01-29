@@ -57,17 +57,31 @@ interface AccordionItemProps {
   children: React.ReactNode;
   value: string;
   style?: any;
+  isOpen?: boolean;
+  onToggle?: () => void;
 }
 
 function AccordionItem({
   children,
   value,
   style,
-  ...props
+  isOpen,
+  onToggle,
 }: AccordionItemProps) {
   return (
-    <View style={[styles.accordionItem, style]} {...props}>
-      {children}
+    <View style={[styles.accordionItem, style]}>
+      {React.Children.map(children, (child) => {
+        if (React.isValidElement(child)) {
+          // Pass isOpen and onToggle to all children (AccordionTrigger and AccordionContent)
+          const childProps = child.props as Record<string, any>;
+          return React.cloneElement(child, {
+            ...childProps,
+            isOpen,
+            onToggle,
+          } as any);
+        }
+        return child;
+      })}
     </View>
   );
 }
@@ -98,7 +112,7 @@ function AccordionTrigger({
 
   const rotate = rotateValue.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '180deg'],
+    outputRange: ['0deg', '90deg'], // Rotate from right (>) to down (v)
   });
 
   return (
@@ -110,7 +124,7 @@ function AccordionTrigger({
       <View style={styles.accordionTriggerContent}>
         {children}
         <Animated.View style={{ transform: [{ rotate }] }}>
-          <Ionicons name="chevron-down" size={16} color="#6b7280" />
+          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
         </Animated.View>
       </View>
     </TouchableOpacity>
@@ -146,7 +160,7 @@ function AccordionContent({
         {
           maxHeight: heightValue.interpolate({
             inputRange: [0, 1],
-            outputRange: [0, 1000], // Adjust based on content
+            outputRange: [0, 10000], // Increased to allow more content
           }),
           opacity: heightValue,
         },
@@ -170,9 +184,9 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e5e7eb',
   },
   accordionTrigger: {
-    flex: 1,
+    width: '100%',
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 16,
     paddingHorizontal: 0,
@@ -181,16 +195,18 @@ const styles = StyleSheet.create({
   accordionTriggerContent: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
+    width: '100%',
   },
   accordionContent: {
     overflow: 'hidden',
+    flex: 1,
   },
   accordionContentInner: {
     paddingTop: 0,
-    paddingBottom: 16,
+    paddingBottom: 0,
+    flex: 1,
   },
 });
 

@@ -7,12 +7,18 @@ import {
   Linking,
   FlatList,
   ActivityIndicator,
+  ScrollView,
+  Alert,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
+import { useAppStore } from "../../store/appStore";
+import { useQueryClient } from "@tanstack/react-query";
+import { toastManager } from "../ui/Toast";
 
 interface CalendarEntry {
   id: string;
@@ -47,6 +53,7 @@ interface CalendarEntry {
   dateTimePreferences?: any;
   phoneNumber?: string;
   website?: string;
+  duration_minutes?: number;
 }
 
 interface CalendarTabProps {
@@ -76,7 +83,9 @@ const CalendarTab = ({
     [cardId: string]: number;
   }>({});
   const [removingEntryId, setRemovingEntryId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"active" | "archive">("active");
+  const [expandedAccordionItems, setExpandedAccordionItems] = useState<
+    string[]
+  >(["active"]); // Start with Active expanded
   const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
     useState(false);
   const [entryToReschedule, setEntryToReschedule] =
@@ -84,6 +93,15 @@ const CalendarTab = ({
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedWhen, setSelectedWhen] = useState<
+    "all" | "today" | "this_week" | "this_month" | "upcoming"
+  >("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const { user } = useAppStore();
+  const queryClient = useQueryClient();
 
   // Filter entries into Active and Archive based on scheduled date
   const { activeEntries, archiveEntries } = useMemo(() => {
@@ -111,42 +129,193 @@ const CalendarTab = ({
     return { activeEntries: active, archiveEntries: archive };
   }, [calendarEntries]);
 
-  // Get entries for current tab
-  const currentEntries =
-    activeTab === "active" ? activeEntries : archiveEntries;
+  // Apply search and filter controls
+  const { filteredActiveEntries, filteredArchiveEntries } = useMemo(() => {
+    const normalize = (value: string | undefined | null) =>
+      (value || "").toLowerCase();
+
+    const matchesSearch = (entry: CalendarEntry) => {
+      if (!searchQuery.trim()) return true;
+      const q = normalize(searchQuery);
+      const title = normalize(entry.experience?.title || entry.title);
+      const category = normalize(
+        entry.experience?.category || entry.category || ""
+      );
+      const sessionName = normalize(entry.sessionName || "");
+      return (
+        title.includes(q) ||
+        category.includes(q) ||
+        sessionName.includes(q)
+      );
+    };
+
+    const getScheduledDate = (entry: CalendarEntry): Date | null => {
+      const iso = entry.suggestedDates?.[0];
+      if (iso) return new Date(iso);
+      if (entry.date && entry.time) {
+        return new Date(`${entry.date}T${entry.time}`);
+      }
+      return null;
+    };
+
+    const matchesWhen = (entry: CalendarEntry) => {
+      if (selectedWhen === "all") return true;
+      const scheduled = getScheduledDate(entry);
+      if (!scheduled) return false;
+      const now = new Date();
+
+      const isSameDay =
+        scheduled.getFullYear() === now.getFullYear() &&
+        scheduled.getMonth() === now.getMonth() &&
+        scheduled.getDate() === now.getDate();
+
+      if (selectedWhen === "today") return isSameDay;
+
+      if (selectedWhen === "this_week") {
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 7);
+        return scheduled >= startOfWeek && scheduled < endOfWeek;
+      }
+
+      if (selectedWhen === "this_month") {
+        return (
+          scheduled.getFullYear() === now.getFullYear() &&
+          scheduled.getMonth() === now.getMonth()
+        );
+      }
+
+      if (selectedWhen === "upcoming") {
+        return scheduled >= now;
+      }
+
+      return true;
+    };
+
+    const matchesCategory = (entry: CalendarEntry) => {
+      if (selectedCategory === "all") return true;
+      const category = entry.experience?.category || entry.category || "";
+      return category === selectedCategory;
+    };
+
+    const applyAllFilters = (entry: CalendarEntry) =>
+      matchesSearch(entry) &&
+      matchesWhen(entry) &&
+      matchesCategory(entry);
+
+    return {
+      filteredActiveEntries: activeEntries.filter(applyAllFilters),
+      filteredArchiveEntries: archiveEntries.filter(applyAllFilters),
+    };
+  }, [
+    activeEntries,
+    archiveEntries,
+    searchQuery,
+    selectedWhen,
+    selectedCategory,
+  ]);
 
   const handleReschedule = (entry: CalendarEntry) => {
     setEntryToReschedule(entry);
     setShowProposeDateTimeModal(true);
   };
 
-  const handleProposeDateTime = (
+  const handleProposeDateTime = async (
     date: Date,
     dateOption: "now" | "today" | "weekend" | "custom"
   ) => {
-    if (!entryToReschedule) return;
+    if (!entryToReschedule || !user?.id) {
+      Alert.alert("Error", "Unable to reschedule. Please try again.");
+      setShowProposeDateTimeModal(false);
+      setEntryToReschedule(null);
+      return;
+    }
 
-    setShowProposeDateTimeModal(false);
-    // Update the calendar entry with new date
-    // This will need to call a service to update the entry
-    const updatedEntry = {
-      ...entryToReschedule,
-      suggestedDates: [date.toISOString()],
-    };
-    // Call onAddToCalendar to update the entry
-    onAddToCalendar(updatedEntry);
-    setEntryToReschedule(null);
+    setIsScheduling(true);
+    try {
+      const { CalendarService } = await import("../../services/calendarService");
+      const { DeviceCalendarService } = await import(
+        "../../services/deviceCalendarService"
+      );
+
+      const scheduledDateISO = date.toISOString();
+
+      // 1. Update the calendar entry in Supabase
+      await CalendarService.updateEntry(entryToReschedule.id, user.id, {
+        scheduled_at: scheduledDateISO,
+      });
+
+      // 2. Update device calendar (remove old event, add new one)
+      try {
+        // Get the card data for creating the new device event
+        const cardData = entryToReschedule.experience || entryToReschedule;
+        
+        // Remove old device calendar event
+        if (cardData.title) {
+          const oldDate = entryToReschedule.suggestedDates?.[0]
+            ? new Date(entryToReschedule.suggestedDates[0])
+            : entryToReschedule.date && entryToReschedule.time
+            ? new Date(`${entryToReschedule.date}T${entryToReschedule.time}`)
+            : null;
+          
+          if (oldDate) {
+            await DeviceCalendarService.removeEventByTitleAndDate(
+              cardData.title,
+              oldDate
+            );
+          }
+        }
+
+        // Add new device calendar event
+        const deviceEvent = DeviceCalendarService.createEventFromCard(
+          cardData,
+          date,
+          (entryToReschedule as any).duration_minutes || 120
+        );
+        await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
+      } catch (deviceCalendarError) {
+        // Don't fail the whole operation if device calendar fails
+        console.warn("Failed to update device calendar:", deviceCalendarError);
+      }
+
+      // 3. Invalidate calendar entries query to refresh the list
+      queryClient.invalidateQueries({ queryKey: ["calendarEntries", user.id] });
+
+      // 4. Show success message
+      toastManager.success(
+        `${entryToReschedule.title || "Experience"} rescheduled successfully`,
+        3000
+      );
+
+      // 5. Close modal and reset state
+      setShowProposeDateTimeModal(false);
+      setEntryToReschedule(null);
+    } catch (error: any) {
+      console.error("Error rescheduling calendar entry:", error);
+      Alert.alert(
+        "Reschedule Failed",
+        error.message ||
+          "We couldn't reschedule this experience. Please try again."
+      );
+      setShowProposeDateTimeModal(false);
+      setEntryToReschedule(null);
+    } finally {
+      setIsScheduling(false);
+    }
   };
 
   const styles = StyleSheet.create({
     container: {
       flex: 1,
+      backgroundColor: "white",
     },
     listContent: {
       gap: 16,
-      paddingHorizontal: 16,
       paddingTop: 16,
-      paddingBottom: 62, // Add padding to prevent tab bar from touching last card
+      paddingBottom: 100, // Increased padding to ensure last card is fully visible
+      paddingHorizontal: 16,
     },
     calendarCard: {
       backgroundColor: "white",
@@ -328,6 +497,7 @@ const CalendarTab = ({
     actionsContainer: {
       paddingBottom: 16,
       marginTop: 16,
+      paddingHorizontal: 8,
     },
     actionsRow: {
       flexDirection: "row",
@@ -600,42 +770,111 @@ const CalendarTab = ({
       textAlign: "center",
       marginBottom: 24,
     },
-    tabsContainer: {
-      flexDirection: "row",
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 8,
+    filterCard: {
       backgroundColor: "white",
-      borderBottomWidth: 1,
-      borderBottomColor: "#e5e7eb",
+      marginTop: 16,
+      borderRadius: 16,
+      padding: 16,
     },
-    tab: {
+    filterHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    searchInputContainer: {
       flex: 1,
-      paddingVertical: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#f9fafb",
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: "#e5e7eb",
+    },
+    searchIcon: {
+      marginRight: 8,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 14,
+      color: "#111827",
+      paddingVertical: 0,
+    },
+    filterButton: {
+      marginLeft: 12,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: "#f97316",
       alignItems: "center",
       justifyContent: "center",
-      borderBottomWidth: 2,
-      borderBottomColor: "transparent",
     },
-    tabActive: {
-      borderBottomColor: "#ea580c",
+    filterSection: {
+      marginTop: 12,
     },
-    tabText: {
-      fontSize: 16,
-      fontWeight: "500",
+    filterLabel: {
+      fontSize: 12,
       color: "#6b7280",
+      marginBottom: 8,
     },
-    tabTextActive: {
-      color: "#ea580c",
+    filterPillRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    filterPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: "#f3f4f6",
+    },
+    filterPillSelected: {
+      backgroundColor: "#f97316",
+    },
+    filterPillText: {
+      fontSize: 13,
+      color: "#4b5563",
+    },
+    filterPillTextSelected: {
+      color: "white",
       fontWeight: "600",
     },
-    tabCount: {
-      fontSize: 12,
-      color: "#9ca3af",
-      marginTop: 2,
+    mainScrollView: {
+      flex: 1,
     },
-    tabCountActive: {
-      color: "#ea580c",
+    mainScrollContent: {
+      paddingBottom: 100,
+    },
+    accordionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: "#e5e7eb",
+      backgroundColor: "white",
+    },
+    accordionTitleContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    accordionTitle: {
+      fontSize: 16,
+      fontWeight: "500",
+      color: "#111827",
+    },
+    accordionCount: {
+      fontSize: 14,
+      color: "#6b7280",
+      marginLeft: 8,
+    },
+    accordionContentContainer: {
+      backgroundColor: "#f9fafb",
+    },
+    cardWrapper: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
     },
     rescheduleButton: {
       flex: 1,
@@ -733,7 +972,7 @@ const CalendarTab = ({
     // Transform CalendarEntry to ExpandedCardData format
     const experience = entry.experience || entry;
     const ExperienceIcon = getIconComponent(
-      experience.categoryIcon || entry.categoryIcon,
+      experience.categoryIcon || entry.categoryIcon
     );
 
     const expandedCardData: ExpandedCardData = {
@@ -749,7 +988,8 @@ const CalendarTab = ({
         entry.description ||
         "",
       image: experience.image || entry.image || "",
-      images: experience.images || entry.images || [experience.image || entry.image || ""],
+      images: experience.images ||
+        entry.images || [experience.image || entry.image || ""],
       rating: experience.rating || entry.rating || 4.5,
       reviewCount: experience.reviewCount || entry.reviewCount || 0,
       priceRange: experience.priceRange || entry.priceRange || "N/A",
@@ -769,12 +1009,13 @@ const CalendarTab = ({
         time: 0,
         popularity: 0,
       },
-      socialStats: experience.socialStats || entry.socialStats || {
-        views: 0,
-        likes: 0,
-        saves: 0,
-        shares: 0,
-      },
+      socialStats: experience.socialStats ||
+        entry.socialStats || {
+          views: 0,
+          likes: 0,
+          saves: 0,
+          shares: 0,
+        },
       location:
         (experience as any).location ||
         ((experience as any).lat && (experience as any).lng
@@ -788,6 +1029,8 @@ const CalendarTab = ({
       strollData: (experience as any).strollData,
       picnicData: (experience as any).picnicData,
     };
+
+    /*  console.log("expandedCardData", expandedCardData.lat); */
 
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
@@ -806,7 +1049,7 @@ const CalendarTab = ({
 
   const handlePurchaseFromModal = (
     card: ExpandedCardData,
-    bookingOption: any,
+    bookingOption: any
   ) => {
     // Handle purchase if needed
     // Could open external link or show purchase flow
@@ -930,315 +1173,299 @@ const CalendarTab = ({
         </TouchableOpacity>
 
         {/* Purchase Details Section */}
-          {entry.purchaseOption && (
-            <View style={styles.purchaseDetails}>
-              <View style={styles.purchaseCard}>
-                <View style={styles.purchaseHeader}>
-                  <Ionicons name="bag" size={16} color="#059669" />
-                  <Text style={styles.purchaseTitle}>Purchase Details</Text>
-                </View>
-                <View style={styles.purchaseDetailsList}>
-                  <View style={styles.purchaseDetailRow}>
-                    <Text style={styles.purchaseLabel}>Option:</Text>
-                    <Text style={styles.purchaseValue}>
-                      {entry.purchaseOption.title}
-                    </Text>
-                  </View>
-                  <View style={styles.purchaseDetailRow}>
-                    <Text style={styles.purchaseLabel}>Price:</Text>
-                    <Text style={styles.purchaseValue}>
-                      {formatCurrency(
-                        entry.purchaseOption.price,
-                        entry.purchaseOption.currency ||
-                          accountPreferences?.currency ||
-                          "USD"
-                      )}
-                    </Text>
-                  </View>
-                  {entry.purchaseOption.duration && (
-                    <View style={styles.purchaseDetailRow}>
-                      <Text style={styles.purchaseLabel}>Duration:</Text>
-                      <Text style={styles.purchaseValue}>
-                        {entry.purchaseOption.duration}
-                      </Text>
-                    </View>
-                  )}
-                  {entry.purchaseOption.includes &&
-                    entry.purchaseOption.includes.length > 0 && (
-                      <View style={styles.purchaseFeatures}>
-                        <Text style={styles.purchaseFeaturesTitle}>
-                          Includes:
-                        </Text>
-                        <View style={styles.purchaseFeaturesList}>
-                          {entry.purchaseOption.includes
-                            .slice(0, 3)
-                            .map((item: string, index: number) => (
-                              <View key={index} style={styles.purchaseFeature}>
-                                <Text style={styles.purchaseFeatureText}>
-                                  {item}
-                                </Text>
-                              </View>
-                            ))}
-                          {entry.purchaseOption.includes.length > 3 && (
-                            <View style={styles.purchaseFeature}>
-                              <Text style={styles.purchaseFeatureText}>
-                                +{entry.purchaseOption.includes.length - 3} more
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    )}
-                </View>
+        {entry.purchaseOption && (
+          <View style={styles.purchaseDetails}>
+            <View style={styles.purchaseCard}>
+              <View style={styles.purchaseHeader}>
+                <Ionicons name="bag" size={16} color="#059669" />
+                <Text style={styles.purchaseTitle}>Purchase Details</Text>
               </View>
-            </View>
-          )}
-
-          {/* Calendar Actions */}
-          <View style={styles.actionsContainer}>
-            <View style={styles.actionsRow}>
-              {/* Propose Date Button - Large orange button */}
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent card expansion
-                  setEntryToReschedule(entry);
-                  setShowProposeDateTimeModal(true);
-                }}
-                style={styles.proposeDateButton}
-              >
-                <Ionicons name="calendar" size={18} color="white" />
-                <Text style={styles.proposeDateButtonText}>Propose Date</Text>
-              </TouchableOpacity>
-
-              {/* Share Button - Small circular */}
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent card expansion
-                  onShareCard(entry.experience || entry);
-                }}
-                style={styles.shareButton}
-              >
-                <Ionicons
-                  name="share-social-outline"
-                  size={18}
-                  color="#374151"
-                />
-              </TouchableOpacity>
-
-              {/* Delete Button - Small circular */}
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent card expansion
-                  handleRemoveFromCalendar(entry);
-                }}
-                style={styles.deleteButton}
-                disabled={removingEntryId === entry.id}
-              >
-                {removingEntryId === entry.id ? (
-                  <ActivityIndicator size="small" color="#ef4444" />
-                ) : (
-                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Expanded Calendar Details */}
-          {expandedCard === entry.id && (
-            <View style={styles.expandedContent}>
-              {/* Image Gallery */}
-              {entry.experience?.images &&
-                entry.experience.images.length > 0 && (
-                  <View style={styles.imageGallery}>
-                    <View style={styles.galleryImage}>
-                      <ImageWithFallback
-                        source={{
-                          uri: entry.experience.images[
-                            currentImageIndex[entry.id] || 0
-                          ],
-                        }}
-                        alt={entry.experience.title}
-                        style={{ width: "100%", height: "100%" }}
-                      />
-
-                      {entry.experience.images.length > 1 && (
-                        <>
-                          <TouchableOpacity
-                            onPress={() =>
-                              prevImage(
-                                entry.id,
-                                entry.experience.images.length
-                              )
-                            }
-                            style={[styles.imageNavigation, styles.leftNav]}
-                          >
-                            <Ionicons
-                              name="chevron-back"
-                              size={16}
-                              color="white"
-                            />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() =>
-                              nextImage(
-                                entry.id,
-                                entry.experience.images.length
-                              )
-                            }
-                            style={[styles.imageNavigation, styles.rightNav]}
-                          >
-                            <Ionicons
-                              name="chevron-forward"
-                              size={16}
-                              color="white"
-                            />
-                          </TouchableOpacity>
-
-                          {/* Image indicators */}
-                          <View style={styles.imageIndicators}>
-                            {entry.experience.images.map(
-                              (_: any, index: number) => (
-                                <View
-                                  key={index}
-                                  style={[
-                                    styles.indicator,
-                                    index === (currentImageIndex[entry.id] || 0)
-                                      ? styles.activeIndicator
-                                      : styles.inactiveIndicator,
-                                  ]}
-                                />
-                              )
-                            )}
-                          </View>
-                        </>
-                      )}
-                    </View>
-                  </View>
-                )}
-
-              {/* Details */}
-              <View style={styles.detailsSection}>
-                <View>
-                  <Text style={styles.sectionTitle}>About this experience</Text>
-                  <Text style={styles.sectionText}>
-                    {entry.experience?.fullDescription ||
-                      entry.experience?.description ||
-                      "Join us for this amazing experience! Perfect for creating memorable moments."}
+              <View style={styles.purchaseDetailsList}>
+                <View style={styles.purchaseDetailRow}>
+                  <Text style={styles.purchaseLabel}>Option:</Text>
+                  <Text style={styles.purchaseValue}>
+                    {entry.purchaseOption.title}
                   </Text>
                 </View>
-
-                {entry.experience?.highlights &&
-                  entry.experience.highlights.length > 0 && (
-                    <View style={styles.highlightsContainer}>
-                      <Text style={styles.sectionTitle}>Highlights</Text>
-                      <View style={styles.highlightsList}>
-                        {entry.experience.highlights.map(
-                          (highlight: string, index: number) => (
-                            <View key={index} style={styles.highlightTag}>
-                              <Text style={styles.highlightText}>
-                                {highlight}
+                <View style={styles.purchaseDetailRow}>
+                  <Text style={styles.purchaseLabel}>Price:</Text>
+                  <Text style={styles.purchaseValue}>
+                    {formatCurrency(
+                      entry.purchaseOption.price,
+                      entry.purchaseOption.currency ||
+                        accountPreferences?.currency ||
+                        "USD"
+                    )}
+                  </Text>
+                </View>
+                {entry.purchaseOption.duration && (
+                  <View style={styles.purchaseDetailRow}>
+                    <Text style={styles.purchaseLabel}>Duration:</Text>
+                    <Text style={styles.purchaseValue}>
+                      {entry.purchaseOption.duration}
+                    </Text>
+                  </View>
+                )}
+                {entry.purchaseOption.includes &&
+                  entry.purchaseOption.includes.length > 0 && (
+                    <View style={styles.purchaseFeatures}>
+                      <Text style={styles.purchaseFeaturesTitle}>
+                        Includes:
+                      </Text>
+                      <View style={styles.purchaseFeaturesList}>
+                        {entry.purchaseOption.includes
+                          .slice(0, 3)
+                          .map((item: string, index: number) => (
+                            <View key={index} style={styles.purchaseFeature}>
+                              <Text style={styles.purchaseFeatureText}>
+                                {item}
                               </Text>
                             </View>
-                          )
+                          ))}
+                        {entry.purchaseOption.includes.length > 3 && (
+                          <View style={styles.purchaseFeature}>
+                            <Text style={styles.purchaseFeatureText}>
+                              +{entry.purchaseOption.includes.length - 3} more
+                            </Text>
+                          </View>
                         )}
                       </View>
                     </View>
                   )}
+              </View>
+            </View>
+          </View>
+        )}
 
-                {/* Date & Time Details */}
-                <View style={styles.scheduleDetails}>
-                  <Text style={styles.sectionTitle}>Schedule Details</Text>
-                  <View style={styles.scheduleRow}>
-                    <Ionicons name="calendar" size={16} color="#eb7825" />
-                    <Text style={styles.scheduleText}>
-                      {entry.suggestedDates?.[0]
-                        ? new Date(entry.suggestedDates[0]).toLocaleDateString(
-                            "en-US",
-                            {
-                              weekday: "long",
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                            }
+        {/* Calendar Actions */}
+        <View style={styles.actionsContainer}>
+          <View style={styles.actionsRow}>
+            {/* Propose Date Button - Large orange button */}
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation(); // Prevent card expansion
+                setEntryToReschedule(entry);
+                setShowProposeDateTimeModal(true);
+              }}
+              style={styles.proposeDateButton}
+            >
+              <Ionicons name="calendar" size={18} color="white" />
+              <Text style={styles.proposeDateButtonText}>Propose Date</Text>
+            </TouchableOpacity>
+
+            {/* Share Button - Small circular */}
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation(); // Prevent card expansion
+                onShareCard(entry.experience || entry);
+              }}
+              style={styles.shareButton}
+            >
+              <Ionicons name="share-social-outline" size={18} color="#374151" />
+            </TouchableOpacity>
+
+            {/* Delete Button - Small circular */}
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation(); // Prevent card expansion
+                handleRemoveFromCalendar(entry);
+              }}
+              style={styles.deleteButton}
+              disabled={removingEntryId === entry.id}
+            >
+              {removingEntryId === entry.id ? (
+                <ActivityIndicator size="small" color="#ef4444" />
+              ) : (
+                <Ionicons name="trash-outline" size={18} color="#ef4444" />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Expanded Calendar Details */}
+        {expandedCard === entry.id && (
+          <View style={styles.expandedContent}>
+            {/* Image Gallery */}
+            {entry.experience?.images && entry.experience.images.length > 0 && (
+              <View style={styles.imageGallery}>
+                <View style={styles.galleryImage}>
+                  <ImageWithFallback
+                    source={{
+                      uri: entry.experience.images[
+                        currentImageIndex[entry.id] || 0
+                      ],
+                    }}
+                    alt={entry.experience.title}
+                    style={{ width: "100%", height: "100%" }}
+                  />
+
+                  {entry.experience.images.length > 1 && (
+                    <>
+                      <TouchableOpacity
+                        onPress={() =>
+                          prevImage(entry.id, entry.experience.images.length)
+                        }
+                        style={[styles.imageNavigation, styles.leftNav]}
+                      >
+                        <Ionicons name="chevron-back" size={16} color="white" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() =>
+                          nextImage(entry.id, entry.experience.images.length)
+                        }
+                        style={[styles.imageNavigation, styles.rightNav]}
+                      >
+                        <Ionicons
+                          name="chevron-forward"
+                          size={16}
+                          color="white"
+                        />
+                      </TouchableOpacity>
+
+                      {/* Image indicators */}
+                      <View style={styles.imageIndicators}>
+                        {entry.experience.images.map(
+                          (_: any, index: number) => (
+                            <View
+                              key={index}
+                              style={[
+                                styles.indicator,
+                                index === (currentImageIndex[entry.id] || 0)
+                                  ? styles.activeIndicator
+                                  : styles.inactiveIndicator,
+                              ]}
+                            />
                           )
-                        : "Date to be determined"}
-                    </Text>
-                  </View>
-                  <View style={styles.scheduleRow}>
-                    <Ionicons name="time" size={16} color="#eb7825" />
-                    <Text style={styles.scheduleText}>
-                      {entry.suggestedDates?.[0]
-                        ? new Date(entry.suggestedDates[0]).toLocaleTimeString(
-                            "en-US",
-                            {
-                              hour: "numeric",
-                              minute: "2-digit",
-                              hour12: true,
-                            }
-                          )
-                        : "Time to be determined"}
-                    </Text>
-                  </View>
-                  <View style={styles.scheduleRow}>
-                    <Ionicons name="location" size={16} color="#eb7825" />
-                    <Text style={styles.scheduleText}>
-                      {entry.experience?.address ||
-                        "Location details will be provided"}
-                    </Text>
-                  </View>
+                        )}
+                      </View>
+                    </>
+                  )}
                 </View>
+              </View>
+            )}
 
-                {/* Date/Time Preferences Applied */}
-                {entry.dateTimePreferences && (
-                  <View style={styles.preferencesContainer}>
-                    <Text style={styles.preferencesTitle}>
-                      Your Preferences Applied
-                    </Text>
-                    <View style={styles.preferencesList}>
-                      <View style={styles.preferenceTag}>
-                        <Text style={styles.preferenceText}>
-                          {entry.dateTimePreferences.timeOfDay}
-                        </Text>
-                      </View>
-                      <View style={styles.preferenceTag}>
-                        <Text style={styles.preferenceText}>
-                          {entry.dateTimePreferences.dayOfWeek}
-                        </Text>
-                      </View>
-                      <View style={styles.preferenceTag}>
-                        <Text style={styles.preferenceText}>
-                          {entry.dateTimePreferences.planningTimeframe}
-                        </Text>
-                      </View>
+            {/* Details */}
+            <View style={styles.detailsSection}>
+              <View>
+                <Text style={styles.sectionTitle}>About this experience</Text>
+                <Text style={styles.sectionText}>
+                  {entry.experience?.fullDescription ||
+                    entry.experience?.description ||
+                    "Join us for this amazing experience! Perfect for creating memorable moments."}
+                </Text>
+              </View>
+
+              {entry.experience?.highlights &&
+                entry.experience.highlights.length > 0 && (
+                  <View style={styles.highlightsContainer}>
+                    <Text style={styles.sectionTitle}>Highlights</Text>
+                    <View style={styles.highlightsList}>
+                      {entry.experience.highlights.map(
+                        (highlight: string, index: number) => (
+                          <View key={index} style={styles.highlightTag}>
+                            <Text style={styles.highlightText}>
+                              {highlight}
+                            </Text>
+                          </View>
+                        )
+                      )}
                     </View>
                   </View>
                 )}
 
-                {/* Contact Information */}
-                {(entry.experience?.phoneNumber ||
-                  entry.experience?.website) && (
-                  <View style={styles.contactContainer}>
-                    <Text style={styles.contactTitle}>Contact Information</Text>
-                    {entry.experience.phoneNumber && (
-                      <View style={styles.contactRow}>
-                        <Text>📞</Text>
-                        <Text style={styles.contactText}>
-                          {entry.experience.phoneNumber}
-                        </Text>
-                      </View>
-                    )}
-                    {entry.experience.website && (
-                      <View style={styles.contactRow}>
-                        <Ionicons name="link" size={16} color="#eb7825" />
-                        <Text style={styles.contactLink}>Visit Website</Text>
-                      </View>
-                    )}
-                  </View>
-          )}
+              {/* Date & Time Details */}
+              <View style={styles.scheduleDetails}>
+                <Text style={styles.sectionTitle}>Schedule Details</Text>
+                <View style={styles.scheduleRow}>
+                  <Ionicons name="calendar" size={16} color="#eb7825" />
+                  <Text style={styles.scheduleText}>
+                    {entry.suggestedDates?.[0]
+                      ? new Date(entry.suggestedDates[0]).toLocaleDateString(
+                          "en-US",
+                          {
+                            weekday: "long",
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          }
+                        )
+                      : "Date to be determined"}
+                  </Text>
+                </View>
+                <View style={styles.scheduleRow}>
+                  <Ionicons name="time" size={16} color="#eb7825" />
+                  <Text style={styles.scheduleText}>
+                    {entry.suggestedDates?.[0]
+                      ? new Date(entry.suggestedDates[0]).toLocaleTimeString(
+                          "en-US",
+                          {
+                            hour: "numeric",
+                            minute: "2-digit",
+                            hour12: true,
+                          }
+                        )
+                      : "Time to be determined"}
+                  </Text>
+                </View>
+                <View style={styles.scheduleRow}>
+                  <Ionicons name="location" size={16} color="#eb7825" />
+                  <Text style={styles.scheduleText}>
+                    {entry.experience?.address ||
+                      "Location details will be provided"}
+                  </Text>
+                </View>
               </View>
+
+              {/* Date/Time Preferences Applied */}
+              {entry.dateTimePreferences && (
+                <View style={styles.preferencesContainer}>
+                  <Text style={styles.preferencesTitle}>
+                    Your Preferences Applied
+                  </Text>
+                  <View style={styles.preferencesList}>
+                    <View style={styles.preferenceTag}>
+                      <Text style={styles.preferenceText}>
+                        {entry.dateTimePreferences.timeOfDay}
+                      </Text>
+                    </View>
+                    <View style={styles.preferenceTag}>
+                      <Text style={styles.preferenceText}>
+                        {entry.dateTimePreferences.dayOfWeek}
+                      </Text>
+                    </View>
+                    <View style={styles.preferenceTag}>
+                      <Text style={styles.preferenceText}>
+                        {entry.dateTimePreferences.planningTimeframe}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* Contact Information */}
+              {(entry.experience?.phoneNumber || entry.experience?.website) && (
+                <View style={styles.contactContainer}>
+                  <Text style={styles.contactTitle}>Contact Information</Text>
+                  {entry.experience.phoneNumber && (
+                    <View style={styles.contactRow}>
+                      <Text>📞</Text>
+                      <Text style={styles.contactText}>
+                        {entry.experience.phoneNumber}
+                      </Text>
+                    </View>
+                  )}
+                  {entry.experience.website && (
+                    <View style={styles.contactRow}>
+                      <Ionicons name="link" size={16} color="#eb7825" />
+                      <Text style={styles.contactLink}>Visit Website</Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
-          )}
-        </View>
+          </View>
+        )}
+      </View>
     );
   };
 
@@ -1282,51 +1509,213 @@ const CalendarTab = ({
 
   return (
     <View style={styles.container}>
-      {/* Tabs */}
-      <View style={styles.tabsContainer}>
+      <ScrollView
+        style={styles.mainScrollView}
+        contentContainerStyle={styles.mainScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Search & Filters */}
+        <View style={styles.filterCard}>
+          <View style={styles.filterHeaderRow}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons
+                name="search-outline"
+                size={18}
+                color="#9ca3af"
+                style={styles.searchIcon}
+              />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search by name, date, or type..."
+                placeholderTextColor="#9ca3af"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.filterButton}
+              activeOpacity={0.7}
+              onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
+            >
+              <Ionicons
+                name={isFiltersExpanded ? "chevron-up" : "chevron-down"}
+                size={18}
+                color="white"
+              />
+            </TouchableOpacity>
+          </View>
+
+          {isFiltersExpanded && (
+            <>
+              {/* When */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>When</Text>
+                <View style={styles.filterPillRow}>
+                  {[
+                    { key: "all", label: "All Dates" },
+                    { key: "today", label: "Today" },
+                    { key: "this_week", label: "This Week" },
+                    { key: "this_month", label: "This Month" },
+                    { key: "upcoming", label: "Upcoming" },
+                  ].map((option) => {
+                    const selected = selectedWhen === option.key;
+                    return (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[
+                          styles.filterPill,
+                          selected && styles.filterPillSelected,
+                        ]}
+                        onPress={() =>
+                          setSelectedWhen(option.key as typeof selectedWhen)
+                        }
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.filterPillText,
+                            selected && styles.filterPillTextSelected,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Category */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>Category</Text>
+                <View style={styles.filterPillRow}>
+                  {[
+                    "Take a Stroll",
+                    "Sip & Chill",
+                    "Casual Eats",
+                    "Screen & Relax",
+                    "Creative & Hands-On",
+                    "Picnics",
+                    "Play & Move",
+                    "Dining Experiences",
+                    "Wellness Dates",
+                    "Freestyle",
+                  ].map((label) => {
+                    const key = label;
+                    const selected = selectedCategory === key;
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        style={[
+                          styles.filterPill,
+                          selected && styles.filterPillSelected,
+                        ]}
+                        onPress={() =>
+                          setSelectedCategory(
+                            selected ? "all" : (key as typeof selectedCategory)
+                          )
+                        }
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.filterPillText,
+                            selected && styles.filterPillTextSelected,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Active Section */}
         <TouchableOpacity
-          style={[styles.tab, activeTab === "active" && styles.tabActive]}
-          onPress={() => setActiveTab("active")}
+          style={styles.accordionHeader}
+          onPress={() =>
+            setExpandedAccordionItems((prev) =>
+              prev.includes("active")
+                ? prev.filter((i) => i !== "active")
+                : [...prev, "active"]
+            )
+          }
+          activeOpacity={0.7}
         >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "active" && styles.tabTextActive,
-            ]}
-          >
-            Active
-          </Text>
-          <Text
-            style={[
-              styles.tabCount,
-              activeTab === "active" && styles.tabCountActive,
-            ]}
-          >
-            ({activeEntries.length})
-          </Text>
+          <View style={styles.accordionTitleContainer}>
+            <Text style={styles.accordionTitle}>Active</Text>
+            <Text style={styles.accordionCount}>
+              ({filteredActiveEntries.length})
+            </Text>
+          </View>
+          <Ionicons
+            name={
+              expandedAccordionItems.includes("active")
+                ? "chevron-down"
+                : "chevron-forward"
+            }
+            size={20}
+            color="#9ca3af"
+          />
         </TouchableOpacity>
+
+        {expandedAccordionItems.includes("active") && (
+          <View style={styles.accordionContentContainer}>
+            {filteredActiveEntries.length === 0
+              ? renderEmptyComponent()
+              : filteredActiveEntries.map((entry) => (
+                  <View key={entry.id} style={styles.cardWrapper}>
+                    {renderCalendarEntry({ item: entry })}
+                  </View>
+                ))}
+          </View>
+        )}
+
+        {/* Archive Section */}
         <TouchableOpacity
-          style={[styles.tab, activeTab === "archive" && styles.tabActive]}
-          onPress={() => setActiveTab("archive")}
+          style={styles.accordionHeader}
+          onPress={() =>
+            setExpandedAccordionItems((prev) =>
+              prev.includes("archive")
+                ? prev.filter((i) => i !== "archive")
+                : [...prev, "archive"]
+            )
+          }
+          activeOpacity={0.7}
         >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "archive" && styles.tabTextActive,
-            ]}
-          >
-            Archives
-          </Text>
-          <Text
-            style={[
-              styles.tabCount,
-              activeTab === "archive" && styles.tabCountActive,
-            ]}
-          >
-            ({archiveEntries.length})
-          </Text>
+          <View style={styles.accordionTitleContainer}>
+            <Text style={styles.accordionTitle}>Archives</Text>
+            <Text style={styles.accordionCount}>
+              ({filteredArchiveEntries.length})
+            </Text>
+          </View>
+          <Ionicons
+            name={
+              expandedAccordionItems.includes("archive")
+                ? "chevron-down"
+                : "chevron-forward"
+            }
+            size={20}
+            color="#9ca3af"
+          />
         </TouchableOpacity>
-      </View>
+
+        {expandedAccordionItems.includes("archive") && (
+          <View style={styles.accordionContentContainer}>
+            {filteredArchiveEntries.length === 0
+              ? renderEmptyComponent()
+              : filteredArchiveEntries.map((entry) => (
+                  <View key={entry.id} style={styles.cardWrapper}>
+                    {renderCalendarEntry({ item: entry })}
+                  </View>
+                ))}
+          </View>
+        )}
+      </ScrollView>
 
       {/* Propose Date & Time Modal */}
       {entryToReschedule && (
@@ -1335,6 +1724,7 @@ const CalendarTab = ({
           onClose={() => {
             setShowProposeDateTimeModal(false);
             setEntryToReschedule(null);
+            setIsScheduling(false);
           }}
           card={entryToCard(entryToReschedule)}
           currentScheduledDate={
@@ -1344,6 +1734,7 @@ const CalendarTab = ({
               : null)
           }
           onProposeDateTime={handleProposeDateTime}
+          isScheduling={isScheduling}
         />
       )}
 
@@ -1366,15 +1757,6 @@ const CalendarTab = ({
           }
         />
       )}
-
-      <FlatList
-        data={currentEntries}
-        renderItem={renderCalendarEntry}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={renderEmptyComponent}
-        showsVerticalScrollIndicator={false}
-      />
     </View>
   );
 };

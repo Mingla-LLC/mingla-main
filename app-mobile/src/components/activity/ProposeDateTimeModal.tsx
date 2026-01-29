@@ -28,6 +28,7 @@ interface ProposeDateTimeModalProps {
     date: Date,
     dateOption: "now" | "today" | "weekend" | "custom",
   ) => void;
+  isScheduling?: boolean;
 }
 
 export default function ProposeDateTimeModal({
@@ -36,6 +37,7 @@ export default function ProposeDateTimeModal({
   card,
   currentScheduledDate,
   onProposeDateTime,
+  isScheduling = false,
 }: ProposeDateTimeModalProps) {
   const [selectedDateOption, setSelectedDateOption] = useState<
     "now" | "today" | "weekend" | "custom" | null
@@ -597,6 +599,7 @@ export default function ProposeDateTimeModal({
               isCheckingAvailability={isCheckingAvailability}
               onCheckAvailability={handleCheckCompatibility}
               onSchedule={handleSchedule}
+              isScheduling={isScheduling}
             />
           </TouchableOpacity>
         </TouchableOpacity>

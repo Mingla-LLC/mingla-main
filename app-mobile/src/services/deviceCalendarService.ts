@@ -178,5 +178,80 @@ export class DeviceCalendarService {
       ],
     };
   }
+
+  /**
+   * Remove an event from the device calendar by ID
+   */
+  static async removeEventFromDeviceCalendar(
+    eventId: string
+  ): Promise<boolean> {
+    try {
+      // Check permissions
+      const hasPermissions = await this.hasPermissions();
+      if (!hasPermissions) {
+        console.warn("Calendar permissions not granted, cannot remove event");
+        return false;
+      }
+
+      // Delete the event
+      await Calendar.deleteEventAsync(eventId);
+      return true;
+    } catch (error: any) {
+      console.error("Error removing event from device calendar:", error);
+      // Don't throw - this is a best-effort operation
+      return false;
+    }
+  }
+
+  /**
+   * Find and remove a calendar event by matching title and date
+   * This is a fallback when we don't have the event ID stored
+   */
+  static async removeEventByTitleAndDate(
+    title: string,
+    startDate: Date
+  ): Promise<boolean> {
+    try {
+      // Check permissions
+      const hasPermissions = await this.hasPermissions();
+      if (!hasPermissions) {
+        console.warn("Calendar permissions not granted, cannot remove event");
+        return false;
+      }
+
+      // Get default calendar ID
+      const calendarId = await this.getDefaultCalendarId();
+      if (!calendarId) {
+        return false;
+      }
+
+      // Get events for the date range (same day)
+      const startOfDay = new Date(startDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(startDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const events = await Calendar.getEventsAsync(
+        [calendarId],
+        startOfDay,
+        endOfDay
+      );
+
+      // Find matching event by title
+      const matchingEvent = events.find(
+        (event) => event.title === title
+      );
+
+      if (matchingEvent) {
+        await Calendar.deleteEventAsync(matchingEvent.id);
+        return true;
+      }
+
+      return false;
+    } catch (error: any) {
+      console.error("Error removing event by title and date:", error);
+      return false;
+    }
+  }
 }
 
