@@ -56,7 +56,7 @@ class CameraService {
       if (!initialized) return null;
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: options.allowsEditing || true,
         aspect: options.aspect || [4, 3],
         quality: options.quality || 0.8,
@@ -96,7 +96,7 @@ class CameraService {
       if (!initialized) return null;
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: options.allowsEditing || true,
         aspect: options.aspect || [4, 3],
         quality: options.quality || 0.8,
@@ -136,7 +136,7 @@ class CameraService {
       if (!initialized) return null;
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        mediaTypes: 'videos',
         allowsEditing: true,
         quality: ImagePicker.UIImagePickerControllerQualityType.Medium,
         videoMaxDuration: options.maxDuration || 30,

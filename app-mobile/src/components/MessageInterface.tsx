@@ -211,14 +211,14 @@ export default function MessageInterface({
 
       if (type === "image") {
         result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          mediaTypes: 'images',
           allowsEditing: false, // Disabled to avoid white background and "Crop" button issues
           quality: 0.7, // Reduced quality for faster processing
           allowsMultipleSelection: false,
         });
       } else if (type === "video") {
         result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+          mediaTypes: 'videos',
           allowsEditing: false, // Disabled to avoid UI issues
           quality: 0.7, // Reduced quality for faster processing
           allowsMultipleSelection: false,
@@ -227,7 +227,7 @@ export default function MessageInterface({
         // For documents, use image picker with all types (fallback)
         // Note: For better document support, consider installing expo-document-picker
         result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.All,
+          mediaTypes: ['images', 'videos'],
           allowsEditing: false,
           allowsMultipleSelection: false,
         });
