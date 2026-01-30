@@ -133,9 +133,9 @@ export class PreferencesService {
         console.error("Error updating user profile:", error);
         throw error;
       }
-
       return true;
     } catch (error) {
+      console.log("error", error);
       console.error("Failed to update user profile:", error);
       return false;
     }

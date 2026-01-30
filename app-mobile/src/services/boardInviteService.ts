@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { userActivityService } from './userActivityService';
 
 export interface BoardInvite {
   id: string;
@@ -134,6 +135,14 @@ export class BoardInviteService {
         }, {
           onConflict: 'session_id,invited_user_id'
         });
+
+      await userActivityService.recordActivity(userId, {
+        activity_type: 'joined_board',
+        title: session.name || 'Board',
+        tag: 'Board',
+        reference_id: session.id,
+        reference_type: 'board',
+      });
 
       return { success: true, sessionId: session.id };
     } catch (error: any) {
@@ -280,6 +289,20 @@ export class BoardInviteService {
         .eq('id', inviteId);
 
       if (updateError) throw updateError;
+
+      const { data: session } = await supabase
+        .from('collaboration_sessions')
+        .select('name')
+        .eq('id', invite.session_id)
+        .single();
+
+      await userActivityService.recordActivity(userId, {
+        activity_type: 'joined_board',
+        title: session?.name || 'Board',
+        tag: 'Board',
+        reference_id: invite.session_id,
+        reference_type: 'board',
+      });
 
       return { success: true, sessionId: invite.session_id };
     } catch (error: any) {

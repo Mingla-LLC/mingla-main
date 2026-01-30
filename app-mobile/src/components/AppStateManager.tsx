@@ -2,11 +2,24 @@ import { useState, useEffect, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useAppStore } from "../store/appStore";
+
+export interface UserIdentity {
+  firstName: string;
+  lastName: string;
+  username: string;
+  profileImage: string | null;
+  email: string;
+  id: string;
+  createdAt?: string;
+  active?: boolean;
+}
 import { savedCardsService } from "../services/savedCardsService";
 import { SessionService } from "../services/sessionService";
+import { preloadRates } from "../services/currencyService";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
+import { useFriends } from "../hooks/useFriends";
 
 // Default data constants moved to separate module to prevent re-creation
 const DEFAULT_FRIENDS = [
@@ -154,7 +167,11 @@ export function useAppState() {
     signUp,
     signOut,
   } = useAuthSimple();
-  const { profile } = useAppStore();
+  const {
+    profile,
+    showAccountSettings,
+    setShowAccountSettings,
+  } = useAppStore();
 
   // Onboarding state
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
@@ -184,7 +201,6 @@ export function useAppState() {
   const [showCollabPreferences, setShowCollabPreferences] = useState(false);
   const [showTermsOfService, setShowTermsOfService] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
-  const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
@@ -228,13 +244,15 @@ export function useAppState() {
     discussionTab?: string;
   } | null>(null);
 
-  const [userIdentity, setUserIdentity] = useState({
+  const [userIdentity, setUserIdentity] = useState<UserIdentity>({
     firstName: "",
     lastName: "",
     username: "",
-    profileImage: null as string | null,
+    profileImage: null,
     email: "",
     id: "",
+    createdAt: profile?.created_at,
+    active: true,
   });
 
   const [accountPreferences, setAccountPreferences] = useState({
@@ -251,6 +269,7 @@ export function useAppState() {
     useSavedCards(user?.id);
   const { data: calendarEntriesRawData, isLoading: isLoadingCalendarEntries } =
     useCalendarEntries(user?.id);
+  const { unblockFriend } = useFriends();
 
   // Use stable empty array constants to prevent infinite loops
   const savedCards = savedCardsData ?? EMPTY_SAVED_CARDS;
@@ -279,7 +298,6 @@ export function useAppState() {
     queryClient.invalidateQueries({ queryKey: ["savedCards", user?.id] });
   };
   const [friendsList, setFriendsList] = useState(DEFAULT_FRIENDS);
-  const [blockedUsers, setBlockedUsers] = useState([]);
   const [boardsSessions, setBoardsSessions] = useState(DEFAULT_BOARDS_SESSIONS);
   const [isLoadingBoards, setIsLoadingBoards] = useState(false);
 
@@ -302,6 +320,11 @@ export function useAppState() {
     }, 5000); // 5 second timeout - reduced for faster response
 
     return () => clearTimeout(timer);
+  }, []);
+
+  // Preload exchange rates so prices use real rates app-wide
+  useEffect(() => {
+    preloadRates();
   }, []);
 
   // Force loading to false after timeout or if authLoading is false
@@ -338,6 +361,8 @@ export function useAppState() {
         profileImage: profile.avatar_url || null,
         email: user.email || "",
         id: user.id,
+        createdAt: profile?.created_at,
+        active: profile?.active !== false,
       };
 
       setUserIdentity(updatedIdentity);
@@ -352,6 +377,8 @@ export function useAppState() {
         profileImage: null,
         email: user.email || "",
         id: user.id,
+        createdAt: user?.created_at,
+        active: true,
       };
 
       setUserIdentity(updatedIdentity);
@@ -447,7 +474,6 @@ export function useAppState() {
           /*  savedCardsData, */
           removedCardIdsData,
           friendsListData,
-          blockedUsersData,
           boardsSessionsData,
         ] = await Promise.all([
           safeAsyncStorageGet("mingla_notifications_enabled", true),
@@ -458,6 +484,7 @@ export function useAppState() {
             profileImage: null,
             email: "",
             id: "",
+            active: true,
           }),
           safeAsyncStorageGet("mingla_account_preferences", {
             currency: "USD",
@@ -466,7 +493,6 @@ export function useAppState() {
           /*  safeAsyncStorageGet("mingla_saved_cards", []), */
           safeAsyncStorageGet("mingla_removed_cards", []),
           safeAsyncStorageGet("mingla_friends_list", DEFAULT_FRIENDS),
-          safeAsyncStorageGet("mingla_blocked_users", []),
           safeAsyncStorageGet(
             "mingla_boards_sessions",
             DEFAULT_BOARDS_SESSIONS
@@ -486,7 +512,6 @@ export function useAppState() {
         /*  queryClient.setQueryData(["savedCards", user?.id], savedCardsData); */
         setRemovedCardIds(removedCardIdsData);
         setFriendsList(friendsListData);
-        setBlockedUsers(blockedUsersData);
         setBoardsSessions(boardsSessionsData);
 
         // Update profile stats based on loaded data
@@ -838,6 +863,7 @@ export function useAppState() {
         profileImage: null,
         email: "",
         id: "",
+        createdAt: "",
       });
 
       // Try Supabase sign out (non-blocking - continue even if it fails)
@@ -852,6 +878,7 @@ export function useAppState() {
         profileImage: null,
         email: "",
         id: "",
+        createdAt: "",
       });
     }
   };
@@ -927,8 +954,6 @@ export function useAppState() {
     setRemovedCardIds,
     friendsList,
     setFriendsList,
-    blockedUsers,
-    setBlockedUsers,
     boardsSessions,
     setBoardsSessions,
     isLoadingBoards,
@@ -944,6 +969,8 @@ export function useAppState() {
     handleUserIdentityUpdate,
     handleAccountPreferencesUpdate,
     safeAsyncStorageSet,
+    safeLocalStorageSet: safeAsyncStorageSet,
+    unblockFriend,
 
     // Authentication Handlers
     handleSignIn,

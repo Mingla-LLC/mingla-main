@@ -1,24 +1,25 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { cameraService } from "../../services/cameraService";
 import { authService } from "../../services/authService";
 import { useAppStore } from "../../store/appStore";
-
-interface ProfilePhotoSectionProps {
-  profileImageSrc: string | null;
-  onProfileImageUpdate?: (newImageUrl: string) => void;
-}
+import { useAppState } from "../AppStateManager";
 
 // Standalone Profile Photo section.
 // Logic is the same as in ProfileSettings, just moved here.
-export default function ProfilePhotoSection({
-  profileImageSrc,
-  onProfileImageUpdate,
-}: ProfilePhotoSectionProps) {
+export default function ProfilePhotoSection() {
   const [isUploading, setIsUploading] = useState(false);
   const user = useAppStore((state) => state.user);
+  const { userIdentity, handleUserIdentityUpdate } = useAppState();
 
   const handleAvatarChange = () => {
     Alert.alert(
@@ -40,7 +41,10 @@ export default function ProfilePhotoSection({
 
   const handleTakePhoto = async () => {
     if (!user?.id) {
-      Alert.alert("Error", "You must be logged in to update your profile photo.");
+      Alert.alert(
+        "Error",
+        "You must be logged in to update your profile photo."
+      );
       return;
     }
 
@@ -65,7 +69,10 @@ export default function ProfilePhotoSection({
 
   const handlePickFromLibrary = async () => {
     if (!user?.id) {
-      Alert.alert("Error", "You must be logged in to update your profile photo.");
+      Alert.alert(
+        "Error",
+        "You must be logged in to update your profile photo."
+      );
       return;
     }
 
@@ -90,7 +97,10 @@ export default function ProfilePhotoSection({
 
   const uploadProfilePhoto = async (imageUri: string) => {
     if (!user?.id) {
-      Alert.alert("Error", "You must be logged in to update your profile photo.");
+      Alert.alert(
+        "Error",
+        "You must be logged in to update your profile photo."
+      );
       return;
     }
 
@@ -101,12 +111,18 @@ export default function ProfilePhotoSection({
 
       if (publicUrl) {
         // Notify parent component of the update
-        if (onProfileImageUpdate) {
-          onProfileImageUpdate(publicUrl);
-        }
+
+        const updatedIdentity = {
+          ...userIdentity,
+          profileImage: publicUrl,
+        };
+        handleUserIdentityUpdate(updatedIdentity);
         Alert.alert("Success", "Profile photo updated successfully!");
       } else {
-        Alert.alert("Error", "Failed to upload profile photo. Please try again.");
+        Alert.alert(
+          "Error",
+          "Failed to upload profile photo. Please try again."
+        );
       }
     } catch (error) {
       console.error("Error uploading profile photo:", error);
@@ -135,8 +151,8 @@ export default function ProfilePhotoSection({
               <>
                 <ImageWithFallback
                   source={
-                    profileImageSrc
-                      ? { uri: profileImageSrc }
+                    userIdentity.profileImage
+                      ? { uri: userIdentity.profileImage }
                       : {
                           uri: "https://via.placeholder.com/80x80/6b7280/ffffff?text=User",
                         }
@@ -155,12 +171,19 @@ export default function ProfilePhotoSection({
         <View style={styles.photoActions}>
           <TouchableOpacity
             onPress={handleAvatarChange}
-            style={[styles.changePhotoButton, isUploading && styles.changePhotoButtonDisabled]}
+            style={[
+              styles.changePhotoButton,
+              isUploading && styles.changePhotoButtonDisabled,
+            ]}
             disabled={isUploading}
           >
             {isUploading ? (
               <View style={styles.buttonContent}>
-                <ActivityIndicator size="small" color="white" style={styles.buttonSpinner} />
+                <ActivityIndicator
+                  size="small"
+                  color="white"
+                  style={styles.buttonSpinner}
+                />
                 <Text style={styles.changePhotoButtonText}>Uploading...</Text>
               </View>
             ) : (
@@ -187,7 +210,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    
+
     fontWeight: "600",
     color: "#111827",
     marginBottom: 16,
@@ -262,4 +285,3 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
 });
-

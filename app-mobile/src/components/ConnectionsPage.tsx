@@ -66,13 +66,15 @@ export default function ConnectionsPageRefactored({
   const [showQRCode, setShowQRCode] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
 
-  // Use useFriends hook for friends data
+  // Use useFriends hook for friends data (blocked users from Supabase)
   const {
     friends: dbFriends,
     fetchFriends,
     friendRequests,
     loadFriendRequests,
     removeFriend,
+    blockFriend,
+    blockedUsers = [],
   } = useFriends();
 
   // Real data state
@@ -992,9 +994,9 @@ export default function ConnectionsPageRefactored({
 
   const handleBlockUser = async (friend: Friend) => {
     try {
-      // Block user using useFriends hook if available, otherwise use prop handler
+      await blockFriend(friend.id);
       onBlockUser?.(friend);
-      await fetchFriends(); // Reload friends after blocking
+      await fetchFriends();
     } catch (error) {
       console.error("Error blocking user:", error);
     }

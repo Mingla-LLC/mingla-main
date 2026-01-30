@@ -123,8 +123,6 @@ function AppContent() {
     setRemovedCardIds,
     friendsList,
     setFriendsList,
-    blockedUsers,
-    setBlockedUsers,
     boardsSessions,
     setBoardsSessions,
     isLoadingBoards,
@@ -389,7 +387,9 @@ function AppContent() {
         !helpButtonDismissedRef.current
       ) {
         try {
-          const dismissed = await AsyncStorage.getItem("mingla_help_button_dismissed");
+          const dismissed = await AsyncStorage.getItem(
+            "mingla_help_button_dismissed"
+          );
           if (dismissed !== "true") {
             // Show help button after a delay (after coach map might appear)
             const timer = setTimeout(() => {
@@ -892,10 +892,7 @@ function AppContent() {
               console.log("Toggle notifications:", enabled)
             }
             userIdentity={userIdentity}
-            blockedUsers={blockedUsers}
-            onUnblockUser={(blockedUser: any) =>
-              console.log("Unblock user:", blockedUser)
-            }
+            onUnblockUser={handlers.handleUnblockUser}
           />
         );
       default:
@@ -1001,26 +998,7 @@ function AppContent() {
     if (showAccountSettings) {
       return (
         <ErrorBoundary>
-          <AccountSettings
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-            onUpdatePreferences={(preferences) => {
-              console.log("Account preferences updated:", preferences);
-              setAccountPreferences(preferences);
-              setShowAccountSettings(false);
-            }}
-            onDeleteAccount={() => {
-              console.log("Delete account requested");
-              // TODO: Implement account deletion
-              setShowAccountSettings(false);
-            }}
-            onNavigateBack={() => setShowAccountSettings(false)}
-          />
+          <AccountSettings />
         </ErrorBoundary>
       );
     }
@@ -1030,10 +1008,6 @@ function AppContent() {
       return (
         <ErrorBoundary>
           <ProfileSettings
-            userIdentity={userIdentity}
-            onUpdateIdentity={(updatedIdentity) => {
-              handleUserIdentityUpdate(updatedIdentity);
-            }}
             onNavigateBack={() => setShowProfileSettings(false)}
           />
         </ErrorBoundary>
@@ -1344,14 +1318,16 @@ function AppContent() {
                         <View style={styles.dialogContainer}>
                           {/* Logo */}
                           <Image
-                            source={require('../assets/mingla_logo.png')}
+                            source={require("../assets/mingla_logo.png")}
                             style={styles.dialogLogo}
                             resizeMode="contain"
                           />
 
                           {/* Title with wave emoji */}
                           <View style={styles.dialogTitleContainer}>
-                            <Text style={styles.dialogTitle}>Welcome to Mingla</Text>
+                            <Text style={styles.dialogTitle}>
+                              Welcome to Mingla
+                            </Text>
                             <Text style={styles.waveEmoji}>👋</Text>
                           </View>
 
@@ -1366,7 +1342,9 @@ function AppContent() {
                               style={styles.startTourButton}
                               onPress={handleStartTour}
                             >
-                              <Text style={styles.startTourButtonText}>Start tour</Text>
+                              <Text style={styles.startTourButtonText}>
+                                Start tour
+                              </Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity

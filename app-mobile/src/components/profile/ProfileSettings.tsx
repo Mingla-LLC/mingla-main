@@ -9,9 +9,11 @@ import {
   ScrollView,
   Alert,
   StatusBar,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import Feather from '@expo/vector-icons/Feather';
+import Feather from "@expo/vector-icons/Feather";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { SafeAreaView } from "react-native-safe-area-context";
 import ProfileAccountSection from "./ProfileAccountSection";
@@ -19,28 +21,21 @@ import ProfilePrivacySection from "./ProfilePrivacySection";
 import ProfilePhotoSection from "./ProfilePhotoSection";
 import ProfilePersonalInfoSection from "./ProfilePersonalInfoSection";
 import { colors } from "@/src/constants/colors";
+import { useAppState } from "../AppStateManager";
 // import profileImage from '../../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
 
 interface ProfileSettingsProps {
-  userIdentity: {
-    firstName: string;
-    lastName: string;
-    username: string;
-    email: string;
-    memberSince: string;
-    profileImage: string | null;
-  };
   onUpdateIdentity: (identity: any) => void;
   onNavigateBack: () => void;
 }
 
 export default function ProfileSettings({
-  userIdentity,
   onUpdateIdentity,
   onNavigateBack,
 }: ProfileSettingsProps) {
   // Removed unused handleKeyPress function
 
+  const { userIdentity, handleUserIdentityUpdate } = useAppState();
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" />
@@ -53,31 +48,23 @@ export default function ProfileSettings({
         </View>
       </View>
 
-      {/* Content */}
-      <ScrollView style={styles.content}>
-        {/* Profile Photo Section */}
-        <ProfilePhotoSection
-          profileImageSrc={userIdentity.profileImage}
-          onProfileImageUpdate={(newImageUrl) => {
-            // Update local userIdentity state
-            const updatedIdentity = {
-              ...userIdentity,
-              profileImage: newImageUrl,
-            };
-            onUpdateIdentity(updatedIdentity);
-          }}
-        />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        {/* Content */}
+        <ScrollView style={styles.content}>
+          {/* Profile Photo Section */}
+          <ProfilePhotoSection />
 
-        {/* Personal Information */}
-        <ProfilePersonalInfoSection
-          userIdentity={userIdentity}
-          onUpdateIdentity={onUpdateIdentity}
-        />
+          {/* Personal Information */}
+          <ProfilePersonalInfoSection />
 
-        {/* Account Information & Privacy Sections */}
-        <ProfileAccountSection />
-        <ProfilePrivacySection />
-      </ScrollView>
+          {/* Account Information & Privacy Sections */}
+          <ProfileAccountSection />
+          <ProfilePrivacySection />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -158,7 +145,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: "center",
-    maxWidth: 150
+    maxWidth: 150,
   },
   changePhotoButtonText: {
     color: "white",
@@ -317,5 +304,5 @@ const styles = StyleSheet.create({
   noteText: {
     color: colors.primary,
     fontSize: 12,
-  }
+  },
 });

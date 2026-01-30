@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { ExpandedCardData } from "../types/expandedCardTypes";
+import { userActivityService } from "./userActivityService";
 
 export interface SavedCardRecord {
   id: string;
@@ -92,7 +93,16 @@ export const savedCardsService = {
       } else {
         throw error;
       }
+      return;
     }
+
+    await userActivityService.recordActivity(profileId, {
+      activity_type: "saved_card",
+      title: card.title || "Saved experience",
+      tag: card.category || "Experience",
+      reference_id: card.id,
+      reference_type: "experience",
+    });
   },
 
   async removeCard(
