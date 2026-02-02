@@ -8,6 +8,8 @@ import {
   ScrollView,
   Modal,
   Dimensions,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -64,6 +66,7 @@ export default function CollaborationFriendsTab({
     x: number;
     y: number;
   } | null>(null);
+  const [isBlockingUser, setIsBlockingUser] = useState(false);
   const buttonRefs = useRef<{ [key: string]: View | null }>({});
 
   // Filter friends based on search query
@@ -104,6 +107,25 @@ export default function CollaborationFriendsTab({
   const handleCloseDropdown = () => {
     setOpenDropdownId(null);
     setDropdownPosition(null);
+  };
+
+  const handleBlockUser = (friend: Friend) => {
+    setIsBlockingUser(true);
+
+    Alert.alert(
+      "Block User",
+      `Block ${friend.name}? They will be removed from your friends and won't be able to contact you.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: () => onBlockUser(friend),
+        },
+      ]
+    );
+
+    handleCloseDropdown();
   };
 
   const getStatusColor = (status?: "online" | "offline" | "away") => {
@@ -405,10 +427,7 @@ export default function CollaborationFriendsTab({
                       </TouchableOpacity>
                       <View style={styles.divider} />
                       <TouchableOpacity
-                        onPress={() => {
-                          onBlockUser(friend);
-                          handleCloseDropdown();
-                        }}
+                        onPress={() => handleBlockUser(friend)}
                         style={styles.dropdownItem}
                       >
                         <Ionicons
@@ -416,6 +435,11 @@ export default function CollaborationFriendsTab({
                           size={16}
                           color="#EF4444"
                         />
+                        {isBlockingUser ? (
+                          <ActivityIndicator size="small" color="#EF4444" />
+                        ) : (
+                          ""
+                        )}
                         <Text
                           style={[styles.dropdownItemText, styles.dangerText]}
                         >

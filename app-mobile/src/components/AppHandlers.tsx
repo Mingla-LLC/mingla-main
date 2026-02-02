@@ -31,8 +31,6 @@ export function useAppHandlers(state: any) {
     setFriendsList,
     profileStats,
     setProfileStats,
-    blockedUsers,
-    setBlockedUsers,
     userPreferences,
     calendarEntries,
     setCalendarEntries,
@@ -55,6 +53,7 @@ export function useAppHandlers(state: any) {
     safeLocalStorageSet,
     user,
     setPreferencesRefreshKey,
+    unblockFriend,
   } = state;
 
   const handleCollaborationOpen = (friend?: any) => {
@@ -461,15 +460,7 @@ export function useAppHandlers(state: any) {
     const updatedFriends = friendsList.filter((f: any) => f.id !== friend.id);
     setFriendsList(updatedFriends);
 
-    const blockedUser = {
-      ...friend,
-      blockedAt: new Date().toISOString(),
-    };
-    const updatedBlockedUsers = [...blockedUsers, blockedUser];
-    setBlockedUsers(updatedBlockedUsers);
-
     safeLocalStorageSet("mingla_friends_list", updatedFriends);
-    safeLocalStorageSet("mingla_blocked_users", updatedBlockedUsers);
 
     setProfileStats((prev: any) => ({
       ...prev,
@@ -489,23 +480,18 @@ export function useAppHandlers(state: any) {
     }
   };
 
-  const handleUnblockUser = (
+  const handleUnblockUser = async (
     blockedUser: any,
     suppressNotification?: boolean
   ) => {
-    const updatedBlockedUsers = blockedUsers.filter(
-      (u: any) => u.id !== blockedUser.id
-    );
-    setBlockedUsers(updatedBlockedUsers);
-
-    safeLocalStorageSet("mingla_blocked_users", updatedBlockedUsers);
-
+    if (typeof unblockFriend !== "function") return;
+    await unblockFriend(blockedUser.id);
     if (!suppressNotification) {
       const notification = {
         id: `unblock-user-${Date.now()}-${blockedUser.id}`,
         type: "success" as const,
         title: "User Unblocked",
-        message: `${blockedUser.name} has been unblocked`,
+        message: `${blockedUser.name ?? "User"} has been unblocked`,
         autoHide: true,
         duration: 3000,
       };

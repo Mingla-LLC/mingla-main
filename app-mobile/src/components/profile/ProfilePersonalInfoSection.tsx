@@ -1,7 +1,14 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import Feather from '@expo/vector-icons/Feather';
+import Feather from "@expo/vector-icons/Feather";
+import { useAppState } from "../AppStateManager";
 
 interface UserIdentity {
   firstName: string;
@@ -10,17 +17,10 @@ interface UserIdentity {
   profileImage: string | null;
 }
 
-interface ProfilePersonalInfoSectionProps {
-  userIdentity: UserIdentity;
-  onUpdateIdentity: (identity: any) => void;
-}
-
 // Personal Information section moved out of ProfileSettings.
 // Logic is the same, just localized here.
-export default function ProfilePersonalInfoSection({
-  userIdentity,
-  onUpdateIdentity,
-}: ProfilePersonalInfoSectionProps) {
+export default function ProfilePersonalInfoSection() {
+  const { userIdentity, handleUserIdentityUpdate } = useAppState();
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [tempValues, setTempValues] = useState({
     firstName: userIdentity.firstName,
@@ -41,7 +41,7 @@ export default function ProfilePersonalInfoSection({
       ...userIdentity,
       [field]: tempValues[field as keyof typeof tempValues],
     };
-    onUpdateIdentity(updatedIdentity);
+    handleUserIdentityUpdate(updatedIdentity);
     setIsEditing(null);
   };
 
@@ -101,7 +101,7 @@ export default function ProfilePersonalInfoSection({
                   onPress={() => handleEditField("firstName")}
                   style={styles.editButton}
                 >
-                  <Feather name="edit-3" size={16} color="#6b7280" /> 
+                  <Feather name="edit-3" size={16} color="#6b7280" />
                 </TouchableOpacity>
               </View>
             )}
@@ -156,22 +156,19 @@ export default function ProfilePersonalInfoSection({
             <Text style={styles.fieldLabel}>Username</Text>
             {isEditing === "username" ? (
               <View style={styles.editContainer}>
-                <View style={styles.usernameInputContainer}>
-                  <Text style={styles.usernamePrefix}>@</Text>
-                  <TextInput
-                    value={tempValues.username}
-                    onChangeText={(text) =>
-                      handleInputChange(
-                        "username",
-                        text.toLowerCase().replace(/[^a-z0-9_]/g, "")
-                      )
-                    }
-                    style={styles.textInput}
-                    autoFocus
-                    placeholder="username"
-                    autoCapitalize="none"
-                  />
-                </View>
+                <TextInput
+                  value={tempValues.username}
+                  onChangeText={(text) =>
+                    handleInputChange(
+                      "username",
+                      text.toLowerCase().replace(/[^a-z0-9_]/g, "")
+                    )
+                  }
+                  style={styles.textInput}
+                  autoFocus
+                  placeholder="username"
+                  autoCapitalize="none"
+                />
                 <View style={styles.actionButtons}>
                   <TouchableOpacity
                     onPress={() => handleSaveField("username")}
@@ -314,4 +311,3 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 });
-

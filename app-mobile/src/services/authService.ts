@@ -11,6 +11,7 @@ export interface UserProfile {
   avatar_url?: string;
   bio?: string;
   location?: string;
+  active?: boolean;
   created_at: string;
   updated_at: string;
 }

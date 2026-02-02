@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Text,
   View,
@@ -8,9 +8,15 @@ import {
   ScrollView,
   Alert,
   StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { formatCurrency } from "../utils/formatters";
+import { fetchExchangeRates, getRate } from "../../services/currencyService";
+import { PreferencesService } from "../../services/preferencesService";
+import { supabase } from "../../services/supabase";
+import { useAppState } from "../AppStateManager";
 
 interface AccountSettingsProps {
   accountPreferences: {
@@ -22,74 +28,13 @@ interface AccountSettingsProps {
   onNavigateBack: () => void;
 }
 
-// Mock exchange rates - in real app this would come from an API
-const exchangeRates = {
-  USD: 1.0,
-  AUD: 1.35,
-  BIF: 2000.0, // Burundian Franc
-  BRL: 5.15,
-  BWP: 11.2, // Botswanan Pula
-  CAD: 1.25,
-  CHF: 0.92,
-  CNY: 6.45,
-  CVE: 95.8, // Cape Verdean Escudo
-  CZK: 21.5,
-  DJF: 177.0, // Djiboutian Franc
-  DKK: 6.34,
-  DZD: 134.0, // Algerian Dinar
-  EGP: 31.0, // Egyptian Pound
-  ERN: 15.0, // Eritrean Nakfa
-  ETB: 50.8, // Ethiopian Birr
-  EUR: 0.85,
-  GBP: 0.73,
-  GHS: 12.05, // Ghanaian Cedi
-  GMD: 53.5, // Gambian Dalasi
-  GNF: 8600.0, // Guinean Franc
-  HKD: 7.78,
-  HUF: 298.0,
-  ILS: 3.25,
-  INR: 74.8,
-  JPY: 110.0,
-  KES: 108.5, // Kenyan Shilling
-  KMF: 425.0, // Comorian Franc
-  KRW: 1180.0,
-  LRD: 151.0, // Liberian Dollar
-  LSL: 14.2, // Lesotho Loti
-  LYD: 4.8, // Libyan Dinar
-  MAD: 10.1, // Moroccan Dirham
-  MGA: 4150.0, // Malagasy Ariary
-  MRU: 36.8, // Mauritanian Ouguiya
-  MUR: 44.2, // Mauritian Rupee
-  MXN: 17.8,
-  NAD: 14.2, // Namibian Dollar
-  NGN: 460.0, // Nigerian Naira
-  NOK: 8.85,
-  NZD: 1.42,
-  PLN: 3.89,
-  RUB: 74.5,
-  RWF: 1020.0, // Rwandan Franc
-  SCR: 13.4, // Seychellois Rupee
-  SDG: 600.0, // Sudanese Pound
-  SEK: 8.95,
-  SGD: 1.32,
-  SLL: 11500.0, // Sierra Leonean Leone
-  SOS: 570.0, // Somali Shilling
-  SSP: 130.2, // South Sudanese Pound
-  SZL: 14.2, // Swazi Lilangeni
-  TND: 3.1, // Tunisian Dinar
-  TRY: 8.45,
-  TZS: 2320.0, // Tanzanian Shilling
-  UGX: 3650.0, // Ugandan Shilling
-  XOF: 565.0, // West African CFA Franc
-  ZAR: 14.2,
-};
-
 const supportedCurrencies = [
   // USD first as default
   { code: "USD", name: "US Dollar", symbol: "$" },
 
   // All other currencies in alphabetical order by currency code
   { code: "AUD", name: "Australian Dollar", symbol: "A$" },
+  { code: "NGN", name: "Nigerian Naira", symbol: "₦" },
   { code: "BIF", name: "Burundian Franc", symbol: "FBu" },
   { code: "BRL", name: "Brazilian Real", symbol: "R$" },
   { code: "BWP", name: "Botswanan Pula", symbol: "P" },
@@ -126,7 +71,6 @@ const supportedCurrencies = [
   { code: "MUR", name: "Mauritian Rupee", symbol: "₨" },
   { code: "MXN", name: "Mexican Peso", symbol: "$" },
   { code: "NAD", name: "Namibian Dollar", symbol: "N$" },
-  { code: "NGN", name: "Nigerian Naira", symbol: "₦" },
   { code: "NOK", name: "Norwegian Krone", symbol: "kr" },
   { code: "NZD", name: "New Zealand Dollar", symbol: "NZ$" },
   { code: "PLN", name: "Polish Złoty", symbol: "zł" },
@@ -148,68 +92,62 @@ const supportedCurrencies = [
   { code: "ZAR", name: "South African Rand", symbol: "R" },
 ];
 
-export default function AccountSettings({
-  accountPreferences,
-  onUpdatePreferences,
-  onDeleteAccount,
-  onNavigateBack,
-}: AccountSettingsProps) {
+export default function AccountSettings() {
+  const {
+    accountPreferences,
+    setAccountPreferences,
+    setShowAccountSettings,
+    user,
+    profile,
+    handleSignOut,
+  } = useAppState();
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const [selectedCurrency, setSelectedCurrency] = useState(
-    accountPreferences.currency
+    profile?.currency || "USD"
   );
   const [selectedMeasurement, setSelectedMeasurement] = useState(
-    accountPreferences.measurementSystem
+    profile?.measurement_system || "imperial"
   );
 
-  const handleCurrencyChange = (currencyCode: string) => {
+  useEffect(() => {
+    fetchExchangeRates();
+  }, []);
+
+  const handleCurrencyChange = async (currencyCode: string) => {
     setSelectedCurrency(currencyCode);
     const updatedPreferences = {
       ...accountPreferences,
       currency: currencyCode,
     };
-    onUpdatePreferences(updatedPreferences);
+    setAccountPreferences(updatedPreferences);
+    if (user?.id) {
+      try {
+        await PreferencesService.updateUserProfile(user.id, {
+          currency: currencyCode,
+        });
+      } catch (_e) {
+        // Local state already updated; optionally show error
+      }
+    }
   };
 
-  const handleMeasurementChange = (system: "Metric" | "Imperial") => {
-    setSelectedMeasurement(system);
+  const handleMeasurementChange = async (system: "Metric" | "Imperial") => {
+    setSelectedMeasurement(system.toLocaleLowerCase());
     const updatedPreferences = {
       ...accountPreferences,
       measurementSystem: system,
     };
-    onUpdatePreferences(updatedPreferences);
-  };
-
-  const formatCurrency = (amount: number, currencyCode: string) => {
-    const currency = supportedCurrencies.find((c) => c.code === currencyCode);
-    const rate = exchangeRates[currencyCode as keyof typeof exchangeRates];
-    const convertedAmount = amount * rate;
-
-    // Currencies that don't use decimal places (whole numbers only)
-    const wholeNumberCurrencies = [
-      "JPY",
-      "KRW",
-      "HUF",
-      "XOF",
-      "SLL",
-      "GNF",
-      "UGX",
-      "TZS",
-      "RWF",
-      "BIF",
-      "SOS",
-      "DJF",
-      "KMF",
-      "MGA",
-      "DZD",
-    ];
-
-    if (wholeNumberCurrencies.includes(currencyCode)) {
-      return `${currency?.symbol}${Math.round(
-        convertedAmount
-      ).toLocaleString()}`;
+    setAccountPreferences(updatedPreferences);
+    if (user?.id) {
+      try {
+        await PreferencesService.updateUserProfile(user.id, {
+          measurement_system: system === "Metric" ? "metric" : "imperial",
+        });
+      } catch (_e) {
+        // Local state already updated; optionally show error
+      }
     }
-
-    return `${currency?.symbol}${convertedAmount.toFixed(2)}`;
   };
 
   const getCurrentCurrency = () => {
@@ -225,7 +163,33 @@ export default function AccountSettings({
         {
           text: "Delete Account",
           style: "destructive",
-          onPress: onDeleteAccount,
+          onPress: async () => {
+            if (!user?.id) {
+              Alert.alert(
+                "Error",
+                "You must be signed in to delete your account."
+              );
+              return;
+            }
+            setIsDeleting(true);
+            try {
+              const { data, error } = await supabase.functions.invoke(
+                "delete-user",
+                { method: "POST" }
+              );
+              if (error) throw error;
+              if (data?.error) throw new Error(data.error);
+              setShowAccountSettings(false);
+              await handleSignOut();
+            } catch (e: any) {
+              Alert.alert(
+                "Delete failed",
+                e?.message || "Could not delete account. Please try again."
+              );
+            } finally {
+              setIsDeleting(false);
+            }
+          },
         },
       ]
     );
@@ -237,7 +201,10 @@ export default function AccountSettings({
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <TouchableOpacity onPress={onNavigateBack} style={styles.backButton}>
+          <TouchableOpacity
+            onPress={() => setShowAccountSettings(false)}
+            style={styles.backButton}
+          >
             <Ionicons name="arrow-back" size={20} color="#6b7280" />
           </TouchableOpacity>
         </View>
@@ -258,11 +225,28 @@ export default function AccountSettings({
             rates.
           </Text>
 
+          <View style={styles.tipBox}>
+            <View style={styles.tipContent}>
+              <Ionicons
+                name="bulb"
+                size={20}
+                color="#eab308"
+                style={styles.tipIcon}
+              />
+              <Text style={styles.tipText}>
+                <Text style={styles.tipBold}>Tip:</Text> Exchange rates are
+                updated regularly. All venue prices are originally in USD and
+                converted for your convenience.
+              </Text>
+            </View>
+          </View>
+
           <View style={styles.currencyContainer}>
             <ScrollView
-              showsVerticalScrollIndicator={true}
               style={styles.currencyScrollView}
               contentContainerStyle={styles.currencyScrollContent}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
             >
               {supportedCurrencies.map((currency) => (
                 <TouchableOpacity
@@ -282,17 +266,11 @@ export default function AccountSettings({
                     </View>
                   </View>
                   <View style={styles.currencyExample}>
-                    <Text style={styles.currencyExampleText}>
+                    {/*  <Text style={styles.currencyExampleText}>
                       Example: {formatCurrency(25, currency.code)}
-                    </Text>
+                    </Text> */}
                     <Text style={styles.currencyRate}>
-                      1 USD ={" "}
-                      {
-                        exchangeRates[
-                          currency.code as keyof typeof exchangeRates
-                        ]
-                      }{" "}
-                      {currency.code}
+                      1 USD = {getRate(currency.code)} {currency.code}
                     </Text>
                   </View>
                   {selectedCurrency === currency.code && (
@@ -337,7 +315,7 @@ export default function AccountSettings({
               onPress={() => handleMeasurementChange("Imperial")}
               style={[
                 styles.measurementOption,
-                selectedMeasurement === "Imperial" &&
+                selectedMeasurement === "imperial" &&
                   styles.measurementOptionSelected,
               ]}
             >
@@ -347,7 +325,7 @@ export default function AccountSettings({
                   Miles, feet, inches, Fahrenheit
                 </Text>
               </View>
-              {selectedMeasurement === "Imperial" && (
+              {selectedMeasurement === "imperial" && (
                 <Ionicons name="checkmark" size={20} color="#eb7825" />
               )}
             </TouchableOpacity>
@@ -356,7 +334,7 @@ export default function AccountSettings({
               onPress={() => handleMeasurementChange("Metric")}
               style={[
                 styles.measurementOption,
-                selectedMeasurement === "Metric" &&
+                selectedMeasurement === "metric" &&
                   styles.measurementOptionSelected,
               ]}
             >
@@ -366,7 +344,7 @@ export default function AccountSettings({
                   Kilometers, meters, centimeters, Celsius
                 </Text>
               </View>
-              {selectedMeasurement === "Metric" && (
+              {selectedMeasurement === "metric" && (
                 <Ionicons name="checkmark" size={20} color="#eb7825" />
               )}
             </TouchableOpacity>
@@ -396,10 +374,20 @@ export default function AccountSettings({
 
           <TouchableOpacity
             onPress={handleDeleteAccount}
-            style={styles.deleteButton}
+            style={[
+              styles.deleteButton,
+              isDeleting && styles.deleteButtonDisabled,
+            ]}
+            disabled={isDeleting}
           >
-            <Ionicons name="trash" size={16} color="#dc2626" />
-            <Text style={styles.deleteButtonText}>Delete Account</Text>
+            {isDeleting ? (
+              <ActivityIndicator size="small" color="#dc2626" />
+            ) : (
+              <Ionicons name="trash" size={16} color="#dc2626" />
+            )}
+            <Text style={styles.deleteButtonText}>
+              {isDeleting ? "Deleting…" : "Delete Account"}
+            </Text>
           </TouchableOpacity>
 
           <View style={styles.warningBox}>
@@ -440,15 +428,16 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 16,
     gap: 24,
+    padding: 12,
   },
   section: {
     backgroundColor: "white",
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    padding: 24,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
     marginBottom: 24,
   },
   sectionHeader: {
@@ -467,6 +456,29 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     marginBottom: 16,
     lineHeight: 20,
+  },
+  tipBox: {
+    backgroundColor: "#e0f2fe",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  tipContent: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  tipIcon: {
+    marginTop: 2,
+  },
+  tipText: {
+    flex: 1,
+    fontSize: 14,
+    color: "#1e40af",
+    lineHeight: 20,
+  },
+  tipBold: {
+    fontWeight: "600",
   },
   currencyContainer: {
     marginBottom: 16,
@@ -593,6 +605,9 @@ const styles = StyleSheet.create({
     borderColor: "#fecaca",
     borderRadius: 8,
     marginBottom: 16,
+  },
+  deleteButtonDisabled: {
+    opacity: 0.6,
   },
   deleteButtonText: {
     fontSize: 16,

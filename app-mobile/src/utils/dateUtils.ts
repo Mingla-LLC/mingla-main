@@ -41,3 +41,21 @@ export const formatTimestamp = (timestamp: string): string => {
   return `${diffInYears} ${diffInYears === 1 ? 'year' : 'years'} ago`;
 };
 
+/**
+ * Format a date to "<Month> <Year>" (e.g., "Jan 2026")
+ */
+export const formatMonthYear = (date: Date | string): string => {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+};
+
+/**
+ * Format a date to "<Month> <Day>" (e.g., "Jan 10") for recent activity
+ */
+export const formatActivityDate = (date: Date | string): string => {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+

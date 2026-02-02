@@ -1,14 +1,14 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useAppState } from "../AppStateManager";
+import { formatMonthYear } from "@/src/utils/dateUtils";
 
 // Simple, self-contained Account Information card.
 // Currently uses static placeholder values to match the design.
 // When real data (email, memberSince, status) is available, wire it in here.
 export default function ProfileAccountSection() {
-  const email = "jordan.explorer@mingla.com";
-  const memberSince = "January 2026";
-  const status = "Active";
+  const { userIdentity } = useAppState();
 
   return (
     <View style={styles.card}>
@@ -23,18 +23,17 @@ export default function ProfileAccountSection() {
       <View style={styles.row}>
         <View style={styles.rowTextContainer}>
           <Text style={styles.rowLabel}>Email</Text>
-          <Text style={styles.rowValue}>{email}</Text>
+          <Text style={styles.rowValue}>{userIdentity?.email}</Text>
         </View>
-        <TouchableOpacity style={styles.iconButton} activeOpacity={0.7}>
-          <Ionicons name="create-outline" size={18} color="#6b7280" />
-        </TouchableOpacity>
       </View>
 
       {/* Member Since */}
       <View style={styles.row}>
         <View style={styles.rowTextContainer}>
           <Text style={styles.rowLabel}>Member Since</Text>
-          <Text style={styles.rowValue}>{memberSince}</Text>
+          <Text style={styles.rowValue}>
+            {formatMonthYear(userIdentity.createdAt || "")}
+          </Text>
         </View>
       </View>
 
@@ -42,9 +41,26 @@ export default function ProfileAccountSection() {
       <View style={styles.row}>
         <View style={styles.rowTextContainer}>
           <Text style={styles.rowLabel}>Account Status</Text>
-          <View style={styles.statusBadge}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>{status}</Text>
+          <View
+            style={[
+              styles.statusBadge,
+              userIdentity?.active === false && styles.statusBadgeInactive,
+            ]}
+          >
+            <View
+              style={[
+                styles.statusDot,
+                userIdentity?.active === false && styles.statusDotInactive,
+              ]}
+            />
+            <Text
+              style={[
+                styles.statusText,
+                userIdentity?.active === false && styles.statusTextInactive,
+              ]}
+            >
+              {userIdentity?.active !== false ? "Active" : "Inactive"}
+            </Text>
           </View>
         </View>
       </View>
@@ -125,5 +141,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#166534",
     fontWeight: "600",
+  },
+  statusBadgeInactive: {
+    backgroundColor: "#fef2f2",
+  },
+  statusDotInactive: {
+    backgroundColor: "#dc2626",
+  },
+  statusTextInactive: {
+    color: "#991b1b",
   },
 });

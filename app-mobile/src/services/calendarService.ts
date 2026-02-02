@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { userActivityService } from "./userActivityService";
 
 export interface CalendarEntryRecord {
   id: string;
@@ -62,6 +63,15 @@ export class CalendarService {
       console.error("Error inserting calendar entry:", error);
       throw error;
     }
+
+    await userActivityService.recordActivity(userId, {
+      activity_type: "scheduled_card",
+      title: card.title || "Saved experience",
+      tag: "Scheduled",
+      reference_id: card.id ?? null,
+      reference_type: "experience",
+      metadata: { scheduled_at: scheduledAtIso },
+    });
 
     return data as CalendarEntryRecord;
   }

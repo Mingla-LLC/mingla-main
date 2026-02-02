@@ -85,9 +85,9 @@ export const useEnhancedProfile = () => {
     show_saved_experiences?: boolean;
     show_location?: boolean;
     show_preferences?: boolean;
-  }) => {
+  }, userId: string) => {
     try {
-      return await enhancedProfileService.updateProfilePrivacy(privacySettings);
+      return await enhancedProfileService.updateProfilePrivacy(privacySettings, userId);
     } catch (err: any) {
       console.error('Error updating profile privacy:', err);
       return false;
