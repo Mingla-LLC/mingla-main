@@ -30,6 +30,7 @@ import { BoardMessageService } from "../../services/boardMessageService";
 import { BoardSessionCard } from "./BoardSessionCard";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
+import ShareModal from "../ShareModal";
 
 interface BoardViewScreenProps {
   sessionId: string;
@@ -89,6 +90,10 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   // Expanded card modal state
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
+  
+  // Share modal state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareData, setShareData] = useState<{ experienceData: any; dateTimePreferences: any } | null>(null);
 
   // Load saved cards for the session with pagination
   const [savedCardsPage, setSavedCardsPage] = useState(0);
@@ -1146,9 +1151,39 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
                         onRSVP={handleRSVP}
                         onViewDetails={(cardId) => {
                           const cardData =
-                            card.card_data || card.experience_data || {};
+                            card.card_data || card.experience_data || null;
                           
-                          // Transform to ExpandedCardData format
+                          // Check if the card/experience data exists and is valid
+                          const hasValidCardData = cardData && 
+                            typeof cardData === 'object' && 
+                            (cardData.title || cardData.description || cardData.name);
+                          
+                          // If card data is completely missing or invalid, show unavailable error
+                          if (!hasValidCardData) {
+                            Alert.alert(
+                              "Card Unavailable",
+                              "This experience is no longer available. It may have been removed or is temporarily inaccessible.",
+                              [{ text: "OK" }]
+                            );
+                            return;
+                          }
+                          
+                          // If offline and no cached data, show error
+                          if (!networkState.isConnected && !hasValidCardData) {
+                            Alert.alert(
+                              "Offline",
+                              "Unable to load card details. Please check your internet connection and try again.",
+                              [{ text: "OK" }]
+                            );
+                            return;
+                          }
+                          
+                          // If offline but have cached data, continue with cached data
+                          if (!networkState.isConnected && hasValidCardData) {
+                            console.log("Showing cached card details (offline mode)");
+                          }
+                          
+                          // Transform to ExpandedCardData format with safe fallbacks
                           const expandedCardData: ExpandedCardData = {
                             id: cardData.id || card.id,
                             title: cardData.title || "Untitled Experience",
@@ -1324,8 +1359,32 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
           onSave={async () => {
             // Card is already saved in this board
           }}
+          onShare={(card) => {
+            setShareData({
+              experienceData: card,
+              dateTimePreferences: {
+                timeOfDay: "Afternoon",
+                dayOfWeek: "Weekend",
+                planningTimeframe: "This month",
+              },
+            });
+            setShowShareModal(true);
+          }}
           isSaved={true}
           currentMode={session?.name || "board"}
+        />
+      )}
+
+      {/* Share Modal */}
+      {showShareModal && shareData && (
+        <ShareModal
+          isOpen={showShareModal}
+          onClose={() => {
+            setShowShareModal(false);
+            setShareData(null);
+          }}
+          experienceData={shareData.experienceData}
+          dateTimePreferences={shareData.dateTimePreferences}
         />
       )}
 

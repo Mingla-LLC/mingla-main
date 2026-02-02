@@ -235,12 +235,12 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
     async (memberUserId: string, memberDisplayName: string, isCurrentlyAdmin: boolean) => {
       if (!user?.id || !sessionId) return;
 
-      // Check if current user has permission to manage admins
-      const canManageAdmins = creatorId === user.id;
+      // Check if current user has permission to manage admins (creator or admin)
+      const canManageAdmins = creatorId === user.id || adminUsers.has(user.id);
       if (!canManageAdmins) {
         Alert.alert(
           "Permission Denied",
-          "Only the board creator can manage admin privileges."
+          "Only admins can manage admin privileges."
         );
         return;
       }
@@ -289,7 +289,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
         }
       }
     },
-    [user?.id, sessionId, creatorId, onParticipantsChange]
+    [user?.id, sessionId, creatorId, adminUsers, onParticipantsChange]
   );
 
   // Confirm remove admin action
