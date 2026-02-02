@@ -503,6 +503,7 @@ function AppContent() {
       </View>
     );
   }
+  // jsieidjdj
 
   // Check if user needs onboarding (for authenticated users)
   // Show onboarding if user is authenticated but hasn't completed onboarding
