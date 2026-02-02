@@ -59,6 +59,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
   const [memberToToggleAdmin, setMemberToToggleAdmin] = useState<{ userId: string; displayName: string; isCurrentlyAdmin: boolean } | null>(null);
   const [adminUsers, setAdminUsers] = useState<Set<string>>(new Set());
   const [creatorId, setCreatorId] = useState<string | undefined>(sessionCreatorId);
+  const [leavingBoard, setLeavingBoard] = useState(false);
 
   // Load participants if not provided externally
   const loadParticipants = useCallback(async () => {
@@ -197,7 +198,20 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
         prev.filter((p) => p.user_id !== memberToRemove.userId)
       );
 
-      // Delete from database
+      // First, delete any collaboration invites for this user to avoid unique key constraint
+      // errors if they are re-invited later
+      const { error: inviteError } = await supabase
+        .from("collaboration_invites")
+        .delete()
+        .eq("session_id", sessionId)
+        .eq("invited_user_id", memberToRemove.userId);
+
+      if (inviteError) {
+        console.warn("Error deleting session invite (may not exist):", inviteError);
+        // Continue anyway - the invite might not exist
+      }
+
+      // Delete from session_participants
       const { error } = await supabase
         .from("session_participants")
         .delete()
@@ -340,10 +354,116 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
     onClose();
   };
 
-  const handleLeaveBoard = () => {
-    handleClose();
-    onExitBoard?.();
-  };
+  // Handle leave board with rules for member count and admin promotion
+  const handleLeaveBoardWithRules = useCallback(async () => {
+    if (leavingBoard || !sessionId || !user?.id) return;
+
+    try {
+      setLeavingBoard(true);
+
+      // Use current participants from state
+      const currentMemberCount = participants.length;
+
+      // Rule 1: If 2 or fewer members, delete the board after leaving
+      if (currentMemberCount <= 2) {
+        handleClose();
+        
+        // Delete the session (this will cascade delete participants)
+        const { error: deleteError } = await supabase
+          .from("collaboration_sessions")
+          .delete()
+          .eq("id", sessionId);
+
+        if (deleteError) throw deleteError;
+
+        Alert.alert(
+          "Board Deleted",
+          "The board has been deleted because it requires at least 2 members to remain active."
+        );
+
+        onExitBoard?.();
+        return;
+      }
+
+      // Rule 3: If I'm the only admin, promote the oldest remaining member
+      const isUserCreator = user.id === creatorId;
+      const isUserAdmin = isUserCreator || adminUsers.has(user.id);
+      const adminCount = (creatorId ? 1 : 0) + adminUsers.size;
+      const isOnlyAdmin = isUserAdmin && adminCount === 1;
+
+      if (isOnlyAdmin) {
+        // Find the oldest remaining member (excluding current user)
+        const remainingMembers = participants
+          .filter(p => p.user_id !== user.id)
+          .sort((a, b) => {
+            const aTime = a.joined_at ? new Date(a.joined_at).getTime() : 0;
+            const bTime = b.joined_at ? new Date(b.joined_at).getTime() : 0;
+            return aTime - bTime;
+          });
+
+        if (remainingMembers.length > 0) {
+          const oldestMember = remainingMembers[0];
+          
+          // Promote oldest member to admin
+          const { error: promoteError } = await supabase
+            .from("session_participants")
+            .update({ is_admin: true })
+            .eq("session_id", sessionId)
+            .eq("user_id", oldestMember.user_id);
+
+          if (promoteError) {
+            console.warn("Error promoting new admin:", promoteError);
+          }
+        }
+      }
+
+      handleClose();
+
+      // Delete the user's invite to allow re-inviting later
+      await supabase
+        .from("collaboration_invites")
+        .delete()
+        .eq("session_id", sessionId)
+        .eq("invited_user_id", user.id);
+
+      // Remove current user from session
+      const { error: leaveError } = await supabase
+        .from("session_participants")
+        .delete()
+        .eq("session_id", sessionId)
+        .eq("user_id", user.id);
+
+      if (leaveError) throw leaveError;
+
+      Alert.alert("Left Board", "You have successfully left the board.");
+
+      onExitBoard?.();
+    } catch (error: any) {
+      console.error("Error leaving board:", error);
+      Alert.alert(
+        "Error",
+        error?.message || "Failed to leave the board. Please try again."
+      );
+    } finally {
+      setLeavingBoard(false);
+    }
+  }, [leavingBoard, sessionId, user?.id, participants, creatorId, adminUsers, handleClose, onExitBoard]);
+
+  // Show confirmation dialog for leaving board
+  const handleLeaveBoard = useCallback(() => {
+    Alert.alert(
+      "Leave Board",
+      `Are you sure you want to leave "${sessionName}"?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: handleLeaveBoardWithRules,
+        },
+      ]
+    );
+  }, [sessionName, handleLeaveBoardWithRules]);
 
   return (
     <Modal
@@ -507,11 +627,14 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
             </View>
           ) : (
             <TouchableOpacity
-              style={styles.leaveBoardButton}
+              style={[styles.leaveBoardButton, leavingBoard && styles.leaveBoardButtonDisabled]}
               onPress={handleLeaveBoard}
+              disabled={leavingBoard}
             >
-              <Feather name="user-minus" size={20} color="#EF4444" />
-              <Text style={styles.leaveBoardButtonText}>Leave Board</Text>
+              <Feather name="user-minus" size={20} color={leavingBoard ? "#9CA3AF" : "#EF4444"} />
+              <Text style={[styles.leaveBoardButtonText, leavingBoard && styles.leaveBoardButtonTextDisabled]}>
+                {leavingBoard ? "Leaving..." : "Leave Board"}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -773,6 +896,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#EF4444",
+  },
+  leaveBoardButtonDisabled: {
+    borderColor: "#D1D5DB",
+    backgroundColor: "#F9FAFB",
+  },
+  leaveBoardButtonTextDisabled: {
+    color: "#9CA3AF",
   },
 });
 

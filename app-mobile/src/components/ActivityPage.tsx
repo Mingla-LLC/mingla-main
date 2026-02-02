@@ -74,6 +74,7 @@ interface ActivityPageProps {
   onLeaveBoard?: (boardId: string) => void;
   onNavigateToBoard?: (sessionId: string) => void;
   onUnreadCountChange?: (count: number) => void;
+  onExitBoard?: (boardId: string, boardName: string) => void;
   activeBoardSessionId?: string | null; // Session ID of the currently open board
 }
 
@@ -99,6 +100,7 @@ export default function ActivityPage({
   onNavigateToBoard,
   onUnreadCountChange,
   activeBoardSessionId,
+  onExitBoard: onExitBoardProp,
 }: ActivityPageProps) {
   const { savedCards = [] } = useAppState();
   const [activeTab, setActiveTab] = useState<"boards" | "saved" | "calendar">(
@@ -265,7 +267,12 @@ export default function ActivityPage({
     });
   };
 
-  const handleExitBoard = (boardId: string, boardName: string) => {};
+  const handleExitBoard = (boardId: string, boardName: string) => {
+    // Call the parent handler to update the UI
+    if (onExitBoardProp) {
+      onExitBoardProp(boardId, boardName);
+    }
+  };
 
   const handleManageMembers = (boardId: string, boardName: string) => {
     setManageMembersSessionData({ id: boardId, name: boardName });

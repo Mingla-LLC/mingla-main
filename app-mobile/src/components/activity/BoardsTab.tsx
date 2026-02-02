@@ -6,11 +6,11 @@ import {
   StyleSheet,
   ActivityIndicator,
   FlatList,
-  Modal,
-  Pressable,
   Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { BoardSettingsDropdown } from "../board/BoardSettingsDropdown";
+import { useAppStore } from "../../store/appStore";
 
 interface Board {
   id: string;
@@ -52,6 +52,8 @@ interface BoardsTabProps {
   onManageMembers?: (boardId: string, boardName: string) => void;
   onExitBoard: (boardId: string, boardName: string) => void;
   onLeaveBoard: (boardId: string, boardName: string) => void;
+  onDeleteBoard?: (boardId: string, boardName: string) => void;
+  onBoardNameUpdated?: (boardId: string, newName: string) => void;
   boardNotifications: { [boardId: string]: boolean };
   isUserAdmin: (board: Board) => boolean;
 }
@@ -65,14 +67,23 @@ const BoardsTab = ({
   onManageMembers,
   onExitBoard,
   onLeaveBoard,
+  onDeleteBoard,
+  onBoardNameUpdated,
   boardNotifications,
   isUserAdmin,
 }: BoardsTabProps) => {
   const [menuOpenForBoard, setMenuOpenForBoard] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const menuButtonRefs = useRef<{ [key: string]: View | null }>({});
+  // Track the selected board separately so it persists when dropdown closes for edit modal
+  const [selectedBoardForSettings, setSelectedBoardForSettings] = useState<Board | null>(null);
 
   const handleMenuPress = (boardId: string) => {
+    const board = boards.find((b) => b.id === boardId);
+    if (board) {
+      setSelectedBoardForSettings(board);
+    }
+    
     const buttonRef = menuButtonRefs.current[boardId];
     if (buttonRef) {
       buttonRef.measureInWindow((x, y, width, height) => {
@@ -303,41 +314,6 @@ const BoardsTab = ({
       alignItems: "center",
       paddingVertical: 48,
     },
-    menuOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0, 0, 0, 0.3)",
-    },
-    menuContainer: {
-      position: "absolute",
-      backgroundColor: "white",
-      borderRadius: 12,
-      width: 220,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 8,
-      elevation: 8,
-      overflow: "hidden",
-    },
-    menuItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      gap: 12,
-    },
-    menuItemBorder: {
-      borderBottomWidth: 1,
-      borderBottomColor: "#f3f4f6",
-    },
-    menuItemText: {
-      fontSize: 15,
-      color: "#374151",
-      flex: 1,
-    },
-    menuItemTextDanger: {
-      color: "#ef4444",
-    },
   });
 
   const getIconComponent = (iconName: any) => {
@@ -503,10 +479,19 @@ const BoardsTab = ({
   // Only show active sessions in the boards tab
   const activeBoards = boards.filter((board) => board.status === "active");
 
-  const selectedBoard = boards.find((b) => b.id === menuOpenForBoard);
   const notificationsEnabled = menuOpenForBoard
     ? boardNotifications[menuOpenForBoard]
+    : selectedBoardForSettings
+    ? boardNotifications[selectedBoardForSettings.id]
     : false;
+  const currentUserId = useAppStore.getState().user?.id || "";
+
+  // Handler to fully close the settings dropdown and clear selected board
+  const handleSettingsClose = () => {
+    setMenuOpenForBoard(null);
+    // Don't clear selectedBoardForSettings here - let the component handle it
+    // after the edit modal closes
+  };
 
   return (
     <View style={styles.container}>
@@ -519,70 +504,44 @@ const BoardsTab = ({
         showsVerticalScrollIndicator={false}
       />
 
-      {/* Board Menu Modal */}
-      <Modal
-        visible={menuOpenForBoard !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuOpenForBoard(null)}
-      >
-        <Pressable
-          style={styles.menuOverlay}
-          onPress={() => setMenuOpenForBoard(null)}
-        >
-          <Pressable style={[styles.menuContainer, { left: menuPosition.x, top: menuPosition.y }]}>
-            {/* Toggle Notifications */}
-            <TouchableOpacity
-              style={[styles.menuItem, styles.menuItemBorder]}
-              onPress={() => {
-                if (menuOpenForBoard) {
-                  onToggleNotifications(menuOpenForBoard);
-                }
-                setMenuOpenForBoard(null);
-              }}
-            >
-              <Ionicons
-                name={notificationsEnabled ? "notifications-off" : "notifications"}
-                size={20}
-                color="#374151"
-              />
-              <Text style={styles.menuItemText}>
-                {notificationsEnabled ? "Turn off notifications" : "Turn on notifications"}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Manage Members */}
-            <TouchableOpacity
-              style={[styles.menuItem, styles.menuItemBorder]}
-              onPress={() => {
-                if (menuOpenForBoard && selectedBoard && onManageMembers) {
-                  onManageMembers(menuOpenForBoard, selectedBoard.name);
-                }
-                setMenuOpenForBoard(null);
-              }}
-            >
-              <Ionicons name="people" size={20} color="#374151" />
-              <Text style={styles.menuItemText}>Manage members</Text>
-            </TouchableOpacity>
-
-            {/* Exit Board */}
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                if (menuOpenForBoard && selectedBoard) {
-                  onExitBoard(menuOpenForBoard, selectedBoard.name);
-                }
-                setMenuOpenForBoard(null);
-              }}
-            >
-              <Ionicons name="exit-outline" size={20} color="#ef4444" />
-              <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>
-                Exit board
-              </Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Board Settings Dropdown */}
+      {selectedBoardForSettings && (
+        <BoardSettingsDropdown
+          visible={menuOpenForBoard !== null}
+          onClose={handleSettingsClose}
+          sessionId={selectedBoardForSettings.id}
+          sessionName={selectedBoardForSettings.name}
+          sessionCreatorId={selectedBoardForSettings.creatorId}
+          currentUserId={currentUserId}
+          isAdmin={isUserAdmin(selectedBoardForSettings)}
+          notificationsEnabled={notificationsEnabled}
+          onToggleNotifications={() => {
+            onToggleNotifications(selectedBoardForSettings.id);
+          }}
+          onManageMembers={() => {
+            if (onManageMembers) {
+              onManageMembers(selectedBoardForSettings.id, selectedBoardForSettings.name);
+            }
+          }}
+          onExitBoard={() => {
+            onExitBoard(selectedBoardForSettings.id, selectedBoardForSettings.name);
+          }}
+          onSessionDeleted={() => {
+            if (onDeleteBoard) {
+              onDeleteBoard(selectedBoardForSettings.id, selectedBoardForSettings.name);
+            }
+            setSelectedBoardForSettings(null);
+          }}
+          onSessionNameUpdated={(newName: string) => {
+            if (onBoardNameUpdated) {
+              onBoardNameUpdated(selectedBoardForSettings.id, newName);
+            }
+            setSelectedBoardForSettings(null);
+          }}
+          position={menuPosition}
+          variant="positioned"
+        />
+      )}
     </View>
   );
 };

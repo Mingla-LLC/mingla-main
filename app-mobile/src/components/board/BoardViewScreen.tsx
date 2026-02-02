@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   Modal,
 } from "react-native";
-import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { BoardHeader } from "./BoardHeader";
 import { BoardTabs, BoardTab } from "./BoardTabs";
@@ -31,6 +31,7 @@ import { BoardSessionCard } from "./BoardSessionCard";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 import ShareModal from "../ShareModal";
+import { BoardSettingsDropdown } from "./BoardSettingsDropdown";
 
 interface BoardViewScreenProps {
   sessionId: string;
@@ -62,6 +63,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     preferences,
     loading: sessionLoading,
     error: sessionError,
+    loadSession,
   } = useBoardSession(sessionId);
   const { user } = useAppStore();
   const networkState = useNetworkMonitor();
@@ -80,7 +82,6 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   const [isAdmin, setIsAdmin] = useState(false);
   const [showExitMenu, setShowExitMenu] = useState(false);
   const [exitMenuItemPressed, setExitMenuItemPressed] = useState(false);
-  const [deletingSession, setDeletingSession] = useState(false);
   
   // New settings dropdown menu state
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
@@ -941,52 +942,6 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
     };
   });
 
-  const handleDeleteSession = useCallback(async () => {
-    if (deletingSession) return;
-    if (!sessionId || !user?.id) return;
-    if (!isAdmin && session?.created_by !== user.id) {
-      Alert.alert("Permission denied", "Only admins can delete this session.");
-      return;
-    }
-
-    try {
-      setDeletingSession(true);
-      const { error } = await supabase
-        .from("collaboration_sessions")
-        .delete()
-        .eq("id", sessionId);
-
-      if (error) throw error;
-
-      // Optimistic cleanup in parent
-      if (onExitBoard) {
-        onExitBoard(sessionId, session?.name);
-      }
-
-      if (onBack) {
-        onBack();
-      }
-    } catch (error: any) {
-      console.error("Error deleting session:", error);
-      Alert.alert(
-        "Delete failed",
-        error?.message || "Unable to delete this session."
-      );
-    } finally {
-      setDeletingSession(false);
-      setShowSettings(false);
-    }
-  }, [
-    deletingSession,
-    sessionId,
-    user?.id,
-    isAdmin,
-    session?.created_by,
-    session?.name,
-    onExitBoard,
-    onBack,
-  ]);
-
   // Show network error banner
   const showNetworkBanner = !networkState.isConnected;
 
@@ -1263,66 +1218,38 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       )}
       */}
 
-      {/* New Settings Dropdown Menu */}
-      {showSettingsDropdown && (
-        <TouchableOpacity
-          style={styles.settingsDropdownOverlay}
-          activeOpacity={1}
-          onPress={() => setShowSettingsDropdown(false)}
-        >
-          <View style={styles.settingsDropdownMenu}>
-            {/* Turn off notifications */}
-            <TouchableOpacity
-              style={styles.settingsMenuItem}
-              onPress={() => {
-                setNotificationsEnabled(!notificationsEnabled);
-                setShowSettingsDropdown(false);
-                // TODO: Implement actual notification toggle logic
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather 
-                name={notificationsEnabled ? "bell-off" : "bell"} 
-                size={20} 
-                color="#374151" 
-              />
-              <Text style={styles.settingsMenuText}>
-                {notificationsEnabled ? "Turn off notifications" : "Turn on notifications"}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Manage members */}
-            <TouchableOpacity
-              style={styles.settingsMenuItem}
-              onPress={() => {
-                setShowSettingsDropdown(false);
-                // Open manage members modal
-                setShowManageMembersModal(true);
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name="users" size={20} color="#374151" />
-              <Text style={styles.settingsMenuText}>Manage members</Text>
-            </TouchableOpacity>
-
-            {/* Divider */}
-            <View style={styles.settingsMenuDivider} />
-
-            {/* Exit board */}
-            <TouchableOpacity
-              style={styles.settingsMenuItem}
-              onPress={() => {
-                setShowSettingsDropdown(false);
-                handleExitBoard();
-              }}
-              activeOpacity={0.7}
-            >
-              <Feather name="log-out" size={20} color="#EF4444" />
-              <Text style={styles.settingsMenuTextDanger}>Exit board</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      )}
+      {/* Board Settings Dropdown */}
+      <BoardSettingsDropdown
+        visible={showSettingsDropdown}
+        onClose={() => setShowSettingsDropdown(false)}
+        sessionId={sessionId}
+        sessionName={session?.name || ""}
+        sessionCreatorId={session?.created_by}
+        currentUserId={user?.id}
+        isAdmin={isAdmin}
+        notificationsEnabled={notificationsEnabled}
+        onToggleNotifications={() => {
+          setNotificationsEnabled(!notificationsEnabled);
+          // TODO: Implement actual notification toggle logic
+        }}
+        onManageMembers={() => {
+          setShowManageMembersModal(true);
+        }}
+        onExitBoard={handleExitBoard}
+        onSessionDeleted={() => {
+          // Navigate back after deletion
+          if (onExitBoard) {
+            onExitBoard(sessionId, session?.name);
+          } else if (onBack) {
+            onBack();
+          }
+        }}
+        onSessionNameUpdated={(newName) => {
+          // Reload session to get updated name
+          loadSession(sessionId);
+        }}
+        variant="overlay"
+      />
 
       {/* Manage Board Modal */}
       <ManageBoardModal
@@ -1599,51 +1526,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#FF3B30",
     fontWeight: "400",
-  },
-  // New settings dropdown menu styles
-  settingsDropdownOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.1)",
-  },
-  settingsDropdownMenu: {
-    position: "absolute",
-    top: 50,
-    right: 16,
-    backgroundColor: "white",
-    borderRadius: 12,
-    paddingVertical: 8,
-    minWidth: 220,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  settingsMenuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  settingsMenuText: {
-    fontSize: 16,
-    color: "#374151",
-    fontWeight: "400",
-  },
-  settingsMenuTextDanger: {
-    fontSize: 16,
-    color: "#EF4444",
-    fontWeight: "400",
-  },
-  settingsMenuDivider: {
-    height: 1,
-    backgroundColor: "#E5E7EB",
-    marginVertical: 4,
-    marginHorizontal: 16,
   },
 });

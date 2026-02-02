@@ -798,6 +798,22 @@ function AppContent() {
             }}
             onUnreadCountChange={setTotalUnreadBoardMessages}
             activeBoardSessionId={boardViewSessionId}
+            onExitBoard={(exitedBoardId: string, exitedBoardName: string) => {
+              // OPTIMISTIC UPDATE: Remove board from list immediately
+              if (exitedBoardId && boardsSessions) {
+                const updatedBoards = boardsSessions.filter(
+                  (board: any) =>
+                    board.id !== exitedBoardId &&
+                    (board as any).session_id !== exitedBoardId
+                );
+                updateBoardsSessions(updatedBoards);
+              }
+
+              // Update mode if this was the active session
+              if (exitedBoardName && currentMode === exitedBoardName) {
+                state.setCurrentMode("solo");
+              }
+            }}
           />
         );
       case "board-view":
