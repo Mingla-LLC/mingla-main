@@ -13,6 +13,7 @@ import BoardDiscussion from "./BoardDiscussion";
 import UserInviteModal from "./UserInviteModal";
 import PurchaseModal from "./PurchaseModal";
 import PurchaseQRCode from "./PurchaseQRCode";
+import ManageBoardModal from "./board/ManageBoardModal";
 
 interface Board {
   id: string;
@@ -119,6 +120,11 @@ export default function ActivityPage({
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [purchaseModalCard, setPurchaseModalCard] = useState<any>(null);
   const [showQRCode, setShowQRCode] = useState<string | null>(null);
+  const [showManageMembersModal, setShowManageMembersModal] = useState(false);
+  const [manageMembersSessionData, setManageMembersSessionData] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   // Handle navigation from external sources (e.g., CollaborationModule)
   React.useEffect(() => {
@@ -260,6 +266,11 @@ export default function ActivityPage({
   };
 
   const handleExitBoard = (boardId: string, boardName: string) => {};
+
+  const handleManageMembers = (boardId: string, boardName: string) => {
+    setManageMembersSessionData({ id: boardId, name: boardName });
+    setShowManageMembersModal(true);
+  };
 
   const isUserAdmin = (board: Board): boolean => {
     return board.admins.includes(board.currentUserId);
@@ -503,6 +514,7 @@ export default function ActivityPage({
                 onToggleNotifications={handleToggleBoardNotifications}
                 onExitBoard={handleExitBoard}
                 onLeaveBoard={handleLeaveBoard}
+                onManageMembers={handleManageMembers}
                 boardNotifications={boardNotifications}
                 isUserAdmin={isUserAdmin}
               />
@@ -549,6 +561,15 @@ export default function ActivityPage({
         }}
         onSendInvites={handleSendInvites}
         sessionName={inviteSessionData?.name || ""}
+        existingMemberIds={
+          inviteSessionData
+            ? (boardsSessions.find(
+                (b: any) =>
+                  b.id === inviteSessionData.id ||
+                  b.session_id === inviteSessionData.id
+              )?.participants || []).map((p: any) => p.id)
+            : []
+        }
       />
 
       {/* Purchase Modal */}
@@ -594,6 +615,24 @@ export default function ActivityPage({
             </View>
           </View>
         </View>
+      )}
+
+      {/* Manage Board Members Modal */}
+      {manageMembersSessionData && (
+        <ManageBoardModal
+          visible={showManageMembersModal}
+          sessionId={manageMembersSessionData.id}
+          sessionName={manageMembersSessionData.name}
+          onClose={() => {
+            setShowManageMembersModal(false);
+            setManageMembersSessionData(null);
+          }}
+          onExitBoard={() => {
+            setShowManageMembersModal(false);
+            setManageMembersSessionData(null);
+            handleExitBoard(manageMembersSessionData.id, manageMembersSessionData.name);
+          }}
+        />
       )}
     </View>
   );

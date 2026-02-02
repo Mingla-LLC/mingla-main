@@ -56,7 +56,11 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
   };
 
   return (
-    <View style={styles.cardContainer}>
+    <TouchableOpacity 
+      style={styles.cardContainer} 
+      activeOpacity={0.95}
+      onPress={() => onViewDetails?.(card.id)}
+    >
       <View style={styles.card}>
         {/* Image Section */}
         <View style={styles.imageContainer}>
@@ -186,7 +190,7 @@ export const BoardSessionCard: React.FC<BoardSessionCardProps> = ({
           ))}
         </View>
       )}
-    </View>
+    </TouchableOpacity>
   );
 };
 

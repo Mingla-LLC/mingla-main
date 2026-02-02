@@ -9,11 +9,12 @@ import {
   TouchableOpacity,
   Modal,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { BoardHeader } from "./BoardHeader";
 import { BoardTabs, BoardTab } from "./BoardTabs";
 import { Participant } from "./ParticipantAvatars";
+import { ManageBoardModal } from "./ManageBoardModal";
 import { useBoardSession } from "../../hooks/useBoardSession";
 import { supabase } from "../../services/supabase";
 import { realtimeService } from "../../services/realtimeService";
@@ -27,6 +28,8 @@ import { useNetworkMonitor } from "../../services/networkMonitor";
 import { BoardCache } from "../../services/boardCache";
 import { BoardMessageService } from "../../services/boardMessageService";
 import { BoardSessionCard } from "./BoardSessionCard";
+import ExpandedCardModal from "../ExpandedCardModal";
+import { ExpandedCardData } from "../../types/expandedCardTypes";
 
 interface BoardViewScreenProps {
   sessionId: string;
@@ -77,6 +80,15 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
   const [showExitMenu, setShowExitMenu] = useState(false);
   const [exitMenuItemPressed, setExitMenuItemPressed] = useState(false);
   const [deletingSession, setDeletingSession] = useState(false);
+  
+  // New settings dropdown menu state
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [showManageMembersModal, setShowManageMembersModal] = useState(false);
+  
+  // Expanded card modal state
+  const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
+  const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
 
   // Load saved cards for the session with pagination
   const [savedCardsPage, setSavedCardsPage] = useState(0);
@@ -1029,12 +1041,17 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
         participants={participants}
         onBack={onBack}
         onSettingsPress={() => {
+          // Show new settings dropdown menu for all users
+          setShowSettingsDropdown(true);
+          
+          /* Old implementation - commented out
           if (isAdmin || session.created_by === user?.id) {
             setShowSettings(true);
           } else {
             // Show exit menu for non-admins
             setShowExitMenu(true);
           }
+          */
         }}
         loading={loadingCards}
       />
@@ -1130,10 +1147,50 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
                         onViewDetails={(cardId) => {
                           const cardData =
                             card.card_data || card.experience_data || {};
-                          setSelectedCardForDiscussion({
-                            savedCardId: card.id,
-                            cardTitle: cardData.title || "Untitled",
-                          });
+                          
+                          // Transform to ExpandedCardData format
+                          const expandedCardData: ExpandedCardData = {
+                            id: cardData.id || card.id,
+                            title: cardData.title || "Untitled Experience",
+                            category: cardData.category || "Experience",
+                            categoryIcon: cardData.categoryIcon || "star",
+                            description: cardData.description || "",
+                            fullDescription: cardData.fullDescription || cardData.description || "",
+                            image: cardData.image || "",
+                            images: cardData.images || [cardData.image].filter(Boolean),
+                            rating: cardData.rating || 4.5,
+                            reviewCount: cardData.reviewCount || 0,
+                            priceRange: cardData.priceRange || "N/A",
+                            distance: cardData.distance || "",
+                            travelTime: cardData.travelTime || "N/A",
+                            address: cardData.address || "",
+                            openingHours: cardData.openingHours,
+                            phone: cardData.phone,
+                            website: cardData.website,
+                            highlights: cardData.highlights || [],
+                            tags: cardData.tags || [],
+                            matchScore: cardData.matchScore || 0,
+                            matchFactors: cardData.matchFactors || {
+                              location: 0,
+                              budget: 0,
+                              category: 0,
+                              time: 0,
+                              popularity: 0,
+                            },
+                            socialStats: {
+                              views: cardData.socialStats?.views || 0,
+                              likes: cardData.socialStats?.likes || 0,
+                              saves: cardData.socialStats?.saves || 0,
+                              shares: cardData.socialStats?.shares || 0,
+                            },
+                            location: cardData.location || (cardData.lat && cardData.lng ? { lat: cardData.lat, lng: cardData.lng } : undefined),
+                            selectedDateTime: cardData.selectedDateTime || new Date(),
+                            strollData: cardData.strollData,
+                            picnicData: cardData.picnicData,
+                          };
+                          
+                          setSelectedCardForExpansion(expandedCardData);
+                          setIsExpandedModalVisible(true);
                         }}
                         currentIndex={index}
                         totalCards={savedCards.length}
@@ -1160,6 +1217,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
         )}
       </View>
 
+      {/* Old BoardSettingsModal implementation - commented out
       {showSettings && (
         <BoardSettingsModal
           visible={showSettings}
@@ -1168,6 +1226,80 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
           onDelete={handleDeleteSession}
         />
       )}
+      */}
+
+      {/* New Settings Dropdown Menu */}
+      {showSettingsDropdown && (
+        <TouchableOpacity
+          style={styles.settingsDropdownOverlay}
+          activeOpacity={1}
+          onPress={() => setShowSettingsDropdown(false)}
+        >
+          <View style={styles.settingsDropdownMenu}>
+            {/* Turn off notifications */}
+            <TouchableOpacity
+              style={styles.settingsMenuItem}
+              onPress={() => {
+                setNotificationsEnabled(!notificationsEnabled);
+                setShowSettingsDropdown(false);
+                // TODO: Implement actual notification toggle logic
+              }}
+              activeOpacity={0.7}
+            >
+              <Feather 
+                name={notificationsEnabled ? "bell-off" : "bell"} 
+                size={20} 
+                color="#374151" 
+              />
+              <Text style={styles.settingsMenuText}>
+                {notificationsEnabled ? "Turn off notifications" : "Turn on notifications"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Manage members */}
+            <TouchableOpacity
+              style={styles.settingsMenuItem}
+              onPress={() => {
+                setShowSettingsDropdown(false);
+                // Open manage members modal
+                setShowManageMembersModal(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Feather name="users" size={20} color="#374151" />
+              <Text style={styles.settingsMenuText}>Manage members</Text>
+            </TouchableOpacity>
+
+            {/* Divider */}
+            <View style={styles.settingsMenuDivider} />
+
+            {/* Exit board */}
+            <TouchableOpacity
+              style={styles.settingsMenuItem}
+              onPress={() => {
+                setShowSettingsDropdown(false);
+                handleExitBoard();
+              }}
+              activeOpacity={0.7}
+            >
+              <Feather name="log-out" size={20} color="#EF4444" />
+              <Text style={styles.settingsMenuTextDanger}>Exit board</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* Manage Board Modal */}
+      <ManageBoardModal
+        visible={showManageMembersModal}
+        sessionId={sessionId}
+        sessionName={session?.name || "Board"}
+        sessionCreatorId={session?.created_by}
+        participants={participants}
+        onClose={() => setShowManageMembersModal(false)}
+        onExitBoard={handleExitBoard}
+        onParticipantsChange={loadParticipants}
+      />
 
       {selectedCardForDiscussion && (
         <CardDiscussionModal
@@ -1177,6 +1309,23 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
           cardTitle={selectedCardForDiscussion.cardTitle}
           participants={participants}
           onClose={() => setSelectedCardForDiscussion(null)}
+        />
+      )}
+
+      {/* Expanded Card Modal */}
+      {selectedCardForExpansion && (
+        <ExpandedCardModal
+          visible={isExpandedModalVisible}
+          card={selectedCardForExpansion}
+          onClose={() => {
+            setIsExpandedModalVisible(false);
+            setSelectedCardForExpansion(null);
+          }}
+          onSave={async () => {
+            // Card is already saved in this board
+          }}
+          isSaved={true}
+          currentMode={session?.name || "board"}
         />
       )}
 
@@ -1391,5 +1540,51 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#FF3B30",
     fontWeight: "400",
+  },
+  // New settings dropdown menu styles
+  settingsDropdownOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.1)",
+  },
+  settingsDropdownMenu: {
+    position: "absolute",
+    top: 50,
+    right: 16,
+    backgroundColor: "white",
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 220,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  settingsMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  settingsMenuText: {
+    fontSize: 16,
+    color: "#374151",
+    fontWeight: "400",
+  },
+  settingsMenuTextDanger: {
+    fontSize: 16,
+    color: "#EF4444",
+    fontWeight: "400",
+  },
+  settingsMenuDivider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: 4,
+    marginHorizontal: 16,
   },
 });

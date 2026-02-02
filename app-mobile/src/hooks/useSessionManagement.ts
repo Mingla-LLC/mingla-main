@@ -511,7 +511,8 @@ export const useSessionManagement = () => {
       }
 
 
-      // Step 3: Check if all participants have accepted
+      // Step 3: Check membership count (source of truth for state transitions)
+      // Count accepted members to determine if session should become active
       const { data: allParticipants, error: participantsError } = await supabase
         .from('session_participants')
         .select('has_accepted, user_id')
@@ -529,9 +530,12 @@ export const useSessionManagement = () => {
         return;
       }
 
-      const allAccepted = allParticipants?.every(p => p.has_accepted) || false;
+      // Membership count is the source of truth for state transitions
+      const acceptedMembers = allParticipants?.filter(p => p.has_accepted) || [];
+      const acceptedCount = acceptedMembers.length;
 
-      if (allAccepted && allParticipants.length >= 2) {
+      // Session becomes active when at least 2 members have accepted
+      if (acceptedCount >= 2) {
         
         // Get session details for board creation
         const { data: sessionData, error: sessionError } = await supabase
@@ -543,57 +547,98 @@ export const useSessionManagement = () => {
         if (sessionError || !sessionData) {
           console.error('❌ Error fetching session:', sessionError);
         } else {
-          // Create board
-          const { data: boardData, error: boardError } = await supabase
+          // IDEMPOTENT BOARD CREATION: Check if board already exists for this session
+          // This prevents duplicate boards if multiple join events arrive simultaneously
+          const { data: existingBoard, error: existingBoardError } = await supabase
             .from('boards')
-            .insert({
-              name: sessionData.name,
-              description: `Collaborative board for ${sessionData.name}`,
-              created_by: sessionData.created_by,
-              is_public: false,
-              session_id: invite.sessionId
-            })
-            .select()
-            .single();
+            .select('id')
+            .eq('session_id', invite.sessionId)
+            .maybeSingle();
 
-          if (boardError) {
-            console.error('❌ Error creating board:', boardError);
-          } else {
-            
-            // Update session status and board_id
-            const { error: sessionUpdateError } = await supabase
-              .from('collaboration_sessions')
-              .update({ 
-                status: 'active',
-                board_id: boardData.id,
-                updated_at: new Date().toISOString()
+          if (existingBoardError) {
+            console.error('❌ Error checking for existing board:', existingBoardError);
+          }
+
+          let boardId: string | null = existingBoard?.id || null;
+
+          // Only create board if one doesn't already exist
+          if (!boardId) {
+            const { data: boardData, error: boardError } = await supabase
+              .from('boards')
+              .insert({
+                name: sessionData.name,
+                description: `Collaborative board for ${sessionData.name}`,
+                created_by: sessionData.created_by,
+                is_public: false,
+                session_id: invite.sessionId
               })
-              .eq('id', invite.sessionId);
+              .select()
+              .single();
 
-            if (sessionUpdateError) {
-              console.error('❌ Error updating session status:', sessionUpdateError);
+            if (boardError) {
+              // Check if error is due to unique constraint (another concurrent request created the board)
+              if (boardError.code === '23505') {
+                console.log('Board already created by another request, fetching existing board...');
+                const { data: refetchedBoard } = await supabase
+                  .from('boards')
+                  .select('id')
+                  .eq('session_id', invite.sessionId)
+                  .single();
+                boardId = refetchedBoard?.id || null;
+              } else {
+                console.error('❌ Error creating board:', boardError);
+              }
             } else {
+              boardId = boardData.id;
+              console.log('✅ Board created successfully:', boardId);
+            }
+          } else {
+            console.log('✅ Board already exists for session, skipping creation:', boardId);
+          }
+
+          // Update session status and board_id if we have a board
+          if (boardId) {
+            // Only update if session is not already active (idempotent)
+            if (sessionData.status !== 'active') {
+              const { error: sessionUpdateError } = await supabase
+                .from('collaboration_sessions')
+                .update({ 
+                  status: 'active',
+                  board_id: boardId,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', invite.sessionId)
+                .eq('status', 'pending'); // Only update if still pending (optimistic locking)
+
+              if (sessionUpdateError) {
+                console.error('❌ Error updating session status:', sessionUpdateError);
+              } else {
+                console.log('✅ Session status updated to active');
+              }
             }
 
-            // Add all participants as board collaborators
-            const collaborators = allParticipants.map(p => ({
-              board_id: boardData.id,
-              user_id: p.user_id,
-              role: p.user_id === sessionData.created_by ? 'owner' : 'collaborator'
-            }));
+            // Add all accepted participants as board collaborators (idempotent with ON CONFLICT)
+            for (const participant of acceptedMembers) {
+              const { error: collaboratorError } = await supabase
+                .from('board_collaborators')
+                .upsert({
+                  board_id: boardId,
+                  user_id: participant.user_id,
+                  role: participant.user_id === sessionData.created_by ? 'owner' : 'collaborator'
+                }, {
+                  onConflict: 'board_id,user_id',
+                  ignoreDuplicates: true
+                });
 
-            const { error: collaboratorsError } = await supabase
-              .from('board_collaborators')
-              .insert(collaborators);
-
-            if (collaboratorsError) {
-              console.error('❌ Error adding collaborators:', collaboratorsError);
-            } else {
+              if (collaboratorError && collaboratorError.code !== '23505') {
+                console.error('❌ Error adding collaborator:', collaboratorError);
+              }
             }
           }
         }
 
       } else {
+        console.log(`Session still pending: ${acceptedCount}/2 members accepted`);
       }
 
       // Step 4: Remove from UI and reload sessions

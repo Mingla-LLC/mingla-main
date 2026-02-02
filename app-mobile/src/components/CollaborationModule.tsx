@@ -593,6 +593,108 @@ export default function CollaborationModule({
         console.error("Error adding participant:", participantError);
       }
 
+      // Check membership count to determine if session should become active
+      // Membership count is the source of truth for state transitions
+      const { data: allParticipants, error: participantsError } = await supabase
+        .from("session_participants")
+        .select("has_accepted, user_id")
+        .eq("session_id", invite.session_id);
+
+      if (!participantsError && allParticipants) {
+        const acceptedMembers = allParticipants.filter(p => p.has_accepted);
+        const acceptedCount = acceptedMembers.length;
+
+        // Session becomes active when at least 2 members have accepted
+        if (acceptedCount >= 2) {
+          // Get session details
+          const { data: sessionDetails, error: sessionFetchError } = await supabase
+            .from("collaboration_sessions")
+            .select("*")
+            .eq("id", invite.session_id)
+            .single();
+
+          if (!sessionFetchError && sessionDetails) {
+            // IDEMPOTENT BOARD CREATION: Check if board already exists
+            const { data: existingBoard } = await supabase
+              .from("boards")
+              .select("id")
+              .eq("session_id", invite.session_id)
+              .maybeSingle();
+
+            let boardId: string | null = existingBoard?.id || null;
+
+            // Only create board if one doesn't already exist
+            if (!boardId) {
+              // Use current user's ID as created_by since RLS requires auth.uid() = created_by
+              // The board is tied to the session, so ownership is determined by session admins
+              const { data: boardData, error: boardError } = await supabase
+                .from("boards")
+                .insert({
+                  name: sessionDetails.name,
+                  description: `Collaborative board for ${sessionDetails.name}`,
+                  created_by: user.id,
+                  is_public: false,
+                  session_id: invite.session_id
+                })
+                .select()
+                .single();
+
+              if (boardError) {
+                // Handle unique constraint error (concurrent board creation)
+                if (boardError.code === '23505') {
+                  const { data: refetchedBoard } = await supabase
+                    .from("boards")
+                    .select("id")
+                    .eq("session_id", invite.session_id)
+                    .single();
+                  boardId = refetchedBoard?.id || null;
+                } else {
+                  console.error("Error creating board:", boardError);
+                }
+              } else {
+                boardId = boardData.id;
+                console.log("✅ Board created successfully:", boardId);
+              }
+            }
+
+            // Update session status to active if we have a board
+            if (boardId && sessionDetails.status !== 'active') {
+              const { error: sessionUpdateError } = await supabase
+                .from("collaboration_sessions")
+                .update({
+                  status: "active",
+                  board_id: boardId,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("id", invite.session_id)
+                .eq("status", "pending"); // Optimistic locking
+
+              if (sessionUpdateError) {
+                console.error("Error updating session status:", sessionUpdateError);
+              } else {
+                console.log("✅ Session status updated to active");
+              }
+            }
+
+            // Add all accepted participants as board collaborators (idempotent)
+            if (boardId) {
+              for (const participant of acceptedMembers) {
+                await supabase
+                  .from("board_collaborators")
+                  .upsert({
+                    board_id: boardId,
+                    user_id: participant.user_id,
+                    role: participant.user_id === sessionDetails.created_by ? 'owner' : 'collaborator'
+                  }, {
+                    onConflict: "board_id,user_id",
+                    ignoreDuplicates: true
+                  });
+              }
+            }
+          }
+        }
+      }
+
       // Create preference record for the accepting user
       const { error: preferencesError } = await supabase
         .from("board_session_preferences")

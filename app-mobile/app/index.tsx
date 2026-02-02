@@ -45,6 +45,7 @@ import ShareModal from "../src/components/ShareModal";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
 import { SessionService } from "../src/services/sessionService";
+import { BoardInviteService } from "../src/services/boardInviteService";
 import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
@@ -728,14 +729,41 @@ function AppContent() {
             accountPreferences={accountPreferences}
             navigationData={activityNavigation}
             onNavigationComplete={() => setActivityNavigation(null)}
-            onSendInvite={(sessionId: string, users: any[]) => {
+            onSendInvite={async (sessionId: string, users: any[]) => {
               console.log(
                 "Sending invite to session:",
                 sessionId,
                 "users:",
                 users
               );
-              // Handle invite logic here
+              
+              if (!user?.id) {
+                Alert.alert("Error", "You must be logged in to send invites");
+                return;
+              }
+              
+              // Extract friend IDs from the users array
+              const friendIds = users.map(u => u.id);
+              
+              // Send the invites using BoardInviteService
+              const result = await BoardInviteService.sendFriendInvites(
+                sessionId,
+                friendIds,
+                user.id
+              );
+              
+              if (result.success) {
+                Alert.alert(
+                  "Invites Sent",
+                  `Successfully sent ${users.length} invite${users.length > 1 ? 's' : ''}`
+                );
+              } else {
+                console.error("Failed to send invites:", result.errors);
+                Alert.alert(
+                  "Error",
+                  result.errors?.join('\n') || "Failed to send invites"
+                );
+              }
             }}
             onScheduleFromSaved={handlers.handleScheduleFromSaved}
             onPurchaseFromSaved={(card: any, purchaseOption: any) => {

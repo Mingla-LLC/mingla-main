@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useRef } from "react";
 import {
   Text,
   View,
@@ -6,6 +6,9 @@ import {
   StyleSheet,
   ActivityIndicator,
   FlatList,
+  Modal,
+  Pressable,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -46,6 +49,7 @@ interface BoardsTabProps {
   onOpenBoard: (boardId: string) => void;
   onInviteToSession: (boardId: string, boardName: string) => void;
   onToggleNotifications: (boardId: string) => void;
+  onManageMembers?: (boardId: string, boardName: string) => void;
   onExitBoard: (boardId: string, boardName: string) => void;
   onLeaveBoard: (boardId: string, boardName: string) => void;
   boardNotifications: { [boardId: string]: boolean };
@@ -58,11 +62,46 @@ const BoardsTab = ({
   onOpenBoard,
   onInviteToSession,
   onToggleNotifications,
+  onManageMembers,
   onExitBoard,
   onLeaveBoard,
   boardNotifications,
   isUserAdmin,
 }: BoardsTabProps) => {
+  const [menuOpenForBoard, setMenuOpenForBoard] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const menuButtonRefs = useRef<{ [key: string]: View | null }>({});
+
+  const handleMenuPress = (boardId: string) => {
+    const buttonRef = menuButtonRefs.current[boardId];
+    if (buttonRef) {
+      buttonRef.measureInWindow((x, y, width, height) => {
+        const screenWidth = Dimensions.get("window").width;
+        const screenHeight = Dimensions.get("window").height;
+        const menuWidth = 220;
+        const menuHeight = 110; // Approximate height of menu
+        
+        // Position menu to the left of the button, below it
+        let menuX = x + width - menuWidth; // Align right edge with button right edge
+        let menuY = y + height + 8; // Below the button with 8px gap
+        
+        // Make sure menu doesn't go off screen horizontally
+        if (menuX < 16) menuX = 16;
+        if (menuX + menuWidth > screenWidth - 16) menuX = screenWidth - menuWidth - 16;
+        
+        // If menu would go below screen, show it above the button
+        if (menuY + menuHeight > screenHeight - 100) {
+          menuY = y - menuHeight - 8;
+        }
+        
+        setMenuPosition({ x: menuX, y: menuY });
+        setMenuOpenForBoard(boardId);
+      });
+    } else {
+      setMenuOpenForBoard(boardId);
+    }
+  };
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -264,6 +303,41 @@ const BoardsTab = ({
       alignItems: "center",
       paddingVertical: 48,
     },
+    menuOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.3)",
+    },
+    menuContainer: {
+      position: "absolute",
+      backgroundColor: "white",
+      borderRadius: 12,
+      width: 220,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 8,
+      overflow: "hidden",
+    },
+    menuItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      gap: 12,
+    },
+    menuItemBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: "#f3f4f6",
+    },
+    menuItemText: {
+      fontSize: 15,
+      color: "#374151",
+      flex: 1,
+    },
+    menuItemTextDanger: {
+      color: "#ef4444",
+    },
   });
 
   const getIconComponent = (iconName: any) => {
@@ -392,22 +466,14 @@ const BoardsTab = ({
               </TouchableOpacity>
             )}
 
-            {/* Board Menu - would need DropdownMenu component */}
+            {/* Board Menu */}
             <TouchableOpacity
+              ref={(ref) => { menuButtonRefs.current[board.id] = ref; }}
+              onPress={() => handleMenuPress(board.id)}
               style={[styles.secondaryButton, styles.menuButton]}
             >
               <Ionicons name="ellipsis-horizontal" size={16} color="#6b7280" />
             </TouchableOpacity>
-
-            {/* Leave Board */}
-            {!isUserAdmin(board) && (
-              <TouchableOpacity
-                onPress={() => onLeaveBoard(board.id, board.name)}
-                style={[styles.secondaryButton, styles.leaveButton]}
-              >
-                <Ionicons name="log-out" size={16} color="#ef4444" />
-              </TouchableOpacity>
-            )}
           </View>
         </View>
       </View>
@@ -434,16 +500,89 @@ const BoardsTab = ({
     );
   };
 
+  // Only show active sessions in the boards tab
+  const activeBoards = boards.filter((board) => board.status === "active");
+
+  const selectedBoard = boards.find((b) => b.id === menuOpenForBoard);
+  const notificationsEnabled = menuOpenForBoard
+    ? boardNotifications[menuOpenForBoard]
+    : false;
+
   return (
     <View style={styles.container}>
       <FlatList
-        data={boards}
+        data={activeBoards}
         renderItem={renderBoardCard}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={renderEmptyComponent}
         showsVerticalScrollIndicator={false}
       />
+
+      {/* Board Menu Modal */}
+      <Modal
+        visible={menuOpenForBoard !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpenForBoard(null)}
+      >
+        <Pressable
+          style={styles.menuOverlay}
+          onPress={() => setMenuOpenForBoard(null)}
+        >
+          <Pressable style={[styles.menuContainer, { left: menuPosition.x, top: menuPosition.y }]}>
+            {/* Toggle Notifications */}
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemBorder]}
+              onPress={() => {
+                if (menuOpenForBoard) {
+                  onToggleNotifications(menuOpenForBoard);
+                }
+                setMenuOpenForBoard(null);
+              }}
+            >
+              <Ionicons
+                name={notificationsEnabled ? "notifications-off" : "notifications"}
+                size={20}
+                color="#374151"
+              />
+              <Text style={styles.menuItemText}>
+                {notificationsEnabled ? "Turn off notifications" : "Turn on notifications"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Manage Members */}
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemBorder]}
+              onPress={() => {
+                if (menuOpenForBoard && selectedBoard && onManageMembers) {
+                  onManageMembers(menuOpenForBoard, selectedBoard.name);
+                }
+                setMenuOpenForBoard(null);
+              }}
+            >
+              <Ionicons name="people" size={20} color="#374151" />
+              <Text style={styles.menuItemText}>Manage members</Text>
+            </TouchableOpacity>
+
+            {/* Exit Board */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                if (menuOpenForBoard && selectedBoard) {
+                  onExitBoard(menuOpenForBoard, selectedBoard.name);
+                }
+                setMenuOpenForBoard(null);
+              }}
+            >
+              <Ionicons name="exit-outline" size={20} color="#ef4444" />
+              <Text style={[styles.menuItemText, styles.menuItemTextDanger]}>
+                Exit board
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 };

@@ -153,13 +153,14 @@ export const CreateSessionModal: React.FC = () => {
 
       if (sessionType === 'board') {
         // Create board session
+        // Status starts as 'pending' until at least 2 members have accepted
         const { data: sessionData, error: sessionError } = await supabase
           .from('collaboration_sessions')
           .insert({
             name: sessionName.trim(),
             created_by: user.id,
             session_type: 'board',
-            status: 'active',
+            status: 'pending',
             is_active: true,
             max_participants: maxParticipants ? parseInt(maxParticipants) : null,
             last_activity_at: new Date().toISOString(),

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, TextInput, StyleSheet, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { Text, View, TouchableOpacity, TextInput, StyleSheet, Modal, ActivityIndicator, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFriends } from '../hooks/useFriends';
 
 interface User {
   id: string;
@@ -14,27 +15,48 @@ interface UserInviteModalProps {
   isOpen: boolean;
   onClose: () => void;
   sessionName: string;
-  onInviteUsers: (users: User[]) => void;
+  onSendInvites: (users: User[]) => void;
+  friends?: User[]; // Optional: pass friends from parent, otherwise use useFriends hook
+  existingMemberIds?: string[]; // IDs of users already in the session to exclude from results
 }
 
-const mockUsers: User[] = [
-  { id: '1', name: 'Sarah Chen', isOnline: true },
-  { id: '2', name: 'Alex Rivera', isOnline: true },
-  { id: '3', name: 'Jamie Park', isOnline: false, lastSeen: '2 hours ago' },
-  { id: '4', name: 'Morgan Lee', isOnline: true },
-  { id: '5', name: 'Casey Kim', isOnline: false, lastSeen: '1 day ago' },
-  { id: '6', name: 'Taylor Johnson', isOnline: false, lastSeen: '3 hours ago' },
-  { id: '7', name: 'Riley Davis', isOnline: true },
-  { id: '8', name: 'Alex Chen', isOnline: false, lastSeen: '5 minutes ago' }
-];
-
-export default function UserInviteModal({ isOpen, onClose, sessionName, onInviteUsers }: UserInviteModalProps) {
+export default function UserInviteModal({ isOpen, onClose, sessionName, onSendInvites, friends: propFriends, existingMemberIds = [] }: UserInviteModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+  const { friends: dbFriends, fetchFriends, loading } = useFriends();
 
-  const filteredUsers = mockUsers.filter(user => 
-    user.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Fetch friends when modal opens
+  useEffect(() => {
+    if (isOpen && !propFriends) {
+      fetchFriends();
+    }
+  }, [isOpen, propFriends, fetchFriends]);
+
+  // Transform database friends to match User interface
+  const transformedFriends: User[] = React.useMemo(() => {
+    if (propFriends && propFriends.length > 0) {
+      return propFriends;
+    }
+    return dbFriends.map((friend) => ({
+      id: friend.friend_user_id || friend.id,
+      name:
+        friend.display_name ||
+        `${friend.first_name || ""} ${friend.last_name || ""}`.trim() ||
+        friend.username ||
+        "Unknown",
+      avatar: friend.avatar_url,
+      isOnline: false, // Default to offline, can be enhanced with presence later
+      lastSeen: undefined,
+    }));
+  }, [dbFriends, propFriends]);
+
+  const filteredUsers = transformedFriends.filter(user => {
+    // Filter by search query
+    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase());
+    // Exclude users who are already members of the session
+    const isNotExistingMember = !existingMemberIds.includes(user.id);
+    return matchesSearch && isNotExistingMember;
+  });
 
   const toggleUser = (user: User) => {
     setSelectedUsers(prev => 
@@ -46,12 +68,20 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onInvite
 
   const handleInvite = () => {
     if (selectedUsers.length > 0) {
-      onInviteUsers(selectedUsers);
+      onSendInvites(selectedUsers);
       setSelectedUsers([]);
       setSearchQuery('');
       onClose();
     }
   };
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedUsers([]);
+      setSearchQuery('');
+    }
+  }, [isOpen]);
 
   return (
     <Modal
@@ -115,41 +145,66 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onInvite
           )}
 
           {/* User List */}
-          <View style={styles.userList}>
-            {filteredUsers.map(user => {
-              const isSelected = selectedUsers.find(u => u.id === user.id);
-              return (
-                <TouchableOpacity
-                  key={user.id}
-                  onPress={() => toggleUser(user)}
-                  style={[
-                    styles.userItem,
-                    isSelected ? styles.userItemSelected : styles.userItemUnselected
-                  ]}
-                >
-                  <View style={styles.userAvatarContainer}>
-                    <View style={styles.userAvatar}>
-                      <Text style={styles.userAvatarText}>{user.name[0]}</Text>
+          <ScrollView style={styles.userList} contentContainerStyle={styles.userListContent}>
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#eb7825" />
+                <Text style={styles.loadingText}>Loading friends...</Text>
+              </View>
+            ) : transformedFriends.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="people-outline" size={48} color="#d1d5db" />
+                <Text style={styles.emptyTitle}>No Friends Yet</Text>
+                <Text style={styles.emptySubtitle}>
+                  Add friends to invite them to your sessions
+                </Text>
+              </View>
+            ) : filteredUsers.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="search-outline" size={48} color="#d1d5db" />
+                <Text style={styles.emptyTitle}>No Results</Text>
+                <Text style={styles.emptySubtitle}>
+                  No friends match "{searchQuery}"
+                </Text>
+              </View>
+            ) : (
+              filteredUsers.map(user => {
+                const isSelected = selectedUsers.find(u => u.id === user.id);
+                return (
+                  <TouchableOpacity
+                    key={user.id}
+                    onPress={() => toggleUser(user)}
+                    style={[
+                      styles.userItem,
+                      isSelected ? styles.userItemSelected : styles.userItemUnselected
+                    ]}
+                  >
+                    <View style={styles.userAvatarContainer}>
+                      <View style={styles.userAvatar}>
+                        <Text style={styles.userAvatarText}>{user.name[0]}</Text>
+                      </View>
+                      {user.isOnline && (
+                        <View style={styles.onlineIndicator} />
+                      )}
                     </View>
-                    {user.isOnline && (
-                      <View style={styles.onlineIndicator} />
-                    )}
-                  </View>
-                  
-                  <View style={styles.userInfo}>
-                    <Text style={styles.userName}>{user.name}</Text>
-                    <Text style={styles.userStatus}>
-                      {user.isOnline ? 'Online' : `Last seen ${user.lastSeen}`}
-                    </Text>
-                  </View>
+                    
+                    <View style={styles.userInfo}>
+                      <Text style={styles.userName}>{user.name}</Text>
+                      {user.lastSeen && (
+                        <Text style={styles.userStatus}>
+                          {user.isOnline ? 'Online' : `Last seen ${user.lastSeen}`}
+                        </Text>
+                      )}
+                    </View>
 
-                  {isSelected && (
-                    <Ionicons name="checkmark" size={20} color="#eb7825" />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={20} color="#eb7825" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </ScrollView>
 
           {/* Footer */}
           <View style={styles.footer}>
@@ -186,7 +241,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     width: '100%',
     maxWidth: 400,
-    maxHeight: '80%',
+    maxHeight: '90%',
+    minHeight: '70%',
     flexDirection: 'column',
   },
   header: {
@@ -291,6 +347,38 @@ const styles = StyleSheet.create({
   userList: {
     flex: 1,
     padding: 16,
+  },
+  userListContent: {
+    flexGrow: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  emptySubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
   },
   userItem: {
     width: '100%',

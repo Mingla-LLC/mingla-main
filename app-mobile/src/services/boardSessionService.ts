@@ -71,13 +71,14 @@ class BoardSessionService {
         console.error("❌ Error fetching all sessions:", allSessionsError);
       }
 
-      // 3. Filter for board sessions - show ALL collaboration sessions the user is a member of
-      // (regardless of session_type - group_hangout, board, etc. are all considered boards)
-      // Only exclude archived sessions
+      // 3. Filter for active board sessions only
+      // A session becomes "active" when it has at least 2 accepted members
+      // Only show sessions that are not archived AND have status 'active'
       const sessions = (allSessions || []).filter((s) => {
         const notArchived = s.archived_at === null;
+        const isActive = s.status === "active";
 
-        return notArchived;
+        return notArchived && isActive;
       });
 
       if (!sessions || sessions.length === 0) {
@@ -97,7 +98,7 @@ class BoardSessionService {
 
       const boardSessionsData: BoardSessionData[] = await Promise.all(
         sessions.map(async (session) => {
-          // Get participants
+          // Get participants with admin status
           const { data: participantsData, error: participantsError } =
             await supabase
               .from("session_participants")
@@ -106,6 +107,7 @@ class BoardSessionService {
               user_id,
               joined_at,
               has_accepted,
+              is_admin,
               profiles (
                 id,
                 username,
@@ -197,9 +199,13 @@ class BoardSessionService {
 
           const boardType = typeMap[session.session_type] || "group-hangout";
 
-          // Get admins (creator is always admin, and any other admins if role column exists)
-          // Since role column doesn't exist, creator is the only admin
-          const admins = [session.created_by];
+          // Get admins: creator is always admin, plus any participants with is_admin = true
+          const admins: string[] = [session.created_by];
+          (participantsData || []).forEach((p: any) => {
+            if (p.is_admin && !admins.includes(p.user_id)) {
+              admins.push(p.user_id);
+            }
+          });
 
           // Format dates
           const createdAt = session.created_at

@@ -438,12 +438,13 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
     setIsCreating(true);
     try {
       // Create the session in the database
+      // Status starts as 'pending' until at least 2 members have accepted
       const { data: sessionData, error: sessionError } = await supabase
         .from('collaboration_sessions')
         .insert({
           name: newSessionName.trim(),
           created_by: user.id,
-          status: 'active',
+          status: 'pending',
         })
         .select()
         .single();

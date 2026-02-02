@@ -28,78 +28,29 @@ interface CollaborationSession {
 interface AddToBoardModalProps {
   isOpen: boolean;
   onClose: () => void;
-  friend: Friend;
-  onAddToBoard: (sessionIds: string[], friend: Friend) => void;
+  friend: Friend | null;
+  boardsSessions?: any[];
+  onConfirm: (sessionIds: string[], friend: Friend) => void;
 }
 
-// Mock collaboration sessions - this would come from app state in real implementation
-const mockSessions: CollaborationSession[] = [
-  {
-    id: 'session-1',
-    name: 'Weekend Squad',
-    status: 'active',
-    participants: [
-      { id: '1', name: 'Sarah Chen', username: 'sarahc', status: 'online', isOnline: true },
-      { id: '2', name: 'Marcus Johnson', username: 'marcusj', status: 'online', isOnline: true }
-    ],
-    createdBy: 'me',
-    createdAt: '2 days ago',
-    lastActivity: '1h ago',
-    hasCollabPreferences: true,
-    pendingParticipants: 0,
-    totalParticipants: 3,
-    boardCards: 4
-  },
-  {
-    id: 'session-2',
-    name: 'Dinner Club',
-    status: 'pending',
-    participants: [
-      { id: '3', name: 'Jamie Park', username: 'jamiep', status: 'offline', isOnline: false }
-    ],
-    createdBy: 'me',
-    createdAt: '1 day ago',
-    lastActivity: '5h ago',
-    hasCollabPreferences: false,
-    pendingParticipants: 1,
-    totalParticipants: 2,
-    boardCards: 2
-  },
-  {
-    id: 'session-3',
-    name: 'Adventure Seekers',
-    status: 'active',
-    participants: [
-      { id: '4', name: 'Taylor Kim', username: 'taylork', status: 'online', isOnline: true },
-      { id: '5', name: 'Jordan Lee', username: 'jordanl', status: 'away', isOnline: false },
-      { id: '6', name: 'Alex Rivera', username: 'alexr', status: 'online', isOnline: true }
-    ],
-    createdBy: 'me',
-    createdAt: '3 days ago',
-    lastActivity: '30m ago',
-    hasCollabPreferences: true,
-    pendingParticipants: 0,
-    totalParticipants: 4,
-    boardCards: 6
-  },
-  {
-    id: 'session-4',
-    name: 'Coffee & Culture',
-    status: 'active',
-    participants: [
-      { id: '7', name: 'Sam Wilson', username: 'samw', status: 'online', isOnline: true }
-    ],
-    createdBy: 'me',
-    createdAt: '1 week ago',
-    lastActivity: '2h ago',
-    hasCollabPreferences: true,
-    pendingParticipants: 0,
-    totalParticipants: 2,
-    boardCards: 3
-  }
-];
+// Helper to format relative time
+const formatRelativeTime = (dateString: string | undefined): string => {
+  if (!dateString) return 'Unknown';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+};
 
-export default function AddToBoardModal({ isOpen, onClose, friend, onAddToBoard }: AddToBoardModalProps) {
+export default function AddToBoardModal({ isOpen, onClose, friend, boardsSessions = [], onConfirm }: AddToBoardModalProps) {
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [isAdding, setIsAdding] = useState(false);
 
@@ -111,17 +62,17 @@ export default function AddToBoardModal({ isOpen, onClose, friend, onAddToBoard 
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !friend) return null;
 
   const handleAddToBoard = async () => {
-    if (selectedSessions.length === 0) return;
+    if (selectedSessions.length === 0 || !friend) return;
     
     setIsAdding(true);
     
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    onAddToBoard(selectedSessions, friend);
+    onConfirm(selectedSessions, friend);
     setIsAdding(false);
     setSelectedSessions([]);
     onClose();
@@ -170,8 +121,29 @@ export default function AddToBoardModal({ isOpen, onClose, friend, onAddToBoard 
     }
   };
 
+  // Transform boardsSessions to CollaborationSession format
+  const sessions: CollaborationSession[] = (boardsSessions || []).map((board: any) => ({
+    id: board.session_id || board.id,
+    name: board.name || 'Unnamed Board',
+    status: board.status || 'active',
+    participants: (board.participants || []).map((p: any) => ({
+      id: p.id || p.user_id,
+      name: p.name || p.display_name || `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown',
+      username: p.username || 'user',
+      status: 'offline' as const,
+      isOnline: false,
+    })),
+    createdBy: board.creatorId || board.created_by || 'unknown',
+    createdAt: formatRelativeTime(board.createdAt || board.created_at),
+    lastActivity: formatRelativeTime(board.lastActivity || board.last_activity || board.updated_at),
+    hasCollabPreferences: board.hasCollabPreferences || false,
+    pendingParticipants: board.pendingParticipants || 0,
+    totalParticipants: board.participants?.length || 0,
+    boardCards: board.cardsCount || board.cards_count || 0,
+  }));
+
   // Filter out sessions where the friend is already a participant
-  const availableSessions = mockSessions.filter(session => 
+  const availableSessions = sessions.filter(session => 
     !session.participants.some(participant => participant.id === friend.id) &&
     session.status !== 'archived'
   );

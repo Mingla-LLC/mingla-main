@@ -45,6 +45,59 @@ const styles = StyleSheet.create({
     gap: 24,
     paddingBottom: 24,
   },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 8,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabActive: {
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabInactive: {
+    backgroundColor: 'transparent',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  tabTextActive: {
+    color: '#eb7825',
+  },
+  tabTextInactive: {
+    color: '#6B7280',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 8,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   soloExplorerCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -157,6 +210,12 @@ const styles = StyleSheet.create({
   },
   statusLockedText: {
     color: '#6B7280',
+  },
+  statusPending: {
+    backgroundColor: '#FEF3C7',
+  },
+  statusPendingText: {
+    color: '#D97706',
   },
   sessionDetails: {
     flexDirection: 'row',
@@ -328,6 +387,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
   },
+  pendingNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFBEB',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  pendingNoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#D97706',
+  },
 });
 
 const SessionsTab = ({
@@ -344,6 +417,7 @@ const SessionsTab = ({
 }: SessionsTabProps) => {
   const isSoloMode = currentMode === 'solo';
   const [switchingSessionId, setSwitchingSessionId] = React.useState<string | null>(null);
+  const [activeTab, setActiveTab] = React.useState<'active' | 'pending'>('active');
   
   const isSessionActive = (session: CollaborationSession) => {
     return currentMode === session.id || currentMode === session.name;
@@ -443,6 +517,12 @@ const SessionsTab = ({
     });
   };
 
+  // Filter sessions by their actual status property
+  // This ensures sessions are displayed in the correct tab regardless of which prop they're passed in
+  const allSessions = [...activeSessions, ...pendingSessions];
+  const filteredActiveSessions = allSessions.filter(s => s.status === 'active' || s.status === 'voting' || s.status === 'locked');
+  const filteredPendingSessions = allSessions.filter(s => s.status === 'pending');
+
   return (
     <View style={styles.sessionsContainer}>
       {/* Solo Explorer Section */}
@@ -471,11 +551,38 @@ const SessionsTab = ({
         )}
       </TouchableOpacity>
 
+      {/* Session Tabs */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'active' ? styles.tabActive : styles.tabInactive]}
+          onPress={() => setActiveTab('active')}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.tabText, activeTab === 'active' ? styles.tabTextActive : styles.tabTextInactive]}>
+            Active ({filteredActiveSessions.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'pending' ? styles.tabActive : styles.tabInactive]}
+          onPress={() => setActiveTab('pending')}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.tabText, activeTab === 'pending' ? styles.tabTextActive : styles.tabTextInactive]}>
+            Pending ({filteredPendingSessions.length})
+          </Text>
+          {filteredPendingSessions.length > 0 && activeTab !== 'pending' && (
+            <View style={styles.tabBadge}>
+              <Text style={styles.tabBadgeText}>{filteredPendingSessions.length}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
       {/* Active Sessions Section */}
-      {activeSessions.length > 0 && (
+      {activeTab === 'active' && filteredActiveSessions.length > 0 && (
         <View style={styles.activeSessionsSection}>
           <Text style={styles.activeSessionsHeader}>Active Sessions</Text>
-          {activeSessions.map((session) => {
+          {filteredActiveSessions.map((session) => {
             const participantInitials = getParticipantInitials(session.participants || []);
             const cardsCount = session.boardCards || 0;
             const membersCount = session.totalParticipants || session.participants?.length || 0;
@@ -610,8 +717,8 @@ const SessionsTab = ({
         </View>
       )}
 
-      {/* Empty State */}
-      {activeSessions.length === 0 && (
+      {/* Active Sessions Empty State */}
+      {activeTab === 'active' && filteredActiveSessions.length === 0 && (
         <View style={styles.emptyState}>
           <View style={styles.emptyStateIcon}>
             <Ionicons name="people" size={32} color="#9CA3AF" />
@@ -633,6 +740,87 @@ const SessionsTab = ({
             <Ionicons name="add" size={20} color="#FFFFFF" />
             <Text style={styles.startCollaborationButtonText}>Create Session</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Pending Sessions Section */}
+      {activeTab === 'pending' && filteredPendingSessions.length > 0 && (
+        <View style={styles.activeSessionsSection}>
+          <Text style={styles.activeSessionsHeader}>Pending Sessions</Text>
+          {filteredPendingSessions.map((session) => {
+            const participantInitials = getParticipantInitials(session.participants || []);
+            const membersCount = session.totalParticipants || session.participants?.length || 0;
+            const pendingCount = session.pendingParticipants || 0;
+            
+            return (
+              <View key={session.id} style={styles.sessionCard}>
+                <View style={styles.sessionHeader}>
+                  <View style={styles.sessionTitleRow}>
+                    <Text style={styles.sessionTitle}>{session.name}</Text>
+                    <View style={[styles.statusBadge, styles.statusPending]}>
+                      <Text style={[styles.statusBadgeText, styles.statusPendingText]}>
+                        Pending
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                
+                <View style={styles.sessionDetails}>
+                  <View style={styles.sessionDetail}>
+                    <Ionicons name="people" size={14} color="#6B7280" />
+                    <Text style={styles.sessionDetailText}>{membersCount} invited</Text>
+                  </View>
+                  <View style={styles.sessionDetail}>
+                    <Ionicons name="hourglass" size={14} color="#F59E0B" />
+                    <Text style={styles.sessionDetailText}>{pendingCount} awaiting response</Text>
+                  </View>
+                </View>
+
+                {participantInitials.length > 0 && (
+                  <View style={styles.participantsRow}>
+                    {participantInitials.slice(0, 3).map((initial, index) => (
+                      <View 
+                        key={index} 
+                        style={[
+                          styles.participantAvatar,
+                          index === 0 && styles.participantAvatarFirst
+                        ]}
+                      >
+                        <Text style={styles.participantInitial}>{initial}</Text>
+                      </View>
+                    ))}
+                    {participantInitials.length > 3 && (
+                      <View style={styles.participantRemainder}>
+                        <Text style={styles.participantRemainderText}>
+                          +{participantInitials.length - 3}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                <View style={styles.pendingNote}>
+                  <Ionicons name="information-circle" size={16} color="#F59E0B" />
+                  <Text style={styles.pendingNoteText}>
+                    Waiting for at least one friend to accept the invite
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Pending Sessions Empty State */}
+      {activeTab === 'pending' && filteredPendingSessions.length === 0 && (
+        <View style={styles.emptyState}>
+          <View style={styles.emptyStateIcon}>
+            <Ionicons name="hourglass-outline" size={32} color="#9CA3AF" />
+          </View>
+          <Text style={styles.emptyStateTitle}>No Pending Sessions</Text>
+          <Text style={styles.emptyStateSubtitle}>
+            You don't have any sessions waiting for responses.
+          </Text>
         </View>
       )}
     </View>
