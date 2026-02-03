@@ -32,6 +32,7 @@ import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 import ShareModal from "../ShareModal";
 import { BoardSettingsDropdown } from "./BoardSettingsDropdown";
+import { SwipeableSessionCards } from "./SwipeableSessionCards";
 
 interface BoardViewScreenProps {
   sessionId: string;
@@ -1026,175 +1027,86 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
       <View style={styles.content}>
         {activeTab === "saved" && (
           <View style={styles.savedContainer}>
-            {/* Session Cards Header */}
-            {savedCards.length > 0 && (
-              <View style={styles.sessionCardsHeader}>
-                <Text style={styles.sessionCardsTitle}>Session Cards</Text>
-                {/*   <View style={styles.sessionCardsNav}>
-                  <Text style={styles.sessionCardsCounter}>
-                    {savedCardsPage * 20 + 1} of {savedCards.length}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.navButton}
-                    onPress={() => {
-                      // Navigate to previous card if implemented
-                    }}
-                  >
-                    <Ionicons name="chevron-back" size={20} color="#6b7280" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.navButton}
-                    onPress={() => {
-                      // Navigate to next card if implemented
-                    }}
-                  >
-                    <Ionicons
-                      name="chevron-forward"
-                      size={20}
-                      color="#6b7280"
-                    />
-                  </TouchableOpacity>
-                </View> */}
-              </View>
-            )}
-
-            <ScrollView
-              onScrollEndDrag={(e) => {
-                const { contentOffset, contentSize, layoutMeasurement } =
-                  e.nativeEvent;
-                const isCloseToBottom =
-                  contentOffset.y + layoutMeasurement.height >=
-                  contentSize.height - 200;
-                if (isCloseToBottom && hasMoreCards && !loadingCards) {
-                  loadSavedCards(savedCardsPage + 1, true);
+            <SwipeableSessionCards
+              cards={savedCards}
+              voteCounts={voteCounts}
+              rsvpCounts={rsvpCounts}
+              onVote={handleVote}
+              onRSVP={handleRSVP}
+              onViewDetails={(card) => {
+                const cardData = card.card_data || card.experience_data || null;
+                
+                // Check if the card/experience data exists and is valid
+                const hasValidCardData = cardData && 
+                  typeof cardData === 'object' && 
+                  (cardData.title || cardData.description || cardData.name);
+                
+                // If card data is completely missing or invalid, show unavailable error
+                if (!hasValidCardData) {
+                  Alert.alert(
+                    "Card Unavailable",
+                    "This experience is no longer available. It may have been removed or is temporarily inaccessible.",
+                    [{ text: "OK" }]
+                  );
+                  return;
                 }
+                
+                // If offline and no cached data, show error
+                if (!networkState.isConnected && !hasValidCardData) {
+                  Alert.alert(
+                    "Offline",
+                    "Unable to load card details. Please check your internet connection and try again.",
+                    [{ text: "OK" }]
+                  );
+                  return;
+                }
+                
+                // Transform to ExpandedCardData format with safe fallbacks
+                const expandedCardData: ExpandedCardData = {
+                  id: cardData.id || card.id,
+                  title: cardData.title || "Untitled Experience",
+                  category: cardData.category || "Experience",
+                  categoryIcon: cardData.categoryIcon || "star",
+                  description: cardData.description || "",
+                  fullDescription: cardData.fullDescription || cardData.description || "",
+                  image: cardData.image || "",
+                  images: cardData.images || [cardData.image].filter(Boolean),
+                  rating: cardData.rating || 4.5,
+                  reviewCount: cardData.reviewCount || 0,
+                  priceRange: cardData.priceRange || "N/A",
+                  distance: cardData.distance || "",
+                  travelTime: cardData.travelTime || "N/A",
+                  address: cardData.address || "",
+                  openingHours: cardData.openingHours,
+                  phone: cardData.phone,
+                  website: cardData.website,
+                  highlights: cardData.highlights || [],
+                  tags: cardData.tags || [],
+                  matchScore: cardData.matchScore || 0,
+                  matchFactors: cardData.matchFactors || {
+                    location: 0,
+                    budget: 0,
+                    category: 0,
+                    time: 0,
+                    popularity: 0,
+                  },
+                  socialStats: {
+                    views: cardData.socialStats?.views || 0,
+                    likes: cardData.socialStats?.likes || 0,
+                    saves: cardData.socialStats?.saves || 0,
+                    shares: cardData.socialStats?.shares || 0,
+                  },
+                  location: cardData.location || (cardData.lat && cardData.lng ? { lat: cardData.lat, lng: cardData.lng } : undefined),
+                  selectedDateTime: cardData.selectedDateTime || new Date(),
+                  strollData: cardData.strollData,
+                  picnicData: cardData.picnicData,
+                };
+                
+                setSelectedCardForExpansion(expandedCardData);
+                setIsExpandedModalVisible(true);
               }}
-              scrollEventThrottle={400}
-            >
-              {loadingCards && savedCards.length === 0 ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#eb7825" />
-                </View>
-              ) : savedCards.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="images-outline" size={64} color="#ccc" />
-                  <Text style={styles.emptyText}>No saved cards yet</Text>
-                  <Text style={styles.emptySubtext}>
-                    Swipe right on cards to save them to this board
-                  </Text>
-                </View>
-              ) : (
-                <>
-                  {savedCards.map((card, index) => {
-                    const voteCount = voteCounts[card.id] || {
-                      yes: 0,
-                      no: 0,
-                      userVote: null,
-                    };
-                    const rsvpCount = rsvpCounts[card.id] || {
-                      responded: 0,
-                      total: participants.filter((p) => p.has_accepted).length,
-                      userRSVP: null,
-                    };
-                    return (
-                      <BoardSessionCard
-                        key={card.id}
-                        card={card}
-                        voteCounts={voteCount}
-                        rsvpCounts={rsvpCount}
-                        onVote={handleVote}
-                        onRSVP={handleRSVP}
-                        onViewDetails={(cardId) => {
-                          const cardData =
-                            card.card_data || card.experience_data || null;
-                          
-                          // Check if the card/experience data exists and is valid
-                          const hasValidCardData = cardData && 
-                            typeof cardData === 'object' && 
-                            (cardData.title || cardData.description || cardData.name);
-                          
-                          // If card data is completely missing or invalid, show unavailable error
-                          if (!hasValidCardData) {
-                            Alert.alert(
-                              "Card Unavailable",
-                              "This experience is no longer available. It may have been removed or is temporarily inaccessible.",
-                              [{ text: "OK" }]
-                            );
-                            return;
-                          }
-                          
-                          // If offline and no cached data, show error
-                          if (!networkState.isConnected && !hasValidCardData) {
-                            Alert.alert(
-                              "Offline",
-                              "Unable to load card details. Please check your internet connection and try again.",
-                              [{ text: "OK" }]
-                            );
-                            return;
-                          }
-                          
-                          // If offline but have cached data, continue with cached data
-                          if (!networkState.isConnected && hasValidCardData) {
-                            console.log("Showing cached card details (offline mode)");
-                          }
-                          
-                          // Transform to ExpandedCardData format with safe fallbacks
-                          const expandedCardData: ExpandedCardData = {
-                            id: cardData.id || card.id,
-                            title: cardData.title || "Untitled Experience",
-                            category: cardData.category || "Experience",
-                            categoryIcon: cardData.categoryIcon || "star",
-                            description: cardData.description || "",
-                            fullDescription: cardData.fullDescription || cardData.description || "",
-                            image: cardData.image || "",
-                            images: cardData.images || [cardData.image].filter(Boolean),
-                            rating: cardData.rating || 4.5,
-                            reviewCount: cardData.reviewCount || 0,
-                            priceRange: cardData.priceRange || "N/A",
-                            distance: cardData.distance || "",
-                            travelTime: cardData.travelTime || "N/A",
-                            address: cardData.address || "",
-                            openingHours: cardData.openingHours,
-                            phone: cardData.phone,
-                            website: cardData.website,
-                            highlights: cardData.highlights || [],
-                            tags: cardData.tags || [],
-                            matchScore: cardData.matchScore || 0,
-                            matchFactors: cardData.matchFactors || {
-                              location: 0,
-                              budget: 0,
-                              category: 0,
-                              time: 0,
-                              popularity: 0,
-                            },
-                            socialStats: {
-                              views: cardData.socialStats?.views || 0,
-                              likes: cardData.socialStats?.likes || 0,
-                              saves: cardData.socialStats?.saves || 0,
-                              shares: cardData.socialStats?.shares || 0,
-                            },
-                            location: cardData.location || (cardData.lat && cardData.lng ? { lat: cardData.lat, lng: cardData.lng } : undefined),
-                            selectedDateTime: cardData.selectedDateTime || new Date(),
-                            strollData: cardData.strollData,
-                            picnicData: cardData.picnicData,
-                          };
-                          
-                          setSelectedCardForExpansion(expandedCardData);
-                          setIsExpandedModalVisible(true);
-                        }}
-                        currentIndex={index}
-                        totalCards={savedCards.length}
-                      />
-                    );
-                  })}
-                  {loadingCards && savedCards.length > 0 && (
-                    <View style={styles.loadingMoreContainer}>
-                      <ActivityIndicator size="small" color="#eb7825" />
-                    </View>
-                  )}
-                </>
-              )}
-            </ScrollView>
+              loading={loadingCards}
+            />
           </View>
         )}
 
