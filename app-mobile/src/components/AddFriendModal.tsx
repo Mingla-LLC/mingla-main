@@ -8,7 +8,7 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
-  FlatList,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
@@ -480,11 +480,13 @@ export default function AddFriendModal({
                 {/* Search Results List */}
                 {searchResults.length > 0 && !selectedUser && !userNotFound && (
                   <View style={styles.searchResultsContainer}>
-                    <FlatList
-                      data={searchResults}
-                      keyExtractor={(item) => item.id}
-                      renderItem={({ item }) => (
+                    <ScrollView
+                      style={styles.searchResultsList}
+                      nestedScrollEnabled
+                    >
+                      {searchResults.map((item) => (
                         <TouchableOpacity
+                          key={item.id}
                           style={styles.searchResultItem}
                           onPress={() => handleSelectUser(item)}
                         >
@@ -531,10 +533,8 @@ export default function AddFriendModal({
                             color="#9ca3af"
                           />
                         </TouchableOpacity>
-                      )}
-                      style={styles.searchResultsList}
-                      nestedScrollEnabled
-                    />
+                      ))}
+                    </ScrollView>
                   </View>
                 )}
 
@@ -734,6 +734,8 @@ export default function AddFriendModal({
   );
 }
 
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
@@ -747,6 +749,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     width: "100%",
     maxWidth: 400,
+    height: SCREEN_HEIGHT * 0.8,
+    maxHeight: SCREEN_HEIGHT * 0.8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
@@ -838,6 +842,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   content: {
+    flex: 1,
     padding: 24,
   },
   addTabContent: {

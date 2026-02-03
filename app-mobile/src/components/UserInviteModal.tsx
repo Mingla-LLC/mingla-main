@@ -23,7 +23,7 @@ interface UserInviteModalProps {
 export default function UserInviteModal({ isOpen, onClose, sessionName, onSendInvites, friends: propFriends, existingMemberIds = [] }: UserInviteModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
-  const { friends: dbFriends, fetchFriends, loading } = useFriends();
+  const { friends: dbFriends, fetchFriends, loading, error } = useFriends();
 
   // Fetch friends when modal opens
   useEffect(() => {
@@ -150,6 +150,21 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#eb7825" />
                 <Text style={styles.loadingText}>Loading friends...</Text>
+              </View>
+            ) : error ? (
+              <View style={styles.errorContainer}>
+                <View style={styles.errorIconContainer}>
+                  <Ionicons name="cloud-offline-outline" size={48} color="#ef4444" />
+                </View>
+                <Text style={styles.errorTitle}>Connection Error</Text>
+                <Text style={styles.errorSubtitle}>{error}</Text>
+                <TouchableOpacity 
+                  style={styles.retryButton}
+                  onPress={() => fetchFriends()}
+                >
+                  <Ionicons name="refresh" size={16} color="white" />
+                  <Text style={styles.retryButtonText}>Try Again</Text>
+                </TouchableOpacity>
               </View>
             ) : transformedFriends.length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -361,6 +376,48 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: '#6b7280',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  errorIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#fef2f2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  errorSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#eb7825',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
   },
   emptyContainer: {
     flex: 1,

@@ -42,6 +42,7 @@ export const useFriends = () => {
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch blocked users from Supabase (friends where status = 'blocked')
   const fetchBlockedUsers = useCallback(async () => {
@@ -110,6 +111,7 @@ export const useFriends = () => {
   // Load friends
   const fetchFriends = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const {
         data: { user },
@@ -243,8 +245,12 @@ export const useFriends = () => {
       }
 
       setFriends(transformedFriends);
-    } catch (error) {
-      console.error("Error loading friends:", error);
+    } catch (err: any) {
+      console.error("Error loading friends:", err);
+      const errorMessage = err?.message?.includes('network') || err?.message?.includes('Network') || err?.code === 'NETWORK_ERROR'
+        ? 'Unable to load friends. Please check your internet connection.'
+        : 'Failed to load friends. Please try again.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -843,6 +849,7 @@ export const useFriends = () => {
     friendRequests,
     blockedUsers,
     loading,
+    error,
     fetchFriends,
     fetchBlockedUsers,
     loadFriendRequests,

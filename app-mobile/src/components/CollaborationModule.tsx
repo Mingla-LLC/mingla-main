@@ -411,19 +411,9 @@ export default function CollaborationModule({
       const sessionIdsFromParticipants =
         participations?.map((p) => p.session_id) || [];
 
-      // Also get sessions where user is the creator (fallback for edge cases)
-      const { data: createdSessions, error: createdSessionsError } =
-        await supabase
-          .from("collaboration_sessions")
-          .select("id")
-          .eq("created_by", user.id)
-          .is("archived_at", null);
-
-      // Combine both sets of session IDs
-      const createdSessionIds = createdSessions?.map((s) => s.id) || [];
-      const allSessionIds = [
-        ...new Set([...sessionIdsFromParticipants, ...createdSessionIds]),
-      ];
+      // Only show sessions where user is an active participant (has_accepted = true)
+      // Don't include sessions just because user created them - they must be a member
+      const allSessionIds = sessionIdsFromParticipants;
 
       if (allSessionIds.length === 0) {
         setUserSessions([]);
@@ -522,7 +512,12 @@ export default function CollaborationModule({
         };
       });
 
-      setUserSessions(formattedSessions);
+      // Only show sessions with 2+ members (active collaborations)
+      const sessionsWithMembers = formattedSessions.filter(
+        (session) => session.totalParticipants >= 2
+      );
+
+      setUserSessions(sessionsWithMembers);
     } catch (error) {
       console.error("Error loading sessions:", error);
     } finally {
