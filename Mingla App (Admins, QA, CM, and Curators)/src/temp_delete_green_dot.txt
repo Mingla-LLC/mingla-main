@@ -1,0 +1,1 @@
+Line 380 needs to be deleted: <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 border-2 border-white rounded-full shadow-lg"></div>

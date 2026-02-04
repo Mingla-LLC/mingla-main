@@ -12,8 +12,11 @@ import { User } from "../types";
 
 // Configure Google Sign-In
 const webClientId =
-  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-  Constants.expoConfig?.extra?.googleWebClientId;
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+  Constants.expoConfig?.extra?.googleWebClientId ||
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
+console.log("Google Web Client ID:", webClientId);
 
 if (webClientId) {
   GoogleSignin.configure({
@@ -21,6 +24,7 @@ if (webClientId) {
     offlineAccess: true, // If you want to access Google API on behalf of the user FROM YOUR SERVER
     forceCodeForRefreshToken: true, // [Android] related to `serverAuthCode`
   });
+  console.log("Google Sign-In configured successfully");
 } else {
   console.warn(
     "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set. Google Sign-In may not work."
@@ -644,8 +648,11 @@ export const useAuthSimple = () => {
     try {
       // Check if Google Sign-In is configured
       const webClientId =
-        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-        Constants.expoConfig?.extra?.googleWebClientId;
+        Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+        Constants.expoConfig?.extra?.googleWebClientId ||
+        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
+      console.log("signInWithGoogle - Web Client ID:", webClientId);
 
       if (!webClientId) {
         Alert.alert(

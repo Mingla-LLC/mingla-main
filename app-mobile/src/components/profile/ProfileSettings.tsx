@@ -18,7 +18,7 @@ import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { SafeAreaView } from "react-native-safe-area-context";
 import ProfileAccountSection from "./ProfileAccountSection";
 import ProfilePrivacySection from "./ProfilePrivacySection";
-import ProfilePhotoSection from "./ProfilePhotoSection";
+// Profile photo moved to hero on ProfilePage
 import ProfilePersonalInfoSection from "./ProfilePersonalInfoSection";
 import { colors } from "@/src/constants/colors";
 import { useAppState } from "../AppStateManager";
@@ -54,8 +54,7 @@ export default function ProfileSettings({
       >
         {/* Content */}
         <ScrollView style={styles.content}>
-          {/* Profile Photo Section */}
-          <ProfilePhotoSection />
+          {/* Profile Photo is handled in the ProfilePage hero now. */}
 
           {/* Personal Information */}
           <ProfilePersonalInfoSection />

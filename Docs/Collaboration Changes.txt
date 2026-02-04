@@ -1,0 +1,920 @@
+# Collaboration Session System - Evolution & Current State
+
+## 📋 Table of Contents
+- [What Collaboration Sessions Are](#what-collaboration-sessions-are)
+- [How It Was Before](#how-it-was-before-original-concept)
+- [How It Is Now](#how-it-is-now-current-implementation)
+- [What Needs to Change](#what-needs-to-change-gaps--issues)
+- [Implementation Roadmap](#implementation-roadmap)
+- [Technical Architecture](#technical-architecture)
+
+---
+
+## 🎯 What Collaboration Sessions Are
+
+**Collaboration Sessions** (also called "Board Sessions" or "Boards") allow **groups of friends to plan experiences together** in real-time.
+
+### Core Concept:
+- Multiple users swipe, save, vote, and discuss experiences together
+- Each board has its own set of saved cards, preferences, and chat
+- Real-time synchronization keeps everyone in sync
+- Users can switch between "Solo Mode" and multiple board sessions
+
+### Example Use Cases:
+- **Date Night Planning:** Couple plans romantic dinner + activity
+- **Group Hangout:** 5 friends find something to do this Saturday
+- **Weekend Trip:** Friends collaborate on a multi-day itinerary
+- **Fitness Squad:** Regular workout buddies find new classes
+
+---
+
+## 📜 How It Was Before (Original Concept)
+
+### **Vision: Full Real-Time Collaborative Experience Planning**
+
+The original design document (`COLLABORATION_FEATURE_PROMPT.md`) outlined a comprehensive system:
+
+#### ✅ **What Was Planned:**
+
+1. **Session Types**
+   - Date Night
+   - Group Hangout  
+   - Weekend Trip
+   - Special Occasion
+   - Custom sessions
+
+2. **Collaborative Preferences**
+   - Each board has its own preferences (budget, categories, vibes)
+   - Participants vote on preferences
+   - Cards generated based on board preferences, not individual ones
+   - Preference conflicts resolved by voting
+
+3. **Real-Time Board Features**
+   - **Saved Cards Tab:** All cards saved by any participant
+   - **Voting System:** Vote yes/no on each card
+   - **RSVP System:** Indicate attendance for specific cards
+   - **Discussion Tab:** Chat about experiences with @mentions
+   - **Card-Specific Threads:** Comment on individual cards
+
+4. **Real-Time Synchronization**
+   - WebSocket connections
+   - When someone saves a card → appears for everyone instantly
+   - When someone votes → count updates in real-time
+   - When someone chats → message appears immediately
+   - Typing indicators
+   - Presence indicators (who's online)
+
+5. **Session Management**
+   - Create sessions with name + friends
+   - Send invitations
+   - Accept/decline invites
+   - Admin controls (rename, manage participants, delete)
+   - Leave sessions
+   - Archive sessions
+   - Session states: Active, Inactive, Archived, Deleted
+
+6. **Notifications**
+   - Invite notifications
+   - Activity notifications (saves, votes, RSVPs)
+   - Mention notifications
+   - RSVP reminders
+   - Push notifications + in-app toasts
+
+7. **Board-Aware Saved Cards**
+   - Cards saved from boards have badges showing which board
+   - From personal Saved tab, can navigate back to board
+   - See board context (votes, RSVPs, discussion)
+
+8. **Advanced Features**
+   - Offline queueing with sync when back online
+   - Conflict resolution for simultaneous actions
+   - Session analytics
+   - Transfer admin rights
+   - Auto-delete inactive sessions after 7 days
+
+---
+
+## 🔄 How It Is Now (Current Implementation)
+
+### **Reality: Partial Implementation with Mock Data**
+
+The current codebase has the **UI shell** built but lacks **backend integration and real-time functionality**.
+
+#### ✅ **What IS Implemented:**
+
+1. **CollaborationModule Component** (`/components/CollaborationModule.tsx`)
+   - 3-tab modal interface
+   - **Sessions Tab:** View active sessions, switch modes
+   - **Invites Tab:** View sent/received invites
+   - **Create Tab:** 3-step wizard to create new sessions
+
+2. **Session Creation Flow**
+   - Step 1: Enter session name
+   - Step 2: Select friends (multi-select with pre-selection support)
+   - Step 3: Confirm and create
+   - Creates local session object
+   - Switches user to board mode
+
+3. **CollaborationBoard Component** (`/components/collaboration/CollaborationBoard.tsx`)
+   - Full board view with 2 tabs:
+     - **Saved Cards:** Grid of saved experiences
+     - **Discussion:** Chat interface
+   - Board header with participants
+   - Settings menu (rename, manage, mute, leave, delete)
+   - Admin-only controls
+
+4. **UI Features Working:**
+   - Card voting UI (yes/no buttons)
+   - RSVP UI (yes/no/maybe)
+   - Message composition with @mentions
+   - Participant avatars
+   - Session status badges
+   - Pre-selected friend support
+   - Modal navigation
+   - Coach mark integration
+
+5. **State Management:**
+   - Local React state for sessions
+   - Props passed from App.tsx
+   - Mode switching (solo vs board ID)
+   - Session data stored in `boardsSessions` array
+
+#### ❌ **What is NOT Implemented:**
+
+1. **No Backend Integration**
+   - All data is mock/hardcoded (`MOCK_ACTIVE_SESSIONS`, `MOCK_FRIENDS`)
+   - Sessions not persisted to database
+   - No API calls
+   - No real user data
+
+2. **No Real-Time Sync**
+   - No WebSocket connections
+   - No real-time updates
+   - Changes don't propagate to other users
+   - No presence indicators
+   - No typing indicators
+
+3. **No Actual Voting/RSVP Logic**
+   - Vote buttons render but don't affect anything
+   - RSVP buttons render but don't affect anything
+   - Counts are hardcoded
+   - No vote persistence
+   - No RSVP tracking
+
+4. **No Collaborative Preferences**
+   - Boards don't have their own preferences
+   - No preference voting
+   - Cards still generate from user's personal preferences
+   - No way to set board budget, categories, etc.
+
+5. **No Invitation System**
+   - Invites are displayed but not sent
+   - Accept/decline buttons don't work
+   - No notifications
+   - No invite expiration
+   - Can't actually invite real friends
+
+6. **No Discussion Functionality**
+   - Chat UI renders but messages aren't sent
+   - @mentions render but don't notify
+   - No message persistence
+   - No card-specific threads
+   - No real message history
+
+7. **No Session Persistence**
+   - Sessions reset on page refresh
+   - No saved sessions in database
+   - No session history
+   - No way to rejoin previous sessions
+
+8. **No Board-Specific Cards**
+   - Saved cards don't show which board they came from
+   - No board badges on saved cards
+   - Can't navigate from personal saved to board
+   - No board context preserved
+
+9. **No Notifications**
+   - No push notifications
+   - No in-app toasts
+   - No notification badges
+   - No notification center
+
+10. **No Offline Support**
+    - No queuing
+    - No sync when back online
+    - Breaks if network fails
+
+---
+
+## 🚨 What Needs to Change (Gaps & Issues)
+
+### **Priority 1: Critical Functionality (Blocking Real Use)**
+
+#### 1. **Backend Integration**
+- [ ] Create Supabase tables for sessions, participants, invites
+- [ ] API endpoints for CRUD operations
+- [ ] Store sessions in database
+- [ ] Load real user data
+- [ ] Persist all changes
+
+#### 2. **Real-Time Synchronization**
+- [ ] Setup Supabase Realtime subscriptions
+- [ ] Broadcast card saves to all participants
+- [ ] Broadcast votes in real-time
+- [ ] Broadcast RSVPs in real-time
+- [ ] Broadcast messages in real-time
+- [ ] Show presence indicators
+- [ ] Show typing indicators
+
+#### 3. **Invitation System**
+- [ ] Send real invitations to friends
+- [ ] Store invites in database
+- [ ] Accept/decline functionality
+- [ ] Cancel sent invites
+- [ ] Notification on invite received
+- [ ] Expiration logic (7 days)
+
+#### 4. **Voting & RSVP Logic**
+- [ ] Store votes in database
+- [ ] Update vote counts in real-time
+- [ ] Toggle user's vote (yes/no/none)
+- [ ] Store RSVPs in database
+- [ ] Update RSVP counts in real-time
+- [ ] Show who voted/RSVP'd
+
+#### 5. **Collaborative Preferences**
+- [ ] Board preferences table
+- [ ] UI to set board preferences (budget, categories, vibes, time)
+- [ ] Preference voting system
+- [ ] Card generation based on board preferences
+- [ ] Override personal preferences when in board mode
+
+---
+
+### **Priority 2: Important Features (Enhances UX)**
+
+#### 6. **Discussion/Chat**
+- [ ] Send real messages
+- [ ] Persist messages in database
+- [ ] Real-time message delivery
+- [ ] @mention notifications
+- [ ] Card-specific comment threads
+- [ ] Message timestamps
+- [ ] Read receipts
+
+#### 7. **Session Management**
+- [ ] Rename sessions (admin only)
+- [ ] Add/remove participants (admin only)
+- [ ] Leave session
+- [ ] Delete session (admin only)
+- [ ] Transfer admin rights
+- [ ] Archive sessions
+- [ ] Session state tracking (active/inactive/archived)
+
+#### 8. **Board-Aware Saved Cards**
+- [ ] Tag saved cards with board ID
+- [ ] Show board badge on saved cards
+- [ ] Navigate from saved card to board
+- [ ] Show board context (votes, RSVPs, discussion)
+- [ ] Filter saved cards by board
+
+#### 9. **Notifications**
+- [ ] Invite notifications (push + in-app)
+- [ ] Activity notifications (saves, votes, RSVPs)
+- [ ] Mention notifications
+- [ ] RSVP reminders (24h before event)
+- [ ] Notification center
+- [ ] Badge counts on UI elements
+
+---
+
+### **Priority 3: Polish & Advanced (Nice to Have)**
+
+#### 10. **Offline Support**
+- [ ] Queue actions when offline
+- [ ] Sync when back online
+- [ ] Optimistic UI updates
+- [ ] Conflict resolution
+- [ ] Offline indicator banner
+
+#### 11. **Advanced Features**
+- [ ] Session analytics (who's most active, popular cards)
+- [ ] Session templates (save preference sets)
+- [ ] Duplicate session
+- [ ] Export session data
+- [ ] Session search/filter
+- [ ] Participant permissions (viewer vs contributor)
+
+#### 12. **Performance**
+- [ ] Lazy load messages
+- [ ] Paginate card lists
+- [ ] Optimize real-time listeners
+- [ ] Cache session data
+- [ ] Debounce typing indicators
+
+---
+
+## 🛠️ Implementation Roadmap
+
+### **Phase 1: Foundation (Weeks 1-2)**
+**Goal:** Sessions work with real data, no real-time yet
+
+- [ ] Create Supabase schema
+  - `collaboration_sessions` table
+  - `collaboration_participants` table
+  - `collaboration_invites` table
+  - `collaboration_saved_cards` table
+  - `collaboration_votes` table
+  - `collaboration_rsvps` table
+  - `collaboration_messages` table
+  - `collaboration_preferences` table
+
+- [ ] Build API layer
+  - `createSession()` - Create new session
+  - `getSessionsByUser()` - Load user's sessions
+  - `addParticipant()` - Add participant to session
+  - `removeParticipant()` - Remove participant
+  - `deleteSession()` - Delete session
+  - `sendInvite()` - Send invitation
+  - `respondToInvite()` - Accept/decline invite
+
+- [ ] Connect UI to API
+  - Session creation saves to DB
+  - Sessions load from DB on mount
+  - Participants load from DB
+  - Invites load from DB
+  - Accept/decline calls API
+
+**Success Criteria:** 
+- Users can create sessions that persist
+- Invites are sent and can be accepted
+- Sessions appear after refresh
+
+---
+
+### **Phase 2: Core Collaboration (Weeks 3-4)**
+**Goal:** Voting, RSVPs, and card saving work
+
+- [ ] Implement voting system
+  - Vote API endpoints
+  - Store votes in DB
+  - Update vote counts
+  - Toggle user's vote
+  - Show who voted
+
+- [ ] Implement RSVP system
+  - RSVP API endpoints
+  - Store RSVPs in DB
+  - Update RSVP counts
+  - Toggle user's RSVP
+  - Show who RSVP'd
+
+- [ ] Implement card saving
+  - Save card to board
+  - Tag with board ID
+  - Load board's saved cards
+  - Remove card from board
+  - Board badge on saved cards
+
+- [ ] Build collaborative preferences
+  - Preferences UI
+  - Store board preferences
+  - Load preferences per board
+  - Use board preferences for card generation
+
+**Success Criteria:**
+- Users can vote on cards and see counts update
+- Users can RSVP and see counts update
+- Saved cards are board-specific
+- Board preferences affect card generation
+
+---
+
+### **Phase 3: Real-Time Sync (Weeks 5-6)**
+**Goal:** Changes appear instantly for all participants
+
+- [ ] Setup Supabase Realtime
+  - Subscribe to session changes
+  - Subscribe to card saves
+  - Subscribe to votes
+  - Subscribe to RSVPs
+  - Subscribe to messages
+
+- [ ] Implement real-time updates
+  - Broadcast card saves
+  - Broadcast vote changes
+  - Broadcast RSVP changes
+  - Broadcast new messages
+  - Update UI when changes received
+
+- [ ] Add presence
+  - Track online participants
+  - Show online indicators
+  - Update presence on activity
+
+- [ ] Add typing indicators
+  - Broadcast typing state
+  - Show "[User] is typing..."
+  - Debounce typing broadcasts
+
+**Success Criteria:**
+- When one user saves a card, all users see it instantly
+- When one user votes, counts update for everyone
+- Messages appear in real-time
+- Can see who's online
+
+---
+
+### **Phase 4: Discussion & Messaging (Week 7)**
+**Goal:** Full chat functionality
+
+- [ ] Message sending
+  - Send message API
+  - Store in DB
+  - Broadcast to participants
+  - Update UI in real-time
+
+- [ ] @Mentions
+  - Autocomplete mentions
+  - Parse mentions in messages
+  - Send notifications to mentioned users
+  - Highlight mentions in UI
+
+- [ ] Card-specific threads
+  - Comment on individual cards
+  - Thread view
+  - Thread counts
+  - Navigate to card from thread
+
+- [ ] Message features
+  - Edit messages
+  - Delete messages
+  - Reactions (like, heart, etc.)
+  - Read receipts
+
+**Success Criteria:**
+- Users can chat in real-time
+- @mentions work and notify
+- Can discuss specific cards
+- Messages persist and load on rejoin
+
+---
+
+### **Phase 5: Notifications (Week 8)**
+**Goal:** Users get notified of important events
+
+- [ ] Setup notification system
+  - Push notification infrastructure
+  - In-app toast component
+  - Notification center UI
+
+- [ ] Implement notification triggers
+  - Invite received
+  - Card saved to board
+  - Vote on your saved card
+  - RSVP on your saved card
+  - @mention in discussion
+  - RSVP reminder (24h before)
+
+- [ ] Notification preferences
+  - Mute board notifications
+  - Notification frequency settings
+  - Push vs in-app toggle
+
+- [ ] Badge counts
+  - Unread message count
+  - Pending invite count
+  - Activity count
+  - Update in real-time
+
+**Success Criteria:**
+- Users receive notifications for activity
+- Can control notification preferences
+- Badge counts are accurate
+- Push notifications work when app closed
+
+---
+
+### **Phase 6: Management & Polish (Week 9-10)**
+**Goal:** Session management and edge cases
+
+- [ ] Admin controls
+  - Rename session
+  - Remove participants
+  - Transfer admin
+  - Delete session
+  - Archive session
+
+- [ ] Participant controls
+  - Leave session
+  - Mute notifications
+  - View session info
+  - Invite more friends
+
+- [ ] Session states
+  - Mark inactive (7 days no activity)
+  - Auto-archive option
+  - Auto-delete inactive (30 days)
+  - Restore archived sessions
+
+- [ ] Error handling
+  - Handle network failures
+  - Handle conflicts
+  - Show error messages
+  - Retry failed actions
+
+- [ ] Performance optimization
+  - Lazy load messages
+  - Paginate cards
+  - Debounce real-time updates
+  - Cache data locally
+
+**Success Criteria:**
+- Admins can manage sessions fully
+- Sessions handle edge cases gracefully
+- Performance is smooth with many participants
+- No crashes or data loss
+
+---
+
+## 🏗️ Technical Architecture
+
+### **Database Schema (Supabase)**
+
+#### `collaboration_sessions`
+```sql
+CREATE TABLE collaboration_sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  type TEXT, -- 'date-night', 'group-hangout', etc.
+  status TEXT DEFAULT 'active', -- 'active', 'inactive', 'archived', 'deleted'
+  created_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  last_activity TIMESTAMPTZ DEFAULT NOW(),
+  metadata JSONB -- extra settings
+);
+```
+
+#### `collaboration_participants`
+```sql
+CREATE TABLE collaboration_participants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES collaboration_sessions(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id),
+  role TEXT DEFAULT 'participant', -- 'admin', 'participant'
+  status TEXT DEFAULT 'active', -- 'active', 'left', 'removed'
+  joined_at TIMESTAMPTZ DEFAULT NOW(),
+  notifications_muted BOOLEAN DEFAULT FALSE,
+  UNIQUE(session_id, user_id)
+);
+```
+
+#### `collaboration_invites`
+```sql
+CREATE TABLE collaboration_invites (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES collaboration_sessions(id) ON DELETE CASCADE,
+  from_user_id UUID REFERENCES users(id),
+  to_user_id UUID REFERENCES users(id),
+  status TEXT DEFAULT 'pending', -- 'pending', 'accepted', 'declined', 'canceled'
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '7 days'),
+  responded_at TIMESTAMPTZ,
+  UNIQUE(session_id, to_user_id)
+);
+```
+
+#### `collaboration_saved_cards`
+```sql
+CREATE TABLE collaboration_saved_cards (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES collaboration_sessions(id) ON DELETE CASCADE,
+  card_data JSONB NOT NULL, -- Full card object
+  saved_by UUID REFERENCES users(id),
+  saved_at TIMESTAMPTZ DEFAULT NOW(),
+  is_locked BOOLEAN DEFAULT FALSE, -- locked for decision
+  locked_at TIMESTAMPTZ
+);
+```
+
+#### `collaboration_votes`
+```sql
+CREATE TABLE collaboration_votes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES collaboration_sessions(id) ON DELETE CASCADE,
+  card_id UUID REFERENCES collaboration_saved_cards(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id),
+  vote TEXT NOT NULL, -- 'yes', 'no'
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(card_id, user_id)
+);
+```
+
+#### `collaboration_rsvps`
+```sql
+CREATE TABLE collaboration_rsvps (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES collaboration_sessions(id) ON DELETE CASCADE,
+  card_id UUID REFERENCES collaboration_saved_cards(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id),
+  status TEXT NOT NULL, -- 'yes', 'no', 'maybe'
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(card_id, user_id)
+);
+```
+
+#### `collaboration_messages`
+```sql
+CREATE TABLE collaboration_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES collaboration_sessions(id) ON DELETE CASCADE,
+  card_id UUID REFERENCES collaboration_saved_cards(id), -- NULL for general chat
+  user_id UUID REFERENCES users(id),
+  message TEXT NOT NULL,
+  mentions UUID[], -- Array of mentioned user IDs
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  edited_at TIMESTAMPTZ,
+  deleted_at TIMESTAMPTZ
+);
+```
+
+#### `collaboration_preferences`
+```sql
+CREATE TABLE collaboration_preferences (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID REFERENCES collaboration_sessions(id) ON DELETE CASCADE,
+  preferences JSONB NOT NULL, -- Budget, categories, vibes, time, location
+  set_by UUID REFERENCES users(id),
+  set_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+---
+
+### **Real-Time Subscriptions (Supabase)**
+
+```typescript
+// Subscribe to session changes
+const sessionChannel = supabase
+  .channel(`session:${sessionId}`)
+  .on(
+    'postgres_changes',
+    {
+      event: '*',
+      schema: 'public',
+      table: 'collaboration_saved_cards',
+      filter: `session_id=eq.${sessionId}`
+    },
+    (payload) => {
+      // New card saved, update UI
+      handleCardSaved(payload.new);
+    }
+  )
+  .on(
+    'postgres_changes',
+    {
+      event: '*',
+      schema: 'public',
+      table: 'collaboration_votes',
+      filter: `session_id=eq.${sessionId}`
+    },
+    (payload) => {
+      // New vote, update counts
+      handleVoteChange(payload);
+    }
+  )
+  .on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'collaboration_messages',
+      filter: `session_id=eq.${sessionId}`
+    },
+    (payload) => {
+      // New message, append to chat
+      handleNewMessage(payload.new);
+    }
+  )
+  .subscribe();
+```
+
+---
+
+### **API Functions**
+
+```typescript
+// Create session
+async function createSession(name: string, type: string, friendIds: string[]) {
+  const { data: session } = await supabase
+    .from('collaboration_sessions')
+    .insert({ name, type, created_by: currentUser.id })
+    .select()
+    .single();
+  
+  // Add creator as admin participant
+  await supabase
+    .from('collaboration_participants')
+    .insert({ 
+      session_id: session.id, 
+      user_id: currentUser.id, 
+      role: 'admin' 
+    });
+  
+  // Send invites to friends
+  const invites = friendIds.map(friendId => ({
+    session_id: session.id,
+    from_user_id: currentUser.id,
+    to_user_id: friendId
+  }));
+  
+  await supabase
+    .from('collaboration_invites')
+    .insert(invites);
+  
+  return session;
+}
+
+// Vote on card
+async function voteOnCard(cardId: string, vote: 'yes' | 'no') {
+  // Upsert vote (insert or update)
+  await supabase
+    .from('collaboration_votes')
+    .upsert({ 
+      card_id: cardId, 
+      user_id: currentUser.id, 
+      vote 
+    }, {
+      onConflict: 'card_id,user_id'
+    });
+  
+  // Real-time broadcast happens automatically
+}
+
+// RSVP to card
+async function rsvpToCard(cardId: string, status: 'yes' | 'no' | 'maybe') {
+  await supabase
+    .from('collaboration_rsvps')
+    .upsert({ 
+      card_id: cardId, 
+      user_id: currentUser.id, 
+      status 
+    }, {
+      onConflict: 'card_id,user_id'
+    });
+}
+
+// Send message
+async function sendMessage(sessionId: string, message: string, cardId?: string) {
+  // Parse @mentions from message
+  const mentions = parseMentions(message);
+  
+  const { data } = await supabase
+    .from('collaboration_messages')
+    .insert({
+      session_id: sessionId,
+      card_id: cardId,
+      user_id: currentUser.id,
+      message,
+      mentions
+    })
+    .select()
+    .single();
+  
+  // Send notifications to mentioned users
+  for (const mentionedUserId of mentions) {
+    await sendNotification(mentionedUserId, 'mention', data);
+  }
+  
+  return data;
+}
+```
+
+---
+
+## 🎯 Success Metrics
+
+### **When is the Collaboration System "Done"?**
+
+#### Minimum Viable Product (MVP):
+- [x] UI components built
+- [ ] Sessions persist to database
+- [ ] Invites can be sent and accepted
+- [ ] Cards can be saved to boards
+- [ ] Voting works and updates counts
+- [ ] RSVPs work and update counts
+- [ ] Real-time sync for saves, votes, RSVPs
+- [ ] Basic chat functionality
+- [ ] Can switch between solo and board modes
+
+#### Full Feature Set:
+- [ ] All MVP items
+- [ ] Collaborative preferences
+- [ ] @mentions with notifications
+- [ ] Card-specific threads
+- [ ] Admin controls (rename, manage, delete)
+- [ ] Presence indicators
+- [ ] Typing indicators
+- [ ] Push notifications
+- [ ] Board badges on saved cards
+- [ ] Offline queueing
+- [ ] Session analytics
+
+#### Production Ready:
+- [ ] All features implemented
+- [ ] Real-time performs well with 10+ participants
+- [ ] No data loss or corruption
+- [ ] Handles edge cases (network failures, conflicts)
+- [ ] Comprehensive error handling
+- [ ] User testing completed
+- [ ] Performance optimized
+- [ ] Security audited
+- [ ] Documentation complete
+
+---
+
+## 📊 Current Status Summary
+
+| Feature | Designed | UI Built | Backend | Real-Time | Status |
+|---------|----------|----------|---------|-----------|--------|
+| Session Creation | ✅ | ✅ | ❌ | ❌ | 50% |
+| Invitations | ✅ | ✅ | ❌ | ❌ | 50% |
+| Board View | ✅ | ✅ | ❌ | ❌ | 50% |
+| Card Saving | ✅ | ✅ | ❌ | ❌ | 50% |
+| Voting | ✅ | ✅ | ❌ | ❌ | 50% |
+| RSVPs | ✅ | ✅ | ❌ | ❌ | 50% |
+| Discussion/Chat | ✅ | ✅ | ❌ | ❌ | 50% |
+| Collaborative Prefs | ✅ | ❌ | ❌ | ❌ | 25% |
+| Notifications | ✅ | ❌ | ❌ | ❌ | 0% |
+| Admin Controls | ✅ | ✅ | ❌ | ❌ | 50% |
+| Board Badges | ✅ | ❌ | ❌ | ❌ | 0% |
+| Offline Support | ✅ | ❌ | ❌ | ❌ | 0% |
+
+**Overall Progress: ~40% Complete**
+- Design: ✅ 100%
+- UI: ✅ 75%
+- Backend: ❌ 0%
+- Real-Time: ❌ 0%
+
+---
+
+## 🚀 Getting Started with Implementation
+
+### **For Developers: Where to Begin**
+
+1. **Read this document fully**
+2. **Review existing UI components** in `/components/collaboration/`
+3. **Start with Phase 1** (Database schema + basic API)
+4. **Test each phase** before moving to next
+5. **Use Supabase Realtime** for real-time features (don't build custom WebSocket)
+6. **Follow the database schema** provided above
+7. **Reference the API function examples** for patterns
+
+### **Key Files to Modify:**
+
+```
+/components/
+  CollaborationModule.tsx          ← Connect to API
+  /collaboration/
+    CollaborationBoard.tsx         ← Connect voting/RSVP/chat
+    CollaborationCards.tsx         ← Connect card saving
+    SessionsTab.tsx                ← Load real sessions
+    InvitesTab.tsx                 ← Connect invite actions
+    CreateTab.tsx                  ← Save to DB on create
+
+/supabase/                         ← Create new files
+  schema.sql                       ← Database schema
+  /functions/
+    sessions.ts                    ← API functions
+    votes.ts
+    rsvps.ts
+    messages.ts
+    invites.ts
+```
+
+### **Testing Strategy:**
+
+1. **Unit tests** for each API function
+2. **Integration tests** for workflows (create → invite → accept → save)
+3. **Real-time tests** with multiple browser tabs
+4. **Load tests** with many participants
+5. **Offline tests** with network throttling
+
+---
+
+## 📞 Questions?
+
+If implementing this system, ask yourself:
+
+- **Does the database schema support this feature?**
+- **How will real-time sync work for this?**
+- **What happens if network fails mid-action?**
+- **How do we handle conflicts (two users editing at once)?**
+- **What permissions are needed (admin vs participant)?**
+- **How do we notify users about this event?**
+
+---
+
+**Last Updated:** February 4, 2026  
+**Status:** In Development - Backend Integration Needed  
+**Next Phase:** Database Schema + API Layer (Phase 1)
