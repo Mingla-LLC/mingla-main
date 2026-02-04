@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
 import { useFriends } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
+import { blockService } from "../services/blockService";
 
 interface AddFriendModalProps {
   isOpen: boolean;
@@ -116,19 +117,29 @@ export default function AddFriendModal({
 
         if (searchError) throw searchError;
 
-        const results = data || [];
-        setSearchResults(results);
+        // Filter out users with any block relationship (blocker or blocked)
+        const rawResults = data || [];
+        const filteredResults: SearchUser[] = [];
+        
+        for (const result of rawResults) {
+          const hasBlock = await blockService.hasBlockBetween(result.id);
+          if (!hasBlock) {
+            filteredResults.push(result);
+          }
+        }
+        
+        setSearchResults(filteredResults);
         setSearchCompleted(true);
 
         // Check if no results found
-        if (results.length === 0) {
+        if (filteredResults.length === 0) {
           setUserNotFound(true);
           setSelectedUser(null);
         } else {
           setUserNotFound(false);
           // If exact match found, auto-select it
-          if (results.length === 1) {
-            const exactMatch = results.find((u) =>
+          if (filteredResults.length === 1) {
+            const exactMatch = filteredResults.find((u) =>
               isEmail
                 ? u.email.toLowerCase() === searchTerm
                 : u.username.toLowerCase() === searchTerm

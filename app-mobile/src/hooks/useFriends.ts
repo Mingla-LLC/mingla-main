@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "../services/supabase";
+import { blockService } from "../services/blockService";
 
 export interface Friend {
   id: string;
@@ -44,57 +45,28 @@ export const useFriends = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch blocked users from Supabase (friends where status = 'blocked')
+  // Fetch blocked users from blocked_users table (new system)
   const fetchBlockedUsers = useCallback(async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
+      const result = await blockService.getBlockedUsers();
+      
+      if (result.error) {
+        console.error("Error fetching blocked users:", result.error);
         setBlockedUsers([]);
         return;
       }
 
-      const { data: blocked1, error: e1 } = await supabase
-        .from("friends")
-        .select("friend_user_id")
-        .eq("user_id", user.id)
-        .eq("status", "blocked");
-
-      const { data: blocked2, error: e2 } = await supabase
-        .from("friends")
-        .select("user_id")
-        .eq("friend_user_id", user.id)
-        .eq("status", "blocked");
-
-      if (e1 || e2) {
-        setBlockedUsers([]);
-        return;
-      }
-
-      const blockedIds = [
-        ...(blocked1 || []).map((r: any) => r.friend_user_id),
-        ...(blocked2 || []).map((r: any) => r.user_id),
-      ];
-      const uniqueBlockedIds = [...new Set(blockedIds)];
-      if (uniqueBlockedIds.length === 0) {
-        setBlockedUsers([]);
-        return;
-      }
-
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, username, first_name, last_name, avatar_url")
-        .in("id", uniqueBlockedIds);
-
-      const list: BlockedUser[] = (profiles || []).map((p: any) => ({
-        id: p.id,
+      const list: BlockedUser[] = result.data.map((b: any) => ({
+        id: b.blocked_id,
         name:
-          [p.first_name, p.last_name].filter(Boolean).join(" ") ||
-          p.username ||
-          "Unknown",
-        username: p.username,
-        avatar_url: p.avatar_url,
+          b.profile
+            ? [b.profile.first_name, b.profile.last_name].filter(Boolean).join(" ") ||
+              b.profile.display_name ||
+              b.profile.username ||
+              "Unknown"
+            : "Unknown",
+        username: b.profile?.username,
+        avatar_url: undefined, // Profile doesn't include avatar in current query
       }));
       setBlockedUsers(list);
     } catch (error) {
@@ -754,73 +726,47 @@ export const useFriends = () => {
     [fetchFriends]
   );
 
-  // Block friend: set friendship status to 'blocked' in Supabase (both rows)
+  // Block user using new block service
+  // This works for any user, not just existing friends
   const blockFriend = useCallback(
-    async (friendUserId: string) => {
+    async (userId: string, reason?: "harassment" | "spam" | "inappropriate" | "other") => {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+        const result = await blockService.blockUser(userId, reason);
+        
+        if (!result.success) {
+          throw new Error(result.error || "Failed to block user");
+        }
 
-        const { error: error1 } = await supabase
-          .from("friends")
-          .update({ status: "blocked" })
-          .eq("user_id", user.id)
-          .eq("friend_user_id", friendUserId);
-
-        if (error1) throw error1;
-
-        const { error: error2 } = await supabase
-          .from("friends")
-          .update({ status: "blocked" })
-          .eq("user_id", friendUserId)
-          .eq("friend_user_id", user.id);
-
-        if (error2) throw error2;
-
+        // Refresh friends list (blocked user will be auto-removed by DB trigger)
         await fetchFriends();
         await fetchBlockedUsers();
       } catch (error) {
-        console.error("Error blocking friend:", error);
+        console.error("Error blocking user:", error);
         throw error;
       }
     },
     [fetchFriends, fetchBlockedUsers]
   );
 
-  // Unblock friend: set friendship status back to 'accepted' in Supabase (both rows)
+  // Unblock user using new block service
+  // Note: This only removes the block, does NOT auto-restore friendship
   const unblockFriend = useCallback(
     async (blockedUserId: string) => {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+        const result = await blockService.unblockUser(blockedUserId);
+        
+        if (!result.success) {
+          throw new Error(result.error || "Failed to unblock user");
+        }
 
-        const { error: error1 } = await supabase
-          .from("friends")
-          .update({ status: "accepted" })
-          .eq("user_id", user.id)
-          .eq("friend_user_id", blockedUserId);
-
-        if (error1) throw error1;
-
-        const { error: error2 } = await supabase
-          .from("friends")
-          .update({ status: "accepted" })
-          .eq("user_id", blockedUserId)
-          .eq("friend_user_id", user.id);
-
-        if (error2) throw error2;
-        console.log("unblocking friend");
-        await fetchFriends();
+        // Refresh blocked users list
+        await fetchBlockedUsers();
       } catch (error) {
-        console.error("Error unblocking friend:", error);
+        console.error("Error unblocking user:", error);
         throw error;
       }
     },
-    [fetchFriends]
+    [fetchBlockedUsers]
   );
 
   // Cancel friend request (delete from database)

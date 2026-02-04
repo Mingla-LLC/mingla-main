@@ -76,6 +76,7 @@ interface MessageInterfaceProps {
   onCreateSession?: (newSession: any) => void;
   onNavigateToBoard?: (board: any, discussionTab?: string) => void;
   availableFriends?: Friend[];
+  isBlocked?: boolean;
 }
 
 export default function MessageInterface({
@@ -96,6 +97,7 @@ export default function MessageInterface({
   onCreateSession,
   onNavigateToBoard,
   availableFriends = [],
+  isBlocked = false,
 }: MessageInterfaceProps) {
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
@@ -866,7 +868,18 @@ export default function MessageInterface({
         </View>
       </Modal>
 
-      {/* Input Area */}
+      {/* Blocked User Banner */}
+      {isBlocked && (
+        <View style={styles.blockedBanner}>
+          <Ionicons name="ban" size={18} color="#dc2626" />
+          <Text style={styles.blockedBannerText}>
+            Messaging is not available with this user
+          </Text>
+        </View>
+      )}
+
+      {/* Input Area - Hidden when blocked */}
+      {!isBlocked && (
       <Animated.View
         style={[
           styles.inputArea,
@@ -976,6 +989,7 @@ export default function MessageInterface({
           </TouchableOpacity>
         </View>
       </Animated.View>
+      )}
 
       {/* Hidden File Input - Not supported in React Native */}
       {/* File selection will be handled through TouchableOpacity and native file picker */}
@@ -1118,6 +1132,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "white",
+  },
+  blockedBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fef2f2",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#fecaca",
+    gap: 8,
+  },
+  blockedBannerText: {
+    fontSize: 14,
+    color: "#dc2626",
+    fontWeight: "500",
   },
   header: {
     paddingHorizontal: 0,

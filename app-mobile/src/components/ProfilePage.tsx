@@ -17,6 +17,7 @@ import { useFriends } from "../hooks/useFriends";
 import { useRecentActivity } from "../hooks/useRecentActivity";
 import { formatActivityDate } from "../utils/dateUtils";
 import type { UserActivityRecord } from "../services/userActivityService";
+import BlockedUsersModal from "./BlockedUsersModal";
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -66,6 +67,7 @@ export default function ProfilePage({
     refetch: refetchRecentActivity,
   } = useRecentActivity(10);
   const [unblockingId, setUnblockingId] = useState<string | null>(null);
+  const [showBlockedUsersModal, setShowBlockedUsersModal] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(
     "Raleigh, North Carolina, United States"
   );
@@ -474,8 +476,12 @@ export default function ProfilePage({
         <View style={styles.section}>
           <Text style={styles.sectionSubtitle}>Connection Settings</Text>
           <View style={styles.connectionSettingsContainer}>
-            {/* Blocked Users */}
-            <View style={styles.blockedUsersCard}>
+            {/* Blocked Users - Clickable to open modal */}
+            <TouchableOpacity
+              style={styles.blockedUsersCard}
+              onPress={() => setShowBlockedUsersModal(true)}
+              activeOpacity={0.7}
+            >
               <View style={styles.blockedUsersHeader}>
                 <View style={styles.blockedUsersIconContainer}>
                   <Feather name="shield" size={20} color="#6b7280" />
@@ -484,55 +490,27 @@ export default function ProfilePage({
                   <Text style={styles.blockedUsersTitle}>Blocked Users</Text>
                   <Text style={styles.blockedUsersCount}>
                     {blockedUsers.length === 0
-                      ? "No blocked users"
+                      ? "Manage blocked users"
                       : `${blockedUsers.length} user${
                           blockedUsers.length === 1 ? "" : "s"
                         } blocked`}
                   </Text>
                 </View>
+                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
               </View>
-
-              {/* Blocked Users List */}
-              {blockedUsers.length > 0 && (
-                <View style={styles.blockedUsersList}>
-                  {blockedUsers.map((user) => (
-                    <View key={user.id} style={styles.blockedUserItem}>
-                      <View style={styles.blockedUserInfo}>
-                        <View style={styles.blockedUserAvatar}>
-                          <Text style={styles.blockedUserAvatarText}>
-                            {user.name
-                              .split(" ")
-                              .map((n: string) => n[0])
-                              .join("")}
-                          </Text>
-                        </View>
-                        <View>
-                          <Text style={styles.blockedUserName}>
-                            {user.name}
-                          </Text>
-                          <Text style={styles.blockedUserUsername}>
-                            @{user.username}
-                          </Text>
-                        </View>
-                      </View>
-                      <TouchableOpacity
-                        onPress={handleUnblockUser.bind(null, user)}
-                        style={styles.unblockButton}
-                        disabled={unblockingId === user.id}
-                      >
-                        {unblockingId === user.id ? (
-                          <ActivityIndicator size="small" color="white" />
-                        ) : (
-                          <Text style={styles.unblockButtonText}>Unblock</Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
+
+        {/* Blocked Users Modal */}
+        <BlockedUsersModal
+          visible={showBlockedUsersModal}
+          onClose={() => setShowBlockedUsersModal(false)}
+          onUnblockUser={async (user) => {
+            await onUnblockUser?.(user);
+            await fetchBlockedUsers();
+          }}
+        />
 
         {/* Legal & Privacy */}
         <View style={styles.section}>

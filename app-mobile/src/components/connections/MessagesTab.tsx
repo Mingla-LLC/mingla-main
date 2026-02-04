@@ -35,6 +35,7 @@ interface MessagesTabProps {
   onNavigateToBoard?: (board: any, discussionTab?: string) => void;
   availableFriends: Friend[];
   currentUserId?: string;
+  isBlocked?: boolean;
 }
 
 export default function MessagesTab({
@@ -56,6 +57,7 @@ export default function MessagesTab({
   onNavigateToBoard,
   availableFriends,
   currentUserId,
+  isBlocked = false,
 }: MessagesTabProps & { currentUserId?: string }) {
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
 
@@ -104,6 +106,7 @@ export default function MessagesTab({
         onUpdateBoardSession={onUpdateBoardSession}
         onCreateSession={onCreateSession}
         onNavigateToBoard={onNavigateToBoard}
+        isBlocked={isBlocked}
       />
     );
   }

@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { blockService } from './blockService';
 
 export interface DirectMessage {
   id: string;
@@ -42,6 +43,12 @@ export class MessagingService {
    */
   async getOrCreateDirectConversation(userId1: string, userId2: string): Promise<{ conversation: Conversation | null; error: string | null }> {
     try {
+      // Check if there's a block between users before creating/returning conversation
+      const hasBlock = await blockService.hasBlockBetween(userId2);
+      if (hasBlock) {
+        return { conversation: null, error: 'Cannot message this user' };
+      }
+
       // Get all conversations where user1 is a participant
       const { data: user1Conversations, error: user1Error } = await supabase
         .from('conversation_participants')
@@ -310,6 +317,7 @@ export class MessagingService {
     fileSize?: number
   ): Promise<{ message: DirectMessage | null; error: string | null }> {
     try {
+      // Note: Server-side RLS will also enforce block check, but this provides faster feedback
       const { data, error } = await supabase
         .from('messages')
         .insert({
@@ -324,7 +332,13 @@ export class MessagingService {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // Check if error is due to blocking (RLS violation)
+        if (error.code === '42501' || error.message?.includes('policy')) {
+          return { message: null, error: 'Cannot send message to this user' };
+        }
+        throw error;
+      }
 
       const enrichedMessage = await this.enrichMessage(data, senderId);
       

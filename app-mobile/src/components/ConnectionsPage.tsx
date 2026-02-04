@@ -18,9 +18,11 @@ import AddFriendModal from "./AddFriendModal";
 import FriendRequestsModal from "./FriendRequestsModal";
 import AddToBoardModal from "./AddToBoardModal";
 import ReportUserModal from "./ReportUserModal";
+import BlockUserModal from "./BlockUserModal";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { messagingService, DirectMessage } from "../services/messagingService";
 import { supabase } from "../services/supabase";
+import { BlockReason, blockService } from "../services/blockService";
 
 interface ConnectionsPageProps {
   onSendCollabInvite?: (friend: any) => void;
@@ -306,6 +308,7 @@ export default function ConnectionsPageRefactored({
     {}
   );
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
 
   // Add friend modal state
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
@@ -316,6 +319,10 @@ export default function ConnectionsPageRefactored({
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedUserToReport, setSelectedUserToReport] =
     useState<Friend | null>(null);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [selectedUserToBlock, setSelectedUserToBlock] =
+    useState<Friend | null>(null);
+  const [blockLoading, setBlockLoading] = useState(false);
 
   // Use transformed friends from useFriends hook
   const currentFriends = transformedFriends;
@@ -340,6 +347,10 @@ export default function ConnectionsPageRefactored({
 
   const handleSelectFriend = async (friend: Friend) => {
     if (!user?.id) return;
+
+    // Check if there's a block between users
+    const hasBlock = await blockService.hasBlockBetween(friend.id);
+    setActiveChatIsBlocked(hasBlock);
 
     // Show UI immediately - optimistic update
     setActiveChat(friend);
@@ -636,6 +647,7 @@ export default function ConnectionsPageRefactored({
     setActiveChat(null);
     setCurrentConversationId(null);
     setMessages([]);
+    setActiveChatIsBlocked(false);
   };
 
   const handleSendMessage = async (
@@ -644,6 +656,19 @@ export default function ConnectionsPageRefactored({
     file?: any
   ) => {
     if (!activeChat || !user?.id || !currentConversationId) return;
+
+    // Check if there's a block between the users before attempting to send
+    const otherParticipant = activeChat.participants?.find((p) => p.id !== user.id);
+    if (otherParticipant) {
+      const hasBlock = await blockService.hasBlockBetween(otherParticipant.id);
+      if (hasBlock) {
+        Alert.alert(
+          "Message Not Sent",
+          "Messaging is not available with this user. One of you may have blocked the other."
+        );
+        return;
+      }
+    }
 
     // Generate temporary ID for optimistic update
     const tempId = `temp-${Date.now()}-${Math.random()}`;
@@ -850,6 +875,19 @@ export default function ConnectionsPageRefactored({
             return conv;
           })
         );
+
+        // Show user-friendly error message
+        if (sendError?.includes("Cannot") || sendError?.includes("blocked") || sendError?.includes("policy")) {
+          Alert.alert(
+            "Message Not Sent",
+            "You cannot send messages to this user. They may have blocked you or you may have blocked them."
+          );
+        } else {
+          Alert.alert(
+            "Message Not Sent",
+            "Failed to send message. Please check your connection and try again."
+          );
+        }
         return;
       }
 
@@ -992,13 +1030,34 @@ export default function ConnectionsPageRefactored({
     }
   };
 
-  const handleBlockUser = async (friend: Friend) => {
+  const handleBlockUser = (friend: Friend) => {
+    // Show block confirmation modal instead of blocking immediately
+    setSelectedUserToBlock(friend);
+    setShowBlockModal(true);
+  };
+
+  const handleBlockConfirm = async (reason?: BlockReason) => {
+    if (!selectedUserToBlock) return;
+    
+    setBlockLoading(true);
     try {
-      await blockFriend(friend.id);
-      onBlockUser?.(friend);
+      await blockFriend(selectedUserToBlock.id, reason);
+      onBlockUser?.(selectedUserToBlock);
       await fetchFriends();
+      setShowBlockModal(false);
+      setSelectedUserToBlock(null);
     } catch (error) {
       console.error("Error blocking user:", error);
+      Alert.alert("Error", "Failed to block user. Please try again.");
+    } finally {
+      setBlockLoading(false);
+    }
+  };
+
+  const handleBlockModalClose = () => {
+    if (!blockLoading) {
+      setShowBlockModal(false);
+      setSelectedUserToBlock(null);
     }
   };
 
@@ -1162,6 +1221,7 @@ export default function ConnectionsPageRefactored({
                 showMessageInterface={showMessageInterface}
                 conversationsData={conversations}
                 messages={messages}
+                isBlocked={activeChatIsBlocked}
                 accountPreferences={accountPreferences}
                 boardsSessions={boardsSessions}
                 currentMode={currentMode}
@@ -1226,6 +1286,14 @@ export default function ConnectionsPageRefactored({
             : { id: "", name: "", username: "" }
         }
         onReport={handleReportSubmit}
+      />
+
+      <BlockUserModal
+        visible={showBlockModal}
+        onClose={handleBlockModalClose}
+        onConfirm={handleBlockConfirm}
+        userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
+        loading={blockLoading}
       />
     </>
   );
