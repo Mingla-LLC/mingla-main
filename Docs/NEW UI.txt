@@ -1,0 +1,808 @@
+# React Native Explorer UI Implementation Guide - Mingla iOS 26.2 Style
+
+## 🎯 Overview
+Convert the Mingla web app's **Explorer User Experience** to React Native with the exact glassmorphism, animations, and iOS 26.2-inspired premium feel.
+
+---
+
+## 📁 Key Source Files to Reference
+
+### Core Explorer UI Files (Web - React):
+1. **`/components/HomePage.tsx`** - Main explorer landing page with navigation
+2. **`/components/SwipeableCards.tsx`** - Card swiping logic and state management
+3. **`/components/swipeable-cards/SwipeCard.tsx`** - Individual swipeable card UI
+4. **`/components/swipeable-cards/CardDetails.tsx`** - Expanded card modal with full details
+5. **`/components/swipeable-cards/CardGallery.tsx`** - Image gallery with smooth transitions
+6. **`/components/swipeable-cards/PurchaseOptionsModal.tsx`** - Purchase flow UI
+7. **`/components/DiscoverPage.tsx`** - Browse/discover tab with category filters
+8. **`/components/ActivityPage.tsx`** - Calendar and saved experiences
+9. **`/components/PreferencesSheet.tsx`** - User preference editor
+10. **`/styles/globals.css`** - All CSS animations and glassmorphism styles
+
+### Supporting Files:
+- **`/components/swipeable-cards/types.ts`** - TypeScript interfaces for cards
+- **`/components/swipeable-cards/utils.ts`** - Helper functions
+- **`/components/swipeable-cards/constants.ts`** - Colors, sizing constants
+
+---
+
+## 🎨 Design System - Exact Specs
+
+### Brand Colors (Mingla):
+```typescript
+const COLORS = {
+  primary: '#eb7825',      // Mingla Orange
+  secondary: '#d6691f',    // Darker Orange
+  white: '#ffffff',
+  black: '#000000',
+  
+  // UI Colors
+  background: '#f9fafb',   // Light gray background
+  glass: 'rgba(255, 255, 255, 0.7)',
+  glassBlur: 20,           // Blur radius for glassmorphism
+  cardShadow: 'rgba(0, 0, 0, 0.15)',
+  
+  // Semantic Colors
+  success: '#10b981',
+  error: '#ef4444',
+  warning: '#f59e0b',
+  info: '#3b82f6',
+};
+```
+
+### Typography:
+```typescript
+const TYPOGRAPHY = {
+  fontFamily: {
+    regular: 'System', // iOS uses SF Pro
+    medium: 'System',
+    bold: 'System',
+  },
+  fontSize: {
+    xs: 12,
+    sm: 14,
+    base: 16,
+    lg: 18,
+    xl: 20,
+    '2xl': 24,
+    '3xl': 30,
+  },
+  fontWeight: {
+    normal: '400',
+    medium: '500',
+    semibold: '600',
+    bold: '700',
+  },
+};
+```
+
+### Spacing (8pt grid system):
+```typescript
+const SPACING = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  '2xl': 48,
+};
+```
+
+### Border Radius:
+```typescript
+const RADIUS = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  '2xl': 32,
+  full: 9999,
+};
+```
+
+---
+
+## 🌟 Glassmorphism Implementation (React Native)
+
+### Key CSS Classes to Convert:
+
+#### 1. **`.glass-card`** - Main glass card effect
+```css
+/* Web CSS */
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+```
+
+**React Native Implementation:**
+```typescript
+import { BlurView } from 'expo-blur';
+import { StyleSheet, View } from 'react-native';
+
+const GlassCard = ({ children, style }) => (
+  <BlurView intensity={80} tint="light" style={[styles.glassCard, style]}>
+    <View style={styles.glassInner}>
+      {children}
+    </View>
+  </BlurView>
+);
+
+const styles = StyleSheet.create({
+  glassCard: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 32,
+    elevation: 10, // Android shadow
+  },
+  glassInner: {
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    padding: 16,
+  },
+});
+```
+
+#### 2. **`.glass-nav`** - Navigation bar glass effect
+```typescript
+const GlassNavBar = ({ children }) => (
+  <BlurView intensity={90} tint="light" style={styles.navBar}>
+    {children}
+  </BlurView>
+);
+
+const styles = StyleSheet.create({
+  navBar: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+    paddingTop: 48, // Account for iOS status bar
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+  },
+});
+```
+
+#### 3. **`.glass-button`** - Interactive glass buttons
+```typescript
+import { TouchableOpacity } from 'react-native';
+import Animated, { 
+  useAnimatedStyle, 
+  withSpring,
+  useSharedValue 
+} from 'react-native-reanimated';
+
+const GlassButton = ({ children, onPress }) => {
+  const scale = useSharedValue(1);
+  
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPressIn={() => scale.value = withSpring(0.95)}
+      onPressOut={() => scale.value = withSpring(1)}
+      onPress={onPress}
+    >
+      <Animated.View style={[styles.glassButton, animatedStyle]}>
+        <BlurView intensity={60} tint="light">
+          {children}
+        </BlurView>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+};
+
+const styles = StyleSheet.create({
+  glassButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+});
+```
+
+---
+
+## 🎬 Animations - 60fps Buttery Smooth
+
+### Core Animation Library:
+**Use `react-native-reanimated` v3** for 60fps animations on native thread.
+
+### Key Animation Patterns:
+
+#### 1. **Card Swipe Animation**
+```typescript
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+} from 'react-native-reanimated';
+
+const SwipeableCard = ({ card, onSwipeRight, onSwipeLeft }) => {
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const rotate = useSharedValue(0);
+  const scale = useSharedValue(1);
+  
+  const gesture = Gesture.Pan()
+    .onChange((event) => {
+      translateX.value = event.translationX;
+      translateY.value = event.translationY * 0.5; // Slower Y movement
+      rotate.value = event.translationX * 0.08; // Rotation based on X
+      scale.value = 1 - Math.abs(event.translationX) * 0.0001;
+    })
+    .onEnd((event) => {
+      const threshold = 120;
+      
+      if (event.translationX > threshold) {
+        // Swipe Right - Like
+        translateX.value = withTiming(400, { duration: 300 }, () => {
+          runOnJS(onSwipeRight)(card);
+        });
+      } else if (event.translationX < -threshold) {
+        // Swipe Left - Pass
+        translateX.value = withTiming(-400, { duration: 300 }, () => {
+          runOnJS(onSwipeLeft)(card);
+        });
+      } else {
+        // Snap back
+        translateX.value = withSpring(0, { damping: 15, stiffness: 150 });
+        translateY.value = withSpring(0);
+        rotate.value = withSpring(0);
+        scale.value = withSpring(1);
+      }
+    });
+  
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { rotate: `${rotate.value}deg` },
+      { scale: scale.value },
+    ],
+  }));
+  
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View style={[styles.card, animatedStyle]}>
+        {/* Card content */}
+      </Animated.View>
+    </GestureDetector>
+  );
+};
+```
+
+#### 2. **Spring Bounce Animations** (iOS-like)
+```typescript
+// Entry animations
+const fadeIn = () => {
+  'worklet';
+  return withSpring(1, {
+    damping: 20,
+    stiffness: 90,
+    mass: 1,
+  });
+};
+
+const scaleIn = () => {
+  'worklet';
+  return withSpring(1, {
+    damping: 15,
+    stiffness: 150,
+  });
+};
+```
+
+#### 3. **Smooth Page Transitions**
+```typescript
+import { CardStyleInterpolators } from '@react-navigation/stack';
+
+// In your navigator config:
+const screenOptions = {
+  gestureEnabled: true,
+  gestureDirection: 'horizontal',
+  cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+  transitionSpec: {
+    open: {
+      animation: 'spring',
+      config: {
+        stiffness: 1000,
+        damping: 500,
+        mass: 3,
+        overshootClamping: true,
+        restDisplacementThreshold: 0.01,
+        restSpeedThreshold: 0.01,
+      },
+    },
+    close: {
+      animation: 'spring',
+      config: {
+        stiffness: 1000,
+        damping: 500,
+        mass: 3,
+        overshootClamping: true,
+        restDisplacementThreshold: 0.01,
+        restSpeedThreshold: 0.01,
+      },
+    },
+  },
+};
+```
+
+#### 4. **Pulse Animation** (notifications, badges)
+```typescript
+import { useEffect } from 'react';
+import Animated, {
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
+
+const PulsingDot = () => {
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+  
+  useEffect(() => {
+    scale.value = withRepeat(
+      withSequence(
+        withTiming(1.2, { duration: 800 }),
+        withTiming(1, { duration: 800 })
+      ),
+      -1,
+      true
+    );
+    
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.6, { duration: 800 }),
+        withTiming(1, { duration: 800 })
+      ),
+      -1,
+      true
+    );
+  }, []);
+  
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+  
+  return (
+    <Animated.View style={[styles.dot, animatedStyle]} />
+  );
+};
+```
+
+---
+
+## 📱 Screen Structure
+
+### 1. **Home Screen** (Main Swipeable Cards)
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  [Settings] [Logo] [Notifs] │  ← Glass Nav Bar
+├─────────────────────────────┤
+│                             │
+│      Swipeable Card         │
+│   (Center, vertically)      │
+│                             │
+│   [Card Stack Preview]      │
+│                             │
+├─────────────────────────────┤
+│  [Home][Discover][+][...]   │  ← Bottom Tab Bar
+└─────────────────────────────┘
+```
+
+**Components:**
+- `HomeScreen.tsx` - Main container
+- `SwipeableCardStack.tsx` - Card stack manager
+- `ExperienceCard.tsx` - Individual card
+- `GlassNavBar.tsx` - Top navigation
+- `BottomTabBar.tsx` - Navigation tabs
+
+### 2. **Card Detail Modal** (Full-screen expansion)
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  [X]                        │
+│  ┌─────────────────────┐   │
+│  │  Image Gallery      │   │
+│  └─────────────────────┘   │
+│  Title                      │
+│  ⭐ 4.8 (120)              │
+│  📍 Location • 🕐 Time     │
+├─────────────────────────────┤
+│  Scrollable Content:        │
+│  - Description              │
+│  - Packages & Pricing       │
+│  - Venue Info               │
+│  - Music Genres             │
+│  - Vibe Tags                │
+│  - Itinerary (if multi)     │
+│  - Policies                 │
+├─────────────────────────────┤
+│  [Book Now]  [♥] [🔖] [⤴] │
+└─────────────────────────────┘
+```
+
+### 3. **Discover/Browse Screen**
+
+**Layout with horizontal scrolling categories:**
+```
+┌─────────────────────────────┐
+│  Discover                   │
+│  ◄ [Night Out][Party][...►] │  ← Horizontal scroll
+├─────────────────────────────┤
+│  ┌─────┐  ┌─────┐  ┌─────┐ │
+│  │ Card│  │ Card│  │ Card│ │
+│  └─────┘  └─────┘  └─────┘ │
+│  ┌─────┐  ┌─────┐  ┌─────┐ │
+│  │ Card│  │ Card│  │ Card│ │
+│  └─────┘  └─────┘  └─────┘ │
+└─────────────────────────────┘
+```
+
+---
+
+## 🛠️ Essential React Native Libraries
+
+### Required Dependencies:
+```json
+{
+  "dependencies": {
+    "expo": "~51.0.0",
+    "expo-blur": "~13.0.2",
+    "react-native-reanimated": "~3.10.0",
+    "react-native-gesture-handler": "~2.16.0",
+    "@react-navigation/native": "^6.1.0",
+    "@react-navigation/stack": "^6.3.0",
+    "@react-navigation/bottom-tabs": "^6.5.0",
+    "react-native-safe-area-context": "^4.10.0",
+    "react-native-screens": "~3.31.0",
+    "expo-linear-gradient": "~13.0.2",
+    "expo-haptics": "~13.0.1",
+    "react-native-svg": "^15.2.0"
+  }
+}
+```
+
+### Setup Instructions:
+```bash
+# Install Expo CLI
+npm install -g expo-cli
+
+# Create new Expo project
+expo init MinglaApp --template blank-typescript
+
+# Install dependencies
+cd MinglaApp
+npx expo install expo-blur react-native-reanimated react-native-gesture-handler
+npx expo install @react-navigation/native @react-navigation/stack @react-navigation/bottom-tabs
+npx expo install react-native-safe-area-context react-native-screens
+npx expo install expo-linear-gradient expo-haptics react-native-svg
+
+# Configure reanimated plugin in babel.config.js:
+module.exports = function(api) {
+  api.cache(true);
+  return {
+    presets: ['babel-preset-expo'],
+    plugins: ['react-native-reanimated/plugin'],
+  };
+};
+```
+
+---
+
+## 🎯 Implementation Prompt for AI
+
+Use this exact prompt when working with an AI assistant:
+
+---
+
+### **PROMPT START:**
+
+> I need you to implement the Mingla Explorer user experience in React Native using Expo. Here are the requirements:
+>
+> **Design System:**
+> - Brand colors: Primary #eb7825, Secondary #d6691f
+> - iOS 26.2 inspired glassmorphism throughout
+> - 60fps buttery smooth animations using react-native-reanimated
+> - Spring-based animations for all interactions (damping: 15-20, stiffness: 90-150)
+>
+> **Core Features to Implement:**
+>
+> 1. **Swipeable Card Stack** (like Tinder)
+>    - Cards can be swiped right (like) or left (pass)
+>    - Smooth rotation and scale during drag
+>    - Spring back if not swiped far enough
+>    - Next card scales up when top card is removed
+>    - Haptic feedback on swipe actions
+>
+> 2. **Glassmorphism UI** using expo-blur
+>    - Navigation bar with BlurView (intensity: 80-90)
+>    - Cards with glass effect (rgba(255,255,255,0.85) + blur)
+>    - Buttons with subtle glass and hover/press animations
+>    - Border: 1px rgba(255,255,255,0.3)
+>    - Shadows: iOS-style soft shadows
+>
+> 3. **Card Detail Modal**
+>    - Full-screen modal that slides up from bottom
+>    - Image gallery with horizontal swipe
+>    - Scrollable content with all experience details
+>    - Action buttons at bottom (Book, Like, Save, Share)
+>    - Smooth spring animation when opening/closing
+>
+> 4. **Navigation Structure**
+>    - Bottom tab navigator with 5 tabs
+>    - Stack navigator for detail views
+>    - iOS-style page transitions
+>    - Glass navbar at top with logo and icons
+>
+> 5. **Animations Required:**
+>    - Entry: fade + scale spring animation
+>    - Card swipe: rotation + translation with physics
+>    - Button press: scale down 0.95 on press, spring back
+>    - Page transitions: horizontal slide with spring
+>    - Pulse: notification dots, badges
+>    - Haptics: light for buttons, medium for swipes, heavy for success
+>
+> **File Structure:**
+> ```
+> /src
+>   /screens
+>     HomeScreen.tsx
+>     DiscoverScreen.tsx
+>     CardDetailModal.tsx
+>   /components
+>     /cards
+>       SwipeableCardStack.tsx
+>       ExperienceCard.tsx
+>     /glass
+>       GlassCard.tsx
+>       GlassButton.tsx
+>       GlassNavBar.tsx
+>     /navigation
+>       BottomTabBar.tsx
+>   /theme
+>     colors.ts
+>     spacing.ts
+>     typography.ts
+>   /animations
+>     springs.ts
+>     transitions.ts
+> ```
+>
+> **Key Implementation Details:**
+> - Use `react-native-reanimated` for all animations (run on UI thread)
+> - Use `react-native-gesture-handler` for swipe gestures
+> - Use `expo-blur` for glassmorphism (BlurView component)
+> - Use `expo-haptics` for tactile feedback
+> - All glass effects: BlurView + semi-transparent background + border
+> - Spring config: damping 15-20, stiffness 90-150 for iOS feel
+> - Safe area handling for notch/home indicator
+> - Dark mode support optional (focus on light mode first)
+>
+> **Reference these exact styles from the web version:**
+> - HomePage.tsx - Navigation layout and structure
+> - SwipeCard.tsx - Card design and swipe mechanics
+> - CardDetails.tsx - Detail modal layout
+> - globals.css - All glassmorphism and animation classes
+>
+> Start by creating the basic app structure with navigation, then implement the swipeable cards, then add the glassmorphism effects, and finally polish all animations to be smooth and iOS-like.
+
+### **PROMPT END**
+
+---
+
+## 📋 Implementation Checklist
+
+Use this checklist when implementing:
+
+### Phase 1: Setup & Navigation ✅
+- [ ] Create Expo TypeScript project
+- [ ] Install all required dependencies
+- [ ] Configure react-native-reanimated
+- [ ] Setup navigation structure (tabs + stack)
+- [ ] Create theme files (colors, spacing, typography)
+
+### Phase 2: Core Components ✅
+- [ ] Create GlassCard component with BlurView
+- [ ] Create GlassButton with press animation
+- [ ] Create GlassNavBar for top navigation
+- [ ] Build experience card UI (image, title, details)
+- [ ] Setup safe area handling
+
+### Phase 3: Swipeable Cards ✅
+- [ ] Implement pan gesture for card swiping
+- [ ] Add rotation during drag (translateX * 0.08)
+- [ ] Add scale effect (1 - abs(translateX) * 0.0001)
+- [ ] Implement swipe threshold (120px)
+- [ ] Add spring-back animation if below threshold
+- [ ] Stack next card below with scale(0.95)
+- [ ] Add haptic feedback on swipe actions
+
+### Phase 4: Detail Modal ✅
+- [ ] Create full-screen modal component
+- [ ] Add slide-up entrance animation
+- [ ] Build image gallery with horizontal scroll
+- [ ] Add scrollable content section
+- [ ] Implement action buttons at bottom
+- [ ] Add close gesture (swipe down to dismiss)
+
+### Phase 5: Polish & Animations ✅
+- [ ] Verify all animations run at 60fps
+- [ ] Add spring animations to all interactions
+- [ ] Implement pulse animations for badges
+- [ ] Add entrance animations for lists
+- [ ] Fine-tune spring damping/stiffness
+- [ ] Test on real iOS device
+
+### Phase 6: Final Touches ✅
+- [ ] Add loading states with glass skeleton
+- [ ] Implement error states
+- [ ] Add empty states with illustrations
+- [ ] Test haptic feedback on device
+- [ ] Performance optimization
+- [ ] Polish edge cases and transitions
+
+---
+
+## 🎨 Key Visual References
+
+### Glassmorphism Hierarchy:
+1. **Background:** `#f9fafb` solid
+2. **Cards:** `rgba(255,255,255,0.85)` + blur(20px) + border
+3. **Navbar:** `rgba(255,255,255,0.9)` + blur(20px)
+4. **Buttons:** `rgba(255,255,255,0.7)` + blur(15px) + border
+5. **Modals:** `rgba(255,255,255,0.95)` + blur(30px)
+
+### Shadow Elevations:
+```typescript
+const SHADOWS = {
+  sm: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  md: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  lg: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  xl: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.15,
+    shadowRadius: 32,
+    elevation: 12,
+  },
+};
+```
+
+---
+
+## 🔧 Troubleshooting Common Issues
+
+### Animations Not Smooth (< 60fps):
+- ✅ Use `react-native-reanimated` (runs on UI thread)
+- ✅ Avoid `Animated` from React Native (runs on JS thread)
+- ✅ Use `useAnimatedStyle` instead of `Animated.Value`
+- ✅ Mark animation functions with `'worklet'` directive
+
+### Glassmorphism Not Working:
+- ✅ Ensure `expo-blur` is installed and configured
+- ✅ Use `BlurView` wrapper with `intensity` prop
+- ✅ Set semi-transparent background color
+- ✅ Add subtle border for definition
+- ✅ Test on real device (simulator blur is different)
+
+### Gestures Conflicting:
+- ✅ Use `GestureDetector` from `react-native-gesture-handler`
+- ✅ Set proper `simultaneousHandlers` prop
+- ✅ Use `Gesture.Pan()` for swipe, `Gesture.Tap()` for press
+- ✅ Add `touchAction: 'pan-y'` to allow vertical scroll
+
+### Performance Issues:
+- ✅ Use `FlatList` with `windowSize` for long lists
+- ✅ Memoize components with `React.memo()`
+- ✅ Use `getItemLayout` for fixed-size items
+- ✅ Optimize images (use proper sizes, cache, lazy load)
+- ✅ Avoid inline functions in render
+- ✅ Use `InteractionManager` for heavy operations
+
+---
+
+## 🚀 Next Steps After Basic Implementation
+
+1. **Add Advanced Features:**
+   - Pull-to-refresh on card stack
+   - Undo last swipe action
+   - Card preview on long-press
+   - Quick filters in nav bar
+
+2. **Enhanced Interactions:**
+   - Double-tap to like
+   - Pinch to zoom on images
+   - 3D Touch / Haptic Touch menu
+   - Contextual actions (share, report)
+
+3. **Animations:**
+   - Confetti on successful booking
+   - Shimmer loading states
+   - Micro-interactions on icons
+   - Page transition effects
+
+4. **Polish:**
+   - Dark mode support
+   - Accessibility labels
+   - VoiceOver support
+   - Reduce motion preference
+   - Dynamic type support
+
+---
+
+## 📚 Additional Resources
+
+- **React Native Reanimated Docs:** https://docs.swmansion.com/react-native-reanimated/
+- **Expo Blur Docs:** https://docs.expo.dev/versions/latest/sdk/blur-view/
+- **React Navigation Docs:** https://reactnavigation.org/docs/getting-started
+- **iOS Human Interface Guidelines:** https://developer.apple.com/design/human-interface-guidelines/
+- **Gesture Handler Docs:** https://docs.swmansion.com/react-native-gesture-handler/
+
+---
+
+## ✅ Success Criteria
+
+Your implementation is complete when:
+- ✅ Cards swipe smoothly at 60fps with physics
+- ✅ All UI elements have glassmorphism effect
+- ✅ Spring animations feel natural and iOS-like
+- ✅ Haptics provide tactile feedback
+- ✅ Navigation transitions are smooth
+- ✅ App looks premium and polished
+- ✅ No jank or stuttering on real device
+- ✅ Detail modal opens/closes smoothly
+- ✅ All interactions have visual feedback
+- ✅ Safe area is respected on all screens
+
+---
+
+**Remember:** The key to the iOS 26.2 feel is the combination of:
+1. Glassmorphism (blur + transparency)
+2. Spring-based animations (not linear)
+3. Subtle shadows (soft, not harsh)
+4. Haptic feedback (light, medium, heavy)
+5. Smooth 60fps performance
+6. Attention to detail in micro-interactions
+
+Good luck! 🚀

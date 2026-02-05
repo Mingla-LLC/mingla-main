@@ -78,8 +78,19 @@
     },
     "extra": {
       "eas": {
-        "projectId": "4c431435-9cff-45cd-a670-e898fb9f00a7"
-      }
+        "projectId": "fa733082-682f-4e47-92cc-6013b0640373"
+      },
+      "googleWebClientId": "819001230740-2ogfaov7srromrp6hgjdbaabsinsajvv.apps.googleusercontent.com",
+      "EXPO_PUBLIC_OPENWEATHER_API_KEY": "299d1497ef6fbdb0c63f1606ddfc72f9",
+      "EXPO_PUBLIC_FOURSQUARE_API_KEY": "RXN0EIVNOQ1MMLL2XXQGLXWEYV0YB53ELZECFGHQ5GZM2VW0",
+      "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAh75phYnGl6R1iql4JlLYk5814ynoDpmI",
+      "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "819001230740-2ogfaov7srromrp6hgjdbaabsinsajvv.apps.googleusercontent.com",
+      "ANDROID_CLIENT_ID": "772863033998-u1ajlra8sbvjmvbf3ded43av16g0a9jn.apps.googleusercontent.com",
+      "IOS_CLIENT_ID": "772863033998-p0kesblk242qbc9n2p47t1nm8pitr9s6.apps.googleusercontent.com",
+      "GOOGLE_PROJECT_ID": "mingla-482610",
+      "GOOGLE_WEB_CLIENT_SECRET": "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",
+      "GOOGLE_IOS_CLIENT_SECRET": "819001230740-vhcpugs8cqjtvd04sop0rufgo6bd88o7.apps.googleusercontent.com",
+      "GOOGLE_ANDROID_CLIENT_ID": "819001230740-6hvnie9fhurdhljbq0knt9usvmvcuiag.apps.googleusercontent.com"
     }
   }
 }

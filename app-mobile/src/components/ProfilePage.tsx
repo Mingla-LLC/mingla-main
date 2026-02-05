@@ -6,9 +6,12 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  Alert,
   Animated,
   ActivityIndicator,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -18,6 +21,10 @@ import { useRecentActivity } from "../hooks/useRecentActivity";
 import { formatActivityDate } from "../utils/dateUtils";
 import type { UserActivityRecord } from "../services/userActivityService";
 import BlockedUsersModal from "./BlockedUsersModal";
+import { cameraService } from "../services/cameraService";
+import { authService } from "../services/authService";
+import { useAppStore } from "../store/appStore";
+import { useAppState } from "./AppStateManager";
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -74,7 +81,81 @@ export default function ProfilePage({
   const [profileImageSrc, setProfileImageSrc] = useState(
     userIdentity?.profileImage || null
   );
+  const [isUploading, setIsUploading] = useState(false);
+  const user = useAppStore((s) => s.user);
+  const { handleUserIdentityUpdate } = useAppState();
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [showCompletionBox, setShowCompletionBox] = useState(false);
+  const progressAnim = useRef(new Animated.Value(userIdentity?.profileImage ? 100 : 90)).current;
+  const avatarScale = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [hasUploadedImage, setHasUploadedImage] = useState<boolean>(!!userIdentity?.profileImage);
+  const [showAvatarOverlay, setShowAvatarOverlay] = useState(false);
+  const [onlineStatus, setOnlineStatus] = useState<"online" | "offline" | "busy">(
+    userIdentity?.active ? "online" : "offline"
+  );
+  const locationSpin = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  const statusLabel = (s: string) => {
+    switch (s) {
+      case "online":
+        return "Online";
+      case "busy":
+        return "Busy";
+      default:
+        return "Offline";
+    }
+  };
+
+  const statusColorStyle = (s: string) => {
+    switch (s) {
+      case "online":
+        return { backgroundColor: "#10b981" };
+      case "busy":
+        return { backgroundColor: "#f59e0b" };
+      default:
+        return { backgroundColor: "#9ca3af" };
+    }
+  };
+
+  const setStatusAndPersist = (s: "online" | "offline" | "busy") => {
+    setOnlineStatus(s);
+    // update user identity locally (persisted by handleUserIdentityUpdate)
+    const updatedIdentity = { ...(userIdentity || {}), presenceStatus: s } as any;
+    handleUserIdentityUpdate?.(updatedIdentity);
+  };
+
+  useEffect(() => {
+    let spinAnim: Animated.CompositeAnimation | null = null;
+    let pulseLoop: Animated.CompositeAnimation | null = null;
+    if (isLoadingLocation) {
+      spinAnim = Animated.loop(
+        Animated.timing(locationSpin, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        })
+      );
+      pulseLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.15, duration: 400, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+        ])
+      );
+      spinAnim.start();
+      pulseLoop.start();
+    } else {
+      locationSpin.setValue(0);
+      pulseAnim.setValue(1);
+    }
+
+    return () => {
+      if (spinAnim) spinAnim.stop();
+      if (pulseLoop) pulseLoop.stop();
+    };
+  }, [isLoadingLocation]);
 
   // Animated value for toggle
   const toggleAnim = useRef(
@@ -96,26 +177,233 @@ export default function ProfilePage({
     updateLocation();
   }, []);
 
+  // Bounce-in avatar on mount
+  useEffect(() => {
+    avatarScale.setValue(0.9);
+    Animated.spring(avatarScale, {
+      toValue: 1,
+      friction: 6,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
   const updateLocation = async () => {
     setIsLoadingLocation(true);
+    setLocationError(null);
     try {
-      // For now, use a default location since location services need proper configuration
-      // In a real app, this would use expo-location or similar
-      const defaultLocation = "San Francisco, CA, United States";
-      setCurrentLocation(defaultLocation);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") throw new Error("Location permission denied");
 
-      // Persist location
-      await AsyncStorage.setItem("mingla_user_location", defaultLocation);
-    } catch (error) {
-      // Fallback to last known location
+      const loc = await Location.getCurrentPositionAsync({});
+      const geocoded = await Location.reverseGeocodeAsync({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      });
+
+      const place = geocoded && geocoded[0];
+      const placeString = place
+        ? `${place.city || place.region || ""}${place.region ? ", " + place.region : ""}${place.country ? ", " + place.country : ""}`
+        : `${loc.coords.latitude.toFixed(2)}, ${loc.coords.longitude.toFixed(2)}`;
+
+      setCurrentLocation(placeString || "San Francisco, CA, United States");
+      await AsyncStorage.setItem("mingla_user_location", placeString || "");
+    } catch (error: any) {
+      setLocationError(error?.message || "Unable to fetch location");
       try {
         const lastLocation = await AsyncStorage.getItem("mingla_user_location");
-        if (lastLocation) {
-          setCurrentLocation(lastLocation);
-        }
-      } catch (fallbackError) {}
+        if (lastLocation) setCurrentLocation(lastLocation);
+      } catch (_) {}
     } finally {
       setIsLoadingLocation(false);
+    }
+  };
+
+  const getInitials = () => {
+    const first = userIdentity?.firstName || "";
+    const last = userIdentity?.lastName || "";
+    const fi = first.trim().charAt(0) || "";
+    const li = last.trim().charAt(0) || "";
+    return (fi + li).toUpperCase() || "U";
+  };
+
+  const handlePressIn = () => {
+    setShowAvatarOverlay(true);
+    Animated.timing(avatarScale, {
+      toValue: 1.1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    setShowAvatarOverlay(false);
+    Animated.timing(avatarScale, {
+      toValue: 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const showUploadOptions = () => {
+    Alert.alert(
+      "Upload Profile Photo",
+      "Choose how you want to update your profile photo",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Take Photo", onPress: handleTakePhoto },
+        { text: "Choose from Gallery", onPress: handlePickFromLibrary },
+      ]
+    );
+  };
+
+  const handleAvatarChange = () => {
+    if (profileImageSrc) {
+      // Use a compact action list to avoid Android 3-button limit
+      Alert.alert(
+        "Change Profile Photo",
+        "Upload a new photo or remove the existing one",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Upload", onPress: showUploadOptions },
+          { text: "Remove Photo", style: "destructive", onPress: handleRemovePhoto },
+        ]
+      );
+    } else {
+      showUploadOptions();
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    if (!user?.id) {
+      Alert.alert("Error", "You must be logged in to update your profile photo.");
+      return;
+    }
+    try {
+      const result = await cameraService.takePhoto({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        compress: true,
+        maxWidth: 800,
+        maxHeight: 800,
+      });
+      if (result?.uri) {
+        await uploadProfilePhoto(result.uri);
+      }
+    } catch (error) {
+      console.error("Error taking photo:", error);
+      Alert.alert("Error", "Failed to take photo. Please try again.");
+    }
+  };
+
+  const handlePickFromLibrary = async () => {
+    if (!user?.id) {
+      Alert.alert("Error", "You must be logged in to update your profile photo.");
+      return;
+    }
+    try {
+      const result = await cameraService.pickFromLibrary({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        compress: true,
+        maxWidth: 800,
+        maxHeight: 800,
+      });
+      if (result?.uri) {
+        await uploadProfilePhoto(result.uri);
+      }
+    } catch (error) {
+      console.error("Error picking from library:", error);
+      Alert.alert("Error", "Failed to select image. Please try again.");
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!user?.id) {
+      Alert.alert("Error", "You must be logged in to remove your profile photo.");
+      return;
+    }
+
+    Alert.alert(
+      "Remove Profile Photo",
+      "Are you sure you want to remove your profile photo?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            setIsUploading(true);
+            try {
+              // Clear avatar on profile
+              const updatedProfile = await authService.updateUserProfile(user.id, { avatar_url: null });
+              // Update local identity
+              const updatedIdentity = { ...(userIdentity || {}), profileImage: null };
+              handleUserIdentityUpdate?.(updatedIdentity);
+
+              // Update UI states
+              setHasUploadedImage(false);
+              setProfileImageSrc(null);
+              setShowCompletionBox(true);
+              Animated.timing(progressAnim, { toValue: 90, duration: 300, useNativeDriver: false }).start();
+
+              Alert.alert("Removed", "Your profile photo has been removed.");
+            } catch (error) {
+              console.error("Error removing profile photo:", error);
+              Alert.alert("Error", "Failed to remove profile photo. Please try again.");
+            } finally {
+              setIsUploading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const uploadProfilePhoto = async (imageUri: string) => {
+    if (!user?.id) {
+      Alert.alert("Error", "You must be logged in to update your profile photo.");
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const publicUrl = await authService.uploadProfilePhoto(user.id, imageUri);
+      if (publicUrl) {
+        const updatedIdentity = {
+          ...(userIdentity || {}),
+          profileImage: publicUrl,
+        };
+        handleUserIdentityUpdate?.(updatedIdentity);
+        // animate completion progress
+        setHasUploadedImage(true);
+        setShowCompletionBox(true);
+        fadeAnim.setValue(1);
+        Animated.timing(progressAnim, {
+          toValue: 100,
+          duration: 300,
+          useNativeDriver: false,
+        }).start();
+
+        // auto dismiss the completion card after 1s with fade
+        setTimeout(() => {
+          Animated.timing(fadeAnim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }).start(() => setShowCompletionBox(false));
+        }, 1000);
+
+        Alert.alert("Success", "Profile photo updated successfully!");
+      } else {
+        Alert.alert("Error", "Failed to upload profile photo. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error uploading profile photo:", error);
+      Alert.alert("Error", "Failed to upload profile photo. Please try again.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -256,19 +544,47 @@ export default function ProfilePage({
         <View style={styles.header}>
           <View style={styles.headerContent}>
             {/* Profile Image */}
-            <View style={styles.profileImageContainer}>
-              <ImageWithFallback
-                source={
-                  profileImageSrc
-                    ? { uri: profileImageSrc }
-                    : {
-                        uri: "https://via.placeholder.com/80x80/6b7280/ffffff?text=User",
-                      }
-                }
-                style={styles.profileImage}
-              />
-              <View style={styles.onlineIndicator}></View>
-            </View>
+            <TouchableOpacity
+              onPress={handleAvatarChange}
+              disabled={isUploading}
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+              style={styles.profileImageContainer}
+            >
+              <Animated.View style={{ transform: [{ scale: avatarScale }] }}>
+                {isUploading ? (
+                  <View style={[styles.profileImage, styles.uploadingContainer]}>
+                    <ActivityIndicator size="large" color="#eb7825" />
+                  </View>
+                ) : profileImageSrc ? (
+                  <ImageWithFallback
+                    source={{ uri: profileImageSrc }}
+                    style={styles.profileImage}
+                  />
+                ) : (
+                  <LinearGradient
+                    colors={["#eb7825", "#d6691f"]}
+                    style={[styles.profileImage, styles.initialsContainer]}
+                    start={[0, 0]}
+                    end={[1, 1]}
+                  >
+                    <Text style={styles.initialsText}>{getInitials()}</Text>
+                  </LinearGradient>
+                )}
+              </Animated.View>
+
+              {/* Small camera badge bottom-right (always visible) */}
+              <View style={styles.cameraBadge} pointerEvents="none">
+                <Ionicons name="camera" size={14} color="white" />
+              </View>
+
+              {/* Dark overlay when active/pressed (for uploaded image interaction) */}
+              {showAvatarOverlay && profileImageSrc ? (
+                <View style={[styles.cameraOverlay, { backgroundColor: "rgba(0,0,0,0.3)" }]} pointerEvents="none">
+                  <Ionicons name="camera" size={18} color="white" />
+                </View>
+              ) : null}
+            </TouchableOpacity>
 
             {/* User Info */}
             <Text style={styles.userName}>
@@ -280,20 +596,97 @@ export default function ProfilePage({
               @{userIdentity?.username || "user"}
             </Text>
 
+            {/* Presence status (editable) */}
+            <View style={styles.statusRow}>
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert(
+                    "Set Status",
+                    "Choose how others see you",
+                    [
+                      { text: "Online", onPress: () => setStatusAndPersist("online") },
+                      { text: "Busy", onPress: () => setStatusAndPersist("busy") },
+                      { text: "Offline", onPress: () => setStatusAndPersist("offline") },
+                      { text: "Cancel", style: "cancel" },
+                    ]
+                  );
+                }}
+                style={styles.statusButton}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.statusBadge, statusColorStyle(onlineStatus)]} />
+                <Text style={styles.statusText}>{statusLabel(onlineStatus)}</Text>
+                <Ionicons name="chevron-down" size={14} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
             {/* Location */}
             <View style={styles.locationContainer}>
-              <Ionicons name="location" size={16} color="#6b7280" />
+              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                <Ionicons name="location" size={16} color="#6b7280" />
+              </Animated.View>
               <Text style={styles.locationText}>{currentLocation}</Text>
               <TouchableOpacity
                 onPress={updateLocation}
                 disabled={isLoadingLocation}
                 style={styles.locationButton}
               >
-                <Ionicons name="refresh" size={12} color="#6b7280" />
+                <Animated.View
+                  style={{
+                    transform: [
+                      {
+                        rotate: locationSpin.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ["0deg", "360deg"],
+                        }),
+                      },
+                    ],
+                    opacity: isLoadingLocation ? 0.9 : 1,
+                  }}
+                >
+                  <Ionicons
+                    name={isLoadingLocation ? "refresh" : "navigate"}
+                    size={12}
+                    color={isLoadingLocation ? "#eb7825" : "#6b7280"}
+                  />
+                </Animated.View>
               </TouchableOpacity>
             </View>
+            {locationError ? (
+              <Text style={styles.locationError}>{locationError}</Text>
+            ) : null}
           </View>
         </View>
+
+        {/* Profile Completion / Gamification Box */}
+        {showCompletionBox ? (
+          <Animated.View style={[styles.completionBox, { opacity: fadeAnim }]}>
+            <Text style={styles.completionTitle}>Profile Completion</Text>
+            <View style={styles.progressBarBackground}>
+              <Animated.View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: progressAnim.interpolate({
+                      inputRange: [0, 100],
+                      outputRange: ["0%", "100%"],
+                    }),
+                    backgroundColor: hasUploadedImage ? "#16a34a" : "#eb7825",
+                  },
+                ]}
+              />
+            </View>
+            <View style={styles.completionMeta}>
+              {hasUploadedImage ? (
+                <Text style={styles.completionText}>✓ Profile complete!</Text>
+              ) : (
+                <Text style={styles.completionText}>
+                  📷 Upload a profile picture to complete your profile
+                </Text>
+              )}
+            </View>
+          </Animated.View>
+        ) : null}
 
         {/* Recent Activity */}
         <View style={styles.section}>
@@ -594,17 +987,91 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: "white",
   },
-  onlineIndicator: {
+  initialsContainer: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 40,
+    backgroundColor: "#e5e7eb",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  initialsText: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#6b7280",
+  },
+  cameraOverlay: {
     position: "absolute",
-    bottom: -4,
-    right: -4,
-    width: 24,
-    height: 24,
-    backgroundColor: "#10b981",
-    borderRadius: 12,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.18)",
+    borderRadius: 40,
+  },
+  cameraBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
     borderColor: "white",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
   },
+  uploadingContainer: {
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 40,
+  },
+  completionBox: {
+    marginHorizontal: 24,
+    marginBottom: 16,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  completionTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 8,
+  },
+  progressBarBackground: {
+    width: "100%",
+    height: 12,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: 12,
+    borderRadius: 8,
+  },
+  completionMeta: {
+    marginTop: 8,
+  },
+  completionText: {
+    fontSize: 13,
+    color: "#6b7280",
+  },
+
   userName: {
     fontSize: 20,
     fontWeight: "bold",
@@ -614,7 +1081,38 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 14,
     color: "#6b7280",
+    marginBottom: 8,
+  },
+  statusRow: {
+    marginTop: 6,
     marginBottom: 12,
+  },
+  statusButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "transparent",
+  },
+  statusBadge: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "white",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  statusText: {
+    fontSize: 13,
+    color: "#6b7280",
+    fontWeight: "600",
   },
   locationContainer: {
     flexDirection: "row",
@@ -624,6 +1122,11 @@ const styles = StyleSheet.create({
   locationText: {
     fontSize: 14,
     color: "#6b7280",
+  },
+  locationError: {
+    marginTop: 6,
+    color: "#dc2626",
+    fontSize: 13,
   },
   locationButton: {
     marginLeft: 4,

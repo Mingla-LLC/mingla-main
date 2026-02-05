@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Permissions Policy: Allow geolocation -->
+    <meta http-equiv="Permissions-Policy" content="geolocation=(self)">
+    
+    <!-- Feature Policy (for older browsers) -->
+    <meta http-equiv="Feature-Policy" content="geolocation 'self'">
+    
+    <title>Mingla - Discover Amazing Experiences</title>
+    
+    <meta name="description" content="Mingla helps you discover and plan amazing experiences tailored to your preferences." />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#eb7825" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    
+    <!-- Preconnect to external services for better performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://maps.googleapis.com" />
+    <link rel="preconnect" href="https://ipapi.co" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
