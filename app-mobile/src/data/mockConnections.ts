@@ -7,6 +7,7 @@ export interface Friend {
   isOnline: boolean;
   lastSeen?: string;
   mutualFriends?: number;
+  isMuted?: boolean;
 }
 
 export interface Message {

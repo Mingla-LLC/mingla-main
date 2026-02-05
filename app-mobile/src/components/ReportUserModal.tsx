@@ -10,7 +10,7 @@ interface ReportUserModalProps {
     name: string;
     username: string;
   };
-  onReport: (userId: string, reason: string, details?: string) => void;
+  onReport: (userId: string, reason: string, details?: string) => void | Promise<void>;
 }
 
 const reportOptions = [
@@ -52,23 +52,27 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
   if (!isOpen) return null;
 
   const handleSubmit = async () => {
-    if (!selectedReason) return;
+    if (!selectedReason || isSubmitting) return;
     
     setIsSubmitting(true);
     
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    onReport(user.id, selectedReason, additionalDetails || undefined);
-    
-    // Reset form
-    setSelectedReason('');
-    setAdditionalDetails('');
-    setIsSubmitting(false);
-    onClose();
+    try {
+      // Call the parent's onReport handler (which handles the actual API call)
+      await onReport(user.id, selectedReason, additionalDetails || undefined);
+      
+      // Reset form state after successful submission
+      setSelectedReason('');
+      setAdditionalDetails('');
+    } catch (error) {
+      console.error('Error in report submission:', error);
+    } finally {
+      setIsSubmitting(false);
+      // Note: Parent component handles closing the modal and showing confirmation
+    }
   };
 
   const handleClose = () => {
+    if (isSubmitting) return; // Prevent closing while submitting
     setSelectedReason('');
     setAdditionalDetails('');
     onClose();
@@ -212,17 +216,15 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    padding: 16,
-    paddingBottom: 96,
   },
   modalContainer: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    maxWidth: 400,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     width: '100%',
-    maxHeight: '90%',
+    minHeight: '95%',
     overflow: 'hidden',
   },
   header: {

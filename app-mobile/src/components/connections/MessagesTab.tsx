@@ -36,6 +36,7 @@ interface MessagesTabProps {
   availableFriends: Friend[];
   currentUserId?: string;
   isBlocked?: boolean;
+  mutedUserIds?: string[];
 }
 
 export default function MessagesTab({
@@ -58,6 +59,7 @@ export default function MessagesTab({
   availableFriends,
   currentUserId,
   isBlocked = false,
+  mutedUserIds = [],
 }: MessagesTabProps & { currentUserId?: string }) {
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
 
@@ -154,7 +156,12 @@ export default function MessagesTab({
             </Text>
           </View>
         ) : (
-          filteredConversations.map((conversation, index) => (
+          filteredConversations.map((conversation, index) => {
+            // Check if any participant in the conversation is muted
+            const isMuted = conversation.participants?.some(
+              (p) => mutedUserIds.includes(p.id)
+            );
+            return (
             <ConversationCard
               key={`conversation-${conversation.id}-${index}`}
               conversation={conversation}
@@ -174,8 +181,9 @@ export default function MessagesTab({
                   onSelectFriend(friendWithCorrectName);
                 }
               }}
+              isMuted={isMuted}
             />
-          ))
+          );})
         )}
       </View>
     </ScrollView>

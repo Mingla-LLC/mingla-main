@@ -7,11 +7,13 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 interface ConversationCardProps {
   conversation: Conversation;
   onSelectConversation: (conversation: Conversation) => void;
+  isMuted?: boolean;
 }
 
 export default function ConversationCard({
   conversation,
-  onSelectConversation
+  onSelectConversation,
+  isMuted = false,
 }: ConversationCardProps) {
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
@@ -74,7 +76,7 @@ export default function ConversationCard({
             </View>
             <View style={styles.conversationMeta}>
               <Text style={styles.timestamp}>{conversation.lastMessage.timestamp}</Text>
-              {conversation.unreadCount > 0 && (
+              {!isMuted && conversation.unreadCount > 0 && (
                 <View style={styles.unreadBadge}>
                   <Text style={styles.unreadCount}>
                     {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}

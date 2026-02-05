@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Friend } from '../../data/mockConnections';
 
@@ -12,9 +12,11 @@ interface FriendCardProps {
   onRemoveFriend: (friend: Friend) => void;
   onBlockUser: (friend: Friend) => void;
   onReportUser: (friend: Friend) => void;
+  onMuteUser: (friend: Friend) => void;
   openDropdownId: string | null;
   onToggleDropdown: (friendId: string) => void;
   onCloseDropdown: () => void;
+  isMuteLoading?: boolean;
 }
 
 export default function FriendCard({
@@ -26,9 +28,11 @@ export default function FriendCard({
   onRemoveFriend,
   onBlockUser,
   onReportUser,
+  onMuteUser,
   openDropdownId,
   onToggleDropdown,
-  onCloseDropdown
+  onCloseDropdown,
+  isMuteLoading = false,
 }: FriendCardProps) {
   const getStatusColor = (status: Friend['status']) => {
     switch (status) {
@@ -53,7 +57,14 @@ export default function FriendCard({
         <View style={styles.friendInfo}>
           <View style={styles.friendHeader}>
             <View>
-              <Text style={styles.friendName}>{friend.name}</Text>
+              <View style={styles.nameContainer}>
+                <Text style={styles.friendName}>{friend.name}</Text>
+                {friend.isMuted && (
+                  <View style={styles.mutedBadge}>
+                    <Ionicons name="volume-mute" size={12} color="#6b7280" />
+                  </View>
+                )}
+              </View>
               <Text style={styles.friendUsername}>@{friend.username}</Text>
               {friend.mutualFriends && (
                 <Text style={styles.mutualFriends}>{friend.mutualFriends} mutual friends</Text>
@@ -120,6 +131,32 @@ export default function FriendCard({
                         <View style={styles.dropdownItemContent}>
                           <Ionicons name="bookmark" size={16} color="#9333ea" />
                           <Text style={styles.dropdownItemText}>Share Saved Card</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <View style={styles.divider} />
+                      <TouchableOpacity
+                        onPress={() => !isMuteLoading && onMuteUser(friend)}
+                        style={[styles.dropdownItem, isMuteLoading && styles.dropdownItemDisabled]}
+                        disabled={isMuteLoading}
+                      >
+                        <View style={styles.dropdownItemContent}>
+                          {isMuteLoading ? (
+                            <ActivityIndicator size={16} color="#6b7280" />
+                          ) : (
+                            <Ionicons 
+                              name={friend.isMuted ? "volume-high" : "volume-mute"} 
+                              size={16} 
+                              color="#6b7280" 
+                            />
+                          )}
+                          <Text style={styles.dropdownItemText}>
+                            {friend.isMuted ? 'Unmute' : 'Mute'}
+                          </Text>
+                          {friend.isMuted && (
+                            <View style={styles.mutedIndicator}>
+                              <Text style={styles.mutedIndicatorText}>Muted</Text>
+                            </View>
+                          )}
                         </View>
                       </TouchableOpacity>
                       <View style={styles.divider} />
@@ -202,10 +239,20 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   friendName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#111827',
+  },
+  mutedBadge: {
+    backgroundColor: '#f3f4f6',
+    padding: 4,
+    borderRadius: 4,
   },
   friendUsername: {
     fontSize: 14,
@@ -276,12 +323,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  dropdownItemDisabled: {
+    opacity: 0.6,
+  },
   dropdownItemText: {
     fontSize: 14,
     color: '#111827',
   },
   dangerText: {
     color: '#ef4444',
+  },
+  mutedIndicator: {
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 'auto',
+  },
+  mutedIndicatorText: {
+    fontSize: 10,
+    color: '#6b7280',
+    fontWeight: '500',
   },
   divider: {
     borderTopWidth: 1,

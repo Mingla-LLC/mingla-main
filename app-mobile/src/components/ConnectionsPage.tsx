@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Text,
   View,
@@ -23,6 +23,8 @@ import { useAuthSimple } from "../hooks/useAuthSimple";
 import { messagingService, DirectMessage } from "../services/messagingService";
 import { supabase } from "../services/supabase";
 import { BlockReason, blockService } from "../services/blockService";
+import { muteService } from "../services/muteService";
+import { reportService, ReportReason } from "../services/reportService";
 
 interface ConnectionsPageProps {
   onSendCollabInvite?: (friend: any) => void;
@@ -79,6 +81,23 @@ export default function ConnectionsPageRefactored({
     blockedUsers = [],
   } = useFriends();
 
+  // Mute functionality state
+  const [mutedUserIds, setMutedUserIds] = useState<string[]>([]);
+  const [muteLoadingFriendId, setMuteLoadingFriendId] = useState<string | null>(null);
+
+  // Fetch muted users
+  const fetchMutedUsers = useCallback(async () => {
+    const { data, error } = await muteService.getMutedUserIds();
+    if (!error && data) {
+      setMutedUserIds(data);
+    }
+  }, []);
+
+  // Fetch muted users on mount
+  useEffect(() => {
+    fetchMutedUsers();
+  }, [fetchMutedUsers]);
+
   // Real data state
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,8 +121,9 @@ export default function ConnectionsPageRefactored({
       avatar: friend.avatar_url,
       status: "offline" as const, // Default to offline, can be enhanced with presence later
       mutualFriends: 0, // Can be calculated later if needed
+      isMuted: mutedUserIds.includes(friend.friend_user_id || friend.id),
     }));
-  }, [dbFriends]);
+  }, [dbFriends, mutedUserIds]);
 
   // Fetch conversations and load friend requests
   useEffect(() => {
@@ -291,14 +311,21 @@ export default function ConnectionsPageRefactored({
     fetchData();
   }, [user?.id, loadFriendRequests, fetchFriends]);
 
-  // Update total unread count whenever conversations change
+  // Update total unread count whenever conversations change (excluding muted users)
   useEffect(() => {
     const totalUnread = conversations.reduce(
-      (sum, conv) => sum + (conv.unreadCount || 0),
+      (sum, conv) => {
+        // Check if any participant in this conversation is muted
+        const isMuted = conv.participants?.some(
+          (p) => mutedUserIds.includes(p.id)
+        );
+        // Only count unread messages from non-muted users
+        return sum + (isMuted ? 0 : (conv.unreadCount || 0));
+      },
       0
     );
     onUnreadCountChange?.(totalUnread);
-  }, [conversations, onUnreadCountChange]);
+  }, [conversations, onUnreadCountChange, mutedUserIds]);
 
   // Messaging state
   const [showFriendSelection, setShowFriendSelection] = useState(false);
@@ -1030,6 +1057,41 @@ export default function ConnectionsPageRefactored({
     }
   };
 
+  const handleMuteUser = async (friend: Friend) => {
+    // Prevent duplicate calls while loading
+    if (muteLoadingFriendId) return;
+    
+    setMuteLoadingFriendId(friend.id);
+    try {
+      const { success, isMuted, error } = await muteService.toggleMuteUser(friend.id);
+      
+      if (success) {
+        // Update local state immediately for better UX
+        setMutedUserIds(prev => 
+          isMuted 
+            ? [...prev, friend.id]
+            : prev.filter(id => id !== friend.id)
+        );
+        
+        // Show confirmation toast/alert
+        Alert.alert(
+          isMuted ? "Friend Muted" : "Friend Unmuted",
+          isMuted 
+            ? `You will no longer receive notifications from ${friend.name}.`
+            : `You will now receive notifications from ${friend.name}.`,
+          [{ text: "OK" }]
+        );
+      } else {
+        Alert.alert("Error", error || "Failed to update mute status. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error toggling mute:", error);
+      Alert.alert("Error", "Failed to update mute status. Please try again.");
+    } finally {
+      setMuteLoadingFriendId(null);
+    }
+  };
+
   const handleBlockUser = (friend: Friend) => {
     // Show block confirmation modal instead of blocking immediately
     setSelectedUserToBlock(friend);
@@ -1070,17 +1132,52 @@ export default function ConnectionsPageRefactored({
     setShowReportModal(true);
   };
 
-  const handleReportSubmit = (
+  const handleReportSubmit = async (
     userId: string,
     reason: string,
     details?: string
   ) => {
-    // Call the report function with reason and details
-    onReportUser?.(selectedUserToReport, true, reason, details); // Pass suppression and additional data
+    try {
+      // Submit report to database
+      const result = await reportService.submitReport(
+        userId,
+        reason as ReportReason,
+        details
+      );
 
-    // Close modal and reset state
-    setShowReportModal(false);
-    setSelectedUserToReport(null);
+      // Close modal and reset state
+      setShowReportModal(false);
+      setSelectedUserToReport(null);
+
+      if (result.success) {
+        // Show success confirmation
+        Alert.alert(
+          "Report Submitted",
+          "Thank you for your report. Our moderation team will review it shortly.",
+          [{ text: "OK" }]
+        );
+        
+        // Also call the prop callback if provided (suppress notification since we show our own)
+        onReportUser?.(selectedUserToReport, true);
+      } else {
+        // Show error message
+        Alert.alert(
+          "Report Failed",
+          result.error || "Unable to submit report. Please try again later.",
+          [{ text: "OK" }]
+        );
+      }
+    } catch (error) {
+      console.error("Error submitting report:", error);
+      setShowReportModal(false);
+      setSelectedUserToReport(null);
+      
+      Alert.alert(
+        "Error",
+        "An unexpected error occurred. Please try again.",
+        [{ text: "OK" }]
+      );
+    }
   };
 
   const handleReportModalClose = () => {
@@ -1175,11 +1272,21 @@ export default function ConnectionsPageRefactored({
                       Messages
                     </Text>
                   </View>
-                  {conversations.some((conv) => conv.unreadCount > 0) && (
+                  {conversations.some((conv) => {
+                    const isMuted = conv.participants?.some(
+                      (p) => mutedUserIds.includes(p.id)
+                    );
+                    return !isMuted && conv.unreadCount > 0;
+                  }) && (
                     <View style={styles.notificationBadge}>
                       <Text style={styles.notificationBadgeText}>
                         {conversations.reduce(
-                          (sum, conv) => sum + conv.unreadCount,
+                          (sum, conv) => {
+                            const isMuted = conv.participants?.some(
+                              (p) => mutedUserIds.includes(p.id)
+                            );
+                            return sum + (isMuted ? 0 : conv.unreadCount);
+                          },
                           0
                         )}
                       </Text>
@@ -1199,6 +1306,7 @@ export default function ConnectionsPageRefactored({
                 onSendCollabInvite={handleSendCollabInvite}
                 onAddToBoard={handleAddToBoard}
                 onShareSavedCard={handleShareSavedCard}
+                onMuteUser={handleMuteUser}
                 onRemoveFriend={handleRemoveFriend}
                 onBlockUser={handleBlockUser}
                 onReportUser={handleReportUser}
@@ -1209,6 +1317,7 @@ export default function ConnectionsPageRefactored({
                 showQRCode={showQRCode}
                 inviteCopied={inviteCopied}
                 friendRequestsCount={friendRequestsCount}
+                muteLoadingFriendId={muteLoadingFriendId}
               />
             ) : (
               <MessagesTab
@@ -1231,6 +1340,7 @@ export default function ConnectionsPageRefactored({
                 onNavigateToBoard={onNavigateToBoard}
                 availableFriends={currentFriends}
                 currentUserId={user?.id}
+                mutedUserIds={mutedUserIds}
               />
             )}
           </View>

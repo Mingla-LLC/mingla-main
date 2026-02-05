@@ -13,6 +13,7 @@ interface FriendsTabProps {
   onRemoveFriend: (friend: Friend) => void;
   onBlockUser: (friend: Friend) => void;
   onReportUser: (friend: Friend) => void;
+  onMuteUser: (friend: Friend) => void;
   onShowAddFriendModal: () => void;
   onShowFriendRequests: () => void;
   onShowQRCode: () => void;
@@ -20,6 +21,7 @@ interface FriendsTabProps {
   showQRCode: boolean;
   inviteCopied: boolean;
   friendRequestsCount: number;
+  muteLoadingFriendId?: string | null;
 }
 
 export default function FriendsTab({
@@ -31,13 +33,15 @@ export default function FriendsTab({
   onRemoveFriend,
   onBlockUser,
   onReportUser,
+  onMuteUser,
   onShowAddFriendModal,
   onShowFriendRequests,
   onShowQRCode,
   onCopyInvite,
   showQRCode,
   inviteCopied,
-  friendRequestsCount
+  friendRequestsCount,
+  muteLoadingFriendId,
 }: FriendsTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [friendsListExpanded, setFriendsListExpanded] = useState(true);
@@ -214,9 +218,11 @@ export default function FriendsTab({
             onRemoveFriend={onRemoveFriend}
             onBlockUser={onBlockUser}
             onReportUser={onReportUser}
+            onMuteUser={onMuteUser}
             openDropdownId={openDropdownId}
             onToggleDropdown={handleToggleDropdown}
             onCloseDropdown={handleCloseDropdown}
+            isMuteLoading={muteLoadingFriendId === friend.id}
           />
         ))}
         

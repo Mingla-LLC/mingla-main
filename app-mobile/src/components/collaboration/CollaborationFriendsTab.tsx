@@ -20,6 +20,7 @@ interface Friend {
   avatar?: string;
   status?: "online" | "offline" | "away";
   mutualFriends?: number;
+  isMuted?: boolean;
 }
 
 interface CollaborationFriendsTabProps {
@@ -39,6 +40,7 @@ interface CollaborationFriendsTabProps {
   showQRCode: boolean;
   inviteCopied: boolean;
   friendRequestsCount: number;
+  muteLoadingFriendId?: string | null;
 }
 
 export default function CollaborationFriendsTab({
@@ -58,6 +60,7 @@ export default function CollaborationFriendsTab({
   showQRCode,
   inviteCopied,
   friendRequestsCount,
+  muteLoadingFriendId,
 }: CollaborationFriendsTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [friendsListExpanded, setFriendsListExpanded] = useState(true);
@@ -296,7 +299,14 @@ export default function CollaborationFriendsTab({
               </View>
 
               <View style={styles.friendInfo}>
-                <Text style={styles.friendName}>{friend.name}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.friendName}>{friend.name}</Text>
+                  {friend.isMuted && (
+                    <View style={styles.mutedIndicator}>
+                      <Ionicons name="notifications-off" size={12} color="#6b7280" />
+                    </View>
+                  )}
+                </View>
                 <Text style={styles.friendUsername}>
                   @
                   {friend.username ||
@@ -413,17 +423,33 @@ export default function CollaborationFriendsTab({
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => {
-                          onMuteUser?.(friend);
-                          handleCloseDropdown();
+                          if (muteLoadingFriendId !== friend.id) {
+                            onMuteUser?.(friend);
+                          }
                         }}
-                        style={styles.dropdownItem}
+                        style={[
+                          styles.dropdownItem,
+                          muteLoadingFriendId === friend.id && styles.dropdownItemDisabled
+                        ]}
+                        disabled={muteLoadingFriendId === friend.id}
                       >
-                        <Ionicons
-                          name="notifications-off-outline"
-                          size={16}
-                          color="#111827"
-                        />
-                        <Text style={styles.dropdownItemText}>Mute</Text>
+                        {muteLoadingFriendId === friend.id ? (
+                          <ActivityIndicator size={16} color="#6b7280" />
+                        ) : (
+                          <Ionicons
+                            name={friend.isMuted ? "notifications-outline" : "notifications-off-outline"}
+                            size={16}
+                            color="#111827"
+                          />
+                        )}
+                        <Text style={styles.dropdownItemText}>
+                          {friend.isMuted ? "Unmute" : "Mute"}
+                        </Text>
+                        {friend.isMuted && (
+                          <View style={styles.mutedBadgeSmall}>
+                            <Text style={styles.mutedBadgeText}>Muted</Text>
+                          </View>
+                        )}
                       </TouchableOpacity>
                       <View style={styles.divider} />
                       <TouchableOpacity
@@ -684,11 +710,21 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   friendName: {
     fontSize: 16,
     fontWeight: "600",
     color: "#111827",
     marginBottom: 2,
+  },
+  mutedIndicator: {
+    backgroundColor: "#f3f4f6",
+    padding: 4,
+    borderRadius: 4,
   },
   friendUsername: {
     fontSize: 14,
@@ -751,9 +787,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
+  dropdownItemDisabled: {
+    opacity: 0.6,
+  },
   dropdownItemText: {
     fontSize: 14,
     color: "#111827",
+  },
+  mutedBadgeSmall: {
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: "auto",
+  },
+  mutedBadgeText: {
+    fontSize: 10,
+    color: "#6b7280",
+    fontWeight: "500",
   },
   dangerText: {
     color: "#EF4444",

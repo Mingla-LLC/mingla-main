@@ -41,6 +41,7 @@ import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
+import { muteService } from "../src/services/muteService";
 import ShareModal from "../src/components/ShareModal";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
@@ -273,7 +274,7 @@ function AppContent() {
     }
   };
 
-  // Fetch unread message count on app load
+  // Fetch unread message count on app load (excluding muted users)
   useEffect(() => {
     const fetchUnreadCount = async () => {
       if (!isAuthenticated || !user?.id) {
@@ -282,11 +283,22 @@ function AppContent() {
       }
 
       try {
+        // Get muted user IDs first
+        const { data: mutedUserIds } = await muteService.getMutedUserIds();
+        const mutedSet = new Set(mutedUserIds || []);
+
         const { conversations, error } =
           await messagingService.getConversations(user.id);
         if (!error && conversations) {
           const totalUnread = conversations.reduce(
-            (sum, conv) => sum + (conv.unread_count || 0),
+            (sum, conv) => {
+              // Check if the OTHER participant (not current user) is muted
+              const otherParticipant = conv.participants?.find(
+                (p: any) => p.user_id !== user.id
+              );
+              const isMuted = otherParticipant ? mutedSet.has(otherParticipant.user_id) : false;
+              return sum + (isMuted ? 0 : (conv.unread_count || 0));
+            },
             0
           );
           setTotalUnreadMessages(totalUnread);
