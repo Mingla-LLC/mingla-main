@@ -511,7 +511,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
                       </View>
                       <View style={styles.memberInfo}>
                         <View style={styles.memberNameRow}>
-                          <Text style={styles.memberName}>{truncateString(displayName, 10)}</Text>
+                          <Text style={styles.memberName}>{truncateString(displayName, 13)}</Text>
                           {isCreator && (
                             <View style={styles.creatorBadge}>
                               <MaterialCommunityIcons name="crown-outline" size={12} color="white" />
