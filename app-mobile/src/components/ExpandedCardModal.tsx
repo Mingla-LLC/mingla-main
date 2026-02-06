@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ExpandedCardModalProps } from "../types/expandedCardTypes";
+import { formatDistanceFromMeters } from "./utils/formatters";
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
 import { bookingService, BookingOption } from "../services/bookingService";
@@ -329,6 +330,7 @@ export default function ExpandedCardModal({
                   ? new Date(card.selectedDateTime)
                   : undefined
               }
+              measurementSystem={accountPreferences?.measurementSystem}
             />
 
             {/* Busyness Section */}
@@ -427,13 +429,11 @@ export default function ExpandedCardModal({
                           color="#9ca3af"
                         />
                         <Text style={styles.distanceText}>
-                          {picnicData.groceryStore.distance < 1000
-                            ? `${Math.round(
-                                picnicData.groceryStore.distance
-                              )}m away`
-                            : `${(
-                                picnicData.groceryStore.distance / 1000
-                              ).toFixed(1)}km away`}
+                          {formatDistanceFromMeters(
+                            picnicData.groceryStore.distance,
+                            accountPreferences?.measurementSystem,
+                            'away'
+                          )}
                         </Text>
                       </View>
                     )}

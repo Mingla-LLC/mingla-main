@@ -129,7 +129,7 @@ export default function AccountSettings() {
       if (!location) {
         Alert.alert(
           "Location Access Required",
-          "Please enable location access to auto-detect your currency.",
+          "Please enable location access to auto-detect your settings.",
           [{ text: "OK" }]
         );
         return;
@@ -143,17 +143,30 @@ export default function AccountSettings() {
       if (geocodeResult.country) {
         const detectedCountry = getCurrencyByCountryName(geocodeResult.country);
         
+        // Countries that use Imperial system (USA, Liberia, Myanmar)
+        const imperialCountries = ['US', 'USA', 'United States', 'Liberia', 'Myanmar', 'Burma'];
+        const usesImperial = imperialCountries.some(
+          c => geocodeResult.country?.toLowerCase().includes(c.toLowerCase()) ||
+               detectedCountry?.countryCode === 'US' ||
+               detectedCountry?.countryCode === 'LR' ||
+               detectedCountry?.countryCode === 'MM'
+        );
+        const detectedMeasurement: "Metric" | "Imperial" = usesImperial ? "Imperial" : "Metric";
+        
+        // Set measurement system based on country
+        await handleMeasurementChange(detectedMeasurement);
+        
         if (detectedCountry) {
           await handleCountryChange(detectedCountry);
           Alert.alert(
-            "Currency Detected",
-            `Based on your location in ${geocodeResult.country}, we've set your currency to ${detectedCountry.currencyCode} (${detectedCountry.currencySymbol}).`,
+            "Settings Detected",
+            `Based on your location in ${geocodeResult.country}, we've set:\n\n• Currency: ${detectedCountry.currencyCode} (${detectedCountry.currencySymbol})\n• Measurement: ${detectedMeasurement}`,
             [{ text: "OK" }]
           );
         } else {
           Alert.alert(
-            "Could Not Detect Currency",
-            `We detected you're in ${geocodeResult.country}, but couldn't find a matching currency. Please select manually.`,
+            "Partial Detection",
+            `We detected you're in ${geocodeResult.country} and set your measurement system to ${detectedMeasurement}, but couldn't find a matching currency. Please select currency manually.`,
             [{ text: "OK" }]
           );
         }
@@ -165,7 +178,7 @@ export default function AccountSettings() {
         );
       }
     } catch (error) {
-      console.error("Auto-detect currency error:", error);
+      console.error("Auto-detect settings error:", error);
       Alert.alert(
         "Error",
         "Something went wrong while detecting your location. Please select your currency manually.",
@@ -298,14 +311,12 @@ export default function AccountSettings() {
                 style={styles.tipIcon}
               />
               <Text style={styles.tipText}>
-                <Text style={styles.tipBold}>Tip:</Text> Exchange rates are
-                updated regularly. All venue prices are originally in USD and
-                converted for your convenience.
+                <Text style={styles.tipBold}>Tip:</Text> Use "Auto-detect" to set both currency and measurement system based on your location. Exchange rates are updated regularly.
               </Text>
             </View>
           </View>
 
-          {/* Auto-detect Currency Button */}
+          {/* Auto-detect Settings Button */}
           <TouchableOpacity
             onPress={handleAutoDetectCurrency}
             style={styles.autoDetectButton}
@@ -317,7 +328,7 @@ export default function AccountSettings() {
               <Ionicons name="location" size={18} color="#eb7825" />
             )}
             <Text style={styles.autoDetectButtonText}>
-              {isDetectingLocation ? "Detecting..." : "Detect from my location"}
+              {isDetectingLocation ? "Detecting..." : "Auto-detect from my location"}
             </Text>
           </TouchableOpacity>
 

@@ -982,7 +982,7 @@ export default function CollaborationPreferences({
               <Text style={styles.constraintInputLabel}>
                 {constraintType === "time"
                   ? "Maximum travel time (minutes)"
-                  : "Maximum travel distance (km)"}
+                  : `Maximum travel distance (${accountPreferences?.measurementSystem === "Metric" ? "km" : "miles"})`}
               </Text>
               <View
                 style={[
@@ -1010,7 +1010,7 @@ export default function CollaborationPreferences({
                   }}
                   keyboardType="numeric"
                   style={styles.constraintInput}
-                  placeholder={constraintType === "time" ? "e.g. 20" : "e.g. 5"}
+                  placeholder={constraintType === "time" ? "e.g. 20" : (accountPreferences?.measurementSystem === "Metric" ? "e.g. 5" : "e.g. 3")}
                 />
               </View>
 
@@ -1019,7 +1019,9 @@ export default function CollaborationPreferences({
               <View style={styles.quickOptionsContainer}>
                 {(constraintType === "time"
                   ? [15, 30, 45, 60]
-                  : [5, 10, 15, 20]
+                  : accountPreferences?.measurementSystem === "Metric"
+                    ? [5, 10, 15, 20]
+                    : [3, 5, 10, 15]
                 ).map((value, index, array) => (
                   <TouchableOpacity
                     key={value}

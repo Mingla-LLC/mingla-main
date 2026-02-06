@@ -2,17 +2,20 @@ import React from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { WeatherData } from "../../services/weatherService";
+import { formatTemperature } from "../utils/formatters";
 
 interface WeatherSectionProps {
   weatherData: WeatherData | null;
   loading: boolean;
   category?: string;
   selectedDateTime?: Date;
+  measurementSystem?: 'Metric' | 'Imperial';
 }
 
 export default function WeatherSection({
   weatherData,
   loading,
+  measurementSystem = 'Imperial',
 }: WeatherSectionProps) {
   // Get weather icon name from OpenWeatherMap icon code
   const getWeatherIcon = (iconCode: string): string => {
@@ -90,7 +93,7 @@ export default function WeatherSection({
           </View>
           <View style={styles.metric}>
             <Text style={styles.temperature}>
-              {Math.round(weatherData.temperature)}°F
+              {formatTemperature(weatherData.temperature, measurementSystem)}
             </Text>
           </View>
         </View>

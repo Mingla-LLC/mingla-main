@@ -15,7 +15,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { formatCurrency, formatDistance } from "./utils/formatters";
+import { formatCurrency, formatDistance, parseAndFormatDistance } from "./utils/formatters";
 import {
   ExperiencesService,
   Experience,
@@ -1046,7 +1046,7 @@ export default function SwipeableCards({
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {nextCard.distance}
+                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem)}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
@@ -1201,7 +1201,7 @@ export default function SwipeableCards({
                     <View style={styles.detailBadge}>
                       <Ionicons name="location" size={12} color="white" />
                       <Text style={styles.detailBadgeText}>
-                        {currentRec.distance}
+                        {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
                       </Text>
                     </View>
                     <View style={styles.detailBadge}>

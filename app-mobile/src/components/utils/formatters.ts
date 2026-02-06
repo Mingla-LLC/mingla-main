@@ -183,3 +183,80 @@ export function formatPriceRange(priceRange: string | undefined, currencyCode: s
 export function getCurrencyRate(currencyCode: string = 'USD'): number {
   return getRate(currencyCode);
 }
+
+/**
+ * Parse a pre-formatted distance string and convert based on measurement system
+ * Backend returns distance in km format (e.g., "2.5 km", "500m")
+ * @param distanceString - Pre-formatted distance string from backend
+ * @param system - 'Metric' or 'Imperial'
+ * @returns Formatted distance string in the user's preferred system
+ */
+export function parseAndFormatDistance(distanceString: string | undefined, system: 'Metric' | 'Imperial' = 'Imperial'): string {
+  if (!distanceString) return '';
+
+  // Try to extract numeric value and unit from the string
+  const kmMatch = distanceString.match(/([\d.]+)\s*km/i);
+  const mMatch = distanceString.match(/([\d.]+)\s*m(?!i)/i); // 'm' but not 'mi'
+  const miMatch = distanceString.match(/([\d.]+)\s*mi/i);
+  const ftMatch = distanceString.match(/([\d.]+)\s*ft/i);
+
+  let distanceInKm: number;
+
+  if (kmMatch) {
+    distanceInKm = parseFloat(kmMatch[1]);
+  } else if (mMatch) {
+    distanceInKm = parseFloat(mMatch[1]) / 1000;
+  } else if (miMatch) {
+    // Convert miles to km
+    distanceInKm = parseFloat(miMatch[1]) * 1.60934;
+  } else if (ftMatch) {
+    // Convert feet to km
+    distanceInKm = parseFloat(ftMatch[1]) * 0.0003048;
+  } else {
+    // Can't parse, return original
+    return distanceString;
+  }
+
+  // Convert to user's preferred system
+  if (system === 'Metric') {
+    if (distanceInKm < 1) {
+      const meters = Math.round(distanceInKm * 1000);
+      return `${meters}m`;
+    }
+    return `${distanceInKm.toFixed(1)} km`;
+  } else {
+    // Imperial
+    const miles = distanceInKm / 1.60934;
+    if (miles < 0.1) {
+      const feet = Math.round(miles * 5280);
+      return `${feet} ft`;
+    }
+    return `${miles.toFixed(1)} mi`;
+  }
+}
+
+/**
+ * Format a raw distance in meters based on measurement system
+ * @param meters - Distance in meters
+ * @param system - 'Metric' or 'Imperial'
+ * @param suffix - Optional suffix like 'away' (default: '')
+ * @returns Formatted distance string
+ */
+export function formatDistanceFromMeters(meters: number, system: 'Metric' | 'Imperial' = 'Imperial', suffix: string = ''): string {
+  const suffixStr = suffix ? ` ${suffix}` : '';
+  
+  if (system === 'Metric') {
+    if (meters < 1000) {
+      return `${Math.round(meters)}m${suffixStr}`;
+    }
+    return `${(meters / 1000).toFixed(1)}km${suffixStr}`;
+  } else {
+    // Imperial
+    const feet = meters * 3.28084;
+    if (feet < 528) { // Less than 0.1 miles
+      return `${Math.round(feet)} ft${suffixStr}`;
+    }
+    const miles = meters / 1609.34;
+    return `${miles.toFixed(1)} mi${suffixStr}`;
+  }
+}
