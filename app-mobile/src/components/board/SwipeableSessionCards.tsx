@@ -11,6 +11,7 @@ import {
   Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { formatPriceRange } from "../utils/formatters";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const CARD_HEIGHT = Math.min(SCREEN_HEIGHT * 0.68, 700);
@@ -37,6 +38,10 @@ interface SwipeableSessionCardsProps {
   onRSVP: (cardId: string, rsvp: "yes" | "no") => void;
   onViewDetails: (card: SavedCard) => void;
   loading?: boolean;
+  accountPreferences?: {
+    currency: string;
+    measurementSystem: "Metric" | "Imperial";
+  };
 }
 
 const getIconComponent = (iconName: string) => {
@@ -78,6 +83,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
   onRSVP,
   onViewDetails,
   loading = false,
+  accountPreferences,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -381,7 +387,9 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                     <Text style={styles.detailBadgeText}>{cardData.rating?.toFixed(1) || "4.5"}</Text>
                   </View>
                   <View style={styles.detailBadge}>
-                    <Text style={styles.detailBadgeText}>{cardData.priceRange || "$"}</Text>
+                    <Text style={styles.detailBadgeText}>
+                      {formatPriceRange(cardData.priceRange, accountPreferences?.currency) || "$"}
+                    </Text>
                   </View>
                 </View>
               </View>

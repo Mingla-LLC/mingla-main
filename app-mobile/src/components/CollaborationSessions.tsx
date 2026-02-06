@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import SessionViewModal from './SessionViewModal';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -83,6 +84,8 @@ export default function CollaborationSessions({
   const [showRightArrow, setShowRightArrow] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showSessionViewModal, setShowSessionViewModal] = useState(false);
+  const [sessionToView, setSessionToView] = useState<CollaborationSession | null>(null);
   const [inviteModalSession, setInviteModalSession] = useState<CollaborationSession | null>(null);
   const [newSessionName, setNewSessionName] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<Friend[]>([]);
@@ -139,6 +142,9 @@ export default function CollaborationSessions({
       setInviteModalSession(session);
       setShowInviteModal(true);
     } else {
+      // Active session - open the session view modal and select it
+      setSessionToView(session);
+      setShowSessionViewModal(true);
       onSessionSelect(session.id);
     }
   };
@@ -499,6 +505,30 @@ export default function CollaborationSessions({
           </View>
         </View>
       </Modal>
+
+      {/* Session View Modal */}
+      {sessionToView && (
+        <SessionViewModal
+          visible={showSessionViewModal}
+          sessionId={sessionToView.id}
+          sessionName={sessionToView.name}
+          sessionInitials={sessionToView.initials}
+          onClose={() => {
+            setShowSessionViewModal(false);
+            setSessionToView(null);
+          }}
+          onSessionDeleted={() => {
+            setShowSessionViewModal(false);
+            setSessionToView(null);
+            // The parent will handle refreshing sessions
+          }}
+          onSessionExited={() => {
+            setShowSessionViewModal(false);
+            setSessionToView(null);
+            // The parent will handle refreshing sessions
+          }}
+        />
+      )}
     </View>
   );
 }

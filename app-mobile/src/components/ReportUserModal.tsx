@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { blockUser, BlockReason } from '../services/blockService';
 
 interface ReportUserModalProps {
   isOpen: boolean;
@@ -60,6 +61,21 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
       // Call the parent's onReport handler (which handles the actual API call)
       await onReport(user.id, selectedReason, additionalDetails || undefined);
       
+      // Block the user after report is submitted
+      // Map report reasons to block reasons
+      const blockReasonMap: Record<string, BlockReason> = {
+        'spam': 'spam',
+        'inappropriate-content': 'inappropriate',
+        'harassment': 'harassment',
+        'other': 'other',
+      };
+      const blockReason = blockReasonMap[selectedReason] || 'other';
+      
+      const blockResult = await blockUser(user.id, blockReason);
+      if (!blockResult.success) {
+        console.warn('Failed to block user after report:', blockResult.error);
+      }
+      
       // Reset form state after successful submission
       setSelectedReason('');
       setAdditionalDetails('');
@@ -113,7 +129,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
               We take reports seriously. Please select the reason that best describes why you're reporting <Text style={styles.boldText}>{user.name}</Text>.
             </Text>
             <Text style={styles.subDescription}>
-              This user has been blocked and will no longer be able to contact you.
+              This user will be blocked and will no longer be able to contact you.
             </Text>
           </View>
 

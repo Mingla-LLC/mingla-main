@@ -1483,6 +1483,13 @@ function AppContent() {
             sessionId={currentSessionId} // Add this
             participants={[]}
             onSave={handlers.handleCollabPreferencesSave}
+            accountPreferences={{
+              currency: accountPreferences?.currency || "USD",
+              measurementSystem:
+                (accountPreferences?.measurementSystem as
+                  | "Metric"
+                  | "Imperial") || "Imperial",
+            }}
           />
         </ErrorBoundary>
       );

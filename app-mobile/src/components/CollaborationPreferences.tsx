@@ -28,6 +28,8 @@ import {
   geocodingService,
   AutocompleteSuggestion,
 } from "../services/geocodingService";
+import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
+import { getRate } from "../services/currencyService";
 
 interface CollaborationPreferencesProps {
   isOpen: boolean;
@@ -36,6 +38,10 @@ interface CollaborationPreferencesProps {
   sessionId: string; // Add this prop
   participants: Array<{ id: string; name: string; avatar?: string }>;
   onSave: (preferences: any) => void;
+  accountPreferences?: {
+    currency: string;
+    measurementSystem: "Metric" | "Imperial";
+  };
 }
 
 // Experience Types for collaboration (no Solo Adventure)
@@ -47,12 +53,12 @@ const experienceTypes = [
   { id: "business", label: "Business", icon: "briefcase-outline" },
 ];
 
-// Budget presets
-const budgetPresets = [
-  { label: "$0-25", min: 0, max: 25 },
-  { label: "$25-75", min: 25, max: 75 },
-  { label: "$75-150", min: 75, max: 150 },
-  { label: "$150+", min: 150, max: 1000 },
+// Budget presets (USD base values)
+const budgetPresetsUSD = [
+  { min: 0, max: 25 },
+  { min: 25, max: 75 },
+  { min: 75, max: 150 },
+  { min: 150, max: 1000 },
 ];
 
 // Categories
@@ -166,10 +172,29 @@ export default function CollaborationPreferences({
   sessionId, // Add this
   participants,
   onSave,
+  accountPreferences,
 }: CollaborationPreferencesProps) {
   const queryClient = useQueryClient();
   const { user } = useAuthSimple();
   const insets = useSafeAreaInsets();
+
+  // Currency symbol for Budget section
+  const currencySymbol = getCurrencySymbol(accountPreferences?.currency);
+  const currencyCode = accountPreferences?.currency || "USD";
+
+  // Dynamic budget presets with currency conversion
+  const budgetPresets = useMemo(() => {
+    const rate = getRate(currencyCode);
+    return budgetPresetsUSD.map((preset) => {
+      const convertedMin = Math.round(preset.min * rate);
+      const convertedMax = Math.round(preset.max * rate);
+      const label =
+        preset.max >= 1000
+          ? `${currencySymbol}${formatNumberWithCommas(convertedMin)}+`
+          : `${currencySymbol}${formatNumberWithCommas(convertedMin)}-${formatNumberWithCommas(convertedMax)}`;
+      return { label, min: convertedMin, max: convertedMax };
+    });
+  }, [currencyCode, currencySymbol]);
 
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
@@ -669,7 +694,7 @@ export default function CollaborationPreferences({
                 <View style={styles.budgetInputWrapper}>
                   <Text style={styles.inputLabel}>Min</Text>
                   <View style={styles.budgetInputContainer}>
-                    <Text style={styles.dollarSign}>$</Text>
+                    <Text style={styles.dollarSign}>{currencySymbol}</Text>
                     <TextInput
                       value={budgetMin?.toString() || ""}
                       onChangeText={(text) =>
@@ -684,7 +709,7 @@ export default function CollaborationPreferences({
                 <View style={styles.budgetInputWrapper}>
                   <Text style={styles.inputLabel}>Max</Text>
                   <View style={styles.budgetInputContainer}>
-                    <Text style={styles.dollarSign}>$</Text>
+                    <Text style={styles.dollarSign}>{currencySymbol}</Text>
                     <TextInput
                       value={budgetMax?.toString() || ""}
                       onChangeText={(text) =>
