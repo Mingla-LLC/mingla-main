@@ -15,10 +15,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 import { useAppHandlers } from "../src/components/AppHandlers";
 import { useAppState } from "../src/components/AppStateManager";
+import { useFriends } from "../src/hooks/useFriends";
 import CollaborationModule from "../src/components/CollaborationModule";
 import CollaborationPreferences from "../src/components/CollaborationPreferences";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import HomePage from "../src/components/HomePage";
+import { CollaborationSession, getInitials, Friend } from "../src/components/CollaborationSessions";
 import PreferencesSheet from "../src/components/PreferencesSheet";
 import ProfilePage from "../src/components/ProfilePage";
 import SignInPage from "../src/components/SignInPage";
@@ -38,6 +40,7 @@ import EmailOTPVerificationScreen from "../src/components/EmailOTPVerificationSc
 import CoachMap from "../src/components/CoachMap";
 import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
+import { toastManager } from "../src/components/ui/Toast";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
@@ -47,6 +50,7 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
 import { SessionService } from "../src/services/sessionService";
 import { BoardInviteService } from "../src/services/boardInviteService";
+import { BoardSessionService } from "../src/services/boardSessionService";
 import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
@@ -63,6 +67,7 @@ function AppContent() {
     useState<number>(0);
   const [showHelpButton, setShowHelpButton] = useState<boolean>(false);
   const [showWelcomeDialog, setShowWelcomeDialog] = useState<boolean>(false);
+  const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const helpButtonDismissedRef = useRef<boolean>(false);
 
   // Destructure commonly used state
@@ -147,6 +152,457 @@ function AppContent() {
     showSignUpForm,
     setShowSignUpForm,
   } = state;
+
+  // Transform boardsSessions to CollaborationSession format for the sessions bar
+  const collaborationSessions: CollaborationSession[] = (boardsSessions || []).map((board: any) => {
+    // Determine session type based on status and user participation
+    let sessionType: 'active' | 'sent-invite' | 'received-invite' = 'active';
+    if (board.status === 'pending') {
+      // Check if user is the inviter or invitee
+      const isCreator = board.creatorId === user?.id || board.created_by === user?.id;
+      sessionType = isCreator ? 'sent-invite' : 'received-invite';
+    }
+
+    return {
+      id: board.id || board.session_id,
+      name: board.name,
+      initials: getInitials(board.name),
+      type: sessionType,
+      participants: board.participants?.length || 0,
+      createdAt: board.createdAt ? new Date(board.createdAt) : undefined,
+      invitedBy: board.inviterProfile || undefined,
+    };
+  });
+
+  // Load all sessions (including pending invites) on mount
+  useEffect(() => {
+    if (user?.id) {
+      refreshAllSessions();
+    }
+  }, [user?.id]);
+
+  // Get friends from useFriends hook for session creation
+  const { friends: dbFriends, fetchFriends } = useFriends();
+  
+  // Fetch friends when component mounts
+  useEffect(() => {
+    if (user) {
+      fetchFriends();
+    }
+  }, [user, fetchFriends]);
+
+  // Transform friends to Friend format for session creation
+  // dbFriends from useFriends has: id, friend_user_id, username, display_name, first_name, last_name, avatar_url
+  const availableFriendsForSessions: Friend[] = (dbFriends || []).map((friend: any) => ({
+    id: friend.friend_user_id || friend.id,
+    name: friend.display_name || 
+          (friend.first_name && friend.last_name ? `${friend.first_name} ${friend.last_name}` : null) ||
+          friend.first_name ||
+          friend.username || 
+          'Unknown',
+    username: friend.username,
+    avatar: friend.avatar_url,
+    status: 'offline' as const,
+  }));
+
+  // Session handlers for the CollaborationSessions bar
+  const handleSessionSelect = (sessionId: string | null) => {
+    if (sessionId) {
+      const session = boardsSessions?.find((s: any) => s.id === sessionId || s.session_id === sessionId);
+      if (session) {
+        handlers.handleModeChange(session.name);
+        setCurrentSessionId(sessionId);
+      }
+    }
+  };
+
+  const handleSoloSelect = () => {
+    handlers.handleModeChange('solo');
+    setCurrentSessionId(null);
+  };
+
+  // Helper function to refresh all sessions (active + pending)
+  const refreshAllSessions = async () => {
+    if (!user?.id) return;
+    
+    // Fetch active sessions
+    const activeBoards = await BoardSessionService.fetchUserBoardSessions(user.id);
+    
+    // Fetch pending sessions the user created
+    const { data: createdPendingSessions } = await supabase
+      .from('collaboration_sessions')
+      .select('*, session_participants(user_id, has_accepted)')
+      .eq('created_by', user.id)
+      .eq('status', 'pending');
+    
+    // Fetch pending sessions where user was invited (but hasn't accepted yet)
+    // Include the inviter's profile information
+    const { data: invitedSessions } = await supabase
+      .from('collaboration_invites')
+      .select(`
+        session_id,
+        invited_by,
+        status,
+        collaboration_sessions!inner(id, name, status, created_by, created_at),
+        inviter:profiles!collaboration_invites_invited_by_fkey(id, username, first_name, last_name, avatar_url)
+      `)
+      .eq('invited_user_id', user.id)
+      .eq('status', 'pending');
+    
+    // Transform pending created sessions
+    const pendingCreatedSessions = (createdPendingSessions || []).map((s: any) => ({
+      id: s.id,
+      name: s.name,
+      status: s.status,
+      creatorId: s.created_by,
+      created_by: s.created_by,
+      participants: s.session_participants || [],
+      createdAt: s.created_at,
+    }));
+    
+    // Transform pending invited sessions with inviter profile
+    const pendingInvitedSessions = (invitedSessions || [])
+      .filter((inv: any) => inv.collaboration_sessions?.status === 'pending')
+      .map((inv: any) => {
+        const inviterProfile = inv.inviter;
+        const inviterName = inviterProfile 
+          ? (inviterProfile.first_name && inviterProfile.last_name 
+              ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
+              : inviterProfile.first_name || inviterProfile.username || 'Someone')
+          : 'Someone';
+        
+        return {
+          id: inv.collaboration_sessions.id,
+          name: inv.collaboration_sessions.name,
+          status: 'pending',
+          creatorId: inv.collaboration_sessions.created_by,
+          created_by: inv.collaboration_sessions.created_by,
+          invitedBy: inv.invited_by,
+          inviterProfile: {
+            id: inv.invited_by,
+            name: inviterName,
+            username: inviterProfile?.username,
+            avatar: inviterProfile?.avatar_url,
+          },
+          createdAt: inv.collaboration_sessions.created_at,
+        };
+      });
+    
+    // Combine and deduplicate by id
+    const allSessions = [...activeBoards, ...pendingCreatedSessions, ...pendingInvitedSessions];
+    const uniqueSessions = allSessions.reduce((acc: any[], session: any) => {
+      if (!acc.find((s: any) => s.id === session.id)) {
+        acc.push(session);
+      }
+      return acc;
+    }, []);
+    
+    updateBoardsSessions(uniqueSessions);
+  };
+
+  const handleCreateSession = async (sessionName: string, selectedFriends: Friend[] = []) => {
+    if (!user?.id) return;
+    setIsCreatingSession(true);
+    try {
+      // Create the collaboration session (matching CreateTab.tsx pattern)
+      // Status starts as 'pending' until participants accept
+      const { data: session, error: sessionError } = await supabase
+        .from('collaboration_sessions')
+        .insert({
+          name: sessionName,
+          created_by: user.id,
+          status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (sessionError) throw sessionError;
+
+      // Add creator as participant (auto-accepted)
+      const { error: participantError } = await supabase
+        .from('session_participants')
+        .insert({
+          session_id: session.id,
+          user_id: user.id,
+          has_accepted: true,
+          joined_at: new Date().toISOString(),
+        });
+
+      if (participantError) throw participantError;
+
+      // Add selected friends as participants and send invites
+      for (const friend of selectedFriends) {
+        const friendUserId = friend.id;
+
+        // Get friend's email from their profile
+        const { data: friendProfile } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('id', friendUserId)
+          .single();
+
+        const friendEmail = friendProfile?.email;
+
+        // Add as participant (not accepted yet)
+        const { error: friendParticipantError } = await supabase
+          .from('session_participants')
+          .insert({
+            session_id: session.id,
+            user_id: friendUserId,
+            has_accepted: false,
+          });
+
+        if (friendParticipantError) {
+          console.error(`Error adding friend ${friend.name} as participant:`, friendParticipantError);
+          continue;
+        }
+
+        // Create invite for the friend
+        const { data: inviteData, error: inviteError } = await supabase
+          .from('collaboration_invites')
+          .insert({
+            session_id: session.id,
+            invited_by: user.id,
+            invited_user_id: friendUserId,
+            status: 'pending',
+          })
+          .select('id')
+          .single();
+
+        if (inviteError) {
+          console.error(`Error creating invite for ${friend.name}:`, inviteError);
+          continue;
+        }
+
+        // Send email and push notification via Edge Function
+        if (friendEmail && inviteData) {
+          try {
+            await supabase.functions.invoke('bright-responder', {
+              body: {
+                inviterId: user.id,
+                invitedUserId: friendUserId,
+                invitedUserEmail: friendEmail,
+                sessionId: session.id,
+                sessionName: sessionName,
+                inviteId: inviteData.id,
+              },
+            });
+          } catch (emailErr) {
+            console.error(`Failed to send invite email to ${friend.name}:`, emailErr);
+            // Don't fail the whole process if email fails
+          }
+        }
+      }
+
+      // Refresh all sessions (active + pending)
+      await refreshAllSessions();
+      
+      // Show success toast
+      const friendCount = selectedFriends.length;
+      const message = friendCount > 0 
+        ? `Session "${sessionName}" created! Invites sent to ${friendCount} friend${friendCount > 1 ? 's' : ''}.`
+        : `Session "${sessionName}" created successfully!`;
+      toastManager.success(message);
+      
+      // Switch to the new session
+      handlers.handleModeChange(sessionName);
+      setCurrentSessionId(session.id);
+    } catch (error) {
+      console.error('Error creating session:', error);
+      toastManager.error('Failed to create session. Please try again.');
+    } finally {
+      setIsCreatingSession(false);
+    }
+  };
+
+  const handleAcceptInvite = async (sessionId: string) => {
+    if (!user?.id) return;
+    try {
+      // First, find the invite by session_id and user_id
+      const { data: invite, error: fetchError } = await supabase
+        .from('collaboration_invites')
+        .select(`
+          id,
+          session_id,
+          invited_by,
+          invited_user_id,
+          collaboration_sessions!inner(name)
+        `)
+        .eq('session_id', sessionId)
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending')
+        .single();
+
+      if (fetchError || !invite) {
+        console.error('Error fetching invite:', fetchError);
+        toastManager.error('Invite not found.');
+        return;
+      }
+
+      // Get session name from the join
+      const sessionData = invite.collaboration_sessions as any;
+      const sessionName = Array.isArray(sessionData)
+        ? (sessionData[0] as any)?.name
+        : (sessionData as any)?.name || 'Session';
+
+      // Update invite status to accepted
+      const { error: updateError } = await supabase
+        .from('collaboration_invites')
+        .update({ status: 'accepted' })
+        .eq('id', invite.id)
+        .eq('invited_user_id', user.id);
+
+      if (updateError) {
+        console.error('Error updating invite:', updateError);
+        toastManager.error('Failed to accept invite.');
+        return;
+      }
+
+      // Add/update user as participant with has_accepted = true
+      const { error: participantError } = await supabase
+        .from('session_participants')
+        .upsert(
+          {
+            session_id: sessionId,
+            user_id: user.id,
+            has_accepted: true,
+            joined_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'session_id,user_id',
+          }
+        );
+
+      if (participantError) {
+        console.error('Error adding participant:', participantError);
+      }
+
+      // Check membership count to determine if session should become active
+      const { data: allParticipants, error: participantsError } = await supabase
+        .from('session_participants')
+        .select('has_accepted, user_id')
+        .eq('session_id', sessionId);
+
+      if (!participantsError && allParticipants) {
+        const acceptedCount = allParticipants.filter((p: any) => p.has_accepted === true).length;
+        
+        // If 2+ members have accepted, session becomes active
+        if (acceptedCount >= 2) {
+          const { error: sessionUpdateError } = await supabase
+            .from('collaboration_sessions')
+            .update({ status: 'active' })
+            .eq('id', sessionId);
+
+          if (sessionUpdateError) {
+            console.error('Error updating session status:', sessionUpdateError);
+          }
+        }
+      }
+
+      // Create preference record for the accepting user
+      const { error: preferencesError } = await supabase
+        .from('board_session_preferences')
+        .insert({
+          session_id: sessionId,
+          user_id: user.id,
+          budget_min: 0,
+          budget_max: 1000,
+          categories: [],
+          travel_mode: 'walking',
+          travel_constraint_type: 'time',
+          travel_constraint_value: 30,
+        });
+
+      if (preferencesError && preferencesError.code !== '23505') {
+        // 23505 is unique violation - preference already exists
+        console.error('Error creating preferences:', preferencesError);
+      }
+
+      // Refresh all sessions
+      await refreshAllSessions();
+      toastManager.success(`Joined "${sessionName}" successfully!`);
+    } catch (error) {
+      console.error('Error accepting invite:', error);
+      toastManager.error('Failed to accept invite.');
+    }
+  };
+
+  const handleDeclineInvite = async (sessionId: string) => {
+    if (!user?.id) return;
+    try {
+      // Find the invite by session_id and user_id
+      const { data: invite, error: fetchError } = await supabase
+        .from('collaboration_invites')
+        .select(`
+          id,
+          session_id,
+          invited_by,
+          collaboration_sessions!inner(name)
+        `)
+        .eq('session_id', sessionId)
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending')
+        .single();
+
+      if (fetchError || !invite) {
+        console.error('Error fetching invite:', fetchError);
+        toastManager.error('Invite not found.');
+        return;
+      }
+
+      // Update invite status to declined
+      const { error: updateError } = await supabase
+        .from('collaboration_invites')
+        .update({ status: 'declined' })
+        .eq('id', invite.id)
+        .eq('invited_user_id', user.id);
+
+      if (updateError) {
+        console.error('Error updating invite:', updateError);
+        toastManager.error('Failed to decline invite.');
+        return;
+      }
+
+      // Remove user from session_participants if they were added
+      const { error: removeParticipantError } = await supabase
+        .from('session_participants')
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id);
+
+      if (removeParticipantError) {
+        console.error('Error removing participant:', removeParticipantError);
+      }
+
+      // Refresh all sessions
+      await refreshAllSessions();
+      toastManager.success('Invite declined.');
+    } catch (error) {
+      console.error('Error declining invite:', error);
+      toastManager.error('Failed to decline invite.');
+    }
+  };
+
+  const handleCancelInvite = async (sessionId: string) => {
+    if (!user?.id) return;
+    try {
+      // Cancel sent invite - remove the session if creator
+      const { error } = await supabase
+        .from('collaboration_sessions')
+        .delete()
+        .eq('id', sessionId)
+        .eq('created_by', user.id);
+      
+      if (error) throw error;
+      
+      // Refresh all sessions
+      await refreshAllSessions();
+      toastManager.success('Invite cancelled.');
+    } catch (error) {
+      console.error('Error cancelling invite:', error);
+      toastManager.error('Failed to cancel invite.');
+    }
+  };
 
   // Helper to check if coach map is highlighting tabs
   const isHighlightingTabs = Boolean(
@@ -686,6 +1142,16 @@ function AppContent() {
             onResetCards={() => setRemovedCardIds([])}
             generateNewMockCard={() => console.log("Generate new card")}
             refreshKey={preferencesRefreshKey}
+            collaborationSessions={collaborationSessions}
+            selectedSessionId={currentSessionId}
+            onSessionSelect={handleSessionSelect}
+            onSoloSelect={handleSoloSelect}
+            onCreateSession={handleCreateSession}
+            onAcceptInvite={handleAcceptInvite}
+            onDeclineInvite={handleDeclineInvite}
+            onCancelInvite={handleCancelInvite}
+            availableFriends={availableFriendsForSessions}
+            isCreatingSession={isCreatingSession}
           />
         );
       case "saved":
@@ -982,6 +1448,16 @@ function AppContent() {
             removedCardIds={removedCardIds}
             onResetCards={() => setRemovedCardIds([])}
             generateNewMockCard={() => console.log("Generate new card")}
+            collaborationSessions={collaborationSessions}
+            selectedSessionId={currentSessionId}
+            onSessionSelect={handleSessionSelect}
+            onSoloSelect={handleSoloSelect}
+            onCreateSession={handleCreateSession}
+            onAcceptInvite={handleAcceptInvite}
+            onDeclineInvite={handleDeclineInvite}
+            onCancelInvite={handleCancelInvite}
+            availableFriends={availableFriendsForSessions}
+            isCreatingSession={isCreatingSession}
           />
         );
     }

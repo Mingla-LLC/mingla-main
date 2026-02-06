@@ -10,13 +10,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import SwipeableCards from "./SwipeableCards";
+import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Moved to SwipeableCards component
 
 interface HomePageProps {
   onOpenPreferences: () => void;
-  onOpenCollaboration: (friend?: any) => void;
+  onOpenCollaboration?: (friend?: any) => void;
   onOpenCollabPreferences?: () => void;
   currentMode: "solo" | string;
   userPreferences?: any;
@@ -35,11 +36,21 @@ interface HomePageProps {
   onboardingData?: any;
   refreshKey?: number | string;
   isHighlightingHeader?: boolean;
+  // Collaboration sessions props
+  collaborationSessions?: CollaborationSession[];
+  selectedSessionId?: string | null;
+  onSessionSelect?: (sessionId: string | null) => void;
+  onSoloSelect?: () => void;
+  onCreateSession?: (sessionName: string, selectedFriends: Friend[]) => void;
+  onAcceptInvite?: (sessionId: string) => void;
+  onDeclineInvite?: (sessionId: string) => void;
+  onCancelInvite?: (sessionId: string) => void;
+  availableFriends?: Friend[];
+  isCreatingSession?: boolean;
 }
 
 export default function HomePage({
   onOpenPreferences,
-  onOpenCollaboration,
   onOpenCollabPreferences,
   currentMode,
   userPreferences,
@@ -55,6 +66,17 @@ export default function HomePage({
   onboardingData,
   refreshKey,
   isHighlightingHeader,
+  // Collaboration sessions props
+  collaborationSessions = [],
+  selectedSessionId = null,
+  onSessionSelect,
+  onSoloSelect,
+  onCreateSession,
+  onAcceptInvite,
+  onDeclineInvite,
+  onCancelInvite,
+  availableFriends = [],
+  isCreatingSession = false,
 }: HomePageProps) {
   return (
     <View style={styles.safeArea}>
@@ -103,37 +125,36 @@ export default function HomePage({
 
           <View style={styles.headerRight}>
             <TouchableOpacity
-              onPress={() => onOpenCollaboration()}
-              style={styles.collaborateButton}
+              onPress={() => {
+                // TODO: Navigate to notifications
+              }}
+              style={styles.notificationButton}
+              activeOpacity={0.6}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="people-outline" size={18} color="#eb7825" />
-              {currentMode !== "solo" ? (
-                <>
-                  <Text style={styles.collaborateButtonText} numberOfLines={1}>
-                    {currentMode.length > 12
-                      ? `${currentMode.substring(0, 12)}...`
-                      : currentMode}
-                  </Text>
-                  <Ionicons
-                    name="chevron-down"
-                    size={16}
-                    color="#eb7825"
-                    style={styles.chevronIcon}
-                  />
-                </>
-              ) : (
-                <Ionicons
-                  name="add"
-                  size={16}
-                  color="#eb7825"
-                  style={styles.addIcon}
-                />
-              )}
-              {/* Notification indicator for pending invites */}
+              <Ionicons name="notifications-outline" size={24} color="#1f2937" />
+              {/* Notification indicator dot */}
               <View style={styles.notificationDot} />
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Collaboration Sessions Bar */}
+        {onSessionSelect && onSoloSelect && onCreateSession && onAcceptInvite && onDeclineInvite && onCancelInvite && (
+          <CollaborationSessions
+            sessions={collaborationSessions}
+            currentMode={currentMode}
+            selectedSessionId={selectedSessionId}
+            onSessionSelect={onSessionSelect}
+            onSoloSelect={onSoloSelect}
+            onCreateSession={onCreateSession}
+            onAcceptInvite={onAcceptInvite}
+            onDeclineInvite={onDeclineInvite}
+            onCancelInvite={onCancelInvite}
+            availableFriends={availableFriends}
+            isCreatingSession={isCreatingSession}
+          />
+        )}
 
         {/* Main Content - Centered middle section */}
         <View style={styles.mainContent}>
@@ -230,36 +251,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
-  collaborateButton: {
-    flexDirection: "row",
+  notificationButton: {
+    padding: 8,
+    minWidth: 40,
+    minHeight: 40,
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "#FEF3E7",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    justifyContent: "center",
     position: "relative",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    minWidth: 80,
-  },
-  addIcon: {
-    marginLeft: 2,
-  },
-  collaborateButtonText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#eb7825",
-    maxWidth: 100,
-  },
-  chevronIcon: {
-    marginLeft: 2,
   },
   notificationDot: {
     position: "absolute",
