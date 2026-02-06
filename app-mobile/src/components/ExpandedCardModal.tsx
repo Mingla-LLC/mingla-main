@@ -41,6 +41,7 @@ export default function ExpandedCardModal({
   onPurchase,
   onShare,
   userPreferences,
+  accountPreferences,
   isSaved,
   currentMode = "solo",
   onCardRemoved,
@@ -299,6 +300,7 @@ export default function ExpandedCardModal({
               travelTime={card.travelTime}
               priceRange={card.priceRange}
               description={card.description}
+              currency={accountPreferences?.currency}
             />
 
             {/* Match Score Box */}
@@ -452,6 +454,7 @@ export default function ExpandedCardModal({
                     travelTime={card.travelTime}
                     strollTimeline={strollData.timeline}
                     routeDuration={strollData.route?.duration}
+                    currency={accountPreferences?.currency}
                   />
                 ) : (
                   <View style={styles.routePairingSection}>
@@ -530,6 +533,7 @@ export default function ExpandedCardModal({
                     travelTime={card.travelTime}
                     strollTimeline={picnicData.timeline}
                     routeDuration={picnicData.route?.duration}
+                    currency={accountPreferences?.currency}
                   />
                 ) : (
                   <View style={styles.routePairingSection}>

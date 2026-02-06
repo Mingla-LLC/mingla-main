@@ -19,6 +19,7 @@ import { ExpandedCardData } from "../../types/expandedCardTypes";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "../ui/Toast";
+import { formatCurrency } from "../utils/formatters";
 
 interface CalendarEntry {
   id: string;
@@ -940,13 +941,6 @@ const CalendarTab = ({
       ...prev,
       [cardId]: ((prev[cardId] || 0) - 1 + totalImages) % totalImages,
     }));
-  };
-
-  const formatCurrency = (price: number, currency: string = "USD") => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currency,
-    }).format(price);
   };
 
   const handleOpenMaps = (address: string) => {

@@ -367,6 +367,16 @@ export function useAppState() {
 
       setUserIdentity(updatedIdentity);
       safeAsyncStorageSet("mingla_user_identity", updatedIdentity);
+
+      // Also sync account preferences from profile if available
+      if (profile.currency || profile.measurement_system) {
+        const updatedPrefs = {
+          currency: profile.currency || "USD",
+          measurementSystem: profile.measurement_system === "metric" ? "Metric" : "Imperial",
+        };
+        setAccountPreferences(updatedPrefs);
+        safeAsyncStorageSet("mingla_account_preferences", updatedPrefs);
+      }
     } else if (user && !profile) {
       // User is authenticated but no profile yet - use basic info from user
       const emailName = user.email?.split("@")[0] || "User";

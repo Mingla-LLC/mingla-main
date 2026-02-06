@@ -1355,6 +1355,7 @@ export default function SwipeableCards({
           }
         }}
         userPreferences={userPreferences}
+        accountPreferences={accountPreferences}
       />
     </View>
   );

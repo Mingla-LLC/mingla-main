@@ -30,6 +30,8 @@ import {
 import { Calendar } from "./ui/calendar";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useQueryClient } from "@tanstack/react-query";
+import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
+import { getRate } from "../services/currencyService";
 
 interface PreferencesSheetProps {
   onClose?: () => void;
@@ -810,7 +812,7 @@ export default function PreferencesSheet({
                 <View style={styles.budgetInputWrapper}>
                   <Text style={styles.inputLabel}>Min</Text>
                   <View style={styles.budgetInputContainer}>
-                    <Text style={styles.dollarSign}>$</Text>
+                    <Text style={styles.dollarSign}>{getCurrencySymbol(accountPreferences?.currency || 'USD')}</Text>
                     <TextInput
                       value={budgetMin?.toString() || ""}
                       onChangeText={(text) =>
@@ -825,7 +827,7 @@ export default function PreferencesSheet({
                 <View style={styles.budgetInputWrapper}>
                   <Text style={styles.inputLabel}>Max</Text>
                   <View style={styles.budgetInputContainer}>
-                    <Text style={styles.dollarSign}>$</Text>
+                    <Text style={styles.dollarSign}>{getCurrencySymbol(accountPreferences?.currency || 'USD')}</Text>
                     <TextInput
                       value={budgetMax?.toString() || ""}
                       onChangeText={(text) =>
@@ -839,15 +841,25 @@ export default function PreferencesSheet({
                 </View>
               </View>
               <View style={styles.budgetPresetsContainer}>
-                {budgetPresets.map((preset) => (
-                  <TouchableOpacity
-                    key={preset.label}
-                    onPress={() => setBudgetPreset(preset.min, preset.max)}
-                    style={styles.budgetPresetButton}
-                  >
-                    <Text style={styles.budgetPresetText}>{preset.label}</Text>
-                  </TouchableOpacity>
-                ))}
+                {budgetPresets.map((preset) => {
+                  const currencyCode = accountPreferences?.currency || 'USD';
+                  const symbol = getCurrencySymbol(currencyCode);
+                  const rate = getRate(currencyCode);
+                  const convertedMin = Math.round(preset.min * rate);
+                  const convertedMax = Math.round(preset.max * rate);
+                  const label = preset.max === 1000 
+                    ? `${symbol}${formatNumberWithCommas(convertedMin)}+` 
+                    : `${symbol}${formatNumberWithCommas(convertedMin)}-${formatNumberWithCommas(convertedMax)}`;
+                  return (
+                    <TouchableOpacity
+                      key={preset.label}
+                      onPress={() => setBudgetPreset(convertedMin, convertedMax)}
+                      style={styles.budgetPresetButton}
+                    >
+                      <Text style={styles.budgetPresetText}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           )}

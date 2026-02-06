@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { formatPriceRange } from "../utils/formatters";
 
 interface CardInfoSectionProps {
   title: string;
@@ -11,6 +12,7 @@ interface CardInfoSectionProps {
   travelTime?: string;
   priceRange?: string;
   description?: string;
+  currency?: string;
 }
 
 export default function CardInfoSection({
@@ -22,6 +24,7 @@ export default function CardInfoSection({
   travelTime,
   priceRange,
   description,
+  currency = 'USD',
 }: CardInfoSectionProps) {
   // Get category icon component
   const getCategoryIcon = () => {
@@ -105,7 +108,7 @@ export default function CardInfoSection({
             {(rating !== undefined || travelTime) && (
               <View style={styles.metricDivider} />
             )}
-            <Text style={styles.priceText}>{priceRange}</Text>
+            <Text style={styles.priceText}>{formatPriceRange(priceRange, currency)}</Text>
           </>
         )}
       </View>

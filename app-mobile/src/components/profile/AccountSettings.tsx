@@ -18,6 +18,16 @@ import { fetchExchangeRates, getRate } from "../../services/currencyService";
 import { PreferencesService } from "../../services/preferencesService";
 import { supabase } from "../../services/supabase";
 import { useAppState } from "../AppStateManager";
+import {
+  countryCurrencies,
+  getCountriesByRegion,
+  regionDisplayNames,
+  getCurrencyByCountryCode,
+  getCurrencyByCountryName,
+  type CountryCurrency,
+} from "../../services/countryCurrencyService";
+import { LocationService } from "../../services/locationService";
+import { geocodingService } from "../../services/geocodingService";
 
 interface AccountSettingsProps {
   accountPreferences: {
@@ -29,74 +39,13 @@ interface AccountSettingsProps {
   onNavigateBack: () => void;
 }
 
-const supportedCurrencies = [
-  // USD first as default
-  { code: "USD", name: "US Dollar", symbol: "$" },
-
-  // All other currencies in alphabetical order by currency code
-  { code: "AUD", name: "Australian Dollar", symbol: "A$" },
-  { code: "NGN", name: "Nigerian Naira", symbol: "₦" },
-  { code: "BIF", name: "Burundian Franc", symbol: "FBu" },
-  { code: "BRL", name: "Brazilian Real", symbol: "R$" },
-  { code: "BWP", name: "Botswanan Pula", symbol: "P" },
-  { code: "CAD", name: "Canadian Dollar", symbol: "C$" },
-  { code: "CHF", name: "Swiss Franc", symbol: "CHF" },
-  { code: "CNY", name: "Chinese Yuan", symbol: "¥" },
-  { code: "CVE", name: "Cape Verdean Escudo", symbol: "$" },
-  { code: "CZK", name: "Czech Koruna", symbol: "Kč" },
-  { code: "DJF", name: "Djiboutian Franc", symbol: "Fdj" },
-  { code: "DKK", name: "Danish Krone", symbol: "kr" },
-  { code: "DZD", name: "Algerian Dinar", symbol: "د.ج" },
-  { code: "EGP", name: "Egyptian Pound", symbol: "£" },
-  { code: "ERN", name: "Eritrean Nakfa", symbol: "Nfk" },
-  { code: "ETB", name: "Ethiopian Birr", symbol: "Br" },
-  { code: "EUR", name: "Euro", symbol: "€" },
-  { code: "GBP", name: "British Pound", symbol: "£" },
-  { code: "GHS", name: "Ghanaian Cedi", symbol: "₵" },
-  { code: "GMD", name: "Gambian Dalasi", symbol: "D" },
-  { code: "GNF", name: "Guinean Franc", symbol: "FG" },
-  { code: "HKD", name: "Hong Kong Dollar", symbol: "HK$" },
-  { code: "HUF", name: "Hungarian Forint", symbol: "Ft" },
-  { code: "ILS", name: "Israeli Shekel", symbol: "₪" },
-  { code: "INR", name: "Indian Rupee", symbol: "₹" },
-  { code: "JPY", name: "Japanese Yen", symbol: "¥" },
-  { code: "KES", name: "Kenyan Shilling", symbol: "KSh" },
-  { code: "KMF", name: "Comorian Franc", symbol: "CF" },
-  { code: "KRW", name: "South Korean Won", symbol: "₩" },
-  { code: "LRD", name: "Liberian Dollar", symbol: "L$" },
-  { code: "LSL", name: "Lesotho Loti", symbol: "L" },
-  { code: "LYD", name: "Libyan Dinar", symbol: "ل.د" },
-  { code: "MAD", name: "Moroccan Dirham", symbol: "د.م." },
-  { code: "MGA", name: "Malagasy Ariary", symbol: "Ar" },
-  { code: "MRU", name: "Mauritanian Ouguiya", symbol: "UM" },
-  { code: "MUR", name: "Mauritian Rupee", symbol: "₨" },
-  { code: "MXN", name: "Mexican Peso", symbol: "$" },
-  { code: "NAD", name: "Namibian Dollar", symbol: "N$" },
-  { code: "NOK", name: "Norwegian Krone", symbol: "kr" },
-  { code: "NZD", name: "New Zealand Dollar", symbol: "NZ$" },
-  { code: "PLN", name: "Polish Złoty", symbol: "zł" },
-  { code: "RUB", name: "Russian Ruble", symbol: "₽" },
-  { code: "RWF", name: "Rwandan Franc", symbol: "RF" },
-  { code: "SCR", name: "Seychellois Rupee", symbol: "₨" },
-  { code: "SDG", name: "Sudanese Pound", symbol: "£" },
-  { code: "SEK", name: "Swedish Krona", symbol: "kr" },
-  { code: "SGD", name: "Singapore Dollar", symbol: "S$" },
-  { code: "SLL", name: "Sierra Leonean Leone", symbol: "Le" },
-  { code: "SOS", name: "Somali Shilling", symbol: "Sh" },
-  { code: "SSP", name: "South Sudanese Pound", symbol: "£" },
-  { code: "SZL", name: "Swazi Lilangeni", symbol: "L" },
-  { code: "TND", name: "Tunisian Dinar", symbol: "د.ت" },
-  { code: "TRY", name: "Turkish Lira", symbol: "₺" },
-  { code: "TZS", name: "Tanzanian Shilling", symbol: "TSh" },
-  { code: "UGX", name: "Ugandan Shilling", symbol: "USh" },
-  { code: "XOF", name: "West African CFA Franc", symbol: "CFA" },
-  { code: "ZAR", name: "South African Rand", symbol: "R" },
-];
+// Region display order
+const regionOrder = ['north_america', 'europe', 'africa', 'south_america', 'asia', 'middle_east', 'oceania'];
 
 export default function AccountSettings() {
   const {
     accountPreferences,
-    setAccountPreferences,
+    handleAccountPreferencesUpdate,
     setShowAccountSettings,
     user,
     profile,
@@ -108,28 +57,44 @@ export default function AccountSettings() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteInProgressRef = useRef(false);
 
+  // Find the country that matches the saved currency, or default to US
+  const findCountryByCurrency = (currencyCode: string): CountryCurrency | undefined => {
+    return countryCurrencies.find(c => c.currencyCode === currencyCode);
+  };
+
+  const initialCountry = findCountryByCurrency(profile?.currency || "USD") || 
+    countryCurrencies.find(c => c.countryCode === 'US');
+
+  const [selectedCountry, setSelectedCountry] = useState<CountryCurrency | undefined>(initialCountry);
   const [selectedCurrency, setSelectedCurrency] = useState(
     profile?.currency || "USD"
   );
   const [selectedMeasurement, setSelectedMeasurement] = useState(
     profile?.measurement_system || "imperial"
   );
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+
+  // Get countries grouped by region
+  const countriesByRegion = React.useMemo(() => getCountriesByRegion(), []);
 
   useEffect(() => {
     fetchExchangeRates();
   }, []);
 
-  const handleCurrencyChange = async (currencyCode: string) => {
-    setSelectedCurrency(currencyCode);
+  const handleCountryChange = async (country: CountryCurrency) => {
+    setSelectedCountry(country);
+    setSelectedCurrency(country.currencyCode);
+    
     const updatedPreferences = {
       ...accountPreferences,
-      currency: currencyCode,
+      currency: country.currencyCode,
     };
-    setAccountPreferences(updatedPreferences);
+    handleAccountPreferencesUpdate(updatedPreferences);
+    
     if (user?.id) {
       try {
         await PreferencesService.updateUserProfile(user.id, {
-          currency: currencyCode,
+          currency: country.currencyCode,
         });
       } catch (_e) {
         // Local state already updated; optionally show error
@@ -143,7 +108,7 @@ export default function AccountSettings() {
       ...accountPreferences,
       measurementSystem: system,
     };
-    setAccountPreferences(updatedPreferences);
+    handleAccountPreferencesUpdate(updatedPreferences);
     if (user?.id) {
       try {
         await PreferencesService.updateUserProfile(user.id, {
@@ -155,8 +120,60 @@ export default function AccountSettings() {
     }
   };
 
-  const getCurrentCurrency = () => {
-    return supportedCurrencies.find((c) => c.code === selectedCurrency);
+  const handleAutoDetectCurrency = async () => {
+    setIsDetectingLocation(true);
+    try {
+      const locationService = LocationService.getInstance();
+      const location = await locationService.getCurrentLocation();
+      
+      if (!location) {
+        Alert.alert(
+          "Location Access Required",
+          "Please enable location access to auto-detect your currency.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      const geocodeResult = await geocodingService.reverseGeocode(
+        location.latitude,
+        location.longitude
+      );
+
+      if (geocodeResult.country) {
+        const detectedCountry = getCurrencyByCountryName(geocodeResult.country);
+        
+        if (detectedCountry) {
+          await handleCountryChange(detectedCountry);
+          Alert.alert(
+            "Currency Detected",
+            `Based on your location in ${geocodeResult.country}, we've set your currency to ${detectedCountry.currencyCode} (${detectedCountry.currencySymbol}).`,
+            [{ text: "OK" }]
+          );
+        } else {
+          Alert.alert(
+            "Could Not Detect Currency",
+            `We detected you're in ${geocodeResult.country}, but couldn't find a matching currency. Please select manually.`,
+            [{ text: "OK" }]
+          );
+        }
+      } else {
+        Alert.alert(
+          "Location Detection Failed",
+          "We couldn't determine your country from your location. Please select your currency manually.",
+          [{ text: "OK" }]
+        );
+      }
+    } catch (error) {
+      console.error("Auto-detect currency error:", error);
+      Alert.alert(
+        "Error",
+        "Something went wrong while detecting your location. Please select your currency manually.",
+        [{ text: "OK" }]
+      );
+    } finally {
+      setIsDetectingLocation(false);
+    }
   };
 
   const handleDeleteAccount = () => {
@@ -288,6 +305,22 @@ export default function AccountSettings() {
             </View>
           </View>
 
+          {/* Auto-detect Currency Button */}
+          <TouchableOpacity
+            onPress={handleAutoDetectCurrency}
+            style={styles.autoDetectButton}
+            disabled={isDetectingLocation}
+          >
+            {isDetectingLocation ? (
+              <ActivityIndicator size="small" color="#eb7825" />
+            ) : (
+              <Ionicons name="location" size={18} color="#eb7825" />
+            )}
+            <Text style={styles.autoDetectButtonText}>
+              {isDetectingLocation ? "Detecting..." : "Detect from my location"}
+            </Text>
+          </TouchableOpacity>
+
           <View style={styles.currencyContainer}>
             <ScrollView
               style={styles.currencyScrollView}
@@ -295,49 +328,60 @@ export default function AccountSettings() {
               showsVerticalScrollIndicator={true}
               nestedScrollEnabled={true}
             >
-              {supportedCurrencies.map((currency) => (
-                <TouchableOpacity
-                  key={currency.code}
-                  onPress={() => handleCurrencyChange(currency.code)}
-                  style={[
-                    styles.currencyItem,
-                    selectedCurrency === currency.code &&
-                      styles.currencyItemSelected,
-                  ]}
-                >
-                  <View style={styles.currencyInfo}>
-                    <Text style={styles.currencySymbol}>{currency.symbol}</Text>
-                    <View style={styles.currencyDetails}>
-                      <Text style={styles.currencyCode}>{currency.code}</Text>
-                      <Text style={styles.currencyName}>{currency.name}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.currencyExample}>
-                    {/*  <Text style={styles.currencyExampleText}>
-                      Example: {formatCurrency(25, currency.code)}
-                    </Text> */}
-                    <Text style={styles.currencyRate}>
-                      1 USD = {getRate(currency.code)} {currency.code}
+              {regionOrder.map((region) => {
+                const countries = countriesByRegion[region];
+                if (!countries || countries.length === 0) return null;
+                
+                return (
+                  <View key={region}>
+                    <Text style={styles.regionHeader}>
+                      {regionDisplayNames[region] || region}
                     </Text>
+                    {countries.map((country) => (
+                      <TouchableOpacity
+                        key={country.countryCode}
+                        onPress={() => handleCountryChange(country)}
+                        style={[
+                          styles.currencyItem,
+                          selectedCountry?.countryCode === country.countryCode &&
+                            styles.currencyItemSelected,
+                        ]}
+                      >
+                        <View style={styles.currencyInfo}>
+                          <Text style={styles.currencySymbol}>{country.currencySymbol}</Text>
+                          <View style={styles.currencyDetails}>
+                            <Text style={styles.currencyCode}>{country.countryName}</Text>
+                            <Text style={styles.currencyName}>
+                              {country.currencyCode} ({country.currencySymbol})
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.currencyExample}>
+                          <Text style={styles.currencyRate}>
+                            1 USD = {getRate(country.currencyCode)} {country.currencyCode}
+                          </Text>
+                        </View>
+                        {selectedCountry?.countryCode === country.countryCode && (
+                          <Ionicons
+                            name="checkmark"
+                            size={20}
+                            color="#eb7825"
+                            style={styles.checkIcon}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                  {selectedCurrency === currency.code && (
-                    <Ionicons
-                      name="checkmark"
-                      size={20}
-                      color="#eb7825"
-                      style={styles.checkIcon}
-                    />
-                  )}
-                </TouchableOpacity>
-              ))}
+                );
+              })}
             </ScrollView>
           </View>
 
-          {selectedCurrency !== "USD" && (
+          {selectedCountry && selectedCountry.currencyCode !== "USD" && (
             <View style={styles.infoBox}>
               <Text style={styles.infoText}>
                 <Text style={styles.infoBold}>Selected:</Text>{" "}
-                {getCurrentCurrency()?.name} ({getCurrentCurrency()?.symbol})
+                {selectedCountry.countryName} - {selectedCountry.currencyCode} ({selectedCountry.currencySymbol})
                 {"\n"}
                 Exchange rates are updated regularly and may fluctuate.
               </Text>
@@ -628,6 +672,24 @@ const styles = StyleSheet.create({
   tipBold: {
     fontWeight: "600",
   },
+  autoDetectButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#fef3e2",
+    borderWidth: 1,
+    borderColor: "#eb7825",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  autoDetectButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
   currencyContainer: {
     marginBottom: 16,
   },
@@ -640,6 +702,18 @@ const styles = StyleSheet.create({
   },
   currencyScrollContent: {
     padding: 8,
+  },
+  regionHeader: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6b7280",
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginTop: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
   },
   currencyItem: {
     flexDirection: "row",

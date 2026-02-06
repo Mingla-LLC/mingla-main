@@ -1,93 +1,52 @@
 // Utility functions for formatting currency and measurements based on user preferences
 
 import { getRate } from '../../services/currencyService';
+import { currencySymbolMap } from '../../services/countryCurrencyService';
 
-// Currency symbols (rates come from currencyService)
+// Currency symbols - use comprehensive list from countryCurrencyService
+// Falls back to basic symbols for any missing currencies
 export const currencyData: Record<string, { symbol: string }> = {
+  // Default symbols from countryCurrencyService
+  ...Object.entries(currencySymbolMap).reduce((acc, [code, symbol]) => {
+    acc[code] = { symbol };
+    return acc;
+  }, {} as Record<string, { symbol: string }>),
+  // Additional currencies not in country list but still supported
   USD: { symbol: '$' },
-  AUD: { symbol: 'A$' },
-  BIF: { symbol: 'FBu' },
-  BRL: { symbol: 'R$' },
-  BWP: { symbol: 'P' },
-  CAD: { symbol: 'C$' },
-  CHF: { symbol: 'CHF' },
-  CNY: { symbol: '¥' },
-  CVE: { symbol: '$' },
-  CZK: { symbol: 'Kč' },
-  DJF: { symbol: 'Fdj' },
-  DKK: { symbol: 'kr' },
-  DZD: { symbol: 'د.ج' },
-  EGP: { symbol: '£' },
-  ERN: { symbol: 'Nfk' },
-  ETB: { symbol: 'Br' },
-  EUR: { symbol: '€' },
-  GBP: { symbol: '£' },
-  GHS: { symbol: '₵' },
-  GMD: { symbol: 'D' },
-  GNF: { symbol: 'FG' },
-  HKD: { symbol: 'HK$' },
-  HUF: { symbol: 'Ft' },
-  ILS: { symbol: '₪' },
-  INR: { symbol: '₹' },
-  JPY: { symbol: '¥' },
-  KES: { symbol: 'KSh' },
-  KMF: { symbol: 'CF' },
-  KRW: { symbol: '₩' },
-  LRD: { symbol: 'L$' },
-  LSL: { symbol: 'L' },
-  LYD: { symbol: 'ل.د' },
-  MAD: { symbol: 'د.م.' },
-  MGA: { symbol: 'Ar' },
-  MRU: { symbol: 'UM' },
-  MUR: { symbol: '₨' },
-  MXN: { symbol: '$' },
-  NAD: { symbol: 'N$' },
-  NGN: { symbol: '₦' },
-  NOK: { symbol: 'kr' },
-  NZD: { symbol: 'NZ$' },
-  PLN: { symbol: 'zł' },
-  RUB: { symbol: '₽' },
-  RWF: { symbol: 'RF' },
-  SCR: { symbol: '₨' },
-  SDG: { symbol: '£' },
-  SEK: { symbol: 'kr' },
-  SGD: { symbol: 'S$' },
-  SLL: { symbol: 'Le' },
-  SOS: { symbol: 'Sh' },
-  SSP: { symbol: '£' },
-  SZL: { symbol: 'L' },
-  TND: { symbol: 'د.ت' },
-  TRY: { symbol: '₺' },
-  TZS: { symbol: 'TSh' },
-  UGX: { symbol: 'USh' },
-  XOF: { symbol: 'CFA' },
-  ZAR: { symbol: 'R' }
 };
 
-// Currencies that don't use decimal places
+// Currencies that don't use decimal places (or have very low decimal value)
 const wholeNumberCurrencies = [
-  'JPY', 'KRW', 'HUF', 'XOF', 'SLL', 'GNF', 'UGX', 'TZS', 'RWF', 'BIF', 
-  'SOS', 'DJF', 'KMF', 'MGA', 'DZD'
+  // East Asian
+  'JPY', 'KRW', 'VND', 'KHR', 'LAK', 'MMK', 'KPW',
+  // African
+  'XOF', 'XAF', 'SLL', 'GNF', 'UGX', 'TZS', 'RWF', 'BIF', 
+  'SOS', 'DJF', 'KMF', 'MGA', 'MWK', 'SDG', 'SSP',
+  // Others with very low decimal value
+  'HUF', 'CLP', 'PYG', 'IDR', 'IRR', 'IQD', 'LBP',
+  // Algerian Dinar
+  'DZD'
 ];
 
 /**
- * Format currency based on user preferences
+ * Format currency based on user preferences with thousand separators
  * @param amount - Amount in USD
  * @param currencyCode - Target currency code
- * @returns Formatted currency string
+ * @returns Formatted currency string (e.g., 136851 -> "$136,851")
  */
 export function formatCurrency(amount: number, currencyCode: string = 'USD'): string {
   const currency = currencyData[currencyCode as keyof typeof currencyData];
   const rate = getRate(currencyCode);
-  if (!currency) return `$${amount.toFixed(2)}`;
+  if (!currency) return `$${Math.round(amount).toLocaleString('en-US')}`;
 
   const convertedAmount = amount * rate;
   
   if (wholeNumberCurrencies.includes(currencyCode)) {
-    return `${currency.symbol}${Math.round(convertedAmount).toLocaleString()}`;
+    return `${currency.symbol}${Math.round(convertedAmount).toLocaleString('en-US')}`;
   }
   
-  return `${currency.symbol}${convertedAmount.toFixed(2)}`;
+  // For currencies with decimals, format with 2 decimal places and thousand separators
+  return `${currency.symbol}${convertedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /**
@@ -170,6 +129,50 @@ export function formatWeight(pounds: number, system: 'Metric' | 'Imperial' = 'Im
 export function getCurrencySymbol(currencyCode: string = 'USD'): string {
   const currency = currencyData[currencyCode as keyof typeof currencyData];
   return currency?.symbol || '$';
+}
+
+/**
+ * Convert a price range string from USD to user's preferred currency
+ * @param priceRange - Price range string in USD (e.g., "$20-40", "$100+", "Free", "$50")
+ * @param currencyCode - Target currency code
+ * @returns Formatted price range string in target currency
+ */
+export function formatPriceRange(priceRange: string | undefined, currencyCode: string = 'USD'): string {
+  if (!priceRange) return '';
+  
+  // Handle "Free" or non-numeric ranges
+  if (priceRange.toLowerCase() === 'free' || priceRange === '-') {
+    return priceRange;
+  }
+
+  const currency = currencyData[currencyCode as keyof typeof currencyData];
+  const rate = getRate(currencyCode);
+  const symbol = currency?.symbol || '$';
+
+  // Extract numbers from the price range
+  // Patterns: "$20-40", "$20 - $40", "$100+", "$50", "20-40"
+  const rangeMatch = priceRange.match(/\$?([\d,]+(?:\.\d{2})?)\s*[-–]\s*\$?([\d,]+(?:\.\d{2})?)/i);
+  const singleMatch = priceRange.match(/\$?([\d,]+(?:\.\d{2})?)\+?/i);
+  const hasPlus = priceRange.includes('+');
+
+  if (rangeMatch) {
+    // Range format: $20-40 or $20 - $40
+    const minUSD = parseFloat(rangeMatch[1].replace(/,/g, ''));
+    const maxUSD = parseFloat(rangeMatch[2].replace(/,/g, ''));
+    const minConverted = Math.round(minUSD * rate);
+    const maxConverted = Math.round(maxUSD * rate);
+    
+    return `${symbol}${minConverted.toLocaleString('en-US')} - ${symbol}${maxConverted.toLocaleString('en-US')}`;
+  } else if (singleMatch) {
+    // Single value format: $100+ or $50
+    const valueUSD = parseFloat(singleMatch[1].replace(/,/g, ''));
+    const valueConverted = Math.round(valueUSD * rate);
+    
+    return `${symbol}${valueConverted.toLocaleString('en-US')}${hasPlus ? '+' : ''}`;
+  }
+
+  // If we can't parse, return original
+  return priceRange;
 }
 
 /**

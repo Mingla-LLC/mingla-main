@@ -188,6 +188,10 @@ export interface ExpandedCardModalProps {
   onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;
   onShare?: (card: ExpandedCardData) => void;
   userPreferences?: any;
+  accountPreferences?: {
+    currency: string;
+    measurementSystem: "Metric" | "Imperial";
+  };
   isSaved?: boolean;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
