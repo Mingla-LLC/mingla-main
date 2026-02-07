@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  FlatList,
+  ScrollView,
   Modal,
   Platform,
   Alert,
@@ -24,6 +24,7 @@ import { savedCardsService } from "../../services/savedCardsService";
 import { toastManager } from "../ui/Toast";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
+import { formatPriceRange } from "../utils/formatters";
 
 interface SavedCard {
   id: string;
@@ -70,6 +71,10 @@ interface SavedTabProps {
   onPurchaseFromSaved: (card: SavedCard, purchaseOption: any) => void;
   onShareCard: (card: SavedCard) => void;
   userPreferences?: any;
+  accountPreferences?: {
+    currency: string;
+    measurementSystem: "Metric" | "Imperial";
+  };
   scheduledCardIds?: string[];
   boardSavedCards?: SavedCard[]; // Optional: board-specific saved cards
   activeBoardSessionId?: string | null; // Session ID for invalidating board cards query
@@ -81,6 +86,7 @@ const SavedTab = ({
   onPurchaseFromSaved,
   onShareCard,
   userPreferences,
+  accountPreferences,
   scheduledCardIds = [],
   boardSavedCards,
   activeBoardSessionId,
@@ -112,6 +118,7 @@ const SavedTab = ({
   >("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [expandedAccordionItems, setExpandedAccordionItems] = useState<string[]>(["active"]); // Start with Active expanded
   const { user } = useAppStore();
   const queryClient = useQueryClient();
 
@@ -120,6 +127,16 @@ const SavedTab = ({
     () => new Set(scheduledCardIds || []),
     [scheduledCardIds]
   );
+
+  // Get set of card IDs that are in calendar entries
+  const calendarCardIdsSet = useMemo(() => {
+    const ids = new Set<string>();
+    calendarEntries?.forEach((entry: any) => {
+      if (entry.id) ids.add(entry.id);
+      if (entry.experience?.id) ids.add(entry.experience.id);
+    });
+    return ids;
+  }, [calendarEntries]);
 
   // Apply search and filter controls
   const filteredCards = useMemo(() => {
@@ -203,6 +220,25 @@ const SavedTab = ({
     selectedCategory,
   ]);
 
+  // Split filtered cards into active (not scheduled) and archive (scheduled)
+  const { activeCards, archiveCards } = useMemo(() => {
+    const active: SavedCard[] = [];
+    const archive: SavedCard[] = [];
+
+    filteredCards.forEach((card) => {
+      // Check if card has been scheduled (exists in calendar entries)
+      const isScheduled = calendarCardIdsSet.has(card.id) || scheduledCardIdsSet.has(card.id);
+      
+      if (isScheduled) {
+        archive.push(card);
+      } else {
+        active.push(card);
+      }
+    });
+
+    return { activeCards: active, archiveCards: archive };
+  }, [filteredCards, calendarCardIdsSet, scheduledCardIdsSet]);
+
   const getMatchScore = (card: SavedCard): number | null => {
     if (typeof card?.matchScore === "number") return card.matchScore;
     if (typeof (card as any)?.match_score === "number")
@@ -218,11 +254,45 @@ const SavedTab = ({
     container: {
       flex: 1,
     },
+    mainScrollContent: {
+      paddingBottom: 100,
+    },
     listContent: {
       gap: 16,
       paddingHorizontal: 16,
       paddingTop: 16,
       paddingBottom: 62, // Add padding to prevent tab bar from touching last card
+    },
+    accordionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: "#e5e7eb",
+      backgroundColor: "white",
+    },
+    accordionTitleContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    accordionTitle: {
+      fontSize: 16,
+      fontWeight: "500",
+      color: "#111827",
+    },
+    accordionCount: {
+      fontSize: 14,
+      color: "#6b7280",
+      marginLeft: 8,
+    },
+    accordionContentContainer: {
+      backgroundColor: "#f9fafb",
+    },
+    cardWrapper: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
     },
     filterCard: {
       backgroundColor: "white",
@@ -813,8 +883,8 @@ const SavedTab = ({
     console.log("cardToSchedule", cardToSchedule.lat);
     console.log("cardToSchedule", cardToSchedule.lng);
 
-    setSchedulingCardId(cardToSchedule.id);
     try {
+      setSchedulingCardId(cardToSchedule.id);
       const scheduledDateISO = scheduledDateTime.toISOString();
 
       // Determine source from card
@@ -1172,7 +1242,7 @@ const SavedTab = ({
                     </Text>
                   </View>
                   <Text style={styles.priceText}>
-                    {card.priceRange || "$25-50"}
+                    {formatPriceRange(card.priceRange || "$25-50", accountPreferences?.currency || "USD")}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
@@ -1436,14 +1506,93 @@ const SavedTab = ({
         )}
       </View>
 
-      <FlatList
-        data={filteredCards}
-        renderItem={renderCard}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={renderEmptyComponent}
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.mainScrollContent}
         showsVerticalScrollIndicator={false}
-      />
+      >
+        {/* Active Section */}
+        <TouchableOpacity
+          style={styles.accordionHeader}
+          onPress={() =>
+            setExpandedAccordionItems((prev) =>
+              prev.includes("active")
+                ? prev.filter((i) => i !== "active")
+                : [...prev, "active"]
+            )
+          }
+          activeOpacity={0.7}
+        >
+          <View style={styles.accordionTitleContainer}>
+            <Text style={styles.accordionTitle}>Active</Text>
+            <Text style={styles.accordionCount}>
+              ({activeCards.length})
+            </Text>
+          </View>
+          <Ionicons
+            name={
+              expandedAccordionItems.includes("active")
+                ? "chevron-down"
+                : "chevron-forward"
+            }
+            size={20}
+            color="#9ca3af"
+          />
+        </TouchableOpacity>
+
+        {expandedAccordionItems.includes("active") && (
+          <View style={styles.accordionContentContainer}>
+            {activeCards.length === 0
+              ? renderEmptyComponent()
+              : activeCards.map((card) => (
+                  <View key={card.id} style={styles.cardWrapper}>
+                    {renderCard({ item: card })}
+                  </View>
+                ))}
+          </View>
+        )}
+
+        {/* Archive Section */}
+        <TouchableOpacity
+          style={styles.accordionHeader}
+          onPress={() =>
+            setExpandedAccordionItems((prev) =>
+              prev.includes("archive")
+                ? prev.filter((i) => i !== "archive")
+                : [...prev, "archive"]
+            )
+          }
+          activeOpacity={0.7}
+        >
+          <View style={styles.accordionTitleContainer}>
+            <Text style={styles.accordionTitle}>Archives</Text>
+            <Text style={styles.accordionCount}>
+              ({archiveCards.length})
+            </Text>
+          </View>
+          <Ionicons
+            name={
+              expandedAccordionItems.includes("archive")
+                ? "chevron-down"
+                : "chevron-forward"
+            }
+            size={20}
+            color="#9ca3af"
+          />
+        </TouchableOpacity>
+
+        {expandedAccordionItems.includes("archive") && (
+          <View style={styles.accordionContentContainer}>
+            {archiveCards.length === 0
+              ? renderEmptyComponent()
+              : archiveCards.map((card) => (
+                  <View key={card.id} style={styles.cardWrapper}>
+                    {renderCard({ item: card })}
+                  </View>
+                ))}
+          </View>
+        )}
+      </ScrollView>
 
       {/* Expanded Card Modal */}
       {isModalVisible && selectedCardForModal && (

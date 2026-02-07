@@ -183,8 +183,10 @@ export function useAppState() {
   // UI state
   const [currentPage, setCurrentPage] = useState<
     | "home"
+    | "discover"
     | "connections"
     | "activity"
+    | "likes"
     | "saved"
     | "profile"
     | "profile-settings"

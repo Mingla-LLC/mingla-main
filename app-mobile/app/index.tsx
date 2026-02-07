@@ -20,6 +20,7 @@ import CollaborationModule from "../src/components/CollaborationModule";
 import CollaborationPreferences from "../src/components/CollaborationPreferences";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import HomePage from "../src/components/HomePage";
+import DiscoverScreen from "../src/components/DiscoverScreen";
 import { CollaborationSession, getInitials, Friend } from "../src/components/CollaborationSessions";
 import PreferencesSheet from "../src/components/PreferencesSheet";
 import ProfilePage from "../src/components/ProfilePage";
@@ -30,6 +31,7 @@ import AccountSettings from "../src/components/profile/AccountSettings";
 import ProfileSettings from "../src/components/profile/ProfileSettings";
 import OnboardingFlow from "../src/components/OnboardingFlow";
 import ActivityPage from "../src/components/ActivityPage";
+import LikesPage from "../src/components/LikesPage";
 import SavedExperiencesPage from "../src/components/SavedExperiencesPage";
 import ConnectionsPage from "../src/components/ConnectionsPage";
 import { NavigationProvider } from "../src/contexts/NavigationContext";
@@ -1154,6 +1156,22 @@ function AppContent() {
             isCreatingSession={isCreatingSession}
           />
         );
+      case "discover":
+        return (
+          <DiscoverScreen
+            onAddFriend={() => {
+              // Navigate to connections or show add friend modal
+              setCurrentPage("connections");
+            }}
+            accountPreferences={{
+              currency: accountPreferences?.currency || "USD",
+              measurementSystem:
+                (accountPreferences?.measurementSystem as
+                  | "Metric"
+                  | "Imperial") || "Imperial",
+            }}
+          />
+        );
       case "saved":
         return (
           <SavedExperiencesPage
@@ -1195,6 +1213,30 @@ function AppContent() {
               setCurrentPage("board-view");
             }}
             onUnreadCountChange={setTotalUnreadMessages}
+          />
+        );
+      case "likes":
+        return (
+          <LikesPage
+            isLoadingSavedCards={isLoadingSavedCards}
+            calendarEntries={calendarEntries}
+            userPreferences={userPreferences}
+            accountPreferences={accountPreferences}
+            onScheduleFromSaved={handlers.handleScheduleFromSaved}
+            onPurchaseFromSaved={(card: any, purchaseOption: any) => {
+              console.log("Purchasing from saved:", card, purchaseOption);
+              // Handle purchase logic here
+            }}
+            onRemoveFromCalendar={handlers.handleRemoveFromCalendar}
+            onShareCard={handlers.handleShareCard}
+            onAddToCalendar={(entry: any) => {
+              console.log("Adding to calendar:", entry);
+              // Handle add to calendar logic here
+            }}
+            onShowQRCode={(entryId: string) => {
+              console.log("Showing QR code for:", entryId);
+              // Handle show QR code logic here
+            }}
           />
         );
       case "activity":
@@ -1300,9 +1342,9 @@ function AppContent() {
           <BoardViewScreen
             sessionId={boardViewSessionId}
             onBack={() => {
-              setCurrentPage("activity");
+              setCurrentPage("likes");
               // Keep boardViewSessionId set so Saved tab can show board-specific cards
-              // It will be cleared when user navigates away from activity page or selects a different board
+              // It will be cleared when user navigates away from likes page or selects a different board
             }}
             onNavigateToSession={(sessionId: string) => {
               setBoardViewSessionId(sessionId);
@@ -1663,6 +1705,31 @@ function AppContent() {
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => {
+                              console.log("Navigating to discover");
+                              setCurrentPage("discover");
+                            }}
+                            style={styles.navItem}
+                          >
+                            <Ionicons
+                              name="compass-outline"
+                              size={24}
+                              color={
+                                currentPage === "discover" ? "#eb7825" : "#9CA3AF"
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.navText,
+                                currentPage === "discover"
+                                  ? styles.navTextActive
+                                  : styles.navTextInactive,
+                              ]}
+                            >
+                              Discover
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
                               console.log("Navigating to connections");
                               setCurrentPage("connections");
                             }}
@@ -1701,16 +1768,16 @@ function AppContent() {
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => {
-                              setCurrentPage("activity");
+                              setCurrentPage("likes");
                             }}
                             style={styles.navItem}
                           >
                             <View style={styles.navIconContainer}>
                               <Ionicons
-                                name="calendar-outline"
+                                name="heart-outline"
                                 size={24}
                                 color={
-                                  currentPage === "activity"
+                                  currentPage === "likes"
                                     ? "#eb7825"
                                     : "#9CA3AF"
                                 }
@@ -1728,12 +1795,12 @@ function AppContent() {
                             <Text
                               style={[
                                 styles.navText,
-                                currentPage === "activity"
+                                currentPage === "likes"
                                   ? styles.navTextActive
                                   : styles.navTextInactive,
                               ]}
                             >
-                              Activity
+                              Likes
                             </Text>
                           </TouchableOpacity>
                           {/*    <TouchableOpacity
@@ -1931,14 +1998,14 @@ const styles = StyleSheet.create({
   },
   navigationContainer: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    justifyContent: "space-evenly",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
   },
   navItem: {
+    flex: 1,
     alignItems: "center",
     paddingVertical: 8,
-    paddingHorizontal: 16,
     borderRadius: 8,
   },
   navIconContainer: {

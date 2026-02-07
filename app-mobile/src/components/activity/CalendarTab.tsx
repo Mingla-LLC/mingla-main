@@ -1244,7 +1244,7 @@ const CalendarTab = ({
               style={styles.proposeDateButton}
             >
               <Ionicons name="calendar" size={18} color="white" />
-              <Text style={styles.proposeDateButtonText}>Propose Date</Text>
+              <Text style={styles.proposeDateButtonText}>Reschedule</Text>
             </TouchableOpacity>
 
             {/* Share Button - Small circular */}
