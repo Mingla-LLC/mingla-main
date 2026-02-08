@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import {
   Text,
   View,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   StatusBar,
   Image,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,7 +14,8 @@ import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
-// Moved to SwipeableCards component
+// Animation duration constant for consistency
+const ANIMATION_DURATION = 400;
 
 interface HomePageProps {
   onOpenPreferences: () => void;
@@ -78,15 +80,44 @@ export default function HomePage({
   availableFriends = [],
   isCreatingSession = false,
 }: HomePageProps) {
+  // Animation values
+  const headerSlideAnim = useRef(new Animated.Value(-60)).current;
+  const sessionsOpacity = useRef(new Animated.Value(0.3)).current;
+  const sessionsScale = useRef(new Animated.Value(0.9)).current;
+
+  // Run entrance animations on mount
+  useEffect(() => {
+    Animated.parallel([
+      // Header slides down
+      Animated.timing(headerSlideAnim, {
+        toValue: 0,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: true,
+      }),
+      // Sessions row fades in and scales up
+      Animated.timing(sessionsOpacity, {
+        toValue: 1,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: true,
+      }),
+      Animated.timing(sessionsScale, {
+        toValue: 1,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
   return (
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
-        {/* Top Navigation - Fixed */}
-        <View
+        {/* Top Navigation - Fixed with slide-down animation */}
+        <Animated.View
           style={[
             styles.header,
             isHighlightingHeader && { zIndex: 1000, elevation: 1000 },
+            { transform: [{ translateY: headerSlideAnim }] },
           ]}
         >
           <View style={styles.headerLeft}>
@@ -137,23 +168,30 @@ export default function HomePage({
               <View style={styles.notificationDot} />
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
 
-        {/* Collaboration Sessions Bar */}
+        {/* Collaboration Sessions Bar with fade-in and scale animation */}
         {onSessionSelect && onSoloSelect && onCreateSession && onAcceptInvite && onDeclineInvite && onCancelInvite && (
-          <CollaborationSessions
-            sessions={collaborationSessions}
-            currentMode={currentMode}
-            selectedSessionId={selectedSessionId}
-            onSessionSelect={onSessionSelect}
-            onSoloSelect={onSoloSelect}
-            onCreateSession={onCreateSession}
-            onAcceptInvite={onAcceptInvite}
-            onDeclineInvite={onDeclineInvite}
-            onCancelInvite={onCancelInvite}
-            availableFriends={availableFriends}
-            isCreatingSession={isCreatingSession}
-          />
+          <Animated.View
+            style={{
+              opacity: sessionsOpacity,
+              transform: [{ scaleX: sessionsScale }],
+            }}
+          >
+            <CollaborationSessions
+              sessions={collaborationSessions}
+              currentMode={currentMode}
+              selectedSessionId={selectedSessionId}
+              onSessionSelect={onSessionSelect}
+              onSoloSelect={onSoloSelect}
+              onCreateSession={onCreateSession}
+              onAcceptInvite={onAcceptInvite}
+              onDeclineInvite={onDeclineInvite}
+              onCancelInvite={onCancelInvite}
+              availableFriends={availableFriends}
+              isCreatingSession={isCreatingSession}
+            />
+          </Animated.View>
         )}
 
         {/* Main Content - Centered middle section */}

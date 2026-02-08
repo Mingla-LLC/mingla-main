@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { Friend, Conversation, Message } from "../services/connectionsService";
 import { ConnectionsService } from "../services/connectionsService";
 import CollaborationFriendsTab from "./collaboration/CollaborationFriendsTab";
@@ -1235,10 +1235,10 @@ export default function ConnectionsPageRefactored({
                   ]}
                 >
                   <View style={styles.tabContent}>
-                    <Ionicons
-                      name="people"
+                    <Feather
+                      name="users"
                       size={20}
-                      color={activeTab === "friends" ? "#FFFFFF" : "#6B7280"}
+                      color={activeTab === "friends" ? "#eb7825" : "#6B7280"}
                     />
                     <Text
                       style={[
@@ -1258,10 +1258,10 @@ export default function ConnectionsPageRefactored({
                   ]}
                 >
                   <View style={styles.tabContent}>
-                    <Ionicons
-                      name="chatbubble"
+                    <Feather
+                      name="message-square"
                       size={20}
-                      color={activeTab === "messages" ? "#FFFFFF" : "#6B7280"}
+                      color={activeTab === "messages" ? "#eb7825" : "#6B7280"}
                     />
                     <Text
                       style={[
@@ -1430,38 +1430,35 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: "row",
-    backgroundColor: "#f3f4f6",
-    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
   },
   tab: {
     flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 12,
     position: "relative",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
   },
   activeTab: {
-    backgroundColor: "#eb7825",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderBottomColor: "#eb7825",
   },
   tabContent: {
-    flexDirection: "row",
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 4,
     position: "relative",
   },
   tabText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "500",
     color: "#6B7280",
   },
   activeTabText: {
-    color: "#FFFFFF",
+    color: "#eb7825",
   },
   notificationBadge: {
     position: "absolute",

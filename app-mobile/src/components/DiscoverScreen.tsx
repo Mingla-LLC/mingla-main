@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -11,9 +11,10 @@ import {
   Modal,
   TextInput,
   Platform,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { formatPriceRange, parseAndFormatDistance } from "./utils/formatters";
 import ExpandedCardModal from "./ExpandedCardModal";
@@ -22,6 +23,7 @@ import { ExpandedCardData } from "../types/expandedCardTypes";
 const { width: screenWidth } = Dimensions.get("window");
 const CARD_WIDTH = screenWidth - 32; // 16px padding on each side
 const GRID_CARD_WIDTH = (screenWidth - 48) / 2; // 16px padding + 16px gap between cards
+const ANIMATION_DURATION = 400;
 
 // Category icons mapping (from PreferencesSheet categories)
 const categoryIcons: { [key: string]: string } = {
@@ -150,9 +152,9 @@ const DiscoverTabs: React.FC<DiscoverTabsProps> = ({
   activeTab,
   onTabChange,
 }) => {
-  const tabs: Array<{ id: DiscoverTab; label: string }> = [
-    { id: "for-you", label: "For you" },
-    { id: "night-out", label: "Night out" },
+  const tabs: Array<{ id: DiscoverTab; label: string; icon: string }> = [
+    { id: "for-you", label: "For you", icon: "map-pin" },
+    { id: "night-out", label: "Night out", icon: "music" },
   ];
 
   return (
@@ -168,9 +170,16 @@ const DiscoverTabs: React.FC<DiscoverTabsProps> = ({
               onPress={() => onTabChange(tab.id)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                {tab.label}
-              </Text>
+              <View style={styles.tabContent}>
+                <Feather
+                  name={tab.icon as any}
+                  size={18}
+                  color={isActive ? "#eb7825" : "#6B7280"}
+                />
+                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                  {tab.label}
+                </Text>
+              </View>
             </TouchableOpacity>
           );
         })}
@@ -385,6 +394,63 @@ export default function DiscoverScreen({
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
+  
+  // Entrance animation values
+  const featuredCardOpacity = useRef(new Animated.Value(0)).current;
+  const featuredCardSlide = useRef(new Animated.Value(40)).current;
+  const gridCardsLeftOpacity = useRef(new Animated.Value(0)).current;
+  const gridCardsLeftSlide = useRef(new Animated.Value(30)).current;
+  const gridCardsRightOpacity = useRef(new Animated.Value(0)).current;
+  const gridCardsRightSlide = useRef(new Animated.Value(30)).current;
+
+  // Run entrance animations on mount
+  useEffect(() => {
+    // Featured card animates first
+    Animated.parallel([
+      Animated.timing(featuredCardOpacity, {
+        toValue: 1,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: true,
+      }),
+      Animated.timing(featuredCardSlide, {
+        toValue: 0,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Left column grid cards follow after featured card
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(gridCardsLeftOpacity, {
+          toValue: 1,
+          duration: ANIMATION_DURATION,
+          useNativeDriver: true,
+        }),
+        Animated.timing(gridCardsLeftSlide, {
+          toValue: 0,
+          duration: ANIMATION_DURATION,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, 150); // 150ms delay after featured card starts
+
+    // Right column grid cards lag slightly behind left
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(gridCardsRightOpacity, {
+          toValue: 1,
+          duration: ANIMATION_DURATION,
+          useNativeDriver: true,
+        }),
+        Animated.timing(gridCardsRightSlide, {
+          toValue: 0,
+          duration: ANIMATION_DURATION,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, 230); // 80ms after left column starts
+  }, []);
   
   // Add Person Modal state
   const [isAddPersonModalVisible, setIsAddPersonModalVisible] = useState(false);
@@ -896,23 +962,44 @@ export default function DiscoverScreen({
               </View>
 
               {/* Featured Card */}
-              <FeaturedCard 
-                card={featuredCard} 
-                currency={accountPreferences?.currency}
-                measurementSystem={accountPreferences?.measurementSystem}
-                onPress={() => handleCardPress(featuredCard)}
-              />
+              <Animated.View
+                style={{
+                  opacity: featuredCardOpacity,
+                  transform: [{ translateY: featuredCardSlide }],
+                }}
+              >
+                <FeaturedCard 
+                  card={featuredCard} 
+                  currency={accountPreferences?.currency}
+                  measurementSystem={accountPreferences?.measurementSystem}
+                  onPress={() => handleCardPress(featuredCard)}
+                />
+              </Animated.View>
 
               {/* Grid Cards Section */}
               <View style={styles.gridCardsContainer}>
-                {gridCards.map((card) => (
-                  <GridCard
-                    key={card.id}
-                    card={card}
-                    currency={accountPreferences?.currency}
-                    onPress={() => handleGridCardPress(card)}
-                  />
-                ))}
+                {gridCards.map((card, index) => {
+                  // Right column (odd indices) lag slightly behind left column
+                  const isRightColumn = index % 2 === 1;
+                  
+                  return (
+                    <Animated.View
+                      key={card.id}
+                      style={{
+                        opacity: isRightColumn ? gridCardsRightOpacity : gridCardsLeftOpacity,
+                        transform: [
+                          { translateY: isRightColumn ? gridCardsRightSlide : gridCardsLeftSlide },
+                        ],
+                      }}
+                    >
+                      <GridCard
+                        card={card}
+                        currency={accountPreferences?.currency}
+                        onPress={() => handleGridCardPress(card)}
+                      />
+                    </Animated.View>
+                  );
+                })}
               </View>
             </>
           )}
@@ -1258,16 +1345,13 @@ const styles = StyleSheet.create({
   },
   // Tabs styles
   tabsWrapper: {
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e1e5e9",
-    paddingHorizontal: 16,
+    backgroundColor: "#FFFFFF",
   },
   tabsContainer: {
     flexDirection: "row",
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
-    marginVertical: 12,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
   },
   tab: {
     flex: 1,
@@ -1275,27 +1359,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
-    marginHorizontal: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
   },
   tabActive: {
-    backgroundColor: "#eb7825",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    borderBottomColor: "#eb7825",
+  },
+  tabContent: {
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
   },
   tabLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "500",
     color: "#6B7280",
   },
   tabLabelActive: {
-    color: "#FFFFFF",
+    color: "#eb7825",
   },
   // Content styles
   content: {

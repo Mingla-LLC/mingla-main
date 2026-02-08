@@ -302,6 +302,7 @@ export default function AccountSettings() {
             rates.
           </Text>
 
+          {/* Tip box - commented out
           <View style={styles.tipBox}>
             <View style={styles.tipContent}>
               <Ionicons
@@ -315,6 +316,7 @@ export default function AccountSettings() {
               </Text>
             </View>
           </View>
+          */}
 
           {/* Auto-detect Settings Button */}
           <TouchableOpacity
@@ -452,6 +454,7 @@ export default function AccountSettings() {
             </TouchableOpacity>
           </View>
 
+          {/* Selected info box - commented out
           <View style={styles.infoBox}>
             <Text style={styles.infoText}>
               <Text style={styles.infoBold}>Selected:</Text>{" "}
@@ -460,6 +463,26 @@ export default function AccountSettings() {
               This will apply to all distance and measurement displays in the
               app.
             </Text>
+          </View>
+          */}
+        </View>
+
+        {/* App Information */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="information-circle" size={20} color="#eb7825" />
+            <Text style={styles.sectionTitle}>App Information</Text>
+          </View>
+
+          <View style={styles.appInfoContainer}>
+            <View style={styles.appInfoRow}>
+              <Text style={styles.appInfoLabel}>App Version</Text>
+              <Text style={styles.appInfoValue}>1.0.0</Text>
+            </View>
+            <View style={styles.appInfoRow}>
+              <Text style={styles.appInfoLabel}>Supported Currencies</Text>
+              <Text style={styles.appInfoValue}>{countryCurrencies.length}</Text>
+            </View>
           </View>
         </View>
 
@@ -825,6 +848,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6b7280",
     marginTop: 2,
+  },
+  appInfoContainer: {
+    gap: 12,
+  },
+  appInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  appInfoLabel: {
+    fontSize: 16,
+    color: "#374151",
+  },
+  appInfoValue: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#111827",
   },
   deleteButton: {
     width: "100%",

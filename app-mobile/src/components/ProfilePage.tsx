@@ -86,46 +86,26 @@ export default function ProfilePage({
   const { handleUserIdentityUpdate } = useAppState();
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [showCompletionBox, setShowCompletionBox] = useState(false);
   const progressAnim = useRef(new Animated.Value(userIdentity?.profileImage ? 100 : 90)).current;
   const avatarScale = useRef(new Animated.Value(1)).current;
-  const fadeAnim = useRef(new Animated.Value(1)).current;
   const [hasUploadedImage, setHasUploadedImage] = useState<boolean>(!!userIdentity?.profileImage);
   const [showAvatarOverlay, setShowAvatarOverlay] = useState(false);
-  const [onlineStatus, setOnlineStatus] = useState<"online" | "offline" | "busy">(
-    userIdentity?.active ? "online" : "offline"
-  );
   const locationSpin = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  const statusLabel = (s: string) => {
-    switch (s) {
-      case "online":
-        return "Online";
-      case "busy":
-        return "Busy";
-      default:
-        return "Offline";
-    }
-  };
+  // Animation refs for stat cards flash/twinkle
+  const statCardAnims = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
 
-  const statusColorStyle = (s: string) => {
-    switch (s) {
-      case "online":
-        return { backgroundColor: "#10b981" };
-      case "busy":
-        return { backgroundColor: "#f59e0b" };
-      default:
-        return { backgroundColor: "#9ca3af" };
-    }
-  };
-
-  const setStatusAndPersist = (s: "online" | "offline" | "busy") => {
-    setOnlineStatus(s);
-    // update user identity locally (persisted by handleUserIdentityUpdate)
-    const updatedIdentity = { ...(userIdentity || {}), presenceStatus: s } as any;
-    handleUserIdentityUpdate?.(updatedIdentity);
-  };
+  // Animation refs for vibes and recent activity sections
+  const vibesOpacity = useRef(new Animated.Value(0)).current;
+  const vibesSlide = useRef(new Animated.Value(30)).current;
+  const recentActivityOpacity = useRef(new Animated.Value(0)).current;
+  const recentActivitySlide = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
     let spinAnim: Animated.CompositeAnimation | null = null;
@@ -177,15 +157,66 @@ export default function ProfilePage({
     updateLocation();
   }, []);
 
-  // Bounce-in avatar on mount
+  // Bounce-in avatar on mount with stronger pop
   useEffect(() => {
-    avatarScale.setValue(0.9);
+    avatarScale.setValue(0.5);
     Animated.spring(avatarScale, {
       toValue: 1,
-      friction: 6,
-      tension: 80,
+      friction: 4,
+      tension: 120,
       useNativeDriver: true,
     }).start();
+
+    // Run stat card flash/twinkle animations
+    statCardAnims.forEach((anim, index) => {
+      anim.setValue(0);
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 80,
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim, {
+            toValue: 0,
+            duration: 80,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }, 200 + index * 80);
+    });
+
+    // Run vibes section slide up animation
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(vibesOpacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(vibesSlide, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, 400);
+
+    // Run recent activity section slide up animation
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(recentActivityOpacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(recentActivitySlide, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, 550);
   }, []);
 
   const updateLocation = async () => {
@@ -346,7 +377,6 @@ export default function ProfilePage({
               // Update UI states
               setHasUploadedImage(false);
               setProfileImageSrc(null);
-              setShowCompletionBox(true);
               Animated.timing(progressAnim, { toValue: 90, duration: 300, useNativeDriver: false }).start();
 
               Alert.alert("Removed", "Your profile photo has been removed.");
@@ -378,22 +408,11 @@ export default function ProfilePage({
         handleUserIdentityUpdate?.(updatedIdentity);
         // animate completion progress
         setHasUploadedImage(true);
-        setShowCompletionBox(true);
-        fadeAnim.setValue(1);
         Animated.timing(progressAnim, {
           toValue: 100,
           duration: 300,
           useNativeDriver: false,
         }).start();
-
-        // auto dismiss the completion card after 1s with fade
-        setTimeout(() => {
-          Animated.timing(fadeAnim, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: true,
-          }).start(() => setShowCompletionBox(false));
-        }, 1000);
 
         Alert.alert("Success", "Profile photo updated successfully!");
       } else {
@@ -596,30 +615,6 @@ export default function ProfilePage({
               @{userIdentity?.username || "user"}
             </Text>
 
-            {/* Presence status (editable) */}
-            <View style={styles.statusRow}>
-              <TouchableOpacity
-                onPress={() => {
-                  Alert.alert(
-                    "Set Status",
-                    "Choose how others see you",
-                    [
-                      { text: "Online", onPress: () => setStatusAndPersist("online") },
-                      { text: "Busy", onPress: () => setStatusAndPersist("busy") },
-                      { text: "Offline", onPress: () => setStatusAndPersist("offline") },
-                      { text: "Cancel", style: "cancel" },
-                    ]
-                  );
-                }}
-                style={styles.statusButton}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.statusBadge, statusColorStyle(onlineStatus)]} />
-                <Text style={styles.statusText}>{statusLabel(onlineStatus)}</Text>
-                <Ionicons name="chevron-down" size={14} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-
             {/* Location */}
             <View style={styles.locationContainer}>
               <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
@@ -655,41 +650,134 @@ export default function ProfilePage({
             {locationError ? (
               <Text style={styles.locationError}>{locationError}</Text>
             ) : null}
+
+            {/* Profile Completion Progress Bar */}
+            <View style={styles.profileCompletionContainer}>
+              <View style={styles.profileCompletionHeader}>
+                <Text style={styles.profileCompletionTitle}>Profile completion</Text>
+                <Text style={styles.profileCompletionPercent}>
+                  {hasUploadedImage ? "100%" : "90%"}
+                </Text>
+              </View>
+              <View style={styles.profileCompletionBarBg}>
+                <Animated.View
+                  style={[
+                    styles.profileCompletionBarFill,
+                    {
+                      width: progressAnim.interpolate({
+                        inputRange: [0, 100],
+                        outputRange: ["0%", "100%"],
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+              {!hasUploadedImage ? (
+                <Text style={styles.profileCompletionAction}>
+                  Upload a profile picture to complete your profile
+                </Text>
+              ) : null}
+            </View>
           </View>
         </View>
 
-        {/* Profile Completion / Gamification Box */}
-        {showCompletionBox ? (
-          <Animated.View style={[styles.completionBox, { opacity: fadeAnim }]}>
-            <Text style={styles.completionTitle}>Profile Completion</Text>
-            <View style={styles.progressBarBackground}>
+        {/* Stats Grid */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statsGrid}>
+            {stats.map((stat, index) => (
               <Animated.View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: progressAnim.interpolate({
-                      inputRange: [0, 100],
-                      outputRange: ["0%", "100%"],
+                key={index}
+                style={{
+                  flex: 1,
+                  minWidth: '45%',
+                  opacity: statCardAnims[index].interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1, 0.5],
+                  }),
+                  transform: [{
+                    scale: statCardAnims[index].interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [1, 1.08, 1.05],
                     }),
-                    backgroundColor: hasUploadedImage ? "#16a34a" : "#eb7825",
-                  },
-                ]}
-              />
+                  }],
+                }}
+              >
+                <TouchableOpacity
+                  onPress={stat.onClick}
+                  style={[
+                    styles.statCard,
+                    { backgroundColor: stat.value > 0 ? "#fef3e2" : "#f9fafb" },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statValue,
+                      { color: stat.value > 0 ? "#eb7825" : "#6b7280" },
+                    ]}
+                  >
+                    {stat.value}
+                  </Text>
+                  <Text style={styles.statLabel}>{stat.label}</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            ))}
+          </View>
+        </View>
+
+        {/* Your Vibes */}
+        <Animated.View
+          style={[
+            styles.section,
+            {
+              opacity: vibesOpacity,
+              transform: [{ translateY: vibesSlide }],
+            },
+          ]}
+        >
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Your Vibes</Text>
+
+            <View style={styles.vibesContainer}>
+              {vibes.map((vibe, index) => (
+                <View key={index} style={styles.vibeItem}>
+                  <Text style={styles.vibeLabel}>{vibe.label}</Text>
+                  <View style={styles.vibeProgressContainer}>
+                    <View style={styles.vibeProgressBar}>
+                      <View
+                        style={[
+                          styles.vibeProgressFill,
+                          {
+                            width: `${vibe.percentage}%`,
+                            backgroundColor:
+                              index === 0
+                                ? "#eb7825"
+                                : index === 1
+                                ? "#d6691f"
+                                : "#f08849",
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.vibePercentage}>
+                      {vibe.percentage}%
+                    </Text>
+                  </View>
+                </View>
+              ))}
             </View>
-            <View style={styles.completionMeta}>
-              {hasUploadedImage ? (
-                <Text style={styles.completionText}>✓ Profile complete!</Text>
-              ) : (
-                <Text style={styles.completionText}>
-                  📷 Upload a profile picture to complete your profile
-                </Text>
-              )}
-            </View>
-          </Animated.View>
-        ) : null}
+          </View>
+        </Animated.View>
 
         {/* Recent Activity */}
-        <View style={styles.section}>
+        <Animated.View
+          style={[
+            styles.section,
+            {
+              opacity: recentActivityOpacity,
+              transform: [{ translateY: recentActivitySlide }],
+            },
+          ]}
+        >
           <View style={styles.sectionCard}>
             <View style={styles.recentActivityHeader}>
               <Text style={styles.sectionTitle}>Recent Activity</Text>
@@ -737,72 +825,7 @@ export default function ProfilePage({
               </View>
             )}
           </View>
-        </View>
-
-        {/* Stats Grid */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statsGrid}>
-            {stats.map((stat, index) => (
-              <TouchableOpacity
-                key={index}
-                onPress={stat.onClick}
-                style={[
-                  styles.statCard,
-                  { backgroundColor: stat.value > 0 ? "#fef3e2" : "#f9fafb" },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statValue,
-                    { color: stat.value > 0 ? "#eb7825" : "#6b7280" },
-                  ]}
-                >
-                  {stat.value}
-                </Text>
-                <Text style={styles.statLabel}>{stat.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Your Journey */}
-        <View style={styles.section}></View>
-
-        {/* Your Vibes */}
-        <View style={styles.section}>
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Your Vibes</Text>
-
-            <View style={styles.vibesContainer}>
-              {vibes.map((vibe, index) => (
-                <View key={index} style={styles.vibeItem}>
-                  <Text style={styles.vibeLabel}>{vibe.label}</Text>
-                  <View style={styles.vibeProgressContainer}>
-                    <View style={styles.vibeProgressBar}>
-                      <View
-                        style={[
-                          styles.vibeProgressFill,
-                          {
-                            width: `${vibe.percentage}%`,
-                            backgroundColor:
-                              index === 0
-                                ? "#eb7825"
-                                : index === 1
-                                ? "#d6691f"
-                                : "#f08849",
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.vibePercentage}>
-                      {vibe.percentage}%
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
+        </Animated.View>
 
         {/* Notifications */}
         <View style={styles.section}>
@@ -1035,43 +1058,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 40,
   },
-  completionBox: {
-    marginHorizontal: 24,
-    marginBottom: 16,
-    backgroundColor: "rgba(255,255,255,0.85)",
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  completionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 8,
-  },
-  progressBarBackground: {
-    width: "100%",
-    height: 12,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: 12,
-    borderRadius: 8,
-  },
-  completionMeta: {
-    marginTop: 8,
-  },
-  completionText: {
-    fontSize: 13,
-    color: "#6b7280",
-  },
-
   userName: {
     fontSize: 20,
     fontWeight: "bold",
@@ -1082,37 +1068,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6b7280",
     marginBottom: 8,
-  },
-  statusRow: {
-    marginTop: 6,
-    marginBottom: 12,
-  },
-  statusButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    alignSelf: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "transparent",
-  },
-  statusBadge: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "white",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  statusText: {
-    fontSize: 13,
-    color: "#6b7280",
-    fontWeight: "600",
   },
   locationContainer: {
     flexDirection: "row",
@@ -1133,6 +1088,51 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 12,
   },
+  profileCompletionContainer: {
+    marginTop: 16,
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  profileCompletionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  profileCompletionTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  profileCompletionPercent: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  profileCompletionBarBg: {
+    width: "100%",
+    height: 8,
+    backgroundColor: "#e5e7eb",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  profileCompletionBarFill: {
+    height: 8,
+    backgroundColor: "#eb7825",
+    borderRadius: 4,
+  },
+  profileCompletionAction: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 8,
+  },
   statsContainer: {
     paddingHorizontal: 24,
     paddingVertical: 24,
@@ -1143,8 +1143,6 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   statCard: {
-    flex: 1,
-    minWidth: "45%",
     backgroundColor: "#fef3e2",
     borderRadius: 16,
     padding: 16,

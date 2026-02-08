@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import SavedTab from "./activity/SavedTab";
 import CalendarTab from "./activity/CalendarTab";
 import { useAppState } from "./AppStateManager";
@@ -24,8 +24,8 @@ const LikesTabs: React.FC<LikesTabsProps> = ({
   onTabChange,
 }) => {
   const tabs: Array<{ id: LikesTab; label: string; icon: string }> = [
-    { id: "saved", label: "Saved", icon: "bookmark-outline" },
-    { id: "calendar", label: "Calendar", icon: "calendar-outline" },
+    { id: "saved", label: "Saved", icon: "bookmark" },
+    { id: "calendar", label: "Calendar", icon: "calendar" },
   ];
 
   return (
@@ -41,15 +41,16 @@ const LikesTabs: React.FC<LikesTabsProps> = ({
               onPress={() => onTabChange(tab.id)}
               activeOpacity={0.7}
             >
-              <Ionicons
-                name={tab.icon as any}
-                size={18}
-                color={isActive ? "#FFFFFF" : "#6B7280"}
-                style={styles.tabIcon}
-              />
-              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                {tab.label}
-              </Text>
+              <View style={styles.tabContent}>
+                <Feather
+                  name={tab.icon as any}
+                  size={20}
+                  color={isActive ? "#eb7825" : "#6B7280"}
+                />
+                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                  {tab.label}
+                </Text>
+              </View>
             </TouchableOpacity>
           );
         })}
@@ -152,49 +153,39 @@ const styles = StyleSheet.create({
   },
   // Tabs styles
   tabsWrapper: {
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e1e5e9",
-    paddingHorizontal: 16,
+    backgroundColor: "#FFFFFF",
   },
   tabsContainer: {
     flexDirection: "row",
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
-    marginVertical: 12,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
   },
   tab: {
     flex: 1,
-    flexDirection: "row",
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
-    marginHorizontal: 4,
-    gap: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
   },
   tabActive: {
-    backgroundColor: "#eb7825",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    borderBottomColor: "#eb7825",
   },
-  tabIcon: {
-    marginRight: 2,
+  tabContent: {
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
   },
   tabLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "500",
     color: "#6B7280",
   },
   tabLabelActive: {
-    color: "#FFFFFF",
+    color: "#eb7825",
   },
   // Content styles
   content: {

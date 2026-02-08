@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Text,
   View,
@@ -10,8 +10,11 @@ import {
   Dimensions,
   Alert,
   ActivityIndicator,
+  Animated,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+
+const ANIMATION_DURATION = 250;
+import { Ionicons, Feather } from "@expo/vector-icons";
 
 interface Friend {
   id: string;
@@ -27,7 +30,7 @@ interface CollaborationFriendsTabProps {
   friends: Friend[];
   onShowAddFriendModal: () => void;
   onShowFriendRequests: () => void;
-  onShowQRCode: () => void;
+  onShowBlockedFriends: () => void;
   onCopyInvite: () => void;
   onSelectFriend: (friend: Friend) => void;
   onSendCollabInvite: (friend: Friend) => void;
@@ -37,8 +40,6 @@ interface CollaborationFriendsTabProps {
   onRemoveFriend: (friend: Friend) => void;
   onBlockUser: (friend: Friend) => void;
   onReportUser: (friend: Friend) => void;
-  showQRCode: boolean;
-  inviteCopied: boolean;
   friendRequestsCount: number;
   muteLoadingFriendId?: string | null;
 }
@@ -47,7 +48,7 @@ export default function CollaborationFriendsTab({
   friends,
   onShowAddFriendModal,
   onShowFriendRequests,
-  onShowQRCode,
+  onShowBlockedFriends,
   onCopyInvite,
   onSelectFriend,
   onSendCollabInvite,
@@ -57,8 +58,6 @@ export default function CollaborationFriendsTab({
   onRemoveFriend,
   onBlockUser,
   onReportUser,
-  showQRCode,
-  inviteCopied,
   friendRequestsCount,
   muteLoadingFriendId,
 }: CollaborationFriendsTabProps) {
@@ -72,6 +71,20 @@ export default function CollaborationFriendsTab({
   const [isBlockingUser, setIsBlockingUser] = useState(false);
   const buttonRefs = useRef<{ [key: string]: View | null }>({});
 
+  // Animation refs for friend cards
+  const cardAnimations = useRef<{ [key: string]: { opacity: Animated.Value; scale: Animated.Value } }>({});
+
+  // Initialize animations for each friend
+  const getCardAnimation = (friendId: string, index: number) => {
+    if (!cardAnimations.current[friendId]) {
+      cardAnimations.current[friendId] = {
+        opacity: new Animated.Value(0),
+        scale: new Animated.Value(0.8),
+      };
+    }
+    return cardAnimations.current[friendId];
+  };
+
   // Filter friends based on search query
   const filteredFriends = friends.filter(
     (friend) =>
@@ -84,6 +97,32 @@ export default function CollaborationFriendsTab({
   const displayedFriends = friendsListExpanded
     ? filteredFriends
     : filteredFriends.slice(0, 3);
+
+  // Run entrance animations when friends change
+  useEffect(() => {
+    // Reset and animate all visible cards
+    displayedFriends.forEach((friend, index) => {
+      const animation = getCardAnimation(friend.id, index);
+      animation.opacity.setValue(0);
+      animation.scale.setValue(0.8);
+
+      // Stagger animations by 80ms per card
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(animation.opacity, {
+            toValue: 1,
+            duration: ANIMATION_DURATION,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animation.scale, {
+            toValue: 1,
+            duration: ANIMATION_DURATION,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }, index * 80);
+    });
+  }, [displayedFriends.length, friendsListExpanded]);
 
   const handleToggleDropdown = (friendId: string) => {
     if (openDropdownId === friendId) {
@@ -155,14 +194,39 @@ export default function CollaborationFriendsTab({
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header with View Requests */}
-      <View style={styles.headerSection}>
-        <Text style={styles.friendsTitle}>Friends</Text>
-        <TouchableOpacity
-          onPress={onShowFriendRequests}
-          style={styles.viewRequestsButton}
-        >
-          <Text style={styles.viewRequestsText}>View Requests</Text>
+      {/* Pill Buttons */}
+      <View style={styles.pillContainer}>
+        <TouchableOpacity onPress={onShowAddFriendModal} style={styles.pill}>
+          <View style={styles.pillIconContainer}>
+            <Feather name="user-plus" size={12} color="white" />
+          </View>
+          <Text style={styles.pillText}>Add</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={onShowFriendRequests} style={styles.pill}>
+          <View style={styles.pillIconContainer}>
+            <Feather name="users" size={12} color="white" />
+          </View>
+          <Text style={styles.pillText}>Requests</Text>
+          {friendRequestsCount > 0 && (
+            <View style={styles.pillBadge}>
+              <Text style={styles.pillBadgeText}>{friendRequestsCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={onShowBlockedFriends} style={styles.pill}>
+          <View style={styles.pillIconContainer}>
+            <Feather name="shield" size={12} color="white" />
+          </View>
+          <Text style={styles.pillText}>Blocked</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={onCopyInvite} style={styles.pill}>
+          <View style={styles.pillIconContainer}>
+            <Feather name="link" size={12} color="white" />
+          </View>
+          <Text style={styles.pillText}>Invite</Text>
         </TouchableOpacity>
       </View>
 
@@ -182,71 +246,6 @@ export default function CollaborationFriendsTab({
           placeholderTextColor="#9CA3AF"
         />
       </View>
-
-      {/* Action Buttons */}
-      <View style={styles.actionButtons}>
-        <TouchableOpacity
-          onPress={onShowAddFriendModal}
-          style={styles.actionButton}
-        >
-          <View
-            style={[styles.actionIconContainer, { backgroundColor: "#3B82F6" }]}
-          >
-            <Ionicons name="person-add" size={24} color="#FFFFFF" />
-          </View>
-          <Text style={styles.actionButtonText}>Add Friend</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={onShowQRCode} style={styles.actionButton}>
-          <View
-            style={[styles.actionIconContainer, { backgroundColor: "#8B5CF6" }]}
-          >
-            <Ionicons name="qr-code" size={24} color="#FFFFFF" />
-          </View>
-          <Text style={styles.actionButtonText}>QR Code</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={onCopyInvite} style={styles.actionButton}>
-          <View
-            style={[styles.actionIconContainer, { backgroundColor: "#10B981" }]}
-          >
-            {inviteCopied ? (
-              <Ionicons name="checkmark" size={24} color="#FFFFFF" />
-            ) : (
-              <Ionicons name="link" size={24} color="#FFFFFF" />
-            )}
-          </View>
-          <Text style={styles.actionButtonText}>Invite Link</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* QR Code Display */}
-      {showQRCode && (
-        <View style={styles.qrCodeContainer}>
-          <View style={styles.qrCode}>
-            <View style={styles.qrGrid}>
-              {Array.from({ length: 64 }).map((_, i) => (
-                <View
-                  key={`qr-dot-${i}`}
-                  style={[
-                    styles.qrDot,
-                    {
-                      backgroundColor:
-                        Math.random() > 0.5 ? "#111827" : "white",
-                    },
-                  ]}
-                />
-              ))}
-            </View>
-          </View>
-          <View style={styles.qrTextContainer}>
-            <Text style={styles.qrTitle}>Scan to Add Me</Text>
-            <Text style={styles.qrSubtitle}>
-              Have friends scan this code to instantly connect
-            </Text>
-          </View>
-        </View>
-      )}
 
       {/* Friends List Header */}
       <View style={styles.friendsListHeader}>
@@ -273,8 +272,19 @@ export default function CollaborationFriendsTab({
 
       {/* Friends List */}
       <View style={styles.friendsList}>
-        {displayedFriends.map((friend) => (
-          <View key={friend.id} style={styles.friendCard}>
+        {displayedFriends.map((friend, index) => {
+          const animation = getCardAnimation(friend.id, index);
+          return (
+          <Animated.View
+            key={friend.id}
+            style={[
+              styles.friendCard,
+              {
+                opacity: animation.opacity,
+                transform: [{ scaleX: animation.scale }],
+              },
+            ]}
+          >
             <View style={styles.friendContent}>
               <View style={styles.avatarContainer}>
                 {friend.avatar ? (
@@ -312,13 +322,10 @@ export default function CollaborationFriendsTab({
                   {friend.username ||
                     friend.name.toLowerCase().replace(" ", "")}
                 </Text>
-                {friend.mutualFriends !== undefined &&
-                  friend.mutualFriends > 0 && (
-                    <Text style={styles.mutualFriends}>
-                      {friend.mutualFriends} mutual{" "}
-                      {friend.mutualFriends === 1 ? "friend" : "friends"}
-                    </Text>
-                  )}
+                <Text style={styles.mutualFriends}>
+                  {friend.mutualFriends || 0} mutual{" "}
+                  {friend.mutualFriends === 1 ? "friend" : "friends"}
+                </Text>
               </View>
 
               <View style={styles.friendActions}>
@@ -326,7 +333,7 @@ export default function CollaborationFriendsTab({
                   onPress={() => onSelectFriend(friend)}
                   style={styles.chatButton}
                 >
-                  <Ionicons name="chatbubble" size={18} color="#eb7825" />
+                  <Feather name="message-square" size={18} color="white" />
                 </TouchableOpacity>
 
                 <View style={styles.dropdownContainer}>
@@ -350,8 +357,9 @@ export default function CollaborationFriendsTab({
                 </View>
               </View>
             </View>
-          </View>
-        ))}
+          </Animated.View>
+        );
+        })}
 
         {!friendsListExpanded && filteredFriends.length > 3 && (
           <TouchableOpacity
@@ -523,32 +531,48 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  headerSection: {
+  pillContainer: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    gap: 6,
     marginBottom: 16,
   },
-  friendsTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
-  viewRequestsButton: {
-    backgroundColor: "#FEF3E7",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+  pillIconContainer: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  viewRequestsText: {
-    fontSize: 14,
+  pillText: {
+    fontSize: 12,
     fontWeight: "500",
-    color: "#eb7825",
+    color: "#374151",
+  },
+  pillBadge: {
+    minWidth: 16,
+    height: 16,
+    backgroundColor: "#ef4444",
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  pillBadgeText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "600",
   },
   searchContainer: {
     position: "relative",
@@ -571,79 +595,6 @@ const styles = StyleSheet.create({
     top: "50%",
     transform: [{ translateY: -10 }],
     zIndex: 1,
-  },
-  actionButtons: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 24,
-  },
-  actionButton: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  actionIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#111827",
-    textAlign: "center",
-  },
-  qrCodeContainer: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 16,
-    padding: 24,
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  qrCode: {
-    width: 192,
-    height: 192,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-  },
-  qrGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    width: 160,
-    height: 160,
-    gap: 2,
-  },
-  qrDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
-  },
-  qrTextContainer: {
-    alignItems: "center",
-    gap: 8,
-  },
-  qrTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  qrSubtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
   },
   friendsListHeader: {
     flexDirection: "row",
@@ -743,8 +694,8 @@ const styles = StyleSheet.create({
   chatButton: {
     width: 36,
     height: 36,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 8,
+    backgroundColor: "#eb7825",
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },

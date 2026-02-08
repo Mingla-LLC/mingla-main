@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Text,
   View,
@@ -10,7 +10,10 @@ import {
   ScrollView,
   Alert,
   TextInput,
+  Animated,
 } from "react-native";
+
+const ANIMATION_DURATION = 250;
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
@@ -103,6 +106,38 @@ const CalendarTab = ({
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
+
+  // Animation refs
+  const searchBarOpacity = useRef(new Animated.Value(0)).current;
+  const searchBarSlide = useRef(new Animated.Value(-30)).current;
+  const cardAnimations = useRef<{ [key: string]: { opacity: Animated.Value; slide: Animated.Value } }>({});
+
+  // Initialize animation for each card
+  const getCardAnimation = (entryId: string) => {
+    if (!cardAnimations.current[entryId]) {
+      cardAnimations.current[entryId] = {
+        opacity: new Animated.Value(0),
+        slide: new Animated.Value(30),
+      };
+    }
+    return cardAnimations.current[entryId];
+  };
+
+  // Run search bar entrance animation on mount
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(searchBarOpacity, {
+        toValue: 1,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: true,
+      }),
+      Animated.timing(searchBarSlide, {
+        toValue: 0,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   // Filter entries into Active and Archive based on scheduled date
   const { activeEntries, archiveEntries } = useMemo(() => {
@@ -217,6 +252,56 @@ const CalendarTab = ({
     selectedWhen,
     selectedCategory,
   ]);
+
+  // Run card entrance animations for active entries
+  useEffect(() => {
+    filteredActiveEntries.forEach((entry, index) => {
+      const animation = getCardAnimation(entry.id);
+      animation.opacity.setValue(0);
+      animation.slide.setValue(30);
+
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(animation.opacity, {
+            toValue: 1,
+            duration: ANIMATION_DURATION,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animation.slide, {
+            toValue: 0,
+            duration: ANIMATION_DURATION,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }, index * 60);
+    });
+  }, [filteredActiveEntries.length, expandedAccordionItems]);
+
+  // Run card entrance animations for archive entries
+  useEffect(() => {
+    if (expandedAccordionItems.includes("archive")) {
+      filteredArchiveEntries.forEach((entry, index) => {
+        const animation = getCardAnimation(entry.id);
+        animation.opacity.setValue(0);
+        animation.slide.setValue(30);
+
+        setTimeout(() => {
+          Animated.parallel([
+            Animated.timing(animation.opacity, {
+              toValue: 1,
+              duration: ANIMATION_DURATION,
+              useNativeDriver: true,
+            }),
+            Animated.timing(animation.slide, {
+              toValue: 0,
+              duration: ANIMATION_DURATION,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }, index * 60);
+      });
+    }
+  }, [filteredArchiveEntries.length, expandedAccordionItems]);
 
   const handleReschedule = (entry: CalendarEntry) => {
     setEntryToReschedule(entry);
@@ -1509,7 +1594,15 @@ const CalendarTab = ({
         showsVerticalScrollIndicator={false}
       >
         {/* Search & Filters */}
-        <View style={styles.filterCard}>
+        <Animated.View
+          style={[
+            styles.filterCard,
+            {
+              opacity: searchBarOpacity,
+              transform: [{ translateY: searchBarSlide }],
+            },
+          ]}
+        >
           <View style={styles.filterHeaderRow}>
             <View style={styles.searchInputContainer}>
               <Ionicons
@@ -1626,7 +1719,7 @@ const CalendarTab = ({
               </View>
             </>
           )}
-        </View>
+        </Animated.View>
 
         {/* Active Section */}
         <TouchableOpacity
@@ -1661,11 +1754,23 @@ const CalendarTab = ({
           <View style={styles.accordionContentContainer}>
             {filteredActiveEntries.length === 0
               ? renderEmptyComponent()
-              : filteredActiveEntries.map((entry) => (
-                  <View key={entry.id} style={styles.cardWrapper}>
+              : filteredActiveEntries.map((entry) => {
+                  const animation = getCardAnimation(entry.id);
+                  return (
+                  <Animated.View
+                    key={entry.id}
+                    style={[
+                      styles.cardWrapper,
+                      {
+                        opacity: animation.opacity,
+                        transform: [{ translateY: animation.slide }],
+                      },
+                    ]}
+                  >
                     {renderCalendarEntry({ item: entry })}
-                  </View>
-                ))}
+                  </Animated.View>
+                  );
+                })}
           </View>
         )}
 
@@ -1702,11 +1807,23 @@ const CalendarTab = ({
           <View style={styles.accordionContentContainer}>
             {filteredArchiveEntries.length === 0
               ? renderEmptyComponent()
-              : filteredArchiveEntries.map((entry) => (
-                  <View key={entry.id} style={styles.cardWrapper}>
+              : filteredArchiveEntries.map((entry) => {
+                  const animation = getCardAnimation(entry.id);
+                  return (
+                  <Animated.View
+                    key={entry.id}
+                    style={[
+                      styles.cardWrapper,
+                      {
+                        opacity: animation.opacity,
+                        transform: [{ translateY: animation.slide }],
+                      },
+                    ]}
+                  >
                     {renderCalendarEntry({ item: entry })}
-                  </View>
-                ))}
+                  </Animated.View>
+                  );
+                })}
           </View>
         )}
       </ScrollView>

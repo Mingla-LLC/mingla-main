@@ -39,8 +39,9 @@ import {
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 const CARD_HEIGHT = Math.min(screenHeight * 0.72, 800);
-const IMAGE_SECTION_RATIO = 0.66;
+const IMAGE_SECTION_RATIO = 0.88;
 const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
+const CARD_ANIMATION_DURATION = 400;
 
 interface StrollData {
   anchor: {
@@ -202,6 +203,11 @@ export default function SwipeableCards({
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   const spinValue = useRef(new Animated.Value(0)).current;
+
+  // Card content entrance animation values
+  const cardContentOpacity = useRef(new Animated.Value(0)).current;
+  const matchBadgeSlide = useRef(new Animated.Value(-20)).current;
+  const titleOverlaySlide = useRef(new Animated.Value(30)).current;
 
   const hasRestoredStateRef = useRef(false);
   const previousRefreshKeyRef = useRef<number | string | undefined>(refreshKey);
@@ -386,6 +392,35 @@ export default function SwipeableCards({
 
   // Always use currentCardIndex to track position in the deck
   const currentRec = availableRecommendations[currentCardIndex];
+
+  // Trigger card content entrance animations when current card changes
+  useEffect(() => {
+    if (currentRec) {
+      // Reset animation values
+      cardContentOpacity.setValue(0);
+      matchBadgeSlide.setValue(-20);
+      titleOverlaySlide.setValue(30);
+
+      // Run entrance animations
+      Animated.parallel([
+        Animated.timing(cardContentOpacity, {
+          toValue: 1,
+          duration: CARD_ANIMATION_DURATION,
+          useNativeDriver: true,
+        }),
+        Animated.timing(matchBadgeSlide, {
+          toValue: 0,
+          duration: CARD_ANIMATION_DURATION,
+          useNativeDriver: true,
+        }),
+        Animated.timing(titleOverlaySlide, {
+          toValue: 0,
+          duration: CARD_ANIMATION_DURATION,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [currentRec?.id]);
 
   // Reset index if we're beyond the available cards
   useEffect(() => {
@@ -583,10 +618,11 @@ export default function SwipeableCards({
             return;
           }
 
-          // Animate card off screen first
+          // Animate card off to the side (within container bounds)
+          const containerWidth = screenWidth * 0.88;
           Animated.timing(position, {
             toValue: {
-              x: direction === "right" ? screenWidth + 100 : -screenWidth - 100,
+              x: direction === "right" ? containerWidth + 50 : -containerWidth - 50,
               y: gestureState.dy,
             },
             duration: 250,
@@ -1041,7 +1077,7 @@ export default function SwipeableCards({
                     <View style={styles.titleOverlay}>
                       <Text style={styles.cardTitle}>{nextCard.title}</Text>
 
-                      {/* Three small badges: distance, travel time, rating */}
+                      {/* Info badges: distance, travel time, rating, category */}
                       <View style={styles.detailsBadges}>
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
@@ -1061,44 +1097,26 @@ export default function SwipeableCards({
                             {nextCard.rating.toFixed(1)}
                           </Text>
                         </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name={NextCategoryIcon as any} size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {nextCard.category}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* View more badge */}
+                      <View style={styles.viewMoreRow}>
+                        <View style={styles.viewMoreBadge}>
+                          <Ionicons name="eye" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>View more</Text>
+                        </View>
                       </View>
                     </View>
                   </View>
 
                   {/* White Details Section */}
                   <View style={styles.cardDetails}>
-                    {/* Category/Provider */}
-                    <View style={styles.categoryRow}>
-                      <Ionicons
-                        name={NextCategoryIcon as any}
-                        size={16}
-                        color="#eb7825"
-                      />
-                      <Text style={styles.categoryText}>
-                        {nextCard.category}
-                      </Text>
-                    </View>
-
-                    {/* Description - 2 lines max */}
-                    <Text style={styles.description} numberOfLines={2}>
-                      {nextCard.description}
-                    </Text>
-
-                    {/* Top 2 Highlights */}
-                    {nextCard.highlights && nextCard.highlights.length > 0 && (
-                      <View style={styles.highlightsContainer}>
-                        {nextCard.highlights
-                          .slice(0, 2)
-                          .map((highlight: string, index: number) => (
-                            <View key={index} style={styles.highlightBadge}>
-                              <Text style={styles.highlightText}>
-                                {highlight}
-                              </Text>
-                            </View>
-                          ))}
-                      </View>
-                    )}
-
                     {/* Share Button */}
                     <TouchableOpacity
                       style={styles.shareButton}
@@ -1140,9 +1158,8 @@ export default function SwipeableCards({
               style={[styles.swipeOverlayRight, { opacity: likeOpacity }]}
               pointerEvents="none"
             >
-              <View style={styles.swipeIndicator}>
-                <Ionicons name="heart" size={60} color="#4ade80" />
-                <Text style={styles.swipeText}>LIKE</Text>
+              <View style={styles.likeIndicator}>
+                <Text style={styles.likeText}>LIKE</Text>
               </View>
             </Animated.View>
 
@@ -1150,9 +1167,8 @@ export default function SwipeableCards({
               style={[styles.swipeOverlayLeft, { opacity: nopeOpacity }]}
               pointerEvents="none"
             >
-              <View style={styles.swipeIndicator}>
-                <Ionicons name="close" size={60} color="#ef4444" />
-                <Text style={styles.swipeText}>NOPE</Text>
+              <View style={styles.passIndicator}>
+                <Text style={styles.passText}>PASS</Text>
               </View>
             </Animated.View>
 
@@ -1170,7 +1186,13 @@ export default function SwipeableCards({
                 />
 
                 {/* Match Score Badge - Top Left */}
-                <View style={styles.matchBadge}>
+                <Animated.View style={[
+                  styles.matchBadge,
+                  {
+                    opacity: cardContentOpacity,
+                    transform: [{ translateY: matchBadgeSlide }],
+                  },
+                ]}>
                   <Ionicons
                     name="star"
                     size={14}
@@ -1180,7 +1202,7 @@ export default function SwipeableCards({
                   <Text style={styles.matchText}>
                     {currentRec.matchScore}% Match
                   </Text>
-                </View>
+                </Animated.View>
 
                 {/* Gallery Indicator if multiple images */}
                 {currentRec.images && currentRec.images.length > 1 && (
@@ -1193,10 +1215,16 @@ export default function SwipeableCards({
                 )}
 
                 {/* Title and Details Overlay - Bottom Left of Image */}
-                <View style={styles.titleOverlay}>
+                <Animated.View style={[
+                  styles.titleOverlay,
+                  {
+                    opacity: cardContentOpacity,
+                    transform: [{ translateY: titleOverlaySlide }],
+                  },
+                ]}>
                   <Text style={styles.cardTitle}>{currentRec.title}</Text>
 
-                  {/* Three small badges: distance, travel time, rating */}
+                  {/* Info badges: distance, travel time, rating, category */}
                   <View style={styles.detailsBadges}>
                     <View style={styles.detailBadge}>
                       <Ionicons name="location" size={12} color="white" />
@@ -1216,61 +1244,26 @@ export default function SwipeableCards({
                         {currentRec.rating.toFixed(1)}
                       </Text>
                     </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* White Details Section - Bottom 35-40% */}
-              <View style={styles.cardDetails}>
-                <View style={styles.cardDetailsContent}>
-                  {/* Category/Provider */}
-                  <View style={styles.categoryRow}>
-                    <Ionicons
-                      name={CategoryIcon as any}
-                      size={16}
-                      color="#eb7825"
-                    />
-                    <Text style={styles.categoryText}>
-                      {currentRec.category}
-                    </Text>
-                  </View>
-
-                  {/* Description - 2 lines max */}
-                  <Text style={styles.description}>
-                    {currentRec.description}
-                  </Text>
-
-                  {/* Address - Show in collaboration mode */}
-                  {/*   {currentMode !== "solo" && currentRec.address && (
-                    <View style={styles.addressRow}>
-                      <Ionicons
-                        name="location-outline"
-                        size={14}
-                        color="#6b7280"
-                      />
-                      <Text style={styles.addressText} numberOfLines={1}>
-                        {currentRec.address}
+                    <View style={styles.detailBadge}>
+                      <Ionicons name={CategoryIcon as any} size={12} color="white" />
+                      <Text style={styles.detailBadgeText}>
+                        {currentRec.category}
                       </Text>
                     </View>
-                  )}
- */}
-                  {/* Top 2 Highlights */}
-                  {/*     {currentRec.highlights &&
-                    currentRec.highlights.length > 0 && (
-                      <View style={styles.highlightsContainer}>
-                        {currentRec.highlights
-                          .slice(0, 2)
-                          .map((highlight: string, index: number) => (
-                            <View key={index} style={styles.highlightBadge}>
-                              <Text style={styles.highlightText}>
-                                {highlight}
-                              </Text>
-                            </View>
-                          ))}
-                      </View>
-                    )} */}
-                </View>
+                  </View>
 
+                  {/* View more badge */}
+                  <View style={styles.viewMoreRow}>
+                    <View style={styles.viewMoreBadge}>
+                      <Ionicons name="eye" size={12} color="white" />
+                      <Text style={styles.detailBadgeText}>View more</Text>
+                    </View>
+                  </View>
+                </Animated.View>
+              </View>
+
+              {/* White Details Section - Share button only */}
+              <View style={styles.cardDetails}>
                 {/* Share Button - Centered at bottom */}
                 <TouchableOpacity
                   style={styles.shareButton}
@@ -1378,11 +1371,15 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     position: "relative",
     flex: 1,
+    overflow: "hidden",
+    padding: 12,
   },
   card: {
     position: "absolute",
-    width: "100%",
-    height: "100%",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     backgroundColor: "white",
     borderRadius: 24,
     borderTopWidth: 0,
@@ -1471,8 +1468,21 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   detailBadge: {
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    backgroundColor: "rgba(107, 114, 128, 0.8)",
     paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  viewMoreRow: {
+    flexDirection: "row",
+    marginTop: 8,
+  },
+  viewMoreBadge: {
+    backgroundColor: "rgba(107, 114, 128, 0.8)",
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
     flexDirection: "row",
@@ -1549,15 +1559,11 @@ const styles = StyleSheet.create({
     flex: DETAILS_SECTION_RATIO,
     backgroundColor: "white",
     paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 32,
+    paddingVertical: 12,
     borderTopWidth: 0,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
-  },
-  cardDetailsContent: {
-    flexGrow: 1,
-    gap: 8,
+    justifyContent: "center",
   },
   description: {
     fontSize: 15,
@@ -1764,44 +1770,47 @@ const styles = StyleSheet.create({
   },
   swipeOverlayRight: {
     position: "absolute",
-    top: 0,
+    top: "40%",
     left: 0,
     right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(74, 222, 128, 0.1)",
-    borderWidth: 4,
-    borderColor: "#4ade80",
-    borderRadius: 16,
     zIndex: 10,
     justifyContent: "center",
     alignItems: "center",
   },
   swipeOverlayLeft: {
     position: "absolute",
-    top: 0,
+    top: "40%",
     left: 0,
     right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
-    borderWidth: 4,
-    borderColor: "#ef4444",
-    borderRadius: 16,
     zIndex: 10,
     justifyContent: "center",
     alignItems: "center",
   },
-  swipeIndicator: {
-    alignItems: "center",
-    justifyContent: "center",
+  likeIndicator: {
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: "#eb7825",
   },
-  swipeText: {
-    fontSize: 24,
+  likeText: {
+    fontSize: 18,
     fontWeight: "bold",
-    color: "white",
-    marginTop: 8,
-    textShadowColor: "rgba(0, 0, 0, 0.5)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    color: "#eb7825",
+  },
+  passIndicator: {
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: "#6b7280",
+  },
+  passText: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#6b7280",
   },
   swipeInstructions: {
     flexDirection: "row",

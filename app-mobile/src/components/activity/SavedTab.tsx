@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Text,
   View,
@@ -10,7 +10,10 @@ import {
   Platform,
   Alert,
   TextInput,
+  Animated,
 } from "react-native";
+
+const ANIMATION_DURATION = 250;
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ExpandedCardModal from "../ExpandedCardModal";
@@ -121,6 +124,37 @@ const SavedTab = ({
   const [expandedAccordionItems, setExpandedAccordionItems] = useState<string[]>(["active"]); // Start with Active expanded
   const { user } = useAppStore();
   const queryClient = useQueryClient();
+
+  // Animation refs
+  const searchBarOpacity = useRef(new Animated.Value(0)).current;
+  const searchBarSlide = useRef(new Animated.Value(30)).current;
+  const cardAnimations = useRef<{ [key: string]: { scale: Animated.Value } }>({});
+
+  // Initialize animation for each card
+  const getCardAnimation = (cardId: string) => {
+    if (!cardAnimations.current[cardId]) {
+      cardAnimations.current[cardId] = {
+        scale: new Animated.Value(0.8),
+      };
+    }
+    return cardAnimations.current[cardId];
+  };
+
+  // Run search bar entrance animation on mount
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(searchBarOpacity, {
+        toValue: 1,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: true,
+      }),
+      Animated.timing(searchBarSlide, {
+        toValue: 0,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   // Convert scheduledCardIds to Set for O(1) lookups
   const scheduledCardIdsSet = useMemo(
@@ -238,6 +272,42 @@ const SavedTab = ({
 
     return { activeCards: active, archiveCards: archive };
   }, [filteredCards, calendarCardIdsSet, scheduledCardIdsSet]);
+
+  // Run card pop animations when active cards change
+  useEffect(() => {
+    activeCards.forEach((card, index) => {
+      const animation = getCardAnimation(card.id);
+      animation.scale.setValue(0.8);
+
+      setTimeout(() => {
+        Animated.spring(animation.scale, {
+          toValue: 1,
+          friction: 6,
+          tension: 100,
+          useNativeDriver: true,
+        }).start();
+      }, index * 60);
+    });
+  }, [activeCards.length, expandedAccordionItems]);
+
+  // Run card pop animations for archive cards
+  useEffect(() => {
+    if (expandedAccordionItems.includes("archive")) {
+      archiveCards.forEach((card, index) => {
+        const animation = getCardAnimation(card.id);
+        animation.scale.setValue(0.8);
+
+        setTimeout(() => {
+          Animated.spring(animation.scale, {
+            toValue: 1,
+            friction: 6,
+            tension: 100,
+            useNativeDriver: true,
+          }).start();
+        }, index * 60);
+      });
+    }
+  }, [archiveCards.length, expandedAccordionItems]);
 
   const getMatchScore = (card: SavedCard): number | null => {
     if (typeof card?.matchScore === "number") return card.matchScore;
@@ -1387,7 +1457,15 @@ const SavedTab = ({
       />
 
       {/* Search & Filters */}
-      <View style={styles.filterCard}>
+      <Animated.View
+        style={[
+          styles.filterCard,
+          {
+            opacity: searchBarOpacity,
+            transform: [{ translateY: searchBarSlide }],
+          },
+        ]}
+      >
         <View style={styles.filterHeaderRow}>
           <View style={styles.searchInputContainer}>
             <Ionicons
@@ -1504,7 +1582,7 @@ const SavedTab = ({
             </View>
           </>
         )}
-      </View>
+      </Animated.View>
 
       <ScrollView 
         style={{ flex: 1 }}
@@ -1544,11 +1622,20 @@ const SavedTab = ({
           <View style={styles.accordionContentContainer}>
             {activeCards.length === 0
               ? renderEmptyComponent()
-              : activeCards.map((card) => (
-                  <View key={card.id} style={styles.cardWrapper}>
+              : activeCards.map((card) => {
+                  const animation = getCardAnimation(card.id);
+                  return (
+                  <Animated.View
+                    key={card.id}
+                    style={[
+                      styles.cardWrapper,
+                      { transform: [{ scale: animation.scale }] },
+                    ]}
+                  >
                     {renderCard({ item: card })}
-                  </View>
-                ))}
+                  </Animated.View>
+                  );
+                })}
           </View>
         )}
 
@@ -1585,11 +1672,20 @@ const SavedTab = ({
           <View style={styles.accordionContentContainer}>
             {archiveCards.length === 0
               ? renderEmptyComponent()
-              : archiveCards.map((card) => (
-                  <View key={card.id} style={styles.cardWrapper}>
+              : archiveCards.map((card) => {
+                  const animation = getCardAnimation(card.id);
+                  return (
+                  <Animated.View
+                    key={card.id}
+                    style={[
+                      styles.cardWrapper,
+                      { transform: [{ scale: animation.scale }] },
+                    ]}
+                  >
                     {renderCard({ item: card })}
-                  </View>
-                ))}
+                  </Animated.View>
+                  );
+                })}
           </View>
         )}
       </ScrollView>

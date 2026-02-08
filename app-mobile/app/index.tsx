@@ -1434,10 +1434,7 @@ function AppContent() {
             onSignOut={async () => {
               await handleSignOut();
             }}
-            onNavigateToActivity={(tab: "saved" | "boards" | "calendar") => {
-              console.log("Navigate to activity:", tab);
-              setCurrentPage("activity");
-            }}
+            onNavigateToActivity={handlers.handleNavigateToActivity}
             onNavigateToConnections={() => {
               console.log("Navigate to connections");
               setCurrentPage("connections");
@@ -1700,7 +1697,7 @@ function AppContent() {
                                   : styles.navTextInactive,
                               ]}
                             >
-                              Home
+                              Explore
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -1763,7 +1760,7 @@ function AppContent() {
                                   : styles.navTextInactive,
                               ]}
                             >
-                              Connections
+                              Connect
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity

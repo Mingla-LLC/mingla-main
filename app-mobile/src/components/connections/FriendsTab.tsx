@@ -91,18 +91,14 @@ export default function FriendsTab({
           onPress={onShowAddFriendModal}
           style={styles.actionButton}
         >
-          <View style={styles.actionButtonIcon}>
-            <Ionicons name="person-add" size={20} color="#eb7825" />
-          </View>
+          <Ionicons name="person-add" size={20} color="#eb7825" />
         </TouchableOpacity>
 
         <TouchableOpacity 
           onPress={onShowFriendRequests}
           style={styles.actionButton}
         >
-          <View style={styles.actionButtonIcon}>
-            <Ionicons name="people" size={20} color="#eb7825" />
-          </View>
+          <Ionicons name="people" size={20} color="#eb7825" />
           {friendRequestsCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{friendRequestsCount}</Text>
@@ -288,9 +284,6 @@ const styles = StyleSheet.create({
   actionButtonActive: {
     backgroundColor: '#eb7825',
     borderColor: '#eb7825',
-  },
-  actionButtonIcon: {
-    color: '#eb7825',
   },
   badge: {
     position: 'absolute',
