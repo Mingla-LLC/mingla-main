@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -17,10 +17,24 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { formatPriceRange, parseAndFormatDistance } from "./utils/formatters";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { useRecommendations, Recommendation } from "../contexts/RecommendationsContext";
+
+// Storage key for saved people
+const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
+
+// Saved Person interface
+interface SavedPerson {
+  id: string;
+  name: string;
+  initials: string;
+  birthday: string | null;
+  gender: "male" | "female" | "other" | null;
+  createdAt: string;
+}
 
 const { width: screenWidth } = Dimensions.get("window");
 const CARD_WIDTH = screenWidth - 32; // 16px padding on each side
@@ -460,6 +474,127 @@ export default function DiscoverScreen({
   const [personBirthday, setPersonBirthday] = useState<Date | null>(null);
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [personGender, setPersonGender] = useState<"male" | "female" | "other" | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  // Saved people state
+  const [savedPeople, setSavedPeople] = useState<SavedPerson[]>([]);
+  const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you"); // "for-you" or person.id
+
+  // Get the currently selected person (null if "for-you" is selected)
+  const selectedPerson = useMemo(() => {
+    if (selectedPersonId === "for-you") return null;
+    return savedPeople.find((p) => p.id === selectedPersonId) || null;
+  }, [selectedPersonId, savedPeople]);
+
+  // Holiday detection helper - checks for upcoming holidays relevant to person
+  const getUpcomingHolidays = useCallback((person: SavedPerson | null): string[] => {
+    const holidays: string[] = [];
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentDay = now.getDate();
+
+    // Check for Valentine's Day (Feb 14) - within 2 weeks before
+    if (currentMonth === 1 && currentDay >= 1 && currentDay <= 14) {
+      holidays.push("valentines");
+    }
+
+    // Check for Mother's Day (2nd Sunday of May) - within 2 weeks before
+    if (currentMonth === 4 && currentDay >= 1 && currentDay <= 14 && person?.gender === "female") {
+      holidays.push("mothers-day");
+    }
+
+    // Check for Father's Day (3rd Sunday of June) - within 2 weeks before
+    if (currentMonth === 5 && currentDay >= 7 && currentDay <= 21 && person?.gender === "male") {
+      holidays.push("fathers-day");
+    }
+
+    // Check if person's birthday is upcoming (within 2 weeks)
+    if (person?.birthday) {
+      const birthday = new Date(person.birthday);
+      const birthdayThisYear = new Date(now.getFullYear(), birthday.getMonth(), birthday.getDate());
+      const diffDays = Math.ceil((birthdayThisYear.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays >= 0 && diffDays <= 14) {
+        holidays.push("birthday");
+      }
+    }
+
+    // Christmas (Dec 25) - within 3 weeks before
+    if (currentMonth === 11 && currentDay >= 4 && currentDay <= 25) {
+      holidays.push("christmas");
+    }
+
+    // New Year (Jan 1) - within 2 weeks before
+    if ((currentMonth === 11 && currentDay >= 18) || (currentMonth === 0 && currentDay <= 1)) {
+      holidays.push("new-year");
+    }
+
+    return holidays;
+  }, []);
+
+  // Get holiday-themed tags based on upcoming holidays
+  const getHolidayTags = useCallback((holidays: string[]): string[] => {
+    const tags: string[] = [];
+    if (holidays.includes("valentines")) tags.push("Romantic", "Date Night", "Couples");
+    if (holidays.includes("mothers-day")) tags.push("Wellness", "Spa", "Brunch", "Family");
+    if (holidays.includes("fathers-day")) tags.push("Sports", "Outdoor", "BBQ", "Family");
+    if (holidays.includes("birthday")) tags.push("Celebration", "Special Occasion", "Party");
+    if (holidays.includes("christmas")) tags.push("Festive", "Holiday", "Family", "Cozy");
+    if (holidays.includes("new-year")) tags.push("Party", "Celebration", "New Beginnings");
+    return tags;
+  }, []);
+
+  // Get gender-appropriate categories
+  const getGenderCategories = useCallback((gender: "male" | "female" | "other" | null): string[] | null => {
+    if (!gender) return null;
+    // Return categories that tend to resonate more with specific genders
+    // null means no filter (show all)
+    if (gender === "female") {
+      return ["Wellness Dates", "Sip & Chill", "Creative & Hands-On", "Dining Experiences", "Picnics"];
+    }
+    if (gender === "male") {
+      return ["Play & Move", "Casual Eats", "Dining Experiences", "Sip & Chill", "Screen & Relax"];
+    }
+    return null; // "other" - show all
+  }, []);
+
+  // Load saved people from AsyncStorage on mount
+  useEffect(() => {
+    const loadSavedPeople = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(SAVED_PEOPLE_STORAGE_KEY);
+        if (stored) {
+          const people = JSON.parse(stored) as SavedPerson[];
+          setSavedPeople(people);
+        }
+      } catch (error) {
+        console.error("Error loading saved people:", error);
+      }
+    };
+    loadSavedPeople();
+  }, []);
+
+  // Generate unique ID
+  const generateUniqueId = (): string => {
+    return `person_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  // Generate initials from name
+  const generateInitials = (name: string): string => {
+    const words = name.trim().split(/\s+/);
+    if (words.length === 1) {
+      return words[0].substring(0, 2).toUpperCase();
+    }
+    return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+  };
+
+  // Save people to AsyncStorage
+  const savePeopleToStorage = async (people: SavedPerson[]) => {
+    try {
+      await AsyncStorage.setItem(SAVED_PEOPLE_STORAGE_KEY, JSON.stringify(people));
+    } catch (error) {
+      console.error("Error saving people to storage:", error);
+    }
+  };
 
   // Night Out Filter Modal state
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
@@ -516,14 +651,52 @@ export default function DiscoverScreen({
   });
 
   // Organize recommendations: 1 random hero + 1 from each category
+  // Filter based on selected person's gender and upcoming holidays
   const { featuredCard, gridCards } = useMemo(() => {
     if (!recommendations || recommendations.length === 0) {
       return { featuredCard: null, gridCards: [] };
     }
 
-    // Get unique categories from recommendations
+    let filteredRecommendations = [...recommendations];
+
+    // Apply filters based on selected person
+    if (selectedPerson) {
+      // Get upcoming holidays for this person
+      const upcomingHolidays = getUpcomingHolidays(selectedPerson);
+      const holidayTags = getHolidayTags(upcomingHolidays);
+      const genderCategories = getGenderCategories(selectedPerson.gender);
+
+      // Filter by gender-appropriate categories if available
+      if (genderCategories && genderCategories.length > 0) {
+        const categoryFiltered = filteredRecommendations.filter((rec) =>
+          genderCategories.some((cat) => 
+            rec.category.toLowerCase().includes(cat.toLowerCase()) ||
+            cat.toLowerCase().includes(rec.category.toLowerCase())
+          )
+        );
+        // Only use filtered results if we have enough recommendations
+        if (categoryFiltered.length >= 3) {
+          filteredRecommendations = categoryFiltered;
+        }
+      }
+
+      // Boost recommendations that match holiday tags
+      if (holidayTags.length > 0) {
+        filteredRecommendations.sort((a, b) => {
+          const aMatchCount = a.tags?.filter((tag) =>
+            holidayTags.some((ht) => tag.toLowerCase().includes(ht.toLowerCase()))
+          ).length || 0;
+          const bMatchCount = b.tags?.filter((tag) =>
+            holidayTags.some((ht) => tag.toLowerCase().includes(ht.toLowerCase()))
+          ).length || 0;
+          return bMatchCount - aMatchCount; // Higher match count first
+        });
+      }
+    }
+
+    // Get unique categories from filtered recommendations
     const categoriesMap = new Map<string, Recommendation[]>();
-    recommendations.forEach((rec) => {
+    filteredRecommendations.forEach((rec) => {
       const category = rec.category;
       if (!categoriesMap.has(category)) {
         categoriesMap.set(category, []);
@@ -531,9 +704,9 @@ export default function DiscoverScreen({
       categoriesMap.get(category)!.push(rec);
     });
 
-    // Pick 1 random hero experience from all recommendations
-    const randomIndex = Math.floor(Math.random() * recommendations.length);
-    const heroRecommendation = recommendations[randomIndex];
+    // Pick 1 random hero experience from filtered recommendations
+    const randomIndex = Math.floor(Math.random() * filteredRecommendations.length);
+    const heroRecommendation = filteredRecommendations[randomIndex];
     const featured = transformToFeaturedCard(heroRecommendation);
 
     // Pick 1 experience from each category (excluding the hero)
@@ -553,7 +726,7 @@ export default function DiscoverScreen({
     });
 
     return { featuredCard: featured, gridCards: grid };
-  }, [recommendations]);
+  }, [recommendations, selectedPerson, getUpcomingHolidays, getHolidayTags, getGenderCategories]);
 
   // Mock night out cards data - replace with real data
   const nightOutCards: NightOutCardData[] = [
@@ -859,6 +1032,7 @@ export default function DiscoverScreen({
   // Add Person Modal handlers
   const handleOpenAddPersonModal = () => {
     setIsAddPersonModalVisible(true);
+    setNameError(null);
   };
 
   const handleCloseAddPersonModal = () => {
@@ -867,12 +1041,56 @@ export default function DiscoverScreen({
     setPersonBirthday(null);
     setShowBirthdayPicker(false);
     setPersonGender(null);
+    setNameError(null);
   };
 
-  const handleAddPerson = () => {
-    // TODO: Implement add person logic
-    console.log("Adding person:", { name: personName, birthday: personBirthday?.toISOString(), gender: personGender });
+  const handleAddPerson = async () => {
+    // Validate name is required
+    const trimmedName = personName.trim();
+    if (!trimmedName) {
+      setNameError("Name is required");
+      return;
+    }
+
+    // Create new person
+    const newPerson: SavedPerson = {
+      id: generateUniqueId(),
+      name: trimmedName,
+      initials: generateInitials(trimmedName),
+      birthday: personBirthday ? personBirthday.toISOString() : null,
+      gender: personGender,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Add to saved people
+    const updatedPeople = [...savedPeople, newPerson];
+    setSavedPeople(updatedPeople);
+
+    // Save to AsyncStorage
+    await savePeopleToStorage(updatedPeople);
+
+    // Close modal and reset form
     handleCloseAddPersonModal();
+  };
+
+  // Handle person pill selection ("for-you" or person.id)
+  const handlePersonSelect = (personId: string) => {
+    setSelectedPersonId(personId);
+  };
+
+  // Handle "For You" selection
+  const handleForYouSelect = () => {
+    setSelectedPersonId("for-you");
+  };
+
+  // Handle removing a person
+  const handleRemovePerson = async (personId: string) => {
+    const updatedPeople = savedPeople.filter((p) => p.id !== personId);
+    setSavedPeople(updatedPeople);
+    await savePeopleToStorage(updatedPeople);
+    if (selectedPersonId === personId) {
+      setSelectedPersonId("for-you");
+    }
   };
 
   const handleBirthdayChange = (event: any, selectedDate?: Date) => {
@@ -906,19 +1124,109 @@ export default function DiscoverScreen({
         >
           {activeTab === "for-you" && (
             <>
-              {/* For You Tab Header */}
-              <View style={styles.tabHeader}>
-                <TouchableOpacity style={styles.headerButton} activeOpacity={0.7}>
-                  <Text style={styles.headerButtonText}>for you</Text>
-                </TouchableOpacity>
+              {/* For You Tab Header with People Pills */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.tabHeaderScrollView}
+                contentContainerStyle={styles.tabHeaderContent}
+              >
+                {/* For You Pill - Always First */}
                 <TouchableOpacity
-                  style={styles.addUserButton}
+                  style={[
+                    styles.personPill,
+                    selectedPersonId === "for-you" && styles.personPillSelectedGradient,
+                  ]}
+                  onPress={handleForYouSelect}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.personPillAvatar,
+                      selectedPersonId === "for-you" && styles.personPillAvatarSelectedGradient,
+                    ]}
+                  >
+                    <Ionicons
+                      name="person"
+                      size={14}
+                      color={selectedPersonId === "for-you" ? "white" : "#6b7280"}
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.personPillName,
+                      selectedPersonId === "for-you" && styles.personPillNameSelectedGradient,
+                    ]}
+                  >
+                    For You
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Add Person Button */}
+                <TouchableOpacity
+                  style={styles.addUserButtonPill}
                   onPress={handleOpenAddPersonModal}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="person-add-outline" size={22} color="#eb7825" />
+                  <Ionicons name="person-add-outline" size={18} color="#eb7825" />
                 </TouchableOpacity>
-              </View>
+
+                {/* Saved People Pills */}
+                {savedPeople.map((person) => (
+                  <View
+                    key={person.id}
+                    style={[
+                      styles.personPill,
+                      selectedPersonId === person.id && styles.personPillSelectedGradient,
+                    ]}
+                  >
+                    <TouchableOpacity
+                      style={styles.personPillTouchable}
+                      onPress={() => handlePersonSelect(person.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View
+                        style={[
+                          styles.personPillAvatar,
+                          selectedPersonId === person.id && styles.personPillAvatarSelectedGradient,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.personPillInitials,
+                            selectedPersonId === person.id && styles.personPillInitialsSelected,
+                          ]}
+                        >
+                          {person.initials}
+                        </Text>
+                      </View>
+                      <Text
+                        style={[
+                          styles.personPillName,
+                          selectedPersonId === person.id && styles.personPillNameSelectedGradient,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {person.name.split(" ")[0]}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.personPillRemoveButton,
+                        selectedPersonId === person.id && styles.personPillRemoveButtonSelected,
+                      ]}
+                      onPress={() => handleRemovePerson(person.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons
+                        name="close"
+                        size={14}
+                        color={selectedPersonId === person.id ? "white" : "#9ca3af"}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
 
               {/* Loading State */}
               {recommendationsLoading && !hasCompletedInitialFetch && (
@@ -1065,12 +1373,21 @@ export default function DiscoverScreen({
             <View style={styles.addPersonFieldContainer}>
               <Text style={styles.addPersonFieldLabel}>Name</Text>
               <TextInput
-                style={styles.addPersonInput}
+                style={[
+                  styles.addPersonInput,
+                  nameError && styles.addPersonInputError,
+                ]}
                 value={personName}
-                onChangeText={setPersonName}
+                onChangeText={(text) => {
+                  setPersonName(text);
+                  if (nameError) setNameError(null);
+                }}
                 placeholder="Enter name"
                 placeholderTextColor="#9ca3af"
               />
+              {nameError && (
+                <Text style={styles.errorText}>{nameError}</Text>
+              )}
             </View>
 
             {/* Birthday Field */}
@@ -1320,6 +1637,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 16,
     marginBottom: 16,
+  },
+  tabHeaderScrollView: {
+    marginBottom: 16,
+    marginHorizontal: -16,
+  },
+  tabHeaderContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
   },
   headerButton: {
     paddingVertical: 8,
@@ -1766,6 +2093,112 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     textAlign: "center",
     marginTop: 8,
+  },
+  // Saved People Pills styles
+  peoplePillsContainer: {
+    marginBottom: 16,
+    marginHorizontal: -16,
+  },
+  peoplePillsContent: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  personPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 24,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  personPillSelected: {
+    backgroundColor: "#FEF3E7",
+    borderColor: "#eb7825",
+  },
+  personPillAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#e5e7eb",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  personPillAvatarSelected: {
+    backgroundColor: "#eb7825",
+  },
+  personPillInitials: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+  personPillInitialsSelected: {
+    color: "white",
+  },
+  personPillName: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#374151",
+    maxWidth: 80,
+  },
+  personPillNameSelected: {
+    color: "#eb7825",
+  },
+  // Orange gradient selected styles
+  personPillSelectedGradient: {
+    backgroundColor: "#eb7825",
+    borderColor: "#eb7825",
+    shadowColor: "#eb7825",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  personPillAvatarSelectedGradient: {
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+  },
+  personPillNameSelectedGradient: {
+    color: "white",
+  },
+  addUserButtonPill: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FEF3E7",
+    borderWidth: 1,
+    borderColor: "#fcd9b6",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 4,
+    marginRight: 4,
+  },
+  personPillTouchable: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  personPillRemoveButton: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#e5e7eb",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 4,
+  },
+  personPillRemoveButtonSelected: {
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+  },
+  // Error styles
+  errorText: {
+    fontSize: 12,
+    color: "#ef4444",
+    marginTop: 4,
+  },
+  addPersonInputError: {
+    borderColor: "#ef4444",
   },
   // Add Person Modal styles
   modalOverlay: {
