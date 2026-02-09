@@ -1171,7 +1171,7 @@ export default function DiscoverScreen({
                   <Ionicons name="person-add-outline" size={18} color="#eb7825" />
                 </TouchableOpacity>
 
-                {/* Saved People Pillss */}
+                {/* Saved People Pills */}
                 {savedPeople.map((person) => (
                   <View
                     key={person.id}
