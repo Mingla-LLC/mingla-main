@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   TextInput,
   Platform,
   Animated,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
@@ -19,6 +20,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { formatPriceRange, parseAndFormatDistance } from "./utils/formatters";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
+import { useRecommendations, Recommendation } from "../contexts/RecommendationsContext";
 
 const { width: screenWidth } = Dimensions.get("window");
 const CARD_WIDTH = screenWidth - 32; // 16px padding on each side
@@ -467,134 +469,91 @@ export default function DiscoverScreen({
     genre: "all",
   });
 
-  // Mock featured card data - replace with real data
-  const featuredCard: FeaturedCardData = {
-    id: "featured-1",
-    title: "Sunset Rooftop Experience",
-    experienceType: "Take a Stroll",
-    description:
-      "Discover the magic of city lights as twilight paints the sky. This curated experience takes you through hidden rooftop gems with breathtaking panoramic views and craft cocktails.",
-    image: "https://images.unsplash.com/photo-1514214246283-d427a95c5d2f?w=800",
-    images: [
-      "https://images.unsplash.com/photo-1514214246283-d427a95c5d2f?w=800",
-      "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800",
-    ],
-    priceRange: "$50 - $100",
-    rating: 4.8,
-    reviewCount: 128,
-    address: "123 Rooftop Ave, Downtown",
-    travelTime: "15 min",
-    distance: "2.5 km",
-    highlights: ["Panoramic Views", "Craft Cocktails", "Live Music"],
-    tags: ["Romantic", "Scenic", "Evening"],
-    location: { lat: 40.7128, lng: -74.0060 },
-  };
+  // Fetch recommendations from API
+  const {
+    recommendations,
+    loading: recommendationsLoading,
+    error: recommendationsError,
+    hasCompletedInitialFetch,
+  } = useRecommendations();
 
-  // Mock grid cards data - replace with real data
-  const gridCards: GridCardData[] = [
-    {
-      id: "grid-1",
-      title: "Cozy Coffee House Tour",
-      category: "Sip & Chill",
-      description: "Explore hidden coffee gems with specialty brews and pastries.",
-      image: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=400",
-      images: ["https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=400"],
-      priceRange: "$15 - $30",
-      rating: 4.6,
-      reviewCount: 89,
-      address: "456 Coffee Lane",
-      travelTime: "10 min",
-      distance: "1.2 km",
-      highlights: ["Specialty Coffee", "Cozy Atmosphere"],
-      tags: ["Casual", "Morning"],
-      location: { lat: 40.7148, lng: -74.0068 },
-    },
-    {
-      id: "grid-2",
-      title: "Creative Pottery Workshop",
-      category: "Creative & Hands-On",
-      description: "Shape your own ceramic masterpiece with local artisans.",
-      image: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=400",
-      images: ["https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=400"],
-      priceRange: "$45 - $80",
-      rating: 4.9,
-      reviewCount: 156,
-      address: "789 Art District",
-      travelTime: "20 min",
-      distance: "3.5 km",
-      highlights: ["Hands-on", "Take Home Creation"],
-      tags: ["Creative", "Unique"],
-      location: { lat: 40.7185, lng: -74.0020 },
-    },
-    {
-      id: "grid-3",
-      title: "Waterfront Picnic Setup",
-      category: "Picnics",
-      description: "Premium picnic experience with gourmet bites by the water.",
-      image: "https://images.unsplash.com/photo-1526401485004-46910ecc8e51?w=400",
-      images: ["https://images.unsplash.com/photo-1526401485004-46910ecc8e51?w=400"],
-      priceRange: "$60 - $120",
-      rating: 4.7,
-      reviewCount: 73,
-      address: "Riverside Park",
-      travelTime: "25 min",
-      distance: "4.0 km",
-      highlights: ["Scenic Views", "Gourmet Food"],
-      tags: ["Romantic", "Outdoor"],
-      location: { lat: 40.7200, lng: -74.0100 },
-    },
-    {
-      id: "grid-4",
-      title: "Farm-to-Table Dinner",
-      category: "Dining Experiences",
-      description: "Seasonal tasting menu with locally sourced ingredients.",
-      image: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400",
-      images: ["https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400"],
-      priceRange: "$85 - $150",
-      rating: 4.8,
-      reviewCount: 210,
-      address: "321 Gourmet Street",
-      travelTime: "18 min",
-      distance: "2.8 km",
-      highlights: ["Chef's Table", "Wine Pairing"],
-      tags: ["Fine Dining", "Special Occasion"],
-      location: { lat: 40.7165, lng: -74.0045 },
-    },
-    {
-      id: "grid-5",
-      title: "Urban Bowling Night",
-      category: "Play & Move",
-      description: "Retro bowling alley with craft beers and arcade games.",
-      image: "https://images.unsplash.com/photo-1545232979-8bf68ee9b1af?w=400",
-      images: ["https://images.unsplash.com/photo-1545232979-8bf68ee9b1af?w=400"],
-      priceRange: "$25 - $50",
-      rating: 4.5,
-      reviewCount: 134,
-      address: "555 Fun Ave",
-      travelTime: "12 min",
-      distance: "1.8 km",
-      highlights: ["Arcade Games", "Late Night"],
-      tags: ["Fun", "Group Activity"],
-      location: { lat: 40.7138, lng: -74.0055 },
-    },
-    {
-      id: "grid-6",
-      title: "Spa & Wellness Retreat",
-      category: "Wellness Dates",
-      description: "Relaxing couples massage and thermal bath experience.",
-      image: "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=400",
-      images: ["https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=400"],
-      priceRange: "$120 - $200",
-      rating: 4.9,
-      reviewCount: 98,
-      address: "888 Serenity Blvd",
-      travelTime: "30 min",
-      distance: "5.2 km",
-      highlights: ["Couples Package", "Thermal Baths"],
-      tags: ["Relaxing", "Luxury"],
-      location: { lat: 40.7220, lng: -74.0150 },
-    },
-  ];
+  // Transform Recommendation to FeaturedCardData
+  const transformToFeaturedCard = (rec: Recommendation): FeaturedCardData => ({
+    id: rec.id,
+    title: rec.title,
+    experienceType: rec.category,
+    description: rec.description,
+    image: rec.image,
+    images: rec.images,
+    priceRange: rec.priceRange,
+    rating: rec.rating,
+    reviewCount: rec.reviewCount,
+    address: rec.address,
+    travelTime: rec.travelTime,
+    distance: rec.distance,
+    highlights: rec.highlights,
+    tags: rec.tags,
+    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+  });
+
+  // Transform Recommendation to GridCardData
+  const transformToGridCard = (rec: Recommendation): GridCardData => ({
+    id: rec.id,
+    title: rec.title,
+    category: rec.category,
+    description: rec.description,
+    image: rec.image,
+    images: rec.images,
+    priceRange: rec.priceRange,
+    rating: rec.rating,
+    reviewCount: rec.reviewCount,
+    address: rec.address,
+    travelTime: rec.travelTime,
+    distance: rec.distance,
+    highlights: rec.highlights,
+    tags: rec.tags,
+    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+  });
+
+  // Organize recommendations: 1 random hero + 1 from each category
+  const { featuredCard, gridCards } = useMemo(() => {
+    if (!recommendations || recommendations.length === 0) {
+      return { featuredCard: null, gridCards: [] };
+    }
+
+    // Get unique categories from recommendations
+    const categoriesMap = new Map<string, Recommendation[]>();
+    recommendations.forEach((rec) => {
+      const category = rec.category;
+      if (!categoriesMap.has(category)) {
+        categoriesMap.set(category, []);
+      }
+      categoriesMap.get(category)!.push(rec);
+    });
+
+    // Pick 1 random hero experience from all recommendations
+    const randomIndex = Math.floor(Math.random() * recommendations.length);
+    const heroRecommendation = recommendations[randomIndex];
+    const featured = transformToFeaturedCard(heroRecommendation);
+
+    // Pick 1 experience from each category (excluding the hero)
+    const grid: GridCardData[] = [];
+    const usedIds = new Set([heroRecommendation.id]);
+
+    categoriesMap.forEach((categoryRecs, category) => {
+      // Find a recommendation from this category that isn't the hero
+      const availableRecs = categoryRecs.filter((rec) => !usedIds.has(rec.id));
+      if (availableRecs.length > 0) {
+        // Pick a random one from this category
+        const randomCatIndex = Math.floor(Math.random() * availableRecs.length);
+        const selectedRec = availableRecs[randomCatIndex];
+        grid.push(transformToGridCard(selectedRec));
+        usedIds.add(selectedRec.id);
+      }
+    });
+
+    return { featuredCard: featured, gridCards: grid };
+  }, [recommendations]);
 
   // Mock night out cards data - replace with real data
   const nightOutCards: NightOutCardData[] = [
@@ -961,46 +920,79 @@ export default function DiscoverScreen({
                 </TouchableOpacity>
               </View>
 
-              {/* Featured Card */}
-              <Animated.View
-                style={{
-                  opacity: featuredCardOpacity,
-                  transform: [{ translateY: featuredCardSlide }],
-                }}
-              >
-                <FeaturedCard 
-                  card={featuredCard} 
-                  currency={accountPreferences?.currency}
-                  measurementSystem={accountPreferences?.measurementSystem}
-                  onPress={() => handleCardPress(featuredCard)}
-                />
-              </Animated.View>
+              {/* Loading State */}
+              {recommendationsLoading && !hasCompletedInitialFetch && (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#eb7825" />
+                  <Text style={styles.loadingText}>Discovering experiences for you...</Text>
+                </View>
+              )}
 
-              {/* Grid Cards Section */}
-              <View style={styles.gridCardsContainer}>
-                {gridCards.map((card, index) => {
-                  // Right column (odd indices) lag slightly behind left column
-                  const isRightColumn = index % 2 === 1;
-                  
-                  return (
-                    <Animated.View
-                      key={card.id}
-                      style={{
-                        opacity: isRightColumn ? gridCardsRightOpacity : gridCardsLeftOpacity,
-                        transform: [
-                          { translateY: isRightColumn ? gridCardsRightSlide : gridCardsLeftSlide },
-                        ],
-                      }}
-                    >
-                      <GridCard
-                        card={card}
-                        currency={accountPreferences?.currency}
-                        onPress={() => handleGridCardPress(card)}
-                      />
-                    </Animated.View>
-                  );
-                })}
-              </View>
+              {/* Error State */}
+              {recommendationsError && !recommendationsLoading && (
+                <View style={styles.emptyStateContainer}>
+                  <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+                  <Text style={styles.emptyStateTitle}>Something went wrong</Text>
+                  <Text style={styles.emptyStateSubtitle}>{recommendationsError}</Text>
+                </View>
+              )}
+
+              {/* Empty State */}
+              {!recommendationsLoading && !recommendationsError && !featuredCard && hasCompletedInitialFetch && (
+                <View style={styles.emptyStateContainer}>
+                  <Ionicons name="compass-outline" size={48} color="#eb7825" />
+                  <Text style={styles.emptyStateTitle}>No experiences found</Text>
+                  <Text style={styles.emptyStateSubtitle}>
+                    Try adjusting your preferences to discover new activities
+                  </Text>
+                </View>
+              )}
+
+              {/* Content - Featured Card and Grid */}
+              {featuredCard && (
+                <>
+                  {/* Featured Card */}
+                  <Animated.View
+                    style={{
+                      opacity: featuredCardOpacity,
+                      transform: [{ translateY: featuredCardSlide }],
+                    }}
+                  >
+                    <FeaturedCard 
+                      card={featuredCard} 
+                      currency={accountPreferences?.currency}
+                      measurementSystem={accountPreferences?.measurementSystem}
+                      onPress={() => handleCardPress(featuredCard)}
+                    />
+                  </Animated.View>
+
+                  {/* Grid Cards Section */}
+                  <View style={styles.gridCardsContainer}>
+                    {gridCards.map((card, index) => {
+                      // Right column (odd indices) lag slightly behind left column
+                      const isRightColumn = index % 2 === 1;
+                      
+                      return (
+                        <Animated.View
+                          key={card.id}
+                          style={{
+                            opacity: isRightColumn ? gridCardsRightOpacity : gridCardsLeftOpacity,
+                            transform: [
+                              { translateY: isRightColumn ? gridCardsRightSlide : gridCardsLeftSlide },
+                            ],
+                          }}
+                        >
+                          <GridCard
+                            card={card}
+                            currency={accountPreferences?.currency}
+                            onPress={() => handleGridCardPress(card)}
+                          />
+                        </Animated.View>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
             </>
           )}
 
@@ -1761,6 +1753,19 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     textAlign: "center",
     lineHeight: 22,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#6b7280",
+    textAlign: "center",
+    marginTop: 8,
   },
   // Add Person Modal styles
   modalOverlay: {
