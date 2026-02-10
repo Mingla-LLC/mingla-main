@@ -22,9 +22,15 @@ import { formatPriceRange, parseAndFormatDistance } from "./utils/formatters";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { useRecommendations, Recommendation } from "../contexts/RecommendationsContext";
+import { ExperienceGenerationService } from "../services/experienceGenerationService";
+import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useUserLocation } from "../hooks/useUserLocation";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
+
+// Storage key for cached discover experiences (refreshes daily)
+const DISCOVER_CACHE_KEY = "mingla_discover_cache";
 
 // Saved Person interface
 interface SavedPerson {
@@ -56,6 +62,20 @@ const categoryIcons: { [key: string]: string } = {
   "Wellness Dates": "leaf-outline",
   "Freestyle": "sparkles-outline",
 };
+
+// All experience categories (must match PreferencesSheet categories)
+const ALL_CATEGORIES = [
+  "Stroll",
+  "Sip & Chill",
+  "Casual Eats",
+  "Screen & Relax",
+  "Creative & Hands-On",
+  "Picnics",
+  "Play & Move",
+  "Dining Experiences",
+  "Wellness Dates",
+  "Freestyle",
+];
 
 // Tab types for Discover screen
 export type DiscoverTab = "for-you" | "night-out";
@@ -604,13 +624,239 @@ export default function DiscoverScreen({
     genre: "all",
   });
 
-  // Fetch recommendations from API
-  const {
-    recommendations,
-    loading: recommendationsLoading,
-    error: recommendationsError,
-    hasCompletedInitialFetch,
-  } = useRecommendations();
+  // Get auth and location for custom Discover fetch
+  const { user } = useAuthSimple();
+  const { data: userLocationData } = useUserLocation(user?.id, "solo", undefined);
+  
+  // Extract stable lat/lng values to prevent unnecessary re-fetches
+  const locationLat = userLocationData?.lat;
+  const locationLng = userLocationData?.lng;
+
+  // State for Discover-specific recommendations (fetched with ALL categories)
+  const [discoverRecommendations, setDiscoverRecommendations] = useState<Recommendation[]>([]);
+  const [discoverLoading, setDiscoverLoading] = useState(true);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const [hasCompletedDiscoverFetch, setHasCompletedDiscoverFetch] = useState(false);
+  const hasFetchedRef = useRef(false);
+  const loadedFromCacheRef = useRef(false); // Flag to skip card re-randomization when loaded from cache
+
+  // Helper to get today's date string (YYYY-MM-DD format)
+  const getTodayDateString = (): string => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
+  // Cache interface for storing discover experiences
+  interface DiscoverCache {
+    date: string;
+    recommendations: Recommendation[];
+    featuredCard: FeaturedCardData | null;
+    gridCards: GridCardData[];
+  }
+
+  // Save discover data to cache
+  const saveDiscoverCache = async (
+    recommendations: Recommendation[],
+    featuredCard: FeaturedCardData | null,
+    gridCards: GridCardData[]
+  ) => {
+    try {
+      const cacheData: DiscoverCache = {
+        date: getTodayDateString(),
+        recommendations,
+        featuredCard,
+        gridCards,
+      };
+      await AsyncStorage.setItem(DISCOVER_CACHE_KEY, JSON.stringify(cacheData));
+      console.log("Saved discover cache for date:", cacheData.date);
+    } catch (error) {
+      console.error("Error saving discover cache:", error);
+    }
+  };
+
+  // Load discover data from cache
+  const loadDiscoverCache = async (): Promise<DiscoverCache | null> => {
+    try {
+      const cached = await AsyncStorage.getItem(DISCOVER_CACHE_KEY);
+      if (cached) {
+        return JSON.parse(cached) as DiscoverCache;
+      }
+    } catch (error) {
+      console.error("Error loading discover cache:", error);
+    }
+    return null;
+  };
+
+  // Fetch recommendations with ALL 10 categories for the Discover "For You" tab
+  // Only fetches once per day - uses cached data if available for today
+  useEffect(() => {
+    const fetchDiscoverRecommendations = async () => {
+      // Only run when we have location and not already loading
+      if (!locationLat || !locationLng) {
+        return;
+      }
+      
+      // Only fetch once per session
+      if (hasFetchedRef.current) {
+        return;
+      }
+      hasFetchedRef.current = true;
+      
+      setDiscoverLoading(true);
+      setDiscoverError(null);
+
+      try {
+        // Check if we have cached data for today
+        const cachedData = await loadDiscoverCache();
+        const today = getTodayDateString();
+
+        if (cachedData && cachedData.date === today && cachedData.recommendations.length > 0) {
+          // Use cached data - it's still valid for today
+          console.log("Using cached discover data from:", cachedData.date);
+          
+          // Set flag BEFORE setting state to prevent card selection useEffect from re-randomizing
+          loadedFromCacheRef.current = true;
+          
+          // Also restore the selected cards from cache to prevent re-randomization
+          if (cachedData.featuredCard) {
+            setSelectedFeaturedCard(cachedData.featuredCard);
+          }
+          if (cachedData.gridCards && cachedData.gridCards.length > 0) {
+            setSelectedGridCards(cachedData.gridCards);
+          }
+          
+          setDiscoverRecommendations(cachedData.recommendations);
+          setHasCompletedDiscoverFetch(true);
+          setDiscoverLoading(false);
+          return;
+        }
+
+        // Cache is stale or missing - fetch fresh data
+        console.log("Cache miss or stale. Fetching fresh discover data...");
+
+        // Use new discoverExperiences method that calls discover-experiences edge function
+        // Returns { cards: 10 category cards, featuredCard: best card }
+        const { cards: generatedCards, featuredCard } = await ExperienceGenerationService.discoverExperiences(
+          { lat: locationLat, lng: locationLng },
+          10000 // 10km radius
+        );
+
+        console.log("Discover API returned:", generatedCards.length, "cards + featured card");
+        console.log("Categories returned:", [...new Set(generatedCards.map((e: any) => e.category))]);
+
+        // Transform to Recommendation format - all 10 cards for grid display
+        const transformed: Recommendation[] = generatedCards.map((exp: any) => ({
+          id: exp.id,
+          title: exp.title,
+          category: exp.category,
+          categoryIcon: exp.categoryIcon,
+          timeAway: exp.travelTime,
+          description: exp.description,
+          budget: exp.priceRange,
+          rating: exp.rating,
+          image: exp.heroImage,
+          images: exp.images || [exp.heroImage],
+          priceRange: exp.priceRange,
+          distance: exp.distance,
+          travelTime: exp.travelTime,
+          experienceType: exp.category,
+          highlights: exp.highlights || [],
+          fullDescription: exp.description,
+          address: exp.address,
+          openingHours: exp.openingHours ? JSON.stringify(exp.openingHours) : "",
+          tags: exp.highlights || [],
+          matchScore: exp.matchScore,
+          reviewCount: exp.reviewCount,
+          lat: exp.lat,
+          lng: exp.lng,
+          socialStats: {
+            views: 0,
+            likes: 0,
+            saves: 0,
+            shares: 0,
+          },
+          matchFactors: exp.matchFactors || {
+            location: 85,
+            budget: 85,
+            category: 85,
+            time: 85,
+            popularity: 85,
+          },
+          strollData: exp.strollData,
+        }));
+
+        // Transform featured card if present
+        let transformedFeatured: FeaturedCardData | null = null;
+        if (featuredCard) {
+          transformedFeatured = {
+            id: featuredCard.id,
+            title: featuredCard.title,
+            experienceType: featuredCard.category,
+            description: featuredCard.description,
+            image: featuredCard.heroImage,
+            images: featuredCard.images || [featuredCard.heroImage],
+            priceRange: featuredCard.priceRange,
+            rating: featuredCard.rating,
+            reviewCount: featuredCard.reviewCount,
+            address: featuredCard.address,
+            travelTime: featuredCard.travelTime,
+            distance: featuredCard.distance,
+            highlights: featuredCard.highlights || [],
+            tags: featuredCard.highlights || [],
+            location: featuredCard.lat && featuredCard.lng 
+              ? { lat: featuredCard.lat, lng: featuredCard.lng } 
+              : undefined,
+          };
+          setSelectedFeaturedCard(transformedFeatured);
+          console.log("Set featured card:", transformedFeatured.title);
+        }
+
+        // Transform all 10 cards directly to grid cards
+        const gridCards: GridCardData[] = generatedCards.map((exp: any) => ({
+          id: exp.id,
+          title: exp.title,
+          category: exp.category,
+          description: exp.description,
+          image: exp.heroImage,
+          images: exp.images || [exp.heroImage],
+          priceRange: exp.priceRange,
+          rating: exp.rating,
+          reviewCount: exp.reviewCount,
+          address: exp.address,
+          travelTime: exp.travelTime,
+          distance: exp.distance,
+          highlights: exp.highlights || [],
+          tags: exp.highlights || [],
+          location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
+        }));
+        setSelectedGridCards(gridCards);
+        console.log("Set grid cards:", gridCards.length, "cards");
+
+        setDiscoverRecommendations(transformed);
+        setHasCompletedDiscoverFetch(true);
+        
+        // Save to cache for 24-hour persistence
+        saveDiscoverCache(transformed, transformedFeatured, gridCards);
+        
+        // Mark as loaded from cache to skip the card selection useEffect
+        loadedFromCacheRef.current = true;
+      } catch (error) {
+        console.error("Error fetching Discover recommendations:", error);
+        setDiscoverError("Failed to load recommendations");
+        hasFetchedRef.current = false; // Allow retry on error
+      } finally {
+        setDiscoverLoading(false);
+      }
+    };
+
+    fetchDiscoverRecommendations();
+  }, [locationLat, locationLng]); // TESTING: Removed user?.id dependency
+
+  // Use Discover-specific recommendations
+  const recommendations = discoverRecommendations;
+  const recommendationsLoading = discoverLoading;
+  const recommendationsError = discoverError;
+  const hasCompletedInitialFetch = hasCompletedDiscoverFetch;
 
   // Transform Recommendation to FeaturedCardData
   const transformToFeaturedCard = (rec: Recommendation): FeaturedCardData => ({
@@ -650,53 +896,45 @@ export default function DiscoverScreen({
     location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
   });
 
+  // State for selected cards (to prevent re-randomization on every render)
+  const [selectedFeaturedCard, setSelectedFeaturedCard] = useState<FeaturedCardData | null>(null);
+  const [selectedGridCards, setSelectedGridCards] = useState<GridCardData[]>([]);
+  const previousRecommendationsLengthRef = useRef<number>(0);
+
   // Organize recommendations: 1 random hero + 1 from each category
-  // Filter based on selected person's gender and upcoming holidays
-  const { featuredCard, gridCards } = useMemo(() => {
+  // Only re-select when recommendations actually change (skip if loaded from cache)
+  useEffect(() => {
     if (!recommendations || recommendations.length === 0) {
-      return { featuredCard: null, gridCards: [] };
+      setSelectedFeaturedCard(null);
+      setSelectedGridCards([]);
+      previousRecommendationsLengthRef.current = 0;
+      return;
     }
 
-    let filteredRecommendations = [...recommendations];
-
-    // Apply filters based on selected person
-    if (selectedPerson) {
-      // Get upcoming holidays for this person
-      const upcomingHolidays = getUpcomingHolidays(selectedPerson);
-      const holidayTags = getHolidayTags(upcomingHolidays);
-      const genderCategories = getGenderCategories(selectedPerson.gender);
-
-      // Filter by gender-appropriate categories if available
-      if (genderCategories && genderCategories.length > 0) {
-        const categoryFiltered = filteredRecommendations.filter((rec) =>
-          genderCategories.some((cat) => 
-            rec.category.toLowerCase().includes(cat.toLowerCase()) ||
-            cat.toLowerCase().includes(rec.category.toLowerCase())
-          )
-        );
-        // Only use filtered results if we have enough recommendations
-        if (categoryFiltered.length >= 3) {
-          filteredRecommendations = categoryFiltered;
-        }
-      }
-
-      // Boost recommendations that match holiday tags
-      if (holidayTags.length > 0) {
-        filteredRecommendations.sort((a, b) => {
-          const aMatchCount = a.tags?.filter((tag) =>
-            holidayTags.some((ht) => tag.toLowerCase().includes(ht.toLowerCase()))
-          ).length || 0;
-          const bMatchCount = b.tags?.filter((tag) =>
-            holidayTags.some((ht) => tag.toLowerCase().includes(ht.toLowerCase()))
-          ).length || 0;
-          return bMatchCount - aMatchCount; // Higher match count first
-        });
-      }
+    // Skip re-randomization if we loaded from cache (cards already restored)
+    if (loadedFromCacheRef.current) {
+      console.log("Skipping card selection - loaded from cache");
+      previousRecommendationsLengthRef.current = recommendations.length;
+      loadedFromCacheRef.current = false; // Reset flag for future updates
+      return;
     }
 
-    // Get unique categories from filtered recommendations
+    // Only re-select if recommendations changed (check by length and first ID)
+    if (
+      previousRecommendationsLengthRef.current === recommendations.length &&
+      selectedFeaturedCard !== null
+    ) {
+      return; // Already selected, don't re-randomize
+    }
+
+    previousRecommendationsLengthRef.current = recommendations.length;
+
+    // Keep all recommendations for filling categories
+    const allRecommendations = [...recommendations];
+
+    // Build a map of ALL recommendations by category for quick lookup
     const categoriesMap = new Map<string, Recommendation[]>();
-    filteredRecommendations.forEach((rec) => {
+    allRecommendations.forEach((rec) => {
       const category = rec.category;
       if (!categoriesMap.has(category)) {
         categoriesMap.set(category, []);
@@ -704,29 +942,91 @@ export default function DiscoverScreen({
       categoriesMap.get(category)!.push(rec);
     });
 
-    // Pick 1 random hero experience from filtered recommendations
-    const randomIndex = Math.floor(Math.random() * filteredRecommendations.length);
-    const heroRecommendation = filteredRecommendations[randomIndex];
+    // Debug: Log available categories
+    const availableCategories = Array.from(categoriesMap.keys());
+    console.log("Available categories from API:", availableCategories);
+    console.log("Total recommendations:", allRecommendations.length);
+
+    // Pick 1 random hero experience
+    const randomIndex = Math.floor(Math.random() * allRecommendations.length);
+    const heroRecommendation = allRecommendations[randomIndex];
     const featured = transformToFeaturedCard(heroRecommendation);
 
-    // Pick 1 experience from each category (excluding the hero)
+    // STRICT: Pick exactly 1 experience per UNIQUE category first, then fill to reach 10
     const grid: GridCardData[] = [];
     const usedIds = new Set([heroRecommendation.id]);
+    const usedCategories = new Set<string>(); // Track used categories
 
-    categoriesMap.forEach((categoryRecs, category) => {
-      // Find a recommendation from this category that isn't the hero
+    // FIRST PASS: Get one card per available category (maximize diversity)
+    // Shuffle the available categories for randomness
+    const shuffledCategories = [...availableCategories].sort(() => Math.random() - 0.5);
+
+    for (const category of shuffledCategories) {
+      if (grid.length >= 10) break;
+      
+      // Skip if we already have a card from this category
+      if (usedCategories.has(category)) continue;
+      
+      const categoryRecs = categoriesMap.get(category) || [];
       const availableRecs = categoryRecs.filter((rec) => !usedIds.has(rec.id));
+      
       if (availableRecs.length > 0) {
         // Pick a random one from this category
         const randomCatIndex = Math.floor(Math.random() * availableRecs.length);
         const selectedRec = availableRecs[randomCatIndex];
         grid.push(transformToGridCard(selectedRec));
         usedIds.add(selectedRec.id);
+        usedCategories.add(category); // Mark this category as used
+        console.log(`Added card from category: "${category}"`);
       }
-    });
+    }
 
-    return { featuredCard: featured, gridCards: grid };
-  }, [recommendations, selectedPerson, getUpcomingHolidays, getHolidayTags, getGenderCategories]);
+    console.log(`After first pass: ${grid.length} cards from ${usedCategories.size} unique categories`);
+
+    // SECOND PASS: If we don't have 10 cards yet, fill from remaining recommendations
+    // Prioritize categories with fewest cards in grid to maximize diversity
+    if (grid.length < 10) {
+      const remainingRecs = allRecommendations.filter((rec) => !usedIds.has(rec.id));
+      console.log(`Filling remaining ${10 - grid.length} slots from ${remainingRecs.length} remaining recs`);
+      
+      // Count how many cards per category we have
+      const categoryCount = new Map<string, number>();
+      grid.forEach((card) => {
+        const count = categoryCount.get(card.category) || 0;
+        categoryCount.set(card.category, count + 1);
+      });
+      
+      // Sort remaining by category count (prefer least-used categories for diversity)
+      const sortedByDiversity = [...remainingRecs].sort((a, b) => {
+        const countA = categoryCount.get(a.category) || 0;
+        const countB = categoryCount.get(b.category) || 0;
+        if (countA !== countB) return countA - countB; // Prefer less-used categories
+        return Math.random() - 0.5; // Random within same count
+      });
+      
+      for (const rec of sortedByDiversity) {
+        if (grid.length >= 10) break;
+        grid.push(transformToGridCard(rec));
+        usedIds.add(rec.id);
+        const count = categoryCount.get(rec.category) || 0;
+        categoryCount.set(rec.category, count + 1);
+        console.log(`Filled slot with category: ${rec.category} (now ${count + 1} cards from this category)`);
+      }
+    }
+
+    console.log(`Final grid: ${grid.length} cards`);
+    console.log("Categories used:", Array.from(usedCategories));
+
+    setSelectedFeaturedCard(featured);
+    setSelectedGridCards(grid);
+
+    // Save to cache for daily persistence
+    saveDiscoverCache(recommendations, featured, grid);
+  }, [recommendations]);
+
+  // Use the stable selected cards
+  const featuredCard = selectedFeaturedCard;
+  const gridCards = selectedGridCards;
 
   // Mock night out cards data - replace with real data
   const nightOutCards: NightOutCardData[] = [
@@ -1814,6 +2114,7 @@ const styles = StyleSheet.create({
   },
   gridCard: {
     width: GRID_CARD_WIDTH,
+    height: 240,
     backgroundColor: "white",
     borderRadius: 16,
     overflow: "hidden",
@@ -1853,6 +2154,7 @@ const styles = StyleSheet.create({
     color: "#111827",
     marginBottom: 4,
     lineHeight: 18,
+    minHeight: 36, // Reserve space for 2 lines (18 * 2)
   },
   gridCardCategory: {
     fontSize: 12,

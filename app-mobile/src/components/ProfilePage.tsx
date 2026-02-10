@@ -20,7 +20,6 @@ import { useFriends } from "../hooks/useFriends";
 import { useRecentActivity } from "../hooks/useRecentActivity";
 import { formatActivityDate } from "../utils/dateUtils";
 import type { UserActivityRecord } from "../services/userActivityService";
-import BlockedUsersModal from "./BlockedUsersModal";
 import { cameraService } from "../services/cameraService";
 import { authService } from "../services/authService";
 import { useAppStore } from "../store/appStore";
@@ -47,7 +46,6 @@ interface ProfilePageProps {
     profileImage: string | null;
     active?: boolean;
   };
-  onUnblockUser?: (blockedUser: any, suppressNotification?: boolean) => void;
 }
 
 export default function ProfilePage({
@@ -65,16 +63,13 @@ export default function ProfilePage({
   notificationsEnabled = true,
   onNotificationsToggle,
   userIdentity,
-  onUnblockUser,
 }: ProfilePageProps) {
-  const { blockedUsers = [], fetchBlockedUsers } = useFriends();
+  const { } = useFriends();
   const {
     activities: recentActivities,
     loading: recentActivityLoading,
     refetch: refetchRecentActivity,
   } = useRecentActivity(10);
-  const [unblockingId, setUnblockingId] = useState<string | null>(null);
-  const [showBlockedUsersModal, setShowBlockedUsersModal] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(
     "Raleigh, North Carolina, United States"
   );
@@ -447,19 +442,6 @@ export default function ProfilePage({
         return "Joined board";
       default:
         return "Activity";
-    }
-  };
-
-  const handleUnblockUser = async (user: { id: string; name?: string }) => {
-    if (unblockingId === user.id) return;
-    setUnblockingId(user.id);
-    try {
-      await onUnblockUser?.(user);
-      await fetchBlockedUsers();
-    } catch (_e) {
-      // Error already logged in handler
-    } finally {
-      setUnblockingId(null);
     }
   };
 
@@ -887,46 +869,6 @@ export default function ProfilePage({
             ))}
           </View>
         </View>
-
-        {/* Connection Settings */}
-        <View style={styles.section}>
-          <Text style={styles.sectionSubtitle}>Connection Settings</Text>
-          <View style={styles.connectionSettingsContainer}>
-            {/* Blocked Users - Clickable to open modal */}
-            <TouchableOpacity
-              style={styles.blockedUsersCard}
-              onPress={() => setShowBlockedUsersModal(true)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.blockedUsersHeader}>
-                <View style={styles.blockedUsersIconContainer}>
-                  <Feather name="shield" size={20} color="#6b7280" />
-                </View>
-                <View style={styles.blockedUsersInfo}>
-                  <Text style={styles.blockedUsersTitle}>Blocked Users</Text>
-                  <Text style={styles.blockedUsersCount}>
-                    {blockedUsers.length === 0
-                      ? "Manage blocked users"
-                      : `${blockedUsers.length} user${
-                          blockedUsers.length === 1 ? "" : "s"
-                        } blocked`}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Blocked Users Modal */}
-        <BlockedUsersModal
-          visible={showBlockedUsersModal}
-          onClose={() => setShowBlockedUsersModal(false)}
-          onUnblockUser={async (user) => {
-            await onUnblockUser?.(user);
-            await fetchBlockedUsers();
-          }}
-        />
 
         {/* Legal & Privacy */}
         <View style={styles.section}>
@@ -1359,98 +1301,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6b7280",
     marginTop: 2,
-  },
-  connectionSettingsContainer: {
-    gap: 12,
-  },
-  blockedUsersCard: {
-    width: "100%",
-    backgroundColor: "white",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  blockedUsersHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
-  },
-  blockedUsersIconContainer: {
-    width: 40,
-    height: 40,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  blockedUsersInfo: {
-    flex: 1,
-  },
-  blockedUsersTitle: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  blockedUsersCount: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginTop: 2,
-  },
-  blockedUsersList: {
-    gap: 12,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  blockedUserItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  blockedUserInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  blockedUserAvatar: {
-    width: 32,
-    height: 32,
-    backgroundColor: "#e5e7eb",
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  blockedUserAvatarText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#6b7280",
-  },
-  blockedUserName: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  blockedUserUsername: {
-    fontSize: 12,
-    color: "#6b7280",
-  },
-  unblockButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    backgroundColor: "#eb7825",
-    borderRadius: 12,
-  },
-  unblockButtonText: {
-    fontSize: 12,
-    color: "white",
   },
   legalContainer: {
     gap: 12,

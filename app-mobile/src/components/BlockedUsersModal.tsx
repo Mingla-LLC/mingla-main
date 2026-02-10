@@ -92,6 +92,28 @@ export default function BlockedUsersModal({
     return "?";
   };
 
+  const formatBlockedTime = (blockedAt?: string): string => {
+    if (!blockedAt) return "";
+    
+    const now = new Date();
+    const blockedDate = new Date(blockedAt);
+    const diffMs = now.getTime() - blockedDate.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    const diffWeeks = Math.floor(diffDays / 7);
+    const diffMonths = Math.floor(diffDays / 30);
+    const diffYears = Math.floor(diffDays / 365);
+
+    if (diffMins < 1) return "Blocked just now";
+    if (diffMins < 60) return `Blocked ${diffMins} ${diffMins === 1 ? "minute" : "minutes"} ago`;
+    if (diffHours < 24) return `Blocked ${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`;
+    if (diffDays < 7) return `Blocked ${diffDays} ${diffDays === 1 ? "day" : "days"} ago`;
+    if (diffWeeks < 4) return `Blocked ${diffWeeks} ${diffWeeks === 1 ? "week" : "weeks"} ago`;
+    if (diffMonths < 12) return `Blocked ${diffMonths} ${diffMonths === 1 ? "month" : "months"} ago`;
+    return `Blocked ${diffYears} ${diffYears === 1 ? "year" : "years"} ago`;
+  };
+
   const renderBlockedUser = ({ item: user }: { item: BlockedUser }) => (
     <View style={styles.userCard}>
       <View style={styles.userInfo}>
@@ -111,6 +133,11 @@ export default function BlockedUsersModal({
           {user.username && (
             <Text style={styles.userUsername} numberOfLines={1}>
               @{user.username}
+            </Text>
+          )}
+          {user.blocked_at && (
+            <Text style={styles.blockedTime} numberOfLines={1}>
+              {formatBlockedTime(user.blocked_at)}
             </Text>
           )}
         </View>
@@ -135,7 +162,7 @@ export default function BlockedUsersModal({
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
       <View style={styles.emptyIcon}>
-        <Feather name="shield" size={48} color="#d1d5db" />
+        <Feather name="shield" size={32} color="#d1d5db" />
       </View>
       <Text style={styles.emptyTitle}>No Blocked Users</Text>
       <Text style={styles.emptySubtitle}>
@@ -148,58 +175,68 @@ export default function BlockedUsersModal({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
+      animationType="fade"
+      transparent={true}
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Blocked Users</Text>
-          <View style={styles.headerSpacer} />
-        </View>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color="#111827" />
+            </TouchableOpacity>
+            <Text style={styles.title}>Blocked Users</Text>
+            <View style={styles.headerSpacer} />
+          </View>
 
-        {/* Info Banner */}
-        <View style={styles.infoBanner}>
-          <Ionicons name="information-circle" size={20} color="#3b82f6" />
-          <Text style={styles.infoText}>
-            Blocked users cannot see your profile, send you messages, or add you
-            as a friend.
+          {/* Content */}
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#eb7825" />
+              <Text style={styles.loadingText}>Loading blocked users...</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={blockedUsers}
+              renderItem={renderBlockedUser}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={
+                blockedUsers.length === 0
+                  ? styles.emptyListContainer
+                  : styles.listContainer
+              }
+              ListEmptyComponent={renderEmptyState}
+              showsVerticalScrollIndicator={false}
+              style={styles.list}
+            />
+          )}
+
+          {/* Footer */}
+          <Text style={styles.footerText}>
+            Blocked users can't message you or see your activity
           </Text>
         </View>
-
-        {/* Content */}
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#eb7825" />
-            <Text style={styles.loadingText}>Loading blocked users...</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={blockedUsers}
-            renderItem={renderBlockedUser}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={
-              blockedUsers.length === 0
-                ? styles.emptyListContainer
-                : styles.listContainer
-            }
-            ListEmptyComponent={renderEmptyState}
-            showsVerticalScrollIndicator={false}
-          />
-        )}
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  modalOverlay: {
     flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContainer: {
     backgroundColor: "#f9fafb",
+    borderRadius: 16,
+    width: "100%",
+    maxWidth: 400,
+    height: "75%",
+    overflow: "hidden",
   },
   header: {
     flexDirection: "row",
@@ -227,24 +264,18 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 40,
   },
-  infoBanner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#eff6ff",
+  footerText: {
+    fontSize: 12,
+    color: "#6b7280",
+    textAlign: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    gap: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#dbeafe",
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 13,
-    color: "#1e40af",
-    lineHeight: 18,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
   },
   loadingContainer: {
     flex: 1,
+    padding: 40,
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
@@ -252,6 +283,9 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 14,
     color: "#6b7280",
+  },
+  list: {
+    flex: 1,
   },
   listContainer: {
     paddingHorizontal: 16,
@@ -261,6 +295,8 @@ const styles = StyleSheet.create({
   emptyListContainer: {
     flex: 1,
     paddingHorizontal: 16,
+    paddingVertical: 24,
+    justifyContent: "center",
   },
   userCard: {
     flexDirection: "row",
@@ -310,6 +346,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#6b7280",
   },
+  blockedTime: {
+    fontSize: 12,
+    color: "#9ca3af",
+    marginTop: 2,
+  },
   unblockButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -329,31 +370,31 @@ const styles = StyleSheet.create({
     color: "#ea580c",
   },
   emptyState: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 32,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: "#f3f4f6",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
     color: "#111827",
-    marginBottom: 8,
+    marginBottom: 6,
     textAlign: "center",
   },
   emptySubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#6b7280",
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 18,
   },
 });

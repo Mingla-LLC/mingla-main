@@ -618,11 +618,10 @@ export default function SwipeableCards({
             return;
           }
 
-          // Animate card off to the side (within container bounds)
-          const containerWidth = screenWidth * 0.88;
+          // Animate card off the screen edge
           Animated.timing(position, {
             toValue: {
-              x: direction === "right" ? containerWidth + 50 : -containerWidth - 50,
+              x: direction === "right" ? screenWidth : -screenWidth,
               y: gestureState.dy,
             },
             duration: 250,
@@ -1371,7 +1370,6 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     position: "relative",
     flex: 1,
-    overflow: "hidden",
     padding: 12,
   },
   card: {
@@ -1386,11 +1384,11 @@ const styles = StyleSheet.create({
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 12,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
     zIndex: 2,
     overflow: "hidden",
   },

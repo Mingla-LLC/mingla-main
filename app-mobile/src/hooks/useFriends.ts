@@ -36,6 +36,7 @@ export interface BlockedUser {
   name: string;
   username?: string;
   avatar_url?: string;
+  blocked_at?: string;
 }
 
 export const useFriends = () => {
@@ -67,6 +68,7 @@ export const useFriends = () => {
             : "Unknown",
         username: b.profile?.username,
         avatar_url: undefined, // Profile doesn't include avatar in current query
+        blocked_at: b.created_at,
       }));
       setBlockedUsers(list);
     } catch (error) {
@@ -518,17 +520,33 @@ export const useFriends = () => {
               receiverEmail,
               userExists,
             });
-            // Check if request already exists
+            // Check if request already exists (any status)
             const { data: existingRequest } = await supabase
               .from("friend_requests")
-              .select("id")
+              .select("id, status")
               .eq("sender_id", user.id)
               .eq("receiver_id", receiverId)
-              .eq("status", "pending")
               .single();
 
             if (existingRequest) {
-              requestId = existingRequest.id;
+              if (existingRequest.status === "pending") {
+                // Already pending, just use existing
+                requestId = existingRequest.id;
+              } else {
+                // Update existing request to pending (for declined/cancelled requests)
+                const { data: updatedRequest, error: updateError } = await supabase
+                  .from("friend_requests")
+                  .update({ status: "pending", created_at: new Date().toISOString() })
+                  .eq("id", existingRequest.id)
+                  .select("id")
+                  .single();
+
+                if (updateError) {
+                  console.error("Error updating friend request:", updateError);
+                  throw updateError;
+                }
+                requestId = updatedRequest.id;
+              }
             } else {
               // Create new friend request
               const { data: newRequest, error: insertError } = await supabase

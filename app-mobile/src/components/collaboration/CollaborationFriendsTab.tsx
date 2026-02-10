@@ -32,6 +32,7 @@ interface CollaborationFriendsTabProps {
   onShowFriendRequests: () => void;
   onShowBlockedFriends: () => void;
   onCopyInvite: () => void;
+  inviteCopied?: boolean;
   onSelectFriend: (friend: Friend) => void;
   onSendCollabInvite: (friend: Friend) => void;
   onAddToBoard: (friend: Friend) => void;
@@ -50,6 +51,7 @@ export default function CollaborationFriendsTab({
   onShowFriendRequests,
   onShowBlockedFriends,
   onCopyInvite,
+  inviteCopied,
   onSelectFriend,
   onSendCollabInvite,
   onAddToBoard,
@@ -198,14 +200,14 @@ export default function CollaborationFriendsTab({
       <View style={styles.pillContainer}>
         <TouchableOpacity onPress={onShowAddFriendModal} style={styles.pill}>
           <View style={styles.pillIconContainer}>
-            <Feather name="user-plus" size={12} color="white" />
+            <Feather name="user-plus" size={10} color="white" />
           </View>
           <Text style={styles.pillText}>Add</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={onShowFriendRequests} style={styles.pill}>
           <View style={styles.pillIconContainer}>
-            <Feather name="users" size={12} color="white" />
+            <Feather name="users" size={10} color="white" />
           </View>
           <Text style={styles.pillText}>Requests</Text>
           {friendRequestsCount > 0 && (
@@ -217,16 +219,16 @@ export default function CollaborationFriendsTab({
 
         <TouchableOpacity onPress={onShowBlockedFriends} style={styles.pill}>
           <View style={styles.pillIconContainer}>
-            <Feather name="shield" size={12} color="white" />
+            <Feather name="shield" size={10} color="white" />
           </View>
           <Text style={styles.pillText}>Blocked</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={onCopyInvite} style={styles.pill}>
           <View style={styles.pillIconContainer}>
-            <Feather name="link" size={12} color="white" />
+            <Feather name={inviteCopied ? "check" : "link"} size={10} color="white" />
           </View>
-          <Text style={styles.pillText}>Invite</Text>
+          <Text style={styles.pillText}>{inviteCopied ? "Copied" : "Invite"}</Text>
         </TouchableOpacity>
       </View>
 
@@ -533,45 +535,45 @@ const styles = StyleSheet.create({
   },
   pillContainer: {
     flexDirection: "row",
-    gap: 6,
+    gap: 4,
     marginBottom: 16,
   },
   pill: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "white",
-    borderRadius: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    gap: 4,
+    borderRadius: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    gap: 3,
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
   pillIconContainer: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: "#eb7825",
     alignItems: "center",
     justifyContent: "center",
   },
   pillText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "500",
     color: "#374151",
   },
   pillBadge: {
-    minWidth: 16,
-    height: 16,
+    minWidth: 14,
+    height: 14,
     backgroundColor: "#ef4444",
-    borderRadius: 8,
+    borderRadius: 7,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 3,
+    paddingHorizontal: 2,
   },
   pillBadgeText: {
     color: "white",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "600",
   },
   searchContainer: {

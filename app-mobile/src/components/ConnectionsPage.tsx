@@ -19,6 +19,7 @@ import FriendRequestsModal from "./FriendRequestsModal";
 import AddToBoardModal from "./AddToBoardModal";
 import ReportUserModal from "./ReportUserModal";
 import BlockUserModal from "./BlockUserModal";
+import BlockedUsersModal from "./BlockedUsersModal";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { messagingService, DirectMessage } from "../services/messagingService";
 import { supabase } from "../services/supabase";
@@ -350,6 +351,7 @@ export default function ConnectionsPageRefactored({
   const [selectedUserToBlock, setSelectedUserToBlock] =
     useState<Friend | null>(null);
   const [blockLoading, setBlockLoading] = useState(false);
+  const [showBlockedUsersModal, setShowBlockedUsersModal] = useState(false);
 
   // Use transformed friends from useFriends hook
   const currentFriends = transformedFriends;
@@ -361,8 +363,9 @@ export default function ConnectionsPageRefactored({
   ).length;
 
   const handleCopyInvite = () => {
-    // In React Native, you would use Clipboard from @react-native-clipboard/clipboard
-    // For now, we'll just show the copied state
+    // TODO: Copy invite link when expo-clipboard is installed
+    // const inviteLink = `https://mingla.app/invite/${user?.id || ''}`;
+    // await Clipboard.setStringAsync(inviteLink);
     setInviteCopied(true);
     setTimeout(() => setInviteCopied(false), 2000);
   };
@@ -1312,9 +1315,8 @@ export default function ConnectionsPageRefactored({
                 onReportUser={handleReportUser}
                 onShowAddFriendModal={() => setShowAddFriendModal(true)}
                 onShowFriendRequests={() => setShowFriendRequests(true)}
-                onShowQRCode={() => setShowQRCode(!showQRCode)}
+                onShowBlockedFriends={() => setShowBlockedUsersModal(true)}
                 onCopyInvite={handleCopyInvite}
-                showQRCode={showQRCode}
                 inviteCopied={inviteCopied}
                 friendRequestsCount={friendRequestsCount}
                 muteLoadingFriendId={muteLoadingFriendId}
@@ -1405,6 +1407,11 @@ export default function ConnectionsPageRefactored({
         userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
         loading={blockLoading}
       />
+
+      <BlockedUsersModal
+        visible={showBlockedUsersModal}
+        onClose={() => setShowBlockedUsersModal(false)}
+      />
     </>
   );
 }
@@ -1417,10 +1424,10 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 16,
   },
   header: {
     marginBottom: 24,
+    marginHorizontal: -16,
   },
   title: {
     fontSize: 24,

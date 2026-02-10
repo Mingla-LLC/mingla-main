@@ -153,6 +153,65 @@ export class ExperienceGenerationService {
   }
 
   /**
+   * Generate experiences for the Discover screen "For You" tab
+   * Fetches one experience per category based on user location only (no preferences)
+   * Returns both the 10 category cards AND a featured card
+   */
+  static async discoverExperiences(
+    location: { lat: number; lng: number },
+    radius?: number
+  ): Promise<{
+    cards: GeneratedExperience[];
+    featuredCard: GeneratedExperience | null;
+  }> {
+    try {
+      console.log("Fetching discover experiences for location:", location);
+
+      const { data, error } = await supabase.functions.invoke(
+        "discover-experiences",
+        {
+          body: {
+            location,
+            radius: radius || 10000, // Default 10km radius
+          },
+        }
+      );
+
+      if (error) {
+        console.error("Error fetching discover experiences:", error);
+        throw new Error(`Failed to fetch discover experiences: ${error.message}`);
+      }
+
+      if (data?.error) {
+        console.error("Discover function returned error:", data.error);
+        throw new Error(data.error);
+      }
+
+      if (!data || !data.cards || data.cards.length === 0) {
+        console.log("No discover experiences found");
+        return { cards: [], featuredCard: null };
+      }
+
+      console.log(`Found ${data.cards.length} discover experiences`);
+
+      // Transform all cards
+      const cards = data.cards.map((card: any) =>
+        this.transformToGeneratedExperience(card)
+      );
+
+      // Transform featured card if present
+      const featuredCard = data.featuredCard
+        ? this.transformToGeneratedExperience(data.featuredCard)
+        : null;
+
+      return { cards, featuredCard };
+    } catch (error) {
+      console.error("Failed to fetch discover experiences:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Transform edge function response to GeneratedExperience format
    */
   private static transformToGeneratedExperience(
