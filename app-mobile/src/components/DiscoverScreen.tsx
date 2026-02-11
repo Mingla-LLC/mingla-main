@@ -251,13 +251,7 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", mea
           {formattedDistance && (
             <View style={styles.travelInfoBadge}>
               <Ionicons name="location-outline" size={14} color="white" />
-              <Text style={styles.travelInfoText}>{formattedDistance} walking route</Text>
-            </View>
-          )}
-          {card.travelTime && (
-            <View style={styles.travelInfoBadge}>
-              <Ionicons name="time-outline" size={14} color="white" />
-              <Text style={styles.travelInfoText}>{card.travelTime} drive</Text>
+              <Text style={styles.travelInfoText}>{formattedDistance}</Text>
             </View>
           )}
         </View>
@@ -735,14 +729,14 @@ export default function DiscoverScreen({
         console.log("Cache miss or stale. Fetching fresh discover data...");
 
         // Use new discoverExperiences method that calls discover-experiences edge function
-        // Returns { cards: 10 category cards, featuredCard: best card }
+        // Returns { cards: 10 category cards, featuredCard: 11th unique card }
         const { cards: generatedCards, featuredCard } = await ExperienceGenerationService.discoverExperiences(
           { lat: locationLat, lng: locationLng },
           10000 // 10km radius
         );
 
         console.log("Discover API returned:", generatedCards.length, "cards + featured card");
-        console.log("Categories returned:", [...new Set(generatedCards.map((e: any) => e.category))]);
+        console.log("Categories returned:", Array.from(new Set(generatedCards.map((e: any) => e.category))));
 
         // Transform to Recommendation format - all 10 cards for grid display
         const transformed: Recommendation[] = generatedCards.map((exp: any) => ({
@@ -785,9 +779,12 @@ export default function DiscoverScreen({
           strollData: exp.strollData,
         }));
 
-        // Transform featured card if present
+        // Transform featured card if present AND it's different from all grid cards
         let transformedFeatured: FeaturedCardData | null = null;
-        if (featuredCard) {
+        const gridCardIds = new Set(generatedCards.map((exp: any) => exp.id));
+        
+        if (featuredCard && !gridCardIds.has(featuredCard.id)) {
+          // Featured card is unique - use it
           transformedFeatured = {
             id: featuredCard.id,
             title: featuredCard.title,
@@ -807,11 +804,43 @@ export default function DiscoverScreen({
               ? { lat: featuredCard.lat, lng: featuredCard.lng } 
               : undefined,
           };
-          setSelectedFeaturedCard(transformedFeatured);
-          console.log("Set featured card:", transformedFeatured.title);
+          console.log("Set unique featured card:", transformedFeatured.title);
+        } else {
+          // Featured card is duplicate or missing - pick best from grid cards (keep all 10 in grid)
+          console.log("Featured card duplicate/missing, selecting best from grid cards...");
+          const sortedByRating = [...generatedCards].sort((a: any, b: any) => {
+            const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
+            const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
+            return bScore - aScore;
+          });
+          const bestCard = sortedByRating[0];
+          if (bestCard) {
+            // Create featured with unique ID suffix (keeping all 10 in grid)
+            transformedFeatured = {
+              id: `${bestCard.id}_featured`,
+              title: bestCard.title,
+              experienceType: bestCard.category,
+              description: bestCard.description,
+              image: bestCard.heroImage,
+              images: bestCard.images || [bestCard.heroImage],
+              priceRange: bestCard.priceRange,
+              rating: bestCard.rating,
+              reviewCount: bestCard.reviewCount,
+              address: bestCard.address,
+              travelTime: bestCard.travelTime,
+              distance: bestCard.distance,
+              highlights: bestCard.highlights || [],
+              tags: bestCard.highlights || [],
+              location: bestCard.lat && bestCard.lng 
+                ? { lat: bestCard.lat, lng: bestCard.lng } 
+                : undefined,
+            };
+            console.log("Featured card selected from grid:", transformedFeatured.title);
+          }
         }
+        setSelectedFeaturedCard(transformedFeatured);
 
-        // Transform all 10 cards directly to grid cards
+        // Transform ALL 10 cards to grid cards (no removal)
         const gridCards: GridCardData[] = generatedCards.map((exp: any) => ({
           id: exp.id,
           title: exp.title,

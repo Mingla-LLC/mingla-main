@@ -1049,19 +1049,6 @@ export default function SwipeableCards({
                       resizeMode="cover"
                     />
 
-                    {/* Match Score Badge */}
-                    <View style={styles.matchBadge}>
-                      <Ionicons
-                        name="star"
-                        size={14}
-                        color="#1f2937"
-                        style={{ marginRight: 4 }}
-                      />
-                      <Text style={styles.matchText}>
-                        {nextCard.matchScore}% Match
-                      </Text>
-                    </View>
-
                     {/* Gallery Indicator if multiple images */}
                     {nextCard.images && nextCard.images.length > 1 && (
                       <View style={styles.galleryIndicator}>
@@ -1076,18 +1063,12 @@ export default function SwipeableCards({
                     <View style={styles.titleOverlay}>
                       <Text style={styles.cardTitle}>{nextCard.title}</Text>
 
-                      {/* Info badges: distance, travel time, rating, category */}
+                      {/* Info badges: distance, rating, category */}
                       <View style={styles.detailsBadges}>
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem)}
-                          </Text>
-                        </View>
-                        <View style={styles.detailBadge}>
-                          <Ionicons name="time" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {nextCard.travelTime}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
@@ -1184,25 +1165,6 @@ export default function SwipeableCards({
                   resizeMode="cover"
                 />
 
-                {/* Match Score Badge - Top Left */}
-                <Animated.View style={[
-                  styles.matchBadge,
-                  {
-                    opacity: cardContentOpacity,
-                    transform: [{ translateY: matchBadgeSlide }],
-                  },
-                ]}>
-                  <Ionicons
-                    name="star"
-                    size={14}
-                    color="#eb7825"
-                    style={{ marginRight: 4 }}
-                  />
-                  <Text style={styles.matchText}>
-                    {currentRec.matchScore}% Match
-                  </Text>
-                </Animated.View>
-
                 {/* Gallery Indicator if multiple images */}
                 {currentRec.images && currentRec.images.length > 1 && (
                   <View style={styles.galleryIndicator}>
@@ -1223,18 +1185,12 @@ export default function SwipeableCards({
                 ]}>
                   <Text style={styles.cardTitle}>{currentRec.title}</Text>
 
-                  {/* Info badges: distance, travel time, rating, category */}
+                  {/* Info badges: distance, rating, category */}
                   <View style={styles.detailsBadges}>
                     <View style={styles.detailBadge}>
                       <Ionicons name="location" size={12} color="white" />
                       <Text style={styles.detailBadgeText}>
                         {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
-                      </Text>
-                    </View>
-                    <View style={styles.detailBadge}>
-                      <Ionicons name="time" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>
-                        {currentRec.travelTime}
                       </Text>
                     </View>
                     <View style={styles.detailBadge}>

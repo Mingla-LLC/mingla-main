@@ -53,24 +53,33 @@ const transformToRecommendation = (exp: any): Recommendation => {
   };
 };
 
+interface DiscoverExperiencesResult {
+  cards: Recommendation[];
+  featuredCard: Recommendation | null;
+}
+
 /**
  * Fetch discover experiences - one per category based on location only
+ * Returns 10 grid cards + 1 separate featured card
  */
 const fetchDiscoverExperiences = async (
   location: { lat: number; lng: number },
   radius?: number
-): Promise<Recommendation[]> => {
-  const experiences = await ExperienceGenerationService.discoverExperiences(
+): Promise<DiscoverExperiencesResult> => {
+  const { cards, featuredCard } = await ExperienceGenerationService.discoverExperiences(
     location,
     radius
   );
 
-  return experiences.map(transformToRecommendation);
+  return {
+    cards: cards.map(transformToRecommendation),
+    featuredCard: featuredCard ? transformToRecommendation(featuredCard) : null,
+  };
 };
 
 /**
  * React Query hook for fetching discover screen experiences
- * Fetches 10 experiences - one from each category - based on user location only
+ * Fetches 10 grid cards (one from each category) + 1 featured card based on user location only
  */
 export const useDiscoverQuery = (params: UseDiscoverQueryParams) => {
   const { userLocation, enabled = true, radius } = params;
@@ -82,7 +91,7 @@ export const useDiscoverQuery = (params: UseDiscoverQueryParams) => {
     radius,
   ];
 
-  return useQuery({
+  return useQuery<DiscoverExperiencesResult>({
     queryKey,
     queryFn: () => {
       if (!userLocation) {

@@ -633,33 +633,31 @@ export default function ProfilePage({
               <Text style={styles.locationError}>{locationError}</Text>
             ) : null}
 
-            {/* Profile Completion Progress Bar */}
-            <View style={styles.profileCompletionContainer}>
-              <View style={styles.profileCompletionHeader}>
-                <Text style={styles.profileCompletionTitle}>Profile completion</Text>
-                <Text style={styles.profileCompletionPercent}>
-                  {hasUploadedImage ? "100%" : "90%"}
-                </Text>
-              </View>
-              <View style={styles.profileCompletionBarBg}>
-                <Animated.View
-                  style={[
-                    styles.profileCompletionBarFill,
-                    {
-                      width: progressAnim.interpolate({
-                        inputRange: [0, 100],
-                        outputRange: ["0%", "100%"],
-                      }),
-                    },
-                  ]}
-                />
-              </View>
-              {!hasUploadedImage ? (
+            {/* Profile Completion Progress Bar - Hide when 100% */}
+            {!hasUploadedImage && (
+              <View style={styles.profileCompletionContainer}>
+                <View style={styles.profileCompletionHeader}>
+                  <Text style={styles.profileCompletionTitle}>Profile completion</Text>
+                  <Text style={styles.profileCompletionPercent}>90%</Text>
+                </View>
+                <View style={styles.profileCompletionBarBg}>
+                  <Animated.View
+                    style={[
+                      styles.profileCompletionBarFill,
+                      {
+                        width: progressAnim.interpolate({
+                          inputRange: [0, 100],
+                          outputRange: ["0%", "100%"],
+                        }),
+                      },
+                    ]}
+                  />
+                </View>
                 <Text style={styles.profileCompletionAction}>
                   Upload a profile picture to complete your profile
                 </Text>
-              ) : null}
-            </View>
+              </View>
+            )}
           </View>
         </View>
 

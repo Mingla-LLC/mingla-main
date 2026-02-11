@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { formatPriceRange } from "../utils/formatters";
+import { formatPriceRange, parseAndFormatDistance } from "../utils/formatters";
 
 interface CardInfoSectionProps {
   title: string;
@@ -9,7 +9,8 @@ interface CardInfoSectionProps {
   categoryIcon?: string;
   tags?: string[];
   rating?: number;
-  travelTime?: string;
+  distance?: string;
+  measurementSystem?: "Metric" | "Imperial";
   priceRange?: string;
   description?: string;
   currency?: string;
@@ -21,7 +22,8 @@ export default function CardInfoSection({
   categoryIcon,
   tags = [],
   rating,
-  travelTime,
+  distance,
+  measurementSystem,
   priceRange,
   description,
   currency = 'USD',
@@ -94,18 +96,18 @@ export default function CardInfoSection({
             <Text style={styles.metricText}>{rating.toFixed(1)}</Text>
           </View>
         )}
-        {travelTime && (
+        {distance && (
           <>
             {rating !== undefined && <View style={styles.metricDivider} />}
             <View style={styles.metricItem}>
-              <Ionicons name="paper-plane" size={14} color="#d97706" />
-              <Text style={styles.metricText}>{travelTime}</Text>
+              <Ionicons name="location" size={14} color="#d97706" />
+              <Text style={styles.metricText}>{parseAndFormatDistance(distance, measurementSystem)}</Text>
             </View>
           </>
         )}
         {priceRange && (
           <>
-            {(rating !== undefined || travelTime) && (
+            {(rating !== undefined || distance) && (
               <View style={styles.metricDivider} />
             )}
             <Text style={styles.priceText}>{formatPriceRange(priceRange, currency)}</Text>

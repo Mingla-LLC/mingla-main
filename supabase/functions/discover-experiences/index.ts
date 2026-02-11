@@ -212,10 +212,45 @@ serve(async (req) => {
     console.log(`Failed categories (${failedCategories.length}):`, failedCategories);
     console.log(`Found ${places.length} unique places across ${DISCOVER_CATEGORIES.length} categories`);
 
+    // Select an 11th unique card as the featured card from unused candidates
+    // Collect all unused candidates across all categories
+    const allUnusedCandidates: DiscoverPlace[] = [];
+    for (const candidates of allCategoryCandidates) {
+      if (candidates && candidates.length > 0) {
+        const unusedFromCategory = candidates.filter(c => !usedPlaceIds.has(c.placeId));
+        allUnusedCandidates.push(...unusedFromCategory);
+      }
+    }
+
+    console.log(`Total unused candidates for featured card: ${allUnusedCandidates.length}`);
+
+    // Sort by rating/popularity score and pick the best unused candidate
+    const sortedUnused = allUnusedCandidates.sort((a, b) => {
+      const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
+      const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
+      return bScore - aScore;
+    });
+    const featuredPlace = sortedUnused[0] || null;
+
+    if (featuredPlace) {
+      // Add featured to used set to ensure it's tracked
+      usedPlaceIds.add(featuredPlace.placeId);
+      console.log(`✓ Selected featured card: "${featuredPlace.name}" (id: ${featuredPlace.id}, placeId: ${featuredPlace.placeId}) from ${allUnusedCandidates.length} unused candidates`);
+    } else {
+      console.log(`✗ No unused candidates available for featured card`);
+    }
+
+    // Verify featured is different from all grid cards
+    const gridPlaceIds = places.map(p => p.placeId);
+    if (featuredPlace && gridPlaceIds.includes(featuredPlace.placeId)) {
+      console.error(`BUG: Featured card placeId ${featuredPlace.placeId} is in grid cards!`);
+    }
+
     if (places.length === 0) {
       return new Response(
         JSON.stringify({
           cards: [],
+          featuredCard: null,
           meta: {
             totalResults: 0,
             message: "No places found near your location",
@@ -227,30 +262,29 @@ serve(async (req) => {
       );
     }
 
-    // Calculate travel times for all places
-    const placesWithTravel = await annotateWithTravel(places, location);
+    // Calculate travel times for all places (including featured)
+    const allPlacesToProcess = featuredPlace ? [...places, featuredPlace] : places;
+    const placesWithTravel = await annotateWithTravel(allPlacesToProcess, location);
 
     // Enrich with AI descriptions
     const enrichedPlaces = await enrichWithAI(placesWithTravel);
 
+    // Separate the featured card from the grid cards
+    const gridPlaces = featuredPlace ? enrichedPlaces.slice(0, -1) : enrichedPlaces;
+    const enrichedFeaturedPlace = featuredPlace ? enrichedPlaces[enrichedPlaces.length - 1] : null;
+
     // Convert to card format - these are the 10 small cards (one per category)
-    const cards = enrichedPlaces.map((place) => convertToCard(place));
+    const cards = gridPlaces.map((place) => convertToCard(place));
 
-    // Select the featured card (highest rated card from the 10)
-    // The featured card is a COPY - all 10 cards are still returned for the grid
-    const sortedByRating = [...cards].sort((a, b) => {
-      const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
-      const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
-      return bScore - aScore;
-    });
-    const featuredCard = sortedByRating[0] || null;
+    // Convert featured place to card format (separate from grid cards)
+    const featuredCard = enrichedFeaturedPlace ? convertToCard(enrichedFeaturedPlace) : null;
 
-    console.log(`Returning ${cards.length} cards + featured card: "${featuredCard?.title}"`);
+    console.log(`Returning ${cards.length} grid cards + featured card: "${featuredCard?.title}"`);
 
     return new Response(
       JSON.stringify({
-        cards, // All 10 category cards for grid display
-        featuredCard, // Best card for featured display (also in cards array)
+        cards, // 10 category cards for grid display
+        featuredCard, // 11th unique card for featured display (NOT in cards array)
         meta: {
           totalResults: cards.length,
           categories: DISCOVER_CATEGORIES,
@@ -310,7 +344,7 @@ async function fetchCandidatesForCategory(
 
     const requestBody = {
       includedTypes: placeTypes,
-      maxResultCount: 10, // Get more to allow for deduplication
+      maxResultCount: 20, // Get more to allow for deduplication and featured card selection
       locationRestriction: {
         circle: {
           center: {

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Text, View, TouchableOpacity, StyleSheet, ScrollView, Image, PanResponder, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { parseAndFormatDistance } from './utils/formatters';
 
 interface BoardCard {
   id: string;
@@ -13,6 +14,7 @@ interface BoardCard {
   rating: number;
   reviewCount?: number;
   travelTime: string;
+  distance?: string;
   priceRange: string;
   description: string;
   fullDescription?: string;
@@ -49,9 +51,13 @@ interface SwipeableBoardCardsProps {
   onVote: (cardId: string, vote: 'yes' | 'no') => void;
   onRSVP: (cardId: string, rsvp: 'yes' | 'no') => void;
   onOpenDiscussion?: (cardId: string) => void;
+  accountPreferences?: {
+    currency: string;
+    measurementSystem: "Metric" | "Imperial";
+  };
 }
 
-export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscussion }: SwipeableBoardCardsProps) {
+export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscussion, accountPreferences }: SwipeableBoardCardsProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [galleryIndices, setGalleryIndices] = useState<{[key: string]: number}>({});
@@ -212,14 +218,11 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                         <View style={styles.imageOverlay} />
                         
                         {/* Status Badge */}
-                        <View style={[
-                          styles.statusBadge,
-                          card.isLocked ? styles.lockedBadge : styles.matchBadge
-                        ]}>
-                          <Text style={styles.statusText}>
-                            {card.isLocked ? 'Locked' : `${card.matchScore || 85}% Match`}
-                          </Text>
-                        </View>
+                        {card.isLocked && (
+                          <View style={[styles.statusBadge, styles.lockedBadge]}>
+                            <Text style={styles.statusText}>Locked</Text>
+                          </View>
+                        )}
 
                         {/* Gallery indicator */}
                         {card.images && card.images.length > 1 && (
@@ -259,8 +262,8 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                             <Text style={styles.statSubtext}>({card.reviewCount || '100+'})</Text>
                           </View>
                           <View style={styles.statItem}>
-                            <Ionicons name="navigate" size={16} color="#eb7825" />
-                            <Text style={styles.statText}>{card.travelTime}</Text>
+                            <Ionicons name="location" size={16} color="#eb7825" />
+                            <Text style={styles.statText}>{parseAndFormatDistance(card.distance, accountPreferences?.measurementSystem) || card.travelTime}</Text>
                           </View>
                           <View style={styles.statItem}>
                             <Text style={styles.priceText}>{card.priceRange}</Text>
@@ -345,19 +348,12 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                           </TouchableOpacity>
                           
                           <View style={styles.expandedHeaderCenter}>
-                            <View style={[
-                              styles.expandedStatusBadge,
-                              card.isLocked ? styles.lockedBadge : styles.matchBadge
-                            ]}>
-                              <Ionicons 
-                                name={card.isLocked ? "lock-closed" : "sparkles"} 
-                                size={16} 
-                                color="white" 
-                              />
-                              <Text style={styles.expandedStatusText}>
-                                {card.isLocked ? 'Locked In' : `${card.matchScore || 85}% Match`}
-                              </Text>
-                            </View>
+                            {card.isLocked && (
+                              <View style={[styles.expandedStatusBadge, styles.lockedBadge]}>
+                                <Ionicons name="lock-closed" size={16} color="white" />
+                                <Text style={styles.expandedStatusText}>Locked In</Text>
+                              </View>
+                            )}
                           </View>
                         </View>
 

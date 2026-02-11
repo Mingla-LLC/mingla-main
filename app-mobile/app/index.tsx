@@ -1555,44 +1555,6 @@ function AppContent() {
       );
     }
 
-    // Show Terms of Service as full screen if terms are open
-    if (showTermsOfService) {
-      return (
-        <ErrorBoundary>
-          <TermsOfService onNavigateBack={() => setShowTermsOfService(false)} />
-        </ErrorBoundary>
-      );
-    }
-
-    // Show Privacy Policy as full screen if privacy policy is open
-    if (showPrivacyPolicy) {
-      return (
-        <ErrorBoundary>
-          <PrivacyPolicy onNavigateBack={() => setShowPrivacyPolicy(false)} />
-        </ErrorBoundary>
-      );
-    }
-
-    // Show Account Settings as full screen if account settings are open
-    if (showAccountSettings) {
-      return (
-        <ErrorBoundary>
-          <AccountSettings />
-        </ErrorBoundary>
-      );
-    }
-
-    // Show Profile Settings as full screen if profile settings are open
-    if (showProfileSettings) {
-      return (
-        <ErrorBoundary>
-          <ProfileSettings
-            onNavigateBack={() => setShowProfileSettings(false)}
-          />
-        </ErrorBoundary>
-      );
-    }
-
     return (
       <>
         <CardsCacheProvider>
@@ -1614,7 +1576,17 @@ function AppContent() {
                     <View style={styles.container}>
                       {/* Main Content */}
                       <View style={styles.mainContent}>
-                        {renderCurrentPage()}
+                        {showTermsOfService ? (
+                          <TermsOfService onNavigateBack={() => setShowTermsOfService(false)} />
+                        ) : showPrivacyPolicy ? (
+                          <PrivacyPolicy onNavigateBack={() => setShowPrivacyPolicy(false)} />
+                        ) : showAccountSettings ? (
+                          <AccountSettings />
+                        ) : showProfileSettings ? (
+                          <ProfileSettings onNavigateBack={() => setShowProfileSettings(false)} />
+                        ) : (
+                          renderCurrentPage()
+                        )}
                       </View>
 
                       {/* Collaboration Module */}

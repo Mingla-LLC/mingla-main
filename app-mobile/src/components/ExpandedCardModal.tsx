@@ -21,7 +21,6 @@ import { useRecommendations } from "../contexts/RecommendationsContext";
 import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
 import ImageGallery from "./expandedCard/ImageGallery";
 import CardInfoSection from "./expandedCard/CardInfoSection";
-import MatchScoreBox from "./expandedCard/MatchScoreBox";
 import DescriptionSection from "./expandedCard/DescriptionSection";
 import HighlightsSection from "./expandedCard/HighlightsSection";
 import WeatherSection from "./expandedCard/WeatherSection";
@@ -266,7 +265,7 @@ export default function ExpandedCardModal({
         />
         <View style={styles.modalContainer}>
           {/* Sticky Header */}
-          <ExpandedCardHeader matchScore={card.matchScore} onClose={onClose} />
+          <ExpandedCardHeader onClose={onClose} />
 
           {/* Scrollable Content */}
           <ScrollView
@@ -298,18 +297,11 @@ export default function ExpandedCardModal({
               categoryIcon={card.categoryIcon}
               tags={card.tags}
               rating={card.rating}
-              travelTime={card.travelTime}
+              distance={card.distance}
+              measurementSystem={accountPreferences?.measurementSystem}
               priceRange={card.priceRange}
               description={card.description}
               currency={accountPreferences?.currency}
-            />
-
-            {/* Match Score Box */}
-            <MatchScoreBox
-              matchScore={card.matchScore}
-              matchFactors={card.matchFactors}
-              userPreferences={userPreferences}
-              cardCategory={card.category}
             />
 
             {/* Highlights Section */}

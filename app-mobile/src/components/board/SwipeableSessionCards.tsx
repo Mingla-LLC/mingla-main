@@ -11,7 +11,7 @@ import {
   Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { formatPriceRange } from "../utils/formatters";
+import { formatPriceRange, parseAndFormatDistance } from "../utils/formatters";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const CARD_HEIGHT = Math.min(SCREEN_HEIGHT * 0.68, 700);
@@ -285,21 +285,13 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
           resizeMode="cover"
         />
 
-        {/* Match Score Badge */}
-        <View style={styles.matchBadge}>
-          <Ionicons name="star" size={14} color="#eb7825" style={{ marginRight: 4 }} />
-          <Text style={styles.matchText}>
-            {Math.round(bgCardData.matchScore || 0)}% Match
-          </Text>
-        </View>
-
         {/* Title Overlay */}
         <View style={styles.titleOverlay}>
           <Text style={styles.cardTitle}>{bgCardData.title || "Untitled"}</Text>
           <View style={styles.detailsBadges}>
             <View style={styles.detailBadge}>
-              <Ionicons name="time" size={12} color="white" />
-              <Text style={styles.detailBadgeText}>{bgCardData.travelTime || "N/A"}</Text>
+              <Ionicons name="location" size={12} color="white" />
+              <Text style={styles.detailBadgeText}>{parseAndFormatDistance(bgCardData.distance, accountPreferences?.measurementSystem) || "N/A"}</Text>
             </View>
             <View style={styles.detailBadge}>
               <Ionicons name="star" size={12} color="white" />
@@ -359,14 +351,6 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                 resizeMode="cover"
               />
 
-              {/* Match Score Badge */}
-              <View style={styles.matchBadge}>
-                <Ionicons name="star" size={14} color="#eb7825" style={{ marginRight: 4 }} />
-                <Text style={styles.matchText}>
-                  {Math.round(cardData.matchScore || 0)}% Match
-                </Text>
-              </View>
-
               {/* Card Counter */}
               <View style={styles.cardCounter}>
                 <Text style={styles.cardCounterText}>
@@ -379,8 +363,8 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                 <Text style={styles.cardTitle}>{cardData.title || "Untitled"}</Text>
                 <View style={styles.detailsBadges}>
                   <View style={styles.detailBadge}>
-                    <Ionicons name="time" size={12} color="white" />
-                    <Text style={styles.detailBadgeText}>{cardData.travelTime || "N/A"}</Text>
+                    <Ionicons name="location" size={12} color="white" />
+                    <Text style={styles.detailBadgeText}>{parseAndFormatDistance(cardData.distance, accountPreferences?.measurementSystem) || "N/A"}</Text>
                   </View>
                   <View style={styles.detailBadge}>
                     <Ionicons name="star" size={12} color="white" />
