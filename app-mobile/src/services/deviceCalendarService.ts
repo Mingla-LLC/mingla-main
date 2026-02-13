@@ -253,5 +253,130 @@ export class DeviceCalendarService {
       return false;
     }
   }
-}
 
+  /**
+   * Get all calendars on the device (including synced Google Calendar, iCloud, etc.)
+   */
+  static async getCalendars(): Promise<Calendar.Calendar[]> {
+    try {
+      const hasPermissions = await this.hasPermissions();
+      if (!hasPermissions) {
+        const granted = await this.requestPermissions();
+        if (!granted) {
+          return [];
+        }
+      }
+
+      const calendars = await Calendar.getCalendarsAsync(
+        Calendar.EntityTypes.EVENT
+      );
+      return calendars;
+    } catch (error) {
+      console.error('Error getting calendars:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Find the Google Calendar "Holidays" calendar if it exists
+   */
+  static async getHolidayCalendarId(): Promise<string | null> {
+    try {
+      const calendars = await this.getCalendars();
+      
+      // Look for holiday calendar (Google Calendar syncs holidays automatically)
+      const holidayCalendar = calendars.find(
+        (cal) => 
+          cal.title?.toLowerCase().includes('holiday') ||
+          cal.title?.toLowerCase().includes('holidays') ||
+          cal.source?.name?.toLowerCase().includes('holiday')
+      );
+      
+      return holidayCalendar?.id || null;
+    } catch (error) {
+      console.error('Error getting holiday calendar:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch upcoming events from the device calendar (including synced Google Calendar)
+   * This will include holidays if the user has the Google "Holidays" calendar enabled
+   */
+  static async getUpcomingEvents(
+    daysAhead: number = 365,
+    calendarIds?: string[]
+  ): Promise<Calendar.Event[]> {
+    try {
+      const hasPermissions = await this.hasPermissions();
+      if (!hasPermissions) {
+        const granted = await this.requestPermissions();
+        if (!granted) {
+          return [];
+        }
+      }
+
+      // If no specific calendars provided, get all calendars
+      let calendars: string[] = calendarIds || [];
+      if (calendars.length === 0) {
+        const allCalendars = await this.getCalendars();
+        calendars = allCalendars.map(cal => cal.id);
+      }
+
+      if (calendars.length === 0) {
+        return [];
+      }
+
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + daysAhead);
+
+      const events = await Calendar.getEventsAsync(
+        calendars,
+        startDate,
+        endDate
+      );
+
+      return events;
+    } catch (error) {
+      console.error('Error getting upcoming events:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch holidays specifically from the device calendar
+   * Uses the Holidays calendar if available, otherwise returns empty array
+   */
+  static async getHolidaysFromCalendar(
+    daysAhead: number = 365
+  ): Promise<Array<{
+    id: string;
+    name: string;
+    date: Date;
+    description: string;
+    isAllDay: boolean;
+  }>> {
+    try {
+      const holidayCalendarId = await this.getHolidayCalendarId();
+      
+      if (!holidayCalendarId) {
+        console.log('No holiday calendar found on device');
+        return [];
+      }
+
+      const events = await this.getUpcomingEvents(daysAhead, [holidayCalendarId]);
+      
+      return events.map(event => ({
+        id: event.id,
+        name: event.title,
+        date: new Date(event.startDate),
+        description: event.notes || '',
+        isAllDay: event.allDay || false,
+      }));
+    } catch (error) {
+      console.error('Error getting holidays from calendar:', error);
+      return [];
+    }
+  }
+}

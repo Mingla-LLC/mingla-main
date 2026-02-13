@@ -1,6 +1,7 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Feather from "@expo/vector-icons/Feather";
 import { useAppState } from "../AppStateManager";
 import { formatMonthYear } from "@/src/utils/dateUtils";
 
@@ -8,7 +9,31 @@ import { formatMonthYear } from "@/src/utils/dateUtils";
 // Currently uses static placeholder values to match the design.
 // When real data (email, memberSince, status) is available, wire it in here.
 export default function ProfileAccountSection() {
-  const { userIdentity } = useAppState();
+  const { userIdentity, handleUserIdentityUpdate } = useAppState();
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [tempEmail, setTempEmail] = useState(userIdentity?.email || "");
+
+  const handleStartEditEmail = () => {
+    setTempEmail(userIdentity?.email || "");
+    setIsEditingEmail(true);
+  };
+
+  const handleCancelEditEmail = () => {
+    setTempEmail(userIdentity?.email || "");
+    setIsEditingEmail(false);
+  };
+
+  const handleSaveEmail = () => {
+    if (!userIdentity) return;
+
+    const updatedIdentity = {
+      ...userIdentity,
+      email: tempEmail.trim(),
+    };
+
+    handleUserIdentityUpdate(updatedIdentity);
+    setIsEditingEmail(false);
+  };
 
   return (
     <View style={styles.card}>
@@ -21,47 +46,77 @@ export default function ProfileAccountSection() {
 
       {/* Email */}
       <View style={styles.row}>
-        <View style={styles.rowTextContainer}>
-          <Text style={styles.rowLabel}>Email</Text>
-          <Text style={styles.rowValue}>{userIdentity?.email}</Text>
-        </View>
+        <Text style={styles.rowLabel}>Email</Text>
+        {isEditingEmail ? (
+          <View style={styles.emailEditContainer}>
+            <TextInput
+              value={tempEmail}
+              onChangeText={setTempEmail}
+              style={styles.emailInput}
+              autoFocus
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="Enter email"
+            />
+            <View style={styles.emailActionButtons}>
+              <TouchableOpacity
+                onPress={handleSaveEmail}
+                style={styles.iconButton}
+              >
+                <Ionicons name="checkmark" size={16} color="#10b981" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleCancelEditEmail}
+                style={styles.iconButton}
+              >
+                <Ionicons name="close" size={16} color="#ef4444" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.emailValueRow}>
+            <Text style={styles.rowValue}>{userIdentity?.email}</Text>
+            <TouchableOpacity
+              onPress={handleStartEditEmail}
+              style={styles.iconButton}
+            >
+              <Feather name="edit-3" size={16} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Member Since */}
       <View style={styles.row}>
-        <View style={styles.rowTextContainer}>
-          <Text style={styles.rowLabel}>Member Since</Text>
-          <Text style={styles.rowValue}>
-            {formatMonthYear(userIdentity.createdAt || "")}
-          </Text>
-        </View>
+        <Text style={styles.rowLabel}>Member Since</Text>
+        <Text style={styles.rowValue}>
+          {formatMonthYear(userIdentity.createdAt || "")}
+        </Text>
       </View>
 
       {/* Account Status */}
       <View style={styles.row}>
-        <View style={styles.rowTextContainer}>
-          <Text style={styles.rowLabel}>Account Status</Text>
+        <Text style={styles.rowLabel}>Account Status</Text>
+        <View
+          style={[
+            styles.statusBadge,
+            userIdentity?.active === false && styles.statusBadgeInactive,
+          ]}
+        >
           <View
             style={[
-              styles.statusBadge,
-              userIdentity?.active === false && styles.statusBadgeInactive,
+              styles.statusDot,
+              userIdentity?.active === false && styles.statusDotInactive,
+            ]}
+          />
+          <Text
+            style={[
+              styles.statusText,
+              userIdentity?.active === false && styles.statusTextInactive,
             ]}
           >
-            <View
-              style={[
-                styles.statusDot,
-                userIdentity?.active === false && styles.statusDotInactive,
-              ]}
-            />
-            <Text
-              style={[
-                styles.statusText,
-                userIdentity?.active === false && styles.statusTextInactive,
-              ]}
-            >
-              {userIdentity?.active !== false ? "Active" : "Inactive"}
-            </Text>
-          </View>
+            {userIdentity?.active !== false ? "Active" : "Inactive"}
+          </Text>
         </View>
       </View>
     </View>
@@ -118,8 +173,35 @@ const styles = StyleSheet.create({
     color: "#111827",
     fontWeight: "500",
   },
+  emailValueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   iconButton: {
     padding: 8,
+  },
+  emailEditContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  emailInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    fontSize: 14,
+    color: "#111827",
+    backgroundColor: "white",
+  },
+  emailActionButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   statusBadge: {
     flexDirection: "row",

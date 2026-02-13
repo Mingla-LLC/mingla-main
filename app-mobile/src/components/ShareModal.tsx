@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView, Alert, Clipboard, Share, Linking } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { useAppState } from './AppStateManager';
+import { formatPriceRange } from './utils/formatters';
+import { colors } from '../constants/colors';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -22,6 +25,7 @@ export default function ShareModal({
 }: ShareModalProps) {
   const [messageCopied, setMessageCopied] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  // const { accountPreferences } = useAppState();
   
   if (!isOpen) return null;
   
@@ -55,7 +59,7 @@ export default function ShareModal({
   const title = experienceData.title || experienceData.name || 'Experience';
   const image = experienceData.image || experienceData.images?.[0] || '';
   const distance = experienceData.distance || experienceData.travelTime || '3.8 km away';
-  const priceRange = experienceData.priceRange || experienceData.price || '$35-75';
+  const priceRange = formatPriceRange(experienceData.priceRange, accountPreferences?.currency) || experienceData.price || '';
   const rating = experienceData.rating || experienceData.ratingValue || '4.8';
   const address = experienceData.address || experienceData.location?.address || experienceData.location || '';
   const description = experienceData.description || experienceData.fullDescription || '';
@@ -276,46 +280,63 @@ export default function ShareModal({
               <View style={styles.socialButtons}>
                 <TouchableOpacity
                   onPress={() => handleSocialShare('messages')}
-                  style={[styles.socialButton, styles.messagesButton]}
+                  style={[styles.socialButton, {backgroundColor: '#dfeeff'}]}
                   disabled={isSharing}
                 >
-                  <Ionicons name="chatbubble" size={24} color="white" />
+                  <View style={[styles.socialButtonIconWrapper, styles.messagesButton]}>
+                    <Ionicons name="chatbubble" size={20} color="white" />
+                  </View>
                   <Text style={styles.socialText}>Messages</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={() => handleSocialShare('whatsapp')}
-                  style={[styles.socialButton, styles.whatsappButton]}
+                  style={[styles.socialButton, {backgroundColor: '#cdf8dd'}]}
                   disabled={isSharing}
                 >
-                  <Ionicons name="logo-whatsapp" size={24} color="white" />
+                  <View style={[styles.socialButtonIconWrapper, styles.whatsappButton]}>
+                    <Ionicons name="logo-whatsapp" size={20} color="white" />
+                  </View>
                   <Text style={styles.socialText}>WhatsApp</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={() => handleSocialShare('instagram')}
-                  style={[styles.socialButton, styles.instagramButton]}
+                  style={[styles.socialButton, {backgroundColor: '#fcd5ce'}]}
                   disabled={isSharing}
                 >
-                  <Ionicons name="logo-instagram" size={24} color="white" />
+                  <View style={[styles.socialButtonIconWrapper, styles.instagramButton]}>
+                    <Ionicons name="logo-instagram" size={20} color="white" />
+                  </View>
                   <Text style={styles.socialText}>Instagram</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={() => handleSocialShare('twitter')}
-                  style={[styles.socialButton, styles.twitterButton]}
+                  style={[styles.socialButton, {backgroundColor: '#d0e7ff'}]}
                   disabled={isSharing}
                 >
-                  <Ionicons name="logo-twitter" size={24} color="white" />
+                  <View style={[styles.socialButtonIconWrapper, styles.twitterButton]}>
+                    <Ionicons name="logo-twitter" size={20} color="white" />
+                  </View>
                   <Text style={styles.socialText}>Twitter</Text>
                 </TouchableOpacity>
+              </View>
 
-                {/* Help Button */}
+              <View style={styles.bottomButtonsContainer}>
+                <TouchableOpacity style={[styles.bottomButtons, {borderWidth: 0, backgroundColor: '#f9f4f1', marginBottom: 10}]}>
+                  <Feather name='share-2' size={24} color="black"/>
+                  <Text>More sharing options</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.bottomButtons]}>
+                  <Feather name='copy' size={24} color="black"/>
+                  <Text>Copy link</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.socialButton, styles.helpButton]}
-                  onPress={() => Alert.alert('Help', 'Select a platform to share this experience with your friends!')}
-                >
-                  <Ionicons name="help-circle" size={24} color="white" />
+                onPress={handleCopyMessage}
+                style={[styles.bottomButtons]}>
+                  <Feather name='copy' size={24} color="black"/>
+                  <Text>Copy Message</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -463,6 +484,9 @@ const styles = StyleSheet.create({
   },
   scheduleContainer: {
     marginBottom: 12,
+    backgroundColor: colors.lightOrange,
+    borderRadius: 8,
+    padding: 12,
   },
   scheduleHeader: {
     flexDirection: 'row',
@@ -493,7 +517,7 @@ const styles = StyleSheet.create({
   priceText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: colors.primary,
   },
   priceSubtext: {
     fontSize: 14,
@@ -545,6 +569,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
+  socialButtonIconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   messagesButton: {
     backgroundColor: '#007AFF', // iOS Messages blue
   },
@@ -565,8 +596,23 @@ const styles = StyleSheet.create({
   },
   socialText: {
     fontSize: 11,
-    color: 'white',
+    color: 'black',
     fontWeight: '500',
     marginTop: 2,
   },
+  bottomButtonsContainer: {
+    gap: 2,
+    marginTop: 16,
+  },
+  bottomButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  }
 });

@@ -17,24 +17,23 @@ interface AddCustomHolidayModalProps {
 }
 
 const categories = [
-  { value: 'stroll', label: 'Stroll' },
-  { value: 'sipChill', label: 'Sip & Chill' },
-  { value: 'casualEats', label: 'Casual Eats' },
-  { value: 'screenRelax', label: 'Screen & Relax' },
-  { value: 'artVibes', label: 'Art Vibes' },
-  { value: 'playful', label: 'Playful' },
-  { value: 'activeOutdoor', label: 'Active & Outdoor' },
-  { value: 'celebration', label: 'Celebration' },
-  { value: 'fineDining', label: 'Fine Dining' },
-  { value: 'liveShows', label: 'Live Shows' },
-  { value: 'romantic', label: 'Romantic' }
+  { value: 'Dining Experiences', label: 'Dining Experiences' },
+  { value: 'Casual Eats', label: 'Casual Eats' },
+  { value: 'Sip & Chill', label: 'Sip & Chill' },
+  { value: 'Stroll', label: 'Stroll' },
+  { value: 'Picnics', label: 'Picnics' },
+  { value: 'Screen & Relax', label: 'Screen & Relax' },
+  { value: 'Wellness Dates', label: 'Wellness Dates' },
+  { value: 'Creative & Hands-On', label: 'Creative & Hands-On' },
+  { value: 'Play & Move', label: 'Play & Move' },
+  { value: 'Freestyle', label: 'Freestyle' }
 ];
 
 export default function AddCustomHolidayModal({ isOpen, onClose, onAdd }: AddCustomHolidayModalProps) {
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('celebration');
+  const [category, setCategory] = useState('Dining Experiences');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
@@ -62,7 +61,7 @@ export default function AddCustomHolidayModal({ isOpen, onClose, onAdd }: AddCus
         setName('');
         setDate('');
         setDescription('');
-        setCategory('celebration');
+        setCategory('Dining Experiences');
         setIsSubmitted(false);
         onClose();
       }, 1000);
@@ -74,7 +73,7 @@ export default function AddCustomHolidayModal({ isOpen, onClose, onAdd }: AddCus
       setName('');
       setDate('');
       setDescription('');
-      setCategory('celebration');
+      setCategory('Dining Experiences');
       setIsSubmitted(false);
       onClose();
     }
@@ -187,6 +186,32 @@ export default function AddCustomHolidayModal({ isOpen, onClose, onAdd }: AddCus
                     disabled={isSubmitting || isSubmitted}
                     className="w-full h-24 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#eb7825] focus:ring-2 focus:ring-[#eb7825]/20 outline-none transition-all duration-200 resize-none text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
                   />
+                </div>
+
+                {/* Category dropdown */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Category
+                  </label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    disabled={isSubmitting || isSubmitted}
+                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#eb7825] focus:ring-2 focus:ring-[#eb7825]/20 outline-none transition-all duration-200 text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed bg-white appearance-none cursor-pointer"
+                    style={{
+                      backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                      backgroundPosition: 'right 0.75rem center',
+                      backgroundRepeat: 'no-repeat',
+                      backgroundSize: '1.5em 1.5em',
+                      paddingRight: '2.5rem'
+                    }}
+                  >
+                    {categories.map((cat) => (
+                      <option key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

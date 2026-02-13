@@ -23,11 +23,16 @@ import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { useRecommendations, Recommendation } from "../contexts/RecommendationsContext";
 import { ExperienceGenerationService } from "../services/experienceGenerationService";
+import { HolidayExperiencesService, HolidayWithExperiences, HolidayExperience } from "../services/holidayExperiencesService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useUserLocation } from "../hooks/useUserLocation";
+import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
+
+// Storage key for custom holidays
+const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
 const DISCOVER_CACHE_KEY = "mingla_discover_cache";
@@ -39,6 +44,17 @@ interface SavedPerson {
   initials: string;
   birthday: string | null;
   gender: "male" | "female" | "other" | null;
+  createdAt: string;
+}
+
+// Custom Holiday interface (user-created holidays attached to a person)
+interface CustomHoliday {
+  id: string;
+  personId: string; // The person this holiday is attached to
+  name: string;
+  date: string; // ISO date string
+  description: string;
+  category: string;
   createdAt: string;
 }
 
@@ -76,6 +92,73 @@ const ALL_CATEGORIES = [
   "Wellness Dates",
   "Freestyle",
 ];
+
+// HARDCODED: Holiday name to experience categories mapping
+// This maps each holiday to the categories of experiences that should display in its dropdown
+// Note: "Dining Experiences" and "Casual Eats" are both dining-related categories
+const HOLIDAY_CATEGORY_MAP: { [holidayName: string]: string[] } = {
+  // New Year's Day -> Wellness Dates + Dining
+  "new year's day": ["Wellness Dates", "Dining Experiences", "Casual Eats"],
+  "new year": ["Wellness Dates", "Dining Experiences", "Casual Eats"],
+  // Valentine's Day -> Dining only
+  "valentine's day": ["Dining Experiences", "Casual Eats"],
+  "valentine": ["Dining Experiences", "Casual Eats"],
+  // International Women's Day -> Dining
+  "international women's day": ["Dining Experiences", "Casual Eats"],
+  "women's day": ["Dining Experiences", "Casual Eats"],
+  // First Day of Spring -> Stroll + Dining
+  "first day of spring": ["Stroll", "Dining Experiences", "Casual Eats"],
+  "spring": ["Stroll", "Dining Experiences", "Casual Eats"],
+  // Mother's Day -> Dining
+  "mother's day": ["Dining Experiences", "Casual Eats"],
+  // Father's Day -> Dining
+  "father's day": ["Dining Experiences", "Casual Eats"],
+  // Juneteenth / Summer -> Freestyle + Dining
+  "juneteenth": ["Freestyle", "Dining Experiences", "Casual Eats"],
+  "start of summer": ["Freestyle", "Dining Experiences", "Casual Eats"],
+  "summer": ["Freestyle", "Dining Experiences", "Casual Eats"],
+  // International Day of Peace -> Picnics + Dining
+  "international day of peace": ["Picnics", "Dining Experiences", "Casual Eats"],
+  "day of peace": ["Picnics", "Dining Experiences", "Casual Eats"],
+  "peace": ["Picnics", "Dining Experiences", "Casual Eats"],
+  // Sweetest Day -> Sip & Chill + Dining
+  "sweetest day": ["Sip & Chill", "Dining Experiences", "Casual Eats"],
+  "sweetest": ["Sip & Chill", "Dining Experiences", "Casual Eats"],
+  // Halloween -> Screen & Relax + Dining
+  "halloween": ["Screen & Relax", "Dining Experiences", "Casual Eats"],
+  // International Men's Day -> Play & Move + Dining
+  "international men's day": ["Play & Move", "Dining Experiences", "Casual Eats"],
+  "men's day": ["Play & Move", "Dining Experiences", "Casual Eats"],
+  // Thanksgiving -> Play & Move + Dining
+  "thanksgiving": ["Play & Move", "Dining Experiences", "Casual Eats"],
+  // Christmas Eve -> Creative & Hands-On + Dining
+  "christmas eve": ["Creative & Hands-On", "Dining Experiences", "Casual Eats"],
+  // Christmas Day -> Freestyle + Dining
+  "christmas day": ["Freestyle", "Dining Experiences", "Casual Eats"],
+  "christmas": ["Freestyle", "Dining Experiences", "Casual Eats"],
+  // New Year's Eve -> Dining
+  "new year's eve": ["Dining Experiences", "Casual Eats"],
+};
+
+// Helper to get categories for a holiday by name
+const getCategoriesForHolidayName = (holidayName: string): string[] => {
+  const nameLower = holidayName.toLowerCase();
+  
+  // Try exact match first
+  if (HOLIDAY_CATEGORY_MAP[nameLower]) {
+    return HOLIDAY_CATEGORY_MAP[nameLower];
+  }
+  
+  // Try partial match
+  for (const [key, categories] of Object.entries(HOLIDAY_CATEGORY_MAP)) {
+    if (nameLower.includes(key) || key.includes(nameLower)) {
+      return categories;
+    }
+  }
+  
+  // Default fallback: Dining Experiences + Casual Eats (works for most holidays)
+  return ["Dining Experiences", "Casual Eats"];
+};
 
 // Tab types for Discover screen
 export type DiscoverTab = "for-you" | "night-out";
@@ -315,12 +398,11 @@ const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) 
         {/* Category */}
         <Text style={styles.gridCardCategory} numberOfLines={1}>{card.category}</Text>
 
-        {/* Bottom Row: Price Range and Rating */}
+        {/* Bottom Row: Price Range and Arrow Button */}
         <View style={styles.gridCardFooter}>
           <Text style={styles.gridCardPrice}>{formattedPrice}</Text>
-          <View style={styles.gridCardRatingContainer}>
-            <Ionicons name="star" size={12} color="#eb7825" />
-            <Text style={styles.gridCardRatingText}>{card.rating.toFixed(1)}</Text>
+          <View style={styles.gridCardArrowButton}>
+            <Feather name="chevron-right" size={14} color="white" />
           </View>
         </View>
       </View>
@@ -343,47 +425,13 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
           style={styles.nightOutCardImage}
           resizeMode="cover"
         />
-        
-        {/* Top Left: Match Percentage Badge */}
-        <View style={styles.matchBadge}>
-          <Ionicons name="star" size={12} color="white" />
-          <Text style={styles.matchBadgeText}>{card.matchPercentage}% match</Text>
-        </View>
-        
-        {/* Top Right: Price Badge */}
-        <View style={styles.nightOutPriceBadge}>
-          <Text style={styles.nightOutPriceBadgeText}>{card.price}</Text>
-        </View>
-        
-        {/* Bottom Left: Place Info Stack */}
-        <View style={styles.placeInfoStack}>
-          {/* Place Name */}
-          <Text style={styles.placeNameText} numberOfLines={1}>{card.placeName}</Text>
-          
-          {/* Date and Time Row */}
-          <View style={styles.dateTimeRow}>
-            <View style={styles.infoBadge}>
-              <Ionicons name="calendar-outline" size={12} color="white" />
-              <Text style={styles.infoBadgeText}>{card.date}</Text>
-            </View>
-            <View style={styles.infoBadge}>
-              <Ionicons name="time-outline" size={12} color="white" />
-              <Text style={styles.infoBadgeText}>{card.time}</Text>
-            </View>
-          </View>
-          
-          {/* Location Row */}
-          <View style={styles.infoBadge}>
-            <Ionicons name="location-outline" size={12} color="white" />
-            <Text style={styles.infoBadgeText} numberOfLines={1}>{card.location}</Text>
-          </View>
-        </View>
       </View>
 
       {/* Card Content Section */}
       <View style={styles.nightOutCardContent}>
         {/* Event Name and Host Row */}
         <View style={styles.eventHostRow}>
+          <Ionicons name="musical-notes" size={16} color="#eb7825" />
           <Text style={styles.eventName} numberOfLines={1}>{card.eventName}</Text>
           <Text style={styles.dotSeparator}>•</Text>
           <Text style={styles.hostName} numberOfLines={1}>{card.hostName}</Text>
@@ -402,14 +450,26 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
         <View style={styles.nightOutBottomRow}>
           {/* Left: Date and People */}
           <View style={styles.leftInfoColumn}>
-            <Text style={styles.bottomInfoLabel}>{card.date}</Text>
-            <Text style={styles.bottomInfoValue}>{card.peopleGoing} going</Text>
+            <View style={styles.bottomInfoItem}>
+              <Feather name="calendar" size={14} color="#eb7825" />
+              <Text style={styles.bottomInfoLabel}>{card.date}</Text>
+            </View>
+            <View style={styles.bottomInfoItem}>
+              <Feather name="users" size={14} color="#eb7825" />
+              <Text style={styles.bottomInfoValue}>{card.peopleGoing} going</Text>
+            </View>
           </View>
           
           {/* Right: Time Range and Price */}
           <View style={styles.rightInfoColumn}>
-            <Text style={styles.bottomInfoLabel}>{card.timeRange}</Text>
-            <Text style={styles.bottomInfoPrice}>{card.price}</Text>
+            <View style={styles.bottomInfoItem}>
+              <Feather name="clock" size={14} color="#eb7825" />
+              <Text style={styles.bottomInfoLabel}>{card.timeRange}</Text>
+            </View>
+            <Text style={styles.bottomInfoPrice}>
+              <Text style={styles.bottomInfoPriceCurrency}>{card.price.charAt(0)}</Text>
+              {card.price.slice(1)}
+            </Text>
           </View>
         </View>
       </View>
@@ -432,6 +492,18 @@ export default function DiscoverScreen({
   const gridCardsLeftSlide = useRef(new Animated.Value(30)).current;
   const gridCardsRightOpacity = useRef(new Animated.Value(0)).current;
   const gridCardsRightSlide = useRef(new Animated.Value(30)).current;
+
+  // Birthday hero recommendation animation values
+  const birthdayHeroOpacity = useRef(new Animated.Value(0)).current;
+  const birthdayHeroSlide = useRef(new Animated.Value(30)).current;
+
+  // Holiday items staggered animation values (up to 5 holidays)
+  const holidayItemAnimations = useRef(
+    Array.from({ length: 5 }, () => ({
+      opacity: new Animated.Value(0),
+      translateX: new Animated.Value(-50),
+    }))
+  ).current;
 
   // Run entrance animations on mount
   useEffect(() => {
@@ -494,11 +566,98 @@ export default function DiscoverScreen({
   const [savedPeople, setSavedPeople] = useState<SavedPerson[]>([]);
   const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you"); // "for-you" or person.id
 
+  // Expanded holidays state (track which holiday dropdowns are open)
+  const [expandedHolidayIds, setExpandedHolidayIds] = useState<Set<string>>(new Set());
+
+  // Custom holidays state
+  const [customHolidays, setCustomHolidays] = useState<CustomHoliday[]>([]);
+  
+  // Fetched holiday experiences from edge function (Map<holidayId, holiday data with experiences>)
+  const [fetchedHolidays, setFetchedHolidays] = useState<HolidayWithExperiences[]>([]);
+  const [fetchedCustomHolidays, setFetchedCustomHolidays] = useState<HolidayWithExperiences[]>([]);
+  const [fetchingHolidayExperiences, setFetchingHolidayExperiences] = useState(false);
+  
+  // Add Custom Day Modal state
+  const [isAddCustomDayModalVisible, setIsAddCustomDayModalVisible] = useState(false);
+  const [customDayName, setCustomDayName] = useState("");
+  const [customDayDate, setCustomDayDate] = useState<Date | null>(null);
+  const [showCustomDayDatePicker, setShowCustomDayDatePicker] = useState(false);
+  const [customDayDescription, setCustomDayDescription] = useState("");
+  const [customDayCategory, setCustomDayCategory] = useState("Dining Experiences");
+  const [showCustomDayCategoryPicker, setShowCustomDayCategoryPicker] = useState(false);
+  const [customDayNameError, setCustomDayNameError] = useState<string | null>(null);
+  const [customDayDateError, setCustomDayDateError] = useState<string | null>(null);
+
+  // Toggle holiday expansion
+  const toggleHolidayExpansion = (holidayId: string) => {
+    setExpandedHolidayIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(holidayId)) {
+        newSet.delete(holidayId);
+      } else {
+        newSet.add(holidayId);
+      }
+      return newSet;
+    });
+  };
+
+  // ScrollView refs for holiday card navigation
+  const holidayScrollRefs = useRef<{ [key: string]: ScrollView | null }>({});
+  const [holidayScrollPositions, setHolidayScrollPositions] = useState<{ [key: string]: number }>({});
+
+  // Handle holiday card scroll navigation
+  const scrollHolidayCards = (holidayId: string, direction: 'left' | 'right') => {
+    const scrollRef = holidayScrollRefs.current[holidayId];
+    if (!scrollRef) return;
+    
+    const currentPosition = holidayScrollPositions[holidayId] || 0;
+    const scrollAmount = 160; // About 1.5 cards width
+    const newPosition = direction === 'right' 
+      ? currentPosition + scrollAmount 
+      : Math.max(0, currentPosition - scrollAmount);
+    
+    scrollRef.scrollTo({ x: newPosition, animated: true });
+  };
+
+  // Track scroll position for each holiday
+  const handleHolidayScroll = (holidayId: string, event: any) => {
+    const position = event.nativeEvent.contentOffset.x;
+    setHolidayScrollPositions((prev) => ({
+      ...prev,
+      [holidayId]: position,
+    }));
+  };
+
   // Get the currently selected person (null if "for-you" is selected)
   const selectedPerson = useMemo(() => {
     if (selectedPersonId === "for-you") return null;
     return savedPeople.find((p) => p.id === selectedPersonId) || null;
   }, [selectedPersonId, savedPeople]);
+
+  // Animate birthday hero section when person is selected
+  useEffect(() => {
+    if (selectedPerson) {
+      // Reset animation values
+      birthdayHeroOpacity.setValue(0);
+      birthdayHeroSlide.setValue(30);
+
+      // Run slide-up and fade-in animation with slight delay
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(birthdayHeroOpacity, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(birthdayHeroSlide, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }, 200);
+    }
+  }, [selectedPerson, birthdayHeroOpacity, birthdayHeroSlide]);
 
   // Holiday detection helper - checks for upcoming holidays relevant to person
   const getUpcomingHolidays = useCallback((person: SavedPerson | null): string[] => {
@@ -609,6 +768,33 @@ export default function DiscoverScreen({
       console.error("Error saving people to storage:", error);
     }
   };
+
+  // Save custom holidays to AsyncStorage
+  const saveCustomHolidaysToStorage = async (holidays: CustomHoliday[]) => {
+    try {
+      await AsyncStorage.setItem(CUSTOM_HOLIDAYS_STORAGE_KEY, JSON.stringify(holidays));
+    } catch (error) {
+      console.error("Error saving custom holidays to storage:", error);
+    }
+  };
+
+  // Load custom holidays from AsyncStorage
+  const loadCustomHolidaysFromStorage = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(CUSTOM_HOLIDAYS_STORAGE_KEY);
+      if (stored) {
+        const holidays = JSON.parse(stored) as CustomHoliday[];
+        setCustomHolidays(holidays);
+      }
+    } catch (error) {
+      console.error("Error loading custom holidays from storage:", error);
+    }
+  };
+
+  // Load custom holidays on mount
+  useEffect(() => {
+    loadCustomHolidaysFromStorage();
+  }, []);
 
   // Night Out Filter Modal state
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
@@ -1053,6 +1239,65 @@ export default function DiscoverScreen({
     saveDiscoverCache(recommendations, featured, grid);
   }, [recommendations]);
 
+  // Fetch holiday experiences from edge function when person is selected
+  useEffect(() => {
+    const fetchHolidayExperiences = async () => {
+      // Only fetch when we have location and a person is selected
+      if (!locationLat || !locationLng) {
+        return;
+      }
+      
+      // Only fetch when viewing a person (not "for-you")
+      if (selectedPersonId === "for-you") {
+        setFetchedHolidays([]);
+        setFetchedCustomHolidays([]);
+        return;
+      }
+
+      setFetchingHolidayExperiences(true);
+
+      try {
+        // Map gender - API only accepts "male" | "female" | null, so "other" becomes null
+        const personGender = selectedPerson?.gender;
+        const gender: "male" | "female" | null = (personGender === "male" || personGender === "female") ? personGender : null;
+        console.log(`Fetching holiday experiences for person: ${selectedPerson?.name}, gender: ${gender}`);
+
+        // Get custom holidays for this person to send to edge function  
+        const personCustomHolidays = customHolidays
+          .filter((h) => h.personId === selectedPersonId)
+          .map((h) => ({
+            id: h.id,
+            name: h.name,
+            description: h.description,
+            date: h.date,
+            category: h.category,
+          }));
+
+        console.log(`Sending ${personCustomHolidays.length} custom holidays to edge function`);
+
+        const response = await HolidayExperiencesService.getHolidayExperiences({
+          location: { lat: locationLat, lng: locationLng },
+          radius: 10000,
+          gender: gender,
+          days: 90,
+          customHolidays: personCustomHolidays,
+        });
+
+        console.log(`Received ${response.holidays.length} holidays and ${response.customHolidays?.length || 0} custom holidays with experiences`);
+        setFetchedHolidays(response.holidays);
+        setFetchedCustomHolidays(response.customHolidays || []);
+      } catch (error) {
+        console.error("Error fetching holiday experiences:", error);
+        setFetchedHolidays([]);
+        setFetchedCustomHolidays([]);
+      } finally {
+        setFetchingHolidayExperiences(false);
+      }
+    };
+
+    fetchHolidayExperiences();
+  }, [locationLat, locationLng, selectedPersonId, selectedPerson?.gender, selectedPerson?.name, customHolidays]);
+
   // Use the stable selected cards
   const featuredCard = selectedFeaturedCard;
   const gridCards = selectedGridCards;
@@ -1328,6 +1573,107 @@ export default function DiscoverScreen({
     return symbols[currencyCode] || "$";
   };
 
+  // Calculate days until birthday
+  const getDaysUntilBirthday = (birthdayString: string | null): number => {
+    if (!birthdayString) return -1;
+    const today = new Date();
+    const birthday = new Date(birthdayString);
+    const thisYearBirthday = new Date(today.getFullYear(), birthday.getMonth(), birthday.getDate());
+    
+    // If birthday has passed this year, check next year
+    if (thisYearBirthday < today) {
+      thisYearBirthday.setFullYear(today.getFullYear() + 1);
+    }
+    
+    const diffTime = thisYearBirthday.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  // Calculate age person is turning
+  const getAgeTurning = (birthdayString: string | null): number => {
+    if (!birthdayString) return -1;
+    const today = new Date();
+    const birthday = new Date(birthdayString);
+    let age = today.getFullYear() - birthday.getFullYear();
+    const thisYearBirthday = new Date(today.getFullYear(), birthday.getMonth(), birthday.getDate());
+    
+    // If birthday hasn't happened yet this year, they're turning that age
+    // If birthday has passed, they're turning age + 1 next year
+    if (thisYearBirthday <= today) {
+      age = age + 1;
+    }
+    return age;
+  };
+
+  // Format birthday date for display (e.g., "September 10")
+  const formatBirthdayDate = (birthdayString: string | null): string => {
+    if (!birthdayString) return "";
+    const birthday = new Date(birthdayString);
+    const months = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    return `${months[birthday.getMonth()]} ${birthday.getDate()}`;
+  };
+
+  // Use the calendar holidays hook for dynamic holidays from device calendar (90 days ahead)
+  const { 
+    holidays: calendarHolidays, 
+    loading: holidaysLoading, 
+    hasCalendarAccess 
+  } = useCalendarHolidays(90);
+
+  // Get experiences filtered by multiple categories (with variety for different holidays)
+  const getExperiencesForCategories = useCallback((categories: string[], holidayId?: string): GridCardData[] => {
+    const minCards = 2;
+    const maxCards = 3;
+    
+    // Normalize categories for matching
+    const normalizedCategories = categories.map(c => c.toLowerCase().trim());
+    
+    // Filter gridCards by any of the categories
+    let filteredCards = gridCards.filter((card) => {
+      const cardCat = card.category.toLowerCase().trim();
+      // Check for exact match with any category
+      if (normalizedCategories.includes(cardCat)) return true;
+      // Check for partial match (e.g., "Stroll" matches "Take a Stroll")
+      return normalizedCategories.some(nc => cardCat.includes(nc) || nc.includes(cardCat));
+    });
+    
+    // If we have enough cards, return them prioritized by category order
+    if (filteredCards.length >= minCards) {
+      // Sort to prioritize cards matching earlier categories
+      filteredCards.sort((a, b) => {
+        const aIndex = normalizedCategories.findIndex(nc => {
+          const aCat = a.category.toLowerCase().trim();
+          return aCat === nc || aCat.includes(nc) || nc.includes(aCat);
+        });
+        const bIndex = normalizedCategories.findIndex(nc => {
+          const bCat = b.category.toLowerCase().trim();
+          return bCat === nc || bCat.includes(nc) || nc.includes(bCat);
+        });
+        return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+      });
+      return filteredCards.slice(0, Math.min(maxCards, filteredCards.length));
+    }
+    
+    // If not enough cards, fill with deterministic selection from other cards
+    const seed = (categories.join("") + (holidayId || "")).split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const allCards = [...gridCards];
+    allCards.sort((a, b) => {
+      const aHash = (a.id.charCodeAt(0) + seed) % 100;
+      const bHash = (b.id.charCodeAt(0) + seed) % 100;
+      return aHash - bHash;
+    });
+    
+    const otherCards = allCards.filter(
+      (card) => !filteredCards.find((fc) => fc.id === card.id)
+    );
+    const combined = [...filteredCards, ...otherCards];
+    return combined.slice(0, Math.min(maxCards, Math.max(minCards, combined.length)));
+  }, [gridCards]);
+
   const currencySymbol = getCurrencySymbol(accountPreferences?.currency);
 
   // Filter options
@@ -1417,6 +1763,12 @@ export default function DiscoverScreen({
     const updatedPeople = savedPeople.filter((p) => p.id !== personId);
     setSavedPeople(updatedPeople);
     await savePeopleToStorage(updatedPeople);
+    
+    // Also remove custom holidays associated with this person
+    const updatedHolidays = customHolidays.filter((h) => h.personId !== personId);
+    setCustomHolidays(updatedHolidays);
+    await saveCustomHolidaysToStorage(updatedHolidays);
+    
     if (selectedPersonId === personId) {
       setSelectedPersonId("for-you");
     }
@@ -1437,6 +1789,241 @@ export default function DiscoverScreen({
     const year = date.getFullYear();
     return `${month}/${day}/${year}`;
   };
+
+  // Add Custom Day Modal handlers
+  const handleOpenAddCustomDayModal = () => {
+    if (selectedPersonId === "for-you") {
+      // Can't add custom days without a person selected
+      return;
+    }
+    setIsAddCustomDayModalVisible(true);
+  };
+
+  const handleCloseAddCustomDayModal = () => {
+    setIsAddCustomDayModalVisible(false);
+    setCustomDayName("");
+    setCustomDayDate(null);
+    setCustomDayDescription("");
+    setCustomDayCategory("Dining Experiences");
+    setShowCustomDayCategoryPicker(false);
+    setCustomDayNameError(null);
+    setCustomDayDateError(null);
+    setShowCustomDayDatePicker(false);
+  };
+
+  const handleCustomDayDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === "android") {
+      setShowCustomDayDatePicker(false);
+    }
+    if (selectedDate) {
+      setCustomDayDate(selectedDate);
+      if (customDayDateError) setCustomDayDateError(null);
+    }
+  };
+
+  const handleAddCustomDay = async () => {
+    // Validate required fields
+    let hasError = false;
+    
+    if (!customDayName.trim()) {
+      setCustomDayNameError("Day name is required");
+      hasError = true;
+    }
+    
+    if (!customDayDate) {
+      setCustomDayDateError("Date is required");
+      hasError = true;
+    }
+    
+    if (hasError) return;
+    
+    // Create new custom holiday
+    const newCustomHoliday: CustomHoliday = {
+      id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      personId: selectedPersonId,
+      name: customDayName.trim(),
+      date: customDayDate!.toISOString(),
+      description: customDayDescription.trim() || "Custom celebration day",
+      category: customDayCategory,
+      createdAt: new Date().toISOString(),
+    };
+    
+    const updatedHolidays = [...customHolidays, newCustomHoliday];
+    setCustomHolidays(updatedHolidays);
+    await saveCustomHolidaysToStorage(updatedHolidays);
+    
+    // Close modal
+    handleCloseAddCustomDayModal();
+  };
+
+  // Delete a custom holiday
+  const handleDeleteCustomHoliday = async (holidayId: string) => {
+    const updatedHolidays = customHolidays.filter((h) => h.id !== holidayId);
+    setCustomHolidays(updatedHolidays);
+    await saveCustomHolidaysToStorage(updatedHolidays);
+  };
+
+  // Get custom holidays for the currently selected person, formatted as CalendarHoliday
+  const getPersonCustomHolidays = useMemo((): CalendarHoliday[] => {
+    if (selectedPersonId === "for-you") return [];
+    
+    const personHolidays = customHolidays.filter((h) => h.personId === selectedPersonId);
+    
+    return personHolidays.map((h) => {
+      const holidayDate = new Date(h.date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      holidayDate.setHours(0, 0, 0, 0);
+      
+      const diffTime = holidayDate.getTime() - today.getTime();
+      const daysAway = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      // Custom holidays show primary category + Dining Experiences
+      const categories = h.category === "Dining Experiences" 
+        ? ["Dining Experiences"] 
+        : [h.category, "Dining Experiences"];
+      
+      return {
+        id: h.id,
+        name: h.name,
+        description: h.description,
+        date: holidayDate,
+        daysAway,
+        category: h.category,
+        categories: categories,
+        isFromCalendar: false,
+        isCustom: true, // Mark as custom holiday
+      } as CalendarHoliday & { isCustom: boolean; categories: string[] };
+    });
+  }, [customHolidays, selectedPersonId]);
+
+  // Transform HolidayExperience to GridCardData for display
+  const transformHolidayExperienceToCard = useCallback((exp: HolidayExperience): GridCardData => {
+    return {
+      id: exp.id,
+      title: exp.name,
+      category: exp.category,
+      description: exp.address || "",
+      image: exp.imageUrl || "",
+      images: exp.images,
+      priceRange: exp.priceLevel <= 1 ? "$" : exp.priceLevel === 2 ? "$$" : exp.priceLevel === 3 ? "$$$" : "$$$$",
+      rating: exp.rating,
+      reviewCount: exp.reviewCount,
+      address: exp.address,
+      location: exp.location,
+    };
+  }, []);
+
+  // Merge calendar holidays with custom holidays for display, filtered by selected person's gender
+  // When fetched holidays are available, use those as the primary source
+  const allHolidays = useMemo(() => {
+    // If we have fetched holidays from the edge function, use them (including fetched custom holidays)
+    if ((fetchedHolidays.length > 0 || fetchedCustomHolidays.length > 0) && selectedPersonId !== "for-you") {
+      // Transform fetched holidays to the format expected by the UI
+      const fetchedList = fetchedHolidays.map((h) => ({
+        id: h.id,
+        name: h.name,
+        description: h.description,
+        date: new Date(h.date),
+        daysAway: h.daysAway,
+        category: h.primaryCategory,
+        categories: h.categories,
+        isFromCalendar: false,
+        isCustom: false,
+        fetchedExperiences: h.experiences, // Include the fetched experiences
+      }));
+
+      // Transform fetched custom holidays (these have experiences from the edge function)
+      const fetchedCustomList = fetchedCustomHolidays.map((h) => ({
+        id: h.id,
+        name: h.name,
+        description: h.description,
+        date: new Date(h.date),
+        daysAway: h.daysAway,
+        category: h.primaryCategory,
+        categories: h.categories,
+        isFromCalendar: false,
+        isCustom: true,
+        fetchedExperiences: h.experiences, // Custom holidays now have fetched experiences!
+      }));
+
+      // Merge fetched holidays and fetched custom holidays, sorted by daysAway
+      return [...fetchedList, ...fetchedCustomList]
+        .filter((h) => h.daysAway >= 0 && h.daysAway <= 90)
+        .sort((a, b) => a.daysAway - b.daysAway);
+    }
+
+    // Fallback: Get custom holidays for the selected person (no fetched experiences)
+    const customHolidaysList = getPersonCustomHolidays.map((h) => ({
+      id: h.id,
+      name: h.name,
+      description: h.description,
+      date: new Date(h.date),
+      daysAway: h.daysAway,
+      category: h.category,
+      categories: (h as any).categories || [h.category],
+      isFromCalendar: false,
+      isCustom: true,
+      fetchedExperiences: undefined, // Custom holidays use local filtering
+    }));
+
+    // Fallback: Use calendar/custom holidays with local filtering
+    const calendar = calendarHolidays || [];
+    const custom = getPersonCustomHolidays;
+    
+    // Get selected person's gender for filtering
+    const personGender = selectedPerson?.gender || null;
+    
+    // Combine and filter
+    return [...calendar, ...custom]
+      .filter((h) => {
+        // Only show upcoming holidays (within 90 days)
+        if (h.daysAway < 0 || h.daysAway > 90) return false;
+        
+        // Filter by gender if holiday is gender-specific
+        const holidayGender = (h as any).gender;
+        if (holidayGender && personGender && holidayGender !== personGender) {
+          return false;
+        }
+        
+        return true;
+      })
+      .sort((a, b) => a.daysAway - b.daysAway);
+  }, [calendarHolidays, getPersonCustomHolidays, selectedPerson?.gender, fetchedHolidays, fetchedCustomHolidays, selectedPersonId]);
+
+  // Animate holiday items with staggered entrance when holidays are available
+  useEffect(() => {
+    if (selectedPerson && allHolidays.length > 0 && !holidaysLoading && !fetchingHolidayExperiences) {
+      // Reset all holiday animations
+      holidayItemAnimations.forEach((anim) => {
+        anim.opacity.setValue(0);
+        anim.translateX.setValue(-50);
+      });
+
+      // Staggered animation - each holiday pops in 100ms after the previous
+      const staggerDelay = 100;
+      const baseDelay = 400; // Start after birthday hero animation
+
+      allHolidays.slice(0, 5).forEach((_, index) => {
+        setTimeout(() => {
+          Animated.parallel([
+            Animated.spring(holidayItemAnimations[index].opacity, {
+              toValue: 1,
+              useNativeDriver: true,
+              tension: 50,
+              friction: 8,
+            }),
+            Animated.spring(holidayItemAnimations[index].translateX, {
+              toValue: 0,
+              useNativeDriver: true,
+              tension: 50,
+              friction: 8,
+            }),
+          ]).start();
+        }, baseDelay + index * staggerDelay);
+      });
+    }
+  }, [selectedPerson, allHolidays, holidaysLoading, fetchingHolidayExperiences, holidayItemAnimations]);
 
   return (
     <View style={styles.safeArea}>
@@ -1529,15 +2116,6 @@ export default function DiscoverScreen({
                           {person.initials}
                         </Text>
                       </View>
-                      <Text
-                        style={[
-                          styles.personPillName,
-                          selectedPersonId === person.id && styles.personPillNameSelectedGradient,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {person.name.split(" ")[0]}
-                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
@@ -1557,77 +2135,329 @@ export default function DiscoverScreen({
                 ))}
               </ScrollView>
 
-              {/* Loading State */}
-              {recommendationsLoading && !hasCompletedInitialFetch && (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#eb7825" />
-                  <Text style={styles.loadingText}>Discovering experiences for you...</Text>
-                </View>
-              )}
-
-              {/* Error State */}
-              {recommendationsError && !recommendationsLoading && (
-                <View style={styles.emptyStateContainer}>
-                  <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
-                  <Text style={styles.emptyStateTitle}>Something went wrong</Text>
-                  <Text style={styles.emptyStateSubtitle}>{recommendationsError}</Text>
-                </View>
-              )}
-
-              {/* Empty State */}
-              {!recommendationsLoading && !recommendationsError && !featuredCard && hasCompletedInitialFetch && (
-                <View style={styles.emptyStateContainer}>
-                  <Ionicons name="compass-outline" size={48} color="#eb7825" />
-                  <Text style={styles.emptyStateTitle}>No experiences found</Text>
-                  <Text style={styles.emptyStateSubtitle}>
-                    Try adjusting your preferences to discover new activities
-                  </Text>
-                </View>
-              )}
-
-              {/* Content - Featured Card and Grid */}
-              {featuredCard && (
+              {/* Person-specific view when a person is selected */}
+              {selectedPerson ? (
                 <>
-                  {/* Featured Card */}
-                  <Animated.View
-                    style={{
-                      opacity: featuredCardOpacity,
-                      transform: [{ translateY: featuredCardSlide }],
-                    }}
-                  >
-                    <FeaturedCard 
-                      card={featuredCard} 
-                      currency={accountPreferences?.currency}
-                      measurementSystem={accountPreferences?.measurementSystem}
-                      onPress={() => handleCardPress(featuredCard)}
-                    />
-                  </Animated.View>
+                  {/* "Showing recommendations for" text */}
+                  <Text style={styles.showingRecommendationsText}>
+                    Showing recommendations for <Text style={styles.showingRecommendationsName}>{selectedPerson.name}</Text>
+                  </Text>
 
-                  {/* Grid Cards Section */}
-                  <View style={styles.gridCardsContainer}>
-                    {gridCards.map((card, index) => {
-                      // Right column (odd indices) lag slightly behind left column
-                      const isRightColumn = index % 2 === 1;
-                      
-                      return (
-                        <Animated.View
-                          key={card.id}
-                          style={{
-                            opacity: isRightColumn ? gridCardsRightOpacity : gridCardsLeftOpacity,
-                            transform: [
-                              { translateY: isRightColumn ? gridCardsRightSlide : gridCardsLeftSlide },
-                            ],
-                          }}
-                        >
-                          <GridCard
-                            card={card}
-                            currency={accountPreferences?.currency}
-                            onPress={() => handleGridCardPress(card)}
-                          />
-                        </Animated.View>
-                      );
-                    })}
+                  {/* Birthday Hero Card */}
+                  {selectedPerson.birthday && (
+                    <View style={styles.birthdayHeroCard}>
+                      <View style={styles.birthdayHeroContent}>
+                        <View style={styles.birthdayHeroLeft}>
+                          <Text style={styles.birthdayHeroTitle}>
+                            {selectedPerson.name}'s Birthday
+                          </Text>
+                          <Text style={styles.birthdayHeroSubtitle}>
+                            {formatBirthdayDate(selectedPerson.birthday)} · Turning {getAgeTurning(selectedPerson.birthday)}
+                          </Text>
+                        </View>
+                        <View style={styles.birthdayHeroDaysContainer}>
+                          <Text style={styles.birthdayHeroDaysNumber}>
+                            {getDaysUntilBirthday(selectedPerson.birthday)}
+                          </Text>
+                          <Text style={styles.birthdayHeroDaysLabel}>days away</Text>
+                        </View>
+                      </View>
+
+                      {/* Animated container for age hint and recommendation */}
+                      <Animated.View
+                        style={{
+                          opacity: birthdayHeroOpacity,
+                          transform: [{ translateY: birthdayHeroSlide }],
+                        }}
+                      >
+                        {/* Age-based recommendation hint */}
+                        <Text style={styles.birthdayAgeHint}>
+                          People of {selectedPerson.name}'s age love going here
+                        </Text>
+
+                        {/* Mini recommendation card */}
+                        {featuredCard && (
+                          <TouchableOpacity 
+                            style={styles.birthdayRecommendationCard}
+                            onPress={() => handleCardPress(featuredCard)}
+                            activeOpacity={0.8}
+                          >
+                            <View style={styles.birthdayRecommendationImageContainer}>
+                              <Image 
+                                source={{ uri: featuredCard.image }} 
+                                style={styles.birthdayRecommendationImage}
+                                resizeMode="cover"
+                              />
+                              <View style={styles.birthdayRecommendationRatingBadge}>
+                                <Ionicons name="star" size={10} color="#eb7825" />
+                                <Text style={styles.birthdayRecommendationRatingText}>{featuredCard.rating}</Text>
+                              </View>
+                            </View>
+                            <View style={styles.birthdayRecommendationContent}>
+                              <View style={styles.birthdayRecommendationHeader}>
+                                <Text style={styles.birthdayRecommendationTitle} numberOfLines={1}>
+                                  {featuredCard.title}
+                                </Text>
+                                <Text style={styles.birthdayRecommendationPrice}>
+                                  {formatPriceRange(featuredCard.priceRange, accountPreferences?.currency)}
+                                </Text>
+                              </View>
+                              <Text style={styles.birthdayRecommendationDescription} numberOfLines={2}>
+                                {featuredCard.description}
+                              </Text>
+                              {featuredCard.address && (
+                                <View style={styles.birthdayRecommendationLocation}>
+                                  <Ionicons name="location-outline" size={12} color="#6b7280" />
+                                  <Text style={styles.birthdayRecommendationLocationText} numberOfLines={1}>
+                                    {featuredCard.address}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                          </TouchableOpacity>
+                        )}
+                      </Animated.View>
+                    </View>
+                  )}
+
+                  {/* Upcoming Holidays Section */}
+                  <View style={styles.upcomingHolidaysSection}>
+                    <View style={styles.upcomingHolidaysHeader}>
+                      <Text style={styles.upcomingHolidaysTitle}>Upcoming Holidays</Text>
+                      <TouchableOpacity 
+                        style={styles.upcomingHolidaysAddButton}
+                        onPress={handleOpenAddCustomDayModal}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="add-circle" size={24} color="#eb7825" />
+                      </TouchableOpacity>
+                    </View>
+
+                    {holidaysLoading || fetchingHolidayExperiences ? (
+                      <View style={styles.holidayLoadingContainer}>
+                        <ActivityIndicator size="small" color="#eb7825" />
+                        <Text style={styles.holidayLoadingText}>
+                          {fetchingHolidayExperiences ? "Loading experiences..." : hasCalendarAccess ? "Loading calendar holidays..." : "Loading holidays..."}
+                        </Text>
+                      </View>
+                    ) : (
+                      allHolidays.slice(0, 5).map((holiday, index) => {
+                        const isExpanded = expandedHolidayIds.has(holiday.id);
+                        // Check if this holiday has fetched experiences from the edge function
+                        const fetchedExperiences = (holiday as any).fetchedExperiences as HolidayExperience[] | undefined;
+                        // Use fetched experiences if available, otherwise fall back to local filtering
+                        const holidayCategories = (holiday as any).categories || getCategoriesForHolidayName(holiday.name);
+                        const holidayCards = fetchedExperiences && fetchedExperiences.length > 0
+                          ? fetchedExperiences.map(transformHolidayExperienceToCard)
+                          : getExperiencesForCategories(holidayCategories, holiday.id);
+                        // Check if this is a custom holiday
+                        const isCustomHoliday = (holiday as any).isCustom === true;
+                        
+                        // Format the holiday date for display (e.g., "Feb 14")
+                        const holidayDate = new Date(holiday.date);
+                        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                        const formattedDate = `${monthNames[holidayDate.getMonth()]} ${holidayDate.getDate()}`;
+
+                        // Get animation values for this holiday item
+                        const animationValues = holidayItemAnimations[index];
+                        
+                        return (
+                          <Animated.View 
+                            key={holiday.id} 
+                            style={[
+                              styles.holidayItemContainer,
+                              {
+                                opacity: animationValues.opacity,
+                                transform: [{ translateX: animationValues.translateX }],
+                              },
+                            ]}
+                          >
+                            {/* Holiday Header (clickable to expand/collapse) */}
+                            <TouchableOpacity 
+                              style={styles.holidayItem}
+                              onPress={() => toggleHolidayExpansion(holiday.id)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={styles.holidayItemLeft}>
+                                <View style={styles.holidayItemNameRow}>
+                                  <Text style={styles.holidayItemName}>{holiday.name}</Text>
+                                  {isCustomHoliday && (
+                                    <TouchableOpacity
+                                      onPress={() => handleDeleteCustomHoliday(holiday.id)}
+                                      style={styles.holidayDeleteButton}
+                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                      <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
+                                <Text style={styles.holidayItemDate}>{formattedDate}</Text>
+                                <Text style={styles.holidayItemDescription}>{holiday.description}</Text>
+                                <View style={styles.holidayCategoryBadge}>
+                                  <Ionicons 
+                                    name={(categoryIcons[holidayCategories[0]] || "sparkles-outline") as any} 
+                                    size={12} 
+                                    color="#eb7825" 
+                                  />
+                                  <Text style={styles.holidayCategoryText}>{holidayCategories[0]}</Text>
+                                </View>
+                              </View>
+                              <View style={styles.holidayItemRight}>
+                                <Text style={styles.holidayItemDays}>{holiday.daysAway}</Text>
+                                <Text style={styles.holidayItemDaysLabel}>days</Text>
+                                <Ionicons 
+                                  name={isExpanded ? "chevron-up" : "chevron-down"} 
+                                  size={16} 
+                                  color="#9ca3af" 
+                                />
+                              </View>
+                            </TouchableOpacity>
+
+                            {/* Expanded Holiday Cards Section */}
+                            {isExpanded && holidayCards.length > 0 && (
+                              <View style={styles.holidayCardsContainer}>
+                                {/* Left Navigation Button */}
+                                <TouchableOpacity
+                                  style={styles.holidayNavButton}
+                                  onPress={() => scrollHolidayCards(holiday.id, 'left')}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="chevron-back" size={16} color="#6b7280" />
+                                </TouchableOpacity>
+
+                                {/* Horizontal Scrollable Cards */}
+                                <ScrollView
+                                  ref={(ref) => { holidayScrollRefs.current[holiday.id] = ref; }}
+                                  horizontal
+                                  showsHorizontalScrollIndicator={false}
+                                  contentContainerStyle={styles.holidayCardsScrollContent}
+                                  onScroll={(e) => handleHolidayScroll(holiday.id, e)}
+                                  scrollEventThrottle={16}
+                                >
+                                  {holidayCards.map((card) => (
+                                    <TouchableOpacity
+                                      key={card.id}
+                                      style={styles.holidayMiniCard}
+                                      onPress={() => handleGridCardPress(card)}
+                                      activeOpacity={0.8}
+                                    >
+                                      <Image
+                                        source={{ uri: card.image }}
+                                        style={styles.holidayMiniCardImage}
+                                        resizeMode="cover"
+                                      />
+                                      <View style={styles.holidayMiniCardContent}>
+                                        <Text style={styles.holidayMiniCardTitle} numberOfLines={2}>
+                                          {card.title}
+                                        </Text>
+                                        <Text style={styles.holidayMiniCardDescription} numberOfLines={2}>
+                                          {card.description}
+                                        </Text>
+                                        <View style={styles.holidayMiniCardFooter}>
+                                          <Text style={styles.holidayMiniCardPrice}>
+                                            {formatPriceRange(card.priceRange, accountPreferences?.currency)}
+                                          </Text>
+                                          <View style={styles.holidayMiniCardRating}>
+                                            <Ionicons name="star" size={10} color="#eb7825" />
+                                            <Text style={styles.holidayMiniCardRatingText}>{card.rating}</Text>
+                                          </View>
+                                        </View>
+                                      </View>
+                                    </TouchableOpacity>
+                                  ))}
+                                </ScrollView>
+
+                                {/* Right Navigation Button */}
+                                <TouchableOpacity
+                                  style={styles.holidayNavButton}
+                                  onPress={() => scrollHolidayCards(holiday.id, 'right')}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="chevron-forward" size={16} color="#6b7280" />
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </Animated.View>
+                        );
+                      })
+                    )}
                   </View>
+                </>
+              ) : (
+                <>
+                  {/* Loading State */}
+                  {recommendationsLoading && !hasCompletedInitialFetch && (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator size="large" color="#eb7825" />
+                      <Text style={styles.loadingText}>Discovering experiences for you...</Text>
+                    </View>
+                  )}
+
+                  {/* Error State */}
+                  {recommendationsError && !recommendationsLoading && (
+                    <View style={styles.emptyStateContainer}>
+                      <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+                      <Text style={styles.emptyStateTitle}>Something went wrong</Text>
+                      <Text style={styles.emptyStateSubtitle}>{recommendationsError}</Text>
+                    </View>
+                  )}
+
+                  {/* Empty State */}
+                  {!recommendationsLoading && !recommendationsError && !featuredCard && hasCompletedInitialFetch && (
+                    <View style={styles.emptyStateContainer}>
+                      <Ionicons name="compass-outline" size={48} color="#eb7825" />
+                      <Text style={styles.emptyStateTitle}>No experiences found</Text>
+                      <Text style={styles.emptyStateSubtitle}>
+                        Try adjusting your preferences to discover new activities
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Content - Featured Card and Grid */}
+                  {featuredCard && (
+                    <>
+                      {/* Featured Card */}
+                      <Animated.View
+                        style={{
+                          opacity: featuredCardOpacity,
+                          transform: [{ translateY: featuredCardSlide }],
+                        }}
+                      >
+                        <FeaturedCard 
+                          card={featuredCard} 
+                          currency={accountPreferences?.currency}
+                          measurementSystem={accountPreferences?.measurementSystem}
+                          onPress={() => handleCardPress(featuredCard)}
+                        />
+                      </Animated.View>
+
+                      {/* Grid Cards Section */}
+                      <View style={styles.gridCardsContainer}>
+                        {gridCards.map((card, index) => {
+                          // Right column (odd indices) lag slightly behind left column
+                          const isRightColumn = index % 2 === 1;
+                          
+                          return (
+                            <Animated.View
+                              key={card.id}
+                              style={{
+                                opacity: isRightColumn ? gridCardsRightOpacity : gridCardsLeftOpacity,
+                                transform: [
+                                  { translateY: isRightColumn ? gridCardsRightSlide : gridCardsLeftSlide },
+                                ],
+                              }}
+                            >
+                              <GridCard
+                                card={card}
+                                currency={accountPreferences?.currency}
+                                onPress={() => handleGridCardPress(card)}
+                              />
+                            </Animated.View>
+                          );
+                        })}
+                      </View>
+                    </>
+                  )}
                 </>
               )}
             </>
@@ -1642,10 +2472,10 @@ export default function DiscoverScreen({
                 activeOpacity={0.7}
               >
                 <View style={styles.filterButtonLeft}>
-                  <Ionicons name="funnel" size={18} color="#eb7825" />
+                  <Feather name="filter" size={18} color="#eb7825" />
                   <Text style={styles.filterButtonText}>Filter</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+                <Feather name="chevron-right" size={20} color="#6b7280" />
               </TouchableOpacity>
 
               {/* Night Out Cards */}
@@ -1689,7 +2519,10 @@ export default function DiscoverScreen({
           <View style={styles.addPersonModalContent}>
             {/* Modal Header */}
             <View style={styles.addPersonModalHeader}>
-              <Text style={styles.addPersonModalTitle}>Add person</Text>
+              <View>
+                <Text style={styles.addPersonModalTitle}>Add Person</Text>
+                <Text style={styles.addPersonModalSubtitle}>Never miss a special day</Text>
+              </View>
               <TouchableOpacity
                 onPress={handleCloseAddPersonModal}
                 style={styles.modalCloseButton}
@@ -1697,6 +2530,11 @@ export default function DiscoverScreen({
                 <Ionicons name="close" size={24} color="#6b7280" />
               </TouchableOpacity>
             </View>
+
+            {/* Description */}
+            <Text style={styles.addPersonDescription}>
+              Add a partner, friend, or family member to get personalized recommendations.
+            </Text>
 
             {/* Name Field */}
             <View style={styles.addPersonFieldContainer}>
@@ -1711,7 +2549,7 @@ export default function DiscoverScreen({
                   setPersonName(text);
                   if (nameError) setNameError(null);
                 }}
-                placeholder="Enter name"
+                placeholder="Enter their name"
                 placeholderTextColor="#9ca3af"
               />
               {nameError && (
@@ -1723,7 +2561,7 @@ export default function DiscoverScreen({
             <View style={styles.addPersonFieldContainer}>
               <Text style={styles.addPersonFieldLabel}>Birthday</Text>
               <TouchableOpacity
-                style={styles.addPersonInput}
+                style={styles.addPersonBirthdayInput}
                 onPress={() => setShowBirthdayPicker(true)}
                 activeOpacity={0.7}
               >
@@ -1732,8 +2570,9 @@ export default function DiscoverScreen({
                     {formatBirthdayForDisplay(personBirthday)}
                   </Text>
                 ) : (
-                  <Text style={styles.birthdayPlaceholder}>MM/DD/YYYY</Text>
+                  <Text style={styles.birthdayPlaceholder}>dd/mm/yyyy</Text>
                 )}
+                <Ionicons name="calendar-outline" size={20} color="#6b7280" />
               </TouchableOpacity>
               {showBirthdayPicker && (
                 Platform.OS === "ios" ? (
@@ -1805,9 +2644,204 @@ export default function DiscoverScreen({
                 onPress={handleAddPerson}
                 activeOpacity={0.7}
               >
-                <Text style={styles.addPersonButtonText}>Add person</Text>
+                <Text style={styles.addPersonButtonText}>Add Person</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Custom Day Modal */}
+      <Modal
+        visible={isAddCustomDayModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleCloseAddCustomDayModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.addPersonModalContent}>
+            {/* Modal Header */}
+            <View style={styles.customDayModalHeader}>
+              <View style={styles.customDayHeaderLeft}>
+                <View style={styles.customDayIconContainer}>
+                  <Ionicons name="calendar" size={20} color="white" />
+                </View>
+                <View>
+                  <Text style={styles.addPersonModalTitle}>Add Custom Day</Text>
+                  <Text style={styles.addPersonModalSubtitle}>Create a personal reminder</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={handleCloseAddCustomDayModal}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Day Name Field */}
+            <View style={styles.addPersonFieldContainer}>
+              <Text style={styles.addPersonFieldLabel}>
+                Day Name <Text style={styles.requiredAsterisk}>*</Text>
+              </Text>
+              <TextInput
+                style={[
+                  styles.addPersonBirthdayInput,
+                  customDayNameError && styles.addPersonInputError,
+                ]}
+                value={customDayName}
+                onChangeText={(text) => {
+                  setCustomDayName(text);
+                  if (customDayNameError) setCustomDayNameError(null);
+                }}
+                placeholder="Anniversary, Mom's Birthday, etc."
+                placeholderTextColor="#9ca3af"
+              />
+              {customDayNameError && (
+                <Text style={styles.errorText}>{customDayNameError}</Text>
+              )}
+            </View>
+
+            {/* Date Field */}
+            <View style={styles.addPersonFieldContainer}>
+              <Text style={styles.addPersonFieldLabel}>
+                Date <Text style={styles.requiredAsterisk}>*</Text>
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.addPersonBirthdayInput,
+                  customDayDateError && styles.addPersonInputError,
+                ]}
+                onPress={() => setShowCustomDayDatePicker(true)}
+                activeOpacity={0.7}
+              >
+                {customDayDate ? (
+                  <Text style={styles.birthdayText}>
+                    {formatBirthdayForDisplay(customDayDate)}
+                  </Text>
+                ) : (
+                  <Text style={styles.birthdayPlaceholder}>dd/mm/yyyy</Text>
+                )}
+                <Ionicons name="calendar-outline" size={20} color="#6b7280" />
+              </TouchableOpacity>
+              {customDayDateError && (
+                <Text style={styles.errorText}>{customDayDateError}</Text>
+              )}
+              {showCustomDayDatePicker && (
+                Platform.OS === "ios" ? (
+                  <View style={styles.datePickerContainer}>
+                    <DateTimePicker
+                      value={customDayDate || new Date()}
+                      mode="date"
+                      display="spinner"
+                      onChange={handleCustomDayDateChange}
+                    />
+                    <TouchableOpacity
+                      style={styles.datePickerDoneButton}
+                      onPress={() => setShowCustomDayDatePicker(false)}
+                    >
+                      <Text style={styles.datePickerDoneText}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <DateTimePicker
+                    value={customDayDate || new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={handleCustomDayDateChange}
+                  />
+                )
+              )}
+            </View>
+
+            {/* Description Field (Optional) */}
+            {/* Description Field (Optional) */}
+            <View style={styles.addPersonFieldContainer}>
+              <Text style={styles.addPersonFieldLabel}>Description</Text>
+              <TextInput
+                style={[styles.customDayDescriptionInput]}
+                value={customDayDescription}
+                onChangeText={setCustomDayDescription}
+                placeholder="Why is this day special?"
+                placeholderTextColor="#9ca3af"
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            </View>
+
+            {/* Category Field */}
+            <View style={styles.addPersonFieldContainer}>
+              <Text style={styles.addPersonFieldLabel}>Category</Text>
+              <TouchableOpacity
+                style={styles.addPersonInput}
+                onPress={() => setShowCustomDayCategoryPicker(!showCustomDayCategoryPicker)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Ionicons 
+                      name={(categoryIcons[customDayCategory] || "sparkles-outline") as any} 
+                      size={18} 
+                      color="#eb7825" 
+                      style={{ marginRight: 8 }}
+                    />
+                    <Text style={{ color: "#1f2937", fontSize: 14 }}>{customDayCategory}</Text>
+                  </View>
+                  <Ionicons 
+                    name={showCustomDayCategoryPicker ? "chevron-up" : "chevron-down"} 
+                    size={18} 
+                    color="#9ca3af" 
+                  />
+                </View>
+              </TouchableOpacity>
+              {showCustomDayCategoryPicker && (
+                <View style={styles.categoryPickerContainer}>
+                  <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+                    {ALL_CATEGORIES.map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[
+                          styles.categoryPickerItem,
+                          customDayCategory === cat && styles.categoryPickerItemSelected,
+                        ]}
+                        onPress={() => {
+                          setCustomDayCategory(cat);
+                          setShowCustomDayCategoryPicker(false);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons 
+                          name={(categoryIcons[cat] || "sparkles-outline") as any} 
+                          size={16} 
+                          color={customDayCategory === cat ? "#eb7825" : "#6b7280"} 
+                          style={{ marginRight: 8 }}
+                        />
+                        <Text style={[
+                          styles.categoryPickerItemText,
+                          customDayCategory === cat && styles.categoryPickerItemTextSelected,
+                        ]}>
+                          {cat}
+                        </Text>
+                        {customDayCategory === cat && (
+                          <Ionicons name="checkmark" size={16} color="#eb7825" style={{ marginLeft: "auto" }} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+
+            {/* Add Button */}
+            <TouchableOpacity
+              style={styles.addCustomDayButton}
+              onPress={handleAddCustomDay}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add" size={18} color="#ffffff" style={{ marginRight: 6 }} />
+              <Text style={styles.addCustomDayButtonText}>Add Custom Day</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1819,16 +2853,16 @@ export default function DiscoverScreen({
         animationType="slide"
         onRequestClose={handleCloseFilterModal}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.filterModalOverlay}>
           <View style={styles.filterModalContent}>
             {/* Modal Header */}
             <View style={styles.filterModalHeader}>
-              <Text style={styles.filterModalTitle}>Filter Events</Text>
+              <Text style={styles.filterModalTitle}>Filters</Text>
               <TouchableOpacity
                 onPress={handleCloseFilterModal}
                 style={styles.modalCloseButton}
               >
-                <Ionicons name="close" size={24} color="#6b7280" />
+                <Feather name="x" size={24} color="#6b7280" />
               </TouchableOpacity>
             </View>
 
@@ -1839,7 +2873,7 @@ export default function DiscoverScreen({
               {/* Date Filter Section */}
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
-                  <Ionicons name="calendar" size={20} color="#eb7825" />
+                  <Feather name="calendar" size={20} color="#eb7825" />
                   <Text style={styles.filterSectionTitle}>Date</Text>
                 </View>
                 <View style={styles.filterOptionsGrid}>
@@ -1869,7 +2903,7 @@ export default function DiscoverScreen({
               {/* Price Filter Section */}
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
-                  <Ionicons name="pricetag" size={20} color="#eb7825" />
+                  <Feather name="tag" size={20} color="#eb7825" />
                   <Text style={styles.filterSectionTitle}>Price Range</Text>
                 </View>
                 <View style={styles.filterOptionsGrid}>
@@ -1899,7 +2933,7 @@ export default function DiscoverScreen({
               {/* Music Genre Filter Section */}
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
-                  <Ionicons name="musical-notes" size={20} color="#eb7825" />
+                  <Feather name="music" size={20} color="#eb7825" />
                   <Text style={styles.filterSectionTitle}>Music Genre</Text>
                 </View>
                 <View style={styles.filterOptionsGrid}>
@@ -1954,11 +2988,11 @@ export default function DiscoverScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "#f5f5f5",
   },
   container: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "#f5f5f5",
   },
   // Tab Header styles (for "For You" tab)
   tabHeader: {
@@ -2211,6 +3245,14 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     color: "#1f2937",
   },
+  gridCardArrowButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#eb7825",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   // Night out content styles
   nightOutContent: {
     flex: 1,
@@ -2357,15 +3399,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tagBadge: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#FEF3E7",
+    borderWidth: 1,
+    borderColor: "#fcd9b6",
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 12,
   },
   tagText: {
     fontSize: 12,
-    fontWeight: "500",
-    color: "#374151",
+    fontWeight: "400",
+    color: "#eb7825",
   },
   nightOutBottomRow: {
     flexDirection: "row",
@@ -2380,6 +3424,11 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: 2,
   },
+  bottomInfoItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
   bottomInfoLabel: {
     fontSize: 12,
     fontWeight: "500",
@@ -2393,6 +3442,9 @@ const styles = StyleSheet.create({
   bottomInfoPrice: {
     fontSize: 14,
     fontWeight: "700",
+    color: "#111827",
+  },
+  bottomInfoPriceCurrency: {
     color: "#eb7825",
   },
   emptyStateContainer: {
@@ -2438,7 +3490,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#f9fafb",
-    borderWidth: 1,
+    // borderWidth: 1,
     borderColor: "#e5e7eb",
     borderRadius: 24,
     paddingVertical: 8,
@@ -2453,7 +3505,6 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "#e5e7eb",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -2549,13 +3600,24 @@ const styles = StyleSheet.create({
   addPersonModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 24,
+    alignItems: "flex-start",
+    marginBottom: 16,
   },
   addPersonModalTitle: {
     fontSize: 20,
     fontWeight: "600",
-    color: "#111827",
+    color: "#eb7825",
+  },
+  addPersonModalSubtitle: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  addPersonDescription: {
+    fontSize: 14,
+    color: "#374151",
+    lineHeight: 20,
+    marginBottom: 20,
   },
   modalCloseButton: {
     padding: 4,
@@ -2570,14 +3632,25 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   addPersonInput: {
-    backgroundColor: "#f9fafb",
+    backgroundColor: "white",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
+    borderColor: "#eb7825",
+    borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
     color: "#111827",
+  },
+  addPersonBirthdayInput: {
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   birthdayText: {
     fontSize: 16,
@@ -2658,13 +3731,100 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "white",
   },
+  // Add Custom Day Modal styles
+  customDayModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 20,
+  },
+  customDayHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  customDayIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  requiredAsterisk: {
+    color: "#ef4444",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  descriptionInput: {
+    height: 80,
+    paddingTop: 12,
+  },
+  customDayDescriptionInput: {
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#111827",
+    height: 80,
+    textAlignVertical: "top",
+  },
+  addCustomDayButton: {
+    flexDirection: "row",
+    backgroundColor: "#eb7825",
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  addCustomDayButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "white",
+  },
+  categoryPickerContainer: {
+    marginTop: 8,
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    overflow: "hidden",
+  },
+  categoryPickerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  categoryPickerItemSelected: {
+    backgroundColor: "#fff7ed",
+  },
+  categoryPickerItemText: {
+    fontSize: 14,
+    color: "#374151",
+  },
+  categoryPickerItemTextSelected: {
+    color: "#eb7825",
+    fontWeight: "600",
+  },
   // Filter Modal styles
+  filterModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
   filterModalContent: {
     backgroundColor: "white",
-    borderRadius: 24,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     padding: 24,
     width: "100%",
-    maxWidth: 400,
     maxHeight: "80%",
   },
   filterModalHeader: {
@@ -2727,6 +3887,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 20,
     paddingTop: 16,
+    paddingBottom: 26,
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
   },
@@ -2753,5 +3914,320 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "white",
+  },
+  // Person-specific view styles
+  showingRecommendationsText: {
+    fontSize: 14,
+    color: "#eb7825",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  showingRecommendationsName: {
+    fontWeight: "600",
+  },
+  // Birthday Hero Card styles
+  birthdayHeroCard: {
+    backgroundColor: "#eb7825",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 24,
+  },
+  birthdayHeroContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 16,
+  },
+  birthdayHeroLeft: {
+    flex: 1,
+  },
+  birthdayHeroTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "white",
+    marginBottom: 4,
+  },
+  birthdayHeroSubtitle: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.9)",
+  },
+  birthdayHeroDaysContainer: {
+    alignItems: "flex-end",
+  },
+  birthdayHeroDaysNumber: {
+    fontSize: 36,
+    fontWeight: "700",
+    color: "white",
+    lineHeight: 40,
+  },
+  birthdayHeroDaysLabel: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.9)",
+  },
+  birthdayAgeHint: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.9)",
+    marginBottom: 12,
+  },
+  birthdayRecommendationCard: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    overflow: "hidden",
+    flexDirection: "row",
+    padding: 10,
+    alignItems: "center",
+  },
+  birthdayRecommendationImageContainer: {
+    position: "relative",
+    width: 80,
+    height: 80,
+  },
+  birthdayRecommendationImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  birthdayRecommendationRatingBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  birthdayRecommendationContent: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    justifyContent: "center",
+  },
+  birthdayRecommendationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  birthdayRecommendationRatingText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  birthdayRecommendationTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#111827",
+    flex: 1,
+  },
+  birthdayRecommendationPrice: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#eb7825",
+  },
+  birthdayRecommendationDescription: {
+    fontSize: 12,
+    color: "#6b7280",
+    lineHeight: 16,
+    marginBottom: 4,
+  },
+  birthdayRecommendationLocation: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  birthdayRecommendationLocationText: {
+    fontSize: 11,
+    color: "#6b7280",
+  },
+  // Upcoming Holidays styles
+  upcomingHolidaysSection: {
+    marginBottom: 24,
+  },
+  upcomingHolidaysHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  upcomingHolidaysTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  upcomingHolidaysAddButton: {
+    padding: 4,
+  },
+  holidayItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  holidayItemLeft: {
+    flex: 1,
+  },
+  holidayItemNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  holidayDeleteButton: {
+    padding: 2,
+  },
+  holidayItemName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  holidayItemDate: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#eb7825",
+    marginBottom: 4,
+  },
+  holidayItemDescription: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginBottom: 6,
+  },
+  holidayCategoryBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fef3eb",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+    gap: 4,
+  },
+  holidayCategoryText: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#eb7825",
+  },
+  holidayItemRight: {
+    alignItems: "flex-end",
+    marginLeft: 16,
+  },
+  holidayItemDays: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#eb7825",
+  },
+  holidayItemDaysLabel: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginBottom: 4,
+  },
+  // Holiday loading state
+  holidayLoadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 24,
+    gap: 12,
+  },
+  holidayLoadingText: {
+    fontSize: 14,
+    color: "#6b7280",
+  },
+  // Expandable Holiday Dropdown styles
+  holidayItemContainer: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+    overflow: "hidden",
+  },
+  holidayCardsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    backgroundColor: "#fafafa",
+  },
+  holidayNavButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  holidayCardsScrollContent: {
+    paddingHorizontal: 8,
+    gap: 12,
+  },
+  holidayMiniCard: {
+    width: 140,
+    backgroundColor: "white",
+    borderRadius: 12,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  holidayMiniCardImage: {
+    width: "100%",
+    height: 80,
+  },
+  holidayMiniCardContent: {
+    padding: 8,
+  },
+  holidayMiniCardTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 2,
+    lineHeight: 15,
+  },
+  holidayMiniCardDescription: {
+    fontSize: 10,
+    color: "#6b7280",
+    lineHeight: 13,
+    marginBottom: 6,
+  },
+  holidayMiniCardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  holidayMiniCardPrice: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  holidayMiniCardRating: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  holidayMiniCardRatingText: {
+    fontSize: 10,
+    fontWeight: "500",
+    color: "#1f2937",
   },
 });

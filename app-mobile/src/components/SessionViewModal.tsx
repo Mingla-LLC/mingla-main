@@ -762,9 +762,49 @@ export default function SessionViewModal({
             <Text style={styles.headerTitle} numberOfLines={1}>
               {sessionName || session?.name || "Session"}
             </Text>
-            <Text style={styles.headerSubtitle}>
-              {activeParticipantsCount} {activeParticipantsCount === 1 ? "member" : "members"}
-            </Text>
+            <View style={styles.headerParticipantsRow}>
+              <View style={styles.participantAvatarsSmall}>
+                {participants
+                  .filter((p) => p.has_accepted)
+                  .slice(0, 4)
+                  .map((p, index) => {
+                    // Generate a color based on the user's id
+                    const colors = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"];
+                    const colorIndex = p.user_id ? p.user_id.charCodeAt(0) % colors.length : index % colors.length;
+                    
+                    // Get initials from profile
+                    let initials = "?";
+                    if (p.profiles?.display_name) {
+                      const parts = p.profiles.display_name.trim().split(" ");
+                      initials = parts.length >= 2 
+                        ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+                        : p.profiles.display_name.substring(0, 2).toUpperCase();
+                    } else if (p.profiles?.first_name) {
+                      initials = p.profiles.last_name 
+                        ? `${p.profiles.first_name[0]}${p.profiles.last_name[0]}`.toUpperCase()
+                        : p.profiles.first_name.substring(0, 2).toUpperCase();
+                    } else if (p.profiles?.username) {
+                      initials = p.profiles.username.substring(0, 2).toUpperCase();
+                    }
+                    
+                    return (
+                      <View
+                        key={p.id}
+                        style={[
+                          styles.miniAvatar,
+                          { backgroundColor: colors[colorIndex] },
+                          index > 0 && { marginLeft: -6 },
+                        ]}
+                      >
+                        <Text style={styles.miniAvatarText}>{initials}</Text>
+                      </View>
+                    );
+                  })}
+              </View>
+              <Text style={styles.headerSubtitle}>
+                {activeParticipantsCount} active
+              </Text>
+            </View>
           </View>
 
           <TouchableOpacity onPress={() => setShowSettingsDropdown(true)} style={styles.settingsButton}>
@@ -965,12 +1005,10 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 20,
-    backgroundColor: "#F3F4F6",
   },
   headerCenter: {
     flex: 1,
-    alignItems: "center",
+    alignItems: "flex-start",
     marginHorizontal: 12,
   },
   headerTitle: {
@@ -981,15 +1019,36 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 13,
     color: "#6B7280",
-    marginTop: 2,
+    marginLeft: 4,
+  },
+  headerParticipantsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  participantAvatarsSmall: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  miniAvatar: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  miniAvatarText: {
+    fontSize: 7,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   settingsButton: {
     width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 20,
-    backgroundColor: "#F3F4F6",
   },
   networkBanner: {
     backgroundColor: "#FF9500",

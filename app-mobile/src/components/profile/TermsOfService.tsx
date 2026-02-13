@@ -9,7 +9,9 @@ import {
   StatusBar,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Feather from "@expo/vector-icons/Feather";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { colors } from "@/src/constants/colors";
 
 interface TermsOfServiceProps {
   onNavigateBack: () => void;
@@ -31,6 +33,10 @@ export default function TermsOfService({
           <TouchableOpacity onPress={onNavigateBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={20} color="#6b7280" />
           </TouchableOpacity>
+          <View style={styles.titleContainer}>
+            <Feather name="file-text" size={18} color={colors.primary} />
+            <Text style={styles.title}>Terms of Service</Text>
+          </View>
         </View>
       </View>
 

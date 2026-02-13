@@ -13,6 +13,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Keyboard,
+  Dimensions,
 } from "react-native";
 import {
   SafeAreaView,
@@ -692,17 +693,21 @@ export default function PreferencesSheet({
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#eb7825" />
+      <View style={styles.overlayContainer}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#eb7825" />
+        </View>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <StatusBar barStyle="dark-content" backgroundColor="white" />
-      {/* Header */}
-      <View style={styles.header}>
+    <View style={styles.overlayContainer}>
+      <View style={styles.modalContainer}>
+        <SafeAreaView style={styles.container} edges={["top"]}>
+          <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+          {/* Header */}
+          <View style={styles.header}>
         {onClose && (
           <TouchableOpacity
             onPress={onClose}
@@ -1412,26 +1417,44 @@ export default function PreferencesSheet({
             onChange={handleTimePickerChange}
           />
         ))}
-    </SafeAreaView>
+        </SafeAreaView>
+      </View>
+    </View>
   );
 }
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
+  overlayContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContainer: {
+    width: SCREEN_WIDTH * 0.95,
+    height: SCREEN_HEIGHT * 0.9,
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
   container: {
     flex: 1,
     backgroundColor: "#ffffff",
   },
   loadingContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flex: 1,
+    width: SCREEN_WIDTH * 0.95,
+    height: SCREEN_HEIGHT * 0.9,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f9fafb",
-    zIndex: 9999,
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
   },
   scrollView: {
     flex: 1,

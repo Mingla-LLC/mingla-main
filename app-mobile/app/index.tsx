@@ -1502,6 +1502,14 @@ function AppContent() {
     }
   };
 
+  // Ensure any full-screen profile overlays are closed when switching tabs/pages
+  const closeProfileOverlays = () => {
+    setShowProfileSettings(false);
+    setShowAccountSettings(false);
+    setShowPrivacyPolicy(false);
+    setShowTermsOfService(false);
+  };
+
   // Show main app if user is authenticated AND has completed onboarding
   if (
     isAuthenticated &&
@@ -1650,6 +1658,7 @@ function AppContent() {
                           <TouchableOpacity
                             onPress={() => {
                               console.log("Navigating to home");
+                              closeProfileOverlays();
                               setCurrentPage("home");
                             }}
                             style={styles.navItem}
@@ -1675,6 +1684,7 @@ function AppContent() {
                           <TouchableOpacity
                             onPress={() => {
                               console.log("Navigating to discover");
+                              closeProfileOverlays();
                               setCurrentPage("discover");
                             }}
                             style={styles.navItem}
@@ -1700,6 +1710,7 @@ function AppContent() {
                           <TouchableOpacity
                             onPress={() => {
                               console.log("Navigating to connections");
+                              closeProfileOverlays();
                               setCurrentPage("connections");
                             }}
                             style={styles.navItem}
@@ -1737,6 +1748,7 @@ function AppContent() {
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => {
+                              closeProfileOverlays();
                               setCurrentPage("likes");
                             }}
                             style={styles.navItem}
@@ -1802,6 +1814,7 @@ function AppContent() {
                           <TouchableOpacity
                             onPress={() => {
                               console.log("Navigating to profile");
+                              closeProfileOverlays();
                               setCurrentPage("profile");
                             }}
                             style={styles.navItem}

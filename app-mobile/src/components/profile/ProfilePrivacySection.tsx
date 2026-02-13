@@ -1,12 +1,5 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Modal,
-  Pressable,
-} from "react-native";
+import React from "react";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppStore } from "../../store/appStore";
 import { useEnhancedProfile } from "../../hooks/useEnhancedProfile";
@@ -20,19 +13,9 @@ const VISIBILITY_OPTIONS: {
   { value: "private", label: "Nobody" },
 ];
 
-const SAVED_EXPERIENCES_OPTIONS: { value: boolean; label: string }[] = [
-  { value: false, label: "Private" },
-  { value: true, label: "Public" },
-];
-
 function visibilityToLabel(mode?: "public" | "friends" | "private"): string {
   const opt = VISIBILITY_OPTIONS.find((o) => o.value === mode);
   return opt?.label ?? "Friends Only";
-}
-
-function savedExperiencesToLabel(show?: boolean): string {
-  const opt = SAVED_EXPERIENCES_OPTIONS.find((o) => o.value === show);
-  return opt?.label ?? "Private";
 }
 
 // Self-contained Privacy & Visibility card.
@@ -40,48 +23,41 @@ export default function ProfilePrivacySection() {
   const { profile, setProfile } = useAppStore();
 
   const { updateProfilePrivacy } = useEnhancedProfile();
-  const [visibilityDropdownVisible, setVisibilityDropdownVisible] =
-    useState(false);
-  const [savedExperiencesDropdownVisible, setSavedExperiencesDropdownVisible] =
-    useState(false);
 
   const profileVisibility = visibilityToLabel(profile?.visibility_mode);
-  const savedExperiencesLabel = savedExperiencesToLabel(
-    profile?.show_saved_experiences
-  );
 
-  const handleSelectVisibility = async (
-    value: "friends" | "public" | "private"
-  ) => {
-    setVisibilityDropdownVisible(false);
-    const ok = await updateProfilePrivacy(
-      { visibility_mode: value },
-      profile?.id || ""
-    );
-    if (ok && profile) {
-      setProfile({ ...profile, visibility_mode: value });
+  const handleCycleVisibility = async () => {
+    if (!profile) return;
+
+    const order: Array<"friends" | "public" | "private"> = [
+      "friends",
+      "public",
+      "private",
+    ];
+    const current = profile?.visibility_mode ?? "friends";
+    const currentIndex = order.indexOf(current);
+    const next = order[(currentIndex + 1) % order.length];
+
+    // Optimistically update local state
+    setProfile({ ...profile, visibility_mode: next });
+
+    // Persist change in background
+    try {
+      await updateProfilePrivacy({ visibility_mode: next }, profile.id || "");
+    } catch (e) {
+      // Ignore errors for now; UI already updated
     }
   };
 
   const handleToggleActivityStatus = async () => {
-    const ok = await updateProfilePrivacy(
-      { show_activity: !profile?.show_activity },
-      profile?.id || ""
-    );
-    if (ok && profile) {
-      setProfile({ ...profile, show_activity: !profile?.show_activity });
-    }
-  };
+    if (!profile) return;
 
-  const handleSelectSavedExperiences = async (value: boolean) => {
-    setSavedExperiencesDropdownVisible(false);
-    const ok = await updateProfilePrivacy(
-      { show_saved_experiences: value },
-      profile?.id || ""
-    );
-    if (ok && profile) {
-      setProfile({ ...profile, show_saved_experiences: value });
-    }
+    const next = !profile.show_activity;
+    setProfile({ ...profile, show_activity: next });
+
+    try {
+      await updateProfilePrivacy({ show_activity: next }, profile.id || "");
+    } catch (e) {}
   };
 
   return (
@@ -97,48 +73,14 @@ export default function ProfilePrivacySection() {
       <TouchableOpacity
         style={styles.row}
         activeOpacity={0.7}
-        onPress={() => setVisibilityDropdownVisible(true)}
+        onPress={handleCycleVisibility}
       >
         <View style={styles.rowTextContainer}>
           <Text style={styles.rowLabel}>Profile Visibility</Text>
           <Text style={styles.rowHint}>Who can see your profile</Text>
-          <Text style={styles.rowValue}>{profileVisibility}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+        <Text style={styles.rowValueHighlight}>{profileVisibility}</Text>
       </TouchableOpacity>
-
-      <Modal
-        visible={visibilityDropdownVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setVisibilityDropdownVisible(false)}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setVisibilityDropdownVisible(false)}
-        >
-          <TouchableOpacity
-            style={styles.dropdownCard}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
-            <Text style={styles.dropdownTitle}>Profile Visibility</Text>
-            {VISIBILITY_OPTIONS.map((opt) => (
-              <TouchableOpacity
-                key={opt.value}
-                style={styles.dropdownOption}
-                onPress={() => handleSelectVisibility(opt.value)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.dropdownOptionText}>{opt.label}</Text>
-                {profile?.visibility_mode === opt.value && (
-                  <Ionicons name="checkmark" size={20} color="#eb7825" />
-                )}
-              </TouchableOpacity>
-            ))}
-          </TouchableOpacity>
-        </Pressable>
-      </Modal>
 
       {/* Activity Status */}
       <TouchableOpacity
@@ -148,15 +90,15 @@ export default function ProfilePrivacySection() {
       >
         <View style={styles.rowTextContainer}>
           <Text style={styles.rowLabel}>Activity Status</Text>
-          <Text style={styles.rowValue}>Show when you're online</Text>
+          <Text style={styles.rowHint}>Show when you're online</Text>
         </View>
         <View
-          style={
-            (styles.toggleIndicator,
+          style={[
+            styles.toggleIndicator,
             profile?.show_activity
               ? styles.toggleIndicatorActive
-              : styles.toggleIndicatorInactive)
-          }
+              : styles.toggleIndicatorInactive,
+          ]}
         >
           <View
             style={[
@@ -169,52 +111,6 @@ export default function ProfilePrivacySection() {
         </View>
       </TouchableOpacity>
 
-      {/* Saved Experiences */}
-      <TouchableOpacity
-        style={styles.row}
-        activeOpacity={0.7}
-        onPress={() => setSavedExperiencesDropdownVisible(true)}
-      >
-        <View style={styles.rowTextContainer}>
-          <Text style={styles.rowLabel}>Saved Experiences</Text>
-          <Text style={styles.rowHint}>Share your saved experiences</Text>
-          <Text style={styles.rowValue}>{savedExperiencesLabel}</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-      </TouchableOpacity>
-
-      <Modal
-        visible={savedExperiencesDropdownVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSavedExperiencesDropdownVisible(false)}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setSavedExperiencesDropdownVisible(false)}
-        >
-          <TouchableOpacity
-            style={styles.dropdownCard}
-            activeOpacity={1}
-            onPress={() => {}}
-          >
-            <Text style={styles.dropdownTitle}>Saved Experiences</Text>
-            {SAVED_EXPERIENCES_OPTIONS.map((opt) => (
-              <TouchableOpacity
-                key={String(opt.value)}
-                style={styles.dropdownOption}
-                onPress={() => handleSelectSavedExperiences(opt.value)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.dropdownOptionText}>{opt.label}</Text>
-                {profile?.show_saved_experiences === opt.value && (
-                  <Ionicons name="checkmark" size={20} color="#eb7825" />
-                )}
-              </TouchableOpacity>
-            ))}
-          </TouchableOpacity>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -274,6 +170,11 @@ const styles = StyleSheet.create({
     color: "#111827",
     fontWeight: "500",
   },
+  rowValueHighlight: {
+    fontSize: 13,
+    color: "#eb7825",
+    fontWeight: "500",
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
@@ -321,20 +222,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
   },
   toggleIndicatorActive: {
-    width: 32,
-    height: 18,
-    borderRadius: 999,
     backgroundColor: "#22c55e",
-    justifyContent: "center",
-    paddingHorizontal: 3,
   },
   toggleIndicatorInactive: {
-    width: 32,
-    height: 18,
-    borderRadius: 999,
     backgroundColor: "#f4f3f4",
-    justifyContent: "center",
-    paddingHorizontal: 3,
   },
   toggleDot: {
     width: 12,

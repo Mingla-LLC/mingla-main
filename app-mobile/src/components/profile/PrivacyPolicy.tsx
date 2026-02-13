@@ -9,7 +9,9 @@ import {
   StatusBar,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Feather from "@expo/vector-icons/Feather";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { colors } from "@/src/constants/colors";
 
 interface PrivacyPolicyProps {
   onNavigateBack: () => void;
@@ -25,6 +27,10 @@ export default function PrivacyPolicy({ onNavigateBack }: PrivacyPolicyProps) {
           <TouchableOpacity onPress={onNavigateBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={20} color="#6b7280" />
           </TouchableOpacity>
+          <View style={styles.titleContainer}>
+            <Feather name="shield" size={18} color={colors.primary} />
+            <Text style={styles.title}>Privacy Policy</Text>
+          </View>
         </View>
       </View>
 

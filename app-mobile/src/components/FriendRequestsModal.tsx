@@ -8,7 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFriends } from "../hooks/useFriends";
 import { formatTimestamp } from "../utils/dateUtils";
 
@@ -29,6 +29,7 @@ export default function FriendRequestsModal({
   } = useFriends();
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"received" | "sent">("received");
   const [processedRequests, setProcessedRequests] = useState<{
     [key: string]: "accepted" | "declined";
   }>({});
@@ -56,6 +57,11 @@ export default function FriendRequestsModal({
   // Filter only incoming pending requests
   const incomingRequests = friendRequests.filter(
     (req) => req.type === "incoming" && req.status === "pending"
+  );
+
+  // Filter outgoing pending requests
+  const outgoingRequests = friendRequests.filter(
+    (req) => req.type === "outgoing" && req.status === "pending"
   );
 
   const handleAcceptRequest = async (requestId: string) => {
@@ -139,12 +145,12 @@ export default function FriendRequestsModal({
               <View style={styles.header}>
                 <View style={styles.headerContent}>
                   <View style={styles.headerIcon}>
-                    <Ionicons name="people" size={20} color="white" />
+                    <Feather name="user-plus" size={20} color="white" />
                   </View>
                   <View>
                     <Text style={styles.headerTitle}>Friend Requests</Text>
                     <Text style={styles.headerSubtitle}>
-                      {incomingRequests.length} pending requests
+                      {incomingRequests.length + outgoingRequests.length} pending requests
                     </Text>
                   </View>
                 </View>
@@ -153,162 +159,268 @@ export default function FriendRequestsModal({
                 </TouchableOpacity>
               </View>
 
+              {/* Tabs */}
+              <View style={styles.tabsContainer}>
+                <TouchableOpacity
+                  onPress={() => setActiveTab("received")}
+                  style={[styles.tab, activeTab === "received" && styles.tabActive]}
+                >
+                  <Feather
+                    name="inbox"
+                    size={16}
+                    color={activeTab === "received" ? "#FFFFFF" : "#6b7280"}
+                  />
+                  <Text
+                    style={[
+                      styles.tabText,
+                      activeTab === "received" && styles.tabTextActive,
+                    ]}
+                  >
+                    Received ({incomingRequests.length})
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setActiveTab("sent")}
+                  style={[styles.tab, activeTab === "sent" && styles.tabActive]}
+                >
+                  <Feather
+                    name="send"
+                    size={16}
+                    color={activeTab === "sent" ? "#FFFFFF" : "#6b7280"}
+                  />
+                  <Text
+                    style={[
+                      styles.tabText,
+                      activeTab === "sent" && styles.tabTextActive,
+                    ]}
+                  >
+                    Sent ({outgoingRequests.length})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               {/* Content */}
               <ScrollView
                 style={styles.content}
                 contentContainerStyle={styles.contentContainer}
               >
-                {incomingRequests.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <View style={styles.emptyStateIcon}>
-                      <Ionicons name="people" size={32} color="#9ca3af" />
+                {activeTab === "received" ? (
+                  // Received Requests Tab
+                  incomingRequests.length === 0 ? (
+                    <View style={styles.emptyState}>
+                      <View style={styles.emptyStateIcon}>
+                        <Feather name="inbox" size={32} color="#9ca3af" />
+                      </View>
+                      <Text style={styles.emptyStateTitle}>
+                        No Friend Requests
+                      </Text>
+                      <Text style={styles.emptyStateText}>
+                        You're all caught up! New friend requests will appear
+                        here.
+                      </Text>
                     </View>
-                    <Text style={styles.emptyStateTitle}>
-                      No Friend Requests
-                    </Text>
-                    <Text style={styles.emptyStateText}>
-                      You're all caught up! New friend requests will appear
-                      here.
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.requestsList}>
-                    {incomingRequests.map((request) => {
-                      const status = processedRequests[request.id];
-                      const senderName =
-                        request.sender.display_name ||
-                        (request.sender.first_name && request.sender.last_name
-                          ? `${request.sender.first_name} ${request.sender.last_name}`
-                          : request.sender.username) ||
-                        "Unknown";
-                      const initials = senderName
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .toUpperCase()
-                        .slice(0, 2);
+                  ) : (
+                    <View style={styles.requestsList}>
+                      {incomingRequests.map((request) => {
+                        const status = processedRequests[request.id];
+                        const senderName =
+                          request.sender.display_name ||
+                          (request.sender.first_name && request.sender.last_name
+                            ? `${request.sender.first_name} ${request.sender.last_name}`
+                            : request.sender.username) ||
+                          "Unknown";
+                        const initials = senderName
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .toUpperCase()
+                          .slice(0, 2);
 
-                      return (
-                        <View
-                          key={request.id}
-                          style={[
-                            styles.requestItem,
-                            status === "accepted" && styles.requestItemAccepted,
-                            status === "declined" && styles.requestItemDeclined,
-                          ]}
-                        >
-                          <View style={styles.requestContent}>
-                            {/* Avatar */}
-                            <View style={styles.avatarContainer}>
-                              <View style={styles.avatar}>
-                                {request.sender.avatar_url ? (
-                                  <Text style={styles.avatarText}>IMG</Text>
-                                ) : (
+                        return (
+                          <View
+                            key={request.id}
+                            style={[
+                              styles.requestItem,
+                              status === "accepted" && styles.requestItemAccepted,
+                              status === "declined" && styles.requestItemDeclined,
+                            ]}
+                          >
+                            <View style={styles.requestContent}>
+                              {/* Avatar */}
+                              <View style={styles.avatarContainer}>
+                                <View style={styles.avatar}>
                                   <Text style={styles.avatarText}>
                                     {initials}
                                   </Text>
+                                </View>
+                              </View>
+
+                              {/* User Info */}
+                              <View style={styles.userInfo}>
+                                <Text style={styles.userName}>{senderName}</Text>
+                                <Text style={styles.userUsername}>
+                                  @{request.sender.username}
+                                </Text>
+                                <Text style={styles.mutualFriends}>
+                                  7 mutual friends
+                                </Text>
+                                <Text style={styles.requestTime}>
+                                  {formatTimestamp(request.created_at)}
+                                </Text>
+                              </View>
+
+                              {/* Action Buttons */}
+                              <View style={styles.actionButtons}>
+                                {status === "accepted" ? (
+                                  <View style={styles.statusAccepted}>
+                                    <Ionicons
+                                      name="checkmark"
+                                      size={16}
+                                      color="#059669"
+                                    />
+                                    <Text style={styles.statusText}>
+                                      Accepted
+                                    </Text>
+                                  </View>
+                                ) : status === "declined" ? (
+                                  <View style={styles.statusDeclined}>
+                                    <Ionicons
+                                      name="close"
+                                      size={16}
+                                      color="#dc2626"
+                                    />
+                                    <Text style={styles.statusText}>
+                                      Declined
+                                    </Text>
+                                  </View>
+                                ) : (
+                                  <>
+                                    <TouchableOpacity
+                                      onPress={() =>
+                                        handleDeclineRequest(request.id)
+                                      }
+                                      style={styles.declineButton}
+                                      disabled={loading}
+                                    >
+                                      {loading &&
+                                      processedRequests[request.id] ===
+                                        "declined" ? (
+                                        <ActivityIndicator
+                                          size="small"
+                                          color="#6b7280"
+                                        />
+                                      ) : (
+                                        <Feather
+                                          name="user-x"
+                                          size={16}
+                                          color="#6b7280"
+                                        />
+                                      )}
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      onPress={() =>
+                                        handleAcceptRequest(request.id)
+                                      }
+                                      style={styles.acceptButton}
+                                      disabled={loading}
+                                    >
+                                      {loading &&
+                                      processedRequests[request.id] ===
+                                        "accepted" ? (
+                                        <ActivityIndicator
+                                          size="small"
+                                          color="white"
+                                        />
+                                      ) : (
+                                        <Feather
+                                          name="user-plus"
+                                          size={16}
+                                          color="white"
+                                        />
+                                      )}
+                                    </TouchableOpacity>
+                                  </>
                                 )}
                               </View>
                             </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )
+                ) : (
+                  // Sent Requests Tab
+                  outgoingRequests.length === 0 ? (
+                    <View style={styles.emptyState}>
+                      <View style={styles.emptyStateIcon}>
+                        <Feather name="send" size={32} color="#9ca3af" />
+                      </View>
+                      <Text style={styles.emptyStateTitle}>
+                        No Sent Requests
+                      </Text>
+                      <Text style={styles.emptyStateText}>
+                        You haven't sent any friend requests yet.
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.requestsList}>
+                      {outgoingRequests.map((request) => {
+                        // For outgoing requests, the receiver's info is stored in sender field
+                        const receiverName =
+                          request.sender?.display_name ||
+                          (request.sender?.first_name && request.sender?.last_name
+                            ? `${request.sender.first_name} ${request.sender.last_name}`
+                            : request.sender?.username) ||
+                          "Unknown";
+                        const initials = receiverName
+                          .split(" ")
+                          .map((n: string) => n[0])
+                          .join("")
+                          .toUpperCase()
+                          .slice(0, 2);
 
-                            {/* User Info */}
-                            <View style={styles.userInfo}>
-                              <Text style={styles.userName}>{senderName}</Text>
-                              <Text style={styles.userUsername}>
-                                @{request.sender.username}
-                              </Text>
-                              <Text style={styles.requestTime}>
-                                {formatTimestamp(request.created_at)}
-                              </Text>
-                            </View>
-
-                            {/* Action Buttons */}
-                            <View style={styles.actionButtons}>
-                              {status === "accepted" ? (
-                                <View style={styles.statusAccepted}>
-                                  <Ionicons
-                                    name="checkmark"
-                                    size={16}
-                                    color="#059669"
-                                  />
-                                  <Text style={styles.statusText}>
-                                    Accepted
+                        return (
+                          <View key={request.id} style={styles.requestItem}>
+                            <View style={styles.requestContent}>
+                              {/* Avatar */}
+                              <View style={styles.avatarContainer}>
+                                <View style={styles.avatar}>
+                                  <Text style={styles.avatarText}>
+                                    {initials}
                                   </Text>
                                 </View>
-                              ) : status === "declined" ? (
-                                <View style={styles.statusDeclined}>
-                                  <Ionicons
-                                    name="close"
-                                    size={16}
-                                    color="#dc2626"
-                                  />
-                                  <Text style={styles.statusText}>
-                                    Declined
-                                  </Text>
-                                </View>
-                              ) : (
-                                <>
-                                  <TouchableOpacity
-                                    onPress={() =>
-                                      handleDeclineRequest(request.id)
-                                    }
-                                    style={styles.declineButton}
-                                    disabled={loading}
-                                  >
-                                    {loading &&
-                                    processedRequests[request.id] ===
-                                      "declined" ? (
-                                      <ActivityIndicator
-                                        size="small"
-                                        color="#6b7280"
-                                      />
-                                    ) : (
-                                      <Ionicons
-                                        name="person-remove"
-                                        size={16}
-                                        color="#6b7280"
-                                      />
-                                    )}
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    onPress={() =>
-                                      handleAcceptRequest(request.id)
-                                    }
-                                    style={styles.acceptButton}
-                                    disabled={loading}
-                                  >
-                                    {loading &&
-                                    processedRequests[request.id] ===
-                                      "accepted" ? (
-                                      <ActivityIndicator
-                                        size="small"
-                                        color="white"
-                                      />
-                                    ) : (
-                                      <Ionicons
-                                        name="person-add"
-                                        size={16}
-                                        color="white"
-                                      />
-                                    )}
-                                  </TouchableOpacity>
-                                </>
-                              )}
+                              </View>
+
+                              {/* User Info */}
+                              <View style={styles.userInfo}>
+                                <Text style={styles.userName}>{receiverName}</Text>
+                                <Text style={styles.userUsername}>
+                                  @{request.sender?.username || "unknown"}
+                                </Text>
+                                <Text style={styles.requestTime}>
+                                  Sent {formatTimestamp(request.created_at)}
+                                </Text>
+                              </View>
+
+                              {/* Pending Badge */}
+                              <View style={styles.pendingBadge}>
+                                <Text style={styles.pendingBadgeText}>Pending</Text>
+                              </View>
                             </View>
                           </View>
-                        </View>
-                      );
-                    })}
-                  </View>
+                        );
+                      })}
+                    </View>
+                  )
                 )}
               </ScrollView>
 
               {/* Footer */}
-              {incomingRequests.length > 0 && (
-                <View style={styles.footer}>
-                  {/* Footer content can be added here if needed */}
-                </View>
-              )}
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>
+                  Accept or decline friend requests to manage your connections
+                </Text>
+              </View>
             </>
           )}
         </View>
@@ -342,9 +454,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
   },
   headerContent: {
     flexDirection: "row",
@@ -372,12 +484,45 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 12,
   },
+  tabsContainer: {
+    flexDirection: "row",
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 12,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  tabActive: {
+    backgroundColor: "#eb7825",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#6b7280",
+  },
+  tabTextActive: {
+    color: "#FFFFFF",
+  },
   content: {
-    maxHeight: 400,
+    flex: 1,
+    backgroundColor: "#f5f5f5",
   },
   contentContainer: {
     padding: 16,
-    paddingBottom: 16,
   },
   emptyState: {
     padding: 32,
@@ -407,39 +552,35 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   requestItem: {
-    backgroundColor: "#f9fafb",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    backgroundColor: "white",
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
   },
   requestItemAccepted: {
     backgroundColor: "#f0fdf4",
-    borderColor: "#bbf7d0",
   },
   requestItemDeclined: {
     backgroundColor: "#fef2f2",
-    borderColor: "#fecaca",
   },
   requestContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 12,
   },
   avatarContainer: {
     flexShrink: 0,
   },
   avatar: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     backgroundColor: "#eb7825",
-    borderRadius: 24,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: {
     color: "white",
-    fontWeight: "500",
+    fontWeight: "600",
     fontSize: 16,
   },
   userInfo: {
@@ -495,26 +636,41 @@ const styles = StyleSheet.create({
     color: "#059669",
   },
   declineButton: {
-    padding: 8,
+    padding: 10,
     backgroundColor: "#f3f4f6",
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
   },
   acceptButton: {
-    padding: 8,
+    padding: 10,
     backgroundColor: "#eb7825",
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
   },
+  pendingBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "#fef3c7",
+    borderRadius: 12,
+  },
+  pendingBadgeText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#d97706",
+  },
   footer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-    backgroundColor: "#f9fafb",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: "white",
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
+  },
+  footerText: {
+    fontSize: 13,
+    color: "#6b7280",
+    textAlign: "center",
   },
   loadingContainer: {
     padding: 64,

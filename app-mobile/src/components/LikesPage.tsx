@@ -149,7 +149,7 @@ export default function LikesPage({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "#f5f5f5",
   },
   // Tabs styles
   tabsWrapper: {

@@ -171,6 +171,7 @@ export function useAppState() {
     profile,
     showAccountSettings,
     setShowAccountSettings,
+    setProfile,
   } = useAppStore();
 
   // Onboarding state
@@ -690,6 +691,8 @@ export function useAppState() {
       // Update Supabase profile if user is authenticated
       if (user?.id) {
         const { supabase } = await import("../services/supabase");
+
+        // Update profile fields in profiles table
         const { error } = await supabase
           .from("profiles")
           .update({
@@ -716,6 +719,26 @@ export function useAppState() {
             },
           ]);
         } else {
+          // Also update the in-memory profile in the app store so other screens reflect changes immediately
+          if (profile) {
+            setProfile({
+              ...profile,
+              first_name: updatedIdentity.firstName,
+              last_name: updatedIdentity.lastName,
+              username: updatedIdentity.username,
+              avatar_url: updatedIdentity.profileImage,
+            });
+          }
+
+          // Optionally update auth user's email if it changed
+          if (updatedIdentity.email && updatedIdentity.email !== user.email) {
+            try {
+              await supabase.auth.updateUser({ email: updatedIdentity.email });
+            } catch (authError) {
+              console.error("Error updating auth email in Supabase:", authError);
+            }
+          }
+
           // Show success notification
           setNotifications((prev) => [
             ...prev,

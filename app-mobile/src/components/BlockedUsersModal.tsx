@@ -92,6 +92,12 @@ export default function BlockedUsersModal({
     return "?";
   };
 
+  const getAvatarColor = (id: string): string => {
+    const colors = ["#eb7825", "#374151", "#059669", "#7c3aed", "#dc2626"];
+    const hash = id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[hash % colors.length];
+  };
+
   const formatBlockedTime = (blockedAt?: string): string => {
     if (!blockedAt) return "";
     
@@ -120,7 +126,7 @@ export default function BlockedUsersModal({
         {user.avatar_url ? (
           <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
         ) : (
-          <View style={styles.avatarPlaceholder}>
+          <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(user.id) }]}>
             <Text style={styles.avatarText}>
               {getInitials(user.name, user.username)}
             </Text>
@@ -183,11 +189,20 @@ export default function BlockedUsersModal({
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
+            <View style={styles.headerLeft}>
+              <View style={styles.headerIcon}>
+                <Ionicons name="shield" size={20} color="white" />
+              </View>
+              <View>
+                <Text style={styles.title}>Blocked Users</Text>
+                <Text style={styles.subtitle}>
+                  {blockedUsers.length} {blockedUsers.length === 1 ? "user" : "users"} blocked
+                </Text>
+              </View>
+            </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#111827" />
+              <Ionicons name="close" size={20} color="#6b7280" />
             </TouchableOpacity>
-            <Text style={styles.title}>Blocked Users</Text>
-            <View style={styles.headerSpacer} />
           </View>
 
           {/* Content */}
@@ -242,36 +257,46 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
     backgroundColor: "white",
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "#f3f4f6",
   },
-  closeButton: {
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  headerIcon: {
     width: 40,
     height: 40,
+    borderRadius: 12,
+    backgroundColor: "#eb7825",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 20,
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 12,
   },
   title: {
     fontSize: 18,
     fontWeight: "600",
     color: "#111827",
   },
-  headerSpacer: {
-    width: 40,
+  subtitle: {
+    fontSize: 14,
+    color: "#6b7280",
   },
   footerText: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#6b7280",
     textAlign: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: "white",
   },
   loadingContainer: {
     flex: 1,
@@ -305,9 +330,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderRadius: 12,
     padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    marginBottom: 12,
   },
   userInfo: {
     flexDirection: "row",
@@ -318,20 +341,20 @@ const styles = StyleSheet.create({
   avatar: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 8,
   },
   avatarPlaceholder: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: "#f3f4f6",
+    borderRadius: 8,
+    backgroundColor: "#eb7825",
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#6b7280",
+    color: "white",
   },
   userDetails: {
     flex: 1,
@@ -354,10 +377,8 @@ const styles = StyleSheet.create({
   unblockButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: "#fff7ed",
+    backgroundColor: "#eb7825",
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#fed7aa",
     minWidth: 80,
     alignItems: "center",
   },
@@ -367,7 +388,7 @@ const styles = StyleSheet.create({
   unblockButtonText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#ea580c",
+    color: "white",
   },
   emptyState: {
     alignItems: "center",

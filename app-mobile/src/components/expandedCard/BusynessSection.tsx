@@ -195,13 +195,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   condition: {
-    fontSize: 16,
-    fontWeight: "500",
+    fontSize: 12,
     color: "#4a5565",
   },
   busyLevel: {
-    fontSize: 16,
-    fontWeight: "500",
+    fontSize: 12,
     color: "#4a5565",
   },
   loadingContainer: {

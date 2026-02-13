@@ -271,15 +271,55 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
 
   const renderDropdownContent = () => (
     <View style={styles.dropdownMenu}>
-      {/* Edit session name - only for creator/admin */}
+      {/* Admin Privileges header - only for creator/admin */}
+      {canManageSession && (
+        <View style={styles.adminHeader}>
+          <View style={styles.adminHeaderIcon}>
+            <Feather name="shield" size={16} color="#eb7825" />
+          </View>
+          <Text style={styles.adminHeaderText}>Admin Privileges</Text>
+        </View>
+      )}
+
+      {/* Manage Board - only for creator/admin */}
+      {canManageSession && onManageMembers && (
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => {
+            onManageMembers();
+            onClose();
+          }}
+          activeOpacity={0.7}
+        >
+          <Feather name="settings" size={18} color="#6B7280" />
+          <Text style={styles.menuItemText}>Manage Board</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Rename Board - only for creator/admin */}
       {canManageSession && (
         <TouchableOpacity
           style={styles.menuItem}
           onPress={handleEditSessionName}
           activeOpacity={0.7}
         >
-          <Feather name="edit-2" size={20} color="#374151" />
-          <Text style={styles.menuItemText}>Edit session name</Text>
+          <Feather name="edit-2" size={18} color="#6B7280" />
+          <Text style={styles.menuItemText}>Rename Board</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Invite Participants - only for creator/admin */}
+      {canManageSession && onManageMembers && (
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => {
+            onManageMembers();
+            onClose();
+          }}
+          activeOpacity={0.7}
+        >
+          <Feather name="user-plus" size={18} color="#6B7280" />
+          <Text style={styles.menuItemText}>Invite Participants</Text>
         </TouchableOpacity>
       )}
 
@@ -295,45 +335,30 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
         >
           <Feather 
             name={notificationsEnabled ? "bell-off" : "bell"} 
-            size={20} 
-            color="#374151" 
+            size={18} 
+            color="#6B7280" 
           />
           <Text style={styles.menuItemText}>
-            {notificationsEnabled ? "Turn off notifications" : "Turn on notifications"}
+            {notificationsEnabled ? "Turn Off Notifications" : "Turn On Notifications"}
           </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Manage members */}
-      {onManageMembers && (
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => {
-            onManageMembers();
-            onClose();
-          }}
-          activeOpacity={0.7}
-        >
-          <Feather name="users" size={20} color="#374151" />
-          <Text style={styles.menuItemText}>Manage members</Text>
         </TouchableOpacity>
       )}
 
       {/* Divider */}
       <View style={styles.menuDivider} />
 
-      {/* Exit board */}
+      {/* Leave Board */}
       <TouchableOpacity
         style={styles.menuItem}
         onPress={() => {
           onClose();
           Alert.alert(
-            "Exit Board",
+            "Leave Board",
             `Are you sure you want to leave "${sessionName}"?`,
             [
               { text: "Cancel", style: "cancel" },
               {
-                text: "Exit",
+                text: "Leave",
                 style: "destructive",
                 onPress: handleExitBoardWithRules,
               },
@@ -343,25 +368,22 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
         activeOpacity={0.7}
         disabled={exitingBoard}
       >
-        <Feather name="log-out" size={20} color="#EF4444" />
-        <Text style={styles.menuItemTextDanger}>
-          {exitingBoard ? "Leaving..." : "Exit board"}
+        <Feather name="log-out" size={18} color="#6B7280" />
+        <Text style={styles.menuItemText}>
+          {exitingBoard ? "Leaving..." : "Leave Board"}
         </Text>
       </TouchableOpacity>
 
-      {/* Delete session - only for creator/admin */}
+      {/* Delete Board - only for creator/admin */}
       {canManageSession && (
-        <>
-          <View style={styles.menuDivider} />
-          <TouchableOpacity
-            style={styles.menuItem}
-            onPress={handleDeleteSessionWithConfirmation}
-            activeOpacity={0.7}
-          >
-            <Feather name="trash-2" size={20} color="#EF4444" />
-            <Text style={styles.menuItemTextDanger}>Delete session</Text>
-          </TouchableOpacity>
-        </>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={handleDeleteSessionWithConfirmation}
+          activeOpacity={0.7}
+        >
+          <Feather name="x" size={18} color="#EF4444" />
+          <Text style={styles.menuItemTextDanger}>Delete Board</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -372,7 +394,12 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
     <>
       {/* Dropdown Menu */}
       {visible && (
-        variant === "overlay" ? (
+        <Modal
+          visible={visible}
+          transparent
+          animationType="fade"
+          onRequestClose={onClose}
+        >
           <TouchableOpacity
             style={styles.overlay}
             activeOpacity={1}
@@ -380,25 +407,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
           >
             {renderDropdownContent()}
           </TouchableOpacity>
-        ) : (
-          <Modal
-            visible={visible}
-            transparent
-            animationType="fade"
-            onRequestClose={onClose}
-          >
-            <Pressable style={styles.modalOverlay} onPress={onClose}>
-              <Pressable 
-                style={[
-                  styles.positionedDropdown,
-                  position && { left: position.x, top: position.y }
-                ]}
-              >
-                {renderDropdownContent()}
-              </Pressable>
-            </Pressable>
-          </Modal>
-        )
+        </Modal>
       )}
 
       {/* Edit Session Name Modal */}
@@ -465,11 +474,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
 
 const styles = StyleSheet.create({
   overlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.1)",
   },
   modalOverlay: {
@@ -483,12 +488,12 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderRadius: 12,
     paddingVertical: 8,
-    minWidth: 220,
+    minWidth: 240,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
-    elevation: 8,
+    elevation: 10,
   },
   positionedDropdown: {
     position: "absolute",
@@ -502,20 +507,47 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
+  adminHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: "#eb7825",
+    backgroundColor: "#FEF3E7",
+    marginHorizontal: 8,
+    marginBottom: 4,
+    borderRadius: 4,
+    gap: 8,
+  },
+  adminHeaderIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  adminHeaderText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#eb7825",
+  },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   menuItemText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#374151",
     fontWeight: "400",
   },
   menuItemTextDanger: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#EF4444",
     fontWeight: "400",
   },

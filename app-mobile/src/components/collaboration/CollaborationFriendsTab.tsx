@@ -261,7 +261,7 @@ export default function CollaborationFriendsTab({
             style={styles.expandButton}
           >
             <Text style={styles.showLessText}>
-              {friendsListExpanded ? "Show Less" : "Show More"}
+              {friendsListExpanded ? "Show Less" : `Show All (${filteredFriends.length})`}
             </Text>
             <Ionicons
               name={friendsListExpanded ? "chevron-up" : "chevron-down"}

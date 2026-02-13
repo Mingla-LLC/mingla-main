@@ -14,7 +14,7 @@ import {
 } from "react-native";
 
 const ANIMATION_DURATION = 250;
-import { Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
@@ -339,9 +339,18 @@ const SavedTab = ({
       justifyContent: "space-between",
       paddingHorizontal: 16,
       paddingVertical: 16,
-      borderBottomWidth: 1,
       borderBottomColor: "#e5e7eb",
       backgroundColor: "white",
+      borderWidth: 1,
+      borderColor: "#e5e7eb",
+      borderRadius: 12,
+      marginHorizontal: 16,
+      marginBottom: 8,
+      elevation: 2,
+      shadowColor: "#e5e7eb",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 1,
     },
     accordionTitleContainer: {
       flexDirection: "row",
@@ -378,12 +387,15 @@ const SavedTab = ({
       flex: 1,
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: "#f9fafb",
-      borderRadius: 999,
+      backgroundColor: "white",
+      borderRadius: 8,
       paddingHorizontal: 12,
       paddingVertical: 8,
-      borderWidth: 1,
-      borderColor: "#e5e7eb",
+      elevation: 5,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
     },
     searchIcon: {
       marginRight: 8,
@@ -396,12 +408,14 @@ const SavedTab = ({
     },
     filterButton: {
       marginLeft: 12,
-      width: 36,
+      width: 56,
       height: 36,
-      borderRadius: 18,
-      backgroundColor: "#f97316",
+      borderRadius: 8,
       alignItems: "center",
       justifyContent: "center",
+      flexDirection: "row",
+      borderWidth: 1,
+      borderColor: "#e5e7eb",
     },
     filterSection: {
       marginTop: 12,
@@ -472,7 +486,6 @@ const SavedTab = ({
     cardSubtitle: {
       fontSize: 14,
       color: "#6b7280",
-      marginBottom: 8,
     },
     recentlySavedText: {
       fontSize: 12,
@@ -590,7 +603,7 @@ const SavedTab = ({
       height: 40,
       borderRadius: 12,
       backgroundColor: "white",
-      borderWidth: 1,
+      borderWidth: 0.5,
       borderColor: "#ef4444", // Red border
       alignItems: "center",
       justifyContent: "center",
@@ -1289,9 +1302,12 @@ const SavedTab = ({
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardTitle}>{card.title}</Text>
                   {/* Subtitle - use category or a default subtitle */}
-                  <Text style={styles.cardSubtitle}>
-                    {(card as any).subtitle || card.category || "Experience"}
-                  </Text>
+                  <View style={{flexDirection: "row", alignItems: "center", justifyContent: "flex-start", gap: 4}}>
+                    <Feather name="heart" size={16} color="orange" />
+                    <Text style={styles.cardSubtitle}>
+                      {(card as any).subtitle || card.category || "Experience"}
+                    </Text>
+                  </View>
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
                   <Text style={styles.recentlySavedText}>Recently saved</Text>
@@ -1483,14 +1499,15 @@ const SavedTab = ({
             />
           </View>
           <TouchableOpacity
-            style={styles.filterButton}
+            style={[styles.filterButton, isFiltersExpanded ? { backgroundColor: "#eb7825" } : null]}
             activeOpacity={0.7}
             onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
           >
+            <Feather name="filter" size={16} color={isFiltersExpanded ? "white" : "#9ca3af"} />
             <Ionicons
               name={isFiltersExpanded ? "chevron-up" : "chevron-down"}
               size={18}
-              color="white"
+              color={isFiltersExpanded ? "white" : "#9ca3af"}
             />
           </TouchableOpacity>
         </View>

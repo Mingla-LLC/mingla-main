@@ -917,7 +917,7 @@ export default function ProfilePage({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#f5f5f5",
   },
   content: {
     flex: 1,

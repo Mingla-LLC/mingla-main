@@ -284,6 +284,7 @@ export default function AccountSettings() {
           >
             <Ionicons name="arrow-back" size={20} color="#6b7280" />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Account Settings</Text>
         </View>
       </View>
 

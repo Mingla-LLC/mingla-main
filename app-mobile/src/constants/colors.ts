@@ -1,5 +1,6 @@
 export const colors = {
   primary: "#eb7825",
+  lightOrange: "#fef3e8",
   
   // Grays
   gray50: "#f9fafb",

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Text,
   View,
@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
+import NotificationsModal, { Notification } from "./NotificationsModal";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -80,6 +81,72 @@ export default function HomePage({
   availableFriends = [],
   isCreatingSession = false,
 }: HomePageProps) {
+  // Notifications modal state
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([
+    {
+      id: "1",
+      type: "friend_request",
+      title: "New Friend Request",
+      description: "Sarah Chen wants to connect with you",
+      timestamp: "2m ago",
+      isRead: false,
+      data: { userId: "user1", userName: "Sarah Chen" },
+    },
+    {
+      id: "2",
+      type: "mention",
+      title: "Mentioned in Discussion",
+      description: 'Alex mentioned you in "Tokyo Food Tour" discussion',
+      timestamp: "15m ago",
+      isRead: false,
+      data: { sessionId: "session1", sessionName: "Tokyo Food Tour" },
+    },
+    {
+      id: "3",
+      type: "board_invite",
+      title: "Board Invitation",
+      description: 'Maria invited you to collaborate on "Paris Adventure"',
+      timestamp: "1h ago",
+      isRead: false,
+      data: { sessionId: "session2", sessionName: "Paris Adventure" },
+    },
+    {
+      id: "4",
+      type: "card_liked",
+      title: "Card Liked",
+      description: 'John liked your saved experience "Sunset Kayaking"',
+      timestamp: "2h ago",
+      isRead: true,
+      data: { cardId: "card1", cardName: "Sunset Kayaking" },
+    },
+    {
+      id: "5",
+      type: "comment",
+      title: "New Comment",
+      description: "Emma commented on your board",
+      timestamp: "3h ago",
+      isRead: true,
+    },
+  ]);
+
+  const handleMarkAllRead = () => {
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, isRead: true }))
+    );
+  };
+
+  const handleNotificationPress = (notification: Notification) => {
+    // Mark as read
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n))
+    );
+    // TODO: Navigate based on notification type
+    setShowNotificationsModal(false);
+  };
+
+  const unreadNotificationCount = notifications.filter((n) => !n.isRead).length;
+
   // Animation values
   const headerSlideAnim = useRef(new Animated.Value(-60)).current;
   const sessionsOpacity = useRef(new Animated.Value(0.3)).current;
@@ -156,64 +223,74 @@ export default function HomePage({
 
           <View style={styles.headerRight}>
             <TouchableOpacity
-              onPress={() => {
-                // TODO: Navigate to notifications
-              }}
+              onPress={() => setShowNotificationsModal(true)}
               style={styles.notificationButton}
               activeOpacity={0.6}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Ionicons name="notifications-outline" size={24} color="#1f2937" />
               {/* Notification indicator dot */}
-              <View style={styles.notificationDot} />
+              {unreadNotificationCount > 0 && <View style={styles.notificationDot} />}
             </TouchableOpacity>
           </View>
         </Animated.View>
 
-        {/* Collaboration Sessions Bar with fade-in and scale animation */}
-        {onSessionSelect && onSoloSelect && onCreateSession && onAcceptInvite && onDeclineInvite && onCancelInvite && (
-          <Animated.View
-            style={{
-              opacity: sessionsOpacity,
-              transform: [{ scaleX: sessionsScale }],
-            }}
-          >
-            <CollaborationSessions
-              sessions={collaborationSessions}
-              currentMode={currentMode}
-              selectedSessionId={selectedSessionId}
-              onSessionSelect={onSessionSelect}
-              onSoloSelect={onSoloSelect}
-              onCreateSession={onCreateSession}
-              onAcceptInvite={onAcceptInvite}
-              onDeclineInvite={onDeclineInvite}
-              onCancelInvite={onCancelInvite}
-              availableFriends={availableFriends}
-              isCreatingSession={isCreatingSession}
-            />
-          </Animated.View>
-        )}
+        {/* <View style={styles.pillsAndCardsContainer}> */}
+          {/* Collaboration Sessions Bar with fade-in and scale animation */}
+          {onSessionSelect && onSoloSelect && onCreateSession && onAcceptInvite && onDeclineInvite && onCancelInvite && (
+            <Animated.View
+              style={{
+                opacity: sessionsOpacity,
+                transform: [{ scaleX: sessionsScale }],
+              }}
+            >
+              <CollaborationSessions
+                sessions={collaborationSessions}
+                currentMode={currentMode}
+                selectedSessionId={selectedSessionId}
+                onSessionSelect={onSessionSelect}
+                onSoloSelect={onSoloSelect}
+                onCreateSession={onCreateSession}
+                onAcceptInvite={onAcceptInvite}
+                onDeclineInvite={onDeclineInvite}
+                onCancelInvite={onCancelInvite}
+                availableFriends={availableFriends}
+                isCreatingSession={isCreatingSession}
+              />
+            </Animated.View>
+          )}
 
-        {/* Main Content - Centered middle section */}
-        <View style={styles.mainContent}>
-          <SwipeableCards
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-            currentMode={currentMode}
-            onAddToCalendar={onAddToCalendar}
-            onCardLike={onSaveCard || (() => {})}
-            onShareCard={onShareCard}
-            onPurchaseComplete={onPurchaseComplete}
-            removedCardIds={removedCardIds}
-            onResetCards={onResetCards}
-            onOpenPreferences={onOpenPreferences}
-            onOpenCollabPreferences={onOpenCollabPreferences}
-            generateNewMockCard={generateNewMockCard}
-            onboardingData={onboardingData}
-            refreshKey={refreshKey}
-            savedCards={savedCards}
-          />
-        </View>
+
+          <View style={styles.mainContent}>
+            <SwipeableCards
+              userPreferences={userPreferences}
+              accountPreferences={accountPreferences}
+              currentMode={currentMode}
+              onAddToCalendar={onAddToCalendar}
+              onCardLike={onSaveCard || (() => {})}
+              onShareCard={onShareCard}
+              onPurchaseComplete={onPurchaseComplete}
+              removedCardIds={removedCardIds}
+              onResetCards={onResetCards}
+              onOpenPreferences={onOpenPreferences}
+              onOpenCollabPreferences={onOpenCollabPreferences}
+              generateNewMockCard={generateNewMockCard}
+              onboardingData={onboardingData}
+              refreshKey={refreshKey}
+              savedCards={savedCards}
+            />
+          </View>
+        {/* </View> */}
+
+        {/* Notifications Modal */}
+        <NotificationsModal
+          visible={showNotificationsModal}
+          onClose={() => setShowNotificationsModal(false)}
+          notifications={notifications}
+          onNotificationPress={handleNotificationPress}
+          onMarkAllRead={handleMarkAllRead}
+        />
+
       </View>
     </View>
   );
@@ -308,7 +385,15 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#ffffff",
   },
+  pillsAndCardsContainer: {
+    // paddingHorizontal: 30,
+    flex: 1,
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   mainContent: {
+    // paddingHorizontal: 10,
     flex: 1,
     flexDirection: "column",
     justifyContent: "center",

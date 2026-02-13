@@ -45,6 +45,7 @@ export default function ProfileSettings({
           <TouchableOpacity onPress={onNavigateBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={20} color="#6b7280" />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Profile Settings</Text>
         </View>
       </View>
 

@@ -15,7 +15,7 @@ import {
   TouchableWithoutFeedback,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { BlockReason } from "../services/blockService";
 
 interface BlockUserModalProps {
@@ -76,7 +76,7 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
               {/* Header */}
               <View style={styles.header}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="shield" size={32} color="#ef4444" />
+                  <Feather name="shield" size={32} color="#ef4444" />
                 </View>
                 <Text style={styles.title}>Block {userName}?</Text>
               </View>
