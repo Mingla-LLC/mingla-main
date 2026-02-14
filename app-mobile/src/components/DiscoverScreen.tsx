@@ -3510,6 +3510,7 @@ const styles = StyleSheet.create({
   },
   personPillAvatarSelected: {
     backgroundColor: "#eb7825",
+    borderRadius: 14,
   },
   personPillInitials: {
     fontSize: 11,

@@ -123,15 +123,20 @@ export default function BlockedUsersModal({
   const renderBlockedUser = ({ item: user }: { item: BlockedUser }) => (
     <View style={styles.userCard}>
       <View style={styles.userInfo}>
-        {user.avatar_url ? (
-          <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(user.id) }]}>
-            <Text style={styles.avatarText}>
-              {getInitials(user.name, user.username)}
-            </Text>
+        <View style={styles.avatarContainer}>
+          {user.avatar_url ? (
+            <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatarPlaceholder, { backgroundColor: getAvatarColor(user.id) }]}>
+              <Text style={styles.avatarText}>
+                {getInitials(user.name, user.username)}
+              </Text>
+            </View>
+          )}
+          <View style={styles.blockedBadge}>
+            <Feather name="user-x" size={12} color="white" />
           </View>
-        )}
+        </View>
         <View style={styles.userDetails}>
           <Text style={styles.userName} numberOfLines={1}>
             {user.name || "Unknown User"}
@@ -191,7 +196,7 @@ export default function BlockedUsersModal({
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <View style={styles.headerIcon}>
-                <Ionicons name="shield" size={20} color="white" />
+                <Feather name="shield" size={20} color="white" />
               </View>
               <View>
                 <Text style={styles.title}>Blocked Users</Text>
@@ -273,7 +278,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: "#eb7825",
+    backgroundColor: "#ef4444",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -338,6 +343,9 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 12,
   },
+  avatarContainer: {
+    position: "relative",
+  },
   avatar: {
     width: 44,
     height: 44,
@@ -355,6 +363,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "white",
+  },
+  blockedBadge: {
+    position: "absolute",
+    bottom: -4,
+    right: -4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#ef4444",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "white",
   },
   userDetails: {
     flex: 1,

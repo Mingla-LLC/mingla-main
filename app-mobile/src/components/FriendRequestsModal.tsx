@@ -168,7 +168,7 @@ export default function FriendRequestsModal({
                   <Feather
                     name="inbox"
                     size={16}
-                    color={activeTab === "received" ? "#FFFFFF" : "#6b7280"}
+                    color={activeTab === "received" ? "#eb7825" : "#6b7280"}
                   />
                   <Text
                     style={[
@@ -186,7 +186,7 @@ export default function FriendRequestsModal({
                   <Feather
                     name="send"
                     size={16}
-                    color={activeTab === "sent" ? "#FFFFFF" : "#6b7280"}
+                    color={activeTab === "sent" ? "#eb7825" : "#6b7280"}
                   />
                   <Text
                     style={[
@@ -218,6 +218,12 @@ export default function FriendRequestsModal({
                         You're all caught up! New friend requests will appear
                         here.
                       </Text>
+                      <View style={styles.emptyStateHint}>
+                        <Feather name="info" size={14} color="#9ca3af" />
+                        <Text style={styles.emptyStateHintText}>
+                          When someone sends you a friend request, you'll see it here
+                        </Text>
+                      </View>
                     </View>
                   ) : (
                     <View style={styles.requestsList}>
@@ -361,6 +367,12 @@ export default function FriendRequestsModal({
                       <Text style={styles.emptyStateText}>
                         You haven't sent any friend requests yet.
                       </Text>
+                      <View style={styles.emptyStateHint}>
+                        <Feather name="info" size={14} color="#9ca3af" />
+                        <Text style={styles.emptyStateHintText}>
+                          Use the Add Friend button to send requests to new friends
+                        </Text>
+                      </View>
                     </View>
                   ) : (
                     <View style={styles.requestsList}>
@@ -442,6 +454,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     width: "100%",
     maxWidth: 400,
+    minHeight: 400,
     maxHeight: "80%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
@@ -488,7 +501,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginHorizontal: 20,
     marginBottom: 16,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#e9eef9",
     borderRadius: 12,
   },
   tab: {
@@ -502,7 +515,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   tabActive: {
-    backgroundColor: "#eb7825",
+    backgroundColor: "#FFFFFF",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -515,18 +528,20 @@ const styles = StyleSheet.create({
     color: "#6b7280",
   },
   tabTextActive: {
-    color: "#FFFFFF",
+    color: "#eb7825",
   },
   content: {
     flex: 1,
     backgroundColor: "#f5f5f5",
   },
   contentContainer: {
+    flexGrow: 1,
     padding: 16,
   },
   emptyState: {
-    padding: 32,
     alignItems: "center",
+    paddingVertical: 48,
+    paddingHorizontal: 24,
   },
   emptyStateIcon: {
     width: 64,
@@ -547,6 +562,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6b7280",
     textAlign: "center",
+    marginBottom: 16,
+  },
+  emptyStateHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#f9fafb",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  emptyStateHintText: {
+    fontSize: 13,
+    color: "#6b7280",
+    flex: 1,
   },
   requestsList: {
     gap: 12,
