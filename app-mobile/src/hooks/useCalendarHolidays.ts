@@ -177,7 +177,7 @@ const calculateDaysAway = (date: Date): number => {
 /**
  * Get fallback holidays with dynamic days calculation
  */
-const getFallbackHolidays = (daysAhead: number = 90): CalendarHoliday[] => {
+const getFallbackHolidays = (daysAhead: number = 365): CalendarHoliday[] => {
   const today = new Date();
   const currentYear = today.getFullYear();
   

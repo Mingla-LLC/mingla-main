@@ -497,9 +497,9 @@ export default function DiscoverScreen({
   const birthdayHeroOpacity = useRef(new Animated.Value(0)).current;
   const birthdayHeroSlide = useRef(new Animated.Value(30)).current;
 
-  // Holiday items staggered animation values (up to 5 holidays)
+  // Holiday items staggered animation values (up to 20 holidays for full year)
   const holidayItemAnimations = useRef(
-    Array.from({ length: 5 }, () => ({
+    Array.from({ length: 20 }, () => ({
       opacity: new Animated.Value(0),
       translateX: new Animated.Value(-50),
     }))
@@ -1309,16 +1309,28 @@ export default function DiscoverScreen({
           }));
 
         console.log(`Sending ${personCustomHolidays.length} custom holidays to edge function`);
+        // Debug: log each custom holiday being sent
+        personCustomHolidays.forEach((ch) => {
+          console.log(`Sending custom holiday: ${ch.name}, date: ${ch.date}`);
+        });
 
         const response = await HolidayExperiencesService.getHolidayExperiences({
           location: { lat: locationLat, lng: locationLng },
           radius: 10000,
           gender: gender,
-          days: 90,
+          days: 365,
           customHolidays: personCustomHolidays,
         });
 
         console.log(`Received ${response.holidays.length} holidays and ${response.customHolidays?.length || 0} custom holidays with experiences`);
+        
+        // Debug: Log custom holiday details
+        if (response.customHolidays && response.customHolidays.length > 0) {
+          response.customHolidays.forEach((ch) => {
+            console.log(`Custom holiday: ${ch.name}, daysAway: ${ch.daysAway}, date: ${ch.date}`);
+          });
+        }
+        
         setFetchedHolidays(response.holidays);
         setFetchedCustomHolidays(response.customHolidays || []);
       } catch (error) {
@@ -1654,12 +1666,12 @@ export default function DiscoverScreen({
     return `${months[birthday.getMonth()]} ${birthday.getDate()}`;
   };
 
-  // Use the calendar holidays hook for dynamic holidays from device calendar (90 days ahead)
+  // Use the calendar holidays hook for dynamic holidays from device calendar (365 days ahead - rest of year)
   const { 
     holidays: calendarHolidays, 
     loading: holidaysLoading, 
     hasCalendarAccess 
-  } = useCalendarHolidays(90);
+  } = useCalendarHolidays(365);
 
   // Get experiences filtered by multiple categories (with variety for different holidays)
   const getExperiencesForCategories = useCallback((categories: string[], holidayId?: string): GridCardData[] => {
@@ -1985,9 +1997,20 @@ export default function DiscoverScreen({
       }));
 
       // Merge fetched holidays and fetched custom holidays, sorted by daysAway
-      return [...fetchedList, ...fetchedCustomList]
-        .filter((h) => h.daysAway >= 0 && h.daysAway <= 90)
-        .sort((a, b) => a.daysAway - b.daysAway);
+      const merged = [...fetchedList, ...fetchedCustomList];
+      console.log(`allHolidays: merging ${fetchedList.length} holidays + ${fetchedCustomList.length} custom = ${merged.length} total`);
+      
+      // Debug: log custom holidays before filtering
+      fetchedCustomList.forEach((h) => {
+        console.log(`Before filter - Custom: ${h.name}, daysAway: ${h.daysAway}`);
+      });
+      
+      const filtered = merged
+        .filter((h) => h.daysAway >= 0 && h.daysAway <= 365);
+      
+      console.log(`After 365-day filter: ${filtered.length} holidays remaining`);
+      
+      return filtered.sort((a, b) => a.daysAway - b.daysAway);
     }
 
     // Fallback: Get custom holidays for the selected person (no fetched experiences)
@@ -2014,8 +2037,8 @@ export default function DiscoverScreen({
     // Combine and filter
     return [...calendar, ...custom]
       .filter((h) => {
-        // Only show upcoming holidays (within 90 days)
-        if (h.daysAway < 0 || h.daysAway > 90) return false;
+        // Only show upcoming holidays (within 365 days - rest of year)
+        if (h.daysAway < 0 || h.daysAway > 365) return false;
         
         // Filter by gender if holiday is gender-specific
         const holidayGender = (h as any).gender;
@@ -2041,7 +2064,8 @@ export default function DiscoverScreen({
       const staggerDelay = 100;
       const baseDelay = 400; // Start after birthday hero animation
 
-      allHolidays.slice(0, 5).forEach((_, index) => {
+      allHolidays.slice(0, 20).forEach((_, index) => {
+        if (!holidayItemAnimations[index]) return; // Skip if no animation slot
         setTimeout(() => {
           Animated.parallel([
             Animated.spring(holidayItemAnimations[index].opacity, {
@@ -2279,7 +2303,7 @@ export default function DiscoverScreen({
                         // Server-side deduplication should handle this, but this is a safety net
                         const usedExperienceIds = new Set<string>();
                         
-                        return allHolidays.slice(0, 5).map((holiday, index) => {
+                        return allHolidays.slice(0, 20).map((holiday, index) => {
                           const isExpanded = expandedHolidayIds.has(holiday.id);
                           // Check if this holiday has fetched experiences from the edge function
                           const fetchedExperiences = (holiday as any).fetchedExperiences as HolidayExperience[] | undefined;
@@ -2308,17 +2332,24 @@ export default function DiscoverScreen({
 
                         // Get animation values for this holiday item
                         const animationValues = holidayItemAnimations[index];
+                        const hasAnimation = !!animationValues;
                         
-                        return (
-                          <Animated.View 
-                            key={holiday.id} 
-                            style={[
+                        // Use regular View if no animation slot available
+                        const ContainerComponent = hasAnimation ? Animated.View : View;
+                        const containerStyle = hasAnimation 
+                          ? [
                               styles.holidayItemContainer,
                               {
                                 opacity: animationValues.opacity,
                                 transform: [{ translateX: animationValues.translateX }],
                               },
-                            ]}
+                            ]
+                          : [styles.holidayItemContainer];
+                        
+                        return (
+                          <ContainerComponent 
+                            key={holiday.id} 
+                            style={containerStyle as any}
                           >
                             {/* Holiday Header (clickable to expand/collapse) */}
                             <TouchableOpacity 
@@ -2359,11 +2390,11 @@ export default function DiscoverScreen({
                               <View style={styles.holidayItemRight}>
                                 {holiday.daysAway === 0 ? (
                                   <>
-                                    <Text style={styles.holidayItemDays}>Today</Text>
+                                    <Text style={styles.holidayItemDaysText}>Today</Text>
                                   </>
                                 ) : holiday.daysAway === 1 ? (
                                   <>
-                                    <Text style={styles.holidayItemDays}>Tomorrow</Text>
+                                    <Text style={styles.holidayItemDaysText}>Tomorrow</Text>
                                   </>
                                 ) : (
                                   <>
@@ -2443,7 +2474,7 @@ export default function DiscoverScreen({
                                 </TouchableOpacity>
                               </View>
                             )}
-                          </Animated.View>
+                          </ContainerComponent>
                         );
                       });
                       })()
@@ -4198,6 +4229,11 @@ const styles = StyleSheet.create({
   },
   holidayItemDays: {
     fontSize: 20,
+    fontWeight: "700",
+    color: "#eb7825",
+  },
+  holidayItemDaysText: {
+    fontSize: 14,
     fontWeight: "700",
     color: "#eb7825",
   },

@@ -98,7 +98,7 @@ interface HolidayExperienceRequest {
   location: { lat: number; lng: number };
   radius?: number;
   gender?: "male" | "female" | null; // Filter holidays by gender
-  days?: number; // Number of days to look ahead (default 90)
+  days?: number; // Number of days to look ahead (default 365)
   customHolidays?: Array<{
     id: string;
     name: string;
@@ -158,7 +158,7 @@ serve(async (req) => {
       );
     }
     
-    const { location, radius = 10000, gender = null, days = 90, customHolidays = [] } = request;
+    const { location, radius = 10000, gender = null, days = 365, customHolidays = [] } = request;
 
     if (!location || !location.lat || !location.lng) {
       return new Response(
