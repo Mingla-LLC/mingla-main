@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Clipboard,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { Friend, Conversation, Message } from "../services/connectionsService";
@@ -363,11 +364,15 @@ export default function ConnectionsPageRefactored({
   ).length;
 
   const handleCopyInvite = () => {
-    // TODO: Copy invite link when expo-clipboard is installed
-    // const inviteLink = `https://mingla.app/invite/${user?.id || ''}`;
-    // await Clipboard.setStringAsync(inviteLink);
-    setInviteCopied(true);
-    setTimeout(() => setInviteCopied(false), 2000);
+    try {
+      const inviteLink = `https://mingla.app/invite/${user?.id || ''}`;
+      Clipboard.setString(inviteLink);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2000);
+    } catch (error) {
+      console.error('Error copying invite link:', error);
+      Alert.alert('Error', 'Failed to copy invite link');
+    }
   };
 
   // Messaging handlers

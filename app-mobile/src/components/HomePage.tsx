@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import NotificationsModal, { Notification } from "./NotificationsModal";
@@ -235,13 +236,23 @@ export default function HomePage({
           </View>
         </Animated.View>
 
-        {/* <View style={styles.pillsAndCardsContainer}> */}
+          
+
+
+        <View style={styles.mainContent}>
+          <LinearGradient
+            colors={['rgba(0, 0, 0, 0.15)', 'rgba(0, 0, 0, 0.05)', 'transparent']}
+            style={styles.innerShadowTop}
+            pointerEvents="none"
+          />
+
           {/* Collaboration Sessions Bar with fade-in and scale animation */}
           {onSessionSelect && onSoloSelect && onCreateSession && onAcceptInvite && onDeclineInvite && onCancelInvite && (
             <Animated.View
               style={{
                 opacity: sessionsOpacity,
                 transform: [{ scaleX: sessionsScale }],
+                width: '100%',
               }}
             >
               <CollaborationSessions
@@ -260,27 +271,24 @@ export default function HomePage({
             </Animated.View>
           )}
 
-
-          <View style={styles.mainContent}>
-            <SwipeableCards
-              userPreferences={userPreferences}
-              accountPreferences={accountPreferences}
-              currentMode={currentMode}
-              onAddToCalendar={onAddToCalendar}
-              onCardLike={onSaveCard || (() => {})}
-              onShareCard={onShareCard}
-              onPurchaseComplete={onPurchaseComplete}
-              removedCardIds={removedCardIds}
-              onResetCards={onResetCards}
-              onOpenPreferences={onOpenPreferences}
-              onOpenCollabPreferences={onOpenCollabPreferences}
-              generateNewMockCard={generateNewMockCard}
-              onboardingData={onboardingData}
-              refreshKey={refreshKey}
-              savedCards={savedCards}
-            />
-          </View>
-        {/* </View> */}
+          <SwipeableCards
+            userPreferences={userPreferences}
+            accountPreferences={accountPreferences}
+            currentMode={currentMode}
+            onAddToCalendar={onAddToCalendar}
+            onCardLike={onSaveCard || (() => {})}
+            onShareCard={onShareCard}
+            onPurchaseComplete={onPurchaseComplete}
+            removedCardIds={removedCardIds}
+            onResetCards={onResetCards}
+            onOpenPreferences={onOpenPreferences}
+            onOpenCollabPreferences={onOpenCollabPreferences}
+            generateNewMockCard={generateNewMockCard}
+            onboardingData={onboardingData}
+            refreshKey={refreshKey}
+            savedCards={savedCards}
+          />
+        </View>
 
         {/* Notifications Modal */}
         <NotificationsModal
@@ -303,7 +311,9 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#ffffff",
+    // borderWidth: 1,
+    // borderColor: 'blue'
   },
   header: {
     backgroundColor: "#ffffff",
@@ -336,12 +346,28 @@ const styles = StyleSheet.create({
     minHeight: 40,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 1000,
-    elevation: 1000,
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   preferencesButtonActive: {
     backgroundColor: "#FEF3E7",
     borderRadius: 20,
+    shadowColor: "#eb7825",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   headerCenter: {
     flex: 1,
@@ -373,16 +399,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   notificationDot: {
     position: "absolute",
     top: -4,
     right: -4,
-    width: 10,
-    height: 10,
+    width: 14,
+    height: 14,
     backgroundColor: "#eb7825",
-    borderRadius: 5,
-    borderWidth: 1.5,
+    borderRadius: 7,
+    borderWidth: 2,
     borderColor: "#ffffff",
   },
   pillsAndCardsContainer: {
@@ -398,6 +434,16 @@ const styles = StyleSheet.create({
     flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
+    position: "relative",
     overflow: "hidden",
+    marginHorizontal: 10
+  },
+  innerShadowTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 40,
+    zIndex: 10,
   },
 });

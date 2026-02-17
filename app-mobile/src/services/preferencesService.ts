@@ -11,6 +11,7 @@ export interface UserPreferences {
   travel_constraint_value: number;
   datetime_pref: string;
   date_option?: string | null;
+  exact_time?: string | null;
 }
 
 export interface ProfileData {

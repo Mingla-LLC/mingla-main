@@ -249,7 +249,7 @@ export default function CollaborationSessions({
           onPress={() => setShowCreateModal(true)}
           activeOpacity={0.7}
         >
-          <Ionicons name="add" size={16} color="#eb7825" />
+          <Ionicons name="add" size={16} color="#FFFFFF" />
         </TouchableOpacity>
 
         {/* Session pills */}
@@ -539,19 +539,31 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    paddingVertical: 6,
+    justifyContent: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 0,
     paddingHorizontal: 4,
+    marginVertical: 10,
+    marginHorizontal: 24,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 12,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
   },
   scrollViewWrapper: {
-    maxWidth: 296,
+    flex: 1,
     overflow: 'hidden',
   },
   scrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     gap: 6,
   },
   scrollArrowLeft: {
@@ -590,23 +602,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 0.5,
+    borderColor: '#e5e7eb',
+    shadowColor: '#fff',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.95,
+    shadowRadius: 20,
+    elevation: 12,
   },
   soloPill: {
     paddingHorizontal: 14,
+    backgroundColor: '#eb7825',
+    shadowColor: '#eb7825',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.95,
+    shadowRadius: 20,
+    elevation: 12,
   },
   createPill: {
-    backgroundColor: '#FEF3E7',
+    backgroundColor: '#eb7825',
     minWidth: 32,
     paddingHorizontal: 0,
     width: 32,
+    shadowColor: '#eb7825',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.95,
+    shadowRadius: 20,
+    elevation: 12,
   },
   pillSelected: {
     backgroundColor: '#eb7825',
+    shadowColor: '#fff',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.95,
+    shadowRadius: 20,
+    elevation: 12,
   },
   pillInvite: {
     backgroundColor: '#F3F4F6',
@@ -618,6 +648,7 @@ const styles = StyleSheet.create({
   },
   soloPillText: {
     fontWeight: '600',
+    color: '#FFFFFF',
   },
   pillTextSelected: {
     color: '#FFFFFF',

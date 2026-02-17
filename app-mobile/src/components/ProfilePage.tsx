@@ -85,6 +85,10 @@ export default function ProfilePage({
   const avatarScale = useRef(new Animated.Value(1)).current;
   const [hasUploadedImage, setHasUploadedImage] = useState<boolean>(!!userIdentity?.profileImage);
   const [showAvatarOverlay, setShowAvatarOverlay] = useState(false);
+  const [showCompletionBar, setShowCompletionBar] = useState(!userIdentity?.profileImage);
+  const [progressBarColor, setProgressBarColor] = useState("#eb7825");
+  const completionBarOpacity = useRef(new Animated.Value(1)).current;
+  const completionBarSlide = useRef(new Animated.Value(0)).current;
   const locationSpin = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -372,6 +376,8 @@ export default function ProfilePage({
               // Update UI states
               setHasUploadedImage(false);
               setProfileImageSrc(null);
+              setShowCompletionBar(true);
+              setProgressBarColor("#eb7825");
               Animated.timing(progressAnim, { toValue: 90, duration: 300, useNativeDriver: false }).start();
 
               Alert.alert("Removed", "Your profile photo has been removed.");
@@ -403,13 +409,32 @@ export default function ProfilePage({
         handleUserIdentityUpdate?.(updatedIdentity);
         // animate completion progress
         setHasUploadedImage(true);
+        
+        // Animate to 100% and change color to green
+        setProgressBarColor("#10b981"); // green color
         Animated.timing(progressAnim, {
           toValue: 100,
-          duration: 300,
+          duration: 800,
           useNativeDriver: false,
-        }).start();
-
-        Alert.alert("Success", "Profile photo updated successfully!");
+        }).start(() => {
+          // Fade out and slide up after animation completes
+          setTimeout(() => {
+            Animated.parallel([
+              Animated.timing(completionBarOpacity, {
+                toValue: 0,
+                duration: 400,
+                useNativeDriver: true,
+              }),
+              Animated.timing(completionBarSlide, {
+                toValue: -30,
+                duration: 400,
+                useNativeDriver: true,
+              }),
+            ]).start(() => {
+              setShowCompletionBar(false);
+            });
+          }, 500);
+        });
       } else {
         Alert.alert("Error", "Failed to upload profile photo. Please try again.");
       }
@@ -634,11 +659,21 @@ export default function ProfilePage({
             ) : null}
 
             {/* Profile Completion Progress Bar - Hide when 100% */}
-            {!hasUploadedImage && (
-              <View style={styles.profileCompletionContainer}>
+            {showCompletionBar && (
+              <Animated.View
+                style={[
+                  styles.profileCompletionContainer,
+                  {
+                    opacity: completionBarOpacity,
+                    transform: [{ translateY: completionBarSlide }],
+                  },
+                ]}
+              >
                 <View style={styles.profileCompletionHeader}>
                   <Text style={styles.profileCompletionTitle}>Profile completion</Text>
-                  <Text style={styles.profileCompletionPercent}>90%</Text>
+                  <Text style={[styles.profileCompletionPercent, { color: progressBarColor }]}>
+                    {hasUploadedImage ? '100%' : '90%'}
+                  </Text>
                 </View>
                 <View style={styles.profileCompletionBarBg}>
                   <Animated.View
@@ -649,6 +684,7 @@ export default function ProfilePage({
                           inputRange: [0, 100],
                           outputRange: ["0%", "100%"],
                         }),
+                        backgroundColor: progressBarColor,
                       },
                     ]}
                   />
@@ -656,7 +692,7 @@ export default function ProfilePage({
                 <Text style={styles.profileCompletionAction}>
                   Upload a profile picture to complete your profile
                 </Text>
-              </View>
+              </Animated.View>
             )}
           </View>
         </View>

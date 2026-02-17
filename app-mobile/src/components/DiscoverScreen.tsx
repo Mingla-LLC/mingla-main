@@ -730,21 +730,37 @@ export default function DiscoverScreen({
     return null; // "other" - show all
   }, []);
 
-  // Load saved people from AsyncStorage on mount
+  // Get auth and location for custom Discover fetch
+  const { user } = useAuthSimple();
+  const { data: userLocationData } = useUserLocation(user?.id, "solo", undefined);
+  
+  // Extract stable lat/lng values to prevent unnecessary re-fetches
+  const locationLat = userLocationData?.lat;
+  const locationLng = userLocationData?.lng;
+
+  // Load saved people from AsyncStorage on mount or when user changes
   useEffect(() => {
     const loadSavedPeople = async () => {
+      if (!user?.id) {
+        setSavedPeople([]);
+        return;
+      }
       try {
-        const stored = await AsyncStorage.getItem(SAVED_PEOPLE_STORAGE_KEY);
+        const userStorageKey = `${SAVED_PEOPLE_STORAGE_KEY}_${user.id}`;
+        const stored = await AsyncStorage.getItem(userStorageKey);
         if (stored) {
           const people = JSON.parse(stored) as SavedPerson[];
           setSavedPeople(people);
+        } else {
+          setSavedPeople([]);
         }
       } catch (error) {
         console.error("Error loading saved people:", error);
+        setSavedPeople([]);
       }
     };
     loadSavedPeople();
-  }, []);
+  }, [user?.id]);
 
   // Generate unique ID
   const generateUniqueId = (): string => {
@@ -762,8 +778,13 @@ export default function DiscoverScreen({
 
   // Save people to AsyncStorage
   const savePeopleToStorage = async (people: SavedPerson[]) => {
+    if (!user?.id) {
+      console.warn("Cannot save people: no user ID available");
+      return;
+    }
     try {
-      await AsyncStorage.setItem(SAVED_PEOPLE_STORAGE_KEY, JSON.stringify(people));
+      const userStorageKey = `${SAVED_PEOPLE_STORAGE_KEY}_${user.id}`;
+      await AsyncStorage.setItem(userStorageKey, JSON.stringify(people));
     } catch (error) {
       console.error("Error saving people to storage:", error);
     }
@@ -771,8 +792,13 @@ export default function DiscoverScreen({
 
   // Save custom holidays to AsyncStorage
   const saveCustomHolidaysToStorage = async (holidays: CustomHoliday[]) => {
+    if (!user?.id) {
+      console.warn("Cannot save custom holidays: no user ID available");
+      return;
+    }
     try {
-      await AsyncStorage.setItem(CUSTOM_HOLIDAYS_STORAGE_KEY, JSON.stringify(holidays));
+      const userStorageKey = `${CUSTOM_HOLIDAYS_STORAGE_KEY}_${user.id}`;
+      await AsyncStorage.setItem(userStorageKey, JSON.stringify(holidays));
     } catch (error) {
       console.error("Error saving custom holidays to storage:", error);
     }
@@ -780,21 +806,29 @@ export default function DiscoverScreen({
 
   // Load custom holidays from AsyncStorage
   const loadCustomHolidaysFromStorage = async () => {
+    if (!user?.id) {
+      setCustomHolidays([]);
+      return;
+    }
     try {
-      const stored = await AsyncStorage.getItem(CUSTOM_HOLIDAYS_STORAGE_KEY);
+      const userStorageKey = `${CUSTOM_HOLIDAYS_STORAGE_KEY}_${user.id}`;
+      const stored = await AsyncStorage.getItem(userStorageKey);
       if (stored) {
         const holidays = JSON.parse(stored) as CustomHoliday[];
         setCustomHolidays(holidays);
+      } else {
+        setCustomHolidays([]);
       }
     } catch (error) {
       console.error("Error loading custom holidays from storage:", error);
+      setCustomHolidays([]);
     }
   };
 
-  // Load custom holidays on mount
+  // Load custom holidays on mount or when user changes
   useEffect(() => {
     loadCustomHolidaysFromStorage();
-  }, []);
+  }, [user?.id]);
 
   // Night Out Filter Modal state
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
@@ -803,14 +837,6 @@ export default function DiscoverScreen({
     price: "any",
     genre: "all",
   });
-
-  // Get auth and location for custom Discover fetch
-  const { user } = useAuthSimple();
-  const { data: userLocationData } = useUserLocation(user?.id, "solo", undefined);
-  
-  // Extract stable lat/lng values to prevent unnecessary re-fetches
-  const locationLat = userLocationData?.lat;
-  const locationLng = userLocationData?.lng;
 
   // State for Discover-specific recommendations (fetched with ALL categories)
   const [discoverRecommendations, setDiscoverRecommendations] = useState<Recommendation[]>([]);
@@ -840,6 +866,9 @@ export default function DiscoverScreen({
     featuredCard: FeaturedCardData | null,
     gridCards: GridCardData[]
   ) => {
+    if (!user?.id) {
+      return;
+    }
     try {
       const cacheData: DiscoverCache = {
         date: getTodayDateString(),
@@ -847,7 +876,8 @@ export default function DiscoverScreen({
         featuredCard,
         gridCards,
       };
-      await AsyncStorage.setItem(DISCOVER_CACHE_KEY, JSON.stringify(cacheData));
+      const userCacheKey = `${DISCOVER_CACHE_KEY}_${user.id}`;
+      await AsyncStorage.setItem(userCacheKey, JSON.stringify(cacheData));
       console.log("Saved discover cache for date:", cacheData.date);
     } catch (error) {
       console.error("Error saving discover cache:", error);
@@ -856,8 +886,12 @@ export default function DiscoverScreen({
 
   // Load discover data from cache
   const loadDiscoverCache = async (): Promise<DiscoverCache | null> => {
+    if (!user?.id) {
+      return null;
+    }
     try {
-      const cached = await AsyncStorage.getItem(DISCOVER_CACHE_KEY);
+      const userCacheKey = `${DISCOVER_CACHE_KEY}_${user.id}`;
+      const cached = await AsyncStorage.getItem(userCacheKey);
       if (cached) {
         return JSON.parse(cached) as DiscoverCache;
       }
@@ -886,6 +920,7 @@ export default function DiscoverScreen({
       setDiscoverError(null);
 
       try {
+        // CACHING DISABLED FOR TESTING
         // Check if we have cached data for today
         const cachedData = await loadDiscoverCache();
         const today = getTodayDateString();
@@ -910,6 +945,8 @@ export default function DiscoverScreen({
           setDiscoverLoading(false);
           return;
         }
+
+        console.log("Cache disabled - fetching fresh discover data");
 
         // Cache is stale or missing - fetch fresh data
         console.log("Cache miss or stale. Fetching fresh discover data...");
@@ -1050,8 +1087,9 @@ export default function DiscoverScreen({
         setDiscoverRecommendations(transformed);
         setHasCompletedDiscoverFetch(true);
         
+        // CACHING DISABLED FOR TESTING
         // Save to cache for 24-hour persistence
-        saveDiscoverCache(transformed, transformedFeatured, gridCards);
+        // saveDiscoverCache(transformed, transformedFeatured, gridCards);
         
         // Mark as loaded from cache to skip the card selection useEffect
         loadedFromCacheRef.current = true;
@@ -1235,8 +1273,9 @@ export default function DiscoverScreen({
     setSelectedFeaturedCard(featured);
     setSelectedGridCards(grid);
 
+    // CACHING DISABLED FOR TESTING
     // Save to cache for daily persistence
-    saveDiscoverCache(recommendations, featured, grid);
+    // saveDiscoverCache(recommendations, featured, grid);
   }, [recommendations]);
 
   // Fetch holiday experiences from edge function when person is selected
@@ -2056,18 +2095,6 @@ export default function DiscoverScreen({
                   onPress={handleForYouSelect}
                   activeOpacity={0.7}
                 >
-                  <View
-                    style={[
-                      styles.personPillAvatar,
-                      selectedPersonId === "for-you" && styles.personPillAvatarSelectedGradient,
-                    ]}
-                  >
-                    <Ionicons
-                      name="person"
-                      size={14}
-                      color={selectedPersonId === "for-you" ? "white" : "#6b7280"}
-                    />
-                  </View>
                   <Text
                     style={[
                       styles.personPillName,
@@ -3540,7 +3567,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   personPillAvatarSelectedGradient: {
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    backgroundColor: "#eb7825",
   },
   personPillNameSelectedGradient: {
     color: "white",
@@ -3550,8 +3577,9 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: "#FEF3E7",
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: "#fcd9b6",
+    borderStyle: "dashed",
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 4,
@@ -3918,13 +3946,14 @@ const styles = StyleSheet.create({
   },
   // Person-specific view styles
   showingRecommendationsText: {
-    fontSize: 14,
-    color: "#eb7825",
+    fontSize: 12,
+    color: "#374151",
     textAlign: "center",
     marginBottom: 16,
   },
   showingRecommendationsName: {
     fontWeight: "600",
+    color: "#eb7825",
   },
   // Birthday Hero Card styles
   birthdayHeroCard: {

@@ -55,10 +55,9 @@ const experienceTypes = [
 
 // Budget presets
 const budgetPresets = [
-  { label: "$0-25", min: 0, max: 25 },
-  { label: "$25-75", min: 25, max: 75 },
-  { label: "$75-150", min: 75, max: 150 },
-  { label: "$150+", min: 150, max: 1000 },
+  { label: "Up to $100", max: 100 },
+  { label: "Up to $200", max: 200 },
+  { label: "Up to $500", max: 500 },
 ];
 
 // Categories with exact icons from image
@@ -232,6 +231,9 @@ export default function PreferencesSheet({
   const isInternalUpdate = useRef(false);
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
 
+  // Track initial preferences for change detection
+  const [initialPreferences, setInitialPreferences] = useState<any>(null);
+
   // Keyboard listener to track keyboard height
   useEffect(() => {
     const keyboardWillShowListener = Keyboard.addListener(
@@ -253,6 +255,22 @@ export default function PreferencesSheet({
       keyboardWillHideListener.remove();
     };
   }, []);
+
+  // Default preferences
+  const defaultPreferences = {
+    selectedIntents: [],
+    budgetMin: 0,
+    budgetMax: 200,
+    selectedCategories: [],
+    selectedDateOption: "Now" as DateOption,
+    selectedTimeSlot: null,
+    selectedDate: null,
+    exactTime: "",
+    travelMode: "walking",
+    constraintType: "time" as "time" | "distance",
+    constraintValue: 20,
+    searchLocation: "",
+  };
 
   // Load existing preferences from database
   useEffect(() => {
@@ -335,6 +353,10 @@ export default function PreferencesSheet({
             }
           }
 
+          if ((prefs as any).exact_time) {
+            setExactTime((prefs as any).exact_time);
+          }
+
           if (prefs.datetime_pref) {
             const date = new Date(prefs.datetime_pref);
             if (!isNaN(date.getTime())) {
@@ -360,9 +382,33 @@ export default function PreferencesSheet({
               setUseLocation("search");
             }
           }
+
+          // Store initial preferences for change tracking
+          setInitialPreferences({
+            selectedIntents: prefs.categories?.filter((item: string) =>
+              ["solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business"].includes(item)
+            ) || [],
+            budgetMin: prefs.budget_min || 0,
+            budgetMax: prefs.budget_max || 200,
+            selectedCategories: prefs.categories?.filter((item: string) =>
+              !["solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business"].includes(item)
+            ) || [],
+            selectedDateOption: prefs.date_option ? { now: "Now", today: "Today", weekend: "This Weekend", custom: "Pick a Date" }[prefs.date_option] || "Now" : "Now",
+            selectedTimeSlot: (prefs as any).time_slot || null,
+            selectedDate: prefs.datetime_pref ? new Date(prefs.datetime_pref) : null,
+            exactTime: (prefs as any).exact_time || "",
+            travelMode: prefs.travel_mode || "walking",
+            constraintType: (prefs.travel_constraint_type || "time") as "time" | "distance",
+            constraintValue: prefs.travel_constraint_value || 20,
+            searchLocation: (prefs as any).custom_location || "",
+          });
+        } else {
+          // No preferences saved, use defaults
+          setInitialPreferences({ ...defaultPreferences });
         }
       } catch (error) {
         console.error("Error loading preferences:", error);
+        setInitialPreferences({ ...defaultPreferences });
       } finally {
         setIsLoading(false);
       }
@@ -404,8 +450,8 @@ export default function PreferencesSheet({
     );
   };
 
-  const setBudgetPreset = (min: number, max: number) => {
-    setBudgetMin(min);
+  const setBudgetPreset = (max: number) => {
+    setBudgetMin(0);
     setBudgetMax(max);
   };
 
@@ -633,6 +679,60 @@ export default function PreferencesSheet({
     }, 200);
   };
 
+  // Count the number of changes from initial preferences
+  const countChanges = (): number => {
+    if (!initialPreferences) return 0;
+
+    let changes = 0;
+
+    // Compare arrays
+    const arraysEqual = (a: any[], b: any[]) => {
+      if (a.length !== b.length) return false;
+      const sortedA = [...a].sort();
+      const sortedB = [...b].sort();
+      return sortedA.every((val, idx) => val === sortedB[idx]);
+    };
+
+    if (!arraysEqual(selectedIntents, initialPreferences.selectedIntents)) changes++;
+    if (budgetMin !== initialPreferences.budgetMin) changes++;
+    if (budgetMax !== initialPreferences.budgetMax) changes++;
+    if (!arraysEqual(selectedCategories, initialPreferences.selectedCategories)) changes++;
+    if (selectedDateOption !== initialPreferences.selectedDateOption) changes++;
+    if (selectedTimeSlot !== initialPreferences.selectedTimeSlot) changes++;
+    if (exactTime !== initialPreferences.exactTime) changes++;
+    
+    // Compare dates
+    const datesEqual = (a: Date | null, b: Date | null) => {
+      if (a === null && b === null) return true;
+      if (a === null || b === null) return false;
+      return a.getTime() === b.getTime();
+    };
+    if (!datesEqual(selectedDate, initialPreferences.selectedDate)) changes++;
+    
+    if (travelMode !== initialPreferences.travelMode) changes++;
+    if (constraintType !== initialPreferences.constraintType) changes++;
+    if (constraintValue !== initialPreferences.constraintValue) changes++;
+    if (searchLocation !== initialPreferences.searchLocation) changes++;
+
+    return changes;
+  };
+
+  // Reset all preferences to defaults
+  const handleReset = () => {
+    setSelectedIntents(defaultPreferences.selectedIntents);
+    setBudgetMin(defaultPreferences.budgetMin);
+    setBudgetMax(defaultPreferences.budgetMax);
+    setSelectedCategories(defaultPreferences.selectedCategories);
+    setSelectedDateOption(defaultPreferences.selectedDateOption);
+    setSelectedTimeSlot(defaultPreferences.selectedTimeSlot);
+    setSelectedDate(defaultPreferences.selectedDate);
+    setExactTime(defaultPreferences.exactTime);
+    setTravelMode(defaultPreferences.travelMode);
+    setConstraintType(defaultPreferences.constraintType);
+    setConstraintValue(defaultPreferences.constraintValue);
+    setSearchLocation(defaultPreferences.searchLocation);
+  };
+
   const handleApplyPreferences = async () => {
     if (isSaving) return;
 
@@ -704,7 +804,7 @@ export default function PreferencesSheet({
   return (
     <View style={styles.overlayContainer}>
       <View style={styles.modalContainer}>
-        <SafeAreaView style={styles.container} edges={["top"]}>
+        <SafeAreaView style={styles.container} edges={[]}>
           <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
           {/* Header */}
           <View style={styles.header}>
@@ -715,7 +815,7 @@ export default function PreferencesSheet({
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="close" size={24} color="#6b7280" />
+            <Ionicons name="close" size={20} color="#6b7280" />
           </TouchableOpacity>
         )}
         <View style={styles.titleContainer}>
@@ -755,7 +855,7 @@ export default function PreferencesSheet({
                   >
                     <Ionicons
                       name={type.icon as any}
-                      size={16}
+                      size={14}
                       color={isSelected ? "#ffffff" : "#6b7280"}
                     />
                     <Text
@@ -789,7 +889,7 @@ export default function PreferencesSheet({
                   >
                     <Ionicons
                       name={category.icon as any}
-                      size={20}
+                      size={16}
                       color={isSelected ? "#eb7825" : "#6b7280"}
                     />
                     <Text
@@ -806,59 +906,41 @@ export default function PreferencesSheet({
             </View>
           </View>
 
-          {/* Budget per Person Section - Hide when only "Take a Stroll" is selected */}
+          {/* Maximum Budget per Person Section - Hide when only "Take a Stroll" is selected */}
           {!(
             selectedCategories.length === 1 &&
             selectedCategories[0] === "Stroll"
           ) && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Budget per Person</Text>
-              <View style={styles.budgetInputsContainer}>
-                <View style={styles.budgetInputWrapper}>
-                  <Text style={styles.inputLabel}>Min</Text>
-                  <View style={styles.budgetInputContainer}>
-                    <Text style={styles.dollarSign}>{getCurrencySymbol(accountPreferences?.currency || 'USD')}</Text>
-                    <TextInput
-                      value={budgetMin?.toString() || ""}
-                      onChangeText={(text) =>
-                        setBudgetMin(text ? Number(text) : "")
-                      }
-                      keyboardType="numeric"
-                      style={styles.budgetInput}
-                      placeholder="0"
-                    />
-                  </View>
-                </View>
-                <View style={styles.budgetInputWrapper}>
-                  <Text style={styles.inputLabel}>Max</Text>
-                  <View style={styles.budgetInputContainer}>
-                    <Text style={styles.dollarSign}>{getCurrencySymbol(accountPreferences?.currency || 'USD')}</Text>
-                    <TextInput
-                      value={budgetMax?.toString() || ""}
-                      onChangeText={(text) =>
-                        setBudgetMax(text ? Number(text) : "")
-                      }
-                      keyboardType="numeric"
-                      style={styles.budgetInput}
-                      placeholder="200"
-                    />
-                  </View>
-                </View>
+              <Text style={styles.sectionTitle}>Maximum Budget per Person</Text>
+              <Text style={styles.sectionSubtitle}>
+                What's the most you want to spend?
+              </Text>
+              <View style={styles.budgetInputContainer}>
+                <Text style={styles.dollarSign}>{getCurrencySymbol(accountPreferences?.currency || 'USD')}</Text>
+                <TextInput
+                  value={budgetMax?.toString() || ""}
+                  onChangeText={(text) => {
+                    setBudgetMax(text ? Number(text) : "");
+                    setBudgetMin(0);
+                  }}
+                  keyboardType="numeric"
+                  style={styles.budgetInput}
+                  placeholder="Enter maximum amount"
+                  placeholderTextColor="#9ca3af"
+                />
               </View>
               <View style={styles.budgetPresetsContainer}>
                 {budgetPresets.map((preset) => {
                   const currencyCode = accountPreferences?.currency || 'USD';
                   const symbol = getCurrencySymbol(currencyCode);
                   const rate = getRate(currencyCode);
-                  const convertedMin = Math.round(preset.min * rate);
                   const convertedMax = Math.round(preset.max * rate);
-                  const label = preset.max === 1000 
-                    ? `${symbol}${formatNumberWithCommas(convertedMin)}+` 
-                    : `${symbol}${formatNumberWithCommas(convertedMin)}-${formatNumberWithCommas(convertedMax)}`;
+                  const label = `Up to ${symbol}${formatNumberWithCommas(convertedMax)}`;
                   return (
                     <TouchableOpacity
                       key={preset.label}
-                      onPress={() => setBudgetPreset(convertedMin, convertedMax)}
+                      onPress={() => setBudgetPreset(convertedMax)}
                       style={styles.budgetPresetButton}
                     >
                       <Text style={styles.budgetPresetText}>{label}</Text>
@@ -915,7 +997,7 @@ export default function PreferencesSheet({
               <TouchableOpacity style={styles.weekendInfoCard}>
                 <Ionicons
                   name="calendar"
-                  size={24}
+                  size={20}
                   color="#0369a1"
                   style={styles.weekendInfoIcon}
                 />
@@ -934,7 +1016,7 @@ export default function PreferencesSheet({
                 style={styles.dateInputField}
                 onPress={() => setShowCalendar(true)}
               >
-                <Ionicons name="calendar" size={20} color="#eb7825" />
+                <Ionicons name="calendar" size={16} color="#eb7825" />
                 {selectedDate ? (
                   <Text style={styles.dateInputText}>
                     {formatDateForDisplay(selectedDate)}
@@ -945,87 +1027,32 @@ export default function PreferencesSheet({
               </TouchableOpacity>
             )}
 
-            {/* Time Slots Section (shown for "Today", "This Weekend", and "Pick a Date") - matching DateTimePrefStep */}
-            {selectedDateOption && selectedDateOption !== "Now" && (
-              <>
-                <Text style={styles.quickPresetsLabel}>Quick Presets</Text>
-                <View style={styles.timeSlotsContainer}>
-                  {timeSlots.map((slot) => {
-                    const isSelected = selectedTimeSlot === slot.id;
-                    return (
-                      <TouchableOpacity
-                        key={slot.id}
-                        onPress={() =>
-                          handleTimeSlotSelect(slot.id as TimeSlot)
-                        }
-                        style={[
-                          styles.timeSlotCard,
-                          isSelected && styles.timeSlotCardSelected,
-                        ]}
-                      >
-                        <View style={styles.timeSlotContent}>
-                          <Ionicons
-                            name={
-                              slot.icon === "cafe-outline"
-                                ? "cafe-outline"
-                                : slot.icon === "sunny-outline"
-                                ? "sunny-outline"
-                                : slot.icon === "restaurant-outline"
-                                ? "restaurant-outline"
-                                : "moon-outline"
-                            }
-                            size={24}
-                            color={isSelected ? "#ffffff" : "#6b7280"}
-                            style={styles.timeSlotIcon}
-                          />
-                          <Text
-                            style={[
-                              styles.timeSlotLabel,
-                              isSelected && styles.timeSlotLabelSelected,
-                            ]}
-                          >
-                            {slot.label}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.timeSlotTime,
-                              isSelected && styles.timeSlotTimeSelected,
-                            ]}
-                          >
-                            {slot.time}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                {/* Or Set Exact Time Section - matching DateTimePrefStep */}
-                <View style={styles.exactTimeSection}>
-                  <Text style={styles.exactTimeLabel}>Or Set Exact Time</Text>
-                  <TouchableOpacity
-                    style={styles.exactTimeInput}
-                    onPress={() => setShowTimePicker(true)}
-                  >
-                    <Ionicons
-                      name="time-outline"
-                      size={20}
-                      color={exactTime ? "#eb7825" : "#9ca3af"}
-                    />
-                    {exactTime ? (
-                      <Text style={styles.exactTimeInputTextSelected}>
-                        {exactTime}
-                      </Text>
-                    ) : (
-                      <Text style={styles.exactTimeInputText}>HH:MM AM/PM</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+            {/* Time Picker Section (shown for "Today", "This Weekend", and "Pick a Date") */}
+            {selectedDateOption && selectedDateOption !== "Now" ? (
+              <View style={styles.exactTimeSection}>
+                <Text style={styles.exactTimeLabel}>Select Time</Text>
+                <TouchableOpacity
+                  style={styles.exactTimeInput}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Ionicons
+                    name="time-outline"
+                    size={16}
+                    color={exactTime ? "#eb7825" : "#9ca3af"}
+                  />
+                  {exactTime ? (
+                    <Text style={styles.exactTimeInputTextSelected}>
+                      {exactTime}
+                    </Text>
+                  ) : (
+                    <Text style={styles.exactTimeInputText}>HH:MM AM/PM</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
 
-          {/* Travel Mode Section */}
+          {/* Travel Mode Section */
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Travel Mode</Text>
             <Text style={styles.sectionQuestion}>How will you get there?</Text>
@@ -1043,7 +1070,7 @@ export default function PreferencesSheet({
                   >
                     <Ionicons
                       name={mode.icon as any}
-                      size={24}
+                      size={20}
                       color={isSelected ? "#ffffff" : "#6b7280"}
                     />
                     <Text
@@ -1059,7 +1086,7 @@ export default function PreferencesSheet({
               })}
             </View>
           </View>
-
+          }
           {/* Travel Limit Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderWithBadge}>
@@ -1082,7 +1109,7 @@ export default function PreferencesSheet({
               >
                 <Ionicons
                   name="time-outline"
-                  size={20}
+                  size={16}
                   color={constraintType === "time" ? "#ffffff" : "#6b7280"}
                 />
                 <Text
@@ -1105,7 +1132,7 @@ export default function PreferencesSheet({
               >
                 <Ionicons
                   name="location-outline"
-                  size={20}
+                  size={16}
                   color={constraintType === "distance" ? "#ffffff" : "#6b7280"}
                 />
                 <Text
@@ -1137,7 +1164,7 @@ export default function PreferencesSheet({
                       ? "time-outline"
                       : "paper-plane-outline"
                   }
-                  size={20}
+                  size={16}
                   color="#6b7280"
                   style={styles.constraintInputIcon}
                 />
@@ -1154,37 +1181,6 @@ export default function PreferencesSheet({
                   placeholder={constraintType === "time" ? "e.g. 20" : (accountPreferences?.measurementSystem === "Metric" ? "e.g. 5" : "e.g. 3")}
                 />
               </View>
-
-              {/* Quick selection options - matching TravelConstraintStep */}
-              <Text style={styles.quickOptionsLabel}>Quick Options</Text>
-              <View style={styles.quickOptionsContainer}>
-                {(constraintType === "time"
-                  ? [15, 30, 45, 60]
-                  : accountPreferences?.measurementSystem === "Metric"
-                    ? [5, 10, 15, 20]
-                    : [3, 5, 10, 15]
-                ).map((value, index, array) => (
-                  <TouchableOpacity
-                    key={value}
-                    style={[
-                      styles.quickOption,
-                      index === array.length - 1 && styles.quickOptionLast,
-                      constraintValue === value && styles.quickOptionSelected,
-                    ]}
-                    onPress={() => setConstraintValue(value)}
-                  >
-                    <Text
-                      style={[
-                        styles.quickOptionText,
-                        constraintValue === value &&
-                          styles.quickOptionTextSelected,
-                      ]}
-                    >
-                      {value}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
             </View>
           </View>
 
@@ -1199,34 +1195,10 @@ export default function PreferencesSheet({
           >
             <Text style={styles.sectionTitle}>Starting Location</Text>
             <Text style={styles.sectionSubtitle}>
-              Your starting point will shape travel time & distance results.
+              We're using your current location. Search below to change it.
             </Text>
 
-            {/* Use My Current Location Button - matching LocationSetupStep */}
-            <TouchableOpacity
-              style={styles.useLocationButton}
-              onPress={handleUseCurrentLocation}
-              disabled={isRequestingLocation}
-              activeOpacity={0.7}
-            >
-              {isRequestingLocation ? (
-                <ActivityIndicator size="small" color="#eb7825" />
-              ) : (
-                <Ionicons name="send-outline" size={20} color="#eb7825" />
-              )}
-              <Text style={styles.useLocationButtonText}>
-                {isRequestingLocation
-                  ? "Getting location..."
-                  : "Use my current location"}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Separator - matching LocationSetupStep */}
-            <View style={styles.separator}>
-              <Text style={styles.separatorText}>or</Text>
-            </View>
-
-            {/* Location Input Field - matching LocationSetupStep */}
+            {/* Location Input Field */}
             <View
               style={[
                 styles.locationInputContainer,
@@ -1235,13 +1207,13 @@ export default function PreferencesSheet({
             >
               <Ionicons
                 name="location"
-                size={20}
+                size={16}
                 color="#6b7280"
                 style={styles.locationInputIcon}
               />
               <TextInput
                 style={styles.locationTextInput}
-                placeholder="Enter your city or address"
+                placeholder="Search to change your starting location..."
                 placeholderTextColor="#9ca3af"
                 value={searchLocation}
                 onChangeText={handleLocationInputChange}
@@ -1264,6 +1236,14 @@ export default function PreferencesSheet({
                 autoCapitalize="words"
                 returnKeyType="done"
               />
+            </View>
+
+            {/* Helper text */}
+            <View style={styles.locationHelperContainer}>
+              <Ionicons name="information-circle-outline" size={14} color="#6b7280" />
+              <Text style={styles.locationHelperText}>
+                Type to search Google Maps locations
+              </Text>
             </View>
 
             {/* Suggestions Dropdown */}
@@ -1296,7 +1276,7 @@ export default function PreferencesSheet({
                       >
                         <Ionicons
                           name="location-outline"
-                          size={18}
+                          size={16}
                           color="#6b7280"
                         />
                         <View style={styles.suggestionTextContainer}>
@@ -1332,20 +1312,31 @@ export default function PreferencesSheet({
             { paddingBottom: Math.max(insets.bottom, 16) },
           ]}
         >
-          <TouchableOpacity
-            onPress={handleApplyPreferences}
-            style={[styles.applyButton, isSaving && styles.applyButtonDisabled]}
-            disabled={isSaving}
-          >
-            {isSaving ? (
-              <View style={styles.buttonLoadingContainer}>
-                <ActivityIndicator size="small" color="#ffffff" />
-                <Text style={styles.applyButtonText}>Saving...</Text>
-              </View>
-            ) : (
-              <Text style={styles.applyButtonText}>Apply Preferences</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.footerButtonsContainer}>
+            <TouchableOpacity
+              onPress={handleApplyPreferences}
+              style={[styles.applyButton, isSaving && styles.applyButtonDisabled]}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <View style={styles.buttonLoadingContainer}>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                  <Text style={styles.applyButtonText}>Saving...</Text>
+                </View>
+              ) : (
+                <Text style={styles.applyButtonText}>
+                  Apply {countChanges() > 0 ? `(${countChanges()})` : ""}
+                </Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleReset}
+              style={styles.resetButton}
+              disabled={isSaving}
+            >
+              <Text style={styles.resetButtonText}>Reset</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
 
@@ -1364,7 +1355,7 @@ export default function PreferencesSheet({
                 onPress={() => setShowCalendar(false)}
                 style={styles.modalCloseButton}
               >
-                <Ionicons name="close" size={24} color="#111827" />
+                <Ionicons name="close" size={20} color="#111827" />
               </TouchableOpacity>
             </View>
             <ScrollView>
@@ -1433,47 +1424,54 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalContainer: {
-    width: SCREEN_WIDTH * 0.95,
-    height: SCREEN_HEIGHT * 0.9,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
     backgroundColor: "#ffffff",
-    borderRadius: 20,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
   },
   container: {
     flex: 1,
     backgroundColor: "#ffffff",
   },
   loadingContainer: {
-    width: SCREEN_WIDTH * 0.95,
-    height: SCREEN_HEIGHT * 0.9,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#ffffff",
-    borderRadius: 20,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100, // Default padding, dynamically increased when input is focused
+    paddingBottom: 80,
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
     paddingBottom: 16,
     backgroundColor: "#ffffff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+    zIndex: 10,
   },
   closeButton: {
     padding: 8,
     marginLeft: -8,
     marginBottom: -8,
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   titleContainer: {
     flex: 1,
@@ -1486,11 +1484,11 @@ const styles = StyleSheet.create({
     width: 40,
   },
   title: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: "700",
     color: "#1e293b",
     textAlign: "center",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   subtitle: {
     fontSize: 14,
@@ -1500,28 +1498,31 @@ const styles = StyleSheet.create({
   },
   section: {
     backgroundColor: "white",
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    marginHorizontal: 12,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 5,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: "600",
     color: "#111827",
-    marginBottom: 4,
+    marginBottom: 3,
   },
   sectionSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#6b7280",
-    marginBottom: 16,
+    marginBottom: 10,
   },
   sectionQuestion: {
-    fontSize: 16,
+    fontSize: 13,
     color: "#6b7280",
-    marginBottom: 16,
+    marginBottom: 10,
   },
   sectionHeaderWithBadge: {
     flexDirection: "row",
@@ -1531,12 +1532,12 @@ const styles = StyleSheet.create({
   },
   requiredBadge: {
     backgroundColor: "#fee2e2",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
     borderRadius: 4,
   },
   requiredBadgeText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "600",
     color: "#dc2626",
   },
@@ -1548,10 +1549,10 @@ const styles = StyleSheet.create({
   experienceTypeButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "#d1d5db",
     backgroundColor: "white",
@@ -1561,7 +1562,7 @@ const styles = StyleSheet.create({
     borderColor: "#eb7825",
   },
   experienceTypeText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "500",
     color: "#374151",
   },
@@ -1570,19 +1571,20 @@ const styles = StyleSheet.create({
   },
   budgetInputsContainer: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 12,
   },
   budgetInputWrapper: {
     flex: 1,
   },
   inputLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#6b7280",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   budgetInputContainer: {
     position: "relative",
+    marginBottom: 12,
   },
   dollarSign: {
     position: "absolute",
@@ -1593,31 +1595,39 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   budgetInput: {
-    paddingLeft: 32,
-    paddingRight: 12,
-    paddingVertical: 12,
+    paddingLeft: 28,
+    paddingRight: 10,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: "#d1d5db",
     borderRadius: 8,
-    fontSize: 16,
+    fontSize: 14,
     backgroundColor: "white",
   },
   budgetPresetsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
+    marginTop: 4,
   },
   budgetPresetButton: {
-    paddingHorizontal: 16,
+    flex: 1,
+    paddingHorizontal: 4,
     paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderRadius: 16,
     backgroundColor: "white",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 3,
+    alignItems: "center",
+    overflow: "visible",
   },
   budgetPresetText: {
-    fontSize: 14,
+    fontSize: 10,
     color: "#374151",
+    fontWeight: "500",
   },
   categoriesContainer: {
     flexDirection: "column",
@@ -1626,21 +1636,26 @@ const styles = StyleSheet.create({
   categoryButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
     backgroundColor: "white",
     minWidth: "47%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 3,
   },
   categoryButtonSelected: {
     backgroundColor: "#fef3e2",
-    borderColor: "#eb7825",
+    shadowColor: "#eb7825",
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
   },
   categoryText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "500",
     color: "#374151",
     flex: 1,
@@ -1651,17 +1666,17 @@ const styles = StyleSheet.create({
   dateOptionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 12,
   },
   dateOptionCard: {
     width: "47.5%",
-    padding: 16,
-    borderRadius: 12,
+    padding: 10,
+    borderRadius: 10,
     borderWidth: 1.5,
     backgroundColor: "#f9fafb",
     borderColor: "#e5e7eb",
-    minHeight: 80,
+    minHeight: 60,
     justifyContent: "center",
   },
   dateOptionCardSelected: {
@@ -1670,19 +1685,19 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   dateOptionContent: {
-    alignItems: "flex-start",
+    alignItems: "center",
   },
   dateOptionLabel: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: "600",
     color: "#111827",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   dateOptionLabelSelected: {
     color: "#ffffff",
   },
   dateOptionDescription: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#6b7280",
   },
   dateOptionDescriptionSelected: {
@@ -1692,10 +1707,10 @@ const styles = StyleSheet.create({
   weekendInfoCard: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-    borderRadius: 12,
+    padding: 12,
+    borderRadius: 10,
     backgroundColor: "#e0f2fe",
-    marginTop: 12,
+    marginTop: 8,
     borderWidth: 0,
   },
   weekendInfoIcon: {
@@ -1705,59 +1720,59 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   weekendInfoLabel: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: "600",
     color: "#0369a1",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   weekendInfoDescription: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#0c4a6e",
     opacity: 0.9,
   },
   dateInputField: {
     width: "100%",
-    padding: 16,
-    borderRadius: 12,
+    padding: 12,
+    borderRadius: 10,
     borderWidth: 2,
     borderColor: "#eb7825",
     backgroundColor: "#ffffff",
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 12,
+    marginTop: 8,
   },
   dateInputText: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#111827",
     marginLeft: 8,
     flex: 1,
   },
   dateInputPlaceholder: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#9ca3af",
     marginLeft: 8,
     flex: 1,
   },
   quickPresetsLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#9ca3af",
-    marginTop: 8,
-    marginBottom: 12,
+    marginTop: 6,
+    marginBottom: 8,
   },
   timeSlotsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
-    marginTop: 12,
+    gap: 10,
+    marginTop: 8,
   },
   timeSlotCard: {
     width: "47.5%",
-    padding: 16,
-    borderRadius: 12,
+    padding: 10,
+    borderRadius: 10,
     borderWidth: 1.5,
     backgroundColor: "#f9fafb",
     borderColor: "#e5e7eb",
-    minHeight: 80,
+    minHeight: 60,
     justifyContent: "center",
   },
   timeSlotCardSelected: {
@@ -1772,36 +1787,36 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   timeSlotLabel: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: "600",
     color: "#111827",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   timeSlotLabelSelected: {
     color: "#ffffff",
   },
   timeSlotTime: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#6b7280",
-    lineHeight: 20,
+    lineHeight: 16,
   },
   timeSlotTimeSelected: {
     color: "#ffffff",
     opacity: 0.9,
   },
   exactTimeSection: {
-    marginTop: 24,
+    marginTop: 16,
   },
   exactTimeLabel: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: "600",
     color: "#111827",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   exactTimeInput: {
     width: "100%",
-    padding: 16,
-    borderRadius: 12,
+    padding: 12,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: "#d1d5db",
     backgroundColor: "#ffffff",
@@ -1809,13 +1824,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   exactTimeInputText: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#9ca3af",
     marginLeft: 8,
     flex: 1,
   },
   exactTimeInputTextSelected: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#111827",
     marginLeft: 8,
     flex: 1,
@@ -1824,45 +1839,46 @@ const styles = StyleSheet.create({
   travelModesGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
+    gap: 10,
   },
   travelModeCard: {
     width: "47%",
-    padding: 16,
-    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
     borderWidth: 1.5,
     borderColor: "#e5e7eb",
     backgroundColor: "white",
+    flexDirection: "row",
     alignItems: "center",
-    minHeight: 80,
     justifyContent: "center",
+    gap: 6,
   },
   travelModeCardSelected: {
     backgroundColor: "#eb7825",
     borderColor: "#eb7825",
   },
   travelModeLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
     color: "#111827",
-    marginTop: 8,
   },
   travelModeLabelSelected: {
     color: "#ffffff",
   },
   constraintTypeContainer: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 12,
   },
   constraintTypeButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    padding: 12,
-    borderRadius: 12,
+    gap: 6,
+    padding: 10,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: "#e5e7eb",
     backgroundColor: "white",
@@ -1872,7 +1888,7 @@ const styles = StyleSheet.create({
     borderColor: "#eb7825",
   },
   constraintTypeText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "500",
     color: "#374151",
   },
@@ -1880,13 +1896,13 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   constraintInputSection: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   constraintInputLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "500",
     color: "#111827",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   constraintInputContainer: {
     flexDirection: "row",
@@ -1894,10 +1910,10 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderWidth: 1.5,
     borderColor: "#e5e7eb",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 8,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 6,
   },
   constraintInputContainerFocused: {
     borderColor: "#eb7825",
@@ -1908,27 +1924,27 @@ const styles = StyleSheet.create({
   },
   constraintInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     color: "#111827",
     padding: 0,
   },
   quickOptionsLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#9ca3af",
-    marginTop: 8,
-    marginBottom: 16,
+    marginTop: 6,
+    marginBottom: 10,
   },
   quickOptionsContainer: {
     flexDirection: "row",
   },
   quickOption: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
+    marginRight: 8,
   },
   quickOptionLast: {
     marginRight: 0,
@@ -1940,7 +1956,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
   },
   quickOptionText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "500",
   },
   quickOptionTextSelected: {
@@ -1953,27 +1969,27 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffedd5",
     borderWidth: 1.5,
     borderColor: "#eb7825",
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 20,
+    marginBottom: 12,
     width: "100%",
   },
   useLocationButtonText: {
     color: "#eb7825",
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: "600",
-    marginLeft: 10,
+    marginLeft: 8,
   },
   separator: {
     alignItems: "center",
-    marginVertical: 20,
+    marginVertical: 12,
   },
   separatorText: {
-    fontSize: 14,
+    fontSize: 12,
     color: "#9ca3af",
     fontWeight: "400",
   },
@@ -1983,10 +1999,10 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderWidth: 1.5,
     borderColor: "#e5e7eb",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    marginBottom: 8,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 6,
   },
   locationInputContainerFocused: {
     borderColor: "#eb7825",
@@ -1997,9 +2013,19 @@ const styles = StyleSheet.create({
   },
   locationTextInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     color: "#111827",
     padding: 0,
+  },
+  locationHelperContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+  },
+  locationHelperText: {
+    fontSize: 11,
+    color: "#6b7280",
   },
   suggestionsContainer: {
     backgroundColor: "white",
@@ -2018,8 +2044,8 @@ const styles = StyleSheet.create({
   suggestionItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
   },
@@ -2028,12 +2054,12 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   suggestionText: {
-    fontSize: 15,
+    fontSize: 13,
     color: "#111827",
     fontWeight: "500",
   },
   suggestionSubtext: {
-    fontSize: 13,
+    fontSize: 11,
     color: "#6b7280",
     marginTop: 2,
   },
@@ -2045,26 +2071,46 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
-    padding: 16,
+    padding: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 4,
   },
+  footerButtonsContainer: {
+    flexDirection: "row",
+    gap: 8,
+  },
   applyButton: {
+    flex: 1,
     backgroundColor: "#eb7825",
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+  },
+  resetButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f3f4f6",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+  },
+  resetButtonText: {
+    color: "#374151",
+    fontSize: 14,
+    fontWeight: "600",
   },
   applyButtonDisabled: {
     opacity: 0.7,
   },
   applyButtonText: {
     color: "#ffffff",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
   },
   buttonLoadingContainer: {

@@ -605,14 +605,11 @@ export function useAppHandlers(state: any) {
             : null
           : null,
         time_slot: preferences.selectedTimeSlot || null,
+        exact_time: preferences.exactTime || null,
         datetime_pref: preferences.selectedDate
           ? new Date(preferences.selectedDate).toISOString()
           : new Date().toISOString(),
       };
-
-      // Note: time_slot expects predefined values ("brunch", "afternoon", "dinner", "lateNight")
-      // If exactTime is provided, we could map it to a time_slot, but for now we'll skip it
-      // since PreferencesSheet allows custom times that don't map to predefined slots
 
       // Add custom_location if searchLocation is provided (for both search and GPS)
       // When useLocation is "gps", searchLocation contains the city name or coordinates

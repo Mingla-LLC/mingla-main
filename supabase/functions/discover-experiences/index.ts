@@ -212,7 +212,7 @@ serve(async (req) => {
     console.log(`Failed categories (${failedCategories.length}):`, failedCategories);
     console.log(`Found ${places.length} unique places across ${DISCOVER_CATEGORIES.length} categories`);
 
-    // Select an 11th unique card as the featured card from unused candidates
+    // Select an 11th unique card as the featured card - MUST be a dining experience
     // Collect all unused candidates across all categories
     const allUnusedCandidates: DiscoverPlace[] = [];
     for (const candidates of allCategoryCandidates) {
@@ -224,18 +224,39 @@ serve(async (req) => {
 
     console.log(`Total unused candidates for featured card: ${allUnusedCandidates.length}`);
 
-    // Sort by rating/popularity score and pick the best unused candidate
-    const sortedUnused = allUnusedCandidates.sort((a, b) => {
+    // Filter to only dining experiences (ONLY "Dining Experiences" category, not "Casual Eats")
+    const diningCategories = ["Dining Experiences"];
+    const unusedDiningCandidates = allUnusedCandidates.filter(
+      (c) => c.category === "Dining Experiences"
+    );
+
+    console.log(`Dining Experience candidates for featured card: ${unusedDiningCandidates.length}`);
+
+    // Sort dining candidates by rating/popularity score and pick the best
+    const sortedDining = unusedDiningCandidates.sort((a, b) => {
       const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
       const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
       return bScore - aScore;
     });
-    const featuredPlace = sortedUnused[0] || null;
+
+    // If no dining candidates available, fall back to any unused candidate
+    let featuredPlace = sortedDining[0] || null;
+    
+    if (!featuredPlace) {
+      console.log(`No dining candidates available, falling back to any category`);
+      const sortedUnused = allUnusedCandidates.sort((a, b) => {
+        const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
+        const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
+        return bScore - aScore;
+      });
+      featuredPlace = sortedUnused[0] || null;
+    }
 
     if (featuredPlace) {
       // Add featured to used set to ensure it's tracked
       usedPlaceIds.add(featuredPlace.placeId);
-      console.log(`✓ Selected featured card: "${featuredPlace.name}" (id: ${featuredPlace.id}, placeId: ${featuredPlace.placeId}) from ${allUnusedCandidates.length} unused candidates`);
+      const isDiningExperience = featuredPlace.category === "Dining Experiences";
+      console.log(`✓ Selected featured card: "${featuredPlace.name}" (category: ${featuredPlace.category}, ${isDiningExperience ? 'DINING EXPERIENCE ✓' : 'FALLBACK - not Dining Experience'}, id: ${featuredPlace.id}, placeId: ${featuredPlace.placeId}) from ${allUnusedCandidates.length} unused candidates`);
     } else {
       console.log(`✗ No unused candidates available for featured card`);
     }
