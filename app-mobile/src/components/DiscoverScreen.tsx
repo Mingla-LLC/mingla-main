@@ -920,7 +920,6 @@ export default function DiscoverScreen({
       setDiscoverError(null);
 
       try {
-        // CACHING DISABLED FOR TESTING
         // Check if we have cached data for today
         const cachedData = await loadDiscoverCache();
         const today = getTodayDateString();
@@ -945,8 +944,6 @@ export default function DiscoverScreen({
           setDiscoverLoading(false);
           return;
         }
-
-        console.log("Cache disabled - fetching fresh discover data");
 
         // Cache is stale or missing - fetch fresh data
         console.log("Cache miss or stale. Fetching fresh discover data...");
@@ -1087,9 +1084,8 @@ export default function DiscoverScreen({
         setDiscoverRecommendations(transformed);
         setHasCompletedDiscoverFetch(true);
         
-        // CACHING DISABLED FOR TESTING
         // Save to cache for 24-hour persistence
-        // saveDiscoverCache(transformed, transformedFeatured, gridCards);
+        saveDiscoverCache(transformed, transformedFeatured, gridCards);
         
         // Mark as loaded from cache to skip the card selection useEffect
         loadedFromCacheRef.current = true;
@@ -1616,8 +1612,10 @@ export default function DiscoverScreen({
   const getDaysUntilBirthday = (birthdayString: string | null): number => {
     if (!birthdayString) return -1;
     const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset to midnight for accurate day comparison
     const birthday = new Date(birthdayString);
     const thisYearBirthday = new Date(today.getFullYear(), birthday.getMonth(), birthday.getDate());
+    thisYearBirthday.setHours(0, 0, 0, 0);
     
     // If birthday has passed this year, check next year
     if (thisYearBirthday < today) {
@@ -1625,7 +1623,7 @@ export default function DiscoverScreen({
     }
     
     const diffTime = thisYearBirthday.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
   };
 
@@ -2183,10 +2181,18 @@ export default function DiscoverScreen({
                           </Text>
                         </View>
                         <View style={styles.birthdayHeroDaysContainer}>
-                          <Text style={styles.birthdayHeroDaysNumber}>
-                            {getDaysUntilBirthday(selectedPerson.birthday)}
-                          </Text>
-                          <Text style={styles.birthdayHeroDaysLabel}>days away</Text>
+                          {getDaysUntilBirthday(selectedPerson.birthday) === 0 ? (
+                            <Text style={styles.birthdayHeroDaysText}>Today</Text>
+                          ) : getDaysUntilBirthday(selectedPerson.birthday) === 1 ? (
+                            <Text style={styles.birthdayHeroDaysText}>Tomorrow</Text>
+                          ) : (
+                            <>
+                              <Text style={styles.birthdayHeroDaysNumber}>
+                                {getDaysUntilBirthday(selectedPerson.birthday)}
+                              </Text>
+                              <Text style={styles.birthdayHeroDaysLabel}>days away</Text>
+                            </>
+                          )}
                         </View>
                       </View>
 
@@ -2268,17 +2274,32 @@ export default function DiscoverScreen({
                         </Text>
                       </View>
                     ) : (
-                      allHolidays.slice(0, 5).map((holiday, index) => {
-                        const isExpanded = expandedHolidayIds.has(holiday.id);
-                        // Check if this holiday has fetched experiences from the edge function
-                        const fetchedExperiences = (holiday as any).fetchedExperiences as HolidayExperience[] | undefined;
-                        // Use fetched experiences if available, otherwise fall back to local filtering
-                        const holidayCategories = (holiday as any).categories || getCategoriesForHolidayName(holiday.name);
-                        const holidayCards = fetchedExperiences && fetchedExperiences.length > 0
-                          ? fetchedExperiences.map(transformHolidayExperienceToCard)
-                          : getExperiencesForCategories(holidayCategories, holiday.id);
-                        // Check if this is a custom holiday
-                        const isCustomHoliday = (holiday as any).isCustom === true;
+                      (() => {
+                        // Track used experience IDs across all holidays to prevent duplicates
+                        // Server-side deduplication should handle this, but this is a safety net
+                        const usedExperienceIds = new Set<string>();
+                        
+                        return allHolidays.slice(0, 5).map((holiday, index) => {
+                          const isExpanded = expandedHolidayIds.has(holiday.id);
+                          // Check if this holiday has fetched experiences from the edge function
+                          const fetchedExperiences = (holiday as any).fetchedExperiences as HolidayExperience[] | undefined;
+                          // Use fetched experiences if available, otherwise fall back to local filtering
+                          const holidayCategories = (holiday as any).categories || getCategoriesForHolidayName(holiday.name);
+                          const allHolidayCards = fetchedExperiences && fetchedExperiences.length > 0
+                            ? fetchedExperiences.map(transformHolidayExperienceToCard)
+                            : getExperiencesForCategories(holidayCategories, holiday.id);
+                          
+                          // Filter out any duplicates that somehow made it through
+                          const holidayCards = allHolidayCards.filter(card => {
+                            if (usedExperienceIds.has(card.id)) {
+                              return false;
+                            }
+                            usedExperienceIds.add(card.id);
+                            return true;
+                          }).slice(0, 3); // Limit to 3 max
+                          
+                          // Check if this is a custom holiday
+                          const isCustomHoliday = (holiday as any).isCustom === true;
                         
                         // Format the holiday date for display (e.g., "Feb 14")
                         const holidayDate = new Date(holiday.date);
@@ -2307,7 +2328,13 @@ export default function DiscoverScreen({
                             >
                               <View style={styles.holidayItemLeft}>
                                 <View style={styles.holidayItemNameRow}>
-                                  <Text style={styles.holidayItemName}>{holiday.name}</Text>
+                                  <Text style={styles.holidayItemName}>
+                                    {holiday.daysAway === 0 
+                                      ? `Today is ${holiday.name}`
+                                      : holiday.daysAway === 1
+                                      ? `${holiday.name} is tomorrow`
+                                      : holiday.name}
+                                  </Text>
                                   {isCustomHoliday && (
                                     <TouchableOpacity
                                       onPress={() => handleDeleteCustomHoliday(holiday.id)}
@@ -2330,8 +2357,20 @@ export default function DiscoverScreen({
                                 </View>
                               </View>
                               <View style={styles.holidayItemRight}>
-                                <Text style={styles.holidayItemDays}>{holiday.daysAway}</Text>
-                                <Text style={styles.holidayItemDaysLabel}>days</Text>
+                                {holiday.daysAway === 0 ? (
+                                  <>
+                                    <Text style={styles.holidayItemDays}>Today</Text>
+                                  </>
+                                ) : holiday.daysAway === 1 ? (
+                                  <>
+                                    <Text style={styles.holidayItemDays}>Tomorrow</Text>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Text style={styles.holidayItemDays}>{holiday.daysAway}</Text>
+                                    <Text style={styles.holidayItemDaysLabel}>days</Text>
+                                  </>
+                                )}
                                 <Ionicons 
                                   name={isExpanded ? "chevron-up" : "chevron-down"} 
                                   size={16} 
@@ -2406,7 +2445,8 @@ export default function DiscoverScreen({
                             )}
                           </Animated.View>
                         );
-                      })
+                      });
+                      })()
                     )}
                   </View>
                 </>
@@ -3990,6 +4030,13 @@ const styles = StyleSheet.create({
     color: "white",
     lineHeight: 40,
   },
+  birthdayHeroDaysText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "white",
+    lineHeight: 24,
+    marginTop: 4
+  },
   birthdayHeroDaysLabel: {
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.9)",
@@ -4207,6 +4254,7 @@ const styles = StyleSheet.create({
   },
   holidayCardsScrollContent: {
     paddingHorizontal: 8,
+    paddingVertical: 8,
     gap: 12,
   },
   holidayMiniCard: {

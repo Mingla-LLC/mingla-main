@@ -6,7 +6,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
+const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 
 // Experience categories available in Mingla
 const DISCOVER_CATEGORIES = [
@@ -272,21 +272,90 @@ serve(async (req) => {
       );
     }
 
-    // Fetch experiences for each holiday's categories in parallel
-    const holidayPromises = upcomingHolidays.map(async (holiday) => {
-      let experiences: ExperienceCard[] = [];
+    // Fetch experiences for ALL holidays sequentially with global deduplication
+    // This ensures no experience appears in multiple holiday dropdowns
+    const globalUsedPlaceIds = new Set<string>();
+    const MIN_EXPERIENCES_PER_HOLIDAY = 2;
+    const MAX_EXPERIENCES_PER_HOLIDAY = 3;
+    
+    // Pre-fetch a large pool of experiences from ALL categories
+    // Use a shared set to prevent the same place appearing in multiple category pools
+    console.log("Pre-fetching experience pool from all categories...");
+    const experiencePool: Map<string, ExperienceCard[]> = new Map();
+    const poolPlaceIds = new Set<string>(); // Track ALL place IDs in the entire pool
+    
+    for (const category of DISCOVER_CATEGORIES) {
       try {
-        experiences = await fetchExperiencesForCategories(
-          holiday.definition.categories,
+        const experiences = await fetchExperiencesForCategory(
+          category,
           location,
-          radius
+          radius,
+          15, // Fetch plenty per category
+          poolPlaceIds // Pass shared set to avoid duplicates across categories
         );
-      } catch (fetchError) {
-        console.error(`Error fetching experiences for ${holiday.definition.name}:`, fetchError);
-        // Return empty experiences on error
+        experiencePool.set(category, experiences);
+        console.log(`Pool: ${experiences.length} experiences for ${category}`);
+      } catch (error) {
+        console.error(`Error pre-fetching ${category}:`, error);
+        experiencePool.set(category, []);
+      }
+    }
+    
+    // Count total pool size
+    let totalPoolSize = 0;
+    experiencePool.forEach((exps) => { totalPoolSize += exps.length; });
+    console.log(`Total pool size: ${totalPoolSize} unique experiences across all categories (poolPlaceIds: ${poolPlaceIds.size})`);
+    
+    // Get all unique experiences from pool
+    const getAllUnusedFromPool = (preferredCategories: string[]): ExperienceCard[] => {
+      const results: ExperienceCard[] = [];
+      const seenIds = new Set<string>();
+      
+      // First, get from preferred categories
+      for (const cat of preferredCategories) {
+        const catExperiences = experiencePool.get(cat) || [];
+        for (const exp of catExperiences) {
+          if (!globalUsedPlaceIds.has(exp.id) && !seenIds.has(exp.id)) {
+            results.push(exp);
+            seenIds.add(exp.id);
+          }
+        }
+      }
+      
+      // Then, fill from other categories
+      for (const cat of DISCOVER_CATEGORIES) {
+        if (preferredCategories.includes(cat)) continue;
+        const catExperiences = experiencePool.get(cat) || [];
+        for (const exp of catExperiences) {
+          if (!globalUsedPlaceIds.has(exp.id) && !seenIds.has(exp.id)) {
+            results.push(exp);
+            seenIds.add(exp.id);
+          }
+        }
+      }
+      
+      return results;
+    };
+    
+    const holidaysWithExperiences: HolidayWithExperiences[] = [];
+    
+    for (const holiday of upcomingHolidays) {
+      // Get unused experiences, prioritizing this holiday's categories
+      const availableExperiences = getAllUnusedFromPool(holiday.definition.categories);
+      
+      // Take up to MAX_EXPERIENCES_PER_HOLIDAY
+      const experiences = availableExperiences.slice(0, MAX_EXPERIENCES_PER_HOLIDAY);
+      
+      // Mark as used
+      experiences.forEach(exp => globalUsedPlaceIds.add(exp.id));
+      
+      if (experiences.length < MIN_EXPERIENCES_PER_HOLIDAY) {
+        console.warn(`WARNING: Holiday ${holiday.definition.name} only got ${experiences.length} experiences (minimum ${MIN_EXPERIENCES_PER_HOLIDAY})`);
+      } else {
+        console.log(`Holiday ${holiday.definition.name}: ${experiences.length} experiences assigned`);
       }
 
-      return {
+      holidaysWithExperiences.push({
         id: `holiday-${holiday.definition.date}-${holiday.definition.name.replace(/\s+/g, "-").toLowerCase()}`,
         name: holiday.definition.name,
         description: holiday.definition.description,
@@ -296,31 +365,31 @@ serve(async (req) => {
         categories: holiday.definition.categories,
         gender: holiday.definition.gender,
         experiences,
-      } as HolidayWithExperiences;
-    });
+      });
+    }
 
-    const holidaysWithExperiences = await Promise.all(holidayPromises);
+    console.log(`Returning ${holidaysWithExperiences.length} holidays with experiences (${globalUsedPlaceIds.size} unique places used)`);
 
-    console.log(`Returning ${holidaysWithExperiences.length} holidays with experiences`);
-
-    // Process custom holidays if provided
+    // Process custom holidays if provided (also using the same pool)
     let customHolidaysWithExperiences: HolidayWithExperiences[] = [];
     
     if (customHolidays && customHolidays.length > 0) {
       console.log(`Processing ${customHolidays.length} custom holidays`);
       
-      const customHolidayPromises = customHolidays.map(async (customHoliday) => {
+      for (const customHoliday of customHolidays) {
         const categories = [customHoliday.category];
-        let experiences: ExperienceCard[] = [];
         
-        try {
-          experiences = await fetchExperiencesForCategories(
-            categories,
-            location,
-            radius
-          );
-        } catch (fetchError) {
-          console.error(`Error fetching experiences for custom holiday ${customHoliday.name}:`, fetchError);
+        // Get unused experiences from the pool, prioritizing the custom holiday's category
+        const availableExperiences = getAllUnusedFromPool(categories);
+        const experiences = availableExperiences.slice(0, MAX_EXPERIENCES_PER_HOLIDAY);
+        
+        // Mark as used
+        experiences.forEach(exp => globalUsedPlaceIds.add(exp.id));
+        
+        if (experiences.length < MIN_EXPERIENCES_PER_HOLIDAY) {
+          console.warn(`WARNING: Custom holiday ${customHoliday.name} only got ${experiences.length} experiences (minimum ${MIN_EXPERIENCES_PER_HOLIDAY})`);
+        } else {
+          console.log(`Custom holiday ${customHoliday.name}: ${experiences.length} experiences assigned`);
         }
 
         // Calculate days away for custom holiday
@@ -330,7 +399,7 @@ serve(async (req) => {
         customDate.setHours(0, 0, 0, 0);
         const daysAway = Math.ceil((customDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-        return {
+        customHolidaysWithExperiences.push({
           id: customHoliday.id,
           name: customHoliday.name,
           description: customHoliday.description,
@@ -341,10 +410,9 @@ serve(async (req) => {
           gender: null,
           experiences,
           isCustom: true,
-        } as HolidayWithExperiences;
-      });
-
-      customHolidaysWithExperiences = await Promise.all(customHolidayPromises);
+        });
+      }
+      
       console.log(`Processed ${customHolidaysWithExperiences.length} custom holidays with experiences`);
     }
 
@@ -379,18 +447,123 @@ serve(async (req) => {
 });
 
 /**
- * Fetch up to 3 experiences for the given categories
+ * Fetch experiences for a SINGLE category, using a shared set to prevent duplicates across categories
+ */
+async function fetchExperiencesForCategory(
+  category: string,
+  location: { lat: number; lng: number },
+  radius: number,
+  maxResults: number,
+  sharedUsedPlaceIds: Set<string>
+): Promise<ExperienceCard[]> {
+  const experiences: ExperienceCard[] = [];
+  
+  const placeTypes = CATEGORY_TO_PLACE_TYPES[category];
+  if (!placeTypes || placeTypes.length === 0) {
+    console.warn(`No place types defined for category: ${category}`);
+    return experiences;
+  }
+
+  try {
+    const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
+    
+    const fieldMask = [
+      "places.id",
+      "places.displayName",
+      "places.location",
+      "places.formattedAddress",
+      "places.priceLevel",
+      "places.rating",
+      "places.userRatingCount",
+      "places.photos",
+      "places.types",
+    ].join(",");
+
+    const requestBody = {
+      includedTypes: placeTypes,
+      maxResultCount: 20, // Fetch more to account for duplicates
+      locationRestriction: {
+        circle: {
+          center: {
+            latitude: location.lat,
+            longitude: location.lng,
+          },
+          radius: radius,
+        },
+      },
+      rankPreference: "POPULARITY",
+    };
+
+    const response = await fetch(baseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY!,
+        "X-Goog-FieldMask": fieldMask,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Google Places API error for ${category}:`, response.status, errorText);
+      return experiences;
+    }
+
+    const data = await response.json();
+
+    if (!data.places || data.places.length === 0) {
+      console.log(`No places found for category: ${category}`);
+      return experiences;
+    }
+
+    // Filter out excluded types
+    const validPlaces = data.places.filter((place: any) => {
+      const placeTypeSet = new Set(place.types || []);
+      return !Array.from(EXCLUDED_TYPES).some((excluded) => placeTypeSet.has(excluded));
+    });
+
+    // Sort by rating
+    const sortedPlaces = validPlaces.sort((a: any, b: any) => {
+      const aScore = (a.rating || 0) * Math.min(1, (a.userRatingCount || 0) / 100);
+      const bScore = (b.rating || 0) * Math.min(1, (b.userRatingCount || 0) / 100);
+      return bScore - aScore;
+    });
+
+    // Add unique places that haven't been used by ANY category yet
+    for (const place of sortedPlaces) {
+      if (experiences.length >= maxResults) break;
+      if (sharedUsedPlaceIds.has(place.id)) {
+        console.log(`Skipping duplicate place ${place.id} (already in another category)`);
+        continue;
+      }
+
+      sharedUsedPlaceIds.add(place.id);
+      experiences.push(transformToExperienceCard(place, category));
+    }
+
+    console.log(`Fetched ${experiences.length} unique experiences for ${category}`);
+  } catch (error) {
+    console.error(`Error fetching places for category ${category}:`, error);
+  }
+
+  return experiences;
+}
+
+/**
+ * Fetch up to maxResults experiences for the given categories
  */
 async function fetchExperiencesForCategories(
   categories: string[],
   location: { lat: number; lng: number },
-  radius: number
+  radius: number,
+  maxResults: number = 8
 ): Promise<ExperienceCard[]> {
   const allExperiences: ExperienceCard[] = [];
   const usedPlaceIds = new Set<string>();
 
-  // Fetch from each category, spreading the 3 cards across categories
-  const cardsPerCategory = Math.max(1, Math.floor(3 / categories.length));
+  // Fetch from each category, spreading the maxResults cards across categories
+  const cardsPerCategory = Math.max(2, Math.ceil(maxResults / categories.length));
   
   for (const category of categories) {
     const placeTypes = CATEGORY_TO_PLACE_TYPES[category];
@@ -482,15 +655,15 @@ async function fetchExperiencesForCategories(
     }
 
     // Stop if we have enough
-    if (allExperiences.length >= 3) break;
+    if (allExperiences.length >= maxResults) break;
   }
 
   // If we still need more, fill from remaining categories
-  if (allExperiences.length < 2) {
+  if (allExperiences.length < maxResults) {
     console.log(`Only ${allExperiences.length} experiences, trying to fetch more...`);
     // Try to get more from any available category
     for (const category of DISCOVER_CATEGORIES) {
-      if (allExperiences.length >= 2) break;
+      if (allExperiences.length >= maxResults) break;
       
       const placeTypes = CATEGORY_TO_PLACE_TYPES[category];
       if (!placeTypes) continue;
@@ -540,7 +713,7 @@ async function fetchExperiencesForCategories(
         if (!data.places) continue;
 
         for (const place of data.places) {
-          if (allExperiences.length >= 2) break;
+          if (allExperiences.length >= maxResults) break;
           if (usedPlaceIds.has(place.id)) continue;
 
           usedPlaceIds.add(place.id);
@@ -552,7 +725,7 @@ async function fetchExperiencesForCategories(
     }
   }
 
-  return allExperiences.slice(0, 3);
+  return allExperiences.slice(0, maxResults);
 }
 
 /**
