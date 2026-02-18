@@ -24,6 +24,7 @@ import { useAuthSimple } from "../hooks/useAuthSimple";
 import { PreferencesService } from "../services/preferencesService";
 import { locationService } from "../services/locationService";
 import { offlineService } from "../services/offlineService";
+import { useBoardSession } from "../hooks/useBoardSession";
 import {
   geocodingService,
   AutocompleteSuggestion,
@@ -41,6 +42,9 @@ interface PreferencesSheetProps {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
   };
+  // Collaboration mode props - when provided, loads/saves from board_session_preferences
+  sessionId?: string;
+  sessionName?: string;
 }
 
 // Experience Types matching the image - using exact icons from IntentSelectionStep
@@ -169,10 +173,20 @@ export default function PreferencesSheet({
   onClose,
   onSave,
   accountPreferences,
+  sessionId,
+  sessionName,
 }: PreferencesSheetProps) {
   const { user } = useAuthSimple();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+
+  // Collaboration mode: when sessionId is provided, use board session preferences
+  const isCollaborationMode = !!sessionId;
+  const {
+    preferences: boardPreferences,
+    updatePreferences: updateBoardPreferences,
+    loading: loadingBoardPreferences,
+  } = useBoardSession(sessionId);
 
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
@@ -272,8 +286,11 @@ export default function PreferencesSheet({
     searchLocation: "",
   };
 
-  // Load existing preferences from database
+  // Load existing preferences from database (solo mode only)
   useEffect(() => {
+    // Skip solo loading when in collaboration mode
+    if (isCollaborationMode) return;
+
     const loadPreferences = async () => {
       if (!user?.id) {
         setIsLoading(false);
@@ -415,7 +432,83 @@ export default function PreferencesSheet({
     };
 
     loadPreferences();
-  }, [user?.id]);
+  }, [user?.id, isCollaborationMode]);
+
+  // Load preferences from board session (collaboration mode)
+  useEffect(() => {
+    if (!isCollaborationMode) return;
+
+    if (boardPreferences) {
+      // Map board session preferences to component state
+      if (boardPreferences.experience_types) {
+        setSelectedIntents(boardPreferences.experience_types);
+      }
+      if (boardPreferences.categories) {
+        setSelectedCategories(boardPreferences.categories);
+      }
+      if ((boardPreferences as any).budget_min !== undefined) {
+        setBudgetMin((boardPreferences as any).budget_min);
+      }
+      if ((boardPreferences as any).budget_max !== undefined) {
+        setBudgetMax((boardPreferences as any).budget_max);
+      }
+      if ((boardPreferences as any).travel_mode) {
+        setTravelMode((boardPreferences as any).travel_mode);
+      }
+      if ((boardPreferences as any).travel_constraint_type) {
+        setConstraintType(
+          (boardPreferences as any).travel_constraint_type as "time" | "distance"
+        );
+      }
+      if ((boardPreferences as any).travel_constraint_value !== undefined) {
+        setConstraintValue((boardPreferences as any).travel_constraint_value);
+      }
+      if ((boardPreferences as any).time_of_day) {
+        const timeSlot = (boardPreferences as any).time_of_day;
+        if (["brunch", "afternoon", "dinner", "lateNight"].includes(timeSlot)) {
+          setSelectedTimeSlot(timeSlot as TimeSlot);
+        }
+      }
+      if ((boardPreferences as any).datetime_pref) {
+        const date = new Date((boardPreferences as any).datetime_pref);
+        if (!isNaN(date.getTime())) {
+          setSelectedDate(date);
+        }
+      }
+      // Load location preferences from location column
+      if ((boardPreferences as any).location) {
+        const savedLocation = (boardPreferences as any).location;
+        setSearchLocation(savedLocation);
+
+        const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(savedLocation);
+        if (isCoordinates) {
+          setUseLocation("gps");
+        } else {
+          setUseLocation("search");
+        }
+      }
+
+      setInitialPreferences({
+        selectedIntents: boardPreferences.experience_types || [],
+        budgetMin: (boardPreferences as any).budget_min || 0,
+        budgetMax: (boardPreferences as any).budget_max || 200,
+        selectedCategories: boardPreferences.categories || [],
+        selectedDateOption: "Now",
+        selectedTimeSlot: (boardPreferences as any).time_of_day || null,
+        selectedDate: (boardPreferences as any).datetime_pref ? new Date((boardPreferences as any).datetime_pref) : null,
+        exactTime: "",
+        travelMode: (boardPreferences as any).travel_mode || "walking",
+        constraintType: ((boardPreferences as any).travel_constraint_type || "time") as "time" | "distance",
+        constraintValue: (boardPreferences as any).travel_constraint_value || 20,
+        searchLocation: (boardPreferences as any).location || "",
+      });
+
+      setIsLoading(false);
+    } else if (!loadingBoardPreferences) {
+      setInitialPreferences({ ...defaultPreferences });
+      setIsLoading(false);
+    }
+  }, [isCollaborationMode, boardPreferences, loadingBoardPreferences]);
 
   // Filter categories based on selected intents
   const filteredCategories = useMemo(() => {
@@ -754,35 +847,79 @@ export default function PreferencesSheet({
 
     setIsSaving(true);
     try {
-      if (!onSave) {
-        if (onClose) onClose();
-        return;
-      }
+      // Collaboration mode: save to board_session_preferences via useBoardSession
+      if (isCollaborationMode) {
+        const dbPrefs: any = {
+          categories: selectedCategories,
+          budget_min: typeof budgetMin === "number" ? budgetMin : 0,
+          budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
+          travel_mode: travelMode,
+          travel_constraint_type: constraintType,
+          travel_constraint_value:
+            typeof constraintValue === "number" ? constraintValue : 20,
+          time_of_day: selectedTimeSlot || null,
+          datetime_pref: selectedDate ? selectedDate.toISOString() : null,
+        };
 
-      const saveResult = await Promise.resolve(onSave(preferences));
-
-      // Update offline cache with new preferences before invalidating
-      // This ensures useUserLocation gets fresh data when it reads from cache
-      try {
-        if (user?.id) {
-          const updatedPrefs = await PreferencesService.getUserPreferences(
-            user.id
-          );
-          if (updatedPrefs) {
-            await offlineService.cacheUserPreferences(updatedPrefs);
-          }
+        if (searchLocation) {
+          dbPrefs.location = searchLocation;
         }
-      } catch (error) {
-        console.error("Error updating offline cache:", error);
-      }
 
-      // Invalidate TanStack Query caches to trigger refetch
-      queryClient.invalidateQueries({ queryKey: ["recommendations"] });
-      queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
-      queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+        await updateBoardPreferences(dbPrefs);
 
-      if (saveResult === true || saveResult === undefined) {
+        // Update offline cache
+        try {
+          if (user?.id && searchLocation) {
+            const updatedPrefs = await PreferencesService.getUserPreferences(user.id);
+            if (updatedPrefs) {
+              await offlineService.cacheUserPreferences(updatedPrefs);
+            }
+          }
+        } catch (error) {
+          console.error("Error updating offline cache:", error);
+        }
+
+        // Invalidate caches
+        queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+        queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+
+        // Call onSave callback for backward compatibility
+        if (onSave) {
+          await Promise.resolve(onSave(preferences));
+        }
+
         if (onClose) onClose();
+      } else {
+        // Solo mode: original behavior
+        if (!onSave) {
+          if (onClose) onClose();
+          return;
+        }
+
+        const saveResult = await Promise.resolve(onSave(preferences));
+
+        // Update offline cache with new preferences before invalidating
+        try {
+          if (user?.id) {
+            const updatedPrefs = await PreferencesService.getUserPreferences(
+              user.id
+            );
+            if (updatedPrefs) {
+              await offlineService.cacheUserPreferences(updatedPrefs);
+            }
+          }
+        } catch (error) {
+          console.error("Error updating offline cache:", error);
+        }
+
+        // Invalidate TanStack Query caches to trigger refetch
+        queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+        queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
+        queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+
+        if (saveResult === true || saveResult === undefined) {
+          if (onClose) onClose();
+        }
       }
     } catch (error) {
       console.error("Error saving preferences:", error);
@@ -820,7 +957,11 @@ export default function PreferencesSheet({
         )}
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Narrow your search</Text>
-          {/* <Text style={styles.subtitle}>Personal Preferences</Text> */}
+          {isCollaborationMode && sessionName && (
+            <Text style={styles.subtitle}>
+              Collaboration Preferences for "{sessionName}"
+            </Text>
+          )}
         </View>
         {onClose && <View style={styles.headerSpacer} />}
       </View>
@@ -836,7 +977,7 @@ export default function PreferencesSheet({
           keyboardShouldPersistTaps="handled"
         >
           {/* Experience Type Section */}
-          <View style={styles.section}>
+          <View style={[styles.section, {marginTop: 20}]}>
             <Text style={styles.sectionTitle}>Experience Type</Text>
             <Text style={styles.sectionSubtitle}>
               Date Idea / Friends / Romantic / Solo Adventure
@@ -1309,7 +1450,7 @@ export default function PreferencesSheet({
         <View
           style={[
             styles.footer,
-            { paddingBottom: Math.max(insets.bottom, 16) },
+            { paddingBottom: 10 },
           ]}
         >
           <View style={styles.footerButtonsContainer}>

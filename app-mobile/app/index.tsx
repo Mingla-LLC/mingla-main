@@ -17,7 +17,6 @@ import { useAppHandlers } from "../src/components/AppHandlers";
 import { useAppState } from "../src/components/AppStateManager";
 import { useFriends } from "../src/hooks/useFriends";
 import CollaborationModule from "../src/components/CollaborationModule";
-import CollaborationPreferences from "../src/components/CollaborationPreferences";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 import HomePage from "../src/components/HomePage";
 import DiscoverScreen from "../src/components/DiscoverScreen";
@@ -1521,15 +1520,13 @@ function AppContent() {
     if (showCollabPreferences && currentMode !== "solo" && currentSessionId) {
       return (
         <ErrorBoundary>
-          <CollaborationPreferences
-            isOpen={showCollabPreferences}
+          <PreferencesSheet
             onClose={() => {
               setShowCollabPreferences(false);
             }}
-            sessionName={currentMode ?? "solo"}
-            sessionId={currentSessionId} // Add this
-            participants={[]}
             onSave={handlers.handleCollabPreferencesSave}
+            sessionId={currentSessionId}
+            sessionName={currentMode ?? "solo"}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
               measurementSystem:

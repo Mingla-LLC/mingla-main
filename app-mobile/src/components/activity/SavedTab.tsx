@@ -338,19 +338,19 @@ const SavedTab = ({
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: 16,
-      paddingVertical: 16,
+      paddingVertical: 12,
       borderBottomColor: "#e5e7eb",
-      backgroundColor: "white",
+      backgroundColor: "#f3f4f6",
       borderWidth: 1,
       borderColor: "#e5e7eb",
       borderRadius: 12,
       marginHorizontal: 16,
       marginBottom: 8,
-      elevation: 2,
-      shadowColor: "#e5e7eb",
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 1,
+      elevation: 3,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 3,
     },
     accordionTitleContainer: {
       flexDirection: "row",
@@ -374,10 +374,9 @@ const SavedTab = ({
       paddingVertical: 8,
     },
     filterCard: {
-      backgroundColor: "white",
-      marginTop: 16,
-      borderRadius: 16,
-      padding: 16,
+      marginHorizontal: 16,
+      marginVertical: 5,
+      paddingVertical: 8,
     },
     filterHeaderRow: {
       flexDirection: "row",
@@ -388,9 +387,10 @@ const SavedTab = ({
       flexDirection: "row",
       alignItems: "center",
       backgroundColor: "white",
-      borderRadius: 8,
+      borderRadius: 12,
       paddingHorizontal: 12,
-      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: "#e5e7eb",
       elevation: 5,
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 1 },
@@ -404,18 +404,25 @@ const SavedTab = ({
       flex: 1,
       fontSize: 14,
       color: "#111827",
-      paddingVertical: 0,
+      paddingVertical: 16,
+      marginLeft: 3
     },
     filterButton: {
       marginLeft: 12,
-      width: 56,
-      height: 36,
-      borderRadius: 8,
+      width: 66,
+      height: 56,
+      borderRadius: 12,
       alignItems: "center",
       justifyContent: "center",
       flexDirection: "row",
       borderWidth: 1,
       borderColor: "#e5e7eb",
+      backgroundColor: "white",
+      elevation: 5,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
     },
     filterSection: {
       marginTop: 12,
@@ -1472,143 +1479,142 @@ const SavedTab = ({
         onProposeDateTime={handleProposeDateTime}
       />
 
-      {/* Search & Filters */}
-      <Animated.View
-        style={[
-          styles.filterCard,
-          {
-            opacity: searchBarOpacity,
-            transform: [{ translateY: searchBarSlide }],
-          },
-        ]}
-      >
-        <View style={styles.filterHeaderRow}>
-          <View style={styles.searchInputContainer}>
-            <Ionicons
-              name="search-outline"
-              size={18}
-              color="#9ca3af"
-              style={styles.searchIcon}
-            />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search by name, date, or type..."
-              placeholderTextColor="#9ca3af"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-          <TouchableOpacity
-            style={[styles.filterButton, isFiltersExpanded ? { backgroundColor: "#eb7825" } : null]}
-            activeOpacity={0.7}
-            onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
-          >
-            <Feather name="filter" size={16} color={isFiltersExpanded ? "white" : "#9ca3af"} />
-            <Ionicons
-              name={isFiltersExpanded ? "chevron-up" : "chevron-down"}
-              size={18}
-              color={isFiltersExpanded ? "white" : "#9ca3af"}
-            />
-          </TouchableOpacity>
-        </View>
-
-        {isFiltersExpanded && (
-          <>
-            {/* When */}
-            <View style={styles.filterSection}>
-              <Text style={styles.filterLabel}>When</Text>
-              <View style={styles.filterPillRow}>
-                {[
-                  { key: "all", label: "All Dates" },
-                  { key: "today", label: "Today" },
-                  { key: "this_week", label: "This Week" },
-                  { key: "this_month", label: "This Month" },
-                  { key: "upcoming", label: "Upcoming" },
-                ].map((option) => {
-                  const selected = selectedWhen === option.key;
-                  return (
-                    <TouchableOpacity
-                      key={option.key}
-                      style={[
-                        styles.filterPill,
-                        selected && styles.filterPillSelected,
-                      ]}
-                      onPress={() =>
-                        setSelectedWhen(option.key as typeof selectedWhen)
-                      }
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.filterPillText,
-                          selected && styles.filterPillTextSelected,
-                        ]}
-                      >
-                        {option.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Category */}
-            <View style={styles.filterSection}>
-              <Text style={styles.filterLabel}>Category</Text>
-              <View style={styles.filterPillRow}>
-                {[
-                  "Take a Stroll",
-                  "Sip & Chill",
-                  "Casual Eats",
-                  "Screen & Relax",
-                  "Creative & Hands-On",
-                  "Picnics",
-                  "Play & Move",
-                  "Dining Experiences",
-                  "Wellness Dates",
-                  "Freestyle",
-                ].map((label) => {
-                  const key = label;
-                  const selected = selectedCategory === key;
-                  return (
-                    <TouchableOpacity
-                      key={key}
-                      style={[
-                        styles.filterPill,
-                        selected && styles.filterPillSelected,
-                      ]}
-                      onPress={() =>
-                        setSelectedCategory(
-                          selected ? "all" : (key as typeof selectedCategory)
-                        )
-                      }
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.filterPillText,
-                          selected && styles.filterPillTextSelected,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          </>
-        )}
-      </Animated.View>
-
       <ScrollView 
         style={{ flex: 1 }}
         contentContainerStyle={styles.mainScrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Search & Filters */}
+        <Animated.View
+          style={[
+            styles.filterCard,
+            {
+              opacity: searchBarOpacity,
+              transform: [{ translateY: searchBarSlide }],
+            },
+          ]}
+        >
+          <View style={styles.filterHeaderRow}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons
+                name="search-outline"
+                size={18}
+                color="#9ca3af"
+                style={styles.searchIcon}
+              />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search by name, date, or type..."
+                placeholderTextColor="#9ca3af"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.filterButton, isFiltersExpanded ? { backgroundColor: "#eb7825" } : null]}
+              activeOpacity={0.7}
+              onPress={() => setIsFiltersExpanded(!isFiltersExpanded)}
+            >
+              <Feather name="filter" size={16} color={isFiltersExpanded ? "white" : "#9ca3af"} />
+              <Ionicons
+                name={isFiltersExpanded ? "chevron-up" : "chevron-down"}
+                size={18}
+                color={isFiltersExpanded ? "white" : "#9ca3af"}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {isFiltersExpanded && (
+            <>
+              {/* When */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>When</Text>
+                <View style={styles.filterPillRow}>
+                  {[
+                    { key: "all", label: "All Dates" },
+                    { key: "today", label: "Today" },
+                    { key: "this_week", label: "This Week" },
+                    { key: "this_month", label: "This Month" },
+                    { key: "upcoming", label: "Upcoming" },
+                  ].map((option) => {
+                    const selected = selectedWhen === option.key;
+                    return (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[
+                          styles.filterPill,
+                          selected && styles.filterPillSelected,
+                        ]}
+                        onPress={() =>
+                          setSelectedWhen(option.key as typeof selectedWhen)
+                        }
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.filterPillText,
+                            selected && styles.filterPillTextSelected,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Category */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>Category</Text>
+                <View style={styles.filterPillRow}>
+                  {[
+                    "Take a Stroll",
+                    "Sip & Chill",
+                    "Casual Eats",
+                    "Screen & Relax",
+                    "Creative & Hands-On",
+                    "Picnics",
+                    "Play & Move",
+                    "Dining Experiences",
+                    "Wellness Dates",
+                    "Freestyle",
+                  ].map((label) => {
+                    const key = label;
+                    const selected = selectedCategory === key;
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        style={[
+                          styles.filterPill,
+                          selected && styles.filterPillSelected,
+                        ]}
+                        onPress={() =>
+                          setSelectedCategory(
+                            selected ? "all" : (key as typeof selectedCategory)
+                          )
+                        }
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.filterPillText,
+                            selected && styles.filterPillTextSelected,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </>
+          )}
+        </Animated.View>
         {/* Active Section */}
         <TouchableOpacity
-          style={styles.accordionHeader}
+          style={[styles.accordionHeader]}
           onPress={() =>
             setExpandedAccordionItems((prev) =>
               prev.includes("active")

@@ -1229,7 +1229,7 @@ export default function ConnectionsPageRefactored({
   return (
     <>
       <View style={styles.container}>
-        <View style={styles.content}>
+        <View style={[styles.content, showMessageInterface && { paddingHorizontal: 0 }]}>
           {/* Header - Only show when not in message interface */}
           {!showMessageInterface && (
             <View style={styles.header}>

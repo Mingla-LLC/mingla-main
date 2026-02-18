@@ -662,7 +662,7 @@ export default function MessageInterface({
         {/* Top Row: Back button, Avatar, Name and Status */}
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={16} color="#6b7280" />
+            <Ionicons name="arrow-back" size={24} color="#6b7280" />
           </TouchableOpacity>
 
           <View style={styles.avatarContainer}>
@@ -1162,13 +1162,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   backButton: {
-    width: 32,
-    height: 32,
+    width: 40,
+    height: 40,
     /*  backgroundColor: "#f3f4f6", */
-    borderRadius: 16,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
+    marginRight: 4,
   },
   avatarContainer: {
     position: "relative",

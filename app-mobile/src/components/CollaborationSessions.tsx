@@ -234,11 +234,11 @@ export default function CollaborationSessions({
         >
         {/* Solo pill */}
         <TouchableOpacity
-          style={[styles.pill, styles.soloPill, isSoloMode && styles.pillSelected]}
+          style={[styles.pill, isSoloMode && styles.soloPill]}
           onPress={onSoloSelect}
           activeOpacity={0.7}
         >
-          <Text style={[styles.pillText, styles.soloPillText, isSoloMode && styles.pillTextSelected]}>
+          <Text style={[styles.pillText, isSoloMode && styles.soloPillText]}>
             Solo
           </Text>
         </TouchableOpacity>
@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     paddingHorizontal: 4,
     marginVertical: 10,
-    marginHorizontal: 24,
+    marginHorizontal: 17,
     borderRadius: 24,
     shadowColor: '#000',
     shadowOffset: {

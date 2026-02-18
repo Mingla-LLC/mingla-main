@@ -325,14 +325,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     position: "relative",
     zIndex: 100,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 2,
     paddingVertical: 8,
   },
   headerLeft: {
@@ -436,7 +428,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     position: "relative",
     overflow: "hidden",
-    marginHorizontal: 10
+    // marginHorizontal: 10
   },
   innerShadowTop: {
     position: "absolute",
