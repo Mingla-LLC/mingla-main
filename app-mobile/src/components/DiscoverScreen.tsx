@@ -63,6 +63,45 @@ const CARD_WIDTH = screenWidth - 32; // 16px padding on each side
 const GRID_CARD_WIDTH = (screenWidth - 48) / 2; // 16px padding + 16px gap between cards
 const ANIMATION_DURATION = 400;
 
+// Month names for custom day picker
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// Get max days for a given month (29 for Feb to allow leap year dates)
+const getDaysInMonth = (month: number): number => {
+  const daysPerMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return daysPerMonth[month - 1] || 31;
+};
+
+// Calculate next occurrence of a MM-DD date from today
+const getNextOccurrence = (dateStr: string): { date: Date; daysAway: number } => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  let month: number, day: number;
+  if (dateStr.match(/^\d{2}-\d{2}$/)) {
+    // MM-DD format
+    [month, day] = dateStr.split("-").map(Number);
+  } else {
+    // Legacy ISO format - extract month and day
+    const legacyDate = new Date(dateStr);
+    month = legacyDate.getMonth() + 1;
+    day = legacyDate.getDate();
+  }
+  
+  let holidayDate = new Date(today.getFullYear(), month - 1, day);
+  holidayDate.setHours(0, 0, 0, 0);
+  if (holidayDate < today) {
+    holidayDate.setFullYear(holidayDate.getFullYear() + 1);
+  }
+  
+  const diffTime = holidayDate.getTime() - today.getTime();
+  const daysAway = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return { date: holidayDate, daysAway };
+};
+
 // Category icons mapping (from PreferencesSheet categories)
 const categoryIcons: { [key: string]: string } = {
   "Stroll": "eye-outline",
@@ -580,8 +619,10 @@ export default function DiscoverScreen({
   // Add Custom Day Modal state
   const [isAddCustomDayModalVisible, setIsAddCustomDayModalVisible] = useState(false);
   const [customDayName, setCustomDayName] = useState("");
-  const [customDayDate, setCustomDayDate] = useState<Date | null>(null);
-  const [showCustomDayDatePicker, setShowCustomDayDatePicker] = useState(false);
+  const [customDayMonth, setCustomDayMonth] = useState<number>(0); // 1-12, 0 = not selected
+  const [customDayDay, setCustomDayDay] = useState<number>(0); // 1-31, 0 = not selected
+  const [showCustomDayMonthPicker, setShowCustomDayMonthPicker] = useState(false);
+  const [showCustomDayDayPicker, setShowCustomDayDayPicker] = useState(false);
   const [customDayDescription, setCustomDayDescription] = useState("");
   const [customDayCategory, setCustomDayCategory] = useState("Dining Experiences");
   const [showCustomDayCategoryPicker, setShowCustomDayCategoryPicker] = useState(false);
@@ -1851,24 +1892,18 @@ export default function DiscoverScreen({
   const handleCloseAddCustomDayModal = () => {
     setIsAddCustomDayModalVisible(false);
     setCustomDayName("");
-    setCustomDayDate(null);
+    setCustomDayMonth(0);
+    setCustomDayDay(0);
+    setShowCustomDayMonthPicker(false);
+    setShowCustomDayDayPicker(false);
     setCustomDayDescription("");
     setCustomDayCategory("Dining Experiences");
     setShowCustomDayCategoryPicker(false);
     setCustomDayNameError(null);
     setCustomDayDateError(null);
-    setShowCustomDayDatePicker(false);
   };
 
-  const handleCustomDayDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === "android") {
-      setShowCustomDayDatePicker(false);
-    }
-    if (selectedDate) {
-      setCustomDayDate(selectedDate);
-      if (customDayDateError) setCustomDayDateError(null);
-    }
-  };
+  const handleCustomDayDateChange = () => {}; // No longer needed - using month/day pickers
 
   const handleAddCustomDay = async () => {
     // Validate required fields
@@ -1879,19 +1914,22 @@ export default function DiscoverScreen({
       hasError = true;
     }
     
-    if (!customDayDate) {
+    if (!customDayMonth || !customDayDay) {
       setCustomDayDateError("Date is required");
       hasError = true;
     }
     
     if (hasError) return;
     
+    // Store date as MM-DD format (recurring yearly)
+    const dateStr = `${String(customDayMonth).padStart(2, "0")}-${String(customDayDay).padStart(2, "0")}`;
+    
     // Create new custom holiday
     const newCustomHoliday: CustomHoliday = {
       id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       personId: selectedPersonId,
       name: customDayName.trim(),
-      date: customDayDate!.toISOString(),
+      date: dateStr,
       description: customDayDescription.trim() || "Custom celebration day",
       category: customDayCategory,
       createdAt: new Date().toISOString(),
@@ -1919,13 +1957,8 @@ export default function DiscoverScreen({
     const personHolidays = customHolidays.filter((h) => h.personId === selectedPersonId);
     
     return personHolidays.map((h) => {
-      const holidayDate = new Date(h.date);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      holidayDate.setHours(0, 0, 0, 0);
-      
-      const diffTime = holidayDate.getTime() - today.getTime();
-      const daysAway = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      // Calculate next occurrence - treats date as recurring (MM-DD or legacy ISO)
+      const { date: holidayDate, daysAway } = getNextOccurrence(h.date);
       
       // Custom holidays show primary category + Dining Experiences
       const categories = h.category === "Dining Experiences" 
@@ -1948,6 +1981,15 @@ export default function DiscoverScreen({
 
   // Transform HolidayExperience to GridCardData for display
   const transformHolidayExperienceToCard = useCallback((exp: HolidayExperience): GridCardData => {
+    // Map priceLevel to actual dollar ranges (matches discover-experiences edge function)
+    const getPriceRange = (level: number): string => {
+      if (level <= 0) return "Free";
+      if (level === 1) return "$0-$25";
+      if (level === 2) return "$15-$75";
+      if (level === 3) return "$50-$150";
+      return "$100-$500";
+    };
+
     return {
       id: exp.id,
       title: exp.name,
@@ -1955,7 +1997,7 @@ export default function DiscoverScreen({
       description: exp.address || "",
       image: exp.imageUrl || "",
       images: exp.images,
-      priceRange: exp.priceLevel <= 1 ? "$" : exp.priceLevel === 2 ? "$$" : exp.priceLevel === 3 ? "$$$" : "$$$$",
+      priceRange: getPriceRange(exp.priceLevel),
       rating: exp.rating,
       reviewCount: exp.reviewCount,
       address: exp.address,
@@ -2800,57 +2842,159 @@ export default function DiscoverScreen({
               )}
             </View>
 
-            {/* Date Field */}
+            {/* Date Field - Month & Day only (holidays recur every year) */}
             <View style={styles.addPersonFieldContainer}>
               <Text style={styles.addPersonFieldLabel}>
                 Date <Text style={styles.requiredAsterisk}>*</Text>
               </Text>
-              <TouchableOpacity
-                style={[
-                  styles.addPersonBirthdayInput,
-                  customDayDateError && styles.addPersonInputError,
-                ]}
-                onPress={() => setShowCustomDayDatePicker(true)}
-                activeOpacity={0.7}
-              >
-                {customDayDate ? (
-                  <Text style={styles.birthdayText}>
-                    {formatBirthdayForDisplay(customDayDate)}
-                  </Text>
-                ) : (
-                  <Text style={styles.birthdayPlaceholder}>dd/mm/yyyy</Text>
-                )}
-                <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-              </TouchableOpacity>
+              <Text style={{ fontSize: 12, color: "#9ca3af", marginBottom: 6 }}>Holidays recur every year — only month and day are needed.</Text>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                {/* Month Picker Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.addPersonInput,
+                    { flex: 1 },
+                    customDayDateError && styles.addPersonInputError,
+                  ]}
+                  onPress={() => {
+                    setShowCustomDayMonthPicker(true);
+                    setShowCustomDayDayPicker(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <Text style={customDayMonth ? { color: "#1f2937", fontSize: 14 } : { color: "#9ca3af", fontSize: 14 }}>
+                      {customDayMonth ? MONTH_NAMES[customDayMonth - 1] : "Month"}
+                    </Text>
+                    <Ionicons name="chevron-down" size={18} color="#9ca3af" />
+                  </View>
+                </TouchableOpacity>
+                {/* Day Picker Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.addPersonInput,
+                    { width: 100 },
+                    customDayDateError && styles.addPersonInputError,
+                    !customDayMonth && { opacity: 0.5 },
+                  ]}
+                  onPress={() => {
+                    if (!customDayMonth) return;
+                    setShowCustomDayDayPicker(true);
+                    setShowCustomDayMonthPicker(false);
+                  }}
+                  activeOpacity={0.7}
+                  disabled={!customDayMonth}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <Text style={customDayDay ? { color: "#1f2937", fontSize: 14 } : { color: "#9ca3af", fontSize: 14 }}>
+                      {customDayDay ? String(customDayDay) : "Day"}
+                    </Text>
+                    <Ionicons name="chevron-down" size={18} color="#9ca3af" />
+                  </View>
+                </TouchableOpacity>
+              </View>
               {customDayDateError && (
                 <Text style={styles.errorText}>{customDayDateError}</Text>
               )}
-              {showCustomDayDatePicker && (
-                Platform.OS === "ios" ? (
-                  <View style={styles.datePickerContainer}>
-                    <DateTimePicker
-                      value={customDayDate || new Date()}
-                      mode="date"
-                      display="spinner"
-                      onChange={handleCustomDayDateChange}
-                    />
-                    <TouchableOpacity
-                      style={styles.datePickerDoneButton}
-                      onPress={() => setShowCustomDayDatePicker(false)}
-                    >
-                      <Text style={styles.datePickerDoneText}>Done</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <DateTimePicker
-                    value={customDayDate || new Date()}
-                    mode="date"
-                    display="default"
-                    onChange={handleCustomDayDateChange}
-                  />
-                )
-              )}
             </View>
+
+            {/* Month Picker Modal */}
+            <Modal
+              visible={showCustomDayMonthPicker}
+              transparent={true}
+              animationType="fade"
+              onRequestClose={() => setShowCustomDayMonthPicker(false)}
+            >
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center", padding: 40 }}
+                activeOpacity={1}
+                onPress={() => setShowCustomDayMonthPicker(false)}
+              >
+                <View style={{ backgroundColor: "white", borderRadius: 16, width: "100%", maxHeight: 400, overflow: "hidden" }}>
+                  <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" }}>
+                    <Text style={{ fontSize: 16, fontWeight: "600", color: "#1f2937" }}>Select Month</Text>
+                  </View>
+                  <ScrollView bounces={false} keyboardShouldPersistTaps="handled">
+                    {MONTH_NAMES.map((monthName, index) => (
+                      <TouchableOpacity
+                        key={monthName}
+                        style={[
+                          styles.categoryPickerItem,
+                          customDayMonth === index + 1 && styles.categoryPickerItemSelected,
+                        ]}
+                        onPress={() => {
+                          const newMonth = index + 1;
+                          setCustomDayMonth(newMonth);
+                          if (customDayDay > getDaysInMonth(newMonth)) {
+                            setCustomDayDay(getDaysInMonth(newMonth));
+                          }
+                          setShowCustomDayMonthPicker(false);
+                          if (customDayDateError) setCustomDayDateError(null);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[
+                          styles.categoryPickerItemText,
+                          customDayMonth === index + 1 && styles.categoryPickerItemTextSelected,
+                        ]}>
+                          {monthName}
+                        </Text>
+                        {customDayMonth === index + 1 && (
+                          <Ionicons name="checkmark" size={16} color="#eb7825" style={{ marginLeft: "auto" }} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </TouchableOpacity>
+            </Modal>
+
+            {/* Day Picker Modal */}
+            <Modal
+              visible={showCustomDayDayPicker}
+              transparent={true}
+              animationType="fade"
+              onRequestClose={() => setShowCustomDayDayPicker(false)}
+            >
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center", padding: 40 }}
+                activeOpacity={1}
+                onPress={() => setShowCustomDayDayPicker(false)}
+              >
+                <View style={{ backgroundColor: "white", borderRadius: 16, width: "100%", maxHeight: 400, overflow: "hidden" }}>
+                  <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" }}>
+                    <Text style={{ fontSize: 16, fontWeight: "600", color: "#1f2937" }}>Select Day</Text>
+                  </View>
+                  <ScrollView bounces={false} keyboardShouldPersistTaps="handled">
+                    {customDayMonth > 0 && Array.from({ length: getDaysInMonth(customDayMonth) }, (_, i) => i + 1).map((d) => (
+                      <TouchableOpacity
+                        key={d}
+                        style={[
+                          styles.categoryPickerItem,
+                          customDayDay === d && styles.categoryPickerItemSelected,
+                        ]}
+                        onPress={() => {
+                          setCustomDayDay(d);
+                          setShowCustomDayDayPicker(false);
+                          if (customDayDateError) setCustomDayDateError(null);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[
+                          styles.categoryPickerItemText,
+                          customDayDay === d && styles.categoryPickerItemTextSelected,
+                        ]}>
+                          {d}
+                        </Text>
+                        {customDayDay === d && (
+                          <Ionicons name="checkmark" size={16} color="#eb7825" style={{ marginLeft: "auto" }} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </TouchableOpacity>
+            </Modal>
 
             {/* Description Field (Optional) */}
             {/* Description Field (Optional) */}

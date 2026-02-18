@@ -236,7 +236,21 @@ serve(async (req) => {
       const customHolidaysWithoutExperiences = (customHolidays || []).map((h) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const customDate = new Date(h.date);
+        
+        let customDate: Date;
+        if (/^\d{2}-\d{2}$/.test(h.date)) {
+          const [month, day] = h.date.split("-").map(Number);
+          customDate = new Date(today.getFullYear(), month - 1, day);
+          if (customDate < today) {
+            customDate.setFullYear(customDate.getFullYear() + 1);
+          }
+        } else {
+          const legacyDate = new Date(h.date);
+          customDate = new Date(today.getFullYear(), legacyDate.getMonth(), legacyDate.getDate());
+          if (customDate < today) {
+            customDate.setFullYear(customDate.getFullYear() + 1);
+          }
+        }
         customDate.setHours(0, 0, 0, 0);
         const daysAway = Math.ceil((customDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
@@ -244,7 +258,7 @@ serve(async (req) => {
           id: h.id,
           name: h.name,
           description: h.description,
-          date: h.date,
+          date: customDate.toISOString(),
           daysAway,
           primaryCategory: h.category,
           categories: [h.category],
@@ -392,10 +406,26 @@ serve(async (req) => {
           console.log(`Custom holiday ${customHoliday.name}: ${experiences.length} experiences assigned`);
         }
 
-        // Calculate days away for custom holiday
+        // Calculate days away for custom holiday - treat as recurring (MM-DD or legacy ISO)
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const customDate = new Date(customHoliday.date);
+        
+        let customDate: Date;
+        if (/^\d{2}-\d{2}$/.test(customHoliday.date)) {
+          // MM-DD format - calculate next occurrence
+          const [month, day] = customHoliday.date.split("-").map(Number);
+          customDate = new Date(today.getFullYear(), month - 1, day);
+          if (customDate < today) {
+            customDate.setFullYear(customDate.getFullYear() + 1);
+          }
+        } else {
+          // Legacy ISO format - extract month/day and find next occurrence
+          const legacyDate = new Date(customHoliday.date);
+          customDate = new Date(today.getFullYear(), legacyDate.getMonth(), legacyDate.getDate());
+          if (customDate < today) {
+            customDate.setFullYear(customDate.getFullYear() + 1);
+          }
+        }
         customDate.setHours(0, 0, 0, 0);
         const daysAway = Math.ceil((customDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
@@ -403,7 +433,7 @@ serve(async (req) => {
           id: customHoliday.id,
           name: customHoliday.name,
           description: customHoliday.description,
-          date: customHoliday.date,
+          date: customDate.toISOString(),
           daysAway,
           primaryCategory: customHoliday.category,
           categories: [customHoliday.category],

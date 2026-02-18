@@ -16,6 +16,27 @@ interface AddCustomHolidayModalProps {
   onAdd: (holiday: CustomHoliday) => void;
 }
 
+const months = [
+  { value: 1, label: 'January' },
+  { value: 2, label: 'February' },
+  { value: 3, label: 'March' },
+  { value: 4, label: 'April' },
+  { value: 5, label: 'May' },
+  { value: 6, label: 'June' },
+  { value: 7, label: 'July' },
+  { value: 8, label: 'August' },
+  { value: 9, label: 'September' },
+  { value: 10, label: 'October' },
+  { value: 11, label: 'November' },
+  { value: 12, label: 'December' },
+];
+
+const getDaysInMonth = (month: number): number => {
+  // Use 29 for Feb to allow leap year dates
+  const daysPerMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return daysPerMonth[month - 1] || 31;
+};
+
 const categories = [
   { value: 'Dining Experiences', label: 'Dining Experiences' },
   { value: 'Casual Eats', label: 'Casual Eats' },
@@ -31,22 +52,26 @@ const categories = [
 
 export default function AddCustomHolidayModal({ isOpen, onClose, onAdd }: AddCustomHolidayModalProps) {
   const [name, setName] = useState('');
-  const [date, setDate] = useState('');
+  const [month, setMonth] = useState<number>(0);
+  const [day, setDay] = useState<number>(0);
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Dining Experiences');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
   const handleSubmit = () => {
-    if (!name.trim() || !date) return;
+    if (!name.trim() || !month || !day) return;
 
     setIsSubmitting(true);
+
+    // Store date as MM-DD format (recurring yearly)
+    const dateStr = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
     // Create the custom holiday
     const newHoliday: CustomHoliday = {
       id: `custom-${Date.now()}`,
       name: name.trim(),
-      date: date, // Store in YYYY-MM-DD format from input
+      date: dateStr,
       description: description.trim() || `Special day: ${name}`,
       category
     };
@@ -59,7 +84,8 @@ export default function AddCustomHolidayModal({ isOpen, onClose, onAdd }: AddCus
       // Reset and close after success animation
       setTimeout(() => {
         setName('');
-        setDate('');
+        setMonth(0);
+        setDay(0);
         setDescription('');
         setCategory('Dining Experiences');
         setIsSubmitted(false);
@@ -71,7 +97,8 @@ export default function AddCustomHolidayModal({ isOpen, onClose, onAdd }: AddCus
   const handleClose = () => {
     if (!isSubmitting) {
       setName('');
-      setDate('');
+      setMonth(0);
+      setDay(0);
       setDescription('');
       setCategory('Dining Experiences');
       setIsSubmitted(false);
@@ -160,18 +187,59 @@ export default function AddCustomHolidayModal({ isOpen, onClose, onAdd }: AddCus
                   />
                 </div>
 
-                {/* Date input */}
+                {/* Date input - Month & Day only (holidays recur every year) */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Date *
                   </label>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    disabled={isSubmitting || isSubmitted}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#eb7825] focus:ring-2 focus:ring-[#eb7825]/20 outline-none transition-all duration-200 text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
+                  <p className="text-xs text-gray-400 mb-2">Holidays recur every year — only month and day are needed.</p>
+                  <div className="flex gap-3">
+                    {/* Month selector */}
+                    <select
+                      value={month}
+                      onChange={(e) => {
+                        const newMonth = Number(e.target.value);
+                        setMonth(newMonth);
+                        // Clamp day if it exceeds the new month's max days
+                        if (day > getDaysInMonth(newMonth)) {
+                          setDay(getDaysInMonth(newMonth));
+                        }
+                      }}
+                      disabled={isSubmitting || isSubmitted}
+                      className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#eb7825] focus:ring-2 focus:ring-[#eb7825]/20 outline-none transition-all duration-200 text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed bg-white appearance-none cursor-pointer"
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                        backgroundPosition: 'right 0.75rem center',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundSize: '1.5em 1.5em',
+                        paddingRight: '2.5rem'
+                      }}
+                    >
+                      <option value={0} disabled>Month</option>
+                      {months.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                    {/* Day selector */}
+                    <select
+                      value={day}
+                      onChange={(e) => setDay(Number(e.target.value))}
+                      disabled={isSubmitting || isSubmitted || !month}
+                      className="w-24 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#eb7825] focus:ring-2 focus:ring-[#eb7825]/20 outline-none transition-all duration-200 text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed bg-white appearance-none cursor-pointer"
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                        backgroundPosition: 'right 0.5rem center',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundSize: '1.5em 1.5em',
+                        paddingRight: '2rem'
+                      }}
+                    >
+                      <option value={0} disabled>Day</option>
+                      {month > 0 && Array.from({ length: getDaysInMonth(month) }, (_, i) => i + 1).map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 {/* Description input */}
@@ -218,10 +286,10 @@ export default function AddCustomHolidayModal({ isOpen, onClose, onAdd }: AddCus
               {/* Footer */}
               <div className="relative p-5 sm:p-6 border-t border-gray-200/50">
                 <motion.button
-                  whileHover={{ scale: !name.trim() || !date || isSubmitting || isSubmitted ? 1 : 1.02 }}
-                  whileTap={{ scale: !name.trim() || !date || isSubmitting || isSubmitted ? 1 : 0.98 }}
+                  whileHover={{ scale: !name.trim() || !month || !day || isSubmitting || isSubmitted ? 1 : 1.02 }}
+                  whileTap={{ scale: !name.trim() || !month || !day || isSubmitting || isSubmitted ? 1 : 0.98 }}
                   onClick={handleSubmit}
-                  disabled={!name.trim() || !date || isSubmitting || isSubmitted}
+                  disabled={!name.trim() || !month || !day || isSubmitting || isSubmitted}
                   className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-[#eb7825] to-[#d6691f] text-white rounded-xl font-bold text-base sm:text-lg shadow-xl hover:shadow-2xl transition-all duration-300 relative overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {/* Button shine effect */}
