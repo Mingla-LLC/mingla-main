@@ -316,11 +316,10 @@ function transformToNightOutPlace(
  */
 async function enrichVenuesWithAI(venues: NightOutPlace[]): Promise<any[]> {
   if (!OPENAI_API_KEY || venues.length === 0) {
-    return venues.map((v) => ({
-      ...v,
-      eventName: generateFallbackEventName(v),
-      description: generateFallbackDescription(v),
-    }));
+    return venues.map((v, i) => {
+      const fallback = generateFallbackEvent(v, i);
+      return { ...v, ...fallback, musicGenre: assignFallbackGenre(v.venueType, i) };
+    });
   }
 
   // Batch all venues into a single AI call for efficiency
@@ -343,15 +342,25 @@ async function enrichVenuesWithAI(venues: NightOutPlace[]): Promise<any[]> {
         messages: [
           {
             role: "system",
-            content: `You generate creative event names, short descriptions, and assign a music genre for nightlife venues. Return valid JSON array only, no markdown. Each item: {"eventName": "...", "description": "...", "musicGenre": "..."}. Event names should be catchy (2-4 words). Descriptions should be 1-2 sentences max (~120 chars). musicGenre MUST be exactly one of: afrobeats, hiphop-rnb, house, techno, jazz-blues, latin-salsa, reggae, kpop, lounge-ambient, acoustic-indie. Choose the most fitting genre based on the venue type and name.`,
+            content: `You are creating realistic upcoming EVENT listings for nightlife venues. Each venue hosts a specific event happening in the next 7 days. Return valid JSON array only, no markdown.
+
+Each item must have:
+- "eventName": A specific, creative event name (e.g. "Neon Pulse Friday", "Salsa Fever Night", "Acoustic Sessions Vol.12", "R&B Sundays"). NOT generic like "Club Night".
+- "hostName": A realistic DJ, performer, or organizer name (e.g. "DJ Mello", "The Lagos Collective", "MC Blaze & Friends"). NOT the venue type.
+- "description": 1-2 sentences describing what happens at this specific event (~120 chars).
+- "dayOffset": Number 0-6 representing days from today this event takes place (spread them across the week, not all 0).
+- "startHour": Event start hour in 24h format (18-23). Bars: 18-20, Clubs: 21-23, Live music: 19-21.
+- "musicGenre": Exactly one of: afrobeats, hiphop-rnb, house, techno, jazz-blues, latin-salsa, reggae, kpop, lounge-ambient, acoustic-indie.
+
+Make each event feel unique and real — like an actual party, show, or gathering someone would attend.`,
           },
           {
             role: "user",
-            content: `Generate event names, descriptions, and music genres for these ${venues.length} venues:\n${venueList}\n\nReturn JSON array of ${venues.length} objects with "eventName", "description", and "musicGenre" keys. musicGenre must be one of: afrobeats, hiphop-rnb, house, techno, jazz-blues, latin-salsa, reggae, kpop, lounge-ambient, acoustic-indie.`,
+            content: `Generate event listings for these ${venues.length} venues:\n${venueList}\n\nReturn JSON array of ${venues.length} objects. Spread dayOffset values across 0-6 so events appear on different upcoming nights.`,
           },
         ],
-        max_tokens: 1500,
-        temperature: 0.8,
+        max_tokens: 2500,
+        temperature: 0.85,
       }),
     });
 
@@ -359,9 +368,15 @@ async function enrichVenuesWithAI(venues: NightOutPlace[]): Promise<any[]> {
     const content = data.choices?.[0]?.message?.content || "";
 
     // Parse the JSON from the AI response
-    let enrichments: { eventName: string; description: string; musicGenre?: string }[] = [];
+    let enrichments: {
+      eventName: string;
+      hostName?: string;
+      description: string;
+      dayOffset?: number;
+      startHour?: number;
+      musicGenre?: string;
+    }[] = [];
     try {
-      // Try to extract JSON from the response (handle markdown code blocks)
       const jsonMatch = content.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         enrichments = JSON.parse(jsonMatch[0]);
@@ -371,51 +386,90 @@ async function enrichVenuesWithAI(venues: NightOutPlace[]): Promise<any[]> {
     }
 
     return venues.map((v, i) => {
-      const aiGenre = enrichments[i]?.musicGenre;
+      const e = enrichments[i];
+      const aiGenre = e?.musicGenre;
       const validGenre = aiGenre && VALID_GENRE_IDS.includes(aiGenre) ? aiGenre : null;
+      const fallback = generateFallbackEvent(v, i);
       return {
         ...v,
-        eventName: enrichments[i]?.eventName || generateFallbackEventName(v),
-        description: enrichments[i]?.description || generateFallbackDescription(v),
+        eventName: e?.eventName || fallback.eventName,
+        hostName: e?.hostName || fallback.hostName,
+        description: e?.description || fallback.description,
+        dayOffset: (typeof e?.dayOffset === "number" && e.dayOffset >= 0 && e.dayOffset <= 6) ? e.dayOffset : fallback.dayOffset,
+        startHour: (typeof e?.startHour === "number" && e.startHour >= 18 && e.startHour <= 23) ? e.startHour : fallback.startHour,
         musicGenre: validGenre || assignFallbackGenre(v.venueType, i),
       };
     });
   } catch (error) {
     console.error("Error enriching venues with AI:", error);
-    return venues.map((v) => ({
-      ...v,
-      eventName: generateFallbackEventName(v),
-      description: generateFallbackDescription(v),
-    }));
+    return venues.map((v, i) => {
+      const fallback = generateFallbackEvent(v, i);
+      return { ...v, ...fallback, musicGenre: assignFallbackGenre(v.venueType, i) };
+    });
   }
 }
 
-function generateFallbackEventName(venue: NightOutPlace): string {
-  const names: { [key: string]: string[] } = {
-    "Night Clubs": ["Electric Nights", "Club Night", "Late Night Vibes", "After Dark"],
-    "Bars & Lounges": ["Happy Hour", "Cocktail Evening", "Lounge Sessions", "Sunset Drinks"],
-    "Live Music": ["Live Sessions", "Music Night", "Open Stage", "Live & Loud"],
-    "Event Venues": ["Social Night", "The Gathering", "Night Event", "Community Night"],
-    "Karaoke": ["Karaoke Night", "Sing Along", "Open Mic", "Karaoke Party"],
+/**
+ * Generate realistic fallback event details when AI is unavailable
+ */
+function generateFallbackEvent(venue: NightOutPlace, index: number): {
+  eventName: string;
+  hostName: string;
+  description: string;
+  dayOffset: number;
+  startHour: number;
+} {
+  const eventsByType: { [key: string]: { name: string; host: string; desc: string; hour: number }[] } = {
+    "Night Clubs": [
+      { name: "Neon Pulse Friday", host: "DJ Phantom", desc: "Non-stop dance floor energy with the hottest tracks all night long.", hour: 22 },
+      { name: "Midnight Frequency", host: "DJ Nova & MC Blaze", desc: "Underground vibes meet mainstream heat — two rooms, two sounds.", hour: 23 },
+      { name: "Bass Cathedral", host: "The Selecta Crew", desc: "Deep bass, strobe lights, and a crowd that knows how to move.", hour: 21 },
+      { name: "Glow Party", host: "DJ Lumina", desc: "UV lights, body paint, and electrifying beats until sunrise.", hour: 22 },
+    ],
+    "Bars & Lounges": [
+      { name: "Sunset Social Hour", host: "The Mixologists", desc: "Craft cocktails and curated conversations as the sun goes down.", hour: 18 },
+      { name: "Jazz & Juleps", host: "The Velvet Trio", desc: "Smooth jazz melodies paired with signature bourbon cocktails.", hour: 19 },
+      { name: "Wine Down Wednesday", host: "Sommelier Sarah", desc: "Curated wine tastings with live acoustic accompaniment.", hour: 18 },
+      { name: "Speakeasy Sessions", host: "Bartender's Guild", desc: "Step back in time with Prohibition-era cocktails and swing music.", hour: 20 },
+    ],
+    "Live Music": [
+      { name: "Acoustic Sessions Vol.8", host: "The Campfire Collective", desc: "Intimate stripped-back performances from local singer-songwriters.", hour: 20 },
+      { name: "Rhythm & Roots", host: "Mama Afrika Band", desc: "Live afrobeat and world music fusion that gets everyone grooving.", hour: 19 },
+      { name: "Open Mic Spotlight", host: "MC Tommy", desc: "Your stage, your moment — open mic for singers, poets, and comics.", hour: 19 },
+      { name: "Soulful Saturdays", host: "The Soul Kitchen", desc: "Live soul, R&B, and neo-soul performed by top local talent.", hour: 20 },
+    ],
+    "Event Venues": [
+      { name: "The Social Mixer", host: "Connect Events", desc: "Meet new people, make new friends — curated networking with music and drinks.", hour: 19 },
+      { name: "Cultural Fusion Night", host: "Unity Collective", desc: "Art, dance, and music from around the world under one roof.", hour: 20 },
+      { name: "Rooftop Rave", host: "Skyline DJs", desc: "Open-air dancing with city views and handpicked DJs.", hour: 21 },
+      { name: "Dance Workshop & Party", host: "Groove Academy", desc: "Learn new moves then dance the night away — all levels welcome.", hour: 18 },
+    ],
+    "Karaoke": [
+      { name: "Sing-Off Showdown", host: "Karaoke Kings", desc: "Compete for the crown in this high-energy karaoke competition.", hour: 20 },
+      { name: "Pop Anthems Night", host: "DJ Encore", desc: "Belt out the biggest pop hits with a full backing track and lights show.", hour: 21 },
+      { name: "Duet Battle Royale", host: "The Voice Club", desc: "Grab a partner and battle other duos for karaoke supremacy.", hour: 20 },
+      { name: "Throwback Thursdays", host: "Retro Vibes", desc: "90s and 2000s classics — nostalgia hits and sing-along moments.", hour: 19 },
+    ],
   };
-  const options = names[venue.venueType] || ["Night Out", "Evening Event"];
-  return options[Math.floor(Math.random() * options.length)];
+
+  const events = eventsByType[venue.venueType] || eventsByType["Night Clubs"];
+  const event = events[index % events.length];
+
+  // Spread events across the next 7 days
+  const dayOffset = index % 7;
+
+  return {
+    eventName: event.name,
+    hostName: event.host,
+    description: event.desc,
+    dayOffset,
+    startHour: event.hour,
+  };
 }
 
 function assignFallbackGenre(venueType: string, index: number): string {
   const genres = VENUE_GENRE_FALLBACK[venueType] || ["house", "hiphop-rnb", "jazz-blues"];
   return genres[index % genres.length];
-}
-
-function generateFallbackDescription(venue: NightOutPlace): string {
-  const descriptions: { [key: string]: string } = {
-    "Night Clubs": "High-energy nightlife with great music and an electric atmosphere.",
-    "Bars & Lounges": "Trendy spot with craft cocktails and a vibrant social scene.",
-    "Live Music": "Intimate live performances in an unforgettable setting.",
-    "Event Venues": "Exciting social events and gatherings in a dynamic space.",
-    "Karaoke": "Fun karaoke sessions with friends in a lively atmosphere.",
-  };
-  return descriptions[venue.venueType] || "A great night out waiting for you.";
 }
 
 /**
@@ -493,36 +547,43 @@ async function annotateWithTravel(
  * Convert enriched venue to the final Night Out card format
  */
 function convertToNightOutCard(venue: any): any {
-  // Generate a time range based on current day
   const now = new Date();
-  const dayOfWeek = now.getDay(); // 0=Sun
-  const isWeekend = dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6;
 
-  const openHour = venue.venueType === "Bars & Lounges" ? "6:00 PM" : "9:00 PM";
-  const closeHour = isWeekend ? "3:00 AM" : "1:00 AM";
-  const timeRange = `${openHour} - ${closeHour}`;
+  // Use AI-provided dayOffset to compute the actual event date
+  const dayOffset = typeof venue.dayOffset === "number" ? venue.dayOffset : 0;
+  const eventDate = new Date(now);
+  eventDate.setDate(eventDate.getDate() + dayOffset);
 
-  // Format next available date
-  const dateOptions: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-  const todayStr = now.toLocaleDateString("en-US", dateOptions);
+  const dateOptions: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" };
+  const dateStr = eventDate.toLocaleDateString("en-US", dateOptions); // e.g. "Fri, Feb 21"
 
-  // Estimate people-going from review count
+  // Use AI-provided start hour or default based on venue type
+  const startHour = typeof venue.startHour === "number" ? venue.startHour : (venue.venueType === "Bars & Lounges" ? 18 : 21);
+  const endHour = startHour >= 21 ? startHour + 4 : startHour + 3; // events last 3-4 hours
+  const formatHour = (h: number) => {
+    const hr = h % 24;
+    const ampm = hr >= 12 ? "PM" : "AM";
+    const display = hr > 12 ? hr - 12 : hr === 0 ? 12 : hr;
+    return `${display}:00 ${ampm}`;
+  };
+  const timeRange = `${formatHour(startHour)} - ${formatHour(endHour)}`;
+
+  // Estimate attendees from review count (events, not venues)
   const peopleGoing = Math.max(20, Math.min(500, Math.round((venue.reviewCount || 0) * 0.3)));
 
-  // Format price range
   const priceRange = formatPriceRange(venue.price_min, venue.price_max);
 
   return {
-    id: venue.placeId,
+    id: `${venue.placeId}_evt_${dayOffset}`,
     placeName: venue.name,
     eventName: venue.eventName || "Night Out",
-    hostName: venue.venueType,
+    hostName: venue.hostName || venue.name,
     image: venue.imageUrl || "https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800",
     images: venue.images || [],
     price: priceRange,
     matchPercentage: calculateMatchScore(venue),
-    date: todayStr,
-    time: openHour,
+    date: dateStr,
+    time: formatHour(startHour),
     timeRange,
     location: venue.address?.split(",").slice(-2).join(",").trim() || venue.address || "",
     tags: venue.tags || [],

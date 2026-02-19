@@ -1742,10 +1742,12 @@ export default function DiscoverScreen({
 
   const matchesDateFilter = (card: NightOutCardData, filter: DateFilter): boolean => {
     if (filter === "any") return true;
-    // card.date is like "Feb 19" — parse it relative to the current year
+    // card.date is like "Wed, Feb 19" or "Feb 19" — parse it relative to the current year
     const now = new Date();
     const year = now.getFullYear();
-    const parsed = new Date(`${card.date}, ${year}`);
+    // Strip weekday prefix if present (e.g. "Wed, Feb 19" → "Feb 19")
+    const dateOnly = card.date.replace(/^[A-Za-z]{3},\s*/, "");
+    const parsed = new Date(`${dateOnly}, ${year}`);
     if (isNaN(parsed.getTime())) return true; // can't parse → don't exclude
 
     // Normalize dates to midnight for comparison
