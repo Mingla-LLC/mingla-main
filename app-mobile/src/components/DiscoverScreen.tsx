@@ -1711,29 +1711,104 @@ export default function DiscoverScreen({
     "acoustic-indie": ["acoustic", "indie", "folk", "singer-songwriter", "unplugged"],
   };
 
-  // Filter night-out cards based on selected genre
+  // Extract USD price from card price string (e.g. "$10-$60" → {min:10, max:60}, "Free" → {min:0, max:0})
+  const extractUsdPrice = (price: string): { min: number; max: number } => {
+    if (!price || price.toLowerCase() === "free") return { min: 0, max: 0 };
+    const rangeMatch = price.match(/\$?([\d,]+)\s*[-–]\s*\$?([\d,]+)/);
+    if (rangeMatch) {
+      return { min: parseFloat(rangeMatch[1].replace(/,/g, "")), max: parseFloat(rangeMatch[2].replace(/,/g, "")) };
+    }
+    const singleMatch = price.match(/\$?([\d,]+)/);
+    if (singleMatch) {
+      const v = parseFloat(singleMatch[1].replace(/,/g, ""));
+      return { min: v, max: v };
+    }
+    return { min: -1, max: -1 }; // unknown
+  };
+
+  const matchesPriceFilter = (card: NightOutCardData, filter: PriceFilter): boolean => {
+    if (filter === "any") return true;
+    const { min, max } = extractUsdPrice(card.price);
+    if (min === -1) return true; // can't parse → don't exclude
+    switch (filter) {
+      case "free": return min === 0 && max === 0;
+      case "under-25": return max < 25 || (max === 0 && min === 0);
+      case "25-50": return max >= 25 && min <= 50;
+      case "50-100": return max >= 50 && min <= 100;
+      case "over-100": return max > 100;
+      default: return true;
+    }
+  };
+
+  const matchesDateFilter = (card: NightOutCardData, filter: DateFilter): boolean => {
+    if (filter === "any") return true;
+    // card.date is like "Feb 19" — parse it relative to the current year
+    const now = new Date();
+    const year = now.getFullYear();
+    const parsed = new Date(`${card.date}, ${year}`);
+    if (isNaN(parsed.getTime())) return true; // can't parse → don't exclude
+
+    // Normalize dates to midnight for comparison
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const cardDay = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    const diffDays = Math.round((cardDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    switch (filter) {
+      case "today":
+        return diffDays === 0;
+      case "tomorrow":
+        return diffDays === 1;
+      case "weekend": {
+        const dayOfWeek = cardDay.getDay(); // 0=Sun, 6=Sat
+        // Card falls on Fri/Sat/Sun AND is within next 7 days
+        return (dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6) && diffDays >= 0 && diffDays <= 7;
+      }
+      case "next-week": {
+        // Next Monday through Sunday (days 1-7 from next Monday)
+        const todayDow = today.getDay();
+        const daysUntilNextMon = todayDow === 0 ? 1 : 8 - todayDow;
+        return diffDays >= daysUntilNextMon && diffDays < daysUntilNextMon + 7;
+      }
+      case "month":
+        return parsed.getMonth() === now.getMonth() && parsed.getFullYear() === now.getFullYear();
+      default:
+        return true;
+    }
+  };
+
+  // Filter night-out cards based on selected date, price, AND genre
   const filteredNightOutCards = useMemo(() => {
-    if (selectedFilters.genre === "all") return nightOutCards;
+    let cards = nightOutCards;
 
-    const genreId = selectedFilters.genre;
-    const keywords = GENRE_KEYWORDS[genreId] || [];
+    // Date filter
+    if (selectedFilters.date !== "any") {
+      cards = cards.filter((card) => matchesDateFilter(card, selectedFilters.date));
+    }
 
-    return nightOutCards.filter((card) => {
-      // Direct match on musicGenre field from API
-      if (card.musicGenre === genreId) return true;
+    // Price filter
+    if (selectedFilters.price !== "any") {
+      cards = cards.filter((card) => matchesPriceFilter(card, selectedFilters.price));
+    }
 
-      // Fuzzy match: check tags, eventName, description for genre keywords
-      const searchable = [
-        ...(card.tags || []),
-        card.eventName || "",
-        card.description || "",
-      ]
-        .join(" ")
-        .toLowerCase();
+    // Genre filter
+    if (selectedFilters.genre !== "all") {
+      const genreId = selectedFilters.genre;
+      const keywords = GENRE_KEYWORDS[genreId] || [];
+      cards = cards.filter((card) => {
+        if (card.musicGenre === genreId) return true;
+        const searchable = [
+          ...(card.tags || []),
+          card.eventName || "",
+          card.description || "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        return keywords.some((kw) => searchable.includes(kw));
+      });
+    }
 
-      return keywords.some((kw) => searchable.includes(kw));
-    });
-  }, [nightOutCards, selectedFilters.genre]);
+    return cards;
+  }, [nightOutCards, selectedFilters.date, selectedFilters.genre, selectedFilters.price]);
 
   // Count active filters (non-default values)
   const activeFilterCount = useMemo(() => {
@@ -2804,17 +2879,17 @@ export default function DiscoverScreen({
                 </View>
               )}
 
-              {/* Empty State - Genre filter produced no results */}
+              {/* Empty State - Filters produced no results */}
               {!nightOutLoading && !nightOutError && nightOutCards.length > 0 && filteredNightOutCards.length === 0 && (
                 <View style={styles.emptyStateContainer}>
-                  <Feather name="music" size={48} color="#eb7825" />
-                  <Text style={styles.emptyStateTitle}>No {getGenreLabel(selectedFilters.genre)} events</Text>
+                  <Feather name="sliders" size={48} color="#eb7825" />
+                  <Text style={styles.emptyStateTitle}>No matching events</Text>
                   <Text style={styles.emptyStateSubtitle}>
-                    No events match the selected genre near you
+                    No events match your selected filters
                   </Text>
                   <TouchableOpacity
                     style={styles.showAllPartiesButton}
-                    onPress={() => setSelectedFilters({ ...selectedFilters, genre: "all" })}
+                    onPress={() => setSelectedFilters({ date: "any", price: "any", genre: "all" })}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.showAllPartiesText}>Show All Parties</Text>
