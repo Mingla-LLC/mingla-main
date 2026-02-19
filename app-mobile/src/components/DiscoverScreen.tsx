@@ -18,15 +18,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { formatPriceRange, parseAndFormatDistance } from "./utils/formatters";
+import { formatPriceRange, parseAndFormatDistance, getCurrencyRate } from "./utils/formatters";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { useRecommendations, Recommendation } from "../contexts/RecommendationsContext";
 import { ExperienceGenerationService } from "../services/experienceGenerationService";
 import { HolidayExperiencesService, HolidayWithExperiences, HolidayExperience } from "../services/holidayExperiencesService";
+import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
+import { enhancedLocationService } from "../services/enhancedLocationService";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
@@ -36,6 +38,9 @@ const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
 const DISCOVER_CACHE_KEY = "mingla_discover_cache";
+
+// Storage key for cached night-out venues (refreshes daily)
+const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
 
 // Saved Person interface
 interface SavedPerson {
@@ -272,6 +277,7 @@ interface NightOutCardData {
   timeRange: string;
   location: string;
   tags: string[];
+  musicGenre?: string;
   peopleGoing: number;
   address?: string;
   description?: string;
@@ -289,7 +295,7 @@ interface NightOutCardProps {
 // Filter types
 type DateFilter = "any" | "today" | "tomorrow" | "weekend" | "next-week" | "month";
 type PriceFilter = "any" | "free" | "under-25" | "25-50" | "50-100" | "over-100";
-type GenreFilter = "all" | "afrobeats" | "hiphop-rnb" | "house" | "techno" | "jazz-blues";
+type GenreFilter = "all" | "afrobeats" | "hiphop-rnb" | "house" | "techno" | "jazz-blues" | "latin-salsa" | "reggae" | "kpop" | "lounge-ambient" | "acoustic-indie";
 
 interface NightOutFilters {
   date: DateFilter;
@@ -451,6 +457,24 @@ const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) 
 
 // Night Out Card Component (60% height of featured card)
 const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onPress }) => {
+  const formattedPrice = formatPriceRange(card.price, currency);
+  // Split price into parts to color currency symbols orange
+  const priceWithOrangeSymbol = (price: string) => {
+    if (!price || price.toLowerCase() === "free") return <Text style={styles.bottomInfoPrice}>{price || "—"}</Text>;
+    // Match currency symbols at the start or after " - "
+    const parts = price.split(/([^\d,.\s\-–+]+)/g).filter(Boolean);
+    return (
+      <Text style={styles.bottomInfoPrice}>
+        {parts.map((part, i) =>
+          /^[^\d,.\s\-–+]+$/.test(part) ? (
+            <Text key={i} style={styles.bottomInfoPriceCurrency}>{part}</Text>
+          ) : (
+            <Text key={i}>{part}</Text>
+          )
+        )}
+      </Text>
+    );
+  };
   return (
     <TouchableOpacity 
       style={styles.nightOutCard}
@@ -505,10 +529,7 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
               <Feather name="clock" size={14} color="#eb7825" />
               <Text style={styles.bottomInfoLabel}>{card.timeRange}</Text>
             </View>
-            <Text style={styles.bottomInfoPrice}>
-              <Text style={styles.bottomInfoPriceCurrency}>{card.price.charAt(0)}</Text>
-              {card.price.slice(1)}
-            </Text>
+            {priceWithOrangeSymbol(formattedPrice || card.price)}
           </View>
         </View>
       </View>
@@ -878,6 +899,45 @@ export default function DiscoverScreen({
     price: "any",
     genre: "all",
   });
+
+  // Night Out real data state
+  const [nightOutCards, setNightOutCards] = useState<NightOutCardData[]>([]);
+  const [nightOutLoading, setNightOutLoading] = useState(true);
+  const [nightOutError, setNightOutError] = useState<string | null>(null);
+  const nightOutFetchedRef = useRef(false);
+
+  // Night Out uses device GPS (not saved location preference)
+  const [nightOutGpsLat, setNightOutGpsLat] = useState<number | null>(null);
+  const [nightOutGpsLng, setNightOutGpsLng] = useState<number | null>(null);
+  const nightOutGpsFetchedRef = useRef(false);
+
+  useEffect(() => {
+    const getDeviceGps = async () => {
+      if (nightOutGpsFetchedRef.current) return;
+      nightOutGpsFetchedRef.current = true;
+      try {
+        const loc = await enhancedLocationService.getCurrentLocation();
+        if (loc) {
+          setNightOutGpsLat(loc.latitude);
+          setNightOutGpsLng(loc.longitude);
+          console.log("[NightOut] Device GPS:", loc.latitude, loc.longitude);
+        } else {
+          console.log("[NightOut] GPS unavailable, falling back to preference location");
+          if (locationLat && locationLng) {
+            setNightOutGpsLat(locationLat);
+            setNightOutGpsLng(locationLng);
+          }
+        }
+      } catch (err) {
+        console.error("[NightOut] GPS error, falling back:", err);
+        if (locationLat && locationLng) {
+          setNightOutGpsLat(locationLat);
+          setNightOutGpsLng(locationLng);
+        }
+      }
+    };
+    getDeviceGps();
+  }, [locationLat, locationLng]);
 
   // State for Discover-specific recommendations (fetched with ALL categories)
   const [discoverRecommendations, setDiscoverRecommendations] = useState<Recommendation[]>([]);
@@ -1390,114 +1450,112 @@ export default function DiscoverScreen({
   const featuredCard = selectedFeaturedCard;
   const gridCards = selectedGridCards;
 
-  // Mock night out cards data - replace with real data
-  const nightOutCards: NightOutCardData[] = [
-    {
-      id: "night-1",
-      placeName: "Skyline Lounge",
-      eventName: "Sunset Sessions",
-      hostName: "DJ Marcus",
-      image: "https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800",
-      images: ["https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800"],
-      price: "$45",
-      matchPercentage: 92,
-      date: "Feb 14",
-      time: "8:00 PM",
-      timeRange: "8PM - 2AM",
-      location: "Downtown Rooftop",
-      tags: ["Upbeat", "Social", "Trendy", "Live DJ"],
-      peopleGoing: 156,
-      address: "123 Skyline Blvd",
-      description: "Experience the ultimate rooftop party with stunning city views.",
-      rating: 4.8,
-      reviewCount: 234,
-      coordinates: { lat: 40.7128, lng: -74.0060 },
-    },
-    {
-      id: "night-2",
-      placeName: "The Jazz Corner",
-      eventName: "Late Night Jazz",
-      hostName: "Blue Note Quartet",
-      image: "https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=800",
-      images: ["https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=800"],
-      price: "$35",
-      matchPercentage: 87,
-      date: "Feb 15",
-      time: "9:30 PM",
-      timeRange: "9PM - 1AM",
-      location: "Arts District",
-      tags: ["Chill", "Live Music", "Intimate", "Classy"],
-      peopleGoing: 89,
-      address: "456 Jazz Ave",
-      description: "Smooth jazz vibes in an intimate speakeasy setting.",
-      rating: 4.9,
-      reviewCount: 178,
-      coordinates: { lat: 40.7148, lng: -74.0068 },
-    },
-    {
-      id: "night-3",
-      placeName: "Neon Club",
-      eventName: "Electric Nights",
-      hostName: "DJ Elena",
-      image: "https://images.unsplash.com/photo-1571266028243-e4733b0f0bb0?w=800",
-      images: ["https://images.unsplash.com/photo-1571266028243-e4733b0f0bb0?w=800"],
-      price: "$55",
-      matchPercentage: 78,
-      date: "Feb 16",
-      time: "10:00 PM",
-      timeRange: "10PM - 4AM",
-      location: "Warehouse District",
-      tags: ["EDM", "Dancing", "Energetic", "VIP"],
-      peopleGoing: 342,
-      address: "789 Neon St",
-      description: "The hottest EDM night with international DJs.",
-      rating: 4.6,
-      reviewCount: 456,
-      coordinates: { lat: 40.7185, lng: -74.0020 },
-    },
-    {
-      id: "night-4",
-      placeName: "Velvet Room",
-      eventName: "Cocktail Masterclass",
-      hostName: "Mixologist Mike",
-      image: "https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=800",
-      images: ["https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=800"],
-      price: "$65",
-      matchPercentage: 95,
-      date: "Feb 17",
-      time: "7:00 PM",
-      timeRange: "7PM - 11PM",
-      location: "Midtown",
-      tags: ["Sophisticated", "Learning", "Premium", "Small Group"],
-      peopleGoing: 24,
-      address: "321 Velvet Lane",
-      description: "Learn to craft signature cocktails from award-winning mixologists.",
-      rating: 4.9,
-      reviewCount: 67,
-      coordinates: { lat: 40.7200, lng: -74.0100 },
-    },
-    {
-      id: "night-5",
-      placeName: "Luna Terrace",
-      eventName: "Moonlight Dinner",
-      hostName: "Chef Isabella",
-      image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800",
-      images: ["https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800"],
-      price: "$120",
-      matchPercentage: 88,
-      date: "Feb 18",
-      time: "8:30 PM",
-      timeRange: "8PM - 12AM",
-      location: "Harbor View",
-      tags: ["Romantic", "Fine Dining", "Scenic", "Exclusive"],
-      peopleGoing: 48,
-      address: "555 Luna Way",
-      description: "An unforgettable dining experience under the stars.",
-      rating: 4.8,
-      reviewCount: 123,
-      coordinates: { lat: 40.7165, lng: -74.0045 },
-    },
-  ];
+  // Night Out: cache + fetch logic
+  interface NightOutCache {
+    date: string;
+    venues: NightOutCardData[];
+  }
+
+  // Include GPS location in cache key so changing location gets fresh results
+  const nightOutCacheKey = `${NIGHT_OUT_CACHE_KEY}_${user?.id}_${nightOutGpsLat?.toFixed(2)}_${nightOutGpsLng?.toFixed(2)}`;
+
+  const saveNightOutCache = async (venues: NightOutCardData[]) => {
+    if (!user?.id) return;
+    try {
+      const cacheData: NightOutCache = { date: getTodayDateString(), venues };
+      await AsyncStorage.setItem(nightOutCacheKey, JSON.stringify(cacheData));
+      console.log("Saved night-out cache:", venues.length, "venues");
+    } catch (err) {
+      console.error("Error saving night-out cache:", err);
+    }
+  };
+
+  const clearNightOutCache = async () => {
+    try {
+      await AsyncStorage.removeItem(nightOutCacheKey);
+      console.log("Cleared night-out cache");
+    } catch (err) {
+      console.error("Error clearing night-out cache:", err);
+    }
+  };
+
+  const loadNightOutCache = async (): Promise<NightOutCache | null> => {
+    if (!user?.id) return null;
+    try {
+      const raw = await AsyncStorage.getItem(nightOutCacheKey);
+      if (raw) return JSON.parse(raw) as NightOutCache;
+    } catch (err) {
+      console.error("Error loading night-out cache:", err);
+    }
+    return null;
+  };
+
+  // Fetch night-out venues (transform NightOutVenue -> NightOutCardData)
+  const transformNightOutVenue = (venue: NightOutVenue): NightOutCardData => ({
+    id: venue.id,
+    placeName: venue.placeName,
+    eventName: venue.eventName,
+    hostName: venue.hostName,
+    image: venue.image,
+    images: venue.images,
+    price: venue.price,
+    matchPercentage: venue.matchPercentage,
+    date: venue.date,
+    time: venue.time,
+    timeRange: venue.timeRange,
+    location: venue.location,
+    tags: venue.tags,
+    musicGenre: venue.musicGenre || undefined,
+    peopleGoing: venue.peopleGoing,
+    address: venue.address,
+    description: venue.description,
+    rating: venue.rating,
+    reviewCount: venue.reviewCount,
+    coordinates: venue.coordinates,
+  });
+
+  useEffect(() => {
+    const fetchNightOutVenues = async () => {
+      if (!nightOutGpsLat || !nightOutGpsLng) return;
+      if (nightOutFetchedRef.current) return;
+      nightOutFetchedRef.current = true;
+
+      setNightOutLoading(true);
+      setNightOutError(null);
+
+      try {
+        // Check cache first
+        const cached = await loadNightOutCache();
+        if (cached && cached.date === getTodayDateString() && cached.venues.length > 0) {
+          console.log("Night-out cache hit:", cached.venues.length, "venues");
+          setNightOutCards(cached.venues);
+          setNightOutLoading(false);
+          return;
+        }
+
+        console.log("Night-out cache miss. Fetching fresh data using GPS...");
+        const venues = await NightOutExperiencesService.getNightOutVenues(
+          { lat: nightOutGpsLat, lng: nightOutGpsLng },
+          10000
+        );
+
+        const cards = venues.map(transformNightOutVenue);
+        setNightOutCards(cards);
+        saveNightOutCache(cards);
+      } catch (err) {
+        console.error("Error fetching night-out venues:", err);
+        setNightOutError("Failed to load nightlife venues");
+        nightOutFetchedRef.current = false; // Allow retry
+      } finally {
+        setNightOutLoading(false);
+      }
+    };
+
+    // Fetch when GPS coords are ready and tab is active (or eagerly)
+    if (activeTab === "night-out" || nightOutGpsLat) {
+      fetchNightOutVenues();
+    }
+  }, [nightOutGpsLat, nightOutGpsLng, activeTab]);
 
   // Transform FeaturedCardData to ExpandedCardData
   const handleCardPress = (card: FeaturedCardData) => {
@@ -1633,8 +1691,60 @@ export default function DiscoverScreen({
     setIsFilterModalVisible(false);
   };
 
+  // Derive the genre label for confirmation display
+  const getGenreLabel = (id: GenreFilter): string => {
+    const opt = genreFilterOptions.find((o) => o.id === id);
+    return opt?.label || "All Genres";
+  };
+
+  // Client-side genre keyword mapping for fuzzy matching
+  const GENRE_KEYWORDS: Record<string, string[]> = {
+    afrobeats: ["afrobeats", "afro", "afropop", "amapiano"],
+    "hiphop-rnb": ["hiphop", "hip-hop", "hip hop", "rnb", "r&b", "rap", "trap"],
+    house: ["house", "deep house", "electronic", "edm", "dance"],
+    techno: ["techno", "trance", "industrial", "minimal"],
+    "jazz-blues": ["jazz", "blues", "soul", "swing", "bebop"],
+    "latin-salsa": ["latin", "salsa", "bachata", "reggaeton", "cumbia", "merengue"],
+    reggae: ["reggae", "dancehall", "ska", "dub", "roots"],
+    kpop: ["kpop", "k-pop", "korean", "jpop", "j-pop"],
+    "lounge-ambient": ["lounge", "ambient", "chill", "downtempo", "chillout"],
+    "acoustic-indie": ["acoustic", "indie", "folk", "singer-songwriter", "unplugged"],
+  };
+
+  // Filter night-out cards based on selected genre
+  const filteredNightOutCards = useMemo(() => {
+    if (selectedFilters.genre === "all") return nightOutCards;
+
+    const genreId = selectedFilters.genre;
+    const keywords = GENRE_KEYWORDS[genreId] || [];
+
+    return nightOutCards.filter((card) => {
+      // Direct match on musicGenre field from API
+      if (card.musicGenre === genreId) return true;
+
+      // Fuzzy match: check tags, eventName, description for genre keywords
+      const searchable = [
+        ...(card.tags || []),
+        card.eventName || "",
+        card.description || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return keywords.some((kw) => searchable.includes(kw));
+    });
+  }, [nightOutCards, selectedFilters.genre]);
+
+  // Count active filters (non-default values)
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (selectedFilters.date !== "any") count++;
+    if (selectedFilters.price !== "any") count++;
+    if (selectedFilters.genre !== "all") count++;
+    return count;
+  }, [selectedFilters]);
+
   const handleApplyFilters = () => {
-    // TODO: Implement filter logic
     console.log("Applying filters:", selectedFilters);
     handleCloseFilterModal();
   };
@@ -1776,13 +1886,16 @@ export default function DiscoverScreen({
     { id: "month", label: "This Month" },
   ];
 
+  const cRate = getCurrencyRate(accountPreferences?.currency);
+  const cp = (usd: number) => Math.round(usd * cRate).toLocaleString();
+
   const priceFilterOptions: { id: PriceFilter; label: string }[] = [
     { id: "any", label: "Any Price" },
     { id: "free", label: "Free" },
-    { id: "under-25", label: `Under ${currencySymbol}25` },
-    { id: "25-50", label: `${currencySymbol}25 - ${currencySymbol}50` },
-    { id: "50-100", label: `${currencySymbol}50 - ${currencySymbol}100` },
-    { id: "over-100", label: `Over ${currencySymbol}100` },
+    { id: "under-25", label: `Under ${currencySymbol}${cp(25)}` },
+    { id: "25-50", label: `${currencySymbol}${cp(25)} - ${currencySymbol}${cp(50)}` },
+    { id: "50-100", label: `${currencySymbol}${cp(50)} - ${currencySymbol}${cp(100)}` },
+    { id: "over-100", label: `Over ${currencySymbol}${cp(100)}` },
   ];
 
   const genreFilterOptions: { id: GenreFilter; label: string }[] = [
@@ -1792,6 +1905,11 @@ export default function DiscoverScreen({
     { id: "house", label: "House / Electronic" },
     { id: "techno", label: "Techno / Electronic" },
     { id: "jazz-blues", label: "Jazz / Blues" },
+    { id: "latin-salsa", label: "Latin / Salsa" },
+    { id: "reggae", label: "Reggae" },
+    { id: "kpop", label: "K-Pop" },
+    { id: "lounge-ambient", label: "Lounge / Ambient" },
+    { id: "acoustic-indie", label: "Acoustic / Indie" },
   ];
 
   // Add Person Modal handlers
@@ -2614,12 +2732,98 @@ export default function DiscoverScreen({
                 <View style={styles.filterButtonLeft}>
                   <Feather name="filter" size={18} color="#eb7825" />
                   <Text style={styles.filterButtonText}>Filter</Text>
+                  {activeFilterCount > 0 && (
+                    <View style={styles.filterBadge}>
+                      <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+                    </View>
+                  )}
                 </View>
                 <Feather name="chevron-right" size={20} color="#6b7280" />
               </TouchableOpacity>
 
-              {/* Night Out Cards */}
-              {nightOutCards.map((card) => (
+              {/* Active genre filter confirmation */}
+              {selectedFilters.genre !== "all" && (
+                <View style={styles.activeFilterChip}>
+                  <Feather name="music" size={14} color="#eb7825" />
+                  <Text style={styles.activeFilterChipText}>
+                    Showing: {getGenreLabel(selectedFilters.genre)}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setSelectedFilters({ ...selectedFilters, genre: "all" })}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Feather name="x" size={16} color="#6b7280" />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Loading State */}
+              {nightOutLoading && (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#eb7825" />
+                  <Text style={styles.loadingText}>Discovering nightlife near you...</Text>
+                </View>
+              )}
+
+              {/* Error State */}
+              {nightOutError && !nightOutLoading && (
+                <View style={styles.emptyStateContainer}>
+                  <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+                  <Text style={styles.emptyStateTitle}>Something went wrong</Text>
+                  <Text style={styles.emptyStateSubtitle}>{nightOutError}</Text>
+                  <TouchableOpacity
+                    style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 20, backgroundColor: "#eb7825", borderRadius: 8 }}
+                    onPress={async () => {
+                      await clearNightOutCache();
+                      nightOutFetchedRef.current = false;
+                      nightOutGpsFetchedRef.current = false;
+                      setNightOutError(null);
+                      setNightOutLoading(true);
+                      setNightOutCards([]);
+                      // Re-fetch GPS location
+                      try {
+                        const loc = await enhancedLocationService.getCurrentLocation();
+                        if (loc) {
+                          setNightOutGpsLat(loc.latitude);
+                          setNightOutGpsLng(loc.longitude);
+                        }
+                      } catch (_) {}
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Empty State - No data at all */}
+              {!nightOutLoading && !nightOutError && nightOutCards.length === 0 && (
+                <View style={styles.emptyStateContainer}>
+                  <Ionicons name="moon-outline" size={48} color="#eb7825" />
+                  <Text style={styles.emptyStateTitle}>No nightlife found</Text>
+                  <Text style={styles.emptyStateSubtitle}>No clubs or venues found near your location</Text>
+                </View>
+              )}
+
+              {/* Empty State - Genre filter produced no results */}
+              {!nightOutLoading && !nightOutError && nightOutCards.length > 0 && filteredNightOutCards.length === 0 && (
+                <View style={styles.emptyStateContainer}>
+                  <Feather name="music" size={48} color="#eb7825" />
+                  <Text style={styles.emptyStateTitle}>No {getGenreLabel(selectedFilters.genre)} events</Text>
+                  <Text style={styles.emptyStateSubtitle}>
+                    No events match the selected genre near you
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.showAllPartiesButton}
+                    onPress={() => setSelectedFilters({ ...selectedFilters, genre: "all" })}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.showAllPartiesText}>Show All Parties</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Night Out Cards (filtered) */}
+              {!nightOutLoading && filteredNightOutCards.map((card) => (
                 <NightOutCard
                   key={card.id}
                   card={card}
@@ -3523,6 +3727,50 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#111827",
   },
+  filterBadge: {
+    backgroundColor: "#eb7825",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  filterBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  activeFilterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  activeFilterChipText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#9A3412",
+  },
+  showAllPartiesButton: {
+    marginTop: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    backgroundColor: "#eb7825",
+    borderRadius: 10,
+  },
+  showAllPartiesText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
   // Night Out Card styles
   nightOutCard: {
     backgroundColor: "white",
@@ -4119,7 +4367,7 @@ const styles = StyleSheet.create({
     borderColor: "#eb7825",
   },
   filterOptionText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "500",
     color: "#374151",
   },
