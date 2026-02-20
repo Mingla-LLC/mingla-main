@@ -9,10 +9,12 @@ import {
   ActivityIndicator,
   Dimensions,
   Image,
+  Linking,
+  Platform,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { ExpandedCardModalProps } from "../types/expandedCardTypes";
-import { formatDistanceFromMeters } from "./utils/formatters";
+import { formatDistanceFromMeters, formatPriceRange } from "./utils/formatters";
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
 import { bookingService, BookingOption } from "../services/bookingService";
@@ -30,6 +32,8 @@ import MatchFactorsBreakdown from "./expandedCard/MatchFactorsBreakdown";
 import TimelineSection from "./expandedCard/TimelineSection";
 import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
 import ActionButtons from "./expandedCard/ActionButtons";
+import ShareModal from "./ShareModal";
+import { colors } from "../constants/colors";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -59,6 +63,7 @@ export default function ExpandedCardModal({
   const [loadingStrollData, setLoadingStrollData] = useState(false);
   const [picnicData, setPicnicData] = useState(card?.picnicData);
   const [loadingPicnicData, setLoadingPicnicData] = useState(false);
+  const [isNightOutShareOpen, setIsNightOutShareOpen] = useState(false);
 
   // Fetch additional data when modal opens
   useEffect(() => {
@@ -250,6 +255,28 @@ export default function ExpandedCardModal({
     card.category?.toLowerCase().includes("picnic") ||
     card.category?.toLowerCase() === "picnics";
 
+  const isNightOut = !!card.nightOutData;
+  const nightOut = card.nightOutData;
+
+  // Helper to open directions in maps app
+  const openDirections = () => {
+    const address = card.address;
+    const coords = nightOut?.coordinates;
+    if (coords) {
+      const url = Platform.select({
+        ios: `maps:0,0?q=${coords.lat},${coords.lng}`,
+        android: `geo:${coords.lat},${coords.lng}?q=${coords.lat},${coords.lng}(${encodeURIComponent(nightOut?.placeName || "")})`,
+      });
+      if (url) Linking.openURL(url);
+    } else if (address) {
+      const url = Platform.select({
+        ios: `maps:0,0?q=${encodeURIComponent(address)}`,
+        android: `geo:0,0?q=${encodeURIComponent(address)}`,
+      });
+      if (url) Linking.openURL(url);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -290,325 +317,713 @@ export default function ExpandedCardModal({
               </View>
             )}
 
-            {/* Card Info Section: Title, Tags, Metrics, Description */}
-            <CardInfoSection
-              title={card.title}
-              category={card.category}
-              categoryIcon={card.categoryIcon}
-              tags={card.tags}
-              rating={card.rating}
-              distance={card.distance}
-              measurementSystem={accountPreferences?.measurementSystem}
-              priceRange={card.priceRange}
-              description={card.description}
-              currency={accountPreferences?.currency}
-            />
+            {/* ===== Night Out Detail Layout ===== */}
+            {isNightOut && nightOut ? (
+              <View style={nightOutStyles.container}>
+                {/* Event Title */}
+                <Text style={nightOutStyles.title}>{card.title}</Text>
 
-            {/* Highlights Section */}
-            {/*  <HighlightsSection
-              highlights={card.highlights}
-              category={card.category}
-            /> */}
-
-            {/* Weather Section */}
-            <WeatherSection
-              weatherData={weatherData}
-              loading={loadingWeather}
-              category={card.category}
-              selectedDateTime={
-                card.selectedDateTime instanceof Date
-                  ? card.selectedDateTime
-                  : typeof card.selectedDateTime === "string"
-                  ? new Date(card.selectedDateTime)
-                  : undefined
-              }
-              measurementSystem={accountPreferences?.measurementSystem}
-            />
-
-            {/* Busyness Section */}
-            <BusynessSection
-              busynessData={busynessData}
-              loading={loadingBusyness}
-              travelTime={card.travelTime}
-            />
-
-            {/* Practical Details Section */}
-            <PracticalDetailsSection
-              address={card.address}
-              openingHours={card.openingHours}
-              phone={card.phone}
-              website={card.website}
-            />
-
-            {/* Match Factors Breakdown */}
-            {/*  <MatchFactorsBreakdown matchFactors={card.matchFactors} /> */}
-
-            {/* Companion Stops Section (for stroll cards) */}
-            {strollData && strollData.companionStops && (
-              <CompanionStopsSection
-                companionStops={strollData.companionStops}
-              />
-            )}
-
-            {/* Grocery Store Section (for picnic cards) */}
-            {picnicData && picnicData.groceryStore && (
-              <View style={styles.groceryStoreSection}>
-                <View style={styles.groceryStoreHeader}>
-                  <Ionicons name="storefront" size={20} color="#eb7825" />
-                  <Text style={styles.groceryStoreTitle}>
-                    Start Your Picnic
-                  </Text>
+                {/* Category + Host Row */}
+                <View style={nightOutStyles.categoryHostRow}>
+                  <Ionicons name="musical-notes" size={16} color="#eb7825" />
+                  <Text style={nightOutStyles.categoryText}>{nightOut.placeName}</Text>
+                  <Text style={nightOutStyles.dotSep}>•</Text>
+                  <Text style={nightOutStyles.hostText}>Hosted by {nightOut.hostName}</Text>
                 </View>
-                <Text style={styles.groceryStoreSubtitle}>
-                  Pick up supplies at this nearby grocery store
-                </Text>
-                <View style={styles.groceryStoreCard}>
-                  {picnicData.groceryStore.imageUrl && (
-                    <Image
-                      source={{ uri: picnicData.groceryStore.imageUrl }}
-                      style={styles.groceryStoreImage}
-                      resizeMode="cover"
-                    />
-                  )}
-                  <View style={styles.groceryStoreContent}>
-                    <View style={styles.groceryStoreInfo}>
-                      <Ionicons
-                        name="storefront-outline"
-                        size={20}
-                        color="#eb7825"
-                      />
-                      <View style={styles.groceryStoreDetails}>
-                        <Text style={styles.groceryStoreName}>
-                          {picnicData.groceryStore.name}
-                        </Text>
-                        <Text style={styles.groceryStoreType}>
-                          {picnicData.groceryStore.type
-                            .replace(/_/g, " ")
-                            .replace(/\b\w/g, (l) => l.toUpperCase())}
-                        </Text>
-                      </View>
+
+                {/* Date/Time + Entry Fee Cards */}
+                <View style={nightOutStyles.infoCardsRow}>
+                  {/* Date & Time Card */}
+                  <View style={nightOutStyles.infoCard}>
+                    <View style={nightOutStyles.infoCardHeader}>
+                      <Feather name="calendar" size={14} color="#eb7825" />
+                      <Text style={nightOutStyles.infoCardLabel}>Date & Time</Text>
                     </View>
-                    {picnicData.groceryStore.rating && (
-                      <View style={styles.groceryStoreRating}>
-                        <Ionicons name="star" size={14} color="#fbbf24" />
-                        <Text style={styles.ratingText}>
-                          {picnicData.groceryStore.rating.toFixed(1)}
-                        </Text>
-                        {picnicData.groceryStore.reviewCount && (
-                          <Text style={styles.reviewText}>
-                            ({picnicData.groceryStore.reviewCount} reviews)
-                          </Text>
-                        )}
-                      </View>
-                    )}
-                    {picnicData.groceryStore.address && (
-                      <View style={styles.groceryStoreAddress}>
-                        <Ionicons
-                          name="location-outline"
-                          size={12}
-                          color="#9ca3af"
-                        />
-                        <Text style={styles.addressText} numberOfLines={1}>
-                          {picnicData.groceryStore.address}
-                        </Text>
-                      </View>
-                    )}
-                    {picnicData.groceryStore.distance && (
-                      <View style={styles.groceryStoreDistance}>
-                        <Ionicons
-                          name="walk-outline"
-                          size={12}
-                          color="#9ca3af"
-                        />
-                        <Text style={styles.distanceText}>
-                          {formatDistanceFromMeters(
-                            picnicData.groceryStore.distance,
-                            accountPreferences?.measurementSystem,
-                            'away'
-                          )}
-                        </Text>
-                      </View>
-                    )}
+                    <Text style={nightOutStyles.infoCardPrimary}>{nightOut.date}</Text>
+                    <Text style={nightOutStyles.infoCardSecondary}>{nightOut.timeRange}</Text>
+                  </View>
+
+                  {/* Entry Fee Card */}
+                  <View style={nightOutStyles.infoCard}>
+                    <View style={nightOutStyles.infoCardHeader}>
+                      <Ionicons name="pricetag-outline" size={14} color="#eb7825" />
+                      <Text style={nightOutStyles.infoCardLabel}>Entry Fee</Text>
+                    </View>
+                    <Text style={nightOutStyles.infoCardPrice} numberOfLines={1} adjustsFontSizeToFit>{formatPriceRange(nightOut.price, accountPreferences?.currency)}</Text>
+                    <Text style={nightOutStyles.infoCardSecondary}>per person</Text>
                   </View>
                 </View>
-              </View>
-            )}
 
-            {/* Timeline Section or "See Route Pairing" Button (for Take a Stroll cards) */}
-            {isStrollCard && (
-              <>
-                {strollData && strollData.timeline ? (
-                  <TimelineSection
-                    category={card.category}
-                    title={card.title}
-                    address={card.address}
-                    priceRange={card.priceRange}
-                    travelTime={card.travelTime}
-                    strollTimeline={strollData.timeline}
-                    routeDuration={strollData.route?.duration}
-                    currency={accountPreferences?.currency}
-                  />
-                ) : (
-                  <View style={styles.routePairingSection}>
-                    {/* Header */}
-                    <View style={styles.routePairingHeader}>
-                      <View style={styles.routePairingIconContainer}>
-                        <Ionicons
-                          name="location-outline"
-                          size={20}
-                          color="#eb7825"
-                        />
-                        <View style={styles.routePairingIconDot} />
-                      </View>
-                      <Text style={styles.routePairingTitle}>
-                        Experience Route
-                      </Text>
+                {/* People Going Badge */}
+                <View style={nightOutStyles.goingBadge}>
+                  <Feather name="users" size={18} color="#eb7825" />
+                  <Text style={nightOutStyles.goingText}>{nightOut.peopleGoing} going</Text>
+                </View>
+
+                {/* Divider */}
+                <View style={nightOutStyles.divider} />
+
+                {/* About This Event */}
+                <Text style={nightOutStyles.sectionTitle}>About This Event</Text>
+                <Text style={nightOutStyles.descriptionText}>
+                  {card.description || card.fullDescription || "No description available."}
+                </Text>
+
+                {/* Divider */}
+                <View style={nightOutStyles.divider} />
+
+                {/* Vibe Tags */}
+                {nightOut.tags && nightOut.tags.length > 0 && (
+                  <>
+                    <Text style={nightOutStyles.sectionTitle}>Vibe</Text>
+                    <View style={nightOutStyles.tagsRow}>
+                      {nightOut.tags.map((tag, index) => (
+                        <View key={index} style={nightOutStyles.vibeBadge}>
+                          <Text style={nightOutStyles.vibeBadgeText}>{tag}</Text>
+                        </View>
+                      ))}
                     </View>
+                  </>
+                )}
 
-                    {/* Description */}
-                    <Text style={styles.routePairingDescription}>
-                      Follow these stops for the complete journey
-                    </Text>
-
-                    {/* Action Button */}
-                    <TouchableOpacity
-                      style={styles.routePairingButton}
-                      onPress={fetchStrollData}
-                      disabled={loadingStrollData}
-                      activeOpacity={0.7}
-                    >
-                      {loadingStrollData ? (
-                        <>
-                          <ActivityIndicator
-                            size="small"
-                            color="#ffffff"
-                            style={{ marginRight: 8 }}
-                          />
-                          <Text style={styles.routePairingButtonText}>
-                            Loading Route...
-                          </Text>
-                        </>
-                      ) : (
-                        <>
-                          <Ionicons
-                            name="paper-plane"
-                            size={20}
-                            color="#ffffff"
-                            style={{ marginRight: 8 }}
-                          />
-                          <Text style={styles.routePairingButtonText}>
-                            See Route Pairing
-                          </Text>
-                          <Ionicons
-                            name="open-outline"
-                            size={16}
-                            color="#ffffff"
-                            style={{ marginLeft: 8 }}
-                          />
-                        </>
-                      )}
-                    </TouchableOpacity>
+                {/* Music Genre */}
+                {nightOut.musicGenre && (
+                  <View style={nightOutStyles.musicGenreContainer}>
+                    <View style={nightOutStyles.musicGenreHeader}>
+                      <Ionicons name="musical-note-outline" size={16} color="#6b7280" />
+                      <Text style={nightOutStyles.musicGenreLabel}>Music Genre</Text>
+                    </View>
+                    <Text style={nightOutStyles.musicGenreValue}>{nightOut.musicGenre}</Text>
                   </View>
                 )}
-              </>
-            )}
 
-            {/* Timeline Section or "See Route Pairing" Button (for Picnic cards) */}
-            {isPicnicCard && (
-              <>
-                {picnicData && picnicData.timeline ? (
-                  <TimelineSection
-                    category={card.category}
-                    title={card.title}
-                    address={card.address}
-                    priceRange={card.priceRange}
-                    travelTime={card.travelTime}
-                    strollTimeline={picnicData.timeline}
-                    routeDuration={picnicData.route?.duration}
-                    currency={accountPreferences?.currency}
-                  />
-                ) : (
-                  <View style={styles.routePairingSection}>
-                    {/* Header */}
-                    <View style={styles.routePairingHeader}>
-                      <View style={styles.routePairingIconContainer}>
-                        <Ionicons
-                          name="basket-outline"
-                          size={20}
-                          color="#eb7825"
-                        />
-                        <View style={styles.routePairingIconDot} />
-                      </View>
-                      <Text style={styles.routePairingTitle}>Picnic Route</Text>
+                {/* Divider */}
+                <View style={nightOutStyles.divider} />
+
+                {/* Venue Info */}
+                <View style={nightOutStyles.venueCard}>
+                  <View style={nightOutStyles.venueIconRow}>
+                    <View style={nightOutStyles.venueIcon}>
+                      <Ionicons name="location" size={20} color="#eb7825" />
                     </View>
+                    <View style={nightOutStyles.venueDetails}>
+                      <Text style={nightOutStyles.venueName}>{nightOut.placeName}</Text>
+                      <Text style={nightOutStyles.venueAddress}>{card.address}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={nightOutStyles.directionsButton}
+                    onPress={openDirections}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="navigate-outline" size={16} color="#eb7825" />
+                    <Text style={nightOutStyles.directionsText}>Get Directions</Text>
+                  </TouchableOpacity>
+                </View>
 
-                    {/* Description */}
-                    <Text style={styles.routePairingDescription}>
-                      Find a grocery store near your picnic location
+                {/* Bottom spacer for the sticky button */}
+                <View style={{ height: 80 }} />
+              </View>
+            ) : (
+              <>
+                {/* ===== Regular Experience Detail Layout ===== */}
+                {/* Card Info Section: Title, Tags, Metrics, Description */}
+                <CardInfoSection
+                  title={card.title}
+                  category={card.category}
+                  categoryIcon={card.categoryIcon}
+                  tags={card.tags}
+                  rating={card.rating}
+                  distance={card.distance}
+                  measurementSystem={accountPreferences?.measurementSystem}
+                  priceRange={card.priceRange}
+                  description={card.description}
+                  currency={accountPreferences?.currency}
+                />
+
+                {/* Weather Section */}
+                <WeatherSection
+                  weatherData={weatherData}
+                  loading={loadingWeather}
+                  category={card.category}
+                  selectedDateTime={
+                    card.selectedDateTime instanceof Date
+                      ? card.selectedDateTime
+                      : typeof card.selectedDateTime === "string"
+                      ? new Date(card.selectedDateTime)
+                      : undefined
+                  }
+                  measurementSystem={accountPreferences?.measurementSystem}
+                />
+
+                {/* Busyness Section */}
+                <BusynessSection
+                  busynessData={busynessData}
+                  loading={loadingBusyness}
+                  travelTime={card.travelTime}
+                />
+
+                {/* Practical Details Section */}
+                <PracticalDetailsSection
+                  address={card.address}
+                  openingHours={card.openingHours}
+                  phone={card.phone}
+                  website={card.website}
+                />
+
+                {/* Companion Stops Section (for stroll cards) */}
+                {strollData && strollData.companionStops && (
+                  <CompanionStopsSection
+                    companionStops={strollData.companionStops}
+                  />
+                )}
+
+                {/* Grocery Store Section (for picnic cards) */}
+                {picnicData && picnicData.groceryStore && (
+                  <View style={styles.groceryStoreSection}>
+                    <View style={styles.groceryStoreHeader}>
+                      <Ionicons name="storefront" size={20} color="#eb7825" />
+                      <Text style={styles.groceryStoreTitle}>
+                        Start Your Picnic
+                      </Text>
+                    </View>
+                    <Text style={styles.groceryStoreSubtitle}>
+                      Pick up supplies at this nearby grocery store
                     </Text>
-
-                    {/* Action Button */}
-                    <TouchableOpacity
-                      style={styles.routePairingButton}
-                      onPress={fetchPicnicData}
-                      disabled={loadingPicnicData}
-                      activeOpacity={0.7}
-                    >
-                      {loadingPicnicData ? (
-                        <>
-                          <ActivityIndicator
-                            size="small"
-                            color="#ffffff"
-                            style={{ marginRight: 8 }}
-                          />
-                          <Text style={styles.routePairingButtonText}>
-                            Loading Route...
-                          </Text>
-                        </>
-                      ) : (
-                        <>
+                    <View style={styles.groceryStoreCard}>
+                      {picnicData.groceryStore.imageUrl && (
+                        <Image
+                          source={{ uri: picnicData.groceryStore.imageUrl }}
+                          style={styles.groceryStoreImage}
+                          resizeMode="cover"
+                        />
+                      )}
+                      <View style={styles.groceryStoreContent}>
+                        <View style={styles.groceryStoreInfo}>
                           <Ionicons
                             name="storefront-outline"
                             size={20}
-                            color="#ffffff"
-                            style={{ marginRight: 8 }}
+                            color="#eb7825"
                           />
-                          <Text style={styles.routePairingButtonText}>
-                            Find Grocery Store
-                          </Text>
-                          <Ionicons
-                            name="open-outline"
-                            size={16}
-                            color="#ffffff"
-                            style={{ marginLeft: 8 }}
-                          />
-                        </>
-                      )}
-                    </TouchableOpacity>
+                          <View style={styles.groceryStoreDetails}>
+                            <Text style={styles.groceryStoreName}>
+                              {picnicData.groceryStore.name}
+                            </Text>
+                            <Text style={styles.groceryStoreType}>
+                              {picnicData.groceryStore.type
+                                .replace(/_/g, " ")
+                                .replace(/\b\w/g, (l) => l.toUpperCase())}
+                            </Text>
+                          </View>
+                        </View>
+                        {picnicData.groceryStore.rating && (
+                          <View style={styles.groceryStoreRating}>
+                            <Ionicons name="star" size={14} color="#fbbf24" />
+                            <Text style={styles.ratingText}>
+                              {picnicData.groceryStore.rating.toFixed(1)}
+                            </Text>
+                            {picnicData.groceryStore.reviewCount && (
+                              <Text style={styles.reviewText}>
+                                ({picnicData.groceryStore.reviewCount} reviews)
+                              </Text>
+                            )}
+                          </View>
+                        )}
+                        {picnicData.groceryStore.address && (
+                          <View style={styles.groceryStoreAddress}>
+                            <Ionicons
+                              name="location-outline"
+                              size={12}
+                              color="#9ca3af"
+                            />
+                            <Text style={styles.addressText} numberOfLines={1}>
+                              {picnicData.groceryStore.address}
+                            </Text>
+                          </View>
+                        )}
+                        {picnicData.groceryStore.distance && (
+                          <View style={styles.groceryStoreDistance}>
+                            <Ionicons
+                              name="walk-outline"
+                              size={12}
+                              color="#9ca3af"
+                            />
+                            <Text style={styles.distanceText}>
+                              {formatDistanceFromMeters(
+                                picnicData.groceryStore.distance,
+                                accountPreferences?.measurementSystem,
+                                'away'
+                              )}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
                   </View>
                 )}
+
+                {/* Timeline Section or "See Route Pairing" Button (for Take a Stroll cards) */}
+                {isStrollCard && (
+                  <>
+                    {strollData && strollData.timeline ? (
+                      <TimelineSection
+                        category={card.category}
+                        title={card.title}
+                        address={card.address}
+                        priceRange={card.priceRange}
+                        travelTime={card.travelTime}
+                        strollTimeline={strollData.timeline}
+                        routeDuration={strollData.route?.duration}
+                        currency={accountPreferences?.currency}
+                      />
+                    ) : (
+                      <View style={styles.routePairingSection}>
+                        <View style={styles.routePairingHeader}>
+                          <View style={styles.routePairingIconContainer}>
+                            <Ionicons
+                              name="location-outline"
+                              size={20}
+                              color="#eb7825"
+                            />
+                            <View style={styles.routePairingIconDot} />
+                          </View>
+                          <Text style={styles.routePairingTitle}>
+                            Experience Route
+                          </Text>
+                        </View>
+                        <Text style={styles.routePairingDescription}>
+                          Follow these stops for the complete journey
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.routePairingButton}
+                          onPress={fetchStrollData}
+                          disabled={loadingStrollData}
+                          activeOpacity={0.7}
+                        >
+                          {loadingStrollData ? (
+                            <>
+                              <ActivityIndicator
+                                size="small"
+                                color="#ffffff"
+                                style={{ marginRight: 8 }}
+                              />
+                              <Text style={styles.routePairingButtonText}>
+                                Loading Route...
+                              </Text>
+                            </>
+                          ) : (
+                            <>
+                              <Ionicons
+                                name="paper-plane"
+                                size={20}
+                                color="#ffffff"
+                                style={{ marginRight: 8 }}
+                              />
+                              <Text style={styles.routePairingButtonText}>
+                                See Route Pairing
+                              </Text>
+                              <Ionicons
+                                name="open-outline"
+                                size={16}
+                                color="#ffffff"
+                                style={{ marginLeft: 8 }}
+                              />
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
+                )}
+
+                {/* Timeline Section or "See Route Pairing" Button (for Picnic cards) */}
+                {isPicnicCard && (
+                  <>
+                    {picnicData && picnicData.timeline ? (
+                      <TimelineSection
+                        category={card.category}
+                        title={card.title}
+                        address={card.address}
+                        priceRange={card.priceRange}
+                        travelTime={card.travelTime}
+                        strollTimeline={picnicData.timeline}
+                        routeDuration={picnicData.route?.duration}
+                        currency={accountPreferences?.currency}
+                      />
+                    ) : (
+                      <View style={styles.routePairingSection}>
+                        <View style={styles.routePairingHeader}>
+                          <View style={styles.routePairingIconContainer}>
+                            <Ionicons
+                              name="basket-outline"
+                              size={20}
+                              color="#eb7825"
+                            />
+                            <View style={styles.routePairingIconDot} />
+                          </View>
+                          <Text style={styles.routePairingTitle}>Picnic Route</Text>
+                        </View>
+                        <Text style={styles.routePairingDescription}>
+                          Find a grocery store near your picnic location
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.routePairingButton}
+                          onPress={fetchPicnicData}
+                          disabled={loadingPicnicData}
+                          activeOpacity={0.7}
+                        >
+                          {loadingPicnicData ? (
+                            <>
+                              <ActivityIndicator
+                                size="small"
+                                color="#ffffff"
+                                style={{ marginRight: 8 }}
+                              />
+                              <Text style={styles.routePairingButtonText}>
+                                Loading Route...
+                              </Text>
+                            </>
+                          ) : (
+                            <>
+                              <Ionicons
+                                name="storefront-outline"
+                                size={20}
+                                color="#ffffff"
+                                style={{ marginRight: 8 }}
+                              />
+                              <Text style={styles.routePairingButtonText}>
+                                Find Grocery Store
+                              </Text>
+                              <Ionicons
+                                name="open-outline"
+                                size={16}
+                                color="#ffffff"
+                                style={{ marginLeft: 8 }}
+                              />
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
+                )}
+
+                {/* Action Buttons */}
+                <ActionButtons
+                  card={card}
+                  bookingOptions={bookingOptions}
+                  onSave={onSave}
+                  onPurchase={onPurchase}
+                  onShare={onShare}
+                  onClose={onClose}
+                  isSaved={isSaved}
+                  userPreferences={userPreferences}
+                  currentMode={currentMode}
+                  onCardRemoved={onCardRemoved}
+                />
               </>
             )}
-
-            {/* Action Buttons */}
-            <ActionButtons
-              card={card}
-              bookingOptions={bookingOptions}
-              onSave={onSave}
-              onPurchase={onPurchase}
-              onShare={onShare}
-              onClose={onClose}
-              isSaved={isSaved}
-              userPreferences={userPreferences}
-              currentMode={currentMode}
-              onCardRemoved={onCardRemoved}
-            />
           </ScrollView>
+
+          {/* Sticky Get Tickets + Share Button for Night Out */}
+          {isNightOut && nightOut && (
+            <View style={nightOutStyles.stickyButtonContainer}>
+              <View style={nightOutStyles.stickyButtonRow}>
+                <TouchableOpacity
+                  style={nightOutStyles.getTicketsButton}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    // Could open a ticket URL in the future
+                  }}
+                >
+                  <Ionicons name="ticket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={nightOutStyles.getTicketsText} numberOfLines={1} adjustsFontSizeToFit>
+                    Get Tickets – {formatPriceRange(nightOut.price, accountPreferences?.currency)}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={nightOutStyles.shareButton}
+                  activeOpacity={0.7}
+                  onPress={() => setIsNightOutShareOpen(true)}
+                >
+                  <Feather name="share-2" size={20} color="#111827" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Night Out Share Modal */}
+          {isNightOut && nightOut && (
+            <ShareModal
+              isOpen={isNightOutShareOpen}
+              onClose={() => setIsNightOutShareOpen(false)}
+              experienceData={{
+                title: card.title,
+                image: card.image,
+                images: card.images,
+                distance: card.distance,
+                priceRange: nightOut.price,
+                rating: card.rating,
+                address: card.address,
+                description: card.description,
+                location: card.location,
+              }}
+              dateTimePreferences={{
+                timeOfDay: nightOut.time,
+                dayOfWeek: nightOut.date,
+                planningTimeframe: nightOut.timeRange,
+              }}
+              accountPreferences={accountPreferences}
+            />
+          )}
         </View>
       </View>
     </Modal>
   );
 }
+
+// Night Out detail styles
+const nightOutStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 8,
+  },
+  categoryHostRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  categoryText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  dotSep: {
+    fontSize: 14,
+    color: "#9ca3af",
+  },
+  hostText: {
+    fontSize: 14,
+    color: "#6b7280",
+  },
+  infoCardsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 16,
+  },
+  infoCard: {
+    flex: 1,
+    backgroundColor: "#fff7ed",
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  infoCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  infoCardLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#6b7280",
+  },
+  infoCardPrimary: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  infoCardSecondary: {
+    fontSize: 13,
+    color: "#6b7280",
+  },
+  infoCardPrice: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#eb7825",
+    marginBottom: 2,
+  },
+  goingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginBottom: 20,
+    borderColor: colors.primary,
+    borderWidth: 1,
+  },
+  goingText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#f3f4f6",
+    marginVertical: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 10,
+  },
+  descriptionText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: "#374151",
+  },
+  tagsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
+  },
+  vibeBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#eb7825",
+    backgroundColor: "#fff7ed",
+  },
+  vibeBadgeText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  musicGenreContainer: {
+    backgroundColor: "#f9fafb",
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#f3f4f6",
+  },
+  musicGenreHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 4,
+  },
+  musicGenreLabel: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  musicGenreValue: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  venueCard: {
+    backgroundColor: "#fff7ed",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  venueIconRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 12,
+  },
+  venueIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#fff7ed",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  venueDetails: {
+    flex: 1,
+  },
+  venueName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  venueAddress: {
+    fontSize: 13,
+    color: "#6b7280",
+    lineHeight: 18,
+  },
+  directionsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+  },
+  directionsText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  stickyButtonContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+  },
+  stickyButtonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  getTicketsButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#eb7825",
+    borderRadius: 12,
+    paddingVertical: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  getTicketsText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#ffffff",
+    flexShrink: 1,
+  },
+  shareButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+});
 
 const styles = StyleSheet.create({
   overlay: {

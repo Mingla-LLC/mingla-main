@@ -792,13 +792,49 @@ export default function DiscoverScreen({
     return null; // "other" - show all
   }, []);
 
-  // Get auth and location for custom Discover fetch
+  // Get auth for custom Discover fetch
   const { user } = useAuthSimple();
+  // Fallback: saved location preference (only used if device GPS is unavailable)
   const { data: userLocationData } = useUserLocation(user?.id, "solo", undefined);
-  
-  // Extract stable lat/lng values to prevent unnecessary re-fetches
-  const locationLat = userLocationData?.lat;
-  const locationLng = userLocationData?.lng;
+  const fallbackLat = userLocationData?.lat;
+  const fallbackLng = userLocationData?.lng;
+
+  // Device GPS location - used by BOTH "For You" and "Night Out" tabs
+  const [deviceGpsLat, setDeviceGpsLat] = useState<number | null>(null);
+  const [deviceGpsLng, setDeviceGpsLng] = useState<number | null>(null);
+  const deviceGpsFetchedRef = useRef(false);
+
+  useEffect(() => {
+    const fetchDeviceGps = async () => {
+      if (deviceGpsFetchedRef.current) return;
+      deviceGpsFetchedRef.current = true;
+      try {
+        const loc = await enhancedLocationService.getCurrentLocation();
+        if (loc) {
+          setDeviceGpsLat(loc.latitude);
+          setDeviceGpsLng(loc.longitude);
+          console.log("[Discover] Device GPS:", loc.latitude, loc.longitude);
+        } else {
+          console.log("[Discover] GPS unavailable, falling back to preference location");
+          if (fallbackLat && fallbackLng) {
+            setDeviceGpsLat(fallbackLat);
+            setDeviceGpsLng(fallbackLng);
+          }
+        }
+      } catch (err) {
+        console.error("[Discover] GPS error, falling back:", err);
+        if (fallbackLat && fallbackLng) {
+          setDeviceGpsLat(fallbackLat);
+          setDeviceGpsLng(fallbackLng);
+        }
+      }
+    };
+    fetchDeviceGps();
+  }, [fallbackLat, fallbackLng]);
+
+  // locationLat/locationLng now come from device GPS (not saved preference)
+  const locationLat = deviceGpsLat;
+  const locationLng = deviceGpsLng;
 
   // Load saved people from AsyncStorage on mount or when user changes
   useEffect(() => {
@@ -906,38 +942,9 @@ export default function DiscoverScreen({
   const [nightOutError, setNightOutError] = useState<string | null>(null);
   const nightOutFetchedRef = useRef(false);
 
-  // Night Out uses device GPS (not saved location preference)
-  const [nightOutGpsLat, setNightOutGpsLat] = useState<number | null>(null);
-  const [nightOutGpsLng, setNightOutGpsLng] = useState<number | null>(null);
-  const nightOutGpsFetchedRef = useRef(false);
-
-  useEffect(() => {
-    const getDeviceGps = async () => {
-      if (nightOutGpsFetchedRef.current) return;
-      nightOutGpsFetchedRef.current = true;
-      try {
-        const loc = await enhancedLocationService.getCurrentLocation();
-        if (loc) {
-          setNightOutGpsLat(loc.latitude);
-          setNightOutGpsLng(loc.longitude);
-          console.log("[NightOut] Device GPS:", loc.latitude, loc.longitude);
-        } else {
-          console.log("[NightOut] GPS unavailable, falling back to preference location");
-          if (locationLat && locationLng) {
-            setNightOutGpsLat(locationLat);
-            setNightOutGpsLng(locationLng);
-          }
-        }
-      } catch (err) {
-        console.error("[NightOut] GPS error, falling back:", err);
-        if (locationLat && locationLng) {
-          setNightOutGpsLat(locationLat);
-          setNightOutGpsLng(locationLng);
-        }
-      }
-    };
-    getDeviceGps();
-  }, [locationLat, locationLng]);
+  // Night Out reuses the shared device GPS coordinates
+  const nightOutGpsLat = deviceGpsLat;
+  const nightOutGpsLng = deviceGpsLng;
 
   // State for Discover-specific recommendations (fetched with ALL categories)
   const [discoverRecommendations, setDiscoverRecommendations] = useState<Recommendation[]>([]);
@@ -977,7 +984,7 @@ export default function DiscoverScreen({
         featuredCard,
         gridCards,
       };
-      const userCacheKey = `${DISCOVER_CACHE_KEY}_${user.id}`;
+      const userCacheKey = `${DISCOVER_CACHE_KEY}_${user.id}_${locationLat?.toFixed(2)}_${locationLng?.toFixed(2)}`;
       await AsyncStorage.setItem(userCacheKey, JSON.stringify(cacheData));
       console.log("Saved discover cache for date:", cacheData.date);
     } catch (error) {
@@ -991,7 +998,7 @@ export default function DiscoverScreen({
       return null;
     }
     try {
-      const userCacheKey = `${DISCOVER_CACHE_KEY}_${user.id}`;
+      const userCacheKey = `${DISCOVER_CACHE_KEY}_${user.id}_${locationLat?.toFixed(2)}_${locationLng?.toFixed(2)}`;
       const cached = await AsyncStorage.getItem(userCacheKey);
       if (cached) {
         return JSON.parse(cached) as DiscoverCache;
@@ -1672,6 +1679,19 @@ export default function DiscoverScreen({
       },
       location: card.coordinates,
       selectedDateTime: new Date(),
+      nightOutData: {
+        eventName: card.eventName,
+        placeName: card.placeName,
+        hostName: card.hostName,
+        date: card.date,
+        time: card.time,
+        timeRange: card.timeRange,
+        price: card.price,
+        musicGenre: card.musicGenre,
+        peopleGoing: card.peopleGoing,
+        tags: card.tags,
+        coordinates: card.coordinates,
+      },
     };
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
@@ -2853,7 +2873,7 @@ export default function DiscoverScreen({
                     onPress={async () => {
                       await clearNightOutCache();
                       nightOutFetchedRef.current = false;
-                      nightOutGpsFetchedRef.current = false;
+                      deviceGpsFetchedRef.current = false;
                       setNightOutError(null);
                       setNightOutLoading(true);
                       setNightOutCards([]);
@@ -2861,8 +2881,8 @@ export default function DiscoverScreen({
                       try {
                         const loc = await enhancedLocationService.getCurrentLocation();
                         if (loc) {
-                          setNightOutGpsLat(loc.latitude);
-                          setNightOutGpsLng(loc.longitude);
+                          setDeviceGpsLat(loc.latitude);
+                          setDeviceGpsLng(loc.longitude);
                         }
                       } catch (_) {}
                     }}

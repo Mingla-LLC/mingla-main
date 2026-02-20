@@ -117,6 +117,20 @@ export interface ExpandedCardData {
       duration: number;
     }>;
   };
+  // Night Out-specific data
+  nightOutData?: {
+    eventName: string;
+    placeName: string;
+    hostName: string;
+    date: string;
+    time: string;
+    timeRange: string;
+    price: string;
+    musicGenre?: string;
+    peopleGoing: number;
+    tags: string[];
+    coordinates?: { lat: number; lng: number };
+  };
 }
 
 export interface WeatherData {
