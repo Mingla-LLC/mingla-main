@@ -1767,12 +1767,21 @@ export default function DiscoverScreen({
     const year = now.getFullYear();
     // Strip weekday prefix if present (e.g. "Wed, Feb 19" → "Feb 19")
     const dateOnly = card.date.replace(/^[A-Za-z]{3},\s*/, "");
-    const parsed = new Date(`${dateOnly}, ${year}`);
-    if (isNaN(parsed.getTime())) return true; // can't parse → don't exclude
+
+    // Manually parse "Mon DD" format — new Date("Feb 23, 2026") is unreliable on Hermes/JSC
+    const monthMap: { [key: string]: number } = {
+      Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+      Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+    };
+    const parts = dateOnly.match(/^([A-Za-z]{3})\s+(\d{1,2})$/);
+    if (!parts) return true; // can't parse → don't exclude
+    const monthIndex = monthMap[parts[1]];
+    const dayNum = parseInt(parts[2], 10);
+    if (monthIndex === undefined || isNaN(dayNum)) return true;
 
     // Normalize dates to midnight for comparison
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const cardDay = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    const cardDay = new Date(year, monthIndex, dayNum);
     const diffDays = Math.round((cardDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
     switch (filter) {
@@ -1792,7 +1801,7 @@ export default function DiscoverScreen({
         return diffDays >= daysUntilNextMon && diffDays < daysUntilNextMon + 7;
       }
       case "month":
-        return parsed.getMonth() === now.getMonth() && parsed.getFullYear() === now.getFullYear();
+        return cardDay.getMonth() === now.getMonth() && cardDay.getFullYear() === now.getFullYear();
       default:
         return true;
     }
@@ -1828,6 +1837,20 @@ export default function DiscoverScreen({
         return keywords.some((kw) => searchable.includes(kw));
       });
     }
+
+    // Sort by date ascending (closest events first)
+    const monthMap: { [key: string]: number } = {
+      Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+      Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+    };
+    const parseCardDate = (dateStr: string): number => {
+      const stripped = dateStr.replace(/^[A-Za-z]{3},\s*/, "");
+      const parts = stripped.match(/^([A-Za-z]{3})\s+(\d{1,2})$/);
+      if (!parts || monthMap[parts[1]] === undefined) return Infinity;
+      const year = new Date().getFullYear();
+      return new Date(year, monthMap[parts[1]], parseInt(parts[2], 10)).getTime();
+    };
+    cards.sort((a, b) => parseCardDate(a.date) - parseCardDate(b.date));
 
     return cards;
   }, [nightOutCards, selectedFilters.date, selectedFilters.genre, selectedFilters.price]);
