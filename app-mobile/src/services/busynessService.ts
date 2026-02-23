@@ -1,14 +1,20 @@
 /**
- * Busyness Service - Google Places API Integration
- * Fetches real-time busyness data for venues using Google Places API
+ * Busyness Service — BestTime.app + Google Routes API Integration
  *
- * Uses Google Places API to get:
- * - Popularity score (0-100) for current busyness level
- * - Opening hours for time-based busyness estimates
+ * Primary: BestTime.app for real foot-traffic / popular-times data
+ * Secondary: Google Routes API for real-time travel duration & traffic
+ * Fallback : Time-of-day heuristics when no API keys are configured
  */
 
-const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "";
-const GOOGLE_PLACES_BASE_URL = "https://places.googleapis.com/v1";
+const BESTTIME_API_KEY = process.env.EXPO_PUBLIC_BESTTIME_API_KEY || "";
+const BESTTIME_BASE_URL = "https://besttime.app/api/v1";
+const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+const GOOGLE_ROUTES_BASE_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
+
+export interface TrafficInfo {
+  trafficCondition: "Light" | "Moderate" | "Heavy";
+  currentTravelTime: string;
+}
 
 export interface BusynessData {
   isBusy: boolean;
@@ -16,6 +22,7 @@ export interface BusynessData {
   currentPopularity: number; // 0-100
   popularTimes: PopularTime[];
   message: string;
+  trafficInfo?: TrafficInfo;
 }
 
 export interface PopularTime {
@@ -23,546 +30,489 @@ export interface PopularTime {
   times: { hour: string; popularity: number }[];
 }
 
+// ─── BestTime response shapes (subset) ───────────────────────────────
+interface BestTimeHourAnalysis {
+  hour: number;
+  intensity_nr: number; // 0-100
+  intensity_txt: string; // "Low" | "Average" | "High" | "Very High"
+}
+
+interface BestTimeDayAnalysis {
+  day_info: { day_int: number; day_text: string };
+  hour_analysis: BestTimeHourAnalysis[];
+  peak_hours: { peak_start: number; peak_end: number }[];
+  quiet_hours: { quiet_start: number; quiet_end: number }[];
+}
+
+// ─── Google Routes response shapes (subset) ──────────────────────────
+interface GoogleRoutesRoute {
+  duration: string; // e.g. "843s"
+  staticDuration: string; // without traffic
+  distanceMeters: number;
+}
+
 class BusynessService {
+  // Simple in-memory cache: venueKey → { data, timestamp }
+  private cache = new Map<string, { data: BusynessData; ts: number }>();
+  private CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
   /**
-   * Get busyness data for a venue using Google Places API
-   * Prefers placeId > address > venueName for searching
+   * Main entry point — get busyness + traffic for a venue.
    */
   async getVenueBusyness(
     venueName: string,
     lat: number,
     lng: number,
     address?: string,
-    placeId?: string
+    _placeId?: string
   ): Promise<BusynessData | null> {
-    if (!GOOGLE_PLACES_API_KEY) {
-      console.warn("Google Places API key not configured");
-      return this.getFallbackBusyness();
+    // ── Check cache ──
+    const cacheKey = `${venueName}_${lat.toFixed(3)}_${lng.toFixed(3)}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < this.CACHE_TTL) {
+      return cached.data;
     }
 
+    // ── Try BestTime (real foot-traffic) ──
+    let busynessResult: BusynessData | null = null;
+    if (BESTTIME_API_KEY) {
+      busynessResult = await this.fetchBestTimeBusyness(venueName, address, lat, lng);
+    }
+
+    // ── If BestTime failed or no key, use time-of-day heuristic ──
+    if (!busynessResult) {
+      busynessResult = this.getTimeBasedHeuristic();
+    }
+
+    // ── Attach real traffic info from Google Routes ──
+    if (GOOGLE_MAPS_API_KEY) {
+      const traffic = await this.fetchGoogleRoutesTraffic(lat, lng);
+      if (traffic) {
+        busynessResult.trafficInfo = traffic;
+      }
+    }
+
+    // If still no trafficInfo, use heuristic
+    if (!busynessResult.trafficInfo) {
+      busynessResult.trafficInfo = this.estimateTrafficConditions(new Date());
+    }
+
+    // ── Cache & return ──
+    this.cache.set(cacheKey, { data: busynessResult, ts: Date.now() });
+    return busynessResult;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  BestTime.app Integration
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Fetch real foot-traffic data from BestTime.app
+   * Uses the "forecast" endpoint to get week-long hourly data,
+   * then extracts the current hour's live intensity.
+   */
+  private async fetchBestTimeBusyness(
+    venueName: string,
+    address: string | undefined,
+    lat: number,
+    lng: number
+  ): Promise<BusynessData | null> {
+    // BestTime is picky about venue matching. Try multiple search strategies
+    // in order of specificity until one succeeds.
+    const attempts: { venue_name: string; venue_address: string }[] = [];
+
+    if (address) {
+      // Strategy 1: name + bare address (don't duplicate the name in address)
+      attempts.push({ venue_name: venueName, venue_address: address });
+      // Strategy 2: use just the address as both fields (BestTime often resolves this)
+      attempts.push({ venue_name: address, venue_address: address });
+    }
+    // Strategy 3: name only (fallback for well-known venues)
+    attempts.push({ venue_name: venueName, venue_address: venueName });
+
+    for (const attempt of attempts) {
+      const result = await this.callBestTimeForecast(attempt.venue_name, attempt.venue_address);
+      if (result) return result;
+    }
+
+    console.warn("[BestTime] All search strategies failed for:", venueName);
+    return null;
+  }
+
+  /**
+   * Single BestTime forecast API call.
+   * Returns null if the venue isn't found or there's an error.
+   */
+  private async callBestTimeForecast(
+    venueName: string,
+    venueAddress: string
+  ): Promise<BusynessData | null> {
     try {
-      let foundPlaceId: string | null = null;
-
-      // Step 1: If we already have a placeId, use it directly (most reliable)
-      if (placeId) {
-        foundPlaceId = placeId;
-      }
-      // Step 2: Try searching by name + address combined (most accurate)
-      else if (address) {
-        // Combine name and address for more specific and accurate search
-        const combinedQuery = `${venueName}, ${address}`;
-
-        const searchTextUrl = `${GOOGLE_PLACES_BASE_URL}/places:searchText`;
-        const fieldMask = "places.id,places.displayName,places.location";
-
-        const addressResponse = await fetch(searchTextUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
-            "X-Goog-FieldMask": fieldMask,
-          },
-          body: JSON.stringify({
-            textQuery: combinedQuery,
-            locationBias: {
-              circle: {
-                center: {
-                  latitude: lat,
-                  longitude: lng,
-                },
-                radius: 500,
-              },
-            },
-            maxResultCount: 5,
-          }),
-        });
-
-        if (!addressResponse.ok) {
-          const errorText = await addressResponse.text();
-          console.warn("⚠️ Combined search HTTP error:", {
-            status: addressResponse.status,
-            error: errorText,
-          });
-        } else {
-          const addressData = await addressResponse.json();
-
-          if (addressData.places && addressData.places.length > 0) {
-            // Use the first result (should be the most relevant)
-            foundPlaceId = addressData.places[0].id;
-          } else {
-            console.warn("⚠️ Combined search returned no matches:", {
-              places: addressData.places || [],
-            });
-          }
-        }
-      }
-
-      // Step 3: Fall back to name-based search if address didn't work
-      if (!foundPlaceId) {
-        const searchTextUrl = `${GOOGLE_PLACES_BASE_URL}/places:searchText`;
-        const fieldMask = "places.id,places.displayName,places.location";
-
-        const textSearchResponse = await fetch(searchTextUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
-            "X-Goog-FieldMask": fieldMask,
-          },
-          body: JSON.stringify({
-            textQuery: venueName,
-            locationBias: {
-              circle: {
-                center: {
-                  latitude: lat,
-                  longitude: lng,
-                },
-                radius: 2000,
-              },
-            },
-            maxResultCount: 5,
-          }),
-        });
-
-        if (!textSearchResponse.ok) {
-          const errorText = await textSearchResponse.text();
-          console.warn("⚠️ Text Search HTTP error:", {
-            status: textSearchResponse.status,
-            error: errorText,
-          });
-        } else {
-          const textSearchData = await textSearchResponse.json();
-
-          if (textSearchData.places && textSearchData.places.length > 0) {
-            foundPlaceId = textSearchData.places[0].id;
-          } else {
-            console.warn("⚠️ Text Search returned no usable results:", {
-              places: textSearchData.places || [],
-            });
-          }
-        }
-
-        // Step 4: If Text Search fails, try Nearby Search as fallback
-        if (!foundPlaceId) {
-          // Try searching for common place types near the location
-          const placeTypes = [
-            "point_of_interest",
-            "establishment",
-            "tourist_attraction",
-          ];
-
-          const searchNearbyUrl = `${GOOGLE_PLACES_BASE_URL}/places:searchNearby`;
-          const fieldMask = "places.id,places.displayName,places.location";
-
-          for (const type of placeTypes) {
-            const nearbyResponse = await fetch(searchNearbyUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
-                "X-Goog-FieldMask": fieldMask,
-              },
-              body: JSON.stringify({
-                includedTypes: [type],
-                maxResultCount: 20,
-                locationRestriction: {
-                  circle: {
-                    center: {
-                      latitude: lat,
-                      longitude: lng,
-                    },
-                    radius: 2000,
-                  },
-                },
-              }),
-            });
-
-            if (!nearbyResponse.ok) {
-              const errorText = await nearbyResponse.text();
-              console.warn("⚠️ Nearby Search HTTP error:", {
-                type,
-                status: nearbyResponse.status,
-                error: errorText,
-              });
-              continue;
-            }
-
-            const nearbyData = await nearbyResponse.json();
-
-            if (nearbyData.places && nearbyData.places.length > 0) {
-              // Try to find a match by name similarity
-              const matchedPlace = nearbyData.places.find((place: any) => {
-                const placeNameLower =
-                  place.displayName?.text?.toLowerCase() || "";
-                const venueNameLower = venueName.toLowerCase();
-                return (
-                  placeNameLower.includes(venueNameLower) ||
-                  venueNameLower.includes(placeNameLower) ||
-                  this.calculateStringSimilarity(
-                    placeNameLower,
-                    venueNameLower
-                  ) > 0.6
-                );
-              });
-
-              if (matchedPlace) {
-                foundPlaceId = matchedPlace.id;
-                break;
-              } else {
-                console.warn(
-                  "⚠️ Nearby Search had results but no close match:",
-                  {
-                    type,
-                    sampleNames: nearbyData.places
-                      .slice(0, 3)
-                      .map((result: any) => result.displayName?.text),
-                  }
-                );
-              }
-            } else {
-              console.warn("⚠️ Nearby Search returned no results:", {
-                type,
-                places: nearbyData.places || [],
-              });
-            }
-          }
-        }
-      }
-
-      if (!foundPlaceId) {
-        console.warn("📍 No place found in Google Places for:", {
-          venueName,
-          address,
-          lat,
-          lng,
-          attemptedSearches: {
-            usedPlaceId: !!placeId,
-            triedAddress: !!address,
-            triedName: true,
-            triedNearby: true,
-          },
-        });
-        return this.getFallbackBusyness();
-      }
-
-      // Step 5: Get detailed place information
-      // Places API (New) - use places/{placeId} endpoint
-      const detailsUrl = `${GOOGLE_PLACES_BASE_URL}/places/${foundPlaceId}`;
-      const fieldMask =
-        "id,displayName,rating,userRatingCount,regularOpeningHours,currentOpeningHours";
-
-      const detailsResponse = await fetch(detailsUrl, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
-          "X-Goog-FieldMask": fieldMask,
-        },
+      const params = new URLSearchParams({
+        api_key_private: BESTTIME_API_KEY,
+        venue_name: venueName,
+        venue_address: venueAddress,
+      });
+      const forecastUrl = `${BESTTIME_BASE_URL}/forecasts?${params.toString()}`;
+      const response = await fetch(forecastUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
       });
 
-      if (!detailsResponse.ok) {
-        const errorText = await detailsResponse.text();
-        console.error("❌ Google Places details HTTP error:", {
-          status: detailsResponse.status,
-          statusText: detailsResponse.statusText,
-          error: errorText,
-        });
-        return this.getFallbackBusyness();
+      if (!response.ok) {
+        console.warn("[BestTime] HTTP error:", response.status);
+        return null;
       }
 
-      const placeDetails = await detailsResponse.json();
+      const data = await response.json();
 
-      if (placeDetails.error) {
-        console.warn("📍 Invalid response from Google Places details:", {
-          error: placeDetails.error,
-        });
-        return this.getFallbackBusyness();
+      if (data.status !== "OK" || !data.analysis) {
+        console.warn("[BestTime] No analysis in response:", data.message || data.status);
+        return null;
       }
 
-      // Popularity field is not available in Places API (New) either
-      // Estimate from rating and review count
-      let popularity: number;
-      const rating = placeDetails.rating || 0;
-      const reviewCount = placeDetails.userRatingCount || 0;
+      const analyses: BestTimeDayAnalysis[] = data.analysis;
 
-      // Convert rating (0-5) to popularity (0-100)
-      // Higher rating = higher popularity
-      // More reviews = more popular (capped effect)
-      const ratingScore = (rating / 5) * 70; // Max 70 from rating
-      const reviewScore = Math.min(30, (reviewCount / 1000) * 30); // Max 30 from reviews
-      popularity = Math.round(ratingScore + reviewScore);
-      console.log("popularity", popularity);
+      // Convert to our PopularTime format
+      const dayMap: Record<number, string> = {
+        0: "Monday",
+        1: "Tuesday",
+        2: "Wednesday",
+        3: "Thursday",
+        4: "Friday",
+        5: "Saturday",
+        6: "Sunday",
+      };
 
-      // Use currentOpeningHours if available, otherwise regularOpeningHours
-      const openingHours =
-        placeDetails.currentOpeningHours || placeDetails.regularOpeningHours;
+      const popularTimes: PopularTime[] = analyses.map((day) => ({
+        day: dayMap[day.day_info.day_int] || day.day_info.day_text,
+        times: day.hour_analysis.map((h) => ({
+          hour: `${h.hour.toString().padStart(2, "0")}:00`,
+          popularity: h.intensity_nr,
+        })),
+      }));
 
-      // Calculate busyness level from popularity (0-100 scale)
-      const busynessLevel = this.calculateBusynessLevel(popularity);
+      // Get current hour's popularity
+      const now = new Date();
+      const jsDay = now.getDay(); // 0=Sun … 6=Sat
+      // BestTime: 0=Mon … 6=Sun  →  convert JS day
+      const bestTimeDay = jsDay === 0 ? 6 : jsDay - 1;
+      const currentHour = now.getHours();
 
-      // Generate popular times based on opening hours and typical patterns
-      const popularTimes = this.generatePopularTimes(openingHours, popularity);
+      const todayAnalysis = analyses.find(
+        (d) => d.day_info.day_int === bestTimeDay
+      );
+      const currentHourEntry = todayAnalysis?.hour_analysis.find(
+        (h) => h.hour === currentHour
+      );
+
+      const currentPopularity = currentHourEntry?.intensity_nr ?? 30;
+      const busynessLevel = this.calculateBusynessLevel(currentPopularity);
+
+      // Build a smarter message using peak/quiet data
+      const peakHours = todayAnalysis?.peak_hours ?? [];
+      const quietHours = todayAnalysis?.quiet_hours ?? [];
+      const message = this.buildBestTimeMessage(
+        busynessLevel,
+        currentPopularity,
+        peakHours,
+        quietHours
+      );
+
+      console.log(
+        `[BestTime] ${venueName}: ${currentPopularity}% (${busynessLevel}) at ${currentHour}:00`
+      );
 
       return {
-        isBusy: popularity > 50,
+        isBusy: currentPopularity > 50,
         busynessLevel,
-        currentPopularity: popularity,
+        currentPopularity,
         popularTimes,
-        message: this.generateBusynessMessage(busynessLevel, popularTimes),
+        message,
       };
     } catch (error) {
-      console.error("Error fetching busyness from Google Places:", error);
-      return this.getFallbackBusyness();
+      console.error("[BestTime] Error:", error);
+      return null;
     }
   }
 
   /**
-   * Calculate busyness level from popularity score (0-100)
+   * Build a user-friendly message from BestTime peak/quiet data
    */
+  private buildBestTimeMessage(
+    level: BusynessData["busynessLevel"],
+    popularity: number,
+    peakHours: { peak_start: number; peak_end: number }[],
+    quietHours: { quiet_start: number; quiet_end: number }[]
+  ): string {
+    const formatHr = (h: number) => {
+      const ampm = h >= 12 ? "PM" : "AM";
+      const display = h > 12 ? h - 12 : h === 0 ? 12 : h;
+      return `${display} ${ampm}`;
+    };
+
+    if (level === "Very Busy") {
+      if (quietHours.length > 0) {
+        const q = quietHours[0];
+        return `Very busy right now (${popularity}%). Try visiting around ${formatHr(q.quiet_start)} – ${formatHr(q.quiet_end)} for fewer crowds.`;
+      }
+      return `Very busy right now (${popularity}%). Consider visiting at a different time.`;
+    }
+
+    if (level === "Busy") {
+      if (quietHours.length > 0) {
+        const q = quietHours[0];
+        return `Getting busy (${popularity}%). Less crowded around ${formatHr(q.quiet_start)} – ${formatHr(q.quiet_end)}.`;
+      }
+      return `Getting busy (${popularity}%). Expect moderate crowds.`;
+    }
+
+    if (level === "Moderate") {
+      if (peakHours.length > 0) {
+        const p = peakHours[0];
+        return `Moderate crowd (${popularity}%). Peak hours: ${formatHr(p.peak_start)} – ${formatHr(p.peak_end)}.`;
+      }
+      return `Moderate crowd (${popularity}%). Good time to visit.`;
+    }
+
+    // Not Busy
+    return `Not busy (${popularity}%) — great time to visit!`;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  Google Routes API — Real Traffic & Travel Time
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Fetch real-time travel duration using Google Routes API.
+   * Requests TRAFFIC_AWARE routing to get actual vs. static duration.
+   */
+  private async fetchGoogleRoutesTraffic(
+    destLat: number,
+    destLng: number
+  ): Promise<TrafficInfo | null> {
+    try {
+      // We need the user's current location as origin.
+      // Import is deferred to avoid circular deps; fall back to heuristic if unavailable.
+      let originLat: number | null = null;
+      let originLng: number | null = null;
+
+      try {
+        const { enhancedLocationService } = require("./enhancedLocationService");
+        const loc = await enhancedLocationService.getCurrentLocation();
+        if (loc) {
+          originLat = loc.latitude;
+          originLng = loc.longitude;
+        }
+      } catch {
+        // Location unavailable — skip real traffic
+      }
+
+      if (originLat === null || originLng === null) return null;
+
+      const response = await fetch(GOOGLE_ROUTES_BASE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+          "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters",
+        },
+        body: JSON.stringify({
+          origin: {
+            location: {
+              latLng: { latitude: originLat, longitude: originLng },
+            },
+          },
+          destination: {
+            location: {
+              latLng: { latitude: destLat, longitude: destLng },
+            },
+          },
+          travelMode: "DRIVE",
+          routingPreference: "TRAFFIC_AWARE",
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn("[GoogleRoutes] HTTP error:", response.status);
+        console.log("[GoogleRoutes] Error:", await response.text());
+        return null;
+      }
+
+      const data = await response.json();
+      const route: GoogleRoutesRoute | undefined = data.routes?.[0];
+      if (!route) return null;
+
+      // duration is like "843s", staticDuration is like "720s"
+      const durationSec = parseInt(route.duration.replace("s", ""), 10) || 0;
+      const staticSec = parseInt(route.staticDuration.replace("s", ""), 10) || 0;
+      const durationMin = Math.ceil(durationSec / 60);
+
+      // Determine traffic condition from the ratio of actual vs static
+      const ratio = staticSec > 0 ? durationSec / staticSec : 1;
+      let condition: TrafficInfo["trafficCondition"];
+      if (ratio <= 1.1) {
+        condition = "Light";
+      } else if (ratio <= 1.35) {
+        condition = "Moderate";
+      } else {
+        condition = "Heavy";
+      }
+
+      return {
+        trafficCondition: condition,
+        currentTravelTime: `${durationMin} min`,
+      };
+    } catch (error) {
+      console.error("[GoogleRoutes] Error:", error);
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  Heuristic Fallbacks
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Time-of-day based busyness when BestTime API is unavailable.
+   * Uses day-of-week and hour to approximate crowd levels.
+   */
+  private getTimeBasedHeuristic(): BusynessData {
+    const now = new Date();
+    const hour = now.getHours();
+    const dayOfWeek = now.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+    let popularity: number;
+    // Lunch peak
+    if (hour >= 12 && hour <= 14) {
+      popularity = isWeekend ? 70 : 60;
+    }
+    // Dinner peak
+    else if (hour >= 18 && hour <= 20) {
+      popularity = isWeekend ? 75 : 65;
+    }
+    // Weekend nightlife
+    else if (hour >= 20 && hour <= 23 && isWeekend) {
+      popularity = 65;
+    }
+    // Weekday morning commute
+    else if (hour >= 7 && hour <= 9 && !isWeekend) {
+      popularity = 45;
+    }
+    // Afternoon lull
+    else if (hour >= 14 && hour < 18) {
+      popularity = 35;
+    }
+    // Early morning / late night
+    else {
+      popularity = 20;
+    }
+
+    const busynessLevel = this.calculateBusynessLevel(popularity);
+
+    // Generate a simple popular times array for the UI bar chart
+    const popularTimes = this.generateHeuristicPopularTimes(isWeekend);
+
+    return {
+      isBusy: popularity > 50,
+      busynessLevel,
+      currentPopularity: popularity,
+      popularTimes,
+      message: this.generateMessageFromLevel(busynessLevel, popularity),
+    };
+  }
+
+  /**
+   * Generate a simple 7-day popular times array based on typical patterns.
+   */
+  private generateHeuristicPopularTimes(isWeekend: boolean): PopularTime[] {
+    const days = [
+      "Monday", "Tuesday", "Wednesday", "Thursday",
+      "Friday", "Saturday", "Sunday",
+    ];
+
+    return days.map((day, idx) => {
+      const isWE = idx >= 5; // Fri=4 is weekday in this array; Sat=5, Sun=6
+      const times = Array.from({ length: 24 }, (_, h) => {
+        let pop = 10;
+        if (h >= 7 && h < 9 && !isWE) pop = 45;
+        else if (h >= 10 && h < 12 && isWE) pop = 55;
+        else if (h >= 12 && h < 14) pop = isWE ? 70 : 60;
+        else if (h >= 14 && h < 18) pop = 30;
+        else if (h >= 18 && h < 20) pop = isWE ? 75 : 65;
+        else if (h >= 20 && h < 23 && isWE) pop = 65;
+        else if (h >= 20 && h < 22 && !isWE) pop = 40;
+        return { hour: `${h.toString().padStart(2, "0")}:00`, popularity: pop };
+      });
+      return { day, times };
+    });
+  }
+
+  /**
+   * Estimate traffic conditions heuristically when Google Routes is unavailable.
+   */
+  private estimateTrafficConditions(now: Date): TrafficInfo {
+    const hour = now.getHours();
+    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+
+    let condition: TrafficInfo["trafficCondition"];
+    let extraMin: number;
+
+    if (isWeekend) {
+      if ((hour >= 11 && hour <= 14) || (hour >= 17 && hour <= 19)) {
+        condition = "Moderate";
+        extraMin = 5;
+      } else {
+        condition = "Light";
+        extraMin = 0;
+      }
+    } else {
+      if ((hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19)) {
+        condition = "Heavy";
+        extraMin = 15;
+      } else if ((hour >= 12 && hour <= 14) || (hour >= 16 && hour < 17) || (hour > 19 && hour <= 20)) {
+        condition = "Moderate";
+        extraMin = 7;
+      } else {
+        condition = "Light";
+        extraMin = 0;
+      }
+    }
+
+    return {
+      trafficCondition: condition,
+      currentTravelTime: `${10 + extraMin} min`,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  Shared Helpers
+  // ═══════════════════════════════════════════════════════════════════
+
   private calculateBusynessLevel(
     popularity: number
   ): "Not Busy" | "Moderate" | "Busy" | "Very Busy" {
-    console.log("calculating busyness level", popularity);
     if (popularity < 25) return "Not Busy";
     if (popularity < 50) return "Moderate";
     if (popularity < 75) return "Busy";
     return "Very Busy";
   }
 
-  /**
-   * Generate popular times based on opening hours and popularity score
-   * Google Places API doesn't provide hourly popular times like Foursquare,
-   * so we estimate based on typical patterns and opening hours
-   */
-  private generatePopularTimes(
-    openingHours: any,
+  private generateMessageFromLevel(
+    level: BusynessData["busynessLevel"],
     popularity: number
-  ): PopularTime[] {
-    const days = [
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
-      "Saturday",
-      "Sunday",
-    ];
-
-    const popularTimes: PopularTime[] = [];
-
-    days.forEach((day, dayIndex) => {
-      // Check if place is open on this day
-      let isOpen = true;
-      let openHour = 9; // Default opening
-      let closeHour = 21; // Default closing
-
-      // Places API (New) uses weekdayDescriptions array instead of weekday_text
-      if (openingHours?.weekdayDescriptions) {
-        const dayText = openingHours.weekdayDescriptions[dayIndex];
-        if (dayText && dayText.includes("Closed")) {
-          isOpen = false;
-        } else if (dayText) {
-          // Try to parse opening hours (format: "Monday: 9:00 AM – 10:00 PM")
-          const timeMatch = dayText.match(
-            /(\d{1,2}):(\d{2})\s*(AM|PM).*?(\d{1,2}):(\d{2})\s*(AM|PM)/
-          );
-          if (timeMatch) {
-            openHour = this.parseHour(timeMatch[1], timeMatch[3]);
-            closeHour = this.parseHour(timeMatch[4], timeMatch[6]);
-          }
-        }
-      }
-
-      if (!isOpen) {
-        popularTimes.push({
-          day,
-          times: Array.from({ length: 24 }, (_, i) => ({
-            hour: `${i.toString().padStart(2, "0")}:00`,
-            popularity: 0,
-          })),
-        });
-        return;
-      }
-
-      // Generate popularity pattern based on typical patterns
-      // Peak hours: 12-14 (lunch), 18-20 (dinner), 20-22 (nightlife)
-      const times = Array.from({ length: 24 }, (_, i) => {
-        let basePopularity = 20; // Base level
-
-        // Outside opening hours = 0
-        if (i < openHour || i >= closeHour) {
-          return { hour: `${i.toString().padStart(2, "0")}:00`, popularity: 0 };
-        }
-
-        // Peak lunch hours (12-14)
-        if (i >= 12 && i < 14) {
-          basePopularity = 70;
-        }
-        // Peak dinner hours (18-20)
-        else if (i >= 18 && i < 20) {
-          basePopularity = 80;
-        }
-        // Nightlife hours (20-22) - higher on weekends
-        else if (i >= 20 && i < 22 && (dayIndex === 5 || dayIndex === 6)) {
-          basePopularity = 75;
-        }
-        // Weekend brunch (10-12 on Sat/Sun)
-        else if (i >= 10 && i < 12 && (dayIndex === 5 || dayIndex === 6)) {
-          basePopularity = 65;
-        }
-        // Morning rush (8-9 on weekdays)
-        else if (i >= 8 && i < 9 && dayIndex < 5) {
-          basePopularity = 50;
-        }
-        // Afternoon lull (14-17)
-        else if (i >= 14 && i < 17) {
-          basePopularity = 35;
-        }
-        // Late night (22-24)
-        else if (i >= 22) {
-          basePopularity = 30;
-        }
-
-        // Adjust based on overall popularity score
-        const adjustedPopularity = Math.min(
-          100,
-          Math.max(0, basePopularity + (popularity - 50) * 0.3)
-        );
-
-        return {
-          hour: `${i.toString().padStart(2, "0")}:00`,
-          popularity: Math.round(adjustedPopularity),
-        };
-      });
-
-      popularTimes.push({ day, times });
-    });
-
-    return popularTimes;
-  }
-
-  /**
-   * Parse hour from 12-hour format to 24-hour format
-   */
-  private parseHour(hour: string, period: string): number {
-    let h = parseInt(hour);
-    if (period === "PM" && h !== 12) {
-      h += 12;
-    } else if (period === "AM" && h === 12) {
-      h = 0;
-    }
-    return h;
-  }
-
-  /**
-   * Calculate string similarity using Levenshtein distance
-   * Returns a value between 0 and 1 (1 = identical)
-   */
-  private calculateStringSimilarity(str1: string, str2: string): number {
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
-
-    if (longer.length === 0) return 1.0;
-
-    const distance = this.levenshteinDistance(longer, shorter);
-    return (longer.length - distance) / longer.length;
-  }
-
-  /**
-   * Calculate Levenshtein distance between two strings
-   */
-  private levenshteinDistance(str1: string, str2: string): number {
-    const matrix: number[][] = [];
-
-    for (let i = 0; i <= str2.length; i++) {
-      matrix[i] = [i];
-    }
-
-    for (let j = 0; j <= str1.length; j++) {
-      matrix[0][j] = j;
-    }
-
-    for (let i = 1; i <= str2.length; i++) {
-      for (let j = 1; j <= str1.length; j++) {
-        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
-          );
-        }
-      }
-    }
-
-    return matrix[str2.length][str1.length];
-  }
-
-  /**
-   * Generate busyness message
-   */
-  private generateBusynessMessage(
-    level: "Not Busy" | "Moderate" | "Busy" | "Very Busy",
-    popularTimes: PopularTime[]
   ): string {
-    const now = new Date();
-    const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const currentHour = now.getHours();
-
-    const dayName = [
-      "Sunday",
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
-      "Saturday",
-    ][currentDay];
-    const todayData = popularTimes.find((pt) => pt.day === dayName);
-
-    if (todayData) {
-      const currentTimeData = todayData.times.find((t) => {
-        const hour = parseInt(t.hour.split(":")[0]);
-        return hour === currentHour;
-      });
-
-      if (currentTimeData) {
-        const peakHour = todayData.times.reduce((max, t) =>
-          t.popularity > max.popularity ? t : max
-        );
-
-        if (level === "Very Busy") {
-          return `Very busy right now. Peak hours: ${peakHour.hour}`;
-        } else if (level === "Busy") {
-          return `Moderately busy. Less crowded around ${currentTimeData.hour}`;
-        } else if (level === "Moderate") {
-          return `Moderate crowd. Peak hours: ${peakHour.hour}`;
-        } else {
-          return `Not busy - great time to visit!`;
-        }
-      }
+    switch (level) {
+      case "Very Busy":
+        return `Very busy right now (${popularity}%). Consider visiting later.`;
+      case "Busy":
+        return `Getting busy (${popularity}%). Expect moderate crowds.`;
+      case "Moderate":
+        return `Moderate crowd (${popularity}%). Good time to visit.`;
+      default:
+        return `Not busy (${popularity}%) — great time to visit!`;
     }
-
-    return `Current busyness: ${level}`;
-  }
-
-  /**
-   * Fallback busyness data when API is unavailable
-   */
-  private getFallbackBusyness(): BusynessData {
-    const hour = new Date().getHours();
-    const isPeakHour = (hour >= 12 && hour <= 14) || (hour >= 18 && hour <= 20);
-
-    return {
-      isBusy: isPeakHour,
-      busynessLevel: isPeakHour ? "Moderate" : "Not Busy",
-      currentPopularity: isPeakHour ? 45 : 25,
-      popularTimes: [],
-      message: isPeakHour
-        ? "Likely moderate crowd during peak hours"
-        : "Good time to visit - typically less crowded",
-    };
   }
 }
 

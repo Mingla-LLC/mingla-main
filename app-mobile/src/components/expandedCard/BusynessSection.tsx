@@ -50,6 +50,7 @@ export default function BusynessSection({
   if (loading) {
     return (
       <View style={styles.container}>
+        {/* Traffic Conditions Loading */}
         <View style={styles.card}>
           <View style={styles.header}>
             <View style={styles.iconCircle}>
@@ -60,6 +61,20 @@ export default function BusynessSection({
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#ea580c" />
             <Text style={styles.loadingText}>Loading traffic data...</Text>
+          </View>
+        </View>
+
+        {/* Busy Level Loading */}
+        <View style={[styles.card, styles.busyCard]}>
+          <View style={styles.header}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="stats-chart" size={20} color="#fed7aa" />
+            </View>
+            <Text style={styles.title}>Busy Level</Text>
+          </View>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#ea580c" />
+            <Text style={styles.loadingText}>Loading busyness data...</Text>
           </View>
         </View>
       </View>
