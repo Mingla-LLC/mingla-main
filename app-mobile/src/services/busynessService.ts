@@ -54,7 +54,88 @@ interface GoogleRoutesRoute {
 class BusynessService {
   // Simple in-memory cache: venueKey → { data, timestamp }
   private cache = new Map<string, { data: BusynessData; ts: number }>();
+  private tzCache = new Map<string, { offsetSec: number; ts: number }>();
   private CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+  private TZ_CACHE_TTL = 60 * 60 * 1000; // 1 hour (timezone offsets change rarely)
+
+  /**
+   * Get the current local time at a specific lat/lng using the Google Time Zone API.
+   * Falls back to device time if the API call fails or no key is configured.
+   */
+  private async getLocalTimeAtVenue(lat: number, lng: number): Promise<Date> {
+    if (!GOOGLE_MAPS_API_KEY) {
+      console.warn("[BusynessService] No GOOGLE_MAPS_API_KEY — using device time");
+      return new Date();
+    }
+
+    const tzCacheKey = `${lat.toFixed(2)}_${lng.toFixed(2)}`;
+    const cached = this.tzCache.get(tzCacheKey);
+    if (cached && Date.now() - cached.ts < this.TZ_CACHE_TTL) {
+      // Apply cached offset: UTC epoch + offset = venue local epoch
+      const utcNow = Math.floor(Date.now() / 1000);
+      const localEpoch = (utcNow + cached.offsetSec) * 1000;
+      return new Date(localEpoch);
+    }
+
+    try {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const url =
+        `https://maps.googleapis.com/maps/api/timezone/json` +
+        `?location=${lat},${lng}&timestamp=${timestamp}&key=${GOOGLE_MAPS_API_KEY}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.warn("[TimeZone] HTTP error:", response.status);
+        return new Date();
+      }
+
+      const data = await response.json();
+      if (data.status !== "OK") {
+        console.warn("[TimeZone] API error:", data.status, data.errorMessage);
+        return new Date();
+      }
+
+      // rawOffset = UTC offset for the timezone (seconds)
+      // dstOffset = additional DST offset (seconds)
+      const totalOffsetSec: number = (data.rawOffset ?? 0) + (data.dstOffset ?? 0);
+
+      // Cache the offset
+      this.tzCache.set(tzCacheKey, { offsetSec: totalOffsetSec, ts: Date.now() });
+
+      // Build a Date whose getHours()/getDay() reflect the venue's local time.
+      // We shift the UTC epoch by the venue's offset so that getUTCHours() etc.
+      // return venue-local values, then wrap in a Date.
+      const utcNow = Math.floor(Date.now() / 1000);
+      const localEpoch = (utcNow + totalOffsetSec) * 1000;
+      const venueDate = new Date(localEpoch);
+
+      console.log(
+        `[TimeZone] Venue (${lat.toFixed(2)},${lng.toFixed(2)}): ` +
+          `offset=${totalOffsetSec / 3600}h, local=${venueDate.getUTCHours()}:${venueDate.getUTCMinutes().toString().padStart(2, "0")} ` +
+          `(device=${new Date().getHours()}:${new Date().getMinutes().toString().padStart(2, "0")})`
+      );
+
+      return venueDate;
+    } catch (error) {
+      console.error("[TimeZone] Error fetching timezone:", error);
+      return new Date();
+    }
+  }
+
+  /**
+   * Extract hour and day-of-week from a venue-local Date.
+   * If the Date was built via getLocalTimeAtVenue(), use getUTC* methods
+   * (because we shifted the epoch). For a plain new Date(), use local methods.
+   * To keep it simple we always use getUTC* since getLocalTimeAtVenue
+   * returns an epoch-shifted Date where UTC = venue local.
+   */
+  private getVenueHour(venueDate: Date): number {
+    return venueDate.getUTCHours();
+  }
+
+  private getVenueDay(venueDate: Date): number {
+    return venueDate.getUTCDay(); // 0=Sun … 6=Sat
+  }
 
   /**
    * Main entry point — get busyness + traffic for a venue.
@@ -73,15 +154,18 @@ class BusynessService {
       return cached.data;
     }
 
+    // ── Resolve the current local time at the venue ──
+    const venueNow = await this.getLocalTimeAtVenue(lat, lng);
+
     // ── Try BestTime (real foot-traffic) ──
     let busynessResult: BusynessData | null = null;
     if (BESTTIME_API_KEY) {
-      busynessResult = await this.fetchBestTimeBusyness(venueName, address, lat, lng);
+      busynessResult = await this.fetchBestTimeBusyness(venueName, address, lat, lng, venueNow);
     }
 
     // ── If BestTime failed or no key, use time-of-day heuristic ──
     if (!busynessResult) {
-      busynessResult = this.getTimeBasedHeuristic();
+      busynessResult = this.getTimeBasedHeuristic(venueNow);
     }
 
     // ── Attach real traffic info from Google Routes ──
@@ -94,7 +178,7 @@ class BusynessService {
 
     // If still no trafficInfo, use heuristic
     if (!busynessResult.trafficInfo) {
-      busynessResult.trafficInfo = this.estimateTrafficConditions(new Date());
+      busynessResult.trafficInfo = this.estimateTrafficConditions(venueNow);
     }
 
     // ── Cache & return ──
@@ -115,7 +199,8 @@ class BusynessService {
     venueName: string,
     address: string | undefined,
     lat: number,
-    lng: number
+    lng: number,
+    venueNow: Date
   ): Promise<BusynessData | null> {
     // BestTime is picky about venue matching. Try multiple search strategies
     // in order of specificity until one succeeds.
@@ -131,7 +216,7 @@ class BusynessService {
     attempts.push({ venue_name: venueName, venue_address: venueName });
 
     for (const attempt of attempts) {
-      const result = await this.callBestTimeForecast(attempt.venue_name, attempt.venue_address);
+      const result = await this.callBestTimeForecast(attempt.venue_name, attempt.venue_address, venueNow);
       if (result) return result;
     }
 
@@ -145,7 +230,8 @@ class BusynessService {
    */
   private async callBestTimeForecast(
     venueName: string,
-    venueAddress: string
+    venueAddress: string,
+    venueNow: Date
   ): Promise<BusynessData | null> {
     try {
       const params = new URLSearchParams({
@@ -192,12 +278,11 @@ class BusynessService {
         })),
       }));
 
-      // Get current hour's popularity
-      const now = new Date();
-      const jsDay = now.getDay(); // 0=Sun … 6=Sat
+      // Get current hour's popularity — use venue's local time, not device time
+      const jsDay = this.getVenueDay(venueNow); // 0=Sun … 6=Sat
       // BestTime: 0=Mon … 6=Sun  →  convert JS day
       const bestTimeDay = jsDay === 0 ? 6 : jsDay - 1;
-      const currentHour = now.getHours();
+      const currentHour = this.getVenueHour(venueNow);
 
       const todayAnalysis = analyses.find(
         (d) => d.day_info.day_int === bestTimeDay
@@ -245,16 +330,28 @@ class BusynessService {
     peakHours: { peak_start: number; peak_end: number }[],
     quietHours: { quiet_start: number; quiet_end: number }[]
   ): string {
-    const formatHr = (h: number) => {
+    const formatHr = (h: number | undefined | null): string | null => {
+      if (h == null || isNaN(h)) return null;
       const ampm = h >= 12 ? "PM" : "AM";
       const display = h > 12 ? h - 12 : h === 0 ? 12 : h;
       return `${display} ${ampm}`;
     };
 
+    // Helper to format a time range, returning null if either hour is missing
+    const formatRange = (start: number | undefined | null, end: number | undefined | null): string | null => {
+      const s = formatHr(start);
+      const e = formatHr(end);
+      if (!s || !e) return null;
+      return `${s} – ${e}`;
+    };
+
     if (level === "Very Busy") {
       if (quietHours.length > 0) {
         const q = quietHours[0];
-        return `Very busy right now (${popularity}%). Try visiting around ${formatHr(q.quiet_start)} – ${formatHr(q.quiet_end)} for fewer crowds.`;
+        const range = formatRange(q.quiet_start, q.quiet_end);
+        if (range) {
+          return `Very busy right now (${popularity}%). Try visiting around ${range} for fewer crowds.`;
+        }
       }
       return `Very busy right now (${popularity}%). Consider visiting at a different time.`;
     }
@@ -262,7 +359,10 @@ class BusynessService {
     if (level === "Busy") {
       if (quietHours.length > 0) {
         const q = quietHours[0];
-        return `Getting busy (${popularity}%). Less crowded around ${formatHr(q.quiet_start)} – ${formatHr(q.quiet_end)}.`;
+        const range = formatRange(q.quiet_start, q.quiet_end);
+        if (range) {
+          return `Getting busy (${popularity}%). Less crowded around ${range}.`;
+        }
       }
       return `Getting busy (${popularity}%). Expect moderate crowds.`;
     }
@@ -270,7 +370,10 @@ class BusynessService {
     if (level === "Moderate") {
       if (peakHours.length > 0) {
         const p = peakHours[0];
-        return `Moderate crowd (${popularity}%). Peak hours: ${formatHr(p.peak_start)} – ${formatHr(p.peak_end)}.`;
+        const range = formatRange(p.peak_start, p.peak_end);
+        if (range) {
+          return `Moderate crowd (${popularity}%). Peak hours: ${range}.`;
+        }
       }
       return `Moderate crowd (${popularity}%). Good time to visit.`;
     }
@@ -376,11 +479,11 @@ class BusynessService {
   /**
    * Time-of-day based busyness when BestTime API is unavailable.
    * Uses day-of-week and hour to approximate crowd levels.
+   * Now uses venue-local time instead of device time.
    */
-  private getTimeBasedHeuristic(): BusynessData {
-    const now = new Date();
-    const hour = now.getHours();
-    const dayOfWeek = now.getDay();
+  private getTimeBasedHeuristic(venueNow: Date): BusynessData {
+    const hour = this.getVenueHour(venueNow);
+    const dayOfWeek = this.getVenueDay(venueNow);
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
     let popularity: number;
@@ -451,10 +554,11 @@ class BusynessService {
 
   /**
    * Estimate traffic conditions heuristically when Google Routes is unavailable.
+   * Uses venue-local time instead of device time.
    */
-  private estimateTrafficConditions(now: Date): TrafficInfo {
-    const hour = now.getHours();
-    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+  private estimateTrafficConditions(venueNow: Date): TrafficInfo {
+    const hour = this.getVenueHour(venueNow);
+    const isWeekend = this.getVenueDay(venueNow) === 0 || this.getVenueDay(venueNow) === 6;
 
     let condition: TrafficInfo["trafficCondition"];
     let extraMin: number;
