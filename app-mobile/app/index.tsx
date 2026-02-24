@@ -47,6 +47,7 @@ import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
 import { muteService } from "../src/services/muteService";
 import ShareModal from "../src/components/ShareModal";
+import FeedbackModal from "../src/components/FeedbackModal";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
 import { SessionService } from "../src/services/sessionService";
@@ -69,6 +70,7 @@ function AppContent() {
   const [showHelpButton, setShowHelpButton] = useState<boolean>(false);
   const [showWelcomeDialog, setShowWelcomeDialog] = useState<boolean>(false);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
   const helpButtonDismissedRef = useRef<boolean>(false);
 
   // Destructure commonly used state
@@ -621,7 +623,8 @@ function AppContent() {
     showCoachMap &&
       coachMapCurrentTarget &&
       (coachMapCurrentTarget === "preferencesButton" ||
-        coachMapCurrentTarget === "collaborateButton")
+        coachMapCurrentTarget === "collaborateButton" ||
+        coachMapCurrentTarget === "sessionPills")
   );
 
   // Handle deep links for OAuth callback
@@ -892,6 +895,108 @@ function AppContent() {
     setShowWelcomeDialog(false);
     // Start the coach map tour
     setShowCoachMap(true);
+  };
+
+  // ---- Feedback Modal Logic ----
+  const FEEDBACK_STORAGE_KEY = "mingla_feedback_state";
+  const FEEDBACK_PROMPT_DELAY_DAYS = 3; // Days after install to first prompt
+  const FEEDBACK_REPROMPT_DAYS = 30; // Days between re-prompts after dismissal
+
+  // Check if it's time to show the feedback modal
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+
+    const checkFeedbackPrompt = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(FEEDBACK_STORAGE_KEY);
+        const feedbackState = raw ? JSON.parse(raw) : null;
+
+        // If user already submitted feedback, don't prompt again
+        if (feedbackState?.submitted) return;
+
+        const now = Date.now();
+        const firstLaunch = feedbackState?.firstLaunch || now;
+
+        // Save first launch time if not set
+        if (!feedbackState?.firstLaunch) {
+          await AsyncStorage.setItem(
+            FEEDBACK_STORAGE_KEY,
+            JSON.stringify({ firstLaunch: now })
+          );
+        }
+
+        const daysSinceInstall = (now - firstLaunch) / (1000 * 60 * 60 * 24);
+        const lastDismissed = feedbackState?.lastDismissed || 0;
+        const daysSinceDismissed =
+          (now - lastDismissed) / (1000 * 60 * 60 * 24);
+
+        // Show if enough days since install AND enough days since last dismissal
+        if (
+          daysSinceInstall >= FEEDBACK_PROMPT_DELAY_DAYS &&
+          daysSinceDismissed >= FEEDBACK_REPROMPT_DAYS
+        ) {
+          // Small delay so app settles before showing modal
+          setTimeout(() => setShowFeedbackModal(true), 2000);
+        }
+      } catch (error) {
+        console.error("Error checking feedback prompt:", error);
+      }
+    };
+
+    checkFeedbackPrompt();
+  }, [isAuthenticated, user?.id]);
+
+  const handleFeedbackSubmit = async (feedback: {
+    rating: number;
+    message: string;
+    category: string;
+  }) => {
+    try {
+      // Store feedback in Supabase
+      const { error } = await supabase.from("app_feedback").insert({
+        user_id: user?.id,
+        rating: feedback.rating,
+        message: feedback.message,
+        category: feedback.category,
+        platform: "mobile",
+      });
+
+      if (error) {
+        // If table doesn't exist yet, just log and continue gracefully
+        console.warn("Could not save feedback to database:", error.message);
+      }
+
+      // Mark as submitted in AsyncStorage
+      const raw = await AsyncStorage.getItem(FEEDBACK_STORAGE_KEY);
+      const feedbackState = raw ? JSON.parse(raw) : {};
+      await AsyncStorage.setItem(
+        FEEDBACK_STORAGE_KEY,
+        JSON.stringify({ ...feedbackState, submitted: true })
+      );
+
+      toastManager.success("Thanks for your feedback!");
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
+      toastManager.error("Failed to submit feedback. Please try again.");
+      throw error;
+    }
+  };
+
+  const handleFeedbackClose = async () => {
+    setShowFeedbackModal(false);
+    try {
+      const raw = await AsyncStorage.getItem(FEEDBACK_STORAGE_KEY);
+      const feedbackState = raw ? JSON.parse(raw) : {};
+      // Only update dismissal time if not already submitted
+      if (!feedbackState.submitted) {
+        await AsyncStorage.setItem(
+          FEEDBACK_STORAGE_KEY,
+          JSON.stringify({ ...feedbackState, lastDismissed: Date.now() })
+        );
+      }
+    } catch (error) {
+      console.error("Error saving feedback dismissal:", error);
+    }
   };
 
   // Get session ID when in collaboration mode
@@ -1844,14 +1949,16 @@ function AppContent() {
                     <CoachMap
                       visible={showCoachMap}
                       onComplete={async () => {
-                        await updateCoachMapTourStatus("completed");
                         setShowCoachMap(false);
                         setCoachMapCurrentTarget(null);
+                        // Update status in background — don't block UI
+                        updateCoachMapTourStatus("completed");
                       }}
                       onSkip={async () => {
-                        await updateCoachMapTourStatus("skipped");
                         setShowCoachMap(false);
                         setCoachMapCurrentTarget(null);
+                        // Update status in background — don't block UI
+                        updateCoachMapTourStatus("skipped");
                       }}
                       onStepChange={(stepIndex, target) => {
                         // Reset target when coach map closes (stepIndex === -1)
@@ -1871,6 +1978,13 @@ function AppContent() {
                       dateTimePreferences={shareData?.dateTimePreferences}
                       userPreferences={userPreferences}
                       accountPreferences={accountPreferences}
+                    />
+
+                    {/* Feedback Modal */}
+                    <FeedbackModal
+                      visible={showFeedbackModal}
+                      onClose={handleFeedbackClose}
+                      onSubmitFeedback={handleFeedbackSubmit}
                     />
 
                     {/* Floating Help Button */}

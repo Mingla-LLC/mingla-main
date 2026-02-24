@@ -23,6 +23,7 @@ interface CoachMapStep {
     | "swipeCard"
     | "preferencesButton"
     | "collaborateButton"
+    | "sessionPills"
     | "shareButton"
     | "tabHome"
     | "tabConnections"
@@ -109,9 +110,9 @@ const COACH_STEPS: CoachMapStep[] = [
   {
     id: "collaborate",
     title: "Plan with Friends",
-    description: "Collaborate with friends to discover experiences together",
+    description: "Use these session pills to switch between Solo mode and collaboration sessions with friends. Tap '+' to create a new session.",
     icon: "people",
-    target: "collaborateButton",
+    target: "sessionPills",
     position: "top",
   },
   {
@@ -343,6 +344,15 @@ export default function CoachMap({
             right: 20,
           };
         }
+        // For session pills, position tooltip below the pills bar
+        if (currentStep.target === "sessionPills") {
+          return {
+            position: "absolute" as const,
+            top: 200,
+            left: 20,
+            right: 20,
+          };
+        }
         return {
           position: "absolute" as const,
           top: 120,
@@ -388,6 +398,10 @@ export default function CoachMap({
       currentStep.target === "preferencesButton" ||
       currentStep.target === "collaborateButton"
     );
+  };
+
+  const isSessionPillsStep = () => {
+    return currentStep.target === "sessionPills";
   };
 
   const renderHighlight = () => {
@@ -636,29 +650,24 @@ export default function CoachMap({
         };
         break;
       case "collaborateButton":
-        // Exact measurements: paddingHorizontal: 12, paddingVertical: 6
-        // Button width: ~140px, height: ~44px
-        // Move highlight UP by subtracting more from top
-        const collaborateButtonWidth = 140;
-        const collaborateButtonHeight = 44;
-        const collaboratePadding = 8;
-        const collaborateHighlightWidth =
-          collaborateButtonWidth + collaboratePadding * 2;
-        const collaborateHighlightHeight =
-          collaborateButtonHeight + collaboratePadding * 2;
-        const safeAreaTop2 = 44;
-        const headerPaddingTop2 = 8;
-        const collaborateButtonRight = 16;
-        const collaborateButtonTop = safeAreaTop2 + headerPaddingTop2;
-        const collaborateButtonLeft =
-          SCREEN_WIDTH - collaborateButtonRight - collaborateButtonWidth;
-        const collaborateOffset = 6; // Move highlight up
+      case "sessionPills":
+        // Session pills bar: sits below the header, above the swipeable cards
+        // From CollaborationSessions styles: marginVertical: 10, marginHorizontal: 17
+        // Header height: SafeArea (~44) + header content (~56) + border = ~100px
+        // Pills bar: paddingVertical: 10, pill height: 32, total ~52px
+        const pillsSafeAreaTop = 44;
+        const pillsHeaderHeight = 56; // header paddingVertical(8*2) + logo/button height (~40)
+        const pillsMarginTop = 10; // marginVertical from CollaborationSessions
+        const pillsMarginHorizontal = 17;
+        const pillsPadding = 8;
+        const pillsBarTop = pillsSafeAreaTop + pillsHeaderHeight + pillsMarginTop;
+        const pillsBarHeight = 52; // paddingVertical(10*2) + pill(32)
         highlightStyle = {
           position: "absolute",
-          top: collaborateButtonTop - collaboratePadding - collaborateOffset,
-          left: collaborateButtonLeft - collaboratePadding,
-          width: collaborateHighlightWidth,
-          height: collaborateHighlightHeight,
+          top: pillsBarTop - pillsPadding,
+          left: pillsMarginHorizontal - pillsPadding,
+          width: SCREEN_WIDTH - (pillsMarginHorizontal * 2) + (pillsPadding * 2),
+          height: pillsBarHeight + (pillsPadding * 2),
           borderRadius: 24,
         };
         break;
@@ -714,6 +723,7 @@ export default function CoachMap({
             styles.darkOverlay,
             isTabStep() ? { bottom: 100 } : null, // Leave space for bottom navigation
             isHeaderStep() ? { top: 100 } : null, // Leave space for header
+            isSessionPillsStep() ? { top: 160 } : null, // Leave space for header + session pills
           ]}
         />
 
