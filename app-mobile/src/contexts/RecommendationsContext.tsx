@@ -40,7 +40,13 @@ export interface Recommendation {
   highlights: string[];
   fullDescription: string;
   address: string;
-  openingHours: string;
+  openingHours:
+    | string
+    | {
+        open_now?: boolean;
+        weekday_text?: string[];
+      }
+    | null;
   tags: string[];
   matchScore: number;
   reviewCount: number;

@@ -921,9 +921,15 @@ const SavedTab = ({
       return;
     }
 
-    // Check if place is open
+    // Check if place is open - handle both object and string (legacy) formats
+    let parsedHours = (card as any).openingHours;
+    if (typeof parsedHours === "string" && parsedHours.trim()) {
+      try { parsedHours = JSON.parse(parsedHours); } catch { parsedHours = null; }
+    }
     const isPlaceOpen =
-      ((card as any).openingHours as { open_now?: boolean })?.open_now ?? true;
+      (parsedHours && typeof parsedHours === "object" && parsedHours.open_now === false)
+        ? false
+        : true;
 
     if (!isPlaceOpen) {
       Alert.alert(
@@ -1270,16 +1276,22 @@ const SavedTab = ({
     const isScheduled = scheduledCardIdsSet.has(card.id);
     const isRemoving = removingCardIds.has(card.id);
 
-    // Check if place is currently open
+    // Check if place is currently open - handle both object and string (legacy) formats
+    let cardHours: any = (card as any).openingHours;
+    if (typeof cardHours === "string" && cardHours.trim()) {
+      try { cardHours = JSON.parse(cardHours); } catch { cardHours = null; }
+    }
     const isPlaceOpen =
-      ((card as any).openingHours as { open_now?: boolean })?.open_now ?? true;
+      (cardHours && typeof cardHours === "object" && cardHours.open_now === false)
+        ? false
+        : true;
 
     // Check if openingHours data is available
     const hasOpeningHoursData =
-      (card as any).openingHours &&
-      typeof (card as any).openingHours === "object" &&
-      (card as any).openingHours !== null &&
-      "open_now" in (card as any).openingHours;
+      cardHours &&
+      typeof cardHours === "object" &&
+      cardHours !== null &&
+      "open_now" in cardHours;
 
     return (
       <View style={styles.experienceCard}>

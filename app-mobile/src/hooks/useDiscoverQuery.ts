@@ -30,7 +30,7 @@ const transformToRecommendation = (exp: any): Recommendation => {
     highlights: exp.highlights || [],
     fullDescription: exp.description,
     address: exp.address,
-    openingHours: exp.openingHours ? JSON.stringify(exp.openingHours) : "",
+    openingHours: exp.openingHours || null,
     tags: exp.highlights || [],
     matchScore: exp.matchScore,
     reviewCount: exp.reviewCount,

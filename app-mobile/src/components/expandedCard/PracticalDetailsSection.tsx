@@ -139,23 +139,7 @@ export default function PracticalDetailsSection({
           </TouchableOpacity>
         )}
 
-        {/* Opening Hours */}
-        {/*         {hoursArray.length > 0 && (
-          <View style={styles.detailRow}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="time" size={20} color="#6b7280" />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Opening Hours</Text>
-              {hoursArray.map((hour, index) => (
-                <Text key={index} style={styles.detailValue}>
-                  {hour}
-                </Text>
-              ))}
-            </View>
-          </View>
-        )}
- */}
+        {/* Opening Hours - displayed in ActionButtons section instead */}
         {/* Phone */}
         {phone && (
           <TouchableOpacity

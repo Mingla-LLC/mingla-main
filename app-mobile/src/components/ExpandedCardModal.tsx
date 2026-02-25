@@ -32,6 +32,7 @@ import MatchFactorsBreakdown from "./expandedCard/MatchFactorsBreakdown";
 import TimelineSection from "./expandedCard/TimelineSection";
 import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
 import ActionButtons from "./expandedCard/ActionButtons";
+import FeedbackModal from "./expandedCard/FeedbackModal";
 import ShareModal from "./ShareModal";
 import { colors } from "../constants/colors";
 
@@ -64,6 +65,9 @@ export default function ExpandedCardModal({
   const [picnicData, setPicnicData] = useState(card?.picnicData);
   const [loadingPicnicData, setLoadingPicnicData] = useState(false);
   const [isNightOutShareOpen, setIsNightOutShareOpen] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackCardId, setFeedbackCardId] = useState("");
+  const [feedbackTitle, setFeedbackTitle] = useState("");
 
   // Fetch additional data when modal opens
   useEffect(() => {
@@ -244,7 +248,18 @@ export default function ExpandedCardModal({
   };
 
   if (!card) {
-    return null;
+    return (
+      <FeedbackModal
+        visible={showFeedback}
+        experienceTitle={feedbackTitle}
+        cardId={feedbackCardId}
+        onClose={() => {
+          setShowFeedback(false);
+          setFeedbackCardId("");
+          setFeedbackTitle("");
+        }}
+      />
+    );
   }
 
   const isStrollCard =
@@ -278,6 +293,7 @@ export default function ExpandedCardModal({
   };
 
   return (
+  <>
     <Modal
       visible={visible}
       animationType="fade"
@@ -720,6 +736,12 @@ export default function ExpandedCardModal({
                   userPreferences={userPreferences}
                   currentMode={currentMode}
                   onCardRemoved={onCardRemoved}
+                  onScheduleSuccess={(scheduledCard) => {
+                    setFeedbackCardId(scheduledCard.id);
+                    setFeedbackTitle(scheduledCard.title);
+                    onClose(); // Close the expanded card modal first
+                    setTimeout(() => setShowFeedback(true), 350); // Show feedback after close animation
+                  }}
                 />
               </>
             )}
@@ -779,6 +801,19 @@ export default function ExpandedCardModal({
         </View>
       </View>
     </Modal>
+
+    {/* Feedback Modal - rendered outside the expanded card modal */}
+    <FeedbackModal
+      visible={showFeedback}
+      experienceTitle={feedbackTitle}
+      cardId={feedbackCardId}
+      onClose={() => {
+        setShowFeedback(false);
+        setFeedbackCardId("");
+        setFeedbackTitle("");
+      }}
+    />
+  </>
   );
 }
 

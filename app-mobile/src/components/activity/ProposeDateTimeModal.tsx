@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Modal,
   Platform,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -56,6 +57,77 @@ export default function ProposeDateTimeModal({
   const [availabilityAssumption, setAvailabilityAssumption] = useState<
     string | null
   >(null);
+
+  /**
+   * Normalize openingHours from any format into a usable object.
+   * Handles: plain strings, JSON-stringified strings (possibly double-stringified),
+   * objects with weekday_text/open_now, arrays, and empty values.
+   */
+  const normalizeOpeningHours = (raw: any): { weekday_text?: string[]; open_now?: boolean } | null => {
+    if (!raw) return null;
+
+    // Unwrap strings — may be double-JSON-stringified
+    let value = raw;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed === "" || trimmed === '""') return null;
+
+      // Try to JSON-parse (handles double-stringification too)
+      let attempts = 0;
+      while (typeof value === "string" && attempts < 3) {
+        try {
+          value = JSON.parse(value);
+          attempts++;
+        } catch {
+          break; // It's a plain string, stop trying
+        }
+      }
+    }
+
+    // If it's now an object with weekday_text, return it
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      if (value.weekday_text && Array.isArray(value.weekday_text) && value.weekday_text.length > 0) {
+        return { weekday_text: value.weekday_text, open_now: value.open_now };
+      }
+      // Object without weekday_text (e.g. empty {} from experienceService)
+      return null;
+    }
+
+    // If it's an array of strings, treat as weekday_text
+    if (Array.isArray(value) && value.length > 0) {
+      return { weekday_text: value };
+    }
+
+    // Still a plain string (e.g. "Daily 6am-10pm", "Hours vary")
+    if (typeof value === "string" && value.trim().length > 0) {
+      // Split by newlines or semicolons into lines
+      const lines = value.split(/\n|;/).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+      return lines.length > 0 ? { weekday_text: lines } : null;
+    }
+
+    return null;
+  };
+
+  // Normalized opening hours object (used by both display and availability check)
+  const normalizedHours = useMemo(() => {
+    if (!card) return null;
+    return normalizeOpeningHours((card as any).openingHours);
+  }, [card]);
+
+  // Parse opening hours for display
+  const parsedOpeningHours = useMemo(() => {
+    if (!normalizedHours || !normalizedHours.weekday_text) return null;
+    return {
+      lines: normalizedHours.weekday_text,
+      openNow: normalizedHours.open_now,
+    };
+  }, [normalizedHours]);
+
+  // Get today's day name for highlighting
+  const todayDayName = useMemo(() => {
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    return days[new Date().getDay()];
+  }, []);
 
   const handleDateOptionSelect = (
     option: "now" | "today" | "weekend" | "custom",
@@ -183,29 +255,10 @@ export default function ProposeDateTimeModal({
       };
     }
 
-    let openingHours = (card as any).openingHours;
+    const openingHours = normalizedHours;
 
-    // If openingHours is a string, parse it to an object
-    if (typeof openingHours === "string") {
-      try {
-        openingHours = JSON.parse(openingHours);
-        console.log("Parsed openingHours from string:", openingHours);
-      } catch (error) {
-        console.error("Failed to parse openingHours string:", error);
-        return {
-          isOpen: true,
-          isAssumption: true,
-          reason: "Invalid opening hours data format",
-        };
-      }
-    }
-
-    // If no opening hours data, assume open (user schedules at own risk)
-    if (
-      !openingHours ||
-      openingHours === null ||
-      typeof openingHours !== "object"
-    ) {
+    // If no usable opening hours data, assume open (user schedules at own risk)
+    if (!openingHours || !openingHours.weekday_text || openingHours.weekday_text.length === 0) {
       return {
         isOpen: true,
         isAssumption: true,
@@ -506,7 +559,73 @@ export default function ProposeDateTimeModal({
             </View>
 
             {/* Content */}
-            <View style={styles.content}>
+            <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
+              <View style={styles.content}>
+              {/* Opening Hours Section */}
+              {parsedOpeningHours && (
+                <View style={styles.openingHoursSection}>
+                  <View style={styles.openingHoursHeader}>
+                    <Ionicons name="time" size={20} color="#ea580c" />
+                    <Text style={styles.openingHoursTitle}>Opening Hours</Text>
+                    {parsedOpeningHours.openNow !== undefined && (
+                      <View
+                        style={[
+                          styles.openNowBadge,
+                          parsedOpeningHours.openNow
+                            ? styles.openNowBadgeOpen
+                            : styles.openNowBadgeClosed,
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.openNowDot,
+                            parsedOpeningHours.openNow
+                              ? styles.openNowDotOpen
+                              : styles.openNowDotClosed,
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.openNowText,
+                            parsedOpeningHours.openNow
+                              ? styles.openNowTextOpen
+                              : styles.openNowTextClosed,
+                          ]}
+                        >
+                          {parsedOpeningHours.openNow ? "Open Now" : "Closed"}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.openingHoursList}>
+                    {parsedOpeningHours.lines.map((line: string, index: number) => {
+                      const isToday = line.startsWith(todayDayName);
+                      return (
+                        <View
+                          key={index}
+                          style={[
+                            styles.openingHoursRow,
+                            isToday && styles.openingHoursRowToday,
+                          ]}
+                        >
+                          {isToday && (
+                            <View style={styles.todayIndicator} />
+                          )}
+                          <Text
+                            style={[
+                              styles.openingHoursText,
+                              isToday && styles.openingHoursTextToday,
+                            ]}
+                          >
+                            {line}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
               {/* Current Scheduled Date & Time Section */}
               {currentScheduledDate && (
                 <View style={styles.currentScheduleSection}>
@@ -588,7 +707,8 @@ export default function ProposeDateTimeModal({
                     </View>
                   )}
               </View>
-            </View>
+              </View>
+            </ScrollView>
 
             {/* Footer Button */}
             <ProposeDateTimeFooter
@@ -816,5 +936,89 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#92400e",
     fontWeight: "500",
+  },
+  openingHoursSection: {
+    backgroundColor: "#f0fdf4",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    padding: 16,
+    marginBottom: 20,
+  },
+  openingHoursHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 8,
+  },
+  openingHoursTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333333",
+    flex: 1,
+  },
+  openNowBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 6,
+  },
+  openNowBadgeOpen: {
+    backgroundColor: "#dcfce7",
+  },
+  openNowBadgeClosed: {
+    backgroundColor: "#fef2f2",
+  },
+  openNowDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  openNowDotOpen: {
+    backgroundColor: "#22c55e",
+  },
+  openNowDotClosed: {
+    backgroundColor: "#ef4444",
+  },
+  openNowText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  openNowTextOpen: {
+    color: "#166534",
+  },
+  openNowTextClosed: {
+    color: "#991b1b",
+  },
+  openingHoursList: {
+    gap: 2,
+  },
+  openingHoursRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  openingHoursRowToday: {
+    backgroundColor: "#dcfce7",
+  },
+  todayIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#ea580c",
+    marginRight: 8,
+  },
+  openingHoursText: {
+    fontSize: 13,
+    color: "#374151",
+    lineHeight: 20,
+  },
+  openingHoursTextToday: {
+    fontWeight: "700",
+    color: "#166534",
   },
 });

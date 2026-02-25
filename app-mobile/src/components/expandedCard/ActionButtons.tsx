@@ -33,6 +33,7 @@ interface ActionButtonsProps {
   userPreferences?: any;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
+  onScheduleSuccess?: (card: ExpandedCardData) => void; // Callback after successful scheduling
 }
 
 export default function ActionButtons({
@@ -46,6 +47,7 @@ export default function ActionButtons({
   userPreferences,
   currentMode = "solo",
   onCardRemoved,
+  onScheduleSuccess,
 }: ActionButtonsProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
@@ -60,6 +62,7 @@ export default function ActionButtons({
     reason?: string;
   } | null>(null);
   const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false);
+  const [showAllHours, setShowAllHours] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
   const { data: calendarEntries = [] } = useCalendarEntries(user?.id);
@@ -75,6 +78,49 @@ export default function ActionButtons({
         !entry.archived_at,
     );
   }, [calendarEntries, card.id]);
+
+  // Normalize and parse opening hours for display
+  const parsedOpeningHours = useMemo(() => {
+    let raw: any = card.openingHours;
+    if (!raw) return null;
+
+    // Unwrap strings (may be double-JSON-stringified)
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (trimmed === "" || trimmed === '""') return null;
+      let attempts = 0;
+      while (typeof raw === "string" && attempts < 3) {
+        try { raw = JSON.parse(raw); attempts++; } catch { break; }
+      }
+    }
+
+    // Object with weekday_text
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      if (raw.weekday_text && Array.isArray(raw.weekday_text) && raw.weekday_text.length > 0) {
+        return { lines: raw.weekday_text as string[], openNow: raw.open_now as boolean | undefined };
+      }
+      return null;
+    }
+
+    // Array of strings
+    if (Array.isArray(raw) && raw.length > 0) {
+      return { lines: raw as string[], openNow: undefined };
+    }
+
+    // Plain string
+    if (typeof raw === "string" && raw.trim().length > 0) {
+      const lines = raw.split(/\n|;/).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+      return lines.length > 0 ? { lines, openNow: undefined } : null;
+    }
+
+    return null;
+  }, [card.openingHours]);
+
+  // Get today's day name for highlighting
+  const todayDayName = useMemo(() => {
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    return days[new Date().getDay()];
+  }, []);
 
   // Parse time string like "9:00 AM" to minutes since midnight
   const parseTimeString = (timeStr: string): number => {
@@ -113,19 +159,26 @@ export default function ActionButtons({
       };
     }
 
-    let openingHours = card.openingHours;
+    let openingHours: any = card.openingHours;
 
-    // If openingHours is a string, parse it to an object
+    // If openingHours is a string, try to unwrap (may be JSON-stringified once or more)
     if (typeof openingHours === "string") {
-      try {
-        openingHours = JSON.parse(openingHours);
-      } catch (error) {
-        console.error("Failed to parse openingHours string:", error);
+      const trimmed = openingHours.trim();
+      if (trimmed === "" || trimmed === '""') {
         return {
           isOpen: true,
           isAssumption: true,
-          reason: "Invalid opening hours data format",
+          reason: "Opening hours data not available",
         };
+      }
+      let attempts = 0;
+      while (typeof openingHours === "string" && attempts < 3) {
+        try {
+          openingHours = JSON.parse(openingHours);
+          attempts++;
+        } catch {
+          break;
+        }
       }
     }
 
@@ -492,8 +545,10 @@ export default function ActionButtons({
         onCardRemoved(card.id);
       }
 
-      // Close modal only on success
-      if (onClose) {
+      // Trigger feedback flow or close modal
+      if (onScheduleSuccess) {
+        onScheduleSuccess(card);
+      } else if (onClose) {
         onClose();
       }
     } catch (error) {
@@ -694,6 +749,59 @@ export default function ActionButtons({
       )}
 
       {/* Top Row: Schedule Button + Share/Bookmark Button */}
+
+      {/* Opening Hours Section */}
+      {parsedOpeningHours && (
+        <View style={styles.openingHoursSection}>
+          <View style={styles.openingHoursHeader}>
+            <Ionicons name="time" size={18} color="#ea580c" />
+            <Text style={styles.openingHoursTitle}>Opening Hours</Text>
+            {parsedOpeningHours.openNow !== undefined && (
+              <View style={[
+                styles.openNowBadge,
+                parsedOpeningHours.openNow ? styles.openNowBadgeOpen : styles.openNowBadgeClosed,
+              ]}>
+                <View style={[
+                  styles.openNowDot,
+                  parsedOpeningHours.openNow ? styles.openNowDotOpen : styles.openNowDotClosed,
+                ]} />
+                <Text style={[
+                  styles.openNowText,
+                  parsedOpeningHours.openNow ? styles.openNowTextOpen : styles.openNowTextClosed,
+                ]}>
+                  {parsedOpeningHours.openNow ? "Open" : "Closed"}
+                </Text>
+              </View>
+            )}
+          </View>
+          {parsedOpeningHours.lines.map((line: string, index: number) => {
+            const isToday = line.startsWith(todayDayName);
+            // Show today always, show others only when expanded
+            if (!showAllHours && !isToday) return null;
+            return (
+              <View key={index} style={[
+                styles.openingHoursRow,
+                isToday && styles.openingHoursRowToday,
+              ]}>
+                {isToday && <View style={styles.todayIndicator} />}
+                <Text style={[
+                  styles.openingHoursText,
+                  isToday && styles.openingHoursTextToday,
+                ]}>{line}</Text>
+              </View>
+            );
+          })}
+          {parsedOpeningHours.lines.length > 1 && (
+            <TouchableOpacity onPress={() => setShowAllHours(!showAllHours)} style={styles.showAllHoursButton}>
+              <Text style={styles.showAllHoursText}>
+                {showAllHours ? "Show less" : "Show all hours"}
+              </Text>
+              <Ionicons name={showAllHours ? "chevron-up" : "chevron-down"} size={14} color="#ea580c" />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       <View style={styles.topRow}>
         <View style={styles.scheduleButtonContainer}>
           <TouchableOpacity
@@ -1004,5 +1112,98 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
     fontWeight: "500",
+  },
+  openingHoursSection: {
+    backgroundColor: "#f0fdf4",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    padding: 14,
+    marginBottom: 16,
+  },
+  openingHoursHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 8,
+  },
+  openingHoursTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#333333",
+    flex: 1,
+  },
+  openNowBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 5,
+  },
+  openNowBadgeOpen: {
+    backgroundColor: "#dcfce7",
+  },
+  openNowBadgeClosed: {
+    backgroundColor: "#fef2f2",
+  },
+  openNowDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  openNowDotOpen: {
+    backgroundColor: "#22c55e",
+  },
+  openNowDotClosed: {
+    backgroundColor: "#ef4444",
+  },
+  openNowText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  openNowTextOpen: {
+    color: "#166534",
+  },
+  openNowTextClosed: {
+    color: "#991b1b",
+  },
+  openingHoursRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+  },
+  openingHoursRowToday: {
+    backgroundColor: "#dcfce7",
+  },
+  todayIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#ea580c",
+    marginRight: 8,
+  },
+  openingHoursText: {
+    fontSize: 13,
+    color: "#374151",
+    lineHeight: 20,
+  },
+  openingHoursTextToday: {
+    fontWeight: "700",
+    color: "#166534",
+  },
+  showAllHoursButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+    gap: 4,
+  },
+  showAllHoursText: {
+    fontSize: 13,
+    color: "#ea580c",
+    fontWeight: "600",
   },
 });
