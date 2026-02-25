@@ -64,7 +64,15 @@ export default function ProfilePage({
   onNotificationsToggle,
   userIdentity,
 }: ProfilePageProps) {
-  const { } = useFriends();
+  const { friends: realFriends, fetchFriends, friendCount } = useFriends();
+  console.log("Real friends from useFriends hook:", realFriends);
+  const actualConnectionsCount = friendCount;
+
+  // Fetch real friends count from Supabase on mount
+  useEffect(() => {
+    fetchFriends();
+  }, [fetchFriends]);
+
   const {
     activities: recentActivities,
     loading: recentActivityLoading,
@@ -487,9 +495,9 @@ export default function ProfilePage({
     },
     {
       label: "Connections",
-      value: connectionsCount,
-      color: connectionsCount > 0 ? "text-[#eb7825]" : "text-gray-500",
-      bgColor: connectionsCount > 0 ? "bg-orange-50" : "bg-gray-50",
+      value: actualConnectionsCount,
+      color: actualConnectionsCount > 0 ? "text-[#eb7825]" : "text-gray-500",
+      bgColor: actualConnectionsCount > 0 ? "bg-orange-50" : "bg-gray-50",
       onClick: () => onNavigateToConnections?.(),
     },
     {
@@ -515,7 +523,7 @@ export default function ProfilePage({
     },
     {
       label: "Social",
-      percentage: Math.min(100, Math.max(0, connectionsCount * 3)),
+      percentage: Math.min(100, Math.max(0, actualConnectionsCount * 3)),
       color: "bg-[#d6691f]",
     },
     {

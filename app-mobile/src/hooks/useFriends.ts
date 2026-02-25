@@ -41,6 +41,7 @@ export interface BlockedUser {
 
 export const useFriends = () => {
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [friendCount, setFriendCount] = useState(0);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -92,34 +93,25 @@ export const useFriends = () => {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get friends - check both sides of the friendship relationship
-      // Friends where current user is user_id
-      const { data: friendsData1, error: error1 } = await supabase
+      // Get friends from both sides in a single query using .or()
+      const { data: allRawFriends, error: friendsError } = await supabase
         .from("friends")
         .select("*")
-        .eq("user_id", user.id)
-        .eq("status", "accepted");
+        .eq("status", "accepted")
+        .or(`user_id.eq.${user.id},friend_user_id.eq.${user.id}`);
 
-      // Friends where current user is friend_user_id (reverse relationship)
-      const { data: friendsData2, error: error2 } = await supabase
-        .from("friends")
-        .select("*")
-        .eq("friend_user_id", user.id)
-        .eq("status", "accepted");
+      if (friendsError) throw friendsError;
 
-      if (error1) throw error1;
-      if (error2) throw error2;
-
-      // Combine both results, ensuring no duplicates
-      const allFriendsData = [
-        ...(friendsData1 || []),
-        ...(friendsData2 || []).map((f: any) => ({
+      // Normalize so friend_user_id always points to the OTHER user
+      const allFriendsData = (allRawFriends || []).map((f: any) => {
+        if (f.user_id === user.id) return f;
+        // Reverse relationship — swap so friend_user_id = the other person
+        return {
           ...f,
-          // Swap user_id and friend_user_id for reverse relationships
           user_id: f.friend_user_id,
           friend_user_id: f.user_id,
-        })),
-      ];
+        };
+      });
 
       // Remove duplicates based on friend_user_id
       const uniqueFriends = allFriendsData.reduce((acc: any[], friend: any) => {
@@ -129,94 +121,49 @@ export const useFriends = () => {
         return acc;
       }, []);
 
+      // Set count immediately so UI updates fast
+      setFriendCount(uniqueFriends.length);
+
       const friendsData = uniqueFriends;
 
-      // Get profile information for each friend
-      const transformedFriends: Friend[] = [];
-      for (const friend of friendsData || []) {
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url")
-          .eq("id", friend.friend_user_id)
-          .single();
-
-        // If profile doesn't exist, create a basic one
-        if (profileError && profileError.code === "PGRST116") {
-          // Create a basic profile for this user
-          const { data: newProfile, error: createError } = await supabase
+      // Batch-fetch all profiles in a single query instead of N+1
+      const friendUserIds = friendsData.map((f: any) => f.friend_user_id);
+      const { data: allProfiles, error: profilesError } = friendUserIds.length > 0
+        ? await supabase
             .from("profiles")
-            .insert({
-              id: friend.friend_user_id,
-              username: `user_${friend.friend_user_id.substring(0, 8)}`,
-            })
             .select("id, username, first_name, last_name, avatar_url")
-            .single();
+            .in("id", friendUserIds)
+        : { data: [], error: null };
 
-          if (createError) {
-            console.error("Error creating profile:", createError);
-            // Use fallback data
-            transformedFriends.push({
-              id: friend.id,
-              user_id: friend.user_id,
-              friend_user_id: friend.friend_user_id,
-              username: `user_${friend.friend_user_id.substring(0, 8)}`,
-              display_name: undefined,
-              first_name: undefined,
-              last_name: undefined,
-              avatar_url: undefined,
-              status: friend.status,
-              created_at: friend.created_at,
-            });
-          } else {
-            transformedFriends.push({
-              id: friend.id,
-              user_id: friend.user_id,
-              friend_user_id: friend.friend_user_id,
-              username: newProfile?.username || "Unknown",
-              display_name:
-                newProfile?.first_name && newProfile?.last_name
-                  ? `${newProfile.first_name} ${newProfile.last_name}`
-                  : newProfile?.username,
-              first_name: newProfile?.first_name,
-              last_name: newProfile?.last_name,
-              avatar_url: newProfile?.avatar_url,
-              status: friend.status,
-              created_at: friend.created_at,
-            });
-          }
-        } else if (profileError) {
-          console.error("Error fetching profile:", profileError);
-          // Use fallback data
-          transformedFriends.push({
-            id: friend.id,
-            user_id: friend.user_id,
-            friend_user_id: friend.friend_user_id,
-            username: `user_${friend.friend_user_id.substring(0, 8)}`,
-            display_name: undefined,
-            first_name: undefined,
-            last_name: undefined,
-            avatar_url: undefined,
-            status: friend.status,
-            created_at: friend.created_at,
-          });
-        } else {
-          transformedFriends.push({
-            id: friend.id,
-            user_id: friend.user_id,
-            friend_user_id: friend.friend_user_id,
-            username: profileData?.username || "Unknown",
-            display_name:
-              profileData?.first_name && profileData?.last_name
-                ? `${profileData.first_name} ${profileData.last_name}`
-                : profileData?.username,
-            first_name: profileData?.first_name,
-            last_name: profileData?.last_name,
-            avatar_url: profileData?.avatar_url,
-            status: friend.status,
-            created_at: friend.created_at,
-          });
-        }
+      if (profilesError) {
+        console.error("Error fetching profiles:", profilesError);
       }
+
+      // Build a lookup map for O(1) access
+      const profilesMap = new Map(
+        (allProfiles || []).map((p: any) => [p.id, p])
+      );
+
+      // Transform friends using the pre-fetched profiles
+      const transformedFriends: Friend[] = friendsData.map((friend: any) => {
+        const profileData = profilesMap.get(friend.friend_user_id);
+
+        return {
+          id: friend.id,
+          user_id: friend.user_id,
+          friend_user_id: friend.friend_user_id,
+          username: profileData?.username || `user_${friend.friend_user_id.substring(0, 8)}`,
+          display_name:
+            profileData?.first_name && profileData?.last_name
+              ? `${profileData.first_name} ${profileData.last_name}`
+              : profileData?.username,
+          first_name: profileData?.first_name,
+          last_name: profileData?.last_name,
+          avatar_url: profileData?.avatar_url,
+          status: friend.status,
+          created_at: friend.created_at,
+        };
+      });
 
       setFriends(transformedFriends);
     } catch (err: any) {
@@ -810,6 +757,7 @@ export const useFriends = () => {
 
   return {
     friends,
+    friendCount,
     friendRequests,
     blockedUsers,
     loading,
