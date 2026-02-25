@@ -102,7 +102,8 @@ export default function ConnectionsPageRefactored({
 
   // Real data state
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [friendsLoading, setFriendsLoading] = useState(true);
+  const [conversationsLoading, setConversationsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentConversationId, setCurrentConversationId] = useState<
     string | null
@@ -127,16 +128,33 @@ export default function ConnectionsPageRefactored({
     }));
   }, [dbFriends, mutedUserIds]);
 
-  // Fetch conversations and load friend requests
+  // Fetch friends and friend requests (fast, show UI early)
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchFriendsData = async () => {
       if (!user?.id) {
-        setLoading(false);
+        setFriendsLoading(false);
+        return;
+      }
+      try {
+        await Promise.all([fetchFriends(), loadFriendRequests()]);
+      } catch (err) {
+        console.error("Error fetching friends data:", err);
+      } finally {
+        setFriendsLoading(false);
+      }
+    };
+    fetchFriendsData();
+  }, [user?.id, loadFriendRequests, fetchFriends]);
+
+  // Fetch conversations separately (heavier, loads in background)
+  useEffect(() => {
+    const fetchConversations = async () => {
+      if (!user?.id) {
+        setConversationsLoading(false);
         return;
       }
 
       try {
-        setLoading(true);
         setError(null);
 
         // Fetch conversations using real-time messaging service
@@ -145,173 +163,136 @@ export default function ConnectionsPageRefactored({
 
         if (convError) throw new Error(convError);
 
-        // Transform to match Conversation interface
-        const transformedConversations: Conversation[] = await Promise.all(
-          (conversationsData || []).map(async (conv) => {
-            // Get profile information for participants
-            const participantIds = conv.participants.map((p) => p.user_id);
-            const { data: profiles } = await supabase
-              .from("profiles")
-              .select(
-                "id, display_name, username, first_name, last_name, avatar_url"
-              )
-              .in("id", participantIds);
-
-            // Helper function to clean email-like names
-            const cleanName = (name: string): string => {
-              if (!name) return "Unknown";
-              // Remove @domain part if present (e.g., "john@gmail.com" -> "john")
-              const atIndex = name.indexOf("@");
-              if (atIndex !== -1) {
-                return name.substring(0, atIndex).trim();
-              }
-              return name.trim();
-            };
-
-            // Find the other participant (not the current user)
-            const otherParticipant = conv.participants.find(
-              (p) => p.user_id !== user.id
-            );
-            const otherParticipantProfile = profiles?.find(
-              (p) => p.id === otherParticipant?.user_id
-            );
-
-            // Get participant info
-            const participantProfiles = conv.participants.map((p) => {
-              const profile = profiles?.find((prof) => prof.id === p.user_id);
-              const rawName =
-                profile?.display_name ||
-                (profile?.first_name && profile?.last_name
-                  ? `${profile.first_name} ${profile.last_name}`
-                  : profile?.username) ||
-                "Unknown";
-              return {
-                id: p.user_id,
-                name: cleanName(rawName),
-                username: profile?.username || "unknown",
-                avatar: profile?.avatar_url,
-                status: "offline" as const,
-                isOnline: false,
-              };
-            });
-
-            // Get conversation name (other participant's name for direct messages)
-            const rawConversationName = otherParticipantProfile
-              ? otherParticipantProfile.display_name ||
-                (otherParticipantProfile.first_name &&
-                otherParticipantProfile.last_name
-                  ? `${otherParticipantProfile.first_name} ${otherParticipantProfile.last_name}`
-                  : otherParticipantProfile.username) ||
-                "Unknown"
-              : "Unknown";
-
-            const conversationName = cleanName(rawConversationName);
-
-            // Format timestamp
-            const formatTimestamp = (timestamp: string) => {
-              if (!timestamp) return "";
-              const date = new Date(timestamp);
-              const now = new Date();
-              const diff = now.getTime() - date.getTime();
-              const minutes = Math.floor(diff / 60000);
-              const hours = Math.floor(diff / 3600000);
-              const days = Math.floor(diff / 86400000);
-
-              if (minutes < 1) return "Just now";
-              if (minutes < 60) return `${minutes}m`;
-              if (hours < 24) return `${hours}h`;
-              if (days < 7) return `${days}d`;
-              return date.toLocaleDateString();
-            };
-
-            return {
-              id: conv.id,
-              name: conversationName,
-              type: conv.type,
-              participants: participantProfiles,
-              avatar: otherParticipantProfile?.avatar_url,
-              isOnline: false,
-              lastMessage: conv.last_message
-                ? {
-                    id: conv.last_message.id,
-                    senderId: conv.last_message.sender_id,
-                    senderName: conv.last_message.sender_name || "Unknown",
-                    content: conv.last_message.content,
-                    timestamp: formatTimestamp(conv.last_message.created_at),
-                    type: conv.last_message.message_type,
-                    fileUrl: conv.last_message.file_url,
-                    fileName: conv.last_message.file_name,
-                    fileSize: conv.last_message.file_size?.toString(),
-                    isMe: conv.last_message.sender_id === user.id,
-                    unread:
-                      !conv.last_message.is_read &&
-                      conv.last_message.sender_id !== user.id,
-                  }
-                : {
-                    id: "",
-                    senderId: "",
-                    senderName: "",
-                    content: "",
-                    timestamp: "",
-                    type: "text",
-                    isMe: false,
-                  },
-              unreadCount: conv.unread_count || 0,
-            };
-          })
+        // Batch-fetch all unique participant profiles in a single query
+        const allParticipantIds = new Set<string>();
+        (conversationsData || []).forEach((conv) =>
+          conv.participants.forEach((p) => allParticipantIds.add(p.user_id))
         );
+
+        const { data: allProfiles } = await supabase
+          .from("profiles")
+          .select("id, display_name, username, first_name, last_name, avatar_url")
+          .in("id", Array.from(allParticipantIds));
+
+        const profilesMap = new Map(
+          (allProfiles || []).map((p) => [p.id, p])
+        );
+
+        // Helper function to clean email-like names
+        const cleanName = (name: string): string => {
+          if (!name) return "Unknown";
+          const atIndex = name.indexOf("@");
+          if (atIndex !== -1) {
+            return name.substring(0, atIndex).trim();
+          }
+          return name.trim();
+        };
+
+        // Format timestamp
+        const formatTimestamp = (timestamp: string) => {
+          if (!timestamp) return "";
+          const date = new Date(timestamp);
+          const now = new Date();
+          const diff = now.getTime() - date.getTime();
+          const minutes = Math.floor(diff / 60000);
+          const hours = Math.floor(diff / 3600000);
+          const days = Math.floor(diff / 86400000);
+
+          if (minutes < 1) return "Just now";
+          if (minutes < 60) return `${minutes}m`;
+          if (hours < 24) return `${hours}h`;
+          if (days < 7) return `${days}d`;
+          return date.toLocaleDateString();
+        };
+
+        // Transform to match Conversation interface (no extra queries per conversation)
+        const transformedConversations: Conversation[] = (conversationsData || []).map((conv) => {
+          // Find the other participant (not the current user)
+          const otherParticipant = conv.participants.find(
+            (p) => p.user_id !== user.id
+          );
+          const otherParticipantProfile = otherParticipant
+            ? profilesMap.get(otherParticipant.user_id)
+            : undefined;
+
+          // Get participant info
+          const participantProfiles = conv.participants.map((p) => {
+            const profile = profilesMap.get(p.user_id);
+            const rawName =
+              profile?.display_name ||
+              (profile?.first_name && profile?.last_name
+                ? `${profile.first_name} ${profile.last_name}`
+                : profile?.username) ||
+              "Unknown";
+            return {
+              id: p.user_id,
+              name: cleanName(rawName),
+              username: profile?.username || "unknown",
+              avatar: profile?.avatar_url,
+              status: "offline" as const,
+              isOnline: false,
+            };
+          });
+
+          // Get conversation name (other participant's name for direct messages)
+          const rawConversationName = otherParticipantProfile
+            ? otherParticipantProfile.display_name ||
+              (otherParticipantProfile.first_name &&
+              otherParticipantProfile.last_name
+                ? `${otherParticipantProfile.first_name} ${otherParticipantProfile.last_name}`
+                : otherParticipantProfile.username) ||
+              "Unknown"
+            : "Unknown";
+
+          const conversationName = cleanName(rawConversationName);
+
+          return {
+            id: conv.id,
+            name: conversationName,
+            type: conv.type,
+            participants: participantProfiles,
+            avatar: otherParticipantProfile?.avatar_url,
+            isOnline: false,
+            lastMessage: conv.last_message
+              ? {
+                  id: conv.last_message.id,
+                  senderId: conv.last_message.sender_id,
+                  senderName: conv.last_message.sender_name || "Unknown",
+                  content: conv.last_message.content,
+                  timestamp: formatTimestamp(conv.last_message.created_at),
+                  type: conv.last_message.message_type,
+                  fileUrl: conv.last_message.file_url,
+                  fileName: conv.last_message.file_name,
+                  fileSize: conv.last_message.file_size?.toString(),
+                  isMe: conv.last_message.sender_id === user.id,
+                  unread:
+                    !conv.last_message.is_read &&
+                    conv.last_message.sender_id !== user.id,
+                }
+              : {
+                  id: "",
+                  senderId: "",
+                  senderName: "",
+                  content: "",
+                  timestamp: "",
+                  type: "text",
+                  isMe: false,
+                },
+            unreadCount: conv.unread_count || 0,
+          };
+        });
 
         setConversations(transformedConversations);
-
-        // Pre-load messages for all conversations in the background
-        const messagesCacheMap: Record<string, Message[]> = {};
-        await Promise.all(
-          transformedConversations.map(async (conv) => {
-            try {
-              const { messages: conversationMessages, error: messagesError } =
-                await messagingService.getMessages(conv.id, user.id);
-
-              if (!messagesError && conversationMessages) {
-                const transformedMessages: Message[] = conversationMessages.map(
-                  (msg) => ({
-                    id: msg.id,
-                    senderId: msg.sender_id,
-                    senderName: msg.sender_name || "Unknown",
-                    content: msg.content,
-                    timestamp: msg.created_at,
-                    type: msg.message_type,
-                    fileUrl: msg.file_url,
-                    fileName: msg.file_name,
-                    fileSize: msg.file_size?.toString(),
-                    isMe: msg.sender_id === user.id,
-                    unread: !msg.is_read && msg.sender_id !== user.id,
-                  })
-                );
-
-                messagesCacheMap[conv.id] = transformedMessages;
-              }
-            } catch (err) {
-              console.error(
-                `Error pre-loading messages for conversation ${conv.id}:`,
-                err
-              );
-            }
-          })
-        );
-
-        setMessagesCache(messagesCacheMap);
-        await loadFriendRequests();
-        await fetchFriends();
       } catch (err) {
-        console.error("Error fetching connections data:", err);
-        setError("Failed to load connections data");
+        console.error("Error fetching conversations:", err);
+        setError("Failed to load conversations");
       } finally {
-        setLoading(false);
+        setConversationsLoading(false);
       }
     };
 
-    fetchData();
-  }, [user?.id, loadFriendRequests, fetchFriends]);
+    fetchConversations();
+  }, [user?.id]);
 
   // Update total unread count whenever conversations change (excluding muted users)
   useEffect(() => {
@@ -1193,17 +1174,8 @@ export default function ConnectionsPageRefactored({
     setSelectedUserToReport(null);
   };
 
-  // Loading state
-  if (loading) {
-    return (
-      <View style={styles.fullscreenLoader}>
-        <ActivityIndicator size="large" color="#eb7825" />
-      </View>
-    );
-  }
-
-  // Error state
-  if (error) {
+  // Error state (only show full-screen error if both failed)
+  if (error && conversations.length === 0 && dbFriends.length === 0) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -1215,8 +1187,10 @@ export default function ConnectionsPageRefactored({
             style={styles.retryButton}
             onPress={() => {
               setError(null);
-              setLoading(true);
-              // Retry logic would go here
+              setFriendsLoading(true);
+              setConversationsLoading(true);
+              fetchFriends();
+              loadFriendRequests();
             }}
           >
             <Text style={styles.retryButtonText}>Try Again</Text>
@@ -1325,6 +1299,7 @@ export default function ConnectionsPageRefactored({
                 inviteCopied={inviteCopied}
                 friendRequestsCount={friendRequestsCount}
                 muteLoadingFriendId={muteLoadingFriendId}
+                loading={friendsLoading}
               />
             ) : (
               <MessagesTab
@@ -1348,6 +1323,7 @@ export default function ConnectionsPageRefactored({
                 availableFriends={currentFriends}
                 currentUserId={user?.id}
                 mutedUserIds={mutedUserIds}
+                loading={conversationsLoading}
               />
             )}
           </View>

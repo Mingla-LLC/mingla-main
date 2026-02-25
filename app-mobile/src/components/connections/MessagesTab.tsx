@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ScrollView,
   Animated,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Conversation, Friend } from "../../data/mockConnections";
@@ -40,6 +41,7 @@ interface MessagesTabProps {
   currentUserId?: string;
   isBlocked?: boolean;
   mutedUserIds?: string[];
+  loading?: boolean;
 }
 
 export default function MessagesTab({
@@ -63,6 +65,7 @@ export default function MessagesTab({
   currentUserId,
   isBlocked = false,
   mutedUserIds = [],
+  loading = false,
 }: MessagesTabProps & { currentUserId?: string }) {
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
 
@@ -190,7 +193,12 @@ export default function MessagesTab({
 
       {/* Conversations List */}
       <View style={styles.conversationsList}>
-        {filteredConversations.length === 0 && messageSearchQuery.trim() ? (
+        {loading && filteredConversations.length === 0 ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color="#eb7825" />
+            <Text style={[styles.emptyStateSubtitle, { marginTop: 12 }]}>Loading conversations...</Text>
+          </View>
+        ) : filteredConversations.length === 0 && messageSearchQuery.trim() ? (
           <View style={styles.emptyState}>
             <Ionicons name="search" size={48} color="#d1d5db" />
             <Text style={styles.emptyStateTitle}>No conversations found</Text>

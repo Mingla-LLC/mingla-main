@@ -43,6 +43,7 @@ interface CollaborationFriendsTabProps {
   onReportUser: (friend: Friend) => void;
   friendRequestsCount: number;
   muteLoadingFriendId?: string | null;
+  loading?: boolean;
 }
 
 export default function CollaborationFriendsTab({
@@ -62,6 +63,7 @@ export default function CollaborationFriendsTab({
   onReportUser,
   friendRequestsCount,
   muteLoadingFriendId,
+  loading = false,
 }: CollaborationFriendsTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [friendsListExpanded, setFriendsListExpanded] = useState(true);
@@ -375,7 +377,14 @@ export default function CollaborationFriendsTab({
         )}
       </View>
 
-      {filteredFriends.length === 0 && (
+      {filteredFriends.length === 0 && loading && (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color="#eb7825" />
+          <Text style={[styles.emptyStateText, { marginTop: 12 }]}>Loading friends...</Text>
+        </View>
+      )}
+
+      {filteredFriends.length === 0 && !loading && (
         <View style={styles.emptyState}>
           <Ionicons name="people-outline" size={48} color="#D1D5DB" />
           <Text style={styles.emptyStateTitle}>No Friends Found</Text>
