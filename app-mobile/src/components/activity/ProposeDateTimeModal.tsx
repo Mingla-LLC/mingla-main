@@ -524,16 +524,13 @@ export default function ProposeDateTimeModal({
         animationType="fade"
         onRequestClose={handleClose}
       >
-        <TouchableOpacity
-          style={styles.overlay}
-          activeOpacity={1}
-          onPress={handleClose}
-        >
+        <View style={styles.overlay}>
           <TouchableOpacity
-            style={styles.modalContainer}
+            style={styles.overlayBackground}
             activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-          >
+            onPress={handleClose}
+          />
+          <View style={styles.modalContainer}>
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerLeft}>
@@ -721,8 +718,8 @@ export default function ProposeDateTimeModal({
               onSchedule={handleSchedule}
               isScheduling={isScheduling}
             />
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* Date Picker */}
@@ -752,10 +749,13 @@ export default function ProposeDateTimeModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
+  },
+  overlayBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   modalContainer: {
     backgroundColor: "white",
