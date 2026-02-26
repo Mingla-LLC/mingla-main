@@ -213,6 +213,47 @@ function AppContent() {
     }
   }, [user, fetchFriends]);
 
+  // Log current page for debugging
+  useEffect(() => {
+    if (isLoadingAuth && !authTimeout) {
+      console.log(`📄 Current screen: loading`);
+    } else if (!isAuthenticated || (user && !profile && !isLoadingAuth)) {
+      console.log(`📄 Current screen: sign-in/sign-up (showSignUpForm=${showSignUpForm})`);
+    } else if (showOnboardingFlow || needsOnboarding) {
+      console.log(`📄 Current screen: onboarding`);
+    } else if (needsEmailVerification && !showSignUpForm) {
+      console.log(`📄 Current screen: email-verification`);
+    } else if (showPreferences) {
+      console.log(`📄 Current screen: preferences`);
+    } else if (showTermsOfService) {
+      console.log(`📄 Current screen: terms-of-service`);
+    } else if (showPrivacyPolicy) {
+      console.log(`📄 Current screen: privacy-policy`);
+    } else if (showAccountSettings) {
+      console.log(`📄 Current screen: account-settings`);
+    } else if (showProfileSettings) {
+      console.log(`📄 Current screen: profile-settings`);
+    } else {
+      console.log(`📄 Current page: ${currentPage}`);
+    }
+  }, [
+    currentPage,
+    isAuthenticated,
+    profile,
+    isLoadingAuth,
+    authTimeout,
+    user,
+    showOnboardingFlow,
+    needsOnboarding,
+    needsEmailVerification,
+    showSignUpForm,
+    showPreferences,
+    showTermsOfService,
+    showPrivacyPolicy,
+    showAccountSettings,
+    showProfileSettings,
+  ]);
+
   // Transform friends to Friend format for session creation
   // dbFriends from useFriends has: id, friend_user_id, username, display_name, first_name, last_name, avatar_url
   const availableFriendsForSessions: Friend[] = (dbFriends || []).map((friend: any) => ({
@@ -1171,6 +1212,8 @@ function AppContent() {
           }}
           onBackToWelcome={() => {
             setShowOnboardingFlow(false);
+            // Reset sign-up form flag to ensure we show welcome screen
+            setShowSignUpForm(false);
             // If user has completed onboarding, mark it as complete in local state
             if (profile?.has_completed_onboarding === true) {
               setHasCompletedOnboarding(true);

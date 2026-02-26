@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { BackHandler } from "react-native";
 import WelcomeScreen from "./signIn/WelcomeScreen";
 import SignInForm from "./signIn/SignInForm";
 import SignUpForm from "./signIn/SignUpForm";
@@ -50,10 +51,33 @@ export default function SignInPage({
   );
   const { signInWithGoogle, signInWithApple } = useAuthSimple();
 
+  // Handle hardware back button
+  useEffect(() => {
+    const backAction = () => {
+      if (authMode === "welcome") {
+        // When on welcome screen, don't exit app - return true to prevent default behavior
+        return true;
+      } else {
+        // Go back to welcome screen
+        handleBackToWelcome();
+        return true;
+      }
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [authMode]);
+
   const handleBackToWelcome = () => {
+    console.log("🔙 Back button pressed in SignInPage - going to welcome");
     setAuthMode("welcome");
     setSelectedAccountType(null);
     if (onResetSignUpForm) {
+      console.log("🔙 Calling onResetSignUpForm");
       onResetSignUpForm();
     }
   };
