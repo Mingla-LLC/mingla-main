@@ -26,7 +26,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.collaboration_invites ci
     WHERE ci.session_id = collaboration_sessions.id
-    AND ci.invited_user_id = auth.uid()
+    AND ci.invitee_id = auth.uid()
     AND ci.status = 'pending'
   )
 );
