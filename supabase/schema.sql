@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   username text,
   first_name text,
   last_name text,
+  avatar_url text,
   currency text DEFAULT 'USD',
   measurement_system text DEFAULT 'metric',
   share_location boolean DEFAULT true,
@@ -16,7 +17,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   share_categories boolean DEFAULT true,
   share_date_time boolean DEFAULT true,
   coach_map_tour_status text CHECK (coach_map_tour_status IN ('completed', 'skipped')) DEFAULT NULL,
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
 
 -- Preferences table
@@ -77,7 +79,7 @@ CREATE POLICY "Users can insert own profile" ON public.profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
 
 CREATE POLICY "Users can update own profile" ON public.profiles
-  FOR UPDATE USING (auth.uid() = id);
+  FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 
 -- RLS Policies for preferences
 CREATE POLICY "Users can read own preferences" ON public.preferences

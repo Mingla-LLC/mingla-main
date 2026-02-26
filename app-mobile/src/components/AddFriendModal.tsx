@@ -28,7 +28,6 @@ interface SearchUser {
   display_name?: string;
   first_name?: string;
   last_name?: string;
-  avatar_url?: string;
 }
 
 export default function AddFriendModal({
@@ -96,7 +95,7 @@ export default function AddFriendModal({
         let query = supabase
           .from("profiles")
           .select(
-            "id, username, email, display_name, first_name, last_name, avatar_url"
+            "id, username, email, display_name, first_name, last_name"
           )
           .limit(10);
 
