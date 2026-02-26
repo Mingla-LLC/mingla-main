@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Dimensions,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
@@ -28,6 +29,7 @@ interface SearchUser {
   display_name?: string;
   first_name?: string;
   last_name?: string;
+  avatar_url?: string;
 }
 
 export default function AddFriendModal({
@@ -95,7 +97,7 @@ export default function AddFriendModal({
         let query = supabase
           .from("profiles")
           .select(
-            "id, username, email, display_name, first_name, last_name"
+            "id, username, email, display_name, first_name, last_name, avatar_url"
           )
           .limit(10);
 
@@ -494,56 +496,51 @@ export default function AddFriendModal({
                       style={styles.searchResultsList}
                       nestedScrollEnabled
                     >
-                      {searchResults.map((item) => (
-                        <TouchableOpacity
-                          key={item.id}
-                          style={styles.searchResultItem}
-                          onPress={() => handleSelectUser(item)}
-                        >
-                          <View style={styles.searchResultAvatar}>
-                            {item.avatar_url ? (
-                              <Text style={styles.searchResultAvatarText}>
-                                IMG
+                      {searchResults.map((item) => {
+                        const displayName = item.display_name || item.first_name || item.username || "U";
+                        const initials = displayName
+                          .split(" ")
+                          .map((n: string) => n[0])
+                          .join("")
+                          .toUpperCase()
+                          .substring(0, 2);
+                        return (
+                          <TouchableOpacity
+                            key={item.id}
+                            style={styles.searchResultItem}
+                            onPress={() => handleSelectUser(item)}
+                          >
+                            <View style={styles.searchResultAvatar}>
+                              {item.avatar_url ? (
+                                <Image
+                                  source={{ uri: item.avatar_url }}
+                                  style={styles.searchResultAvatarImage}
+                                />
+                              ) : (
+                                <Text style={styles.searchResultAvatarText}>
+                                  {initials}
+                                </Text>
+                              )}
+                            </View>
+                            <View style={styles.searchResultInfo}>
+                              <Text style={styles.searchResultName} numberOfLines={1}>
+                                {item.display_name ||
+                                  (item.first_name && item.last_name
+                                    ? `${item.first_name} ${item.last_name}`
+                                    : item.username)}
                               </Text>
-                            ) : (
-                              <Text style={styles.searchResultAvatarText}>
-                                {(
-                                  item.display_name ||
-                                  item.first_name ||
-                                  item.username ||
-                                  "U"
-                                )
-                                  .split(" ")
-                                  .map((n: string) => n[0])
-                                  .join("")
-                                  .toUpperCase()
-                                  .substring(0, 2)}
+                              <Text style={styles.searchResultUsername} numberOfLines={1}>
+                                @{item.username}
                               </Text>
-                            )}
-                          </View>
-                          <View style={styles.searchResultInfo}>
-                            <Text style={styles.searchResultName}>
-                              {item.display_name ||
-                                (item.first_name && item.last_name
-                                  ? `${item.first_name} ${item.last_name}`
-                                  : item.username)}
-                            </Text>
-                            <Text style={styles.searchResultUsername}>
-                              @{item.username}
-                            </Text>
-                            {item.email && (
-                              <Text style={styles.searchResultEmail}>
-                                {item.email}
-                              </Text>
-                            )}
-                          </View>
-                          <Ionicons
-                            name="chevron-forward"
-                            size={20}
-                            color="#9ca3af"
-                          />
-                        </TouchableOpacity>
-                      ))}
+                            </View>
+                            <Ionicons
+                              name="chevron-forward"
+                              size={20}
+                              color="#d1d5db"
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
                     </ScrollView>
                   </View>
                 )}
@@ -552,11 +549,14 @@ export default function AddFriendModal({
                 {selectedUser && (
                   <View style={styles.searchResult}>
                     <View style={styles.searchResultHeader}>
-                      <View style={styles.searchResultAvatar}>
+                      <View style={styles.selectedUserAvatar}>
                         {selectedUser.avatar_url ? (
-                          <Text style={styles.searchResultAvatarText}>IMG</Text>
+                          <Image
+                            source={{ uri: selectedUser.avatar_url }}
+                            style={styles.selectedUserAvatarImage}
+                          />
                         ) : (
-                          <Text style={styles.searchResultAvatarText}>
+                          <Text style={styles.selectedUserAvatarText}>
                             {(
                               selectedUser.display_name ||
                               selectedUser.first_name ||
@@ -581,11 +581,6 @@ export default function AddFriendModal({
                         <Text style={styles.searchResultUsername}>
                           @{selectedUser.username}
                         </Text>
-                        {selectedUser.email && (
-                          <Text style={styles.searchResultEmail}>
-                            {selectedUser.email}
-                          </Text>
-                        )}
                       </View>
                       <TouchableOpacity
                         onPress={() => {
@@ -633,22 +628,6 @@ export default function AddFriendModal({
                     )}
                   </View>
                 )}
-
-                {/* Tips */}
-                <View style={styles.tipsContainer}>
-                  <Text style={styles.tipsTitle}>Tips:</Text>
-                  <View style={styles.tipsList}>
-                    <Text style={styles.tipItem}>
-                      • Enter their exact username (e.g., @johndoe)
-                    </Text>
-                    <Text style={styles.tipItem}>
-                      • Or use their email address
-                    </Text>
-                    <Text style={styles.tipItem}>
-                      • Make sure the spelling is correct
-                    </Text>
-                  </View>
-                </View>
               </View>
             ) : (
               <View style={styles.sentTabContent}>
@@ -681,23 +660,29 @@ export default function AddFriendModal({
                   </View>
                 ) : (
                   <View style={styles.sentRequestsList}>
-                    {sentRequests.map((request) => (
-                      <View key={request.id} style={styles.sentRequestItem}>
-                        <View style={styles.sentRequestHeader}>
-                          <View style={styles.sentRequestAvatar}>
-                            <Text style={styles.sentRequestAvatarText}>
-                              {(
-                                request.sender.display_name ||
-                                request.sender.username ||
-                                "U"
-                              )
-                                .split(" ")
-                                .map((n: string) => n[0])
-                                .join("")
-                                .toUpperCase()
-                                .substring(0, 2)}
-                            </Text>
-                          </View>
+                    {sentRequests.map((request) => {
+                      const displayName = request.sender.display_name || request.sender.username || "U";
+                      const initials = displayName
+                        .split(" ")
+                        .map((n: string) => n[0])
+                        .join("")
+                        .toUpperCase()
+                        .substring(0, 2);
+                      return (
+                        <View key={request.id} style={styles.sentRequestItem}>
+                          <View style={styles.sentRequestHeader}>
+                            <View style={styles.sentRequestAvatar}>
+                              {request.sender.avatar_url ? (
+                                <Image
+                                  source={{ uri: request.sender.avatar_url }}
+                                  style={styles.sentRequestAvatarImage}
+                                />
+                              ) : (
+                                <Text style={styles.sentRequestAvatarText}>
+                                  {initials}
+                                </Text>
+                              )}
+                            </View>
                           <View style={styles.sentRequestInfo}>
                             <Text style={styles.sentRequestName}>
                               {request.sender.display_name ||
@@ -732,7 +717,8 @@ export default function AddFriendModal({
                           </TouchableOpacity>
                         </View>
                       </View>
-                    ))}
+                    );
+                    })}
                   </View>
                 )}
               </View>
@@ -941,29 +927,57 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   searchResultAvatar: {
-    width: 48,
-    height: 48,
+    width: 52,
+    height: 52,
     backgroundColor: "#eb7825",
-    borderRadius: 24,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  searchResultAvatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
   searchResultAvatarText: {
     color: "white",
-    fontWeight: "500",
-    fontSize: 16,
+    fontWeight: "600",
+    fontSize: 18,
+  },
+  selectedUserAvatar: {
+    width: 56,
+    height: 56,
+    backgroundColor: "#eb7825",
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  selectedUserAvatarImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  selectedUserAvatarText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 20,
   },
   searchResultInfo: {
     flex: 1,
+    gap: 2,
   },
   searchResultName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#111827",
+    letterSpacing: 0.2,
   },
   searchResultUsername: {
-    fontSize: 14,
-    color: "#6b7280",
+    fontSize: 13,
+    color: "#9ca3af",
+    letterSpacing: 0.2,
   },
   searchResultMutual: {
     fontSize: 12,
@@ -1002,26 +1016,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
   },
-  tipsContainer: {
-    backgroundColor: "#fef3e2",
-    borderWidth: 1,
-    borderColor: "#fed7aa",
-    borderRadius: 12,
-    padding: 16,
-  },
-  tipsTitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#eb7825",
-    marginBottom: 8,
-  },
-  tipsList: {
-    gap: 4,
-  },
-  tipItem: {
-    fontSize: 14,
-    color: "#374151",
-  },
+
   sentTabContent: {
     gap: 16,
   },
@@ -1086,6 +1081,12 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  sentRequestAvatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   sentRequestAvatarText: {
     color: "white",
@@ -1146,9 +1147,11 @@ const styles = StyleSheet.create({
   searchResultItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
+    gap: 12,
   },
   searchResultEmail: {
     fontSize: 12,

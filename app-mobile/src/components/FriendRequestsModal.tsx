@@ -7,6 +7,7 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFriends } from "../hooks/useFriends";
@@ -255,21 +256,30 @@ export default function FriendRequestsModal({
                               {/* Avatar */}
                               <View style={styles.avatarContainer}>
                                 <View style={styles.avatar}>
-                                  <Text style={styles.avatarText}>
-                                    {initials}
-                                  </Text>
+                                  {request.sender.avatar_url ? (
+                                    <Image
+                                      source={{ uri: request.sender.avatar_url }}
+                                      style={styles.avatarImage}
+                                    />
+                                  ) : (
+                                    <Text style={styles.avatarText}>
+                                      {initials}
+                                    </Text>
+                                  )}
                                 </View>
                               </View>
 
                               {/* User Info */}
                               <View style={styles.userInfo}>
-                                <Text style={styles.userName}>{senderName}</Text>
-                                <Text style={styles.userUsername}>
+                                <Text style={styles.userName} numberOfLines={1}>{senderName}</Text>
+                                <Text style={styles.userUsername} numberOfLines={1}>
                                   @{request.sender.username}
                                 </Text>
-                                <Text style={styles.mutualFriends}>
-                                  7 mutual friends
-                                </Text>
+                                {request.sender.email && (
+                                  <Text style={styles.userEmail} numberOfLines={1}>
+                                    {request.sender.email}
+                                  </Text>
+                                )}
                                 <Text style={styles.requestTime}>
                                   {formatTimestamp(request.created_at)}
                                 </Text>
@@ -397,18 +407,30 @@ export default function FriendRequestsModal({
                               {/* Avatar */}
                               <View style={styles.avatarContainer}>
                                 <View style={styles.avatar}>
-                                  <Text style={styles.avatarText}>
-                                    {initials}
-                                  </Text>
+                                  {request.sender?.avatar_url ? (
+                                    <Image
+                                      source={{ uri: request.sender.avatar_url }}
+                                      style={styles.avatarImage}
+                                    />
+                                  ) : (
+                                    <Text style={styles.avatarText}>
+                                      {initials}
+                                    </Text>
+                                  )}
                                 </View>
                               </View>
 
                               {/* User Info */}
                               <View style={styles.userInfo}>
-                                <Text style={styles.userName}>{receiverName}</Text>
-                                <Text style={styles.userUsername}>
+                                <Text style={styles.userName} numberOfLines={1}>{receiverName}</Text>
+                                <Text style={styles.userUsername} numberOfLines={1}>
                                   @{request.sender?.username || "unknown"}
                                 </Text>
+                                {request.sender?.email && (
+                                  <Text style={styles.userEmail} numberOfLines={1}>
+                                    {request.sender.email}
+                                  </Text>
+                                )}
                                 <Text style={styles.requestTime}>
                                   Sent {formatTimestamp(request.created_at)}
                                 </Text>
@@ -609,6 +631,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
   },
   avatarText: {
     color: "white",
@@ -618,25 +646,25 @@ const styles = StyleSheet.create({
   userInfo: {
     flex: 1,
     minWidth: 0,
+    gap: 2,
   },
   userName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#111827",
   },
   userUsername: {
-    fontSize: 14,
-    color: "#6b7280",
+    fontSize: 13,
+    color: "#9ca3af",
   },
-  mutualFriends: {
+  userEmail: {
     fontSize: 12,
-    color: "#6b7280",
-    marginTop: 2,
+    color: "#d1d5db",
   },
   requestTime: {
     fontSize: 12,
     color: "#9ca3af",
-    marginTop: 2,
+    marginTop: 1,
   },
   actionButtons: {
     flexDirection: "row",

@@ -25,6 +25,7 @@ export interface FriendRequest {
     first_name?: string;
     last_name?: string;
     avatar_url?: string;
+    email?: string;
   };
   status: "pending" | "accepted" | "declined" | "cancelled";
   created_at: string;
@@ -213,7 +214,7 @@ export const useFriends = () => {
       for (const request of incomingRequests || []) {
         const { data: senderProfile, error: senderError } = await supabase
           .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url")
+          .select("id, username, first_name, last_name, avatar_url, email")
           .eq("id", request.sender_id)
           .single();
 
@@ -225,7 +226,7 @@ export const useFriends = () => {
               id: request.sender_id,
               username: `user_${request.sender_id.substring(0, 8)}`,
             })
-            .select("id, username, first_name, last_name, avatar_url")
+            .select("id, username, first_name, last_name, avatar_url, email")
             .single();
 
           transformedRequests.push({
@@ -243,6 +244,7 @@ export const useFriends = () => {
               first_name: newProfile?.first_name,
               last_name: newProfile?.last_name,
               avatar_url: newProfile?.avatar_url,
+              email: newProfile?.email,
             },
             status: request.status,
             created_at: request.created_at,
@@ -264,6 +266,7 @@ export const useFriends = () => {
               first_name: senderProfile?.first_name,
               last_name: senderProfile?.last_name,
               avatar_url: senderProfile?.avatar_url,
+              email: senderProfile?.email,
             },
             status: request.status,
             created_at: request.created_at,
@@ -276,7 +279,7 @@ export const useFriends = () => {
       for (const request of outgoingRequests || []) {
         const { data: receiverProfile, error: receiverError } = await supabase
           .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url")
+          .select("id, username, first_name, last_name, avatar_url, email")
           .eq("id", request.receiver_id)
           .single();
 
@@ -288,7 +291,7 @@ export const useFriends = () => {
               id: request.receiver_id,
               username: `user_${request.receiver_id.substring(0, 8)}`,
             })
-            .select("id, username, first_name, last_name, avatar_url")
+            .select("id, username, first_name, last_name, avatar_url, email")
             .single();
 
           transformedRequests.push({
@@ -306,6 +309,7 @@ export const useFriends = () => {
               first_name: newProfile?.first_name,
               last_name: newProfile?.last_name,
               avatar_url: newProfile?.avatar_url,
+              email: newProfile?.email,
             },
             status: request.status,
             created_at: request.created_at,
@@ -327,6 +331,7 @@ export const useFriends = () => {
               first_name: receiverProfile?.first_name,
               last_name: receiverProfile?.last_name,
               avatar_url: receiverProfile?.avatar_url,
+              email: receiverProfile?.email,
             },
             status: request.status,
             created_at: request.created_at,
