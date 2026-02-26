@@ -457,6 +457,80 @@ export default function ExpandedCardModal({
                   currency={accountPreferences?.currency}
                 />
 
+                {/* See Full Plan Button (for Stroll cards) */}
+                {isStrollCard && !(strollData && strollData.timeline) && (
+                  <View style={styles.seeFullPlanSection}>
+                    <TouchableOpacity
+                      style={styles.routePairingButton}
+                      onPress={fetchStrollData}
+                      disabled={loadingStrollData}
+                      activeOpacity={0.7}
+                    >
+                      {loadingStrollData ? (
+                        <>
+                          <ActivityIndicator
+                            size="small"
+                            color="#ffffff"
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={styles.routePairingButtonText}>
+                            Loading Plan...
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Ionicons
+                            name="map-outline"
+                            size={20}
+                            color="#ffffff"
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={styles.routePairingButtonText}>
+                            See Full Plan
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* See Full Plan Button (for Picnic cards) */}
+                {isPicnicCard && !(picnicData && picnicData.timeline) && (
+                  <View style={styles.seeFullPlanSection}>
+                    <TouchableOpacity
+                      style={styles.routePairingButton}
+                      onPress={fetchPicnicData}
+                      disabled={loadingPicnicData}
+                      activeOpacity={0.7}
+                    >
+                      {loadingPicnicData ? (
+                        <>
+                          <ActivityIndicator
+                            size="small"
+                            color="#ffffff"
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={styles.routePairingButtonText}>
+                            Loading Plan...
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Ionicons
+                            name="map-outline"
+                            size={20}
+                            color="#ffffff"
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={styles.routePairingButtonText}>
+                            See Full Plan
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {/* Weather Section */}
                 <WeatherSection
                   weatherData={weatherData}
@@ -578,150 +652,32 @@ export default function ExpandedCardModal({
                   </View>
                 )}
 
-                {/* Timeline Section or "See Route Pairing" Button (for Take a Stroll cards) */}
-                {isStrollCard && (
-                  <>
-                    {strollData && strollData.timeline ? (
-                      <TimelineSection
-                        category={card.category}
-                        title={card.title}
-                        address={card.address}
-                        priceRange={card.priceRange}
-                        travelTime={card.travelTime}
-                        strollTimeline={strollData.timeline}
-                        routeDuration={strollData.route?.duration}
-                        currency={accountPreferences?.currency}
-                      />
-                    ) : (
-                      <View style={styles.routePairingSection}>
-                        <View style={styles.routePairingHeader}>
-                          <View style={styles.routePairingIconContainer}>
-                            <Ionicons
-                              name="location-outline"
-                              size={20}
-                              color="#eb7825"
-                            />
-                            <View style={styles.routePairingIconDot} />
-                          </View>
-                          <Text style={styles.routePairingTitle}>
-                            Experience Route
-                          </Text>
-                        </View>
-                        <Text style={styles.routePairingDescription}>
-                          Follow these stops for the complete journey
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.routePairingButton}
-                          onPress={fetchStrollData}
-                          disabled={loadingStrollData}
-                          activeOpacity={0.7}
-                        >
-                          {loadingStrollData ? (
-                            <>
-                              <ActivityIndicator
-                                size="small"
-                                color="#ffffff"
-                                style={{ marginRight: 8 }}
-                              />
-                              <Text style={styles.routePairingButtonText}>
-                                Loading Route...
-                              </Text>
-                            </>
-                          ) : (
-                            <>
-                              <Ionicons
-                                name="paper-plane"
-                                size={20}
-                                color="#ffffff"
-                                style={{ marginRight: 8 }}
-                              />
-                              <Text style={styles.routePairingButtonText}>
-                                See Route Pairing
-                              </Text>
-                              <Ionicons
-                                name="open-outline"
-                                size={16}
-                                color="#ffffff"
-                                style={{ marginLeft: 8 }}
-                              />
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </>
+                {/* Timeline Section (for Take a Stroll cards) */}
+                {isStrollCard && strollData && strollData.timeline && (
+                  <TimelineSection
+                    category={card.category}
+                    title={card.title}
+                    address={card.address}
+                    priceRange={card.priceRange}
+                    travelTime={card.travelTime}
+                    strollTimeline={strollData.timeline}
+                    routeDuration={strollData.route?.duration}
+                    currency={accountPreferences?.currency}
+                  />
                 )}
 
-                {/* Timeline Section or "See Route Pairing" Button (for Picnic cards) */}
-                {isPicnicCard && (
-                  <>
-                    {picnicData && picnicData.timeline ? (
-                      <TimelineSection
-                        category={card.category}
-                        title={card.title}
-                        address={card.address}
-                        priceRange={card.priceRange}
-                        travelTime={card.travelTime}
-                        strollTimeline={picnicData.timeline}
-                        routeDuration={picnicData.route?.duration}
-                        currency={accountPreferences?.currency}
-                      />
-                    ) : (
-                      <View style={styles.routePairingSection}>
-                        <View style={styles.routePairingHeader}>
-                          <View style={styles.routePairingIconContainer}>
-                            <Ionicons
-                              name="basket-outline"
-                              size={20}
-                              color="#eb7825"
-                            />
-                            <View style={styles.routePairingIconDot} />
-                          </View>
-                          <Text style={styles.routePairingTitle}>Picnic Route</Text>
-                        </View>
-                        <Text style={styles.routePairingDescription}>
-                          Find a grocery store near your picnic location
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.routePairingButton}
-                          onPress={fetchPicnicData}
-                          disabled={loadingPicnicData}
-                          activeOpacity={0.7}
-                        >
-                          {loadingPicnicData ? (
-                            <>
-                              <ActivityIndicator
-                                size="small"
-                                color="#ffffff"
-                                style={{ marginRight: 8 }}
-                              />
-                              <Text style={styles.routePairingButtonText}>
-                                Loading Route...
-                              </Text>
-                            </>
-                          ) : (
-                            <>
-                              <Ionicons
-                                name="storefront-outline"
-                                size={20}
-                                color="#ffffff"
-                                style={{ marginRight: 8 }}
-                              />
-                              <Text style={styles.routePairingButtonText}>
-                                Find Grocery Store
-                              </Text>
-                              <Ionicons
-                                name="open-outline"
-                                size={16}
-                                color="#ffffff"
-                                style={{ marginLeft: 8 }}
-                              />
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </>
+                {/* Timeline Section (for Picnic cards) */}
+                {isPicnicCard && picnicData && picnicData.timeline && (
+                  <TimelineSection
+                    category={card.category}
+                    title={card.title}
+                    address={card.address}
+                    priceRange={card.priceRange}
+                    travelTime={card.travelTime}
+                    strollTimeline={picnicData.timeline}
+                    routeDuration={picnicData.route?.duration}
+                    currency={accountPreferences?.currency}
+                  />
                 )}
 
                 {/* Action Buttons */}
@@ -1137,6 +1093,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6b7280",
     marginBottom: 2,
+  },
+  seeFullPlanSection: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 12,
   },
   routePairingSection: {
     paddingHorizontal: 16,
