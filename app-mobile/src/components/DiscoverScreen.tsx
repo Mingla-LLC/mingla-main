@@ -37,7 +37,7 @@ const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
-const DISCOVER_CACHE_KEY = "mingla_discover_cache";
+const DISCOVER_CACHE_KEY = "mingla_discover_cache_v2";
 
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
@@ -229,6 +229,7 @@ interface FeaturedCardData {
   highlights?: string[];
   tags?: string[];
   location?: { lat: number; lng: number };
+  openingHours?: string | { open_now?: boolean; weekday_text?: string[] } | null;
 }
 
 interface FeaturedCardProps {
@@ -254,6 +255,7 @@ interface GridCardData {
   highlights?: string[];
   tags?: string[];
   location?: { lat: number; lng: number };
+  openingHours?: string | { open_now?: boolean; weekday_text?: string[] } | null;
 }
 
 interface GridCardProps {
@@ -1131,6 +1133,7 @@ export default function DiscoverScreen({
             location: featuredCard.lat && featuredCard.lng 
               ? { lat: featuredCard.lat, lng: featuredCard.lng } 
               : undefined,
+            openingHours: featuredCard.openingHours || null,
           };
           console.log("Set unique featured card:", transformedFeatured.title);
         } else {
@@ -1162,6 +1165,7 @@ export default function DiscoverScreen({
               location: bestCard.lat && bestCard.lng 
                 ? { lat: bestCard.lat, lng: bestCard.lng } 
                 : undefined,
+              openingHours: bestCard.openingHours || null,
             };
             console.log("Featured card selected from grid:", transformedFeatured.title);
           }
@@ -1185,6 +1189,7 @@ export default function DiscoverScreen({
           highlights: exp.highlights || [],
           tags: exp.highlights || [],
           location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
+          openingHours: exp.openingHours || null,
         }));
         setSelectedGridCards(gridCards);
         console.log("Set grid cards:", gridCards.length, "cards");
@@ -1232,6 +1237,7 @@ export default function DiscoverScreen({
     highlights: rec.highlights,
     tags: rec.tags,
     location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+    openingHours: rec.openingHours || null,
   });
 
   // Transform Recommendation to GridCardData
@@ -1251,6 +1257,7 @@ export default function DiscoverScreen({
     highlights: rec.highlights,
     tags: rec.tags,
     location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+    openingHours: rec.openingHours || null,
   });
 
   // State for selected cards (to prevent re-randomization on every render)
@@ -1566,6 +1573,10 @@ export default function DiscoverScreen({
 
   // Transform FeaturedCardData to ExpandedCardData
   const handleCardPress = (card: FeaturedCardData) => {
+    // Fallback: look up openingHours from recommendations if card doesn't have it
+    const openingHours = card.openingHours || (
+      recommendations.find(r => r.id === card.id || r.id === card.id.replace('_featured', ''))?.openingHours
+    ) || null;
     const expandedCardData: ExpandedCardData = {
       id: card.id,
       title: card.title,
@@ -1598,6 +1609,7 @@ export default function DiscoverScreen({
         shares: 45,
       },
       location: card.location,
+      openingHours,
       selectedDateTime: new Date(),
     };
     setSelectedCardForExpansion(expandedCardData);
@@ -1606,6 +1618,10 @@ export default function DiscoverScreen({
 
   // Transform GridCardData to ExpandedCardData
   const handleGridCardPress = (card: GridCardData) => {
+    // Fallback: look up openingHours from recommendations if card doesn't have it
+    const openingHours = card.openingHours || (
+      recommendations.find(r => r.id === card.id)?.openingHours
+    ) || null;
     const expandedCardData: ExpandedCardData = {
       id: card.id,
       title: card.title,
@@ -1638,6 +1654,7 @@ export default function DiscoverScreen({
         shares: 28,
       },
       location: card.location,
+      openingHours,
       selectedDateTime: new Date(),
     };
     setSelectedCardForExpansion(expandedCardData);
@@ -2240,6 +2257,7 @@ export default function DiscoverScreen({
       reviewCount: exp.reviewCount,
       address: exp.address,
       location: exp.location,
+      openingHours: exp.openingHours || null,
     };
   }, []);
 

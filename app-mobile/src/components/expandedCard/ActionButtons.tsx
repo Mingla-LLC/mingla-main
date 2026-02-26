@@ -808,25 +808,10 @@ export default function ActionButtons({
             style={[
               styles.scheduleButton,
               (isScheduling || isScheduled) && styles.scheduleButtonDisabled,
-              // Disable if checked and not available (but allow if openingHours not available)
-              hasCheckedAvailability &&
-                availabilityCheck &&
-                !availabilityCheck.isOpen &&
-                !availabilityCheck.isAssumption &&
-                styles.scheduleButtonDisabled,
             ]}
             onPress={handleSchedule}
             activeOpacity={0.7}
-            disabled={
-              isScheduling ||
-              isScheduled ||
-              !!(
-                hasCheckedAvailability &&
-                availabilityCheck &&
-                !availabilityCheck.isOpen &&
-                !availabilityCheck.isAssumption
-              )
-            }
+            disabled={isScheduling || isScheduled}
           >
             {isScheduling ? (
               <ActivityIndicator size="small" color="#ffffff" />
@@ -853,23 +838,6 @@ export default function ActionButtons({
               </>
             )}
           </TouchableOpacity>
-          {hasCheckedAvailability &&
-            availabilityCheck &&
-            !availabilityCheck.isOpen &&
-            !availabilityCheck.isAssumption && (
-              <Text style={styles.closedMessage}>
-                This place is closed at the selected date and time. Please
-                reschedule to choose a different time.
-              </Text>
-            )}
-          {hasCheckedAvailability &&
-            availabilityCheck &&
-            availabilityCheck.isAssumption && (
-              <Text style={styles.warningMessage}>
-                {availabilityCheck.reason ||
-                  "Opening hours data not available - schedule at your own risk"}
-              </Text>
-            )}
         </View>
 
         {/* Share and Bookmark Button */}
@@ -899,6 +867,30 @@ export default function ActionButtons({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Availability Messages */}
+      {hasCheckedAvailability &&
+        availabilityCheck &&
+        !availabilityCheck.isOpen &&
+        !availabilityCheck.isAssumption && (
+          <View style={styles.closedMessageContainer}>
+            <Ionicons name="alert-circle" size={16} color="#9a3412" />
+            <Text style={styles.closedMessage}>
+              This place is closed at the selected date and time. Tap "Check Availability" to choose a different time.
+            </Text>
+          </View>
+        )}
+      {hasCheckedAvailability &&
+        availabilityCheck &&
+        availabilityCheck.isAssumption && (
+          <View style={styles.warningMessageContainer}>
+            <Ionicons name="information-circle" size={16} color="#9a3412" />
+            <Text style={styles.warningMessage}>
+              {availabilityCheck.reason ||
+                "Opening hours data not available - schedule at your own risk"}
+            </Text>
+          </View>
+        )}
 
       {/* Navigate Full Route Button - Available for all cards */}
       <TouchableOpacity
@@ -1099,25 +1091,47 @@ const styles = StyleSheet.create({
   dateTimePicker: {
     height: 200,
   },
+  closedMessageContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff7ed",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#eb782566",
+    padding: 12,
+    marginTop: 8,
+    gap: 8,
+  },
   closedMessage: {
-    fontSize: 12,
-    color: "#ef4444",
-    textAlign: "center",
-    marginTop: 4,
+    flex: 1,
+    fontSize: 13,
+    color: "#9a3412",
     fontWeight: "500",
+    lineHeight: 18,
+  },
+  warningMessageContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff7ed",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#eb782566",
+    padding: 12,
+    marginTop: 8,
+    gap: 8,
   },
   warningMessage: {
-    fontSize: 12,
-    color: "#f59e0b",
-    textAlign: "center",
-    marginTop: 4,
+    flex: 1,
+    fontSize: 13,
+    color: "#9a3412",
     fontWeight: "500",
+    lineHeight: 18,
   },
   openingHoursSection: {
-    backgroundColor: "#f0fdf4",
+    backgroundColor: "#eb78251a",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
+    borderColor: "#eb782566",
     padding: 14,
     marginBottom: 16,
   },
@@ -1142,7 +1156,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   openNowBadgeOpen: {
-    backgroundColor: "#dcfce7",
+    backgroundColor: "#fff7ed",
   },
   openNowBadgeClosed: {
     backgroundColor: "#fef2f2",
@@ -1153,7 +1167,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   openNowDotOpen: {
-    backgroundColor: "#22c55e",
+    backgroundColor: "#eb7825",
   },
   openNowDotClosed: {
     backgroundColor: "#ef4444",
@@ -1163,7 +1177,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   openNowTextOpen: {
-    color: "#166534",
+    color: "#9a3412",
   },
   openNowTextClosed: {
     color: "#991b1b",
@@ -1176,7 +1190,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   openingHoursRowToday: {
-    backgroundColor: "#dcfce7",
+    backgroundColor: "#fff7ed",
   },
   todayIndicator: {
     width: 6,
@@ -1192,7 +1206,7 @@ const styles = StyleSheet.create({
   },
   openingHoursTextToday: {
     fontWeight: "700",
-    color: "#166534",
+    color: "#9a3412",
   },
   showAllHoursButton: {
     flexDirection: "row",

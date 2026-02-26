@@ -120,6 +120,10 @@ interface ExperienceCard {
   images: string[];
   placeId: string;
   priceLevel: number;
+  openingHours?: {
+    open_now?: boolean;
+    weekday_text?: string[];
+  } | null;
 }
 
 interface HolidayWithExperiences {
@@ -507,6 +511,7 @@ async function fetchExperiencesForCategory(
       "places.userRatingCount",
       "places.photos",
       "places.types",
+      "places.regularOpeningHours",
     ].join(",");
 
     const requestBody = {
@@ -615,6 +620,7 @@ async function fetchExperiencesForCategories(
         "places.userRatingCount",
         "places.photos",
         "places.types",
+        "places.regularOpeningHours",
       ].join(",");
 
       const requestBody = {
@@ -796,5 +802,11 @@ function transformToExperienceCard(place: any, category: string): ExperienceCard
     images,
     placeId: place.id,
     priceLevel: priceLevelNum,
+    openingHours: place.regularOpeningHours
+      ? {
+          open_now: place.regularOpeningHours.openNow || false,
+          weekday_text: place.regularOpeningHours.weekdayDescriptions || [],
+        }
+      : null,
   };
 }

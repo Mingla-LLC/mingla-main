@@ -12,6 +12,10 @@ export interface HolidayExperience {
   images: string[];
   placeId: string;
   priceLevel: number;
+  openingHours?: {
+    open_now?: boolean;
+    weekday_text?: string[];
+  } | null;
 }
 
 export interface HolidayWithExperiences {
