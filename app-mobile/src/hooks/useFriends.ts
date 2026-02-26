@@ -50,6 +50,9 @@ export const useFriends = () => {
   // Fetch blocked users from blocked_users table (new system)
   const fetchBlockedUsers = useCallback(async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return; // Not authenticated yet, skip silently
+
       const result = await blockService.getBlockedUsers();
       
       if (result.error) {
