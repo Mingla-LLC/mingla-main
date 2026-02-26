@@ -30,7 +30,6 @@ export default function FriendRequestsModal({
   } = useFriends();
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"received" | "sent">("received");
   const [processedRequests, setProcessedRequests] = useState<{
     [key: string]: "accepted" | "declined";
   }>({});
@@ -58,11 +57,6 @@ export default function FriendRequestsModal({
   // Filter only incoming pending requests
   const incomingRequests = friendRequests.filter(
     (req) => req.type === "incoming" && req.status === "pending"
-  );
-
-  // Filter outgoing pending requests
-  const outgoingRequests = friendRequests.filter(
-    (req) => req.type === "outgoing" && req.status === "pending"
   );
 
   const handleAcceptRequest = async (requestId: string) => {
@@ -151,7 +145,7 @@ export default function FriendRequestsModal({
                   <View>
                     <Text style={styles.headerTitle}>Friend Requests</Text>
                     <Text style={styles.headerSubtitle}>
-                      {incomingRequests.length + outgoingRequests.length} pending requests
+                      {incomingRequests.length} pending {incomingRequests.length === 1 ? "request" : "requests"}
                     </Text>
                   </View>
                 </View>
@@ -160,73 +154,34 @@ export default function FriendRequestsModal({
                 </TouchableOpacity>
               </View>
 
-              {/* Tabs */}
-              <View style={styles.tabsContainer}>
-                <TouchableOpacity
-                  onPress={() => setActiveTab("received")}
-                  style={[styles.tab, activeTab === "received" && styles.tabActive]}
-                >
-                  <Feather
-                    name="inbox"
-                    size={16}
-                    color={activeTab === "received" ? "#eb7825" : "#6b7280"}
-                  />
-                  <Text
-                    style={[
-                      styles.tabText,
-                      activeTab === "received" && styles.tabTextActive,
-                    ]}
-                  >
-                    Received ({incomingRequests.length})
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setActiveTab("sent")}
-                  style={[styles.tab, activeTab === "sent" && styles.tabActive]}
-                >
-                  <Feather
-                    name="send"
-                    size={16}
-                    color={activeTab === "sent" ? "#eb7825" : "#6b7280"}
-                  />
-                  <Text
-                    style={[
-                      styles.tabText,
-                      activeTab === "sent" && styles.tabTextActive,
-                    ]}
-                  >
-                    Sent ({outgoingRequests.length})
-                  </Text>
-                </TouchableOpacity>
-              </View>
+
 
               {/* Content */}
               <ScrollView
                 style={styles.content}
                 contentContainerStyle={styles.contentContainer}
               >
-                {activeTab === "received" ? (
-                  // Received Requests Tab
-                  incomingRequests.length === 0 ? (
-                    <View style={styles.emptyState}>
-                      <View style={styles.emptyStateIcon}>
-                        <Feather name="inbox" size={32} color="#9ca3af" />
-                      </View>
-                      <Text style={styles.emptyStateTitle}>
-                        No Friend Requests
-                      </Text>
-                      <Text style={styles.emptyStateText}>
-                        You're all caught up! New friend requests will appear
-                        here.
-                      </Text>
-                      <View style={styles.emptyStateHint}>
-                        <Feather name="info" size={14} color="#9ca3af" />
-                        <Text style={styles.emptyStateHintText}>
-                          When someone sends you a friend request, you'll see it here
-                        </Text>
-                      </View>
+                {/* Received Requests */}
+                {incomingRequests.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <View style={styles.emptyStateIcon}>
+                      <Feather name="inbox" size={32} color="#9ca3af" />
                     </View>
-                  ) : (
+                    <Text style={styles.emptyStateTitle}>
+                      No Friend Requests
+                    </Text>
+                    <Text style={styles.emptyStateText}>
+                      You're all caught up! New friend requests will appear
+                      here.
+                    </Text>
+                    <View style={styles.emptyStateHint}>
+                      <Feather name="info" size={14} color="#9ca3af" />
+                      <Text style={styles.emptyStateHintText}>
+                        When someone sends you a friend request, you'll see it here
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
                     <View style={styles.requestsList}>
                       {incomingRequests.map((request) => {
                         const status = processedRequests[request.id];
@@ -363,90 +318,7 @@ export default function FriendRequestsModal({
                         );
                       })}
                     </View>
-                  )
-                ) : (
-                  // Sent Requests Tab
-                  outgoingRequests.length === 0 ? (
-                    <View style={styles.emptyState}>
-                      <View style={styles.emptyStateIcon}>
-                        <Feather name="send" size={32} color="#9ca3af" />
-                      </View>
-                      <Text style={styles.emptyStateTitle}>
-                        No Sent Requests
-                      </Text>
-                      <Text style={styles.emptyStateText}>
-                        You haven't sent any friend requests yet.
-                      </Text>
-                      <View style={styles.emptyStateHint}>
-                        <Feather name="info" size={14} color="#9ca3af" />
-                        <Text style={styles.emptyStateHintText}>
-                          Use the Add Friend button to send requests to new friends
-                        </Text>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.requestsList}>
-                      {outgoingRequests.map((request) => {
-                        // For outgoing requests, the receiver's info is stored in sender field
-                        const receiverName =
-                          request.sender?.display_name ||
-                          (request.sender?.first_name && request.sender?.last_name
-                            ? `${request.sender.first_name} ${request.sender.last_name}`
-                            : request.sender?.username) ||
-                          "Unknown";
-                        const initials = receiverName
-                          .split(" ")
-                          .map((n: string) => n[0])
-                          .join("")
-                          .toUpperCase()
-                          .slice(0, 2);
-
-                        return (
-                          <View key={request.id} style={styles.requestItem}>
-                            <View style={styles.requestContent}>
-                              {/* Avatar */}
-                              <View style={styles.avatarContainer}>
-                                <View style={styles.avatar}>
-                                  {request.sender?.avatar_url ? (
-                                    <Image
-                                      source={{ uri: request.sender.avatar_url }}
-                                      style={styles.avatarImage}
-                                    />
-                                  ) : (
-                                    <Text style={styles.avatarText}>
-                                      {initials}
-                                    </Text>
-                                  )}
-                                </View>
-                              </View>
-
-                              {/* User Info */}
-                              <View style={styles.userInfo}>
-                                <Text style={styles.userName} numberOfLines={1}>{receiverName}</Text>
-                                <Text style={styles.userUsername} numberOfLines={1}>
-                                  @{request.sender?.username || "unknown"}
-                                </Text>
-                                {request.sender?.email && (
-                                  <Text style={styles.userEmail} numberOfLines={1}>
-                                    {request.sender.email}
-                                  </Text>
-                                )}
-                                <Text style={styles.requestTime}>
-                                  Sent {formatTimestamp(request.created_at)}
-                                </Text>
-                              </View>
-
-                              {/* Pending Badge */}
-                              <View style={styles.pendingBadge}>
-                                <Text style={styles.pendingBadgeText}>Pending</Text>
-                              </View>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )
-                )}
+                  )}
               </ScrollView>
 
               {/* Footer */}
@@ -518,39 +390,6 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: 8,
     borderRadius: 12,
-  },
-  tabsContainer: {
-    flexDirection: "row",
-    marginHorizontal: 20,
-    marginBottom: 16,
-    backgroundColor: "#e9eef9",
-    borderRadius: 12,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-  },
-  tabActive: {
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#6b7280",
-  },
-  tabTextActive: {
-    color: "#eb7825",
   },
   content: {
     flex: 1,
@@ -708,17 +547,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-  },
-  pendingBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: "#fef3c7",
-    borderRadius: 12,
-  },
-  pendingBadgeText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#d97706",
   },
   footer: {
     paddingHorizontal: 20,
