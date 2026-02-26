@@ -16,6 +16,8 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Dimensions,
+  ScrollView,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFriends, BlockedUser } from "../hooks/useFriends";
@@ -194,20 +196,22 @@ export default function BlockedUsersModal({
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <View style={styles.headerIcon}>
-                <Feather name="shield" size={20} color="white" />
+            <View style={styles.headerContent}>
+              <View style={styles.headerLeft}>
+                <View style={styles.headerIcon}>
+                  <Feather name="shield" size={20} color="white" />
+                </View>
+                <View>
+                  <Text style={styles.headerTitle}>Blocked Users</Text>
+                  <Text style={styles.headerSubtitle}>
+                    {blockedUsers.length} {blockedUsers.length === 1 ? "user" : "users"} blocked
+                  </Text>
+                </View>
               </View>
-              <View>
-                <Text style={styles.title}>Blocked Users</Text>
-                <Text style={styles.subtitle}>
-                  {blockedUsers.length} {blockedUsers.length === 1 ? "user" : "users"} blocked
-                </Text>
-              </View>
+              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <Ionicons name="close" size={20} color="#6b7280" />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={20} color="#6b7280" />
-            </TouchableOpacity>
           </View>
 
           {/* Content */}
@@ -217,25 +221,22 @@ export default function BlockedUsersModal({
               <Text style={styles.loadingText}>Loading blocked users...</Text>
             </View>
           ) : (
-            <FlatList
-              data={blockedUsers}
-              renderItem={renderBlockedUser}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={
-                blockedUsers.length === 0
-                  ? styles.emptyListContainer
-                  : styles.listContainer
-              }
-              ListEmptyComponent={renderEmptyState}
+            <ScrollView
+              contentContainerStyle={styles.contentContainer}
+              style={styles.content}
               showsVerticalScrollIndicator={false}
-              style={styles.list}
-            />
+            >
+              {blockedUsers.length === 0 ? (
+                renderEmptyState()
+              ) : (
+                <View style={styles.listContainer}>
+                  {blockedUsers.map((item) => renderBlockedUser({ item, index: 0 }))}
+                </View>
+              )}
+            </ScrollView>
           )}
 
-          {/* Footer */}
-          <Text style={styles.footerText}>
-            Blocked users can't message you or see your activity
-          </Text>
+
         </View>
       </View>
     </Modal>
@@ -251,23 +252,24 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalContainer: {
-    backgroundColor: "#f9fafb",
+    backgroundColor: "white",
     borderRadius: 16,
     width: "100%",
     maxWidth: 400,
-    height: "75%",
+    height: Dimensions.get("window").height * 0.8,
+    maxHeight: Dimensions.get("window").height * 0.8,
     overflow: "hidden",
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: "column",
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 16,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   headerLeft: {
     flexDirection: "row",
@@ -278,7 +280,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: "#ef4444",
+    backgroundColor: "#eb7825",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -286,47 +288,38 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 12,
   },
-  title: {
+  headerTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: "#111827",
   },
-  subtitle: {
+  headerSubtitle: {
     fontSize: 14,
     color: "#6b7280",
   },
-  footerText: {
-    fontSize: 13,
-    color: "#6b7280",
-    textAlign: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "white",
+  content: {
+    flex: 1,
+    backgroundColor: "#f5f5f5",
   },
+  contentContainer: {
+    flexGrow: 1,
+    padding: 16,
+  },
+
   loadingContainer: {
     flex: 1,
-    padding: 40,
+    padding: 64,
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
+    minHeight: 200,
   },
   loadingText: {
     fontSize: 14,
     color: "#6b7280",
   },
-  list: {
-    flex: 1,
-  },
   listContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 32,
-  },
-  emptyListContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 24,
-    justifyContent: "center",
+    gap: 12,
   },
   userCard: {
     flexDirection: "row",
@@ -335,7 +328,6 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderRadius: 12,
     padding: 12,
-    marginBottom: 12,
   },
   userInfo: {
     flexDirection: "row",
@@ -345,6 +337,7 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     position: "relative",
+    flexShrink: 0,
   },
   avatar: {
     width: 44,
@@ -358,6 +351,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#eb7825",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   avatarText: {
     fontSize: 16,
@@ -371,7 +365,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: "#ef4444",
+    backgroundColor: "#eb7825",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -379,6 +373,7 @@ const styles = StyleSheet.create({
   },
   userDetails: {
     flex: 1,
+    minWidth: 0,
   },
   userName: {
     fontSize: 15,
@@ -388,7 +383,7 @@ const styles = StyleSheet.create({
   },
   userUsername: {
     fontSize: 13,
-    color: "#6b7280",
+    color: "#9ca3af",
   },
   blockedTime: {
     fontSize: 12,
@@ -396,26 +391,25 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   unblockButton: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     backgroundColor: "#eb7825",
     borderRadius: 8,
     minWidth: 80,
     alignItems: "center",
+    flexShrink: 0,
   },
   unblockButtonDisabled: {
     opacity: 0.6,
   },
   unblockButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
     color: "white",
   },
   emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 48,
+    paddingHorizontal: 24,
   },
   emptyIcon: {
     width: 64,
@@ -424,19 +418,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "500",
     color: "#111827",
-    marginBottom: 6,
+    marginBottom: 8,
     textAlign: "center",
   },
   emptySubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#6b7280",
     textAlign: "center",
-    lineHeight: 18,
+    lineHeight: 20,
   },
 });

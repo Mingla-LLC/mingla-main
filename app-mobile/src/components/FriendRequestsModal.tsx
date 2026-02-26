@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  Dimensions,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFriends } from "../hooks/useFriends";
@@ -320,13 +321,6 @@ export default function FriendRequestsModal({
                     </View>
                   )}
               </ScrollView>
-
-              {/* Footer */}
-              <View style={styles.footer}>
-                <Text style={styles.footerText}>
-                  Accept or decline friend requests to manage your connections
-                </Text>
-              </View>
             </>
           )}
         </View>
@@ -348,14 +342,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     width: "100%",
     maxWidth: 400,
-    minHeight: 400,
-    maxHeight: "80%",
+    height: Dimensions.get("window").height * 0.8,
+    maxHeight: Dimensions.get("window").height * 0.8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
     elevation: 16,
     flexDirection: "column",
+    overflow: "hidden",
   },
   header: {
     flexDirection: "row",
@@ -548,18 +543,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  footer: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "white",
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-  },
-  footerText: {
-    fontSize: 13,
-    color: "#6b7280",
-    textAlign: "center",
-  },
+
   loadingContainer: {
     padding: 64,
     alignItems: "center",
