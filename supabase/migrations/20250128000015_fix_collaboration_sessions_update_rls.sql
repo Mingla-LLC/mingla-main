@@ -20,7 +20,7 @@ USING (
     SELECT 1 FROM public.session_participants sp
     WHERE sp.session_id = collaboration_sessions.id
     AND sp.user_id = auth.uid()
-    AND sp.has_accepted = true
+
   )
 )
 WITH CHECK (
@@ -32,6 +32,5 @@ WITH CHECK (
     SELECT 1 FROM public.session_participants sp
     WHERE sp.session_id = collaboration_sessions.id
     AND sp.user_id = auth.uid()
-    AND sp.has_accepted = true
   )
 );
