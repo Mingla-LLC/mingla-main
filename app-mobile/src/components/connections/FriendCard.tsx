@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Friend } from '../../data/mockConnections';
 
@@ -47,9 +47,16 @@ export default function FriendCard({
       <View style={styles.friendContent}>
         <View style={styles.avatarContainer}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {friend.name.split(' ').map(n => n[0]).join('')}
-            </Text>
+            {friend.avatar || friend.avatar_url ? (
+              <Image 
+                source={{ uri: friend.avatar || friend.avatar_url }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <Text style={styles.avatarText}>
+                {friend.name.split(' ').map(n => n[0]).join('')}
+              </Text>
+            )}
           </View>
           <View style={[styles.statusDot, { backgroundColor: getStatusColor(friend.status) }]} />
         </View>
@@ -194,15 +201,15 @@ const styles = StyleSheet.create({
   friendCard: {
     backgroundColor: 'white',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    borderColor: '#f0f0f0',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
   },
   friendContent: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 16,
+    alignItems: 'center',
+    gap: 12,
   },
   avatarContainer: {
     position: 'relative',
@@ -214,10 +221,16 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   avatarText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   statusDot: {
@@ -236,8 +249,9 @@ const styles = StyleSheet.create({
   },
   friendHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
   nameContainer: {
     flexDirection: 'row',
@@ -245,35 +259,37 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   friendName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#111827',
+    letterSpacing: 0.3,
   },
   mutedBadge: {
     backgroundColor: '#f3f4f6',
-    padding: 4,
-    borderRadius: 4,
+    padding: 3,
+    borderRadius: 3,
   },
   friendUsername: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 12,
+    color: '#9ca3af',
     marginTop: 2,
   },
   mutualFriends: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginTop: 4,
+    fontSize: 11,
+    color: '#d1d5db',
+    marginTop: 3,
   },
   friendActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    flexShrink: 0,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 11,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
   statusOnline: {
     backgroundColor: '#dcfce7',
@@ -284,16 +300,16 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   messageButton: {
-    padding: 8,
+    padding: 6,
     backgroundColor: '#eb7825',
-    borderRadius: 8,
+    borderRadius: 6,
   },
   dropdownContainer: {
     position: 'relative',
   },
   dropdownButton: {
-    padding: 8,
-    borderRadius: 8,
+    padding: 6,
+    borderRadius: 6,
   },
   dropdown: {
     position: 'absolute',
@@ -327,7 +343,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   dropdownItemText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#111827',
   },
   dangerText: {
@@ -341,7 +357,7 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
   },
   mutedIndicatorText: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#6b7280',
     fontWeight: '500',
   },

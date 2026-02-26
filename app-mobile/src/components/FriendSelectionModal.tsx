@@ -91,9 +91,9 @@ export default function FriendSelectionModal({
                   style={styles.friendItem}
                 >
                   <View style={styles.avatarContainer}>
-                    {friend.avatar ? (
+                    {friend.avatar || friend.avatar_url ? (
                       <ImageWithFallback
-                        source={{ uri: friend.avatar }}
+                        source={{ uri: friend.avatar || friend.avatar_url }}
                         style={styles.avatar}
                       />
                     ) : (

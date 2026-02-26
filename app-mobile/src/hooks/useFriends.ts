@@ -143,6 +143,8 @@ export const useFriends = () => {
         console.error("Error fetching profiles:", profilesError);
       }
 
+      console.log('Fetched profiles:', allProfiles);
+
       // Build a lookup map for O(1) access
       const profilesMap = new Map(
         (allProfiles || []).map((p: any) => [p.id, p])

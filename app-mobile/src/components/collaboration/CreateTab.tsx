@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { Text, View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabase';
 import { useAppStore } from '../../store/appStore';
@@ -195,6 +195,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
       borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
+      overflow: 'hidden',
     },
     selectedFriendAvatarText: {
       color: 'white',
@@ -246,6 +247,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
+      overflow: 'hidden',
     },
     friendAvatarText: {
       color: 'white',
@@ -311,6 +313,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
       borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
+      overflow: 'hidden',
     },
     confirmFriendAvatarText: {
       color: 'white',
@@ -672,9 +675,16 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
               {selectedFriends.map((friend) => (
                 <View key={friend.id} style={styles.selectedFriendTag}>
                   <View style={styles.selectedFriendAvatar}>
-                    <Text style={styles.selectedFriendAvatarText}>
-                      {friend.name[0]}
-                    </Text>
+                    {friend.avatar ? (
+                      <Image
+                        source={{ uri: friend.avatar }}
+                        style={{ width: 24, height: 24, borderRadius: 12 }}
+                      />
+                    ) : (
+                      <Text style={styles.selectedFriendAvatarText}>
+                        {friend.name[0]}
+                      </Text>
+                    )}
                   </View>
                   <Text style={styles.selectedFriendName}>{friend.name}</Text>
                   <TouchableOpacity 
@@ -722,9 +732,16 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
                     ]}
                   >
                     <View style={styles.friendAvatar}>
-                      <Text style={styles.friendAvatarText}>
-                        {friend.name[0]}
-                      </Text>
+                      {friend.avatar ? (
+                        <Image
+                          source={{ uri: friend.avatar }}
+                          style={{ width: 40, height: 40, borderRadius: 20 }}
+                        />
+                      ) : (
+                        <Text style={styles.friendAvatarText}>
+                          {friend.name[0]}
+                        </Text>
+                      )}
                     </View>
                     <View style={styles.friendInfo}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -796,9 +813,16 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
             {selectedFriends.map((friend) => (
               <View key={friend.id} style={styles.confirmFriendItem}>
                 <View style={styles.confirmFriendAvatar}>
-                  <Text style={styles.confirmFriendAvatarText}>
-                    {friend.name[0]}
-                  </Text>
+                  {friend.avatar ? (
+                    <Image
+                      source={{ uri: friend.avatar }}
+                      style={{ width: 32, height: 32, borderRadius: 16 }}
+                    />
+                  ) : (
+                    <Text style={styles.confirmFriendAvatarText}>
+                      {friend.name[0]}
+                    </Text>
+                  )}
                 </View>
                 <Text style={styles.confirmFriendName}>{friend.name}</Text>
                 <View style={[

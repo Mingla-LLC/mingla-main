@@ -9,6 +9,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSessionManagement } from '../hooks/useSessionManagement';
@@ -33,6 +34,7 @@ interface SelectedFriend {
   name: string;
   username: string;
   avatar?: string;
+  avatar_url?: string;
 }
 
 export const CreateSessionModal: React.FC = () => {
@@ -245,7 +247,8 @@ export const CreateSessionModal: React.FC = () => {
           id: friend.id,
           name: friend.name || friend.display_name || friend.username,
           username: friend.username,
-          avatar: friend.avatar || friend.avatar_url,
+          avatar: friend.avatar,
+          avatar_url: friend.avatar_url || friend.avatar,
         },
       ]);
     }
@@ -341,9 +344,27 @@ export const CreateSessionModal: React.FC = () => {
               <View style={styles.selectedFriendsContainer}>
                 {selectedFriends.map((friend) => (
                   <View key={friend.id} style={styles.selectedFriendItem}>
-                    <Text style={styles.selectedFriendText}>{friend.name}</Text>
+                    <View style={styles.selectedFriendAvatar}>
+                      {friend.avatar || friend.avatar_url ? (
+                        <Image
+                          source={{ uri: friend.avatar || friend.avatar_url }}
+                          style={styles.selectedFriendAvatarImage}
+                        />
+                      ) : (
+                        <View style={styles.selectedFriendAvatarPlaceholder}>
+                          <Text style={styles.selectedFriendAvatarText}>
+                            {friend.name.split(' ').map(n => n[0]).join('')}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.selectedFriendInfo}>
+                      <Text style={styles.selectedFriendText}>{friend.name}</Text>
+                      <Text style={styles.selectedFriendUsername}>@{friend.username}</Text>
+                    </View>
                     <TouchableOpacity
                       onPress={() => setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id))}
+                      style={styles.selectedFriendRemove}
                     >
                       <Ionicons name="close-circle" size={20} color="#FF3B30" />
                     </TouchableOpacity>
@@ -681,16 +702,52 @@ const styles = StyleSheet.create({
   selectedFriendItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     backgroundColor: 'white',
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#e1e5e9',
+    borderColor: '#e5e7eb',
+  },
+  selectedFriendAvatar: {
+    position: 'relative',
+    flexShrink: 0,
+  },
+  selectedFriendAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+  },
+  selectedFriendAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#eb7825',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedFriendAvatarText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  selectedFriendInfo: {
+    flex: 1,
+    minWidth: 0,
   },
   selectedFriendText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1a1a1a',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  selectedFriendUsername: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  selectedFriendRemove: {
+    padding: 4,
+    flexShrink: 0,
   },
   reviewCard: {
     backgroundColor: 'white',

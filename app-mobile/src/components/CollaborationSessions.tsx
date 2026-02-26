@@ -11,6 +11,7 @@ import {
   NativeScrollEvent,
   Dimensions,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SessionViewModal from './SessionViewModal';
@@ -302,24 +303,34 @@ export default function CollaborationSessions({
                 {/* Selected Friends */}
                 {selectedFriends.length > 0 && (
                   <View style={styles.selectedFriendsContainer}>
-                    {selectedFriends.map((friend) => (
-                      <View key={friend.id} style={styles.selectedFriendTag}>
-                        <View style={styles.selectedFriendAvatar}>
-                          <Text style={styles.selectedFriendAvatarText}>
-                            {friend.name[0]}
+                    {selectedFriends.map((friend) => {
+                      const initials = friend.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                      return (
+                        <View key={friend.id} style={styles.selectedFriendTag}>
+                          <View style={styles.selectedFriendAvatar}>
+                            {friend.avatar ? (
+                              <Image
+                                source={{ uri: friend.avatar }}
+                                style={styles.selectedFriendAvatarImage}
+                              />
+                            ) : (
+                              <Text style={styles.selectedFriendAvatarText}>
+                                {initials}
+                              </Text>
+                            )}
+                          </View>
+                          <Text style={styles.selectedFriendName} numberOfLines={1}>
+                            {friend.name}
                           </Text>
+                          <TouchableOpacity
+                            onPress={() => toggleFriendSelection(friend)}
+                            style={styles.removeFriendButton}
+                          >
+                            <Ionicons name="close" size={12} color="#6B7280" />
+                          </TouchableOpacity>
                         </View>
-                        <Text style={styles.selectedFriendName} numberOfLines={1}>
-                          {friend.name}
-                        </Text>
-                        <TouchableOpacity
-                          onPress={() => toggleFriendSelection(friend)}
-                          style={styles.removeFriendButton}
-                        >
-                          <Ionicons name="close" size={12} color="#6B7280" />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 )}
 
@@ -353,6 +364,7 @@ export default function CollaborationSessions({
                   <View style={styles.friendsList}>
                     {filteredFriends.map((friend) => {
                       const isSelected = selectedFriends.some(f => f.id === friend.id);
+                      const initials = friend.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
                       return (
                         <TouchableOpacity
                           key={friend.id}
@@ -364,9 +376,16 @@ export default function CollaborationSessions({
                           activeOpacity={0.7}
                         >
                           <View style={styles.friendAvatar}>
-                            <Text style={styles.friendAvatarText}>
-                              {friend.name[0]}
-                            </Text>
+                            {friend.avatar ? (
+                              <Image
+                                source={{ uri: friend.avatar }}
+                                style={styles.friendAvatarImage}
+                              />
+                            ) : (
+                              <Text style={styles.friendAvatarText}>
+                                {initials}
+                              </Text>
+                            )}
                           </View>
                           <View style={styles.friendInfo}>
                             <Text style={styles.friendName}>{friend.name}</Text>
@@ -408,7 +427,7 @@ export default function CollaborationSessions({
                 ) : (
                   <Text style={styles.modalCreateButtonText}>
                     {selectedFriends.length > 0
-                      ? `Create & Invite (${selectedFriends.length})`
+                      ? `Invite (${selectedFriends.length})`
                       : 'Create'}
                   </Text>
                 )}
@@ -888,6 +907,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#eb7825',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  selectedFriendAvatarImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
   },
   selectedFriendAvatarText: {
     fontSize: 11,
@@ -967,6 +992,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
+    overflow: 'hidden',
+  },
+  friendAvatarImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   friendAvatarText: {
     fontSize: 14,
