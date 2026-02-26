@@ -304,8 +304,7 @@ async function cleanupUserData(
 
     // Collaboration invites
     await safeDelete("collaboration_invites", "inviter_id", userId);
-    await safeDelete("collaboration_invites", "invited_user_id", userId);
-    await safeDelete("collaboration_invites", "invited_by", userId);
+    await safeDelete("collaboration_invites", "invitee_id", userId);
 
     // Presence data
     await safeDelete("user_presence", "user_id", userId);

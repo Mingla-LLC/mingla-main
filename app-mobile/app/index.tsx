@@ -56,6 +56,9 @@ import { BoardSessionService } from "../src/services/boardSessionService";
 import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
+import { debugService } from "../src/services/debugService";
+import { DebugModal } from "../src/components/debug/DebugModal";
+import { useDebugGesture } from "../src/hooks/useDebugGesture";
 
 function AppContent() {
   const state = useAppState();
@@ -71,7 +74,23 @@ function AppContent() {
   const [showWelcomeDialog, setShowWelcomeDialog] = useState<boolean>(false);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
+  const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
   const helpButtonDismissedRef = useRef<boolean>(false);
+  const viewShotRef = useRef<any>(null);
+
+  // Initialize debug service on mount
+  useEffect(() => {
+    debugService.initialize();
+  }, []);
+
+  // Setup 5-tap gesture to open debug modal
+  const { handleTap: handleDebugTap } = useDebugGesture({
+    onTrigger: () => {
+      setShowDebugModal(true);
+      console.log('🐛 Debug modal opened via tap gesture');
+    },
+    enabled: true,
+  });
 
   // Destructure commonly used state
   const {
@@ -1683,6 +1702,12 @@ function AppContent() {
                       barStyle="dark-content"
                       backgroundColor="white"
                     />
+                    {/* Invisible tap zone: tap 5 times quickly to open debug console */}
+                    <TouchableOpacity
+                      activeOpacity={1}
+                      onPress={handleDebugTap}
+                      style={{ position: 'absolute', top: 0, right: 0, width: 44, height: 44, zIndex: 9999 }}
+                    />
                     <View style={styles.container}>
                       {/* Main Content */}
                       <View style={styles.mainContent}>
@@ -2064,6 +2089,11 @@ function AppContent() {
           </RecommendationsProvider>
         </CardsCacheProvider>
         <ToastContainer />
+        <DebugModal
+          isVisible={showDebugModal}
+          onClose={() => setShowDebugModal(false)}
+          viewShotRef={viewShotRef}
+        />
       </>
     );
   }
