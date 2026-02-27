@@ -15,7 +15,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -67,6 +67,7 @@ interface CustomHoliday {
   date: string; // ISO date string
   description: string;
   category: string;
+  categories?: string[];
   createdAt: string;
 }
 
@@ -578,6 +579,7 @@ export default function DiscoverScreen({
   onAddFriend,
   accountPreferences,
 }: DiscoverScreenProps) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
@@ -681,10 +683,10 @@ export default function DiscoverScreen({
   const [showCustomDayMonthPicker, setShowCustomDayMonthPicker] = useState(false);
   const [showCustomDayDayPicker, setShowCustomDayDayPicker] = useState(false);
   const [customDayDescription, setCustomDayDescription] = useState("");
-  const [customDayCategory, setCustomDayCategory] = useState("Dining Experiences");
-  const [showCustomDayCategoryPicker, setShowCustomDayCategoryPicker] = useState(false);
+  const [customDayCategories, setCustomDayCategories] = useState<string[]>(["Dining Experiences"]);
   const [customDayNameError, setCustomDayNameError] = useState<string | null>(null);
   const [customDayDateError, setCustomDayDateError] = useState<string | null>(null);
+  const [customDayCategoryError, setCustomDayCategoryError] = useState<string | null>(null);
 
   // Toggle holiday expansion
   const toggleHolidayExpansion = (holidayId: string) => {
@@ -2419,10 +2421,10 @@ export default function DiscoverScreen({
     setShowCustomDayMonthPicker(false);
     setShowCustomDayDayPicker(false);
     setCustomDayDescription("");
-    setCustomDayCategory("Dining Experiences");
-    setShowCustomDayCategoryPicker(false);
+    setCustomDayCategories(["Dining Experiences"]);
     setCustomDayNameError(null);
     setCustomDayDateError(null);
+    setCustomDayCategoryError(null);
   };
 
   const handleCustomDayDateChange = () => {}; // No longer needed - using month/day pickers
@@ -2440,11 +2442,19 @@ export default function DiscoverScreen({
       setCustomDayDateError("Date is required");
       hasError = true;
     }
+
+    if (customDayCategories.length === 0) {
+      setCustomDayCategoryError("Select at least one category");
+      hasError = true;
+    }
     
     if (hasError) return;
     
     // Store date as MM-DD format (recurring yearly)
     const dateStr = `${String(customDayMonth).padStart(2, "0")}-${String(customDayDay).padStart(2, "0")}`;
+    const normalizedCategories = customDayCategories.length > 0
+      ? customDayCategories
+      : ["Dining Experiences"];
     
     // Create new custom holiday
     const newCustomHoliday: CustomHoliday = {
@@ -2453,7 +2463,8 @@ export default function DiscoverScreen({
       name: customDayName.trim(),
       date: dateStr,
       description: customDayDescription.trim() || "Custom celebration day",
-      category: customDayCategory,
+      category: normalizedCategories[0],
+      categories: normalizedCategories,
       createdAt: new Date().toISOString(),
     };
     
@@ -2484,6 +2495,16 @@ export default function DiscoverScreen({
         await saveArchivedHolidaysToStorage(nextArchiveMap);
       }
     }
+  };
+
+  const toggleCustomDayCategory = (category: string) => {
+    setCustomDayCategories((prev) => {
+      if (prev.includes(category)) {
+        return prev.filter((item) => item !== category);
+      }
+      if (customDayCategoryError) setCustomDayCategoryError(null);
+      return [...prev, category];
+    });
   };
 
   const handleConfirmDeleteCustomHoliday = (holidayId: string, holidayName: string) => {
@@ -2568,11 +2589,13 @@ export default function DiscoverScreen({
     return personHolidays.map((h) => {
       // Calculate next occurrence - treats date as recurring (MM-DD or legacy ISO)
       const { date: holidayDate, daysAway } = getNextOccurrence(h.date);
+
+      const selectedCategories = (h.categories && h.categories.length > 0)
+        ? h.categories
+        : (h.category ? [h.category] : ["Dining Experiences"]);
       
       // Custom holidays show primary category + Dining Experiences
-      const categories = h.category === "Dining Experiences" 
-        ? ["Dining Experiences"] 
-        : [h.category, "Dining Experiences"];
+      const categories = Array.from(new Set([...selectedCategories, "Dining Experiences"]));
       
       return {
         id: h.id,
@@ -2580,7 +2603,7 @@ export default function DiscoverScreen({
         description: h.description,
         date: holidayDate,
         daysAway,
-        category: h.category,
+        category: selectedCategories[0],
         categories: categories,
         isFromCalendar: false,
         isCustom: true, // Mark as custom holiday
@@ -2650,6 +2673,7 @@ export default function DiscoverScreen({
             description: h.description,
             date: h.date,
             category: h.category,
+            categories: h.categories,
           }));
 
         const response = await HolidayExperiencesService.getHolidayExperiences({
@@ -3480,13 +3504,21 @@ export default function DiscoverScreen({
         animationType="slide"
         onRequestClose={handleCloseAddPersonModal}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.addPersonBottomSheetOverlay}>
           <TouchableOpacity
             style={styles.backdropTouch}
             activeOpacity={1}
             onPress={handleCloseAddPersonModal}
           />
-          <View style={styles.addPersonModalContent}>
+          <View
+            style={[
+              styles.addPersonBottomSheetContent,
+              { paddingBottom: Platform.OS === "ios" ? 48 + insets.bottom : 48 },
+            ]}
+          >
+            <View style={styles.addPersonSheetHandleContainer}>
+              <View style={styles.addPersonSheetHandle} />
+            </View>
             {/* Modal Header */}
             <View style={styles.addPersonModalHeader}>
               <View>
@@ -3628,31 +3660,45 @@ export default function DiscoverScreen({
         animationType="slide"
         onRequestClose={handleCloseAddCustomDayModal}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.addPersonBottomSheetOverlay}>
           <TouchableOpacity
             style={styles.backdropTouch}
             activeOpacity={1}
             onPress={handleCloseAddCustomDayModal}
           />
-          <View style={styles.addPersonModalContent}>
-            {/* Modal Header */}
-            <View style={styles.customDayModalHeader}>
-              <View style={styles.customDayHeaderLeft}>
-                <View style={styles.customDayIconContainer}>
-                  <Ionicons name="calendar" size={20} color="white" />
-                </View>
-                <View>
-                  <Text style={styles.addPersonModalTitle}>Add Custom Day</Text>
-                  <Text style={styles.addPersonModalSubtitle}>Create a personal reminder</Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                onPress={handleCloseAddCustomDayModal}
-                style={styles.modalCloseButton}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
+          <View
+            style={[
+              styles.addPersonBottomSheetContent,
+              styles.customDayBottomSheetContent,
+              { paddingBottom: Platform.OS === "ios" ? 48 + insets.bottom : 48 },
+            ]}
+          >
+            <View style={styles.addPersonSheetHandleContainer}>
+              <View style={styles.addPersonSheetHandle} />
             </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.customDayModalScrollContent}
+            >
+              {/* Modal Header */}
+              <View style={styles.customDayModalHeader}>
+                <View style={styles.customDayHeaderLeft}>
+                  <View style={styles.customDayIconContainer}>
+                    <Ionicons name="calendar" size={20} color="white" />
+                  </View>
+                  <View>
+                    <Text style={styles.addPersonModalTitle}>Add Custom Day</Text>
+                    <Text style={styles.addPersonModalSubtitle}>Create a personal reminder</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  onPress={handleCloseAddCustomDayModal}
+                  style={styles.modalCloseButton}
+                >
+                  <Ionicons name="close" size={24} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
 
             {/* Day Name Field */}
             <View style={styles.addPersonFieldContainer}>
@@ -3850,63 +3896,40 @@ export default function DiscoverScreen({
             {/* Category Field */}
             <View style={styles.addPersonFieldContainer}>
               <Text style={styles.addPersonFieldLabel}>Category</Text>
-              <TouchableOpacity
-                style={styles.addPersonInput}
-                onPress={() => setShowCustomDayCategoryPicker(!showCustomDayCategoryPicker)}
-                activeOpacity={0.7}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Ionicons 
-                      name={(categoryIcons[customDayCategory] || "sparkles-outline") as any} 
-                      size={18} 
-                      color="#eb7825" 
-                      style={{ marginRight: 8 }}
-                    />
-                    <Text style={{ color: "#1f2937", fontSize: 14 }}>{customDayCategory}</Text>
-                  </View>
-                  <Ionicons 
-                    name={showCustomDayCategoryPicker ? "chevron-up" : "chevron-down"} 
-                    size={18} 
-                    color="#9ca3af" 
-                  />
-                </View>
-              </TouchableOpacity>
-              {showCustomDayCategoryPicker && (
-                <View style={styles.categoryPickerContainer}>
-                  <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
-                    {ALL_CATEGORIES.map((cat) => (
-                      <TouchableOpacity
-                        key={cat}
+              <Text style={styles.customDayCategoryHint}>Select all the categories you like</Text>
+              <View style={styles.customDayCategoryPillsContainer}>
+                {ALL_CATEGORIES.map((cat) => {
+                  const isSelected = customDayCategories.includes(cat);
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[
+                        styles.customDayCategoryPill,
+                        isSelected && styles.customDayCategoryPillSelected,
+                      ]}
+                      onPress={() => toggleCustomDayCategory(cat)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={(categoryIcons[cat] || "sparkles-outline") as any}
+                        size={14}
+                        color={isSelected ? "#eb7825" : "#6b7280"}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text
                         style={[
-                          styles.categoryPickerItem,
-                          customDayCategory === cat && styles.categoryPickerItemSelected,
+                          styles.customDayCategoryPillText,
+                          isSelected && styles.customDayCategoryPillTextSelected,
                         ]}
-                        onPress={() => {
-                          setCustomDayCategory(cat);
-                          setShowCustomDayCategoryPicker(false);
-                        }}
-                        activeOpacity={0.7}
                       >
-                        <Ionicons 
-                          name={(categoryIcons[cat] || "sparkles-outline") as any} 
-                          size={16} 
-                          color={customDayCategory === cat ? "#eb7825" : "#6b7280"} 
-                          style={{ marginRight: 8 }}
-                        />
-                        <Text style={[
-                          styles.categoryPickerItemText,
-                          customDayCategory === cat && styles.categoryPickerItemTextSelected,
-                        ]}>
-                          {cat}
-                        </Text>
-                        {customDayCategory === cat && (
-                          <Ionicons name="checkmark" size={16} color="#eb7825" style={{ marginLeft: "auto" }} />
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {customDayCategoryError && (
+                <Text style={styles.errorText}>{customDayCategoryError}</Text>
               )}
             </View>
 
@@ -3919,6 +3942,7 @@ export default function DiscoverScreen({
               <Ionicons name="add" size={18} color="#ffffff" style={{ marginRight: 6 }} />
               <Text style={styles.addCustomDayButtonText}>Add Custom Day</Text>
             </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -4710,6 +4734,30 @@ const styles = StyleSheet.create({
   addPersonInputError: {
     borderColor: "#ef4444",
   },
+  addPersonBottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  addPersonBottomSheetContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    width: "100%",
+    maxHeight: "90%",
+  },
+  addPersonSheetHandleContainer: {
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  addPersonSheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#d1d5db",
+  },
   // Add Person Modal styles
   modalOverlay: {
     flex: 1,
@@ -4902,6 +4950,45 @@ const styles = StyleSheet.create({
     color: "#111827",
     height: 80,
     textAlignVertical: "top",
+  },
+  customDayCategoryHint: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginBottom: 10,
+  },
+  customDayCategoryPillsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  customDayCategoryPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#f3f4f6",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  customDayCategoryPillSelected: {
+    backgroundColor: "#fff7ed",
+    borderColor: "#eb7825",
+  },
+  customDayCategoryPillText: {
+    fontSize: 13,
+    color: "#374151",
+    fontWeight: "500",
+  },
+  customDayCategoryPillTextSelected: {
+    color: "#eb7825",
+    fontWeight: "600",
+  },
+  customDayBottomSheetContent: {
+    height: "88%",
+  },
+  customDayModalScrollContent: {
+    paddingBottom: 12,
   },
   addCustomDayButton: {
     flexDirection: "row",
