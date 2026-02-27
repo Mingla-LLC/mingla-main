@@ -435,6 +435,19 @@ export const useFriends = () => {
         } else {
           // Not a UUID - try to find by email (for email-only invites)
           if (receiverEmail) {
+            const { data: visibilityData } = await supabase.rpc(
+              "resolve_user_visibility_by_identifier",
+              { p_identifier: receiverEmail.trim().toLowerCase() }
+            );
+
+            const visibility = Array.isArray(visibilityData)
+              ? visibilityData[0]
+              : visibilityData;
+
+            if (visibility?.user_exists && (visibility?.is_blocked || !visibility?.can_view)) {
+              throw new Error("User not found. Please check the email and try again.");
+            }
+
             const { data: userByEmail, error: emailError } = await supabase
               .from("profiles")
               .select("id, username, email")
@@ -456,6 +469,11 @@ export const useFriends = () => {
                 receiverEmail,
                 userExists,
               });
+            } else if (visibility?.user_exists && visibility?.can_view && visibility?.profile_id) {
+              receiverId = visibility.profile_id;
+              userExists = true;
+              receiverEmail = visibility.email || receiverEmail;
+              receiverUsernameFinal = visibility.username || receiverUsernameFinal;
             } else {
               console.log("User not found by email:", receiverEmail);
             }

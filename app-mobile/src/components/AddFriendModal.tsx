@@ -48,6 +48,7 @@ export default function AddFriendModal({
   const [error, setError] = useState("");
   const [searchCompleted, setSearchCompleted] = useState(false);
   const [userNotFound, setUserNotFound] = useState(false);
+  const [suppressInviteAction, setSuppressInviteAction] = useState(false);
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(
     null
   );
@@ -82,6 +83,7 @@ export default function AddFriendModal({
       setIsSearching(false);
       setSearchCompleted(false);
       setUserNotFound(false);
+      setSuppressInviteAction(false);
       return;
     }
 
@@ -89,6 +91,7 @@ export default function AddFriendModal({
     setError("");
     setSearchCompleted(false);
     setUserNotFound(false);
+    setSuppressInviteAction(false);
 
     // Debounce search by 500ms
     searchTimeoutRef.current = setTimeout(async () => {
@@ -136,9 +139,31 @@ export default function AddFriendModal({
 
         // Check if no results found
         if (filteredResults.length === 0) {
+          let shouldSuppressInvite = false;
+
+          if (searchTerm.length >= 3) {
+            const { data: visibilityData } = await supabase.rpc(
+              "resolve_user_visibility_by_identifier",
+              { p_identifier: searchTerm }
+            );
+
+            const visibility = Array.isArray(visibilityData)
+              ? visibilityData[0]
+              : visibilityData;
+
+            if (
+              visibility?.user_exists &&
+              (visibility?.is_blocked || !visibility?.can_view)
+            ) {
+              shouldSuppressInvite = true;
+            }
+          }
+
+          setSuppressInviteAction(shouldSuppressInvite);
           setUserNotFound(true);
           setSelectedUser(null);
         } else {
+          setSuppressInviteAction(false);
           setUserNotFound(false);
           // If exact match found, auto-select it
           if (filteredResults.length === 1) {
@@ -162,6 +187,7 @@ export default function AddFriendModal({
         setSearchResults([]);
         setSearchCompleted(false);
         setUserNotFound(false);
+        setSuppressInviteAction(false);
       } finally {
         setIsSearching(false);
       }
@@ -265,6 +291,7 @@ export default function AddFriendModal({
     setIsSearching(false);
     setSearchCompleted(false);
     setUserNotFound(false);
+    setSuppressInviteAction(false);
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -331,6 +358,9 @@ export default function AddFriendModal({
                   setSelectedUser(null);
                   setRequestSent(false);
                   setError("");
+                  setSearchCompleted(false);
+                  setUserNotFound(false);
+                  setSuppressInviteAction(false);
                 }}
                 style={[styles.tab, activeTab === "add" && styles.tabActive]}
               >
@@ -436,10 +466,10 @@ export default function AddFriendModal({
                     </Text>
                     <Text style={styles.notFoundSubtext}>
                       {searchInput.includes("@")
-                        ? "Invite them to join Mingla and connect with you!"
-                        : "To invite someone who isn't on Mingla, please use their email address."}
+                        ? "Try a different email or check for typos."
+                        : "Try a different username."}
                     </Text>
-                    {searchInput.includes("@") && (
+                    {searchInput.includes("@") && !suppressInviteAction && (
                       <TouchableOpacity
                         onPress={async () => {
                           setIsLoading(true);
