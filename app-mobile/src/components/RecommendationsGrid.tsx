@@ -220,12 +220,6 @@ export const RecommendationsGrid: React.FC<RecommendationsGridProps> = ({
       if (data?.error) {
         throw new Error(data.error);
       }
-      
-        cardCount: data?.cards?.length || 0,
-        personalization: data?.meta?.userPersonalization,
-        processingTime: data?.meta?.processingTimeMs,
-        personalizationFactors: data?.meta?.personalizationFactors
-      });
 
       // Enhance cards with OpenAI if we have cards
       if (data?.cards && data.cards.length > 0) {

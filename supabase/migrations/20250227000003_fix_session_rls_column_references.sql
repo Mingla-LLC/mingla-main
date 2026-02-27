@@ -1,13 +1,12 @@
 -- ============================================
--- Add RLS Policies for session_participants and collaboration_invites
+-- Fix RLS Policies - Correct Column References
 -- ============================================
--- These tables had RLS enabled but NO policies defined, causing all access to be blocked!
--- This migration adds the necessary policies to allow the app to function
+-- The previous migration had table-qualified column names in WHERE clauses
+-- This migration fixes them to use unqualified names (the standard for RLS)
 
 -- ===========================================
--- RLS Policies for session_participants
+-- Fix session_participants RLS Policies
 -- ===========================================
--- Allow users to view and manage participants in sessions they're involved with
 
 DROP POLICY IF EXISTS "Users can view session participants in sessions they're in" ON public.session_participants;
 CREATE POLICY "Users can view session participants in sessions they're in" 
@@ -72,9 +71,8 @@ USING (
 );
 
 -- ===========================================
--- RLS Policies for collaboration_invites
+-- Fix collaboration_invites RLS Policies
 -- ===========================================
--- Allow users to view and manage invites they're involved with
 
 DROP POLICY IF EXISTS "Users can view their own invites" ON public.collaboration_invites;
 CREATE POLICY "Users can view their own invites" 
