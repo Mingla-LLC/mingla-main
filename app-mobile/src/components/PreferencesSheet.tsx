@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Text,
   View,
@@ -11,14 +11,16 @@ import {
   Platform,
   Modal,
   Alert,
-  KeyboardAvoidingView,
-  Keyboard,
   Dimensions,
+  findNodeHandle,
+  UIManager,
 } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { KeyboardAwareView } from "./ui/KeyboardAwareView";
+import { useKeyboard } from "../hooks/useKeyboard";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { PreferencesService } from "../services/preferencesService";
@@ -36,6 +38,7 @@ import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
 import { getRate } from "../services/currencyService";
 
 interface PreferencesSheetProps {
+  visible?: boolean;
   onClose?: () => void;
   onSave?: (preferences: any) => Promise<boolean> | boolean | void;
   accountPreferences?: {
@@ -170,6 +173,7 @@ const getAllowedCategoryIds = (
 };
 
 export default function PreferencesSheet({
+  visible,
   onClose,
   onSave,
   accountPreferences,
@@ -237,38 +241,69 @@ export default function PreferencesSheet({
   const scrollViewRef = useRef<ScrollView>(null);
   const locationSectionRef = useRef<View>(null);
   const locationSectionY = useRef<number>(0);
+  const budgetInputContainerRef = useRef<View>(null);
+  const constraintInputContainerRef = useRef<View>(null);
+  const locationInputContainerRef = useRef<View>(null);
 
   // Loading states
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   const isInternalUpdate = useRef(false);
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  const { keyboardHeight: kbHeight } = useKeyboard();
+  const kbHeightRef = useRef(0);
+  kbHeightRef.current = kbHeight;
+
+  /**
+   * Scroll the field to sit just above the keyboard.
+   * 
+   * Measures field position relative to ScrollView, then calculates exact scroll
+   * offset needed to position field bottom ~30px above keyboard.
+   */
+  const scrollToField = useCallback((fieldRef: React.RefObject<View | null>) => {
+    if (!fieldRef.current || !scrollViewRef.current) return;
+
+    setTimeout(() => {
+      const kbH = kbHeightRef.current;
+      if (kbH === 0) return; // keyboard not visible
+      
+      const scrollNode = findNodeHandle(scrollViewRef.current!);
+      if (!scrollNode) return;
+      
+      // Measure field position relative to the scroll view's content
+      (fieldRef.current as any).measureLayout(
+        scrollNode,
+        (_x: number, y: number, _w: number, h: number) => {
+          // Field spans from 'y' to 'y + h' within scroll content
+          // We want to scroll so that field's bottom is visible and not blocked by keyboard
+          
+          const { height: screenHeight } = Dimensions.get('window');
+          const MODAL_HEIGHT = screenHeight * 0.88;
+          
+          // Space available to display content (excluding keyboard area)
+          const availableHeight = MODAL_HEIGHT - kbH;
+          
+          // Target: position field's bottom at 30px above where keyboard starts
+          // This means the field should appear at position (availableHeight - 30)
+          const targetFieldBottomInView = availableHeight - 30;
+          
+          // Field's bottom in scroll content is at 'y + h'
+          // We need to scroll to a position where 'y + h - scrollY = targetFieldBottomInView'
+          // Therefore: scrollY = (y + h) - targetFieldBottomInView
+          const scrollTarget = Math.max(0, (y + h) - targetFieldBottomInView);
+          
+          scrollViewRef.current?.scrollTo({
+            y: scrollTarget,
+            animated: true,
+          });
+        },
+        () => {} // onFail callback
+      );
+    }, 250); // wait for keyboard animation to start
+  }, []);
 
   // Track initial preferences for change detection
   const [initialPreferences, setInitialPreferences] = useState<any>(null);
-
-  // Keyboard listener to track keyboard height
-  useEffect(() => {
-    const keyboardWillShowListener = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      (event) => {
-        setKeyboardHeight(event.endCoordinates.height);
-      }
-    );
-
-    const keyboardWillHideListener = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-      () => {
-        setKeyboardHeight(0);
-      }
-    );
-
-    return () => {
-      keyboardWillShowListener.remove();
-      keyboardWillHideListener.remove();
-    };
-  }, []);
 
   // Default preferences
   const defaultPreferences = {
@@ -928,23 +963,12 @@ export default function PreferencesSheet({
     }
   };
 
-  if (isLoading) {
-    return (
-      <View style={styles.overlayContainer}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#eb7825" />
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.overlayContainer}>
-      <View style={styles.modalContainer}>
-        <SafeAreaView style={styles.container} edges={[]}>
-          <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-          {/* Header */}
-          <View style={styles.header}>
+  const sheetContent = (
+    <>  
+      <SafeAreaView style={styles.container} edges={[]}>
+        <StatusBar barStyle="dark-content" />
+        {/* Header */}
+        <View style={styles.header}>
         {onClose && (
           <TouchableOpacity
             onPress={onClose}
@@ -956,26 +980,25 @@ export default function PreferencesSheet({
           </TouchableOpacity>
         )}
         <View style={styles.titleContainer}>
-          <Text style={styles.title}>Narrow your search</Text>
-          {isCollaborationMode && sessionName && (
-            <Text style={styles.subtitle}>
-              Collaboration Preferences for "{sessionName}"
+          {isCollaborationMode && sessionName ? (
+            <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+              Preferences for {sessionName}
             </Text>
+          ) : (
+            <Text style={styles.title}>Solo Preferences</Text>
           )}
         </View>
-        {onClose && <View style={styles.headerSpacer} />}
-      </View>
+          {onClose && <View style={styles.headerSpacer} />}
+        </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
+        <KeyboardAwareView style={{ flex: 1 }} dismissOnTap={false}>
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+          >
           {/* Experience Type Section */}
           <View style={[styles.section, {marginTop: 20}]}>
             <Text style={styles.sectionTitle}>Experience Type</Text>
@@ -1057,7 +1080,7 @@ export default function PreferencesSheet({
               <Text style={styles.sectionSubtitle}>
                 What's the most you want to spend?
               </Text>
-              <View style={styles.budgetInputContainer}>
+              <View style={styles.budgetInputContainer} ref={budgetInputContainerRef}>
                 <Text style={styles.dollarSign}>{getCurrencySymbol(accountPreferences?.currency || 'USD')}</Text>
                 <TextInput
                   value={budgetMax?.toString() || ""}
@@ -1065,6 +1088,7 @@ export default function PreferencesSheet({
                     setBudgetMax(text ? Number(text) : "");
                     setBudgetMin(0);
                   }}
+                  onFocus={() => scrollToField(budgetInputContainerRef)}
                   keyboardType="numeric"
                   style={styles.budgetInput}
                   placeholder="Enter maximum amount"
@@ -1298,6 +1322,7 @@ export default function PreferencesSheet({
                   styles.constraintInputContainer,
                   false && styles.constraintInputContainerFocused,
                 ]}
+                ref={constraintInputContainerRef}
               >
                 <Ionicons
                   name={
@@ -1317,6 +1342,7 @@ export default function PreferencesSheet({
                       numericValue ? Number(numericValue) : ""
                     );
                   }}
+                  onFocus={() => scrollToField(constraintInputContainerRef)}
                   keyboardType="numeric"
                   style={styles.constraintInput}
                   placeholder={constraintType === "time" ? "e.g. 20" : (accountPreferences?.measurementSystem === "Metric" ? "e.g. 5" : "e.g. 3")}
@@ -1345,6 +1371,7 @@ export default function PreferencesSheet({
                 styles.locationInputContainer,
                 isInputFocused && styles.locationInputContainerFocused,
               ]}
+              ref={locationInputContainerRef}
             >
               <Ionicons
                 name="location"
@@ -1363,15 +1390,7 @@ export default function PreferencesSheet({
                   if (suggestions.length > 0) {
                     setShowSuggestions(true);
                   }
-
-                  // Scroll to location section when input is focused
-                  // Use a delay to ensure layout is complete
-                  setTimeout(() => {
-                    if (scrollViewRef.current) {
-                      // Scroll to end - paddingBottom ensures input is above footer
-                      scrollViewRef.current.scrollToEnd({ animated: true });
-                    }
-                  }, 300); // Delay to account for keyboard animation
+                  scrollToField(locationInputContainerRef);
                 }}
                 onBlur={handleInputBlur}
                 autoCapitalize="words"
@@ -1441,16 +1460,12 @@ export default function PreferencesSheet({
               )}
           </View>
 
-          {/* Spacer when input is focused to ensure content is above footer */}
-          {isInputFocused && keyboardHeight > 0 && (
-            <View style={{ height: keyboardHeight + 20 }} />
-          )}
-        </ScrollView>
+          </ScrollView>
         {/* Apply Button */}
         <View
           style={[
             styles.footer,
-            { paddingBottom: 10 },
+            { paddingBottom: 48 },
           ]}
         >
           <View style={styles.footerButtonsContainer}>
@@ -1479,7 +1494,7 @@ export default function PreferencesSheet({
             </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareView>
 
       {/* Calendar Modal */}
       <Modal
@@ -1549,7 +1564,51 @@ export default function PreferencesSheet({
             onChange={handleTimePickerChange}
           />
         ))}
-        </SafeAreaView>
+      </SafeAreaView>
+    </>
+  );
+
+  // If `visible` prop is supplied, present inside a Modal (88% height bottom-sheet)
+  // Otherwise render inline for backward-compat (full-screen usage from index.tsx)
+  if (typeof visible !== "undefined") {
+    return (
+      <Modal
+        visible={visible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={onClose}
+        statusBarTranslucent
+      >
+        <View style={styles.sheetOverlay}>
+          <View style={styles.sheetContent}>
+            {isLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#eb7825" />
+              </View>
+            ) : (
+              sheetContent
+            )}
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  // Legacy inline rendering (full-screen)
+  if (isLoading) {
+    return (
+      <View style={styles.overlayContainer}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#eb7825" />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.overlayContainer}>
+      <View style={styles.modalContainer}>
+        {sheetContent}
       </View>
     </View>
   );
@@ -1557,7 +1616,31 @@ export default function PreferencesSheet({
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// Match SessionViewModal: 88% height bottom-sheet
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
+
 const styles = StyleSheet.create({
+  // --- New bottom-sheet modal styles (used when `visible` prop is passed) ---
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    justifyContent: "flex-end",
+    alignItems: "center",
+  },
+  sheetContent: {
+    height: SHEET_HEIGHT,
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 30,
+  },
+  // --- Legacy full-screen styles (used when `visible` prop is not provided) ---
   overlayContainer: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1570,13 +1653,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     overflow: "hidden",
   },
+  // --- Shared styles ---
   container: {
     flex: 1,
     backgroundColor: "#ffffff",
   },
   loadingContainer: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#ffffff",
@@ -1585,7 +1668,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 80,
+    paddingBottom: 110,
   },
   header: {
     flexDirection: "row",
@@ -1632,9 +1715,9 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   subtitle: {
-    fontSize: 14,
-    fontWeight: "400",
-    color: "#6b7280",
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#374151",
     textAlign: "center",
   },
   section: {

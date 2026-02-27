@@ -1731,11 +1731,12 @@ function AppContent() {
     profile &&
     profile.has_completed_onboarding === true
   ) {
-    // Show CollaborationPreferences as full screen if collaboration preferences are open
+    // Show CollaborationPreferences as a bottom-sheet modal
     if (showCollabPreferences && currentMode !== "solo" && currentSessionId) {
       return (
         <ErrorBoundary>
           <PreferencesSheet
+            visible={true}
             onClose={() => {
               setShowCollabPreferences(false);
             }}
@@ -1754,11 +1755,12 @@ function AppContent() {
       );
     }
 
-    // Show PreferencesSheet as full screen if preferences are open
+    // Show PreferencesSheet as a bottom-sheet modal
     if (showPreferences) {
       return (
         <ErrorBoundary>
           <PreferencesSheet
+            visible={true}
             onClose={() => {
               setShowPreferences(false);
             }}

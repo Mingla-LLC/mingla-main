@@ -11,6 +11,7 @@ import {
   SafeAreaView,
   StatusBar,
   Platform,
+  Image,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -746,7 +747,7 @@ export default function SessionViewModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <SafeAreaView style={styles.container}>
@@ -787,16 +788,27 @@ export default function SessionViewModal({
                       initials = p.profiles.username.substring(0, 2).toUpperCase();
                     }
                     
+                    // Check if profile picture exists
+                    const hasProfilePicture = p.profiles?.avatar_url && p.profiles.avatar_url.trim() !== "";
+                    
                     return (
                       <View
                         key={p.id}
                         style={[
                           styles.miniAvatar,
-                          { backgroundColor: colors[colorIndex] },
                           index > 0 && { marginLeft: -6 },
                         ]}
                       >
-                        <Text style={styles.miniAvatarText}>{initials}</Text>
+                        {hasProfilePicture ? (
+                          <Image
+                            source={{ uri: p.profiles.avatar_url }}
+                            style={styles.miniAvatarImage}
+                          />
+                        ) : (
+                          <View style={[styles.miniAvatarInitials, { backgroundColor: colors[colorIndex] }]}>
+                            <Text style={styles.miniAvatarText}>{initials}</Text>
+                          </View>
+                        )}
                       </View>
                     );
                   })}
@@ -973,32 +985,48 @@ export default function SessionViewModal({
   );
 }
 
+// Modal height with proper centering - sits flush on bottom nav
+const MODAL_HEIGHT = SCREEN_HEIGHT * 0.88; // 88% of screen height for premium centered experience
+const MODAL_MARGIN_BOTTOM = 0; // 0px margin for flush positioning on Android
+
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
     justifyContent: "flex-end",
+    alignItems: "center",
   },
   modalContent: {
-    height: "95%",
-    backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    height: MODAL_HEIGHT,
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 30,
+    marginBottom: MODAL_MARGIN_BOTTOM,
   },
   container: {
     flex: 1,
     backgroundColor: "white",
+    justifyContent: "flex-start",
+    overflow: "hidden",
+    paddingVertical: 12,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
+    paddingVertical: 10,
+    borderBottomWidth: 0.5,
     borderBottomColor: "#E5E7EB",
     backgroundColor: "white",
+    marginBottom: 2,
   },
   closeButton: {
     width: 40,
@@ -1012,7 +1040,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: "#111827",
   },
@@ -1036,6 +1064,19 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     borderWidth: 1.5,
     borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  miniAvatarImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 9,
+  },
+  miniAvatarInitials: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1100,8 +1141,18 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    paddingTop: 16,
+    paddingBottom: 28,
+    paddingHorizontal: 8,
+    backgroundColor: "white",
+    overflow: "visible",
   },
   savedContainer: {
     flex: 1,
+    marginTop: 0,
+    paddingHorizontal: 8,
+    paddingBottom: 28,
+    backgroundColor: "white",
+    overflow: "visible",
   },
 });
