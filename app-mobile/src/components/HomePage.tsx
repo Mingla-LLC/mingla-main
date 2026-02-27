@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Text,
   View,
@@ -106,7 +106,17 @@ export default function HomePage({
   } = useInAppNotifications();
 
   // Get friend request handlers from useFriends hook
-  const { acceptFriendRequest, declineFriendRequest } = useFriends();
+  const { acceptFriendRequest, declineFriendRequest } = useFriends({ autoFetchBlockedUsers: false });
+
+  const noop = useMemo(() => () => {}, []);
+
+  const handleOpenNotifications = useCallback(() => {
+    setShowNotificationsModal(true);
+  }, []);
+
+  const handleCloseNotifications = useCallback(() => {
+    setShowNotificationsModal(false);
+  }, []);
 
   const handleMarkAllRead = () => {
     markAllAsRead();
@@ -245,7 +255,7 @@ export default function HomePage({
 
           <View style={styles.headerRight}>
             <TouchableOpacity
-              onPress={() => setShowNotificationsModal(true)}
+              onPress={handleOpenNotifications}
               style={styles.notificationButton}
               activeOpacity={0.6}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -285,9 +295,9 @@ export default function HomePage({
                 onSessionSelect={onSessionSelect}
                 onSoloSelect={onSoloSelect}
                 onCreateSession={onCreateSession}
-                onAcceptInvite={onAcceptInvite || (() => {})}
-                onDeclineInvite={onDeclineInvite || (() => {})}
-                onCancelInvite={onCancelInvite || (() => {})}
+                onAcceptInvite={onAcceptInvite || noop}
+                onDeclineInvite={onDeclineInvite || noop}
+                onCancelInvite={onCancelInvite || noop}
                 onSessionStateChanged={onSessionStateChanged}
                 availableFriends={availableFriends}
                 isCreatingSession={isCreatingSession}
@@ -301,7 +311,7 @@ export default function HomePage({
             accountPreferences={accountPreferences}
             currentMode={currentMode}
             onAddToCalendar={onAddToCalendar}
-            onCardLike={onSaveCard || (() => {})}
+            onCardLike={onSaveCard || noop}
             onShareCard={onShareCard}
             onPurchaseComplete={onPurchaseComplete}
             removedCardIds={removedCardIds}
@@ -318,7 +328,7 @@ export default function HomePage({
         {/* Notifications Modal */}
         <NotificationsModal
           visible={showNotificationsModal}
-          onClose={() => setShowNotificationsModal(false)}
+          onClose={handleCloseNotifications}
           notifications={notifications}
           unreadCount={unreadNotificationCount}
           onNotificationPress={handleNotificationPress}

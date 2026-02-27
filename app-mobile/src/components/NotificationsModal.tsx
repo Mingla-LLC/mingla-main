@@ -104,7 +104,7 @@ function groupNotificationsByDate(
 function getNavigationLabel(nav: NavigationTarget): string | null {
   switch (nav.page) {
     case "home":
-      return "Go to Home";
+      return "Go to Explore";
     case "saved":
       return "View Saved";
     case "connections":
