@@ -24,6 +24,7 @@ interface BoardSettingsDropdownProps {
   notificationsEnabled?: boolean;
   onToggleNotifications?: () => void;
   onManageMembers?: () => void;
+  onInviteParticipants?: () => void;
   onExitBoard?: () => void;
   onSessionDeleted?: () => void;
   onSessionNameUpdated?: (newName: string) => void;
@@ -44,6 +45,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   notificationsEnabled = true,
   onToggleNotifications,
   onManageMembers,
+  onInviteParticipants,
   onExitBoard,
   onSessionDeleted,
   onSessionNameUpdated,
@@ -231,11 +233,11 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
       )}
 
       {/* Invite Participants - only for creator/admin */}
-      {canManageSession && onManageMembers && (
+      {canManageSession && onInviteParticipants && (
         <TouchableOpacity
           style={styles.menuItem}
           onPress={() => {
-            onManageMembers();
+            onInviteParticipants();
             onClose();
           }}
           activeOpacity={0.7}

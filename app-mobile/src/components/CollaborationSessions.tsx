@@ -25,7 +25,7 @@ export type SessionType = 'active' | 'sent-invite' | 'received-invite';
 
 export interface Friend {
   id: string;
-  name: string;
+  name: string;f
   username?: string;
   avatar?: string;
   status?: 'online' | 'offline';
@@ -345,34 +345,31 @@ export default function CollaborationSessions({
                 {/* Selected Friends */}
                 {selectedFriends.length > 0 && (
                   <View style={styles.selectedFriendsContainer}>
-                    {selectedFriends.map((friend) => {
-                      const initials = friend.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-                      return (
-                        <View key={friend.id} style={styles.selectedFriendTag}>
-                          <View style={styles.selectedFriendAvatar}>
-                            {friend.avatar ? (
-                              <Image
-                                source={{ uri: friend.avatar }}
-                                style={styles.selectedFriendAvatarImage}
-                              />
-                            ) : (
-                              <Text style={styles.selectedFriendAvatarText}>
-                                {initials}
-                              </Text>
-                            )}
-                          </View>
-                          <Text style={styles.selectedFriendName} numberOfLines={1}>
-                            {friend.name}
-                          </Text>
-                          <TouchableOpacity
-                            onPress={() => toggleFriendSelection(friend)}
-                            style={styles.removeFriendButton}
-                          >
-                            <Ionicons name="close" size={12} color="#6B7280" />
-                          </TouchableOpacity>
+                    {selectedFriends.map((friend) => (
+                      <View key={friend.id} style={styles.selectedFriendTag}>
+                        <View style={styles.selectedFriendAvatar}>
+                          {friend.avatar ? (
+                            <Image
+                              source={{ uri: friend.avatar }}
+                              style={styles.selectedFriendAvatarImage}
+                            />
+                          ) : (
+                            <Text style={styles.selectedFriendAvatarText}>
+                              {friend.name[0]}
+                            </Text>
+                          )}
                         </View>
-                      );
-                    })}
+                        <Text style={styles.selectedFriendName} numberOfLines={1}>
+                          {friend.name}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => toggleFriendSelection(friend)}
+                          style={styles.removeFriendButton}
+                        >
+                          <Ionicons name="close" size={12} color="#6B7280" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
                   </View>
                 )}
 
@@ -425,7 +422,7 @@ export default function CollaborationSessions({
                               />
                             ) : (
                               <Text style={styles.friendAvatarText}>
-                                {initials}
+                                {friend.name[0]}
                               </Text>
                             )}
                           </View>
@@ -515,9 +512,16 @@ export default function CollaborationSessions({
 
             <View style={styles.inviteDetails}>
               <View style={styles.inviteAvatarLarge}>
-                <Text style={styles.inviteAvatarText}>
-                  {inviteModalSession?.initials}
-                </Text>
+                {inviteModalSession?.invitedBy?.avatar ? (
+                  <Image
+                    source={{ uri: inviteModalSession.invitedBy.avatar }}
+                    style={styles.inviteAvatarImage}
+                  />
+                ) : (
+                  <Text style={styles.inviteAvatarText}>
+                    {inviteModalSession?.initials}
+                  </Text>
+                )}
               </View>
               <Text style={styles.inviteSessionName}>
                 {inviteModalSession?.name}
@@ -918,6 +922,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#374151',
   },
+  inviteAvatarImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+  },
   inviteSessionName: {
     fontSize: 16,
     fontWeight: '700',
@@ -1051,6 +1060,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  selectedFriendAvatarImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
   selectedFriendName: {
     fontSize: 13,
     fontWeight: '500',
@@ -1135,6 +1149,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  friendAvatarImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   friendInfo: {
     flex: 1,
