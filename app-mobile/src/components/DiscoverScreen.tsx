@@ -13,6 +13,7 @@ import {
   Platform,
   Animated,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
@@ -35,6 +36,9 @@ const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
 
 // Storage key for custom holidays
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
+
+// Storage key for archived holiday visibility per person
+const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
 const DISCOVER_CACHE_KEY = "mingla_discover_cache_v3";
@@ -666,6 +670,8 @@ export default function DiscoverScreen({
 
   // Custom holidays state
   const [customHolidays, setCustomHolidays] = useState<CustomHoliday[]>([]);
+  const [archivedHolidayKeysByPerson, setArchivedHolidayKeysByPerson] = useState<Record<string, string[]>>({});
+  const [isArchivedHolidaysExpanded, setIsArchivedHolidaysExpanded] = useState(false);
   
   // Add Custom Day Modal state
   const [isAddCustomDayModalVisible, setIsAddCustomDayModalVisible] = useState(false);
@@ -967,9 +973,45 @@ export default function DiscoverScreen({
     }
   };
 
+  // Save archived holiday keys by person to AsyncStorage
+  const saveArchivedHolidaysToStorage = async (archiveMap: Record<string, string[]>) => {
+    if (!user?.id) {
+      console.warn("Cannot save archived holidays: no user ID available");
+      return;
+    }
+    try {
+      const userStorageKey = `${HOLIDAY_ARCHIVE_STORAGE_KEY}_${user.id}`;
+      await AsyncStorage.setItem(userStorageKey, JSON.stringify(archiveMap));
+    } catch (error) {
+      console.error("Error saving archived holidays to storage:", error);
+    }
+  };
+
+  // Load archived holiday keys by person from AsyncStorage
+  const loadArchivedHolidaysFromStorage = async () => {
+    if (!user?.id) {
+      setArchivedHolidayKeysByPerson({});
+      return;
+    }
+    try {
+      const userStorageKey = `${HOLIDAY_ARCHIVE_STORAGE_KEY}_${user.id}`;
+      const stored = await AsyncStorage.getItem(userStorageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Record<string, string[]>;
+        setArchivedHolidayKeysByPerson(parsed || {});
+      } else {
+        setArchivedHolidayKeysByPerson({});
+      }
+    } catch (error) {
+      console.error("Error loading archived holidays from storage:", error);
+      setArchivedHolidayKeysByPerson({});
+    }
+  };
+
   // Load custom holidays on mount or when user changes
   useEffect(() => {
     loadCustomHolidaysFromStorage();
+    loadArchivedHolidaysFromStorage();
   }, [user?.id]);
 
   // Night Out Filter Modal state
@@ -2327,6 +2369,23 @@ export default function DiscoverScreen({
     }
   };
 
+  const handleConfirmRemovePerson = (person: SavedPerson) => {
+    Alert.alert(
+      "Delete person?",
+      `Remove ${person.name} and all their custom holidays?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void handleRemovePerson(person.id);
+          },
+        },
+      ]
+    );
+  };
+
   const handleBirthdayChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === "android") {
       setShowBirthdayPicker(false);
@@ -2408,10 +2467,97 @@ export default function DiscoverScreen({
 
   // Delete a custom holiday
   const handleDeleteCustomHoliday = async (holidayId: string) => {
+    const deletedHoliday = customHolidays.find((h) => h.id === holidayId);
     const updatedHolidays = customHolidays.filter((h) => h.id !== holidayId);
     setCustomHolidays(updatedHolidays);
     await saveCustomHolidaysToStorage(updatedHolidays);
+
+    if (deletedHoliday) {
+      const archiveKeyToRemove = `custom:${holidayId}`;
+      const personArchiveKeys = archivedHolidayKeysByPerson[deletedHoliday.personId] || [];
+      if (personArchiveKeys.includes(archiveKeyToRemove)) {
+        const nextArchiveMap = {
+          ...archivedHolidayKeysByPerson,
+          [deletedHoliday.personId]: personArchiveKeys.filter((key) => key !== archiveKeyToRemove),
+        };
+        setArchivedHolidayKeysByPerson(nextArchiveMap);
+        await saveArchivedHolidaysToStorage(nextArchiveMap);
+      }
+    }
   };
+
+  const handleConfirmDeleteCustomHoliday = (holidayId: string, holidayName: string) => {
+    Alert.alert(
+      "Delete custom holiday?",
+      `Delete \"${holidayName}\"? This can’t be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void handleDeleteCustomHoliday(holidayId);
+          },
+        },
+      ]
+    );
+  };
+
+  const getHolidayArchiveKey = useCallback((holiday: CalendarHoliday & { isCustom?: boolean }): string => {
+    if ((holiday as any).isCustom) {
+      return `custom:${holiday.id}`;
+    }
+
+    const holidayDate = new Date(holiday.date);
+    const month = String(holidayDate.getMonth() + 1).padStart(2, "0");
+    const day = String(holidayDate.getDate()).padStart(2, "0");
+    const normalizedName = (holiday.name || "").trim().toLowerCase();
+    return `calendar:${normalizedName}:${month}-${day}`;
+  }, []);
+
+  const handleArchiveHoliday = useCallback(async (holiday: CalendarHoliday & { isCustom?: boolean }) => {
+    if (selectedPersonId === "for-you") return;
+
+    const holidayKey = getHolidayArchiveKey(holiday);
+    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPersonId] || [];
+    if (currentPersonKeys.includes(holidayKey)) return;
+
+    const nextArchiveMap = {
+      ...archivedHolidayKeysByPerson,
+      [selectedPersonId]: [...currentPersonKeys, holidayKey],
+    };
+
+    setArchivedHolidayKeysByPerson(nextArchiveMap);
+    await saveArchivedHolidaysToStorage(nextArchiveMap);
+
+    setExpandedHolidayIds((prev) => {
+      const next = new Set(prev);
+      next.delete(holiday.id);
+      return next;
+    });
+  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+
+  const handleUnarchiveHoliday = useCallback(async (holiday: CalendarHoliday & { isCustom?: boolean }) => {
+    if (selectedPersonId === "for-you") return;
+
+    const holidayKey = getHolidayArchiveKey(holiday);
+    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPersonId] || [];
+    if (!currentPersonKeys.includes(holidayKey)) return;
+
+    const nextArchiveMap = {
+      ...archivedHolidayKeysByPerson,
+      [selectedPersonId]: currentPersonKeys.filter((key) => key !== holidayKey),
+    };
+
+    setArchivedHolidayKeysByPerson(nextArchiveMap);
+    await saveArchivedHolidaysToStorage(nextArchiveMap);
+  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+
+  const formatHolidayDateForDisplay = useCallback((dateValue: Date | string): string => {
+    const holidayDate = new Date(dateValue);
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${monthNames[holidayDate.getMonth()]} ${holidayDate.getDate()}`;
+  }, []);
 
   // Get custom holidays for the currently selected person, formatted as CalendarHoliday
   const getPersonCustomHolidays = useMemo((): CalendarHoliday[] => {
@@ -2587,9 +2733,31 @@ export default function DiscoverScreen({
       .sort((a, b) => a.daysAway - b.daysAway);
   }, [calendarHolidays, getPersonCustomHolidays, selectedPerson?.gender]);
 
+  const visibleHolidays = useMemo(() => {
+    if (selectedPersonId === "for-you") {
+      return allHolidays;
+    }
+
+    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPersonId] || []);
+    return allHolidays.filter(
+      (holiday) => !archivedKeys.has(getHolidayArchiveKey(holiday as CalendarHoliday & { isCustom?: boolean }))
+    );
+  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+
+  const archivedHolidays = useMemo(() => {
+    if (selectedPersonId === "for-you") {
+      return [] as CalendarHoliday[];
+    }
+
+    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPersonId] || []);
+    return allHolidays.filter((holiday) =>
+      archivedKeys.has(getHolidayArchiveKey(holiday as CalendarHoliday & { isCustom?: boolean }))
+    );
+  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+
   // Animate holiday items with staggered entrance when holidays are available
   useEffect(() => {
-    if (selectedPerson && allHolidays.length > 0 && !holidaysLoading) {
+    if (selectedPerson && visibleHolidays.length > 0 && !holidaysLoading) {
       // Reset all holiday animations
       holidayItemAnimations.forEach((anim) => {
         anim.opacity.setValue(0);
@@ -2600,7 +2768,7 @@ export default function DiscoverScreen({
       const staggerDelay = 100;
       const baseDelay = 400; // Start after birthday hero animation
 
-      allHolidays.slice(0, 20).forEach((_, index) => {
+      visibleHolidays.slice(0, 20).forEach((_, index) => {
         if (!holidayItemAnimations[index]) return; // Skip if no animation slot
         setTimeout(() => {
           Animated.parallel([
@@ -2620,7 +2788,7 @@ export default function DiscoverScreen({
         }, baseDelay + index * staggerDelay);
       });
     }
-  }, [selectedPerson, allHolidays, holidaysLoading, holidayItemAnimations]);
+  }, [selectedPerson, visibleHolidays, holidaysLoading, holidayItemAnimations]);
 
   return (
     <View style={styles.safeArea}>
@@ -2707,7 +2875,7 @@ export default function DiscoverScreen({
                         styles.personPillRemoveButton,
                         selectedPersonId === person.id && styles.personPillRemoveButtonSelected,
                       ]}
-                      onPress={() => handleRemovePerson(person.id)}
+                      onPress={() => handleConfirmRemovePerson(person)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <Ionicons
@@ -2835,7 +3003,7 @@ export default function DiscoverScreen({
                       </View>
                     ) : (
                       (() => {
-                        return allHolidays.slice(0, 20).map((holiday, index) => {
+                        return visibleHolidays.slice(0, 20).map((holiday, index) => {
                           const isExpanded = expandedHolidayIds.has(holiday.id);
                           const holidayCategories = (holiday as any).categories || getCategoriesForHolidayName(holiday.name);
                           const holidayCards = holidayCardsById[holiday.id] || [];
@@ -2845,9 +3013,7 @@ export default function DiscoverScreen({
                           const isCustomHoliday = (holiday as any).isCustom === true;
                         
                         // Format the holiday date for display (e.g., "Feb 14")
-                        const holidayDate = new Date(holiday.date);
-                        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                        const formattedDate = `${monthNames[holidayDate.getMonth()]} ${holidayDate.getDate()}`;
+                        const formattedDate = formatHolidayDateForDisplay(holiday.date);
 
                         // Get animation values for this holiday item
                         const animationValues = holidayItemAnimations[index];
@@ -2898,15 +3064,24 @@ export default function DiscoverScreen({
                                       ? `${holiday.name} is tomorrow`
                                       : holiday.name}
                                   </Text>
+                                  <View style={styles.holidayItemActions}>
+                                    <TouchableOpacity
+                                      onPress={() => handleArchiveHoliday(holiday as CalendarHoliday & { isCustom?: boolean })}
+                                      style={styles.holidayArchiveButton}
+                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                      <Ionicons name="archive-outline" size={14} color="#6b7280" />
+                                    </TouchableOpacity>
                                   {isCustomHoliday && (
                                     <TouchableOpacity
-                                      onPress={() => handleDeleteCustomHoliday(holiday.id)}
+                                      onPress={() => handleConfirmDeleteCustomHoliday(holiday.id, holiday.name)}
                                       style={styles.holidayDeleteButton}
                                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                     >
                                       <Ionicons name="trash-outline" size={14} color="#ef4444" />
                                     </TouchableOpacity>
                                   )}
+                                  </View>
                                 </View>
                                 <Text style={styles.holidayItemDate}>{formattedDate}</Text>
                                 <Text style={styles.holidayItemDescription}>{holiday.description}</Text>
@@ -3023,6 +3198,65 @@ export default function DiscoverScreen({
                         );
                       });
                       })()
+                    )}
+                  </View>
+
+                  <View style={styles.archivedHolidaysSection}>
+                    <TouchableOpacity
+                      style={styles.archivedHolidaysToggle}
+                      onPress={() => setIsArchivedHolidaysExpanded((prev) => !prev)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.archivedHolidaysToggleLeft}>
+                        <Ionicons name="archive-outline" size={16} color="#6b7280" />
+                        <Text style={styles.archivedHolidaysToggleTitle}>Archived Holidays</Text>
+                        <Text style={styles.archivedHolidaysToggleCount}>{archivedHolidays.length}</Text>
+                      </View>
+                      <Ionicons
+                        name={isArchivedHolidaysExpanded ? "chevron-up" : "chevron-down"}
+                        size={18}
+                        color="#9ca3af"
+                      />
+                    </TouchableOpacity>
+
+                    {isArchivedHolidaysExpanded && (
+                      archivedHolidays.length === 0 ? (
+                        <View style={styles.archivedHolidaysEmptyState}>
+                          <Text style={styles.archivedHolidaysEmptyText}>No archived holidays yet.</Text>
+                        </View>
+                      ) : (
+                        archivedHolidays.map((holiday) => {
+                          const isCustomHoliday = (holiday as any).isCustom === true;
+                          return (
+                            <View key={`archived-${holiday.id}`} style={styles.archivedHolidayItem}>
+                              <View style={styles.archivedHolidayTextWrap}>
+                                <Text style={styles.archivedHolidayName}>{holiday.name}</Text>
+                                <Text style={styles.archivedHolidayMeta}>
+                                  {formatHolidayDateForDisplay(holiday.date)} • {holiday.daysAway === 0 ? "Today" : holiday.daysAway === 1 ? "Tomorrow" : `${holiday.daysAway} days`}
+                                </Text>
+                              </View>
+                              <View style={styles.archivedHolidayActions}>
+                                <TouchableOpacity
+                                  onPress={() => handleUnarchiveHoliday(holiday as CalendarHoliday & { isCustom?: boolean })}
+                                  style={styles.archivedHolidayActionButton}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                  <Ionicons name="return-up-back-outline" size={16} color="#eb7825" />
+                                </TouchableOpacity>
+                                {isCustomHoliday && (
+                                  <TouchableOpacity
+                                    onPress={() => handleConfirmDeleteCustomHoliday(holiday.id, holiday.name)}
+                                    style={styles.archivedHolidayActionButton}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                  >
+                                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                            </View>
+                          );
+                        })
+                      )
                     )}
                   </View>
                 </>
@@ -4984,6 +5218,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    justifyContent: "space-between",
+  },
+  holidayItemActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  holidayArchiveButton: {
+    padding: 2,
   },
   holidayDeleteButton: {
     padding: 2,
@@ -5140,5 +5383,83 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "500",
     color: "#1f2937",
+  },
+  archivedHolidaysSection: {
+    marginBottom: 8,
+  },
+  archivedHolidaysToggle: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomColor: "#e5e7eb",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+  },
+  archivedHolidaysToggleLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  archivedHolidaysToggleTitle: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#111827",
+  },
+  archivedHolidaysToggleCount: {
+    fontSize: 14,
+    color: "#6b7280",
+  },
+  archivedHolidaysEmptyState: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  archivedHolidaysEmptyText: {
+    fontSize: 13,
+    color: "#6b7280",
+  },
+  archivedHolidayItem: {
+    marginTop: 10,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  archivedHolidayTextWrap: {
+    flex: 1,
+    marginRight: 10,
+  },
+  archivedHolidayName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  archivedHolidayMeta: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 3,
+  },
+  archivedHolidayActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  archivedHolidayActionButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
