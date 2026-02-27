@@ -11,6 +11,7 @@ import {
   NativeScrollEvent,
   Dimensions,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SessionViewModal from './SessionViewModal';
@@ -22,7 +23,7 @@ export type SessionType = 'active' | 'sent-invite' | 'received-invite';
 
 export interface Friend {
   id: string;
-  name: string;
+  name: string;f
   username?: string;
   avatar?: string;
   status?: 'online' | 'offline';
@@ -305,9 +306,16 @@ export default function CollaborationSessions({
                     {selectedFriends.map((friend) => (
                       <View key={friend.id} style={styles.selectedFriendTag}>
                         <View style={styles.selectedFriendAvatar}>
-                          <Text style={styles.selectedFriendAvatarText}>
-                            {friend.name[0]}
-                          </Text>
+                          {friend.avatar ? (
+                            <Image
+                              source={{ uri: friend.avatar }}
+                              style={styles.selectedFriendAvatarImage}
+                            />
+                          ) : (
+                            <Text style={styles.selectedFriendAvatarText}>
+                              {friend.name[0]}
+                            </Text>
+                          )}
                         </View>
                         <Text style={styles.selectedFriendName} numberOfLines={1}>
                           {friend.name}
@@ -364,9 +372,16 @@ export default function CollaborationSessions({
                           activeOpacity={0.7}
                         >
                           <View style={styles.friendAvatar}>
-                            <Text style={styles.friendAvatarText}>
-                              {friend.name[0]}
-                            </Text>
+                            {friend.avatar ? (
+                              <Image
+                                source={{ uri: friend.avatar }}
+                                style={styles.friendAvatarImage}
+                              />
+                            ) : (
+                              <Text style={styles.friendAvatarText}>
+                                {friend.name[0]}
+                              </Text>
+                            )}
                           </View>
                           <View style={styles.friendInfo}>
                             <Text style={styles.friendName}>{friend.name}</Text>
@@ -443,9 +458,16 @@ export default function CollaborationSessions({
 
             <View style={styles.inviteDetails}>
               <View style={styles.inviteAvatarLarge}>
-                <Text style={styles.inviteAvatarText}>
-                  {inviteModalSession?.initials}
-                </Text>
+                {inviteModalSession?.invitedBy?.avatar ? (
+                  <Image
+                    source={{ uri: inviteModalSession.invitedBy.avatar }}
+                    style={styles.inviteAvatarImage}
+                  />
+                ) : (
+                  <Text style={styles.inviteAvatarText}>
+                    {inviteModalSession?.initials}
+                  </Text>
+                )}
               </View>
               <Text style={styles.inviteSessionName}>
                 {inviteModalSession?.name}
@@ -782,6 +804,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#374151',
   },
+  inviteAvatarImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+  },
   inviteSessionName: {
     fontSize: 18,
     fontWeight: '700',
@@ -894,6 +921,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  selectedFriendAvatarImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
   selectedFriendName: {
     fontSize: 13,
     fontWeight: '500',
@@ -972,6 +1004,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  friendAvatarImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   friendInfo: {
     flex: 1,

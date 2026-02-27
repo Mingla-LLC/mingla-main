@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Dimensions,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
@@ -503,9 +504,10 @@ export default function AddFriendModal({
                         >
                           <View style={styles.searchResultAvatar}>
                             {item.avatar_url ? (
-                              <Text style={styles.searchResultAvatarText}>
-                                IMG
-                              </Text>
+                              <Image
+                                source={{ uri: item.avatar_url }}
+                                style={styles.searchResultAvatarImage}
+                              />
                             ) : (
                               <Text style={styles.searchResultAvatarText}>
                                 {(
@@ -555,7 +557,10 @@ export default function AddFriendModal({
                     <View style={styles.searchResultHeader}>
                       <View style={styles.searchResultAvatar}>
                         {selectedUser.avatar_url ? (
-                          <Text style={styles.searchResultAvatarText}>IMG</Text>
+                          <Image
+                            source={{ uri: selectedUser.avatar_url }}
+                            style={styles.searchResultAvatarImage}
+                          />
                         ) : (
                           <Text style={styles.searchResultAvatarText}>
                             {(
@@ -686,18 +691,25 @@ export default function AddFriendModal({
                       <View key={request.id} style={styles.sentRequestItem}>
                         <View style={styles.sentRequestHeader}>
                           <View style={styles.sentRequestAvatar}>
-                            <Text style={styles.sentRequestAvatarText}>
-                              {(
-                                request.sender.display_name ||
-                                request.sender.username ||
-                                "U"
-                              )
-                                .split(" ")
-                                .map((n: string) => n[0])
-                                .join("")
-                                .toUpperCase()
-                                .substring(0, 2)}
-                            </Text>
+                            {request.sender.avatar_url ? (
+                              <Image
+                                source={{ uri: request.sender.avatar_url }}
+                                style={styles.sentRequestAvatarImage}
+                              />
+                            ) : (
+                              <Text style={styles.sentRequestAvatarText}>
+                                {(
+                                  request.sender.display_name ||
+                                  request.sender.username ||
+                                  "U"
+                                )
+                                  .split(" ")
+                                  .map((n: string) => n[0])
+                                  .join("")
+                                  .toUpperCase()
+                                  .substring(0, 2)}
+                              </Text>
+                            )}
                           </View>
                           <View style={styles.sentRequestInfo}>
                             <Text style={styles.sentRequestName}>
@@ -954,6 +966,11 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     fontSize: 16,
   },
+  searchResultAvatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
   searchResultInfo: {
     flex: 1,
   },
@@ -1092,6 +1109,11 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "500",
     fontSize: 16,
+  },
+  sentRequestAvatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   sentRequestInfo: {
     flex: 1,

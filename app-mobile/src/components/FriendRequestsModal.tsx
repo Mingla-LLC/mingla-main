@@ -7,6 +7,7 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFriends } from "../hooks/useFriends";
@@ -255,9 +256,16 @@ export default function FriendRequestsModal({
                               {/* Avatar */}
                               <View style={styles.avatarContainer}>
                                 <View style={styles.avatar}>
-                                  <Text style={styles.avatarText}>
-                                    {initials}
-                                  </Text>
+                                  {request.sender.avatar_url ? (
+                                    <Image
+                                      source={{ uri: request.sender.avatar_url }}
+                                      style={styles.avatarImage}
+                                    />
+                                  ) : (
+                                    <Text style={styles.avatarText}>
+                                      {initials}
+                                    </Text>
+                                  )}
                                 </View>
                               </View>
 
@@ -397,9 +405,16 @@ export default function FriendRequestsModal({
                               {/* Avatar */}
                               <View style={styles.avatarContainer}>
                                 <View style={styles.avatar}>
-                                  <Text style={styles.avatarText}>
-                                    {initials}
-                                  </Text>
+                                  {request.sender?.avatar_url ? (
+                                    <Image
+                                      source={{ uri: request.sender.avatar_url }}
+                                      style={styles.avatarImage}
+                                    />
+                                  ) : (
+                                    <Text style={styles.avatarText}>
+                                      {initials}
+                                    </Text>
+                                  )}
                                 </View>
                               </View>
 
@@ -614,6 +629,11 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
     fontSize: 16,
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
   },
   userInfo: {
     flex: 1,
