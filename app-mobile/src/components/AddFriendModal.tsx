@@ -329,7 +329,8 @@ export default function AddFriendModal({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerContent}>
-              <View style={styles.headerLeft}>
+              <View style={styles.headerSidePlaceholder} />
+              <View style={styles.headerCenter}>
                 <Text style={styles.headerTitle}>
                   {activeTab === "add" ? "Add Friend" : "Sent Requests"}
                 </Text>
@@ -339,13 +340,7 @@ export default function AddFriendModal({
                     : "Manage pending requests"}
                 </Text>
               </View>
-              <TouchableOpacity
-                onPress={handleClose}
-                style={styles.closeButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={22} color="#6B7280" />
-              </TouchableOpacity>
+              <View style={styles.headerSidePlaceholder} />
             </View>
 
             {/* Tabs */}
@@ -811,8 +806,9 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "column",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
@@ -822,18 +818,26 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 12,
   },
-  headerLeft: {
+  headerCenter: {
     flex: 1,
+    alignItems: "center",
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: "700",
-    color: "#111827",
+    color: "#1e293b",
+    textAlign: "center",
   },
   headerSubtitle: {
     fontSize: 13,
-    color: "#6B7280",
+    fontWeight: "600",
+    color: "#374151",
     marginTop: 2,
+    textAlign: "center",
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   closeButton: {
     width: 36,

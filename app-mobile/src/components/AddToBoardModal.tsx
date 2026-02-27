@@ -165,7 +165,8 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
-            <View>
+            <View style={styles.headerSidePlaceholder} />
+            <View style={styles.headerCenter}>
               <Text style={styles.headerTitle}>Add to Board</Text>
               <Text style={styles.headerSubtitle}>
                 Add <Text style={styles.friendName}>{friend.name}</Text> to existing collaboration boards
@@ -365,7 +366,9 @@ const styles = StyleSheet.create({
     elevation: 16,
   },
   header: {
-    padding: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
@@ -374,23 +377,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    textAlign: 'center',
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 2,
+    textAlign: 'center',
   },
   friendName: {
     fontWeight: '500',
     color: '#eb7825',
   },
   closeButton: {
-    padding: 8,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   content: {
     padding: 24,

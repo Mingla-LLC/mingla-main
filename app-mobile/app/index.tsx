@@ -522,6 +522,8 @@ function AppContent() {
     if (!user?.id) return;
     setIsCreatingSession(true);
     let createdSessionId: string | null = null;
+    let successfulParticipantAdds = 0;
+    let successfulInvites = 0;
     try {
       // Check for real duplicate: any session where user is an accepted participant with this name
       const { data: participations } = await supabase
@@ -608,6 +610,7 @@ function AppContent() {
           console.error(`Error adding friend ${friend.name} as participant:`, friendParticipantError);
           continue;
         }
+        successfulParticipantAdds += 1;
 
         // Create invite for the friend
         const { data: inviteData, error: inviteError } = await supabase
@@ -626,6 +629,7 @@ function AppContent() {
           console.error(`Error creating invite for ${friend.name}:`, inviteError);
           continue;
         }
+        successfulInvites += 1;
 
         // Send email and push notification via Edge Function
         if (friendEmail && inviteData) {
@@ -647,13 +651,19 @@ function AppContent() {
         }
       }
 
+      // If user selected friends but none were actually added/invited,
+      // fail fast instead of showing a misleading success toast.
+      if (selectedFriends.length > 0 && successfulParticipantAdds === 0 && successfulInvites === 0) {
+        throw new Error('No collaborators could be added to the session.');
+      }
+
       // Refresh all sessions (active + pending)
       await refreshAllSessions();
       
       // Show success toast
       const friendCount = selectedFriends.length;
       const message = friendCount > 0 
-        ? `Session "${sessionName}" created! Invites sent to ${friendCount} friend${friendCount > 1 ? 's' : ''}.`
+        ? `Session "${sessionName}" created! Invites sent to ${successfulInvites} friend${successfulInvites > 1 ? 's' : ''}.`
         : `Session "${sessionName}" created successfully!`;
       toastManager.success(message);
 
@@ -1415,6 +1425,7 @@ function AppContent() {
             // Just update local state
             setHasCompletedOnboarding(true);
             setShowOnboardingFlow(false);
+            setCurrentPage("home");
           }}
           onNavigateToSignUp={(accountType) => {
             setShowOnboardingFlow(false);

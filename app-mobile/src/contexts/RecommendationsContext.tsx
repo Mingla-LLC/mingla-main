@@ -241,6 +241,7 @@ export const RecommendationsProvider: React.FC<
     userId: user?.id,
     currentMode,
     userLocation,
+    userPreferences: userPrefs,
     resolvedSessionId,
     isBoardSession,
     boardPreferences,

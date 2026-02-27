@@ -55,7 +55,7 @@ const COACH_STEPS: CoachMapStep[] = [
   },
   {
     id: "tabHome",
-    title: "Home Tab",
+    title: "Explore Tab",
     description:
       "Discover new experiences tailored to your preferences. Swipe through personalized recommendations.",
     icon: "home",

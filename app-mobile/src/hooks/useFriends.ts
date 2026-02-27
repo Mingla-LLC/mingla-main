@@ -40,7 +40,8 @@ export interface BlockedUser {
   blocked_at?: string;
 }
 
-export const useFriends = () => {
+export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
+  const { autoFetchBlockedUsers = true } = options || {};
   const [friends, setFriends] = useState<Friend[]>([]);
   const [friendCount, setFriendCount] = useState(0);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
@@ -84,8 +85,9 @@ export const useFriends = () => {
 
   // Fetch blocked users when hook is used (e.g. when Profile or Connections screen mounts)
   useEffect(() => {
+    if (!autoFetchBlockedUsers) return;
     fetchBlockedUsers();
-  }, [fetchBlockedUsers]);
+  }, [fetchBlockedUsers, autoFetchBlockedUsers]);
 
   // Load friends
   const fetchFriends = useCallback(async () => {

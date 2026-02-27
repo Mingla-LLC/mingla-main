@@ -10,6 +10,7 @@ interface FetchRecommendationsParams {
   userId: string | undefined;
   currentMode: string;
   userLocation: { lat: number; lng: number } | null;
+  userPreferences?: UserPreferences | null;
   resolvedSessionId: string | null;
   isBoardSession: boolean;
   boardPreferences: any;
@@ -36,6 +37,7 @@ const fetchRecommendations = async (
     userId,
     currentMode,
     userLocation,
+    userPreferences,
     resolvedSessionId,
     isBoardSession,
     boardPreferences,
@@ -46,23 +48,9 @@ const fetchRecommendations = async (
     throw new Error("User location is required");
   }
 
-  // Get actual user preferences
-  let userPrefs: UserPreferences | null = null;
-  if (userId) {
-    try {
-      const prefs = await ExperiencesService.getUserPreferences(userId);
-      if (prefs) {
-        userPrefs = prefs;
-      } else {
-        userPrefs = getDefaultPreferences();
-      }
-    } catch (error) {
-      console.error("Error loading user preferences:", error);
-      userPrefs = getDefaultPreferences();
-    }
-  } else {
-    userPrefs = getDefaultPreferences();
-  }
+  // Use already-loaded preferences from query cache/context to avoid
+  // an extra roundtrip before recommendation generation.
+  let userPrefs: UserPreferences = userPreferences || getDefaultPreferences();
 
   // Override with board preferences if in board session
   if (isBoardSession && boardPreferences) {
@@ -73,10 +61,6 @@ const fetchRecommendations = async (
       budget_max: boardPreferences.budget_max ?? userPrefs.budget_max,
       people_count: boardPreferences.group_size || userPrefs.people_count,
     };
-  }
-
-  if (!userPrefs) {
-    throw new Error("Unable to load preferences");
   }
 
   // Generate experiences
@@ -161,6 +145,7 @@ export const useRecommendationsQuery = (
     userId,
     currentMode,
     userLocation,
+    userPreferences,
     resolvedSessionId,
     isBoardSession,
     boardPreferences,
@@ -174,6 +159,15 @@ export const useRecommendationsQuery = (
     currentMode,
     userLocation?.lat,
     userLocation?.lng,
+    userPreferences?.mode,
+    userPreferences?.budget_min,
+    userPreferences?.budget_max,
+    userPreferences?.people_count,
+    userPreferences?.travel_mode,
+    userPreferences?.travel_constraint_type,
+    userPreferences?.travel_constraint_value,
+    userPreferences?.datetime_pref,
+    userPreferences?.categories?.join(","),
     resolvedSessionId,
     isBoardSession,
     boardPreferences?.categories?.join(","),

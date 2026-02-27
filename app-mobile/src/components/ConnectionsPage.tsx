@@ -8,6 +8,7 @@ import {
   Alert,
   Clipboard,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { Friend, Conversation, Message } from "../services/connectionsService";
 import { ConnectionsService } from "../services/connectionsService";
@@ -49,6 +50,14 @@ interface ConnectionsPageProps {
   friendsList?: any[];
   onUnreadCountChange?: (count: number) => void;
 }
+
+const CONNECTIONS_CACHE_VERSION = "v1";
+
+const getFriendsCacheKey = (userId: string) =>
+  `mingla:connections:friends:${CONNECTIONS_CACHE_VERSION}:${userId}`;
+
+const getConversationsCacheKey = (userId: string) =>
+  `mingla:connections:conversations:${CONNECTIONS_CACHE_VERSION}:${userId}`;
 
 export default function ConnectionsPageRefactored({
   onSendCollabInvite,
@@ -102,6 +111,9 @@ export default function ConnectionsPageRefactored({
 
   // Real data state
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [cachedFriends, setCachedFriends] = useState<Friend[]>([]);
+  const [hasHydratedFriendsCache, setHasHydratedFriendsCache] = useState(false);
+  const [friendsFetchedFromNetwork, setFriendsFetchedFromNetwork] = useState(false);
   const [friendsLoading, setFriendsLoading] = useState(true);
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -128,23 +140,122 @@ export default function ConnectionsPageRefactored({
     }));
   }, [dbFriends, mutedUserIds]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateConnectionsCache = async () => {
+      if (!user?.id) {
+        if (!cancelled) {
+          setCachedFriends([]);
+          setConversations([]);
+          setFriendsLoading(false);
+          setConversationsLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const [friendsResult, conversationsResult] = await AsyncStorage.multiGet([
+          getFriendsCacheKey(user.id),
+          getConversationsCacheKey(user.id),
+        ]);
+
+        const [, friendsValue] = friendsResult;
+        if (friendsValue) {
+          const parsedFriends = JSON.parse(friendsValue);
+          if (Array.isArray(parsedFriends) && !cancelled) {
+            setCachedFriends(parsedFriends);
+            setFriendsLoading(false);
+          }
+        }
+
+        if (!cancelled) {
+          setHasHydratedFriendsCache(true);
+        }
+
+        const [, conversationsValue] = conversationsResult;
+        if (conversationsValue) {
+          const parsedConversations = JSON.parse(conversationsValue);
+          if (Array.isArray(parsedConversations) && !cancelled) {
+            setConversations(parsedConversations);
+            setConversationsLoading(false);
+          }
+        }
+      } catch (cacheError) {
+        console.warn("[ConnectionsPage] Cache hydration failed:", cacheError);
+        if (!cancelled) {
+          setHasHydratedFriendsCache(true);
+        }
+      }
+    };
+
+    hydrateConnectionsCache();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    if (transformedFriends.length === 0 && !friendsFetchedFromNetwork) {
+      return;
+    }
+
+    AsyncStorage.setItem(
+      getFriendsCacheKey(user.id),
+      JSON.stringify(transformedFriends)
+    ).catch((error) => {
+      console.warn("[ConnectionsPage] Failed to persist friends cache:", error);
+    });
+  }, [transformedFriends, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    AsyncStorage.setItem(
+      getConversationsCacheKey(user.id),
+      JSON.stringify(conversations)
+    ).catch((error) => {
+      console.warn("[ConnectionsPage] Failed to persist conversations cache:", error);
+    });
+  }, [conversations, user?.id]);
+
   // Fetch friends and friend requests (fast, show UI early)
   useEffect(() => {
     const fetchFriendsData = async () => {
       if (!user?.id) {
         setFriendsLoading(false);
+        setFriendsFetchedFromNetwork(true);
         return;
       }
-      try {
-        await Promise.all([fetchFriends(), loadFriendRequests()]);
-      } catch (err) {
-        console.error("Error fetching friends data:", err);
-      } finally {
+
+      if (hasHydratedFriendsCache && cachedFriends.length > 0) {
         setFriendsLoading(false);
+      } else {
+        try {
+          await fetchFriends();
+        } catch (err) {
+          console.error("Error fetching friends data:", err);
+        } finally {
+          setFriendsLoading(false);
+          setFriendsFetchedFromNetwork(true);
+        }
       }
+
+      loadFriendRequests().catch((err) => {
+        console.error("Error fetching friend requests:", err);
+      });
     };
     fetchFriendsData();
-  }, [user?.id, loadFriendRequests, fetchFriends]);
+  }, [
+    user?.id,
+    loadFriendRequests,
+    fetchFriends,
+    hasHydratedFriendsCache,
+    cachedFriends.length,
+  ]);
 
   // Fetch conversations separately (heavier, loads in background)
   useEffect(() => {
@@ -336,7 +447,12 @@ export default function ConnectionsPageRefactored({
   const [showBlockedUsersModal, setShowBlockedUsersModal] = useState(false);
 
   // Use transformed friends from useFriends hook
-  const currentFriends = transformedFriends;
+  const currentFriends =
+    transformedFriends.length > 0
+      ? transformedFriends
+      : friendsFetchedFromNetwork
+      ? transformedFriends
+      : cachedFriends;
   const currentConversations = conversations;
 
   // Get friend requests count

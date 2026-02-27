@@ -360,10 +360,28 @@ export class ExperiencesService {
     sessionId?: string
   ): Promise<boolean> {
     try {
+      const {
+        data: { user: authUser },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !authUser) {
+        return false;
+      }
+
+      const effectiveUserId = authUser.id;
+
+      if (userId && userId !== effectiveUserId) {
+        console.warn("trackInteraction userId mismatch; using authenticated user id", {
+          providedUserId: userId,
+          authenticatedUserId: effectiveUserId,
+        });
+      }
+
       const { error } = await supabase
         .from('user_interactions')
         .insert({
-          user_id: userId,
+          user_id: effectiveUserId,
           experience_id: experienceId,
           interaction_type: interactionType,
           interaction_data: interactionData,

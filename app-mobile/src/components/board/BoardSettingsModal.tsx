@@ -123,6 +123,7 @@ export const BoardSettingsModal: React.FC<BoardSettingsModalProps> = ({
     >
       <View style={styles.container}>
         <View style={styles.header}>
+          <View style={styles.headerSidePlaceholder} />
           <Text style={styles.title}>Board Settings</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <Ionicons name="close" size={24} color="#666" />
@@ -294,19 +295,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e1e5e9",
     backgroundColor: "white",
   },
   title: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1a1a1a",
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e293b",
+    textAlign: "center",
   },
   closeButton: {
-    padding: 4,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   content: {
     flex: 1,

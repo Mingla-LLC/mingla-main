@@ -13,8 +13,9 @@ import {
   Platform,
   Animated,
   ActivityIndicator,
+  Alert,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -23,7 +24,7 @@ import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { useRecommendations, Recommendation } from "../contexts/RecommendationsContext";
 import { ExperienceGenerationService } from "../services/experienceGenerationService";
-import { HolidayExperiencesService, HolidayWithExperiences, HolidayExperience } from "../services/holidayExperiencesService";
+import { HolidayExperiencesService, HolidayExperience } from "../services/holidayExperiencesService";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useUserLocation } from "../hooks/useUserLocation";
@@ -36,8 +37,14 @@ const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
 // Storage key for custom holidays
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 
+// Storage key for archived holiday visibility per person
+const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
+
 // Storage key for cached discover experiences (refreshes daily)
-const DISCOVER_CACHE_KEY = "mingla_discover_cache_v2";
+const DISCOVER_CACHE_KEY = "mingla_discover_cache_v3";
+const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v2";
+const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
+const DISCOVER_CACHE_MIGRATION_VERSION = "2026-02-27-cache-reset-1";
 
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
@@ -60,6 +67,7 @@ interface CustomHoliday {
   date: string; // ISO date string
   description: string;
   category: string;
+  categories?: string[];
   createdAt: string;
 }
 
@@ -136,6 +144,34 @@ const ALL_CATEGORIES = [
   "Wellness Dates",
   "Freestyle",
 ];
+
+interface DiscoverCache {
+  date: string;
+  recommendations: Recommendation[];
+  featuredCard: FeaturedCardData | null;
+  gridCards: GridCardData[];
+}
+
+const discoverSessionCache = new Map<string, DiscoverCache>();
+
+const getDiscoverExactCacheKey = (
+  userId: string,
+  lat: number | null,
+  lng: number | null
+): string => `${DISCOVER_CACHE_KEY}_${userId}_${lat?.toFixed(2)}_${lng?.toFixed(2)}`;
+
+const getDiscoverDailyCacheKey = (userId: string): string =>
+  `${DISCOVER_DAILY_CACHE_KEY}_${userId}`;
+
+const US_TIMEZONE = "America/New_York";
+const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: US_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const getUsDateKey = (): string => usDateFormatter.format(new Date());
 
 // HARDCODED: Holiday name to experience categories mapping
 // This maps each holiday to the categories of experiences that should display in its dropdown
@@ -543,6 +579,7 @@ export default function DiscoverScreen({
   onAddFriend,
   accountPreferences,
 }: DiscoverScreenProps) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
@@ -630,14 +667,13 @@ export default function DiscoverScreen({
 
   // Expanded holidays state (track which holiday dropdowns are open)
   const [expandedHolidayIds, setExpandedHolidayIds] = useState<Set<string>>(new Set());
+  const [holidayCardsById, setHolidayCardsById] = useState<Record<string, GridCardData[]>>({});
+  const [holidayCardsLoadingById, setHolidayCardsLoadingById] = useState<Record<string, boolean>>({});
 
   // Custom holidays state
   const [customHolidays, setCustomHolidays] = useState<CustomHoliday[]>([]);
-  
-  // Fetched holiday experiences from edge function (Map<holidayId, holiday data with experiences>)
-  const [fetchedHolidays, setFetchedHolidays] = useState<HolidayWithExperiences[]>([]);
-  const [fetchedCustomHolidays, setFetchedCustomHolidays] = useState<HolidayWithExperiences[]>([]);
-  const [fetchingHolidayExperiences, setFetchingHolidayExperiences] = useState(false);
+  const [archivedHolidayKeysByPerson, setArchivedHolidayKeysByPerson] = useState<Record<string, string[]>>({});
+  const [isArchivedHolidaysExpanded, setIsArchivedHolidaysExpanded] = useState(false);
   
   // Add Custom Day Modal state
   const [isAddCustomDayModalVisible, setIsAddCustomDayModalVisible] = useState(false);
@@ -647,10 +683,10 @@ export default function DiscoverScreen({
   const [showCustomDayMonthPicker, setShowCustomDayMonthPicker] = useState(false);
   const [showCustomDayDayPicker, setShowCustomDayDayPicker] = useState(false);
   const [customDayDescription, setCustomDayDescription] = useState("");
-  const [customDayCategory, setCustomDayCategory] = useState("Dining Experiences");
-  const [showCustomDayCategoryPicker, setShowCustomDayCategoryPicker] = useState(false);
+  const [customDayCategories, setCustomDayCategories] = useState<string[]>(["Dining Experiences"]);
   const [customDayNameError, setCustomDayNameError] = useState<string | null>(null);
   const [customDayDateError, setCustomDayDateError] = useState<string | null>(null);
+  const [customDayCategoryError, setCustomDayCategoryError] = useState<string | null>(null);
 
   // Toggle holiday expansion
   const toggleHolidayExpansion = (holidayId: string) => {
@@ -664,6 +700,13 @@ export default function DiscoverScreen({
       return newSet;
     });
   };
+
+  // Reset holiday expansion/cards when selected person changes
+  useEffect(() => {
+    setExpandedHolidayIds(new Set());
+    setHolidayCardsById({});
+    setHolidayCardsLoadingById({});
+  }, [selectedPersonId]);
 
   // ScrollView refs for holiday card navigation
   const holidayScrollRefs = useRef<{ [key: string]: ScrollView | null }>({});
@@ -810,6 +853,13 @@ export default function DiscoverScreen({
     const fetchDeviceGps = async () => {
       if (deviceGpsFetchedRef.current) return;
       deviceGpsFetchedRef.current = true;
+
+      // Fast path: use saved/fallback location immediately so Discover can load without waiting for GPS
+      if (fallbackLat && fallbackLng) {
+        setDeviceGpsLat(fallbackLat);
+        setDeviceGpsLng(fallbackLng);
+      }
+
       try {
         const loc = await enhancedLocationService.getCurrentLocation();
         if (loc) {
@@ -925,9 +975,45 @@ export default function DiscoverScreen({
     }
   };
 
+  // Save archived holiday keys by person to AsyncStorage
+  const saveArchivedHolidaysToStorage = async (archiveMap: Record<string, string[]>) => {
+    if (!user?.id) {
+      console.warn("Cannot save archived holidays: no user ID available");
+      return;
+    }
+    try {
+      const userStorageKey = `${HOLIDAY_ARCHIVE_STORAGE_KEY}_${user.id}`;
+      await AsyncStorage.setItem(userStorageKey, JSON.stringify(archiveMap));
+    } catch (error) {
+      console.error("Error saving archived holidays to storage:", error);
+    }
+  };
+
+  // Load archived holiday keys by person from AsyncStorage
+  const loadArchivedHolidaysFromStorage = async () => {
+    if (!user?.id) {
+      setArchivedHolidayKeysByPerson({});
+      return;
+    }
+    try {
+      const userStorageKey = `${HOLIDAY_ARCHIVE_STORAGE_KEY}_${user.id}`;
+      const stored = await AsyncStorage.getItem(userStorageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Record<string, string[]>;
+        setArchivedHolidayKeysByPerson(parsed || {});
+      } else {
+        setArchivedHolidayKeysByPerson({});
+      }
+    } catch (error) {
+      console.error("Error loading archived holidays from storage:", error);
+      setArchivedHolidayKeysByPerson({});
+    }
+  };
+
   // Load custom holidays on mount or when user changes
   useEffect(() => {
     loadCustomHolidaysFromStorage();
+    loadArchivedHolidaysFromStorage();
   }, [user?.id]);
 
   // Night Out Filter Modal state
@@ -950,25 +1036,68 @@ export default function DiscoverScreen({
 
   // State for Discover-specific recommendations (fetched with ALL categories)
   const [discoverRecommendations, setDiscoverRecommendations] = useState<Recommendation[]>([]);
-  const [discoverLoading, setDiscoverLoading] = useState(true);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const [hasCompletedDiscoverFetch, setHasCompletedDiscoverFetch] = useState(false);
+  const [isDiscoverCacheMigrationReady, setIsDiscoverCacheMigrationReady] = useState(false);
   const hasFetchedRef = useRef(false);
+  const lastDiscoverFetchDateRef = useRef<string | null>(null);
   const loadedFromCacheRef = useRef(false); // Flag to skip card re-randomization when loaded from cache
 
-  // Helper to get today's date string (YYYY-MM-DD format)
+  // Helper to get current US date string (YYYY-MM-DD format)
   const getTodayDateString = (): string => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
+    return getUsDateKey();
   };
 
-  // Cache interface for storing discover experiences
-  interface DiscoverCache {
-    date: string;
-    recommendations: Recommendation[];
-    featuredCard: FeaturedCardData | null;
-    gridCards: GridCardData[];
-  }
+  // One-time cache migration: invalidate malformed legacy discover cache entries
+  useEffect(() => {
+    let isCancelled = false;
+
+    const runDiscoverCacheMigration = async () => {
+      if (!user?.id) {
+        if (!isCancelled) {
+          setIsDiscoverCacheMigrationReady(true);
+        }
+        return;
+      }
+
+      try {
+        const migrationMarkerKey = `${DISCOVER_CACHE_MIGRATION_KEY}_${user.id}`;
+        const migrationMarker = await AsyncStorage.getItem(migrationMarkerKey);
+
+        if (migrationMarker !== DISCOVER_CACHE_MIGRATION_VERSION) {
+          const allKeys = await AsyncStorage.getAllKeys();
+          const keysToRemove = allKeys.filter((key) =>
+            key.startsWith(`mingla_discover_cache_v2_${user.id}_`) ||
+            key.startsWith(`mingla_discover_cache_v3_${user.id}_`) ||
+            key.startsWith(`mingla_discover_cache_daily_v1_${user.id}`) ||
+            key.startsWith(`mingla_discover_cache_daily_v2_${user.id}`)
+          );
+
+          if (keysToRemove.length > 0) {
+            await AsyncStorage.multiRemove(keysToRemove);
+            console.log(`[Discover] Cleared ${keysToRemove.length} legacy cache entries for user`, user.id);
+          }
+
+          discoverSessionCache.clear();
+          await AsyncStorage.setItem(migrationMarkerKey, DISCOVER_CACHE_MIGRATION_VERSION);
+        }
+      } catch (error) {
+        console.error("[Discover] Cache migration failed:", error);
+      } finally {
+        if (!isCancelled) {
+          setIsDiscoverCacheMigrationReady(true);
+        }
+      }
+    };
+
+    setIsDiscoverCacheMigrationReady(false);
+    runDiscoverCacheMigration();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user?.id]);
 
   // Save discover data to cache
   const saveDiscoverCache = async (
@@ -986,8 +1115,17 @@ export default function DiscoverScreen({
         featuredCard,
         gridCards,
       };
-      const userCacheKey = `${DISCOVER_CACHE_KEY}_${user.id}_${locationLat?.toFixed(2)}_${locationLng?.toFixed(2)}`;
-      await AsyncStorage.setItem(userCacheKey, JSON.stringify(cacheData));
+      const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
+      const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+      const serialized = JSON.stringify(cacheData);
+
+      discoverSessionCache.set(exactCacheKey, cacheData);
+      discoverSessionCache.set(dailyCacheKey, cacheData);
+
+      await AsyncStorage.multiSet([
+        [exactCacheKey, serialized],
+        [dailyCacheKey, serialized],
+      ]);
       console.log("Saved discover cache for date:", cacheData.date);
     } catch (error) {
       console.error("Error saving discover cache:", error);
@@ -1000,10 +1138,34 @@ export default function DiscoverScreen({
       return null;
     }
     try {
-      const userCacheKey = `${DISCOVER_CACHE_KEY}_${user.id}_${locationLat?.toFixed(2)}_${locationLng?.toFixed(2)}`;
-      const cached = await AsyncStorage.getItem(userCacheKey);
-      if (cached) {
-        return JSON.parse(cached) as DiscoverCache;
+      const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
+      const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+
+      const cachedExactInMemory = discoverSessionCache.get(exactCacheKey);
+      if (cachedExactInMemory) {
+        return cachedExactInMemory;
+      }
+
+      const cachedDailyInMemory = discoverSessionCache.get(dailyCacheKey);
+      if (cachedDailyInMemory) {
+        return cachedDailyInMemory;
+      }
+
+      const entries = await AsyncStorage.multiGet([exactCacheKey, dailyCacheKey]);
+      const exactSerialized = entries[0]?.[1];
+      const dailySerialized = entries[1]?.[1];
+
+      if (exactSerialized) {
+        const parsed = JSON.parse(exactSerialized) as DiscoverCache;
+        discoverSessionCache.set(exactCacheKey, parsed);
+        discoverSessionCache.set(dailyCacheKey, parsed);
+        return parsed;
+      }
+
+      if (dailySerialized) {
+        const parsed = JSON.parse(dailySerialized) as DiscoverCache;
+        discoverSessionCache.set(dailyCacheKey, parsed);
+        return parsed;
       }
     } catch (error) {
       console.error("Error loading discover cache:", error);
@@ -1011,52 +1173,195 @@ export default function DiscoverScreen({
     return null;
   };
 
+  const getDiscoverCacheFromMemory = (): DiscoverCache | null => {
+    if (!user?.id) {
+      return null;
+    }
+
+    const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
+    const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+
+    return discoverSessionCache.get(exactCacheKey) || discoverSessionCache.get(dailyCacheKey) || null;
+  };
+
+  const prefetchDiscoverImages = (
+    featuredCard: FeaturedCardData | null,
+    gridCards: GridCardData[]
+  ) => {
+    const urls = [
+      featuredCard?.image,
+      ...(featuredCard?.images || []),
+      ...gridCards.map((card) => card.image),
+    ].filter((url): url is string => !!url && typeof url === "string");
+
+    const uniqueUrls = Array.from(new Set(urls)).slice(0, 20);
+    uniqueUrls.forEach((url) => {
+      Image.prefetch(url).catch(() => {});
+    });
+  };
+
+  const featuredFromGridCard = (card: GridCardData): FeaturedCardData => ({
+    id: `${card.id}_featured_fallback`,
+    title: card.title,
+    experienceType: card.category,
+    description: card.description,
+    image: card.image,
+    images: card.images || [card.image],
+    priceRange: card.priceRange,
+    rating: card.rating,
+    reviewCount: card.reviewCount,
+    address: card.address,
+    travelTime: card.travelTime,
+    distance: card.distance,
+    highlights: card.highlights || [],
+    tags: card.tags || [],
+    location: card.location,
+    openingHours: card.openingHours || null,
+  });
+
+  const featuredFromRecommendation = (rec: Recommendation): FeaturedCardData => ({
+    id: `${rec.id}_featured_fallback`,
+    title: rec.title,
+    experienceType: rec.category,
+    description: rec.description,
+    image: rec.image,
+    images: rec.images || [rec.image],
+    priceRange: rec.priceRange,
+    rating: rec.rating,
+    reviewCount: rec.reviewCount,
+    address: rec.address,
+    travelTime: rec.travelTime,
+    distance: rec.distance,
+    highlights: rec.highlights || [],
+    tags: rec.tags || [],
+    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+    openingHours: rec.openingHours || null,
+  });
+
+  const gridFromRecommendation = (rec: Recommendation): GridCardData => ({
+    id: rec.id,
+    title: rec.title,
+    category: rec.category,
+    description: rec.description,
+    image: rec.image,
+    images: rec.images || [rec.image],
+    priceRange: rec.priceRange,
+    rating: rec.rating,
+    reviewCount: rec.reviewCount,
+    address: rec.address,
+    travelTime: rec.travelTime,
+    distance: rec.distance,
+    highlights: rec.highlights || [],
+    tags: rec.tags || [],
+    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+    openingHours: rec.openingHours || null,
+  });
+
+  const applyCachedDiscoverData = (cachedData: DiscoverCache) => {
+    const fallbackFeatured = cachedData.featuredCard || (cachedData.gridCards?.[0] ? featuredFromGridCard(cachedData.gridCards[0]) : null);
+    const hasGridCards = (cachedData.gridCards?.length || 0) > 0;
+    const hasCompleteCardState = !!fallbackFeatured && hasGridCards;
+
+    loadedFromCacheRef.current = hasCompleteCardState;
+
+    if (hasCompleteCardState) {
+      setSelectedFeaturedCard(fallbackFeatured);
+      setSelectedGridCards(cachedData.gridCards);
+    } else {
+      const fallbackFromRecommendations = cachedData.recommendations?.[0]
+        ? featuredFromRecommendation(cachedData.recommendations[0])
+        : null;
+      const reconstructedGrid = (cachedData.recommendations || [])
+        .slice(0, 10)
+        .map(gridFromRecommendation);
+
+      setSelectedFeaturedCard(fallbackFromRecommendations);
+      setSelectedGridCards(reconstructedGrid);
+    }
+
+    setDiscoverRecommendations(cachedData.recommendations);
+    setHasCompletedDiscoverFetch(true);
+    prefetchDiscoverImages(fallbackFeatured, cachedData.gridCards || []);
+  };
+
   // Fetch recommendations with ALL 10 categories for the Discover "For You" tab
   // Only fetches once per day - uses cached data if available for today
   useEffect(() => {
     const fetchDiscoverRecommendations = async () => {
-      // Only run when we have location and not already loading
-      if (!locationLat || !locationLng) {
+      if (!user?.id) {
         return;
       }
-      
+
+      if (!isDiscoverCacheMigrationReady) {
+        return;
+      }
+
+      let waitingForLocation = false;
+      const today = getTodayDateString();
+
+      // Reset once-per-session guard when US day changes (refresh at US midnight)
+      if (lastDiscoverFetchDateRef.current && lastDiscoverFetchDateRef.current !== today) {
+        hasFetchedRef.current = false;
+      }
+
       // Only fetch once per session
-      if (hasFetchedRef.current) {
+      if (hasFetchedRef.current && lastDiscoverFetchDateRef.current === today) {
         return;
       }
-      hasFetchedRef.current = true;
-      
-      setDiscoverLoading(true);
+
       setDiscoverError(null);
 
       try {
-        // Check if we have cached data for today
-        const cachedData = await loadDiscoverCache();
-        const today = getTodayDateString();
+        // Fast path: hydrate from in-memory cache instantly (no async storage wait)
+        let cachedData = getDiscoverCacheFromMemory();
 
-        if (cachedData && cachedData.date === today && cachedData.recommendations.length > 0) {
-          // Use cached data - it's still valid for today
-          console.log("Using cached discover data from:", cachedData.date);
-          
-          // Set flag BEFORE setting state to prevent card selection useEffect from re-randomizing
-          loadedFromCacheRef.current = true;
-          
-          // Also restore the selected cards from cache to prevent re-randomization
-          if (cachedData.featuredCard) {
-            setSelectedFeaturedCard(cachedData.featuredCard);
-          }
-          if (cachedData.gridCards && cachedData.gridCards.length > 0) {
-            setSelectedGridCards(cachedData.gridCards);
-          }
-          
-          setDiscoverRecommendations(cachedData.recommendations);
-          setHasCompletedDiscoverFetch(true);
+        if (cachedData && cachedData.recommendations.length > 0) {
+          console.log("Using in-memory discover cache from:", cachedData.date);
+          applyCachedDiscoverData(cachedData);
           setDiscoverLoading(false);
+
+          if (cachedData.date === today) {
+            hasFetchedRef.current = true;
+            lastDiscoverFetchDateRef.current = today;
+            return;
+          }
+        }
+
+        // If no memory cache, check persistent cache
+        if (!cachedData) {
+          setDiscoverLoading(true);
+          cachedData = await loadDiscoverCache();
+        }
+
+        if (cachedData && cachedData.recommendations.length > 0) {
+          console.log("Using cached discover data from:", cachedData.date);
+          applyCachedDiscoverData(cachedData);
+          setDiscoverLoading(false);
+
+          if (cachedData.date === today) {
+            hasFetchedRef.current = true;
+            lastDiscoverFetchDateRef.current = today;
+            return;
+          }
+        }
+
+        if (!locationLat || !locationLng) {
+          waitingForLocation = !cachedData;
+          if (waitingForLocation) {
+            setDiscoverLoading(false);
+          }
           return;
         }
 
-        // Cache is stale or missing - fetch fresh data
-        console.log("Cache miss or stale. Fetching fresh discover data...");
+        // If we already hydrated stale cache, refresh in background without blocking UI
+        if (cachedData && cachedData.date !== today) {
+          console.log("Refreshing stale discover cache in background from:", cachedData.date);
+        } else {
+          setDiscoverLoading(true);
+          console.log("Cache miss or stale. Fetching fresh discover data...");
+        }
+
+        hasFetchedRef.current = true;
 
         // Use new discoverExperiences method that calls discover-experiences edge function
         // Returns { cards: 10 category cards, featuredCard: 11th unique card }
@@ -1064,6 +1369,18 @@ export default function DiscoverScreen({
           { lat: locationLat, lng: locationLng },
           10000 // 10km radius
         );
+
+        if (!generatedCards || generatedCards.length === 0) {
+          console.warn("Discover API returned no cards. Preserving existing discover cards.");
+          if (cachedData && cachedData.recommendations.length > 0) {
+            lastDiscoverFetchDateRef.current = today;
+            return;
+          }
+
+          setDiscoverError("Unable to load experiences right now. Please try again.");
+          hasFetchedRef.current = false;
+          return;
+        }
 
         console.log("Discover API returned:", generatedCards.length, "cards + featured card");
         console.log("Categories returned:", Array.from(new Set(generatedCards.map((e: any) => e.category))));
@@ -1170,8 +1487,6 @@ export default function DiscoverScreen({
             console.log("Featured card selected from grid:", transformedFeatured.title);
           }
         }
-        setSelectedFeaturedCard(transformedFeatured);
-
         // Transform ALL 10 cards to grid cards (no removal)
         const gridCards: GridCardData[] = generatedCards.map((exp: any) => ({
           id: exp.id,
@@ -1191,14 +1506,20 @@ export default function DiscoverScreen({
           location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
           openingHours: exp.openingHours || null,
         }));
+
+        const finalFeatured = transformedFeatured || (gridCards[0] ? featuredFromGridCard(gridCards[0]) : null);
+        setSelectedFeaturedCard(finalFeatured);
         setSelectedGridCards(gridCards);
         console.log("Set grid cards:", gridCards.length, "cards");
 
+        prefetchDiscoverImages(finalFeatured, gridCards);
+
         setDiscoverRecommendations(transformed);
         setHasCompletedDiscoverFetch(true);
+        lastDiscoverFetchDateRef.current = today;
         
         // Save to cache for 24-hour persistence
-        saveDiscoverCache(transformed, transformedFeatured, gridCards);
+        saveDiscoverCache(transformed, finalFeatured, gridCards);
         
         // Mark as loaded from cache to skip the card selection useEffect
         loadedFromCacheRef.current = true;
@@ -1207,12 +1528,14 @@ export default function DiscoverScreen({
         setDiscoverError("Failed to load recommendations");
         hasFetchedRef.current = false; // Allow retry on error
       } finally {
-        setDiscoverLoading(false);
+        if (!waitingForLocation) {
+          setDiscoverLoading(false);
+        }
       }
     };
 
     fetchDiscoverRecommendations();
-  }, [locationLat, locationLng]); // TESTING: Removed user?.id dependency
+  }, [locationLat, locationLng, user?.id, isDiscoverCacheMigrationReady]);
 
   // Use Discover-specific recommendations
   const recommendations = discoverRecommendations;
@@ -1388,77 +1711,6 @@ export default function DiscoverScreen({
     // Save to cache for daily persistence
     // saveDiscoverCache(recommendations, featured, grid);
   }, [recommendations]);
-
-  // Fetch holiday experiences from edge function when person is selected
-  useEffect(() => {
-    const fetchHolidayExperiences = async () => {
-      // Only fetch when we have location and a person is selected
-      if (!locationLat || !locationLng) {
-        return;
-      }
-      
-      // Only fetch when viewing a person (not "for-you")
-      if (selectedPersonId === "for-you") {
-        setFetchedHolidays([]);
-        setFetchedCustomHolidays([]);
-        return;
-      }
-
-      setFetchingHolidayExperiences(true);
-
-      try {
-        // Map gender - API only accepts "male" | "female" | null, so "other" becomes null
-        const personGender = selectedPerson?.gender;
-        const gender: "male" | "female" | null = (personGender === "male" || personGender === "female") ? personGender : null;
-        console.log(`Fetching holiday experiences for person: ${selectedPerson?.name}, gender: ${gender}`);
-
-        // Get custom holidays for this person to send to edge function  
-        const personCustomHolidays = customHolidays
-          .filter((h) => h.personId === selectedPersonId)
-          .map((h) => ({
-            id: h.id,
-            name: h.name,
-            description: h.description,
-            date: h.date,
-            category: h.category,
-          }));
-
-        console.log(`Sending ${personCustomHolidays.length} custom holidays to edge function`);
-        // Debug: log each custom holiday being sent
-        personCustomHolidays.forEach((ch) => {
-          console.log(`Sending custom holiday: ${ch.name}, date: ${ch.date}`);
-        });
-
-        const response = await HolidayExperiencesService.getHolidayExperiences({
-          location: { lat: locationLat, lng: locationLng },
-          radius: 10000,
-          gender: gender,
-          days: 365,
-          customHolidays: personCustomHolidays,
-        });
-
-        console.log(`Received ${response.holidays.length} holidays and ${response.customHolidays?.length || 0} custom holidays with experiences`);
-        
-        // Debug: Log custom holiday details
-        if (response.customHolidays && response.customHolidays.length > 0) {
-          response.customHolidays.forEach((ch) => {
-            console.log(`Custom holiday: ${ch.name}, daysAway: ${ch.daysAway}, date: ${ch.date}`);
-          });
-        }
-        
-        setFetchedHolidays(response.holidays);
-        setFetchedCustomHolidays(response.customHolidays || []);
-      } catch (error) {
-        console.error("Error fetching holiday experiences:", error);
-        setFetchedHolidays([]);
-        setFetchedCustomHolidays([]);
-      } finally {
-        setFetchingHolidayExperiences(false);
-      }
-    };
-
-    fetchHolidayExperiences();
-  }, [locationLat, locationLng, selectedPersonId, selectedPerson?.gender, selectedPerson?.name, customHolidays]);
 
   // Use the stable selected cards
   const featuredCard = selectedFeaturedCard;
@@ -2119,6 +2371,23 @@ export default function DiscoverScreen({
     }
   };
 
+  const handleConfirmRemovePerson = (person: SavedPerson) => {
+    Alert.alert(
+      "Delete person?",
+      `Remove ${person.name} and all their custom holidays?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void handleRemovePerson(person.id);
+          },
+        },
+      ]
+    );
+  };
+
   const handleBirthdayChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === "android") {
       setShowBirthdayPicker(false);
@@ -2152,10 +2421,10 @@ export default function DiscoverScreen({
     setShowCustomDayMonthPicker(false);
     setShowCustomDayDayPicker(false);
     setCustomDayDescription("");
-    setCustomDayCategory("Dining Experiences");
-    setShowCustomDayCategoryPicker(false);
+    setCustomDayCategories(["Dining Experiences"]);
     setCustomDayNameError(null);
     setCustomDayDateError(null);
+    setCustomDayCategoryError(null);
   };
 
   const handleCustomDayDateChange = () => {}; // No longer needed - using month/day pickers
@@ -2173,11 +2442,19 @@ export default function DiscoverScreen({
       setCustomDayDateError("Date is required");
       hasError = true;
     }
+
+    if (customDayCategories.length === 0) {
+      setCustomDayCategoryError("Select at least one category");
+      hasError = true;
+    }
     
     if (hasError) return;
     
     // Store date as MM-DD format (recurring yearly)
     const dateStr = `${String(customDayMonth).padStart(2, "0")}-${String(customDayDay).padStart(2, "0")}`;
+    const normalizedCategories = customDayCategories.length > 0
+      ? customDayCategories
+      : ["Dining Experiences"];
     
     // Create new custom holiday
     const newCustomHoliday: CustomHoliday = {
@@ -2186,7 +2463,8 @@ export default function DiscoverScreen({
       name: customDayName.trim(),
       date: dateStr,
       description: customDayDescription.trim() || "Custom celebration day",
-      category: customDayCategory,
+      category: normalizedCategories[0],
+      categories: normalizedCategories,
       createdAt: new Date().toISOString(),
     };
     
@@ -2200,10 +2478,107 @@ export default function DiscoverScreen({
 
   // Delete a custom holiday
   const handleDeleteCustomHoliday = async (holidayId: string) => {
+    const deletedHoliday = customHolidays.find((h) => h.id === holidayId);
     const updatedHolidays = customHolidays.filter((h) => h.id !== holidayId);
     setCustomHolidays(updatedHolidays);
     await saveCustomHolidaysToStorage(updatedHolidays);
+
+    if (deletedHoliday) {
+      const archiveKeyToRemove = `custom:${holidayId}`;
+      const personArchiveKeys = archivedHolidayKeysByPerson[deletedHoliday.personId] || [];
+      if (personArchiveKeys.includes(archiveKeyToRemove)) {
+        const nextArchiveMap = {
+          ...archivedHolidayKeysByPerson,
+          [deletedHoliday.personId]: personArchiveKeys.filter((key) => key !== archiveKeyToRemove),
+        };
+        setArchivedHolidayKeysByPerson(nextArchiveMap);
+        await saveArchivedHolidaysToStorage(nextArchiveMap);
+      }
+    }
   };
+
+  const toggleCustomDayCategory = (category: string) => {
+    setCustomDayCategories((prev) => {
+      if (prev.includes(category)) {
+        return prev.filter((item) => item !== category);
+      }
+      if (customDayCategoryError) setCustomDayCategoryError(null);
+      return [...prev, category];
+    });
+  };
+
+  const handleConfirmDeleteCustomHoliday = (holidayId: string, holidayName: string) => {
+    Alert.alert(
+      "Delete custom holiday?",
+      `Delete \"${holidayName}\"? This can’t be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void handleDeleteCustomHoliday(holidayId);
+          },
+        },
+      ]
+    );
+  };
+
+  const getHolidayArchiveKey = useCallback((holiday: CalendarHoliday & { isCustom?: boolean }): string => {
+    if ((holiday as any).isCustom) {
+      return `custom:${holiday.id}`;
+    }
+
+    const holidayDate = new Date(holiday.date);
+    const month = String(holidayDate.getMonth() + 1).padStart(2, "0");
+    const day = String(holidayDate.getDate()).padStart(2, "0");
+    const normalizedName = (holiday.name || "").trim().toLowerCase();
+    return `calendar:${normalizedName}:${month}-${day}`;
+  }, []);
+
+  const handleArchiveHoliday = useCallback(async (holiday: CalendarHoliday & { isCustom?: boolean }) => {
+    if (selectedPersonId === "for-you") return;
+
+    const holidayKey = getHolidayArchiveKey(holiday);
+    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPersonId] || [];
+    if (currentPersonKeys.includes(holidayKey)) return;
+
+    const nextArchiveMap = {
+      ...archivedHolidayKeysByPerson,
+      [selectedPersonId]: [...currentPersonKeys, holidayKey],
+    };
+
+    setArchivedHolidayKeysByPerson(nextArchiveMap);
+    await saveArchivedHolidaysToStorage(nextArchiveMap);
+
+    setExpandedHolidayIds((prev) => {
+      const next = new Set(prev);
+      next.delete(holiday.id);
+      return next;
+    });
+  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+
+  const handleUnarchiveHoliday = useCallback(async (holiday: CalendarHoliday & { isCustom?: boolean }) => {
+    if (selectedPersonId === "for-you") return;
+
+    const holidayKey = getHolidayArchiveKey(holiday);
+    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPersonId] || [];
+    if (!currentPersonKeys.includes(holidayKey)) return;
+
+    const nextArchiveMap = {
+      ...archivedHolidayKeysByPerson,
+      [selectedPersonId]: currentPersonKeys.filter((key) => key !== holidayKey),
+    };
+
+    setArchivedHolidayKeysByPerson(nextArchiveMap);
+    await saveArchivedHolidaysToStorage(nextArchiveMap);
+  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+
+  const formatHolidayDateForDisplay = useCallback((dateValue: Date | string): string => {
+    const holidayDate = new Date(dateValue);
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${monthNames[holidayDate.getMonth()]} ${holidayDate.getDate()}`;
+  }, []);
 
   // Get custom holidays for the currently selected person, formatted as CalendarHoliday
   const getPersonCustomHolidays = useMemo((): CalendarHoliday[] => {
@@ -2214,11 +2589,13 @@ export default function DiscoverScreen({
     return personHolidays.map((h) => {
       // Calculate next occurrence - treats date as recurring (MM-DD or legacy ISO)
       const { date: holidayDate, daysAway } = getNextOccurrence(h.date);
+
+      const selectedCategories = (h.categories && h.categories.length > 0)
+        ? h.categories
+        : (h.category ? [h.category] : ["Dining Experiences"]);
       
       // Custom holidays show primary category + Dining Experiences
-      const categories = h.category === "Dining Experiences" 
-        ? ["Dining Experiences"] 
-        : [h.category, "Dining Experiences"];
+      const categories = Array.from(new Set([...selectedCategories, "Dining Experiences"]));
       
       return {
         id: h.id,
@@ -2226,7 +2603,7 @@ export default function DiscoverScreen({
         description: h.description,
         date: holidayDate,
         daysAway,
-        category: h.category,
+        category: selectedCategories[0],
         categories: categories,
         isFromCalendar: false,
         isCustom: true, // Mark as custom holiday
@@ -2261,57 +2638,90 @@ export default function DiscoverScreen({
     };
   }, []);
 
-  // Merge calendar holidays with custom holidays for display, filtered by selected person's gender
-  // When fetched holidays are available, use those as the primary source
-  const allHolidays = useMemo(() => {
-    // If we have fetched holidays from the edge function, use them (including fetched custom holidays)
-    if ((fetchedHolidays.length > 0 || fetchedCustomHolidays.length > 0) && selectedPersonId !== "for-you") {
-      // Transform fetched holidays to the format expected by the UI
-      const fetchedList = fetchedHolidays.map((h) => ({
-        id: h.id,
-        name: h.name,
-        description: h.description,
-        date: new Date(h.date),
-        daysAway: h.daysAway,
-        category: h.primaryCategory,
-        categories: h.categories,
-        isFromCalendar: false,
-        isCustom: false,
-        fetchedExperiences: h.experiences, // Include the fetched experiences
-      }));
-
-      // Transform fetched custom holidays (these have experiences from the edge function)
-      const fetchedCustomList = fetchedCustomHolidays.map((h) => ({
-        id: h.id,
-        name: h.name,
-        description: h.description,
-        date: new Date(h.date),
-        daysAway: h.daysAway,
-        category: h.primaryCategory,
-        categories: h.categories,
-        isFromCalendar: false,
-        isCustom: true,
-        fetchedExperiences: h.experiences, // Custom holidays now have fetched experiences!
-      }));
-
-      // Merge fetched holidays and fetched custom holidays, sorted by daysAway
-      const merged = [...fetchedList, ...fetchedCustomList];
-      console.log(`allHolidays: merging ${fetchedList.length} holidays + ${fetchedCustomList.length} custom = ${merged.length} total`);
-      
-      // Debug: log custom holidays before filtering
-      fetchedCustomList.forEach((h) => {
-        console.log(`Before filter - Custom: ${h.name}, daysAway: ${h.daysAway}`);
-      });
-      
-      const filtered = merged
-        .filter((h) => h.daysAway >= 0 && h.daysAway <= 365);
-      
-      console.log(`After 365-day filter: ${filtered.length} holidays remaining`);
-      
-      return filtered.sort((a, b) => a.daysAway - b.daysAway);
+  // Load cards for a single holiday only when user expands it
+  const loadHolidayCardsOnDemand = useCallback(async (
+    holiday: {
+      id: string;
+      name: string;
+      daysAway: number;
+      categories?: string[];
+      category?: string;
+      isCustom?: boolean;
+    }
+  ) => {
+    if (holidayCardsById[holiday.id] || holidayCardsLoadingById[holiday.id]) {
+      return;
     }
 
-    // Fallback: Get custom holidays for the selected person (no fetched experiences)
+    setHolidayCardsLoadingById((prev) => ({ ...prev, [holiday.id]: true }));
+
+    const holidayCategories = holiday.categories || (holiday.category ? [holiday.category] : getCategoriesForHolidayName(holiday.name));
+
+    try {
+      let cards: GridCardData[] = [];
+
+      if (locationLat && locationLng && selectedPersonId !== "for-you") {
+        const personGender = selectedPerson?.gender;
+        const gender: "male" | "female" | null =
+          personGender === "male" || personGender === "female" ? personGender : null;
+
+        const personCustomHolidays = customHolidays
+          .filter((h) => h.personId === selectedPersonId)
+          .map((h) => ({
+            id: h.id,
+            name: h.name,
+            description: h.description,
+            date: h.date,
+            category: h.category,
+            categories: h.categories,
+          }));
+
+        const response = await HolidayExperiencesService.getHolidayExperiences({
+          location: { lat: locationLat, lng: locationLng },
+          radius: 10000,
+          gender,
+          days: Math.min(365, Math.max(7, (holiday.daysAway || 0) + 2)),
+          customHolidays: personCustomHolidays,
+        });
+
+        const merged = [...response.holidays, ...(response.customHolidays || [])];
+        const matchedHoliday = merged.find(
+          (h) => h.id === holiday.id || h.name.toLowerCase() === holiday.name.toLowerCase()
+        );
+
+        if (matchedHoliday?.experiences?.length) {
+          cards = matchedHoliday.experiences
+            .map(transformHolidayExperienceToCard)
+            .slice(0, 3);
+        }
+      }
+
+      if (cards.length === 0) {
+        cards = getExperiencesForCategories(holidayCategories, holiday.id).slice(0, 3);
+      }
+
+      setHolidayCardsById((prev) => ({ ...prev, [holiday.id]: cards }));
+    } catch (error) {
+      console.error("Error loading holiday cards on demand:", error);
+      const fallbackCards = getExperiencesForCategories(holidayCategories, holiday.id).slice(0, 3);
+      setHolidayCardsById((prev) => ({ ...prev, [holiday.id]: fallbackCards }));
+    } finally {
+      setHolidayCardsLoadingById((prev) => ({ ...prev, [holiday.id]: false }));
+    }
+  }, [
+    customHolidays,
+    getExperiencesForCategories,
+    holidayCardsById,
+    holidayCardsLoadingById,
+    locationLat,
+    locationLng,
+    selectedPerson?.gender,
+    selectedPersonId,
+    transformHolidayExperienceToCard,
+  ]);
+
+  // Merge calendar holidays with custom holidays for display, filtered by selected person's gender
+  const allHolidays = useMemo(() => {
     const customHolidaysList = getPersonCustomHolidays.map((h) => ({
       id: h.id,
       name: h.name,
@@ -2322,10 +2732,8 @@ export default function DiscoverScreen({
       categories: (h as any).categories || [h.category],
       isFromCalendar: false,
       isCustom: true,
-      fetchedExperiences: undefined, // Custom holidays use local filtering
     }));
 
-    // Fallback: Use calendar/custom holidays with local filtering
     const calendar = calendarHolidays || [];
     const custom = getPersonCustomHolidays;
     
@@ -2347,11 +2755,33 @@ export default function DiscoverScreen({
         return true;
       })
       .sort((a, b) => a.daysAway - b.daysAway);
-  }, [calendarHolidays, getPersonCustomHolidays, selectedPerson?.gender, fetchedHolidays, fetchedCustomHolidays, selectedPersonId]);
+  }, [calendarHolidays, getPersonCustomHolidays, selectedPerson?.gender]);
+
+  const visibleHolidays = useMemo(() => {
+    if (selectedPersonId === "for-you") {
+      return allHolidays;
+    }
+
+    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPersonId] || []);
+    return allHolidays.filter(
+      (holiday) => !archivedKeys.has(getHolidayArchiveKey(holiday as CalendarHoliday & { isCustom?: boolean }))
+    );
+  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
+
+  const archivedHolidays = useMemo(() => {
+    if (selectedPersonId === "for-you") {
+      return [] as CalendarHoliday[];
+    }
+
+    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPersonId] || []);
+    return allHolidays.filter((holiday) =>
+      archivedKeys.has(getHolidayArchiveKey(holiday as CalendarHoliday & { isCustom?: boolean }))
+    );
+  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPersonId]);
 
   // Animate holiday items with staggered entrance when holidays are available
   useEffect(() => {
-    if (selectedPerson && allHolidays.length > 0 && !holidaysLoading && !fetchingHolidayExperiences) {
+    if (selectedPerson && visibleHolidays.length > 0 && !holidaysLoading) {
       // Reset all holiday animations
       holidayItemAnimations.forEach((anim) => {
         anim.opacity.setValue(0);
@@ -2362,7 +2792,7 @@ export default function DiscoverScreen({
       const staggerDelay = 100;
       const baseDelay = 400; // Start after birthday hero animation
 
-      allHolidays.slice(0, 20).forEach((_, index) => {
+      visibleHolidays.slice(0, 20).forEach((_, index) => {
         if (!holidayItemAnimations[index]) return; // Skip if no animation slot
         setTimeout(() => {
           Animated.parallel([
@@ -2382,7 +2812,7 @@ export default function DiscoverScreen({
         }, baseDelay + index * staggerDelay);
       });
     }
-  }, [selectedPerson, allHolidays, holidaysLoading, fetchingHolidayExperiences, holidayItemAnimations]);
+  }, [selectedPerson, visibleHolidays, holidaysLoading, holidayItemAnimations]);
 
   return (
     <View style={styles.safeArea}>
@@ -2469,7 +2899,7 @@ export default function DiscoverScreen({
                         styles.personPillRemoveButton,
                         selectedPersonId === person.id && styles.personPillRemoveButtonSelected,
                       ]}
-                      onPress={() => handleRemovePerson(person.id)}
+                      onPress={() => handleConfirmRemovePerson(person)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <Ionicons
@@ -2588,45 +3018,26 @@ export default function DiscoverScreen({
                       </TouchableOpacity>
                     </View>
 
-                    {holidaysLoading || fetchingHolidayExperiences ? (
+                    {holidaysLoading ? (
                       <View style={styles.holidayLoadingContainer}>
                         <ActivityIndicator size="small" color="#eb7825" />
                         <Text style={styles.holidayLoadingText}>
-                          {fetchingHolidayExperiences ? "Loading experiences..." : hasCalendarAccess ? "Loading calendar holidays..." : "Loading holidays..."}
+                          {hasCalendarAccess ? "Loading calendar holidays..." : "Loading holidays..."}
                         </Text>
                       </View>
                     ) : (
                       (() => {
-                        // Track used experience IDs across all holidays to prevent duplicates
-                        // Server-side deduplication should handle this, but this is a safety net
-                        const usedExperienceIds = new Set<string>();
-                        
-                        return allHolidays.slice(0, 20).map((holiday, index) => {
+                        return visibleHolidays.slice(0, 20).map((holiday, index) => {
                           const isExpanded = expandedHolidayIds.has(holiday.id);
-                          // Check if this holiday has fetched experiences from the edge function
-                          const fetchedExperiences = (holiday as any).fetchedExperiences as HolidayExperience[] | undefined;
-                          // Use fetched experiences if available, otherwise fall back to local filtering
                           const holidayCategories = (holiday as any).categories || getCategoriesForHolidayName(holiday.name);
-                          const allHolidayCards = fetchedExperiences && fetchedExperiences.length > 0
-                            ? fetchedExperiences.map(transformHolidayExperienceToCard)
-                            : getExperiencesForCategories(holidayCategories, holiday.id);
-                          
-                          // Filter out any duplicates that somehow made it through
-                          const holidayCards = allHolidayCards.filter(card => {
-                            if (usedExperienceIds.has(card.id)) {
-                              return false;
-                            }
-                            usedExperienceIds.add(card.id);
-                            return true;
-                          }).slice(0, 3); // Limit to 3 max
+                          const holidayCards = holidayCardsById[holiday.id] || [];
+                          const isHolidayCardsLoading = !!holidayCardsLoadingById[holiday.id];
                           
                           // Check if this is a custom holiday
                           const isCustomHoliday = (holiday as any).isCustom === true;
                         
                         // Format the holiday date for display (e.g., "Feb 14")
-                        const holidayDate = new Date(holiday.date);
-                        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                        const formattedDate = `${monthNames[holidayDate.getMonth()]} ${holidayDate.getDate()}`;
+                        const formattedDate = formatHolidayDateForDisplay(holiday.date);
 
                         // Get animation values for this holiday item
                         const animationValues = holidayItemAnimations[index];
@@ -2652,7 +3063,20 @@ export default function DiscoverScreen({
                             {/* Holiday Header (clickable to expand/collapse) */}
                             <TouchableOpacity 
                               style={styles.holidayItem}
-                              onPress={() => toggleHolidayExpansion(holiday.id)}
+                              onPress={() => {
+                                const willExpand = !isExpanded;
+                                toggleHolidayExpansion(holiday.id);
+                                if (willExpand) {
+                                  loadHolidayCardsOnDemand({
+                                    id: holiday.id,
+                                    name: holiday.name,
+                                    daysAway: holiday.daysAway,
+                                    categories: holidayCategories,
+                                    category: (holiday as any).category,
+                                    isCustom: isCustomHoliday,
+                                  });
+                                }
+                              }}
                               activeOpacity={0.7}
                             >
                               <View style={styles.holidayItemLeft}>
@@ -2664,15 +3088,24 @@ export default function DiscoverScreen({
                                       ? `${holiday.name} is tomorrow`
                                       : holiday.name}
                                   </Text>
+                                  <View style={styles.holidayItemActions}>
+                                    <TouchableOpacity
+                                      onPress={() => handleArchiveHoliday(holiday as CalendarHoliday & { isCustom?: boolean })}
+                                      style={styles.holidayArchiveButton}
+                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                      <Ionicons name="archive-outline" size={14} color="#6b7280" />
+                                    </TouchableOpacity>
                                   {isCustomHoliday && (
                                     <TouchableOpacity
-                                      onPress={() => handleDeleteCustomHoliday(holiday.id)}
+                                      onPress={() => handleConfirmDeleteCustomHoliday(holiday.id, holiday.name)}
                                       style={styles.holidayDeleteButton}
                                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                     >
                                       <Ionicons name="trash-outline" size={14} color="#ef4444" />
                                     </TouchableOpacity>
                                   )}
+                                  </View>
                                 </View>
                                 <Text style={styles.holidayItemDate}>{formattedDate}</Text>
                                 <Text style={styles.holidayItemDescription}>{holiday.description}</Text>
@@ -2709,7 +3142,14 @@ export default function DiscoverScreen({
                             </TouchableOpacity>
 
                             {/* Expanded Holiday Cards Section */}
-                            {isExpanded && holidayCards.length > 0 && (
+                            {isExpanded && isHolidayCardsLoading && (
+                              <View style={styles.holidayLoadingContainer}>
+                                <ActivityIndicator size="small" color="#eb7825" />
+                                <Text style={styles.holidayLoadingText}>Loading cards...</Text>
+                              </View>
+                            )}
+
+                            {isExpanded && !isHolidayCardsLoading && holidayCards.length > 0 && (
                               <View style={styles.holidayCardsContainer}>
                                 {/* Left Navigation Button */}
                                 <TouchableOpacity
@@ -2772,10 +3212,75 @@ export default function DiscoverScreen({
                                 </TouchableOpacity>
                               </View>
                             )}
+
+                            {isExpanded && !isHolidayCardsLoading && holidayCards.length === 0 && (
+                              <View style={styles.holidayLoadingContainer}>
+                                <Text style={styles.holidayLoadingText}>No cards available for this holiday yet.</Text>
+                              </View>
+                            )}
                           </ContainerComponent>
                         );
                       });
                       })()
+                    )}
+                  </View>
+
+                  <View style={styles.archivedHolidaysSection}>
+                    <TouchableOpacity
+                      style={styles.archivedHolidaysToggle}
+                      onPress={() => setIsArchivedHolidaysExpanded((prev) => !prev)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.archivedHolidaysToggleLeft}>
+                        <Ionicons name="archive-outline" size={16} color="#6b7280" />
+                        <Text style={styles.archivedHolidaysToggleTitle}>Archived Holidays</Text>
+                        <Text style={styles.archivedHolidaysToggleCount}>{archivedHolidays.length}</Text>
+                      </View>
+                      <Ionicons
+                        name={isArchivedHolidaysExpanded ? "chevron-up" : "chevron-down"}
+                        size={18}
+                        color="#9ca3af"
+                      />
+                    </TouchableOpacity>
+
+                    {isArchivedHolidaysExpanded && (
+                      archivedHolidays.length === 0 ? (
+                        <View style={styles.archivedHolidaysEmptyState}>
+                          <Text style={styles.archivedHolidaysEmptyText}>No archived holidays yet.</Text>
+                        </View>
+                      ) : (
+                        archivedHolidays.map((holiday) => {
+                          const isCustomHoliday = (holiday as any).isCustom === true;
+                          return (
+                            <View key={`archived-${holiday.id}`} style={styles.archivedHolidayItem}>
+                              <View style={styles.archivedHolidayTextWrap}>
+                                <Text style={styles.archivedHolidayName}>{holiday.name}</Text>
+                                <Text style={styles.archivedHolidayMeta}>
+                                  {formatHolidayDateForDisplay(holiday.date)} • {holiday.daysAway === 0 ? "Today" : holiday.daysAway === 1 ? "Tomorrow" : `${holiday.daysAway} days`}
+                                </Text>
+                              </View>
+                              <View style={styles.archivedHolidayActions}>
+                                <TouchableOpacity
+                                  onPress={() => handleUnarchiveHoliday(holiday as CalendarHoliday & { isCustom?: boolean })}
+                                  style={styles.archivedHolidayActionButton}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                  <Ionicons name="return-up-back-outline" size={16} color="#eb7825" />
+                                </TouchableOpacity>
+                                {isCustomHoliday && (
+                                  <TouchableOpacity
+                                    onPress={() => handleConfirmDeleteCustomHoliday(holiday.id, holiday.name)}
+                                    style={styles.archivedHolidayActionButton}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                  >
+                                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                            </View>
+                          );
+                        })
+                      )
                     )}
                   </View>
                 </>
@@ -2799,7 +3304,7 @@ export default function DiscoverScreen({
                   )}
 
                   {/* Empty State */}
-                  {!recommendationsLoading && !recommendationsError && !featuredCard && hasCompletedInitialFetch && (
+                  {!recommendationsLoading && !recommendationsError && !featuredCard && gridCards.length === 0 && recommendations.length === 0 && hasCompletedInitialFetch && (
                     <View style={styles.emptyStateContainer}>
                       <Ionicons name="compass-outline" size={48} color="#eb7825" />
                       <Text style={styles.emptyStateTitle}>No experiences found</Text>
@@ -2810,22 +3315,24 @@ export default function DiscoverScreen({
                   )}
 
                   {/* Content - Featured Card and Grid */}
-                  {featuredCard && (
+                  {(featuredCard || gridCards.length > 0) && (
                     <>
                       {/* Featured Card */}
-                      <Animated.View
-                        style={{
-                          opacity: featuredCardOpacity,
-                          transform: [{ translateY: featuredCardSlide }],
-                        }}
-                      >
-                        <FeaturedCard 
-                          card={featuredCard} 
-                          currency={accountPreferences?.currency}
-                          measurementSystem={accountPreferences?.measurementSystem}
-                          onPress={() => handleCardPress(featuredCard)}
-                        />
-                      </Animated.View>
+                      {featuredCard && (
+                        <Animated.View
+                          style={{
+                            opacity: featuredCardOpacity,
+                            transform: [{ translateY: featuredCardSlide }],
+                          }}
+                        >
+                          <FeaturedCard 
+                            card={featuredCard} 
+                            currency={accountPreferences?.currency}
+                            measurementSystem={accountPreferences?.measurementSystem}
+                            onPress={() => handleCardPress(featuredCard)}
+                          />
+                        </Animated.View>
+                      )}
 
                       {/* Grid Cards Section */}
                       <View style={styles.gridCardsContainer}>
@@ -2997,25 +3504,29 @@ export default function DiscoverScreen({
         animationType="slide"
         onRequestClose={handleCloseAddPersonModal}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.addPersonBottomSheetOverlay}>
           <TouchableOpacity
             style={styles.backdropTouch}
             activeOpacity={1}
             onPress={handleCloseAddPersonModal}
           />
-          <View style={styles.addPersonModalContent}>
+          <View
+            style={[
+              styles.addPersonBottomSheetContent,
+              { paddingBottom: Platform.OS === "ios" ? 48 + insets.bottom : 48 },
+            ]}
+          >
+            <View style={styles.addPersonSheetHandleContainer}>
+              <View style={styles.addPersonSheetHandle} />
+            </View>
             {/* Modal Header */}
             <View style={styles.addPersonModalHeader}>
-              <View>
+              <View style={styles.addPersonCloseButtonPlaceholder} />
+              <View style={styles.addPersonHeaderCenter}>
                 <Text style={styles.addPersonModalTitle}>Add Person</Text>
                 <Text style={styles.addPersonModalSubtitle}>Never miss a special day</Text>
               </View>
-              <TouchableOpacity
-                onPress={handleCloseAddPersonModal}
-                style={styles.modalCloseButton}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
+              <View style={styles.addPersonCloseButtonPlaceholder} />
             </View>
 
             {/* Description */}
@@ -3145,31 +3656,41 @@ export default function DiscoverScreen({
         animationType="slide"
         onRequestClose={handleCloseAddCustomDayModal}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.addPersonBottomSheetOverlay}>
           <TouchableOpacity
             style={styles.backdropTouch}
             activeOpacity={1}
             onPress={handleCloseAddCustomDayModal}
           />
-          <View style={styles.addPersonModalContent}>
-            {/* Modal Header */}
-            <View style={styles.customDayModalHeader}>
-              <View style={styles.customDayHeaderLeft}>
-                <View style={styles.customDayIconContainer}>
-                  <Ionicons name="calendar" size={20} color="white" />
-                </View>
-                <View>
-                  <Text style={styles.addPersonModalTitle}>Add Custom Day</Text>
-                  <Text style={styles.addPersonModalSubtitle}>Create a personal reminder</Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                onPress={handleCloseAddCustomDayModal}
-                style={styles.modalCloseButton}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
+          <View
+            style={[
+              styles.addPersonBottomSheetContent,
+              styles.customDayBottomSheetContent,
+              { paddingBottom: Platform.OS === "ios" ? 48 + insets.bottom : 48 },
+            ]}
+          >
+            <View style={styles.addPersonSheetHandleContainer}>
+              <View style={styles.addPersonSheetHandle} />
             </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.customDayModalScrollContent}
+            >
+              {/* Modal Header */}
+              <View style={styles.customDayModalHeader}>
+                <View style={styles.customDayCloseButtonPlaceholder} />
+                <View style={styles.customDayHeaderLeft}>
+                  <View style={styles.customDayIconContainer}>
+                    <Ionicons name="calendar" size={20} color="white" />
+                  </View>
+                  <View style={styles.customDayHeaderTextCenter}>
+                    <Text style={styles.addPersonModalTitle}>Add Custom Day</Text>
+                    <Text style={styles.addPersonModalSubtitle}>Create a personal reminder</Text>
+                  </View>
+                </View>
+                <View style={styles.customDayCloseButtonPlaceholder} />
+              </View>
 
             {/* Day Name Field */}
             <View style={styles.addPersonFieldContainer}>
@@ -3367,63 +3888,40 @@ export default function DiscoverScreen({
             {/* Category Field */}
             <View style={styles.addPersonFieldContainer}>
               <Text style={styles.addPersonFieldLabel}>Category</Text>
-              <TouchableOpacity
-                style={styles.addPersonInput}
-                onPress={() => setShowCustomDayCategoryPicker(!showCustomDayCategoryPicker)}
-                activeOpacity={0.7}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Ionicons 
-                      name={(categoryIcons[customDayCategory] || "sparkles-outline") as any} 
-                      size={18} 
-                      color="#eb7825" 
-                      style={{ marginRight: 8 }}
-                    />
-                    <Text style={{ color: "#1f2937", fontSize: 14 }}>{customDayCategory}</Text>
-                  </View>
-                  <Ionicons 
-                    name={showCustomDayCategoryPicker ? "chevron-up" : "chevron-down"} 
-                    size={18} 
-                    color="#9ca3af" 
-                  />
-                </View>
-              </TouchableOpacity>
-              {showCustomDayCategoryPicker && (
-                <View style={styles.categoryPickerContainer}>
-                  <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
-                    {ALL_CATEGORIES.map((cat) => (
-                      <TouchableOpacity
-                        key={cat}
+              <Text style={styles.customDayCategoryHint}>Select all the categories you like</Text>
+              <View style={styles.customDayCategoryPillsContainer}>
+                {ALL_CATEGORIES.map((cat) => {
+                  const isSelected = customDayCategories.includes(cat);
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[
+                        styles.customDayCategoryPill,
+                        isSelected && styles.customDayCategoryPillSelected,
+                      ]}
+                      onPress={() => toggleCustomDayCategory(cat)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={(categoryIcons[cat] || "sparkles-outline") as any}
+                        size={14}
+                        color={isSelected ? "#eb7825" : "#6b7280"}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text
                         style={[
-                          styles.categoryPickerItem,
-                          customDayCategory === cat && styles.categoryPickerItemSelected,
+                          styles.customDayCategoryPillText,
+                          isSelected && styles.customDayCategoryPillTextSelected,
                         ]}
-                        onPress={() => {
-                          setCustomDayCategory(cat);
-                          setShowCustomDayCategoryPicker(false);
-                        }}
-                        activeOpacity={0.7}
                       >
-                        <Ionicons 
-                          name={(categoryIcons[cat] || "sparkles-outline") as any} 
-                          size={16} 
-                          color={customDayCategory === cat ? "#eb7825" : "#6b7280"} 
-                          style={{ marginRight: 8 }}
-                        />
-                        <Text style={[
-                          styles.categoryPickerItemText,
-                          customDayCategory === cat && styles.categoryPickerItemTextSelected,
-                        ]}>
-                          {cat}
-                        </Text>
-                        {customDayCategory === cat && (
-                          <Ionicons name="checkmark" size={16} color="#eb7825" style={{ marginLeft: "auto" }} />
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {customDayCategoryError && (
+                <Text style={styles.errorText}>{customDayCategoryError}</Text>
               )}
             </View>
 
@@ -3436,6 +3934,7 @@ export default function DiscoverScreen({
               <Ionicons name="add" size={18} color="#ffffff" style={{ marginRight: 6 }} />
               <Text style={styles.addCustomDayButtonText}>Add Custom Day</Text>
             </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -4227,6 +4726,30 @@ const styles = StyleSheet.create({
   addPersonInputError: {
     borderColor: "#ef4444",
   },
+  addPersonBottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  addPersonBottomSheetContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    width: "100%",
+    maxHeight: "90%",
+  },
+  addPersonSheetHandleContainer: {
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  addPersonSheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#d1d5db",
+  },
   // Add Person Modal styles
   modalOverlay: {
     flex: 1,
@@ -4248,17 +4771,27 @@ const styles = StyleSheet.create({
   addPersonModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
     marginBottom: 16,
   },
+  addPersonHeaderCenter: {
+    flex: 1,
+    alignItems: "center",
+  },
   addPersonModalTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#eb7825",
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e293b",
   },
   addPersonModalSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#374151",
     marginTop: 2,
   },
   addPersonDescription: {
@@ -4269,6 +4802,14 @@ const styles = StyleSheet.create({
   },
   modalCloseButton: {
     padding: 4,
+  },
+  addPersonCloseButtonPlaceholder: {
+    width: 32,
+    height: 32,
+  },
+  customDayCloseButtonPlaceholder: {
+    width: 32,
+    height: 32,
   },
   addPersonFieldContainer: {
     marginBottom: 20,
@@ -4383,13 +4924,23 @@ const styles = StyleSheet.create({
   customDayModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
     marginBottom: 20,
   },
   customDayHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    flex: 1,
+    justifyContent: "center",
+  },
+  customDayHeaderTextCenter: {
+    alignItems: "center",
   },
   customDayIconContainer: {
     width: 40,
@@ -4419,6 +4970,45 @@ const styles = StyleSheet.create({
     color: "#111827",
     height: 80,
     textAlignVertical: "top",
+  },
+  customDayCategoryHint: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginBottom: 10,
+  },
+  customDayCategoryPillsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  customDayCategoryPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#f3f4f6",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  customDayCategoryPillSelected: {
+    backgroundColor: "#fff7ed",
+    borderColor: "#eb7825",
+  },
+  customDayCategoryPillText: {
+    fontSize: 13,
+    color: "#374151",
+    fontWeight: "500",
+  },
+  customDayCategoryPillTextSelected: {
+    color: "#eb7825",
+    fontWeight: "600",
+  },
+  customDayBottomSheetContent: {
+    height: "88%",
+  },
+  customDayModalScrollContent: {
+    paddingBottom: 12,
   },
   addCustomDayButton: {
     flexDirection: "row",
@@ -4735,6 +5325,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    justifyContent: "space-between",
+  },
+  holidayItemActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  holidayArchiveButton: {
+    padding: 2,
   },
   holidayDeleteButton: {
     padding: 2,
@@ -4891,5 +5490,83 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "500",
     color: "#1f2937",
+  },
+  archivedHolidaysSection: {
+    marginBottom: 8,
+  },
+  archivedHolidaysToggle: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomColor: "#e5e7eb",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+  },
+  archivedHolidaysToggleLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  archivedHolidaysToggleTitle: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#111827",
+  },
+  archivedHolidaysToggleCount: {
+    fontSize: 14,
+    color: "#6b7280",
+  },
+  archivedHolidaysEmptyState: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  archivedHolidaysEmptyText: {
+    fontSize: 13,
+    color: "#6b7280",
+  },
+  archivedHolidayItem: {
+    marginTop: 10,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  archivedHolidayTextWrap: {
+    flex: 1,
+    marginRight: 10,
+  },
+  archivedHolidayName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  archivedHolidayMeta: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 3,
+  },
+  archivedHolidayActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  archivedHolidayActionButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

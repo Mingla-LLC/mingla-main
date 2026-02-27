@@ -317,15 +317,6 @@ export default function PreferencesSheet({ onClose, onSave, accountPreferences }
       {/* Header - Sticky */}
       <div className="sticky top-0 z-50 glass-nav pb-3 sm:pb-4 mb-3 sm:mb-4 shadow-lg">
         <div className="relative text-center space-y-1.5 sm:space-y-2 px-3 sm:px-4 pt-3 sm:pt-4">
-          {/* Cancel Button */}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="absolute left-2 sm:left-4 top-2 sm:top-4 p-1.5 sm:p-2 glass-button rounded-full transition-smooth hover:scale-110 active:scale-95 shadow-md"
-            >
-              <X className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700" />
-            </button>
-          )}
           <h1 className="text-lg sm:text-2xl md:text-3xl font-semibold text-gray-900 text-center font-bold">Narrow your search</h1>
         </div>
         {/* Shadow separator for visual depth when scrolling */}
