@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: "center",
-    paddingVertical: 8,
+    paddingVertical: 0,
   },
   loadingContainer: {
     flex: 1,
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 6,
   },
   cardCountText: {
     fontSize: 14,
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 4,
     gap: CARD_GAP,
   },
   navButton: {

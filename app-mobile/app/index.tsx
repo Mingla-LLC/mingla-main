@@ -288,29 +288,29 @@ function AppContent() {
   const refreshAllSessions = async () => {
     if (!user?.id) return;
     
-    // Fetch active sessions
-    const activeBoards = await BoardSessionService.fetchUserBoardSessions(user.id);
-    
-    // Fetch pending sessions the user created
-    const { data: createdPendingSessions } = await supabase
-      .from('collaboration_sessions')
-      .select('*, session_participants(user_id, has_accepted)')
-      .eq('created_by', user.id)
-      .eq('status', 'pending');
-    
-    // Fetch pending sessions where user was invited
-    // Include the inviter's profile information
-    const { data: invitedSessions } = await supabase
-      .from('collaboration_invites')
-      .select(`
-        session_id,
-        invited_by,
-        status,
-        collaboration_sessions!inner(id, name, status, created_by, created_at),
-        inviter:profiles!collaboration_invites_invited_by_fkey(id, username, first_name, last_name, avatar_url)
-      `)
-      .eq('invited_user_id', user.id)
-      .eq('status', 'pending');
+    // Fetch all session types in parallel for better performance
+    const [activeBoards, createdResult, invitedResult] = await Promise.all([
+      BoardSessionService.fetchUserBoardSessions(user.id),
+      supabase
+        .from('collaboration_sessions')
+        .select('*, session_participants(user_id, has_accepted)')
+        .eq('created_by', user.id)
+        .eq('status', 'pending'),
+      supabase
+        .from('collaboration_invites')
+        .select(`
+          session_id,
+          invited_by,
+          status,
+          collaboration_sessions!inner(id, name, status, created_by, created_at),
+          inviter:profiles!collaboration_invites_invited_by_fkey(id, username, first_name, last_name, avatar_url)
+        `)
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending'),
+    ]);
+
+    const createdPendingSessions = createdResult.data;
+    const invitedSessions = invitedResult.data;
     
     // Transform pending created sessions
     // Only include sessions where the user is actually a participant (prevents ghost sessions
