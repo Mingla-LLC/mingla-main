@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,6 +11,19 @@ const corsHeaders = {
 // Environment variables
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+const US_TIMEZONE = "America/New_York";
+const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: US_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const getUsDateKey = (): string => usDateFormatter.format(new Date());
 
 // All 10 discover categories
 const DISCOVER_CATEGORIES = [
@@ -127,6 +141,11 @@ interface DiscoverPlace {
   placeTypes: string[];
 }
 
+interface DiscoverDailyCacheRow {
+  cards: any[];
+  featured_card: any | null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -135,6 +154,63 @@ serve(async (req) => {
   try {
     const request: DiscoverRequest = await req.json();
     const { location, radius = 10000 } = request;
+    const usDateKey = getUsDateKey();
+
+    let userId: string | null = null;
+    let adminClient: ReturnType<typeof createClient> | null = null;
+
+    try {
+      const authHeader = req.headers.get("Authorization");
+      if (
+        authHeader?.startsWith("Bearer ") &&
+        SUPABASE_URL &&
+        SUPABASE_ANON_KEY &&
+        SUPABASE_SERVICE_ROLE_KEY
+      ) {
+        const token = authHeader.replace("Bearer ", "").trim();
+        const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const { data: authData } = await authClient.auth.getUser(token);
+        userId = authData.user?.id || null;
+
+        if (userId) {
+          adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+          const { data: cachedRow, error: cacheReadError } = await adminClient
+            .from("discover_daily_cache")
+            .select("cards, featured_card")
+            .eq("user_id", userId)
+            .eq("us_date_key", usDateKey)
+            .maybeSingle<DiscoverDailyCacheRow>();
+
+          if (cacheReadError) {
+            console.warn("Discover daily cache read warning:", cacheReadError.message);
+          } else if (cachedRow?.cards && cachedRow.cards.length > 0) {
+            console.log(`Cache hit for user ${userId} on ${usDateKey}. Returning persisted discover cards.`);
+            return new Response(
+              JSON.stringify({
+                cards: cachedRow.cards,
+                featuredCard: cachedRow.featured_card,
+                meta: {
+                  totalResults: cachedRow.cards.length,
+                  categories: DISCOVER_CATEGORIES,
+                  successfulCategories: [],
+                  failedCategories: [],
+                  cacheHit: true,
+                  usDateKey,
+                },
+              }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+        }
+      }
+    } catch (authCacheError) {
+      console.warn("Discover auth/cache bootstrap warning:", authCacheError);
+    }
 
     if (!location || !location.lat || !location.lng) {
       return new Response(
@@ -299,6 +375,31 @@ serve(async (req) => {
 
     // Convert featured place to card format (separate from grid cards)
     const featuredCard = enrichedFeaturedPlace ? convertToCard(enrichedFeaturedPlace) : null;
+
+    if (adminClient && userId && cards.length > 0) {
+      const { error: cacheWriteError } = await adminClient
+        .from("discover_daily_cache")
+        .upsert(
+          {
+            user_id: userId,
+            us_date_key: usDateKey,
+            cards,
+            featured_card: featuredCard,
+            generated_location: {
+              lat: location.lat,
+              lng: location.lng,
+              radius,
+            },
+          },
+          { onConflict: "user_id,us_date_key" }
+        );
+
+      if (cacheWriteError) {
+        console.warn("Discover daily cache write warning:", cacheWriteError.message);
+      } else {
+        console.log(`Persisted discover daily cache for user ${userId} (${usDateKey})`);
+      }
+    }
 
     console.log(`Returning ${cards.length} grid cards + featured card: "${featuredCard?.title}"`);
 

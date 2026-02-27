@@ -23,7 +23,7 @@ import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { useRecommendations, Recommendation } from "../contexts/RecommendationsContext";
 import { ExperienceGenerationService } from "../services/experienceGenerationService";
-import { HolidayExperiencesService, HolidayWithExperiences, HolidayExperience } from "../services/holidayExperiencesService";
+import { HolidayExperiencesService, HolidayExperience } from "../services/holidayExperiencesService";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useUserLocation } from "../hooks/useUserLocation";
@@ -37,7 +37,10 @@ const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
-const DISCOVER_CACHE_KEY = "mingla_discover_cache_v2";
+const DISCOVER_CACHE_KEY = "mingla_discover_cache_v3";
+const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v2";
+const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
+const DISCOVER_CACHE_MIGRATION_VERSION = "2026-02-27-cache-reset-1";
 
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
@@ -136,6 +139,34 @@ const ALL_CATEGORIES = [
   "Wellness Dates",
   "Freestyle",
 ];
+
+interface DiscoverCache {
+  date: string;
+  recommendations: Recommendation[];
+  featuredCard: FeaturedCardData | null;
+  gridCards: GridCardData[];
+}
+
+const discoverSessionCache = new Map<string, DiscoverCache>();
+
+const getDiscoverExactCacheKey = (
+  userId: string,
+  lat: number | null,
+  lng: number | null
+): string => `${DISCOVER_CACHE_KEY}_${userId}_${lat?.toFixed(2)}_${lng?.toFixed(2)}`;
+
+const getDiscoverDailyCacheKey = (userId: string): string =>
+  `${DISCOVER_DAILY_CACHE_KEY}_${userId}`;
+
+const US_TIMEZONE = "America/New_York";
+const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: US_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const getUsDateKey = (): string => usDateFormatter.format(new Date());
 
 // HARDCODED: Holiday name to experience categories mapping
 // This maps each holiday to the categories of experiences that should display in its dropdown
@@ -630,14 +661,11 @@ export default function DiscoverScreen({
 
   // Expanded holidays state (track which holiday dropdowns are open)
   const [expandedHolidayIds, setExpandedHolidayIds] = useState<Set<string>>(new Set());
+  const [holidayCardsById, setHolidayCardsById] = useState<Record<string, GridCardData[]>>({});
+  const [holidayCardsLoadingById, setHolidayCardsLoadingById] = useState<Record<string, boolean>>({});
 
   // Custom holidays state
   const [customHolidays, setCustomHolidays] = useState<CustomHoliday[]>([]);
-  
-  // Fetched holiday experiences from edge function (Map<holidayId, holiday data with experiences>)
-  const [fetchedHolidays, setFetchedHolidays] = useState<HolidayWithExperiences[]>([]);
-  const [fetchedCustomHolidays, setFetchedCustomHolidays] = useState<HolidayWithExperiences[]>([]);
-  const [fetchingHolidayExperiences, setFetchingHolidayExperiences] = useState(false);
   
   // Add Custom Day Modal state
   const [isAddCustomDayModalVisible, setIsAddCustomDayModalVisible] = useState(false);
@@ -664,6 +692,13 @@ export default function DiscoverScreen({
       return newSet;
     });
   };
+
+  // Reset holiday expansion/cards when selected person changes
+  useEffect(() => {
+    setExpandedHolidayIds(new Set());
+    setHolidayCardsById({});
+    setHolidayCardsLoadingById({});
+  }, [selectedPersonId]);
 
   // ScrollView refs for holiday card navigation
   const holidayScrollRefs = useRef<{ [key: string]: ScrollView | null }>({});
@@ -810,6 +845,13 @@ export default function DiscoverScreen({
     const fetchDeviceGps = async () => {
       if (deviceGpsFetchedRef.current) return;
       deviceGpsFetchedRef.current = true;
+
+      // Fast path: use saved/fallback location immediately so Discover can load without waiting for GPS
+      if (fallbackLat && fallbackLng) {
+        setDeviceGpsLat(fallbackLat);
+        setDeviceGpsLng(fallbackLng);
+      }
+
       try {
         const loc = await enhancedLocationService.getCurrentLocation();
         if (loc) {
@@ -950,25 +992,68 @@ export default function DiscoverScreen({
 
   // State for Discover-specific recommendations (fetched with ALL categories)
   const [discoverRecommendations, setDiscoverRecommendations] = useState<Recommendation[]>([]);
-  const [discoverLoading, setDiscoverLoading] = useState(true);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
   const [hasCompletedDiscoverFetch, setHasCompletedDiscoverFetch] = useState(false);
+  const [isDiscoverCacheMigrationReady, setIsDiscoverCacheMigrationReady] = useState(false);
   const hasFetchedRef = useRef(false);
+  const lastDiscoverFetchDateRef = useRef<string | null>(null);
   const loadedFromCacheRef = useRef(false); // Flag to skip card re-randomization when loaded from cache
 
-  // Helper to get today's date string (YYYY-MM-DD format)
+  // Helper to get current US date string (YYYY-MM-DD format)
   const getTodayDateString = (): string => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
+    return getUsDateKey();
   };
 
-  // Cache interface for storing discover experiences
-  interface DiscoverCache {
-    date: string;
-    recommendations: Recommendation[];
-    featuredCard: FeaturedCardData | null;
-    gridCards: GridCardData[];
-  }
+  // One-time cache migration: invalidate malformed legacy discover cache entries
+  useEffect(() => {
+    let isCancelled = false;
+
+    const runDiscoverCacheMigration = async () => {
+      if (!user?.id) {
+        if (!isCancelled) {
+          setIsDiscoverCacheMigrationReady(true);
+        }
+        return;
+      }
+
+      try {
+        const migrationMarkerKey = `${DISCOVER_CACHE_MIGRATION_KEY}_${user.id}`;
+        const migrationMarker = await AsyncStorage.getItem(migrationMarkerKey);
+
+        if (migrationMarker !== DISCOVER_CACHE_MIGRATION_VERSION) {
+          const allKeys = await AsyncStorage.getAllKeys();
+          const keysToRemove = allKeys.filter((key) =>
+            key.startsWith(`mingla_discover_cache_v2_${user.id}_`) ||
+            key.startsWith(`mingla_discover_cache_v3_${user.id}_`) ||
+            key.startsWith(`mingla_discover_cache_daily_v1_${user.id}`) ||
+            key.startsWith(`mingla_discover_cache_daily_v2_${user.id}`)
+          );
+
+          if (keysToRemove.length > 0) {
+            await AsyncStorage.multiRemove(keysToRemove);
+            console.log(`[Discover] Cleared ${keysToRemove.length} legacy cache entries for user`, user.id);
+          }
+
+          discoverSessionCache.clear();
+          await AsyncStorage.setItem(migrationMarkerKey, DISCOVER_CACHE_MIGRATION_VERSION);
+        }
+      } catch (error) {
+        console.error("[Discover] Cache migration failed:", error);
+      } finally {
+        if (!isCancelled) {
+          setIsDiscoverCacheMigrationReady(true);
+        }
+      }
+    };
+
+    setIsDiscoverCacheMigrationReady(false);
+    runDiscoverCacheMigration();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user?.id]);
 
   // Save discover data to cache
   const saveDiscoverCache = async (
@@ -986,8 +1071,17 @@ export default function DiscoverScreen({
         featuredCard,
         gridCards,
       };
-      const userCacheKey = `${DISCOVER_CACHE_KEY}_${user.id}_${locationLat?.toFixed(2)}_${locationLng?.toFixed(2)}`;
-      await AsyncStorage.setItem(userCacheKey, JSON.stringify(cacheData));
+      const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
+      const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+      const serialized = JSON.stringify(cacheData);
+
+      discoverSessionCache.set(exactCacheKey, cacheData);
+      discoverSessionCache.set(dailyCacheKey, cacheData);
+
+      await AsyncStorage.multiSet([
+        [exactCacheKey, serialized],
+        [dailyCacheKey, serialized],
+      ]);
       console.log("Saved discover cache for date:", cacheData.date);
     } catch (error) {
       console.error("Error saving discover cache:", error);
@@ -1000,10 +1094,34 @@ export default function DiscoverScreen({
       return null;
     }
     try {
-      const userCacheKey = `${DISCOVER_CACHE_KEY}_${user.id}_${locationLat?.toFixed(2)}_${locationLng?.toFixed(2)}`;
-      const cached = await AsyncStorage.getItem(userCacheKey);
-      if (cached) {
-        return JSON.parse(cached) as DiscoverCache;
+      const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
+      const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+
+      const cachedExactInMemory = discoverSessionCache.get(exactCacheKey);
+      if (cachedExactInMemory) {
+        return cachedExactInMemory;
+      }
+
+      const cachedDailyInMemory = discoverSessionCache.get(dailyCacheKey);
+      if (cachedDailyInMemory) {
+        return cachedDailyInMemory;
+      }
+
+      const entries = await AsyncStorage.multiGet([exactCacheKey, dailyCacheKey]);
+      const exactSerialized = entries[0]?.[1];
+      const dailySerialized = entries[1]?.[1];
+
+      if (exactSerialized) {
+        const parsed = JSON.parse(exactSerialized) as DiscoverCache;
+        discoverSessionCache.set(exactCacheKey, parsed);
+        discoverSessionCache.set(dailyCacheKey, parsed);
+        return parsed;
+      }
+
+      if (dailySerialized) {
+        const parsed = JSON.parse(dailySerialized) as DiscoverCache;
+        discoverSessionCache.set(dailyCacheKey, parsed);
+        return parsed;
       }
     } catch (error) {
       console.error("Error loading discover cache:", error);
@@ -1011,52 +1129,195 @@ export default function DiscoverScreen({
     return null;
   };
 
+  const getDiscoverCacheFromMemory = (): DiscoverCache | null => {
+    if (!user?.id) {
+      return null;
+    }
+
+    const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
+    const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+
+    return discoverSessionCache.get(exactCacheKey) || discoverSessionCache.get(dailyCacheKey) || null;
+  };
+
+  const prefetchDiscoverImages = (
+    featuredCard: FeaturedCardData | null,
+    gridCards: GridCardData[]
+  ) => {
+    const urls = [
+      featuredCard?.image,
+      ...(featuredCard?.images || []),
+      ...gridCards.map((card) => card.image),
+    ].filter((url): url is string => !!url && typeof url === "string");
+
+    const uniqueUrls = Array.from(new Set(urls)).slice(0, 20);
+    uniqueUrls.forEach((url) => {
+      Image.prefetch(url).catch(() => {});
+    });
+  };
+
+  const featuredFromGridCard = (card: GridCardData): FeaturedCardData => ({
+    id: `${card.id}_featured_fallback`,
+    title: card.title,
+    experienceType: card.category,
+    description: card.description,
+    image: card.image,
+    images: card.images || [card.image],
+    priceRange: card.priceRange,
+    rating: card.rating,
+    reviewCount: card.reviewCount,
+    address: card.address,
+    travelTime: card.travelTime,
+    distance: card.distance,
+    highlights: card.highlights || [],
+    tags: card.tags || [],
+    location: card.location,
+    openingHours: card.openingHours || null,
+  });
+
+  const featuredFromRecommendation = (rec: Recommendation): FeaturedCardData => ({
+    id: `${rec.id}_featured_fallback`,
+    title: rec.title,
+    experienceType: rec.category,
+    description: rec.description,
+    image: rec.image,
+    images: rec.images || [rec.image],
+    priceRange: rec.priceRange,
+    rating: rec.rating,
+    reviewCount: rec.reviewCount,
+    address: rec.address,
+    travelTime: rec.travelTime,
+    distance: rec.distance,
+    highlights: rec.highlights || [],
+    tags: rec.tags || [],
+    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+    openingHours: rec.openingHours || null,
+  });
+
+  const gridFromRecommendation = (rec: Recommendation): GridCardData => ({
+    id: rec.id,
+    title: rec.title,
+    category: rec.category,
+    description: rec.description,
+    image: rec.image,
+    images: rec.images || [rec.image],
+    priceRange: rec.priceRange,
+    rating: rec.rating,
+    reviewCount: rec.reviewCount,
+    address: rec.address,
+    travelTime: rec.travelTime,
+    distance: rec.distance,
+    highlights: rec.highlights || [],
+    tags: rec.tags || [],
+    location: rec.lat && rec.lng ? { lat: rec.lat, lng: rec.lng } : undefined,
+    openingHours: rec.openingHours || null,
+  });
+
+  const applyCachedDiscoverData = (cachedData: DiscoverCache) => {
+    const fallbackFeatured = cachedData.featuredCard || (cachedData.gridCards?.[0] ? featuredFromGridCard(cachedData.gridCards[0]) : null);
+    const hasGridCards = (cachedData.gridCards?.length || 0) > 0;
+    const hasCompleteCardState = !!fallbackFeatured && hasGridCards;
+
+    loadedFromCacheRef.current = hasCompleteCardState;
+
+    if (hasCompleteCardState) {
+      setSelectedFeaturedCard(fallbackFeatured);
+      setSelectedGridCards(cachedData.gridCards);
+    } else {
+      const fallbackFromRecommendations = cachedData.recommendations?.[0]
+        ? featuredFromRecommendation(cachedData.recommendations[0])
+        : null;
+      const reconstructedGrid = (cachedData.recommendations || [])
+        .slice(0, 10)
+        .map(gridFromRecommendation);
+
+      setSelectedFeaturedCard(fallbackFromRecommendations);
+      setSelectedGridCards(reconstructedGrid);
+    }
+
+    setDiscoverRecommendations(cachedData.recommendations);
+    setHasCompletedDiscoverFetch(true);
+    prefetchDiscoverImages(fallbackFeatured, cachedData.gridCards || []);
+  };
+
   // Fetch recommendations with ALL 10 categories for the Discover "For You" tab
   // Only fetches once per day - uses cached data if available for today
   useEffect(() => {
     const fetchDiscoverRecommendations = async () => {
-      // Only run when we have location and not already loading
-      if (!locationLat || !locationLng) {
+      if (!user?.id) {
         return;
       }
-      
+
+      if (!isDiscoverCacheMigrationReady) {
+        return;
+      }
+
+      let waitingForLocation = false;
+      const today = getTodayDateString();
+
+      // Reset once-per-session guard when US day changes (refresh at US midnight)
+      if (lastDiscoverFetchDateRef.current && lastDiscoverFetchDateRef.current !== today) {
+        hasFetchedRef.current = false;
+      }
+
       // Only fetch once per session
-      if (hasFetchedRef.current) {
+      if (hasFetchedRef.current && lastDiscoverFetchDateRef.current === today) {
         return;
       }
-      hasFetchedRef.current = true;
-      
-      setDiscoverLoading(true);
+
       setDiscoverError(null);
 
       try {
-        // Check if we have cached data for today
-        const cachedData = await loadDiscoverCache();
-        const today = getTodayDateString();
+        // Fast path: hydrate from in-memory cache instantly (no async storage wait)
+        let cachedData = getDiscoverCacheFromMemory();
 
-        if (cachedData && cachedData.date === today && cachedData.recommendations.length > 0) {
-          // Use cached data - it's still valid for today
-          console.log("Using cached discover data from:", cachedData.date);
-          
-          // Set flag BEFORE setting state to prevent card selection useEffect from re-randomizing
-          loadedFromCacheRef.current = true;
-          
-          // Also restore the selected cards from cache to prevent re-randomization
-          if (cachedData.featuredCard) {
-            setSelectedFeaturedCard(cachedData.featuredCard);
-          }
-          if (cachedData.gridCards && cachedData.gridCards.length > 0) {
-            setSelectedGridCards(cachedData.gridCards);
-          }
-          
-          setDiscoverRecommendations(cachedData.recommendations);
-          setHasCompletedDiscoverFetch(true);
+        if (cachedData && cachedData.recommendations.length > 0) {
+          console.log("Using in-memory discover cache from:", cachedData.date);
+          applyCachedDiscoverData(cachedData);
           setDiscoverLoading(false);
+
+          if (cachedData.date === today) {
+            hasFetchedRef.current = true;
+            lastDiscoverFetchDateRef.current = today;
+            return;
+          }
+        }
+
+        // If no memory cache, check persistent cache
+        if (!cachedData) {
+          setDiscoverLoading(true);
+          cachedData = await loadDiscoverCache();
+        }
+
+        if (cachedData && cachedData.recommendations.length > 0) {
+          console.log("Using cached discover data from:", cachedData.date);
+          applyCachedDiscoverData(cachedData);
+          setDiscoverLoading(false);
+
+          if (cachedData.date === today) {
+            hasFetchedRef.current = true;
+            lastDiscoverFetchDateRef.current = today;
+            return;
+          }
+        }
+
+        if (!locationLat || !locationLng) {
+          waitingForLocation = !cachedData;
+          if (waitingForLocation) {
+            setDiscoverLoading(false);
+          }
           return;
         }
 
-        // Cache is stale or missing - fetch fresh data
-        console.log("Cache miss or stale. Fetching fresh discover data...");
+        // If we already hydrated stale cache, refresh in background without blocking UI
+        if (cachedData && cachedData.date !== today) {
+          console.log("Refreshing stale discover cache in background from:", cachedData.date);
+        } else {
+          setDiscoverLoading(true);
+          console.log("Cache miss or stale. Fetching fresh discover data...");
+        }
+
+        hasFetchedRef.current = true;
 
         // Use new discoverExperiences method that calls discover-experiences edge function
         // Returns { cards: 10 category cards, featuredCard: 11th unique card }
@@ -1064,6 +1325,18 @@ export default function DiscoverScreen({
           { lat: locationLat, lng: locationLng },
           10000 // 10km radius
         );
+
+        if (!generatedCards || generatedCards.length === 0) {
+          console.warn("Discover API returned no cards. Preserving existing discover cards.");
+          if (cachedData && cachedData.recommendations.length > 0) {
+            lastDiscoverFetchDateRef.current = today;
+            return;
+          }
+
+          setDiscoverError("Unable to load experiences right now. Please try again.");
+          hasFetchedRef.current = false;
+          return;
+        }
 
         console.log("Discover API returned:", generatedCards.length, "cards + featured card");
         console.log("Categories returned:", Array.from(new Set(generatedCards.map((e: any) => e.category))));
@@ -1170,8 +1443,6 @@ export default function DiscoverScreen({
             console.log("Featured card selected from grid:", transformedFeatured.title);
           }
         }
-        setSelectedFeaturedCard(transformedFeatured);
-
         // Transform ALL 10 cards to grid cards (no removal)
         const gridCards: GridCardData[] = generatedCards.map((exp: any) => ({
           id: exp.id,
@@ -1191,14 +1462,20 @@ export default function DiscoverScreen({
           location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
           openingHours: exp.openingHours || null,
         }));
+
+        const finalFeatured = transformedFeatured || (gridCards[0] ? featuredFromGridCard(gridCards[0]) : null);
+        setSelectedFeaturedCard(finalFeatured);
         setSelectedGridCards(gridCards);
         console.log("Set grid cards:", gridCards.length, "cards");
 
+        prefetchDiscoverImages(finalFeatured, gridCards);
+
         setDiscoverRecommendations(transformed);
         setHasCompletedDiscoverFetch(true);
+        lastDiscoverFetchDateRef.current = today;
         
         // Save to cache for 24-hour persistence
-        saveDiscoverCache(transformed, transformedFeatured, gridCards);
+        saveDiscoverCache(transformed, finalFeatured, gridCards);
         
         // Mark as loaded from cache to skip the card selection useEffect
         loadedFromCacheRef.current = true;
@@ -1207,12 +1484,14 @@ export default function DiscoverScreen({
         setDiscoverError("Failed to load recommendations");
         hasFetchedRef.current = false; // Allow retry on error
       } finally {
-        setDiscoverLoading(false);
+        if (!waitingForLocation) {
+          setDiscoverLoading(false);
+        }
       }
     };
 
     fetchDiscoverRecommendations();
-  }, [locationLat, locationLng]); // TESTING: Removed user?.id dependency
+  }, [locationLat, locationLng, user?.id, isDiscoverCacheMigrationReady]);
 
   // Use Discover-specific recommendations
   const recommendations = discoverRecommendations;
@@ -1388,77 +1667,6 @@ export default function DiscoverScreen({
     // Save to cache for daily persistence
     // saveDiscoverCache(recommendations, featured, grid);
   }, [recommendations]);
-
-  // Fetch holiday experiences from edge function when person is selected
-  useEffect(() => {
-    const fetchHolidayExperiences = async () => {
-      // Only fetch when we have location and a person is selected
-      if (!locationLat || !locationLng) {
-        return;
-      }
-      
-      // Only fetch when viewing a person (not "for-you")
-      if (selectedPersonId === "for-you") {
-        setFetchedHolidays([]);
-        setFetchedCustomHolidays([]);
-        return;
-      }
-
-      setFetchingHolidayExperiences(true);
-
-      try {
-        // Map gender - API only accepts "male" | "female" | null, so "other" becomes null
-        const personGender = selectedPerson?.gender;
-        const gender: "male" | "female" | null = (personGender === "male" || personGender === "female") ? personGender : null;
-        console.log(`Fetching holiday experiences for person: ${selectedPerson?.name}, gender: ${gender}`);
-
-        // Get custom holidays for this person to send to edge function  
-        const personCustomHolidays = customHolidays
-          .filter((h) => h.personId === selectedPersonId)
-          .map((h) => ({
-            id: h.id,
-            name: h.name,
-            description: h.description,
-            date: h.date,
-            category: h.category,
-          }));
-
-        console.log(`Sending ${personCustomHolidays.length} custom holidays to edge function`);
-        // Debug: log each custom holiday being sent
-        personCustomHolidays.forEach((ch) => {
-          console.log(`Sending custom holiday: ${ch.name}, date: ${ch.date}`);
-        });
-
-        const response = await HolidayExperiencesService.getHolidayExperiences({
-          location: { lat: locationLat, lng: locationLng },
-          radius: 10000,
-          gender: gender,
-          days: 365,
-          customHolidays: personCustomHolidays,
-        });
-
-        console.log(`Received ${response.holidays.length} holidays and ${response.customHolidays?.length || 0} custom holidays with experiences`);
-        
-        // Debug: Log custom holiday details
-        if (response.customHolidays && response.customHolidays.length > 0) {
-          response.customHolidays.forEach((ch) => {
-            console.log(`Custom holiday: ${ch.name}, daysAway: ${ch.daysAway}, date: ${ch.date}`);
-          });
-        }
-        
-        setFetchedHolidays(response.holidays);
-        setFetchedCustomHolidays(response.customHolidays || []);
-      } catch (error) {
-        console.error("Error fetching holiday experiences:", error);
-        setFetchedHolidays([]);
-        setFetchedCustomHolidays([]);
-      } finally {
-        setFetchingHolidayExperiences(false);
-      }
-    };
-
-    fetchHolidayExperiences();
-  }, [locationLat, locationLng, selectedPersonId, selectedPerson?.gender, selectedPerson?.name, customHolidays]);
 
   // Use the stable selected cards
   const featuredCard = selectedFeaturedCard;
@@ -2261,57 +2469,89 @@ export default function DiscoverScreen({
     };
   }, []);
 
-  // Merge calendar holidays with custom holidays for display, filtered by selected person's gender
-  // When fetched holidays are available, use those as the primary source
-  const allHolidays = useMemo(() => {
-    // If we have fetched holidays from the edge function, use them (including fetched custom holidays)
-    if ((fetchedHolidays.length > 0 || fetchedCustomHolidays.length > 0) && selectedPersonId !== "for-you") {
-      // Transform fetched holidays to the format expected by the UI
-      const fetchedList = fetchedHolidays.map((h) => ({
-        id: h.id,
-        name: h.name,
-        description: h.description,
-        date: new Date(h.date),
-        daysAway: h.daysAway,
-        category: h.primaryCategory,
-        categories: h.categories,
-        isFromCalendar: false,
-        isCustom: false,
-        fetchedExperiences: h.experiences, // Include the fetched experiences
-      }));
-
-      // Transform fetched custom holidays (these have experiences from the edge function)
-      const fetchedCustomList = fetchedCustomHolidays.map((h) => ({
-        id: h.id,
-        name: h.name,
-        description: h.description,
-        date: new Date(h.date),
-        daysAway: h.daysAway,
-        category: h.primaryCategory,
-        categories: h.categories,
-        isFromCalendar: false,
-        isCustom: true,
-        fetchedExperiences: h.experiences, // Custom holidays now have fetched experiences!
-      }));
-
-      // Merge fetched holidays and fetched custom holidays, sorted by daysAway
-      const merged = [...fetchedList, ...fetchedCustomList];
-      console.log(`allHolidays: merging ${fetchedList.length} holidays + ${fetchedCustomList.length} custom = ${merged.length} total`);
-      
-      // Debug: log custom holidays before filtering
-      fetchedCustomList.forEach((h) => {
-        console.log(`Before filter - Custom: ${h.name}, daysAway: ${h.daysAway}`);
-      });
-      
-      const filtered = merged
-        .filter((h) => h.daysAway >= 0 && h.daysAway <= 365);
-      
-      console.log(`After 365-day filter: ${filtered.length} holidays remaining`);
-      
-      return filtered.sort((a, b) => a.daysAway - b.daysAway);
+  // Load cards for a single holiday only when user expands it
+  const loadHolidayCardsOnDemand = useCallback(async (
+    holiday: {
+      id: string;
+      name: string;
+      daysAway: number;
+      categories?: string[];
+      category?: string;
+      isCustom?: boolean;
+    }
+  ) => {
+    if (holidayCardsById[holiday.id] || holidayCardsLoadingById[holiday.id]) {
+      return;
     }
 
-    // Fallback: Get custom holidays for the selected person (no fetched experiences)
+    setHolidayCardsLoadingById((prev) => ({ ...prev, [holiday.id]: true }));
+
+    const holidayCategories = holiday.categories || (holiday.category ? [holiday.category] : getCategoriesForHolidayName(holiday.name));
+
+    try {
+      let cards: GridCardData[] = [];
+
+      if (locationLat && locationLng && selectedPersonId !== "for-you") {
+        const personGender = selectedPerson?.gender;
+        const gender: "male" | "female" | null =
+          personGender === "male" || personGender === "female" ? personGender : null;
+
+        const personCustomHolidays = customHolidays
+          .filter((h) => h.personId === selectedPersonId)
+          .map((h) => ({
+            id: h.id,
+            name: h.name,
+            description: h.description,
+            date: h.date,
+            category: h.category,
+          }));
+
+        const response = await HolidayExperiencesService.getHolidayExperiences({
+          location: { lat: locationLat, lng: locationLng },
+          radius: 10000,
+          gender,
+          days: Math.min(365, Math.max(7, (holiday.daysAway || 0) + 2)),
+          customHolidays: personCustomHolidays,
+        });
+
+        const merged = [...response.holidays, ...(response.customHolidays || [])];
+        const matchedHoliday = merged.find(
+          (h) => h.id === holiday.id || h.name.toLowerCase() === holiday.name.toLowerCase()
+        );
+
+        if (matchedHoliday?.experiences?.length) {
+          cards = matchedHoliday.experiences
+            .map(transformHolidayExperienceToCard)
+            .slice(0, 3);
+        }
+      }
+
+      if (cards.length === 0) {
+        cards = getExperiencesForCategories(holidayCategories, holiday.id).slice(0, 3);
+      }
+
+      setHolidayCardsById((prev) => ({ ...prev, [holiday.id]: cards }));
+    } catch (error) {
+      console.error("Error loading holiday cards on demand:", error);
+      const fallbackCards = getExperiencesForCategories(holidayCategories, holiday.id).slice(0, 3);
+      setHolidayCardsById((prev) => ({ ...prev, [holiday.id]: fallbackCards }));
+    } finally {
+      setHolidayCardsLoadingById((prev) => ({ ...prev, [holiday.id]: false }));
+    }
+  }, [
+    customHolidays,
+    getExperiencesForCategories,
+    holidayCardsById,
+    holidayCardsLoadingById,
+    locationLat,
+    locationLng,
+    selectedPerson?.gender,
+    selectedPersonId,
+    transformHolidayExperienceToCard,
+  ]);
+
+  // Merge calendar holidays with custom holidays for display, filtered by selected person's gender
+  const allHolidays = useMemo(() => {
     const customHolidaysList = getPersonCustomHolidays.map((h) => ({
       id: h.id,
       name: h.name,
@@ -2322,10 +2562,8 @@ export default function DiscoverScreen({
       categories: (h as any).categories || [h.category],
       isFromCalendar: false,
       isCustom: true,
-      fetchedExperiences: undefined, // Custom holidays use local filtering
     }));
 
-    // Fallback: Use calendar/custom holidays with local filtering
     const calendar = calendarHolidays || [];
     const custom = getPersonCustomHolidays;
     
@@ -2347,11 +2585,11 @@ export default function DiscoverScreen({
         return true;
       })
       .sort((a, b) => a.daysAway - b.daysAway);
-  }, [calendarHolidays, getPersonCustomHolidays, selectedPerson?.gender, fetchedHolidays, fetchedCustomHolidays, selectedPersonId]);
+  }, [calendarHolidays, getPersonCustomHolidays, selectedPerson?.gender]);
 
   // Animate holiday items with staggered entrance when holidays are available
   useEffect(() => {
-    if (selectedPerson && allHolidays.length > 0 && !holidaysLoading && !fetchingHolidayExperiences) {
+    if (selectedPerson && allHolidays.length > 0 && !holidaysLoading) {
       // Reset all holiday animations
       holidayItemAnimations.forEach((anim) => {
         anim.opacity.setValue(0);
@@ -2382,7 +2620,7 @@ export default function DiscoverScreen({
         }, baseDelay + index * staggerDelay);
       });
     }
-  }, [selectedPerson, allHolidays, holidaysLoading, fetchingHolidayExperiences, holidayItemAnimations]);
+  }, [selectedPerson, allHolidays, holidaysLoading, holidayItemAnimations]);
 
   return (
     <View style={styles.safeArea}>
@@ -2588,37 +2826,20 @@ export default function DiscoverScreen({
                       </TouchableOpacity>
                     </View>
 
-                    {holidaysLoading || fetchingHolidayExperiences ? (
+                    {holidaysLoading ? (
                       <View style={styles.holidayLoadingContainer}>
                         <ActivityIndicator size="small" color="#eb7825" />
                         <Text style={styles.holidayLoadingText}>
-                          {fetchingHolidayExperiences ? "Loading experiences..." : hasCalendarAccess ? "Loading calendar holidays..." : "Loading holidays..."}
+                          {hasCalendarAccess ? "Loading calendar holidays..." : "Loading holidays..."}
                         </Text>
                       </View>
                     ) : (
                       (() => {
-                        // Track used experience IDs across all holidays to prevent duplicates
-                        // Server-side deduplication should handle this, but this is a safety net
-                        const usedExperienceIds = new Set<string>();
-                        
                         return allHolidays.slice(0, 20).map((holiday, index) => {
                           const isExpanded = expandedHolidayIds.has(holiday.id);
-                          // Check if this holiday has fetched experiences from the edge function
-                          const fetchedExperiences = (holiday as any).fetchedExperiences as HolidayExperience[] | undefined;
-                          // Use fetched experiences if available, otherwise fall back to local filtering
                           const holidayCategories = (holiday as any).categories || getCategoriesForHolidayName(holiday.name);
-                          const allHolidayCards = fetchedExperiences && fetchedExperiences.length > 0
-                            ? fetchedExperiences.map(transformHolidayExperienceToCard)
-                            : getExperiencesForCategories(holidayCategories, holiday.id);
-                          
-                          // Filter out any duplicates that somehow made it through
-                          const holidayCards = allHolidayCards.filter(card => {
-                            if (usedExperienceIds.has(card.id)) {
-                              return false;
-                            }
-                            usedExperienceIds.add(card.id);
-                            return true;
-                          }).slice(0, 3); // Limit to 3 max
+                          const holidayCards = holidayCardsById[holiday.id] || [];
+                          const isHolidayCardsLoading = !!holidayCardsLoadingById[holiday.id];
                           
                           // Check if this is a custom holiday
                           const isCustomHoliday = (holiday as any).isCustom === true;
@@ -2652,7 +2873,20 @@ export default function DiscoverScreen({
                             {/* Holiday Header (clickable to expand/collapse) */}
                             <TouchableOpacity 
                               style={styles.holidayItem}
-                              onPress={() => toggleHolidayExpansion(holiday.id)}
+                              onPress={() => {
+                                const willExpand = !isExpanded;
+                                toggleHolidayExpansion(holiday.id);
+                                if (willExpand) {
+                                  loadHolidayCardsOnDemand({
+                                    id: holiday.id,
+                                    name: holiday.name,
+                                    daysAway: holiday.daysAway,
+                                    categories: holidayCategories,
+                                    category: (holiday as any).category,
+                                    isCustom: isCustomHoliday,
+                                  });
+                                }
+                              }}
                               activeOpacity={0.7}
                             >
                               <View style={styles.holidayItemLeft}>
@@ -2709,7 +2943,14 @@ export default function DiscoverScreen({
                             </TouchableOpacity>
 
                             {/* Expanded Holiday Cards Section */}
-                            {isExpanded && holidayCards.length > 0 && (
+                            {isExpanded && isHolidayCardsLoading && (
+                              <View style={styles.holidayLoadingContainer}>
+                                <ActivityIndicator size="small" color="#eb7825" />
+                                <Text style={styles.holidayLoadingText}>Loading cards...</Text>
+                              </View>
+                            )}
+
+                            {isExpanded && !isHolidayCardsLoading && holidayCards.length > 0 && (
                               <View style={styles.holidayCardsContainer}>
                                 {/* Left Navigation Button */}
                                 <TouchableOpacity
@@ -2772,6 +3013,12 @@ export default function DiscoverScreen({
                                 </TouchableOpacity>
                               </View>
                             )}
+
+                            {isExpanded && !isHolidayCardsLoading && holidayCards.length === 0 && (
+                              <View style={styles.holidayLoadingContainer}>
+                                <Text style={styles.holidayLoadingText}>No cards available for this holiday yet.</Text>
+                              </View>
+                            )}
                           </ContainerComponent>
                         );
                       });
@@ -2799,7 +3046,7 @@ export default function DiscoverScreen({
                   )}
 
                   {/* Empty State */}
-                  {!recommendationsLoading && !recommendationsError && !featuredCard && hasCompletedInitialFetch && (
+                  {!recommendationsLoading && !recommendationsError && !featuredCard && gridCards.length === 0 && recommendations.length === 0 && hasCompletedInitialFetch && (
                     <View style={styles.emptyStateContainer}>
                       <Ionicons name="compass-outline" size={48} color="#eb7825" />
                       <Text style={styles.emptyStateTitle}>No experiences found</Text>
@@ -2810,22 +3057,24 @@ export default function DiscoverScreen({
                   )}
 
                   {/* Content - Featured Card and Grid */}
-                  {featuredCard && (
+                  {(featuredCard || gridCards.length > 0) && (
                     <>
                       {/* Featured Card */}
-                      <Animated.View
-                        style={{
-                          opacity: featuredCardOpacity,
-                          transform: [{ translateY: featuredCardSlide }],
-                        }}
-                      >
-                        <FeaturedCard 
-                          card={featuredCard} 
-                          currency={accountPreferences?.currency}
-                          measurementSystem={accountPreferences?.measurementSystem}
-                          onPress={() => handleCardPress(featuredCard)}
-                        />
-                      </Animated.View>
+                      {featuredCard && (
+                        <Animated.View
+                          style={{
+                            opacity: featuredCardOpacity,
+                            transform: [{ translateY: featuredCardSlide }],
+                          }}
+                        >
+                          <FeaturedCard 
+                            card={featuredCard} 
+                            currency={accountPreferences?.currency}
+                            measurementSystem={accountPreferences?.measurementSystem}
+                            onPress={() => handleCardPress(featuredCard)}
+                          />
+                        </Animated.View>
+                      )}
 
                       {/* Grid Cards Section */}
                       <View style={styles.gridCardsContainer}>
