@@ -1425,6 +1425,7 @@ function AppContent() {
             // Just update local state
             setHasCompletedOnboarding(true);
             setShowOnboardingFlow(false);
+            setCurrentPage("home");
           }}
           onNavigateToSignUp={(accountType) => {
             setShowOnboardingFlow(false);
