@@ -1,11 +1,12 @@
 /**
- * NotificationsModal — Bottom Sheet Design
+ * NotificationsModal — Premium Bottom Sheet Design
  *
  * Matches the design language of PreferencesSheet and SessionViewModal:
  * - 88% height bottom sheet with rounded top corners
  * - Semi-transparent overlay backdrop
  * - Slide-up animation
  * - Scrollable notification list with sections (Today, Earlier, This Week)
+ * - Premium compact card design with avatars and user info
  *
  * Each notification is tappable and navigates to the relevant page/action.
  */
@@ -18,13 +19,15 @@ import {
   TouchableOpacity,
   Dimensions,
   SectionList,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   InAppNotification,
   NavigationTarget,
 } from "../services/inAppNotificationService";
+import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
@@ -59,6 +62,9 @@ interface NotificationsModalProps {
   onNotificationPress: (notification: InAppNotification) => void;
   onMarkAllRead: () => void;
   onClearAll: () => void;
+  onOpenRequestsModal?: () => void;
+  onAcceptFriendRequest?: (userId: string, notificationId: string) => void;
+  onRejectFriendRequest?: (userId: string, notificationId: string) => void;
 }
 
 // ── Section grouping helpers ──
@@ -132,61 +138,193 @@ export default function NotificationsModal({
   onNotificationPress,
   onMarkAllRead,
   onClearAll,
+  onOpenRequestsModal,
+  onAcceptFriendRequest,
+  onRejectFriendRequest,
 }: NotificationsModalProps) {
   const insets = useSafeAreaInsets();
+  const [failedImageIds, setFailedImageIds] = React.useState<Set<string>>(new Set());
 
   const sections = useMemo(
     () => groupNotificationsByDate(notifications),
     [notifications]
   );
 
+  const handleImageError = (notificationId: string) => {
+    setFailedImageIds((prev) => new Set(prev).add(notificationId));
+  };
+
   const renderNotification = ({
     item,
   }: {
     item: InAppNotification;
   }) => {
+    // DEBUG: Log the notification data on each render
+    if (item.type === "friend_request") {
+      console.log(`[NotificationsModal] Rendering Friend Request notification:`, {
+        id: item.id,
+        title: item.title,
+        hasData: !!item.data,
+        avatarUrl: item.data?.avatar_url,
+        userName: item.data?.userName,
+        email: item.data?.email,
+        failedIds: Array.from(failedImageIds),
+      });
+    }
+
     const navLabel = getNavigationLabel(item.navigation);
+    const showAvatar = 
+      item.type === "friend_request" || 
+      item.type === "friend_accepted" ||
+      item.type === "board_invite";
+
+    const isFriendRequest = item.type === "friend_request";
+
+    // For friend requests, try to show initials or avatar
+    const initials = item.data?.userName
+      ? item.data.userName
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .toUpperCase()
+      : "?";
+
+    const handleCardPress = () => {
+      if (isFriendRequest) {
+        // Open the friend requests modal instead of navigating
+        onOpenRequestsModal?.();
+      } else {
+        onNotificationPress(item);
+      }
+    };
+
+    const handleAccept = (e: any) => {
+      e.stopPropagation();
+      onAcceptFriendRequest?.(item.data?.requestId, item.id);
+    };
+
+    const handleReject = (e: any) => {
+      e.stopPropagation();
+      onRejectFriendRequest?.(item.data?.requestId, item.id);
+    };
 
     return (
-      <TouchableOpacity
-        style={[
-          styles.notificationItem,
-          !item.isRead && styles.notificationItemUnread,
-        ]}
-        onPress={() => onNotificationPress(item)}
-        activeOpacity={0.65}
-      >
-        {/* Icon */}
-        <View style={[styles.iconCircle, { borderColor: item.iconColor + "40" }]}>
-          <Ionicons
-            name={item.icon as any}
-            size={18}
-            color={item.iconColor}
-          />
-        </View>
-
-        {/* Content */}
-        <View style={styles.notificationBody}>
-          <View style={styles.notificationTitleRow}>
-            <Text style={styles.notificationTitle} numberOfLines={1}>
-              {item.title}
-            </Text>
-            {!item.isRead && <View style={styles.unreadDot} />}
+      <View style={styles.notificationCardWrapper}>
+        <TouchableOpacity
+          style={[
+            styles.notificationCard,
+            !item.isRead && styles.notificationCardUnread,
+            isFriendRequest && styles.notificationCardWithActions,
+          ]}
+          onPress={handleCardPress}
+          activeOpacity={0.7}
+        >
+          {/* Avatar / Icon Section */}
+          <View style={styles.avatarSection}>
+            {showAvatar ? (
+              <View style={styles.avatarCircle}>
+                {item.data?.avatar_url && !failedImageIds.has(item.id) ? (
+                  <ImageWithFallback
+                    source={{ uri: String(item.data.avatar_url).trim() }}
+                    style={styles.avatarImage}
+                    onError={() => {
+                      console.warn(`Avatar load failed for notification ${item.id}: ${item.data?.avatar_url}`);
+                      handleImageError(item.id);
+                    }}
+                    onLoadStart={() => {
+                      console.log(`Avatar loading for notification ${item.id}: ${item.data?.avatar_url}`);
+                    }}
+                    onLoad={() => {
+                      console.log(`Avatar loaded successfully for notification ${item.id}`);
+                    }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text style={styles.avatarInitials}>{initials}</Text>
+                )}
+              </View>
+            ) : (
+              <View style={[styles.iconCircle, { borderColor: item.iconColor + "40" }]}>
+                <Ionicons
+                  name={item.icon as any}
+                  size={20}
+                  color={item.iconColor}
+                />
+              </View>
+            )}
+            {!item.isRead && <View style={styles.unreadIndicator} />}
           </View>
-          <Text style={styles.notificationDescription} numberOfLines={2}>
-            {item.description}
-          </Text>
-          <View style={styles.notificationMeta}>
-            <Text style={styles.notificationTime}>{item.timeAgo}</Text>
-            {navLabel && (
-              <View style={styles.navLabelContainer}>
-                <Text style={styles.navLabel}>{navLabel}</Text>
-                <Ionicons name="chevron-forward" size={12} color="#eb7825" />
+
+          {/* Main Content Section - Center */}
+          <View style={styles.mainContent}>
+            {/* Title and notification type */}
+            <View style={styles.titleSection}>
+              <Text style={styles.notificationTitle} numberOfLines={1}>
+                {item.title}
+              </Text>
+            </View>
+
+            {/* User info for social notifications */}
+            {showAvatar && item.data?.userName && (
+              <View style={styles.userInfoSection}>
+                <Text style={styles.userName} numberOfLines={1}>
+                  {item.data.userName}
+                </Text>
+                {item.data?.email && (
+                  <Text style={styles.userEmail} numberOfLines={1}>
+                    {item.data.email}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* Description - properly wrapped */}
+            <Text 
+              style={styles.notificationDescription}
+              numberOfLines={isFriendRequest ? 2 : 2}
+            >
+              {item.description}
+            </Text>
+
+            {/* Meta information - not shown for friend requests */}
+            {!isFriendRequest && (
+              <View style={styles.metaSection}>
+                <Text style={styles.notificationTime}>{item.timeAgo}</Text>
+                {navLabel && (
+                  <View style={styles.navLabelContainer}>
+                    <Text style={styles.navLabel}>{navLabel}</Text>
+                    <MaterialCommunityIcons 
+                      name="chevron-right" 
+                      size={14} 
+                      color="#eb7825" 
+                    />
+                  </View>
+                )}
               </View>
             )}
           </View>
-        </View>
-      </TouchableOpacity>
+
+          {/* Quick Action Buttons for Friend Requests - Right side, integrated */}
+          {isFriendRequest && (
+            <View style={styles.actionsRight}>
+              <TouchableOpacity
+                style={styles.acceptButtonCompact}
+                onPress={handleAccept}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="checkmark" size={12} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.rejectButtonCompact}
+                onPress={handleReject}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={12} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -329,7 +467,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#D1D5DB",
   },
 
-  // Header
+  // ── Header ──
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -372,7 +510,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // Action Bar
+  // ── Action Bar ──
   actionBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -393,21 +531,21 @@ const styles = StyleSheet.create({
     color: "#eb7825",
   },
 
-  // Section Header
+  // ── Section Header ──
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 8,
+    paddingTop: 16,
+    paddingBottom: 6,
     gap: 12,
   },
   sectionHeaderText: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 12,
+    fontWeight: "700",
     color: "#9CA3AF",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   sectionHeaderLine: {
     flex: 1,
@@ -415,84 +553,222 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
   },
 
-  // Notification Items
+  // ── Notification Cards (Premium Design) ──
   listContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     paddingBottom: 24,
   },
-  notificationItem: {
+  
+  notificationCardWrapper: {
+    marginVertical: 6,
+  },
+  
+  notificationCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+    gap: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  notificationItemUnread: {
-    backgroundColor: "#FFF8F3",
+
+  notificationCardWithActions: {
+    paddingRight: 8,
   },
+  
+  notificationCardUnread: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#FCD34D",
+  },
+
+  // ── Avatar / Icon Section ──
+  avatarSection: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  
+  avatarCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#FED7AA",
+    backgroundColor: "#FEF3C7",
+    overflow: "hidden",
+  },
+
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 24,
+  },
+  
+  avatarInitials: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#ea6317",
+  },
+
   iconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FAFAFA",
   },
-  notificationBody: {
-    flex: 1,
-  },
-  notificationTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 2,
-  },
-  notificationTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-    flex: 1,
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+
+  unreadIndicator: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: "#eb7825",
+    borderWidth: 2,
+    borderColor: "white",
   },
-  notificationDescription: {
+
+  // ── Content Section ──
+  mainContent: {
+    flex: 1,
+    marginRight: 4,
+  },
+
+  notificationContent: {
+    flex: 1,
+  },
+
+  titleSection: {
+    marginBottom: 3,
+  },
+
+  notificationTitle: {
     fontSize: 13,
-    color: "#6B7280",
-    lineHeight: 18,
-    marginBottom: 6,
+    fontWeight: "700",
+    color: "#111827",
   },
-  notificationMeta: {
+
+  // ── User Info (for social notifications) ──
+  userInfoSection: {
+    marginBottom: 4,
+  },
+
+  userName: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#374151",
+    flexWrap: "wrap",
+  },
+
+  userEmail: {
+    fontSize: 11,
+    color: "#9CA3AF",
+    marginTop: 1,
+    flexWrap: "wrap",
+  },
+
+  // ── Description ──
+  notificationDescription: {
+    fontSize: 11,
+    color: "#6B7280",
+    lineHeight: 15,
+    marginBottom: 4,
+    flexWrap: "wrap",
+  },
+
+  // ── Meta Section ──
+  metaSection: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
+
   notificationTime: {
-    fontSize: 12,
+    fontSize: 10,
     color: "#9CA3AF",
+    fontWeight: "500",
   },
+
   navLabelContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
   },
+
   navLabel: {
-    fontSize: 12,
-    fontWeight: "500",
+    fontSize: 10,
+    fontWeight: "600",
     color: "#eb7825",
   },
 
-  // Empty State
+  // ── Quick Actions (Friend Request Buttons - Right side, compact) ──
+  actionsRight: {
+    flexDirection: "column",
+    gap: 6,
+    justifyContent: "center",
+  },
+
+  acceptButtonCompact: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#ea6317",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+
+  rejectButtonCompact: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+
+  quickActionsContainer: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+    marginLeft: 60,
+  },
+
+  quickActionsSection: {
+    flexDirection: "row",
+    gap: 8,
+    paddingLeft: 8,
+  },
+
+  // ── Empty State ──
   emptyState: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 40,
   },
+  
   emptyIconCircle: {
     width: 80,
     height: 80,
@@ -502,12 +778,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 20,
   },
+  
   emptyStateTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: "#374151",
     marginBottom: 8,
   },
+  
   emptyStateSubtext: {
     fontSize: 14,
     color: "#9CA3AF",

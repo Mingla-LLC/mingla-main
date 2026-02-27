@@ -6,8 +6,13 @@ import {
   StyleSheet,
   ScrollView,
   Modal,
+  Dimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 import SessionsTab from "./collaboration/SessionsTab";
 import InvitesTab from "./collaboration/InvitesTab";
 import CreateTab from "./collaboration/CreateTab";
@@ -126,6 +131,7 @@ export default function CollaborationModule({
   availableFriends = [],
   onRefreshBoards,
 }: CollaborationModuleProps) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<"sessions" | "invites" | "create">(
     "sessions"
   );
@@ -957,47 +963,73 @@ export default function CollaborationModule({
   const pendingSessions: any[] = []; // No pending sessions for now - can be added later if needed
 
   const styles = StyleSheet.create({
-    modalContainer: {
+    sheetOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      backgroundColor: "rgba(0, 0, 0, 0.35)",
       justifyContent: "flex-end",
     },
-    modalContent: {
-      backgroundColor: "white",
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      width: "100%",
-      maxHeight: "95%",
-      minHeight: "90%",
-      paddingHorizontal: 16,
+    backdropTouch: {
+      flex: 1,
+    },
+    sheetContent: {
+      height: SHEET_HEIGHT,
+      backgroundColor: "#FFFFFF",
+      borderTopLeftRadius: 36,
+      borderTopRightRadius: 36,
+      overflow: "hidden",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: -12 },
+      shadowOpacity: 0.3,
+      shadowRadius: 24,
+      elevation: 30,
+    },
+    dragHandleContainer: {
+      alignItems: "center",
+      paddingTop: 12,
+      paddingBottom: 4,
+    },
+    dragHandle: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: "#D1D5DB",
     },
     header: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingVertical: 24,
-      paddingHorizontal: 16,
+      paddingHorizontal: 20,
+      paddingVertical: 14,
       borderBottomWidth: 1,
-      borderBottomColor: "#f3f4f6",
+      borderBottomColor: "#F3F4F6",
+    },
+    headerLeft: {
+      flex: 1,
     },
     headerTitle: {
-      fontSize: 24,
+      fontSize: 20,
       fontWeight: "700",
       color: "#111827",
     },
     headerSubtitle: {
-      fontSize: 14,
+      fontSize: 13,
       color: "#6B7280",
-      marginTop: 4,
+      marginTop: 2,
     },
     closeButton: {
-      padding: 8,
-      borderRadius: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: "#F3F4F6",
+      alignItems: "center",
+      justifyContent: "center",
     },
     tabsContainer: {
       flexDirection: "row",
       backgroundColor: "#f3f4f6",
       borderRadius: 12,
+      marginHorizontal: 16,
+      marginVertical: 12,
     },
     tab: {
       flex: 1,
@@ -1051,14 +1083,27 @@ export default function CollaborationModule({
     <Modal
       visible={isOpen}
       animationType="slide"
-      presentationStyle="pageSheet"
+      transparent
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
+      <View style={styles.sheetOverlay}>
+        {/* Tap backdrop to close */}
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+
+        <View style={[styles.sheetContent, { paddingBottom: insets.bottom }]}>
+          {/* Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
-            <View>
+            <View style={styles.headerLeft}>
               <Text style={styles.headerTitle}>Collaboration Mode</Text>
               <Text style={styles.headerSubtitle}>
                 {activeTab === "create"
@@ -1069,7 +1114,7 @@ export default function CollaborationModule({
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#111827" />
+              <Ionicons name="close" size={22} color="#6B7280" />
             </TouchableOpacity>
           </View>
 
@@ -1123,7 +1168,7 @@ export default function CollaborationModule({
           <ScrollView
             style={styles.content}
             contentContainerStyle={styles.contentContainer}
-            showsVerticalScrollIndicator={true}
+            showsVerticalScrollIndicator={false}
             bounces={true}
           >
             {activeTab === "sessions" && (

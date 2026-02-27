@@ -3,6 +3,7 @@ import {
   Text,
   View,
   TouchableOpacity,
+  Pressable,
   TextInput,
   StyleSheet,
   ScrollView,
@@ -1525,6 +1526,10 @@ export default function PreferencesSheet({
         onRequestClose={() => setShowCalendar(false)}
       >
         <View style={styles.modalOverlay}>
+          <Pressable
+            style={styles.backdropTouch}
+            onPress={() => setShowCalendar(false)}
+          />
           <SafeAreaView style={styles.modalContent} edges={["bottom"]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Date</Text>
@@ -1555,6 +1560,10 @@ export default function PreferencesSheet({
             onRequestClose={() => setShowTimePicker(false)}
           >
             <View style={styles.modalOverlay}>
+              <Pressable
+                style={styles.backdropTouch}
+                onPress={() => setShowTimePicker(false)}
+              />
               <SafeAreaView style={styles.modalContent} edges={["bottom"]}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Select Time</Text>
@@ -1601,6 +1610,7 @@ export default function PreferencesSheet({
         statusBarTranslucent
       >
         <View style={styles.sheetOverlay}>
+          <Pressable style={styles.backdropTouch} onPress={onClose} />
           <View style={styles.sheetContent}>
             {isLoading ? (
               <View style={styles.loadingContainer}>
@@ -1647,6 +1657,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.35)",
     justifyContent: "flex-end",
     alignItems: "center",
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   sheetContent: {
     height: SHEET_HEIGHT,

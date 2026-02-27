@@ -656,6 +656,9 @@ const DateTimePrefStep = ({
       backgroundColor: "rgba(0, 0, 0, 0.5)",
       justifyContent: "flex-end",
     },
+    backdropTouch: {
+      ...StyleSheet.absoluteFillObject,
+    },
     modalContent: {
       backgroundColor: "white",
       borderTopLeftRadius: 20,
@@ -952,6 +955,11 @@ const DateTimePrefStep = ({
         onRequestClose={() => setShowCalendar(false)}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.backdropTouch}
+            activeOpacity={1}
+            onPress={() => setShowCalendar(false)}
+          />
           <SafeAreaView style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Date</Text>
@@ -982,6 +990,11 @@ const DateTimePrefStep = ({
             onRequestClose={() => setShowTimePicker(false)}
           >
             <View style={styles.modalOverlay}>
+              <TouchableOpacity
+                style={styles.backdropTouch}
+                activeOpacity={1}
+                onPress={() => setShowTimePicker(false)}
+              />
               <SafeAreaView style={styles.modalContent}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Select Time</Text>

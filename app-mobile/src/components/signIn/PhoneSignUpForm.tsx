@@ -223,6 +223,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "flex-end",
   },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
+  },
   modalContent: {
     backgroundColor: "white",
     borderTopLeftRadius: 20,
@@ -691,6 +694,14 @@ export default function PhoneSignUpForm({
         onRequestClose={() => setShowCountryPicker(false)}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.backdropTouch}
+            activeOpacity={1}
+            onPress={() => {
+              setShowCountryPicker(false);
+              setCountrySearchQuery("");
+            }}
+          />
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Country</Text>

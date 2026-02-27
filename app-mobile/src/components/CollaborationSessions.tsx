@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Text,
   View,
+  Pressable,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -14,9 +15,11 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SessionViewModal from './SessionViewModal';
 
-const { width: screenWidth } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const SHEET_HEIGHT = screenHeight * 0.88;
 
 // Types
 export type SessionType = 'active' | 'sent-invite' | 'received-invite';
@@ -80,6 +83,7 @@ export default function CollaborationSessions({
   availableFriends = [],
   isCreatingSession = false,
 }: CollaborationSessionsProps) {
+  const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
@@ -272,18 +276,29 @@ export default function CollaborationSessions({
       <Modal
         visible={showCreateModal}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={handleCloseCreateModal}
+        statusBarTranslucent
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContentLarge}>
-            <View style={styles.modalHeader}>
+        <View style={styles.createSheetOverlay}>
+          <TouchableOpacity
+            style={styles.createSheetBackdrop}
+            activeOpacity={1}
+            onPress={handleCloseCreateModal}
+          />
+          <View style={[styles.createSheetContent, { paddingBottom: insets.bottom }]}>
+            {/* Drag Handle */}
+            <View style={styles.createDragHandleContainer}>
+              <View style={styles.createDragHandle} />
+            </View>
+
+            <View style={styles.createSheetHeader}>
               <Text style={styles.modalTitle}>Create New Session</Text>
               <TouchableOpacity
                 onPress={handleCloseCreateModal}
                 style={styles.modalCloseButton}
               >
-                <Ionicons name="close" size={20} color="#6B7280" />
+                <Ionicons name="close" size={22} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
@@ -441,6 +456,7 @@ export default function CollaborationSessions({
       </Modal>
 
       {/* Invite Action Modal */}
+
       <Modal
         visible={showInviteModal}
         transparent
@@ -448,6 +464,10 @@ export default function CollaborationSessions({
         onRequestClose={() => setShowInviteModal(false)}
       >
         <View style={styles.modalOverlay}>
+          <Pressable
+            style={styles.backdropTouch}
+            onPress={() => setShowInviteModal(false)}
+          />
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
@@ -571,11 +591,11 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 12,
+      height: 1,
     },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 12,
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
   },
   scrollViewWrapper: {
     flex: 1,
@@ -699,12 +719,56 @@ const styles = StyleSheet.create({
   inviteBadgePending: {
     backgroundColor: '#9CA3AF',
   },
-  // Modal styles
+  // Create session bottom sheet styles
+  createSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    justifyContent: 'flex-end',
+  },
+  createSheetBackdrop: {
+    flex: 1,
+  },
+  createSheetContent: {
+    height: SHEET_HEIGHT,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 30,
+  },
+  createDragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  createDragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+  },
+  createSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  // Invite modal styles (centered dialog — kept as-is)
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContent: {
     width: screenWidth - 48,
@@ -732,9 +796,9 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   modalCloseButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
@@ -876,7 +940,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   modalScrollContent: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 16,
   },
   modalActionsFixed: {

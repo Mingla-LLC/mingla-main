@@ -78,6 +78,7 @@ function AppContent() {
   const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
   const helpButtonDismissedRef = useRef<boolean>(false);
   const viewShotRef = useRef<any>(null);
+  const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
 
   // Initialize debug service on mount
   useEffect(() => {
@@ -86,7 +87,16 @@ function AppContent() {
 
   // Initialize in-app notification service on mount
   useEffect(() => {
-    inAppNotificationService.initialize();
+    inAppNotificationService.initialize().then(async () => {
+      // Clean up old notifications with "New Connection Request" title
+      const all = inAppNotificationService.getAll();
+      for (const notif of all) {
+        if (notif.title === "New Connection Request") {
+          console.warn(`[AppInit] Removing old notification: ${notif.id} - "${notif.title}"`);
+          await inAppNotificationService.remove(notif.id);
+        }
+      }
+    });
   }, []);
 
   // Setup 5-tap gesture to open debug modal
@@ -210,7 +220,7 @@ function AppContent() {
   }, [user?.id]);
 
   // Get friends from useFriends hook for session creation
-  const { friends: dbFriends, fetchFriends } = useFriends();
+  const { friends: dbFriends, fetchFriends, loadFriendRequests, friendRequests } = useFriends();
   
   // Fetch friends when component mounts
   useEffect(() => {
@@ -218,6 +228,67 @@ function AppContent() {
       fetchFriends();
     }
   }, [user, fetchFriends]);
+
+  // Check for new incoming friend requests and fire notifications
+  useEffect(() => {
+    if (!user?.id || !isAuthenticated) return;
+
+    const checkFriendRequests = async () => {
+      try {
+        await loadFriendRequests();
+      } catch (error) {
+        console.error("Error checking friend requests:", error);
+      }
+    };
+
+    // Check immediately on mount
+    checkFriendRequests();
+
+    // Then check every 15 seconds
+    const interval = setInterval(checkFriendRequests, 15000);
+    return () => clearInterval(interval);
+  }, [user?.id, isAuthenticated, loadFriendRequests]);
+
+  // Fire notifications for new incoming friend requests
+  useEffect(() => {
+    if (!friendRequests || friendRequests.length === 0) return;
+
+    // Filter for incoming pending requests
+    const incomingRequests = friendRequests.filter(
+      (req: any) => req.type === "incoming" && req.status === "pending"
+    );
+
+    // For each request, check if we've already notified about it
+    incomingRequests.forEach((request: any) => {
+      if (!notifiedFriendRequestIdsRef.current.has(request.id)) {
+        // Fire notification for this new friend request
+        const senderName =
+          request.sender?.display_name ||
+          request.sender?.first_name ||
+          request.sender?.username ||
+          "Someone";
+
+        console.log(`[FriendRequest Notification] Sender data:`, {
+          id: request.sender_id,
+          name: senderName,
+          avatar_url: request.sender?.avatar_url,
+          email: request.sender?.email,
+          fullSender: request.sender
+        });
+
+        inAppNotificationService.notifyFriendRequest(
+          senderName,
+          request.sender_id,
+          request.sender?.avatar_url,
+          request.sender?.email,
+          request.id
+        );
+        
+        // Mark as notified
+        notifiedFriendRequestIdsRef.current.add(request.id);
+      }
+    });
+  }, [friendRequests]);
 
   // Log current page for debugging
   useEffect(() => {
@@ -1604,6 +1675,24 @@ function AppContent() {
               if (exitedBoardName && currentMode === exitedBoardName) {
                 state.setCurrentMode("solo");
               }
+            }}
+            onDeleteBoard={(deletedBoardId: string, deletedBoardName: string) => {
+              // OPTIMISTIC UPDATE: Remove deleted board from list immediately
+              if (deletedBoardId && boardsSessions) {
+                const updatedBoards = boardsSessions.filter(
+                  (board: any) =>
+                    board.id !== deletedBoardId &&
+                    (board as any).session_id !== deletedBoardId
+                );
+                updateBoardsSessions(updatedBoards);
+              }
+
+              // Update mode if this was the active session
+              if (deletedBoardName && currentMode === deletedBoardName) {
+                state.setCurrentMode("solo");
+              }
+
+              toastManager.success(`"${deletedBoardName}" board deleted`);
             }}
           />
         );

@@ -69,7 +69,30 @@ class InAppNotificationServiceClass {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       if (stored) {
-        this.notifications = JSON.parse(stored);
+        const loaded = JSON.parse(stored);
+        console.log(`[InAppNotifications] Loaded ${loaded.length} notifications from storage:`, 
+          loaded.map((n: any) => ({
+            id: n.id,
+            type: n.type,
+            title: n.title,
+            hasAvatarUrl: !!n.data?.avatar_url
+          }))
+        );
+        
+        // Filter out old friend_request notifications that don't have proper data
+        this.notifications = loaded.filter((n: any) => {
+          // Keep everything except broken friend_requests
+          if (n.type === "friend_request" && !n.data?.avatar_url && !n.data?.userName) {
+            console.warn(`[InAppNotifications] Removing old friend_request notification with incomplete data:`, n.id);
+            return false;
+          }
+          return true;
+        });
+        
+        // If we filtered anything out, persist the cleaned up list
+        if (this.notifications.length < loaded.length) {
+          await this.persist();
+        }
       }
       this.initialized = true;
     } catch (err) {
@@ -207,13 +230,20 @@ class InAppNotificationServiceClass {
     );
   }
 
-  notifyFriendRequest(fromUserName: string, userId?: string) {
+  notifyFriendRequest(
+    fromUserName: string,
+    userId?: string,
+    avatarUrl?: string,
+    email?: string,
+    requestId?: string
+  ) {
+    console.log(`[Notification] Friend Request - User: ${fromUserName}, Avatar: ${avatarUrl}, Email: ${email}`);
     return this.add(
       "friend_request",
-      "New Connection Request",
+      "New Friend Request",
       `${fromUserName} wants to connect with you`,
       { page: "connections" },
-      { userId, userName: fromUserName }
+      { userId, userName: fromUserName, avatar_url: avatarUrl, email, requestId }
     );
   }
 

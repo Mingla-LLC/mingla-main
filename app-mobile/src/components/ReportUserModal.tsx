@@ -102,6 +102,11 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
       onRequestClose={handleClose}
     >
       <View style={styles.overlay}>
+          <TouchableOpacity
+            style={styles.backdropTouch}
+            activeOpacity={1}
+            onPress={handleClose}
+          />
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
@@ -234,6 +239,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
     alignItems: 'center',
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContainer: {
     backgroundColor: 'white',

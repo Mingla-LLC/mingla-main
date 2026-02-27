@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Modal,
+  Pressable,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -749,6 +750,7 @@ export default function SessionViewModal({
   return (
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.modalOverlay}>
+        <Pressable style={styles.backdropTouch} onPress={onClose} />
         <View style={styles.modalContent}>
           <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" />
@@ -995,6 +997,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.35)",
     justifyContent: "flex-end",
     alignItems: "center",
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContent: {
     height: MODAL_HEIGHT,

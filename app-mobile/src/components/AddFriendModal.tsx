@@ -11,6 +11,7 @@ import {
   Dimensions,
   Image,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
 import { useFriends } from "../hooks/useFriends";
@@ -36,6 +37,7 @@ export default function AddFriendModal({
   isOpen,
   onClose,
 }: AddFriendModalProps) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<"add" | "sent">("add");
   const [searchInput, setSearchInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -279,38 +281,43 @@ export default function AddFriendModal({
     <Modal
       visible={isOpen}
       transparent={true}
-      animationType="fade"
+      animationType="slide"
       onRequestClose={handleClose}
+      statusBarTranslucent
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
+      <View style={styles.sheetOverlay}>
+        {/* Tap backdrop to close */}
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={handleClose}
+        />
+
+        <View style={[styles.sheetContent, { paddingBottom: insets.bottom }]}>
+          {/* Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <View style={styles.headerLeft}>
-                <View style={styles.headerIcon}>
-                  <Ionicons
-                    name={activeTab === "add" ? "person-add" : "time"}
-                    size={20}
-                    color="white"
-                  />
-                </View>
-                <View>
-                  <Text style={styles.headerTitle}>
-                    {activeTab === "add" ? "Add Friend" : "Sent Requests"}
-                  </Text>
-                  <Text style={styles.headerSubtitle}>
-                    {activeTab === "add"
-                      ? "Send a friend request"
-                      : "Manage pending requests"}
-                  </Text>
-                </View>
+                <Text style={styles.headerTitle}>
+                  {activeTab === "add" ? "Add Friend" : "Sent Requests"}
+                </Text>
+                <Text style={styles.headerSubtitle}>
+                  {activeTab === "add"
+                    ? "Send a friend request"
+                    : "Manage pending requests"}
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={handleClose}
                 style={styles.closeButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close" size={20} color="#6b7280" />
+                <Ionicons name="close" size={22} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
@@ -731,35 +738,46 @@ export default function AddFriendModal({
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    justifyContent: "flex-end",
   },
-  modalContainer: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    width: "100%",
-    maxWidth: 400,
-    height: SCREEN_HEIGHT * 0.8,
-    maxHeight: SCREEN_HEIGHT * 0.8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
+  backdropTouch: {
+    flex: 1,
+  },
+  sheetContent: {
+    height: SHEET_HEIGHT,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
     overflow: "hidden",
-    flexDirection: "column",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 30,
+  },
+  dragHandleContainer: {
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D1D5DB",
   },
   header: {
     flexDirection: "column",
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 12,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
   },
   headerContent: {
     flexDirection: "row",
@@ -768,30 +786,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  headerIcon: {
-    width: 40,
-    height: 40,
-    backgroundColor: "#eb7825",
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+    flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
     color: "#111827",
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
   },
   closeButton: {
-    padding: 8,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
   },
   tabsContainer: {
     flexDirection: "row",
@@ -799,6 +812,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 4,
     gap: 4,
+    marginTop: 12,
   },
   tab: {
     flex: 1,

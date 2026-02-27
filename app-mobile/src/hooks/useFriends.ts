@@ -218,6 +218,15 @@ export const useFriends = () => {
           .eq("id", request.sender_id)
           .single();
 
+        console.log(`[useFriends] Loaded sender profile for ${request.sender_id}:`, {
+          error: senderError?.message,
+          hasProfile: !!senderProfile,
+          avatar_url: senderProfile?.avatar_url,
+          email: senderProfile?.email,
+          username: senderProfile?.username,
+          fullProfile: senderProfile
+        });
+
         // If profile doesn't exist, create a basic one
         if (senderError && senderError.code === "PGRST116") {
           const { data: newProfile } = await supabase
@@ -251,6 +260,11 @@ export const useFriends = () => {
             type: "incoming" as const,
           });
         } else {
+          console.log(`[useFriends] Adding transformed request for sender ${request.sender_id}:`, {
+            avatar_url: senderProfile?.avatar_url,
+            email: senderProfile?.email,
+            username: senderProfile?.username
+          });
           transformedRequests.push({
             id: request.id,
             sender_id: request.sender_id,
@@ -339,6 +353,13 @@ export const useFriends = () => {
           });
         }
       }
+
+      console.log(`[useFriends] Setting friend requests with data:`, transformedRequests.map(r => ({
+        id: r.id,
+        sender: r.sender.username,
+        avatar_url: r.sender.avatar_url,
+        email: r.sender.email
+      })));
 
       setFriendRequests(transformedRequests);
     } catch (error) {

@@ -241,6 +241,9 @@ const InviteFriendsStep = ({
       backgroundColor: "rgba(0, 0, 0, 0.5)",
       justifyContent: "flex-end",
     },
+    backdropTouch: {
+      ...StyleSheet.absoluteFillObject,
+    },
     modalContent: {
       backgroundColor: "white",
       borderTopLeftRadius: 20,
@@ -474,6 +477,11 @@ const InviteFriendsStep = ({
           style={{ flex: 1 }}
         >
           <View style={styles.modalOverlay}>
+            <TouchableOpacity
+              style={styles.backdropTouch}
+              activeOpacity={1}
+              onPress={closeEmailModal}
+            />
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Invite by Email</Text>

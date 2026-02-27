@@ -67,11 +67,17 @@ function DialogClose({ onPress, style, ...props }: DialogCloseProps) {
 
 interface DialogOverlayProps {
   style?: any;
+  onPress?: () => void;
 }
 
-function DialogOverlay({ style, ...props }: DialogOverlayProps) {
+function DialogOverlay({ style, onPress, ...props }: DialogOverlayProps) {
   return (
-    <View style={[styles.overlay, style]} {...props} />
+    <TouchableOpacity
+      style={[styles.overlay, style]}
+      activeOpacity={1}
+      onPress={onPress}
+      {...props}
+    />
   );
 }
 
@@ -90,7 +96,7 @@ function DialogContent({ children, onClose, style, ...props }: DialogContentProp
       onRequestClose={onClose}
       {...props}
     >
-      <DialogOverlay />
+      <DialogOverlay onPress={onClose} />
       <View style={[styles.content, style]}>
         {children}
         <DialogClose onPress={onClose} />

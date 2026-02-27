@@ -14,8 +14,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import NotificationsModal from "./NotificationsModal";
-import { InAppNotification } from "../services/inAppNotificationService";
+import FriendRequestsModal from "./FriendRequestsModal";
+import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
 import { useInAppNotifications } from "../hooks/useInAppNotifications";
+import { useFriends } from "../hooks/useFriends";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -88,6 +90,7 @@ export default function HomePage({
 }: HomePageProps) {
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
   const {
     notifications,
     unreadCount: unreadNotificationCount,
@@ -96,6 +99,9 @@ export default function HomePage({
     clearAll,
   } = useInAppNotifications();
 
+  // Get friend request handlers from useFriends hook
+  const { acceptFriendRequest, declineFriendRequest } = useFriends();
+
   const handleMarkAllRead = () => {
     markAllAsRead();
   };
@@ -103,11 +109,43 @@ export default function HomePage({
   const handleNotificationPress = (notification: InAppNotification) => {
     // Mark as read
     markAsRead(notification.id);
-    // Close modal
-    setShowNotificationsModal(false);
-    // Navigate to the relevant page
-    if (onNotificationNavigate) {
-      onNotificationNavigate(notification);
+    // For friend requests, don't close or navigate - just mark as read
+    // The modal will be opened via callback
+    if (notification.type !== "friend_request") {
+      // Close modal
+      setShowNotificationsModal(false);
+      // Navigate to the relevant page
+      if (onNotificationNavigate) {
+        onNotificationNavigate(notification);
+      }
+    }
+  };
+
+  const handleOpenFriendRequestsModal = () => {
+    setShowFriendRequestsModal(true);
+  };
+
+  const handleAcceptFriendRequest = async (requestId: string, notificationId: string) => {
+    try {
+      if (requestId) {
+        await acceptFriendRequest(requestId);
+      }
+    } catch (error) {
+      console.error("Error accepting friend request:", error);
+    } finally {
+      await inAppNotificationService.remove(notificationId);
+    }
+  };
+
+  const handleRejectFriendRequest = async (requestId: string, notificationId: string) => {
+    try {
+      if (requestId) {
+        await declineFriendRequest(requestId);
+      }
+    } catch (error) {
+      console.error("Error rejecting friend request:", error);
+    } finally {
+      await inAppNotificationService.remove(notificationId);
     }
   };
 
@@ -208,7 +246,7 @@ export default function HomePage({
 
         <View style={styles.mainContent}>
           <LinearGradient
-            colors={['rgba(0, 0, 0, 0.15)', 'rgba(0, 0, 0, 0.05)', 'transparent']}
+            colors={['rgba(0, 0, 0, 0.04)', 'rgba(0, 0, 0, 0.01)', 'transparent']}
             style={styles.innerShadowTop}
             pointerEvents="none"
           />
@@ -220,6 +258,8 @@ export default function HomePage({
                 opacity: sessionsOpacity,
                 transform: [{ scaleX: sessionsScale }],
                 width: '100%',
+                backgroundColor: '#FFFFFF',
+                zIndex: 20,
               }}
             >
               <CollaborationSessions
@@ -266,7 +306,18 @@ export default function HomePage({
           onNotificationPress={handleNotificationPress}
           onMarkAllRead={handleMarkAllRead}
           onClearAll={handleClearAll}
+          onOpenRequestsModal={handleOpenFriendRequestsModal}
+          onAcceptFriendRequest={handleAcceptFriendRequest}
+          onRejectFriendRequest={handleRejectFriendRequest}
         />
+
+        {/* Friend Requests Modal - Opens on top of Notifications Modal */}
+        {showFriendRequestsModal && (
+          <FriendRequestsModal
+            isOpen={showFriendRequestsModal}
+            onClose={() => setShowFriendRequestsModal(false)}
+          />
+        )}
 
       </View>
     </View>
@@ -404,7 +455,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 40,
+    height: 20,
     zIndex: 10,
   },
 });

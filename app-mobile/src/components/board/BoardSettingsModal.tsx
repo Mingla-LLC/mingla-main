@@ -250,6 +250,11 @@ export const BoardSettingsModal: React.FC<BoardSettingsModalProps> = ({
         onRequestClose={() => setShowDeleteConfirm(false)}
       >
         <View style={styles.confirmOverlay}>
+          <TouchableOpacity
+            style={styles.backdropTouch}
+            activeOpacity={1}
+            onPress={() => setShowDeleteConfirm(false)}
+          />
           <View style={styles.confirmCard}>
             <Text style={styles.confirmTitle}>Delete Session</Text>
             <Text style={styles.confirmText}>
@@ -428,6 +433,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 24,
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   confirmCard: {
     width: "100%",

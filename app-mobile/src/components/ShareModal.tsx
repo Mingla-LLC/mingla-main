@@ -39,6 +39,11 @@ export default function ShareModal({
         onRequestClose={onClose}
       >
         <View style={styles.overlay}>
+          <TouchableOpacity
+            style={styles.backdropTouch}
+            activeOpacity={1}
+            onPress={onClose}
+          />
           <View style={styles.modalContainer}>
             <View style={styles.header}>
               <Text style={styles.headerTitle}>Share Experience</Text>
@@ -173,6 +178,11 @@ export default function ShareModal({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
@@ -353,6 +363,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContainer: {
     backgroundColor: 'white',
