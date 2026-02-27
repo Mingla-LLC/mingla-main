@@ -756,8 +756,7 @@ export default function AddFriendModal({
                           </TouchableOpacity>
                         </View>
                       </View>
-                    );
-                    })}
+                    ))}
                   </View>
                 )}
               </View>
@@ -1007,11 +1006,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     fontSize: 16,
   },
-  searchResultAvatarImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
   searchResultInfo: {
     flex: 1,
     gap: 2,
@@ -1139,11 +1133,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     fontSize: 16,
   },
-  sentRequestAvatarImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
   sentRequestInfo: {
     flex: 1,
   },
@@ -1211,6 +1200,20 @@ const styles = StyleSheet.create({
   },
   clearSelectionButton: {
     padding: 4,
+  },
+  selectedUserAvatar: {
+    width: 52,
+    height: 52,
+    backgroundColor: "#eb7825",
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  selectedUserAvatarText: {
+    color: "white",
+    fontWeight: "500",
+    fontSize: 16,
   },
   loadingContainer: {
     flex: 1,

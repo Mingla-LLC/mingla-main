@@ -39,6 +39,8 @@ import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
 import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
 import EmailOTPVerificationScreen from "../src/components/EmailOTPVerificationScreen";
 import CoachMap from "../src/components/CoachMap";
+import CoachMarkWelcome from "../src/components/coachmark";
+import CoachMarkTour from "../src/components/coachmark/CoachMarkTour";
 import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
@@ -48,6 +50,7 @@ import { BoardMessageService } from "../src/services/boardMessageService";
 import { muteService } from "../src/services/muteService";
 import ShareModal from "../src/components/ShareModal";
 import FeedbackModal from "../src/components/FeedbackModal";
+import GiveFeedbackModal from "../src/components/coachmark/GiveFeedbackModal";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
 import { SessionService } from "../src/services/sessionService";
@@ -77,6 +80,7 @@ function AppContent() {
   const [showWelcomeDialog, setShowWelcomeDialog] = useState<boolean>(false);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
+  const [showGiveFeedbackModal, setShowGiveFeedbackModal] = useState<boolean>(false);
   const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
   const helpButtonDismissedRef = useRef<boolean>(false);
   const viewShotRef = useRef<any>(null);
@@ -912,7 +916,9 @@ function AppContent() {
       coachMapCurrentTarget &&
       (coachMapCurrentTarget === "preferencesButton" ||
         coachMapCurrentTarget === "collaborateButton" ||
-        coachMapCurrentTarget === "sessionPills")
+        coachMapCurrentTarget === "sessionPills" ||
+        coachMapCurrentTarget === "soloButton" ||
+        coachMapCurrentTarget === "createSessionButton")
   );
 
   // Handle deep links for OAuth callback
@@ -1179,10 +1185,15 @@ function AppContent() {
   };
 
   // Function to handle starting the tour
-  const handleStartTour = async () => {
+  const handleStartTour = () => {
     setShowWelcomeDialog(false);
-    // Start the coach map tour
     setShowCoachMap(true);
+  };
+
+  // Function to handle giving feedback from welcome dialog
+  const handleGiveFeedback = () => {
+    setShowWelcomeDialog(false);
+    setTimeout(() => setShowGiveFeedbackModal(true), 100);
   };
 
   // ---- Feedback Modal Logic ----
@@ -2207,27 +2218,45 @@ function AppContent() {
                       </View>
                     </View>
 
-                    {/* Coach Map Overlay */}
-                    <CoachMap
+                    {/* Coach Mark Tour Overlay (new design) */}
+                    <CoachMarkTour
                       visible={showCoachMap}
                       onComplete={async () => {
                         setShowCoachMap(false);
                         setCoachMapCurrentTarget(null);
-                        // Update status in background — don't block UI
+                        setCurrentPage("home");
                         updateCoachMapTourStatus("completed");
                       }}
                       onSkip={async () => {
                         setShowCoachMap(false);
                         setCoachMapCurrentTarget(null);
-                        // Update status in background — don't block UI
+                        setCurrentPage("home");
                         updateCoachMapTourStatus("skipped");
                       }}
                       onStepChange={(stepIndex, target) => {
-                        // Reset target when coach map closes (stepIndex === -1)
                         if (stepIndex === -1) {
                           setCoachMapCurrentTarget(null);
                         } else {
                           setCoachMapCurrentTarget(target);
+                          // Navigate to the correct page for each step
+                          if (target === "discoverForYou" || target === "discoverAddPerson" || target === "discoverNightOut") {
+                            setCurrentPage("discover");
+                          } else if (target === "connectFriendsTab" || target === "connectMessagesTab") {
+                            setCurrentPage("connections");
+                          } else if (target === "likesSavedTab" || target === "likesCalendarTab") {
+                            setCurrentPage("likes");
+                          } else if (target === "profileHub") {
+                            setCurrentPage("profile");
+                          } else if (
+                            target === "preferencesButton" ||
+                            target === "sessionPills" ||
+                            target === "soloButton" ||
+                            target === "createSessionButton" ||
+                            target === "swipeCard" ||
+                            target === "viewMoreButton"
+                          ) {
+                            setCurrentPage("home");
+                          }
                         }
                       }}
                     />
@@ -2247,6 +2276,13 @@ function AppContent() {
                       visible={showFeedbackModal}
                       onClose={handleFeedbackClose}
                       onSubmitFeedback={handleFeedbackSubmit}
+                    />
+
+                    {/* Give Feedback Modal (from coach mark welcome) */}
+                    <GiveFeedbackModal
+                      visible={showGiveFeedbackModal}
+                      onClose={() => setShowGiveFeedbackModal(false)}
+                      userId={user?.id}
                     />
 
                     {/* Floating Help Button */}
@@ -2270,55 +2306,12 @@ function AppContent() {
                     )}
 
                     {/* Welcome Dialog */}
-                    <Modal
+                    <CoachMarkWelcome
                       visible={showWelcomeDialog}
-                      transparent={true}
-                      animationType="fade"
-                      onRequestClose={() => setShowWelcomeDialog(false)}
-                    >
-                      <View style={styles.modalOverlay}>
-                        <View style={styles.dialogContainer}>
-                          {/* Logo */}
-                          <Image
-                            source={require("../assets/mingla_logo.png")}
-                            style={styles.dialogLogo}
-                            resizeMode="contain"
-                          />
-
-                          {/* Title with wave emoji */}
-                          <View style={styles.dialogTitleContainer}>
-                            <Text style={styles.dialogTitle}>
-                              Welcome to Mingla
-                            </Text>
-                            <Text style={styles.waveEmoji}>👋</Text>
-                          </View>
-
-                          {/* Description */}
-                          <Text style={styles.dialogDescription}>
-                            Let's show you the essentials (takes 30 seconds)
-                          </Text>
-
-                          {/* Buttons */}
-                          <View style={styles.dialogButtonsContainer}>
-                            <TouchableOpacity
-                              style={styles.startTourButton}
-                              onPress={handleStartTour}
-                            >
-                              <Text style={styles.startTourButtonText}>
-                                Start tour
-                              </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={styles.skipButton}
-                              onPress={() => setShowWelcomeDialog(false)}
-                            >
-                              <Text style={styles.skipButtonText}>Skip</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      </View>
-                    </Modal>
+                      onStartTour={handleStartTour}
+                      onGiveFeedback={handleGiveFeedback}
+                      onClose={() => setShowWelcomeDialog(false)}
+                    />
                   </SafeAreaView>
                 </ErrorBoundary>
               </NavigationProvider>
@@ -2474,76 +2467,6 @@ const styles = StyleSheet.create({
     zIndex: 1,
     borderWidth: 2,
     borderColor: "white",
-  },
-  // Welcome Dialog styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  dialogContainer: {
-    backgroundColor: "white",
-    borderRadius: 24,
-    padding: 32,
-    width: "100%",
-    maxWidth: 340,
-    alignItems: "center",
-  },
-  dialogLogo: {
-    width: 80,
-    height: 80,
-    marginBottom: 24,
-  },
-  dialogTitleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  dialogTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#111827",
-  },
-  waveEmoji: {
-    fontSize: 22,
-  },
-  dialogDescription: {
-    fontSize: 16,
-    color: "#6b7280",
-    textAlign: "center",
-    marginBottom: 32,
-    lineHeight: 24,
-  },
-  dialogButtonsContainer: {
-    width: "100%",
-    gap: 12,
-  },
-  startTourButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  startTourButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  skipButton: {
-    backgroundColor: "transparent",
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  skipButtonText: {
-    color: "#374151",
-    fontSize: 16,
-    fontWeight: "500",
   },
 });
 

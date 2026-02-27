@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
@@ -174,11 +175,12 @@ export default function FriendRequestsModal({
               <ActivityIndicator size="large" color="#eb7825" />
             </View>
           ) : (
-            <ScrollView
-              style={styles.content}
-              contentContainerStyle={styles.contentContainer}
-              showsVerticalScrollIndicator={false}
-            >
+            <>
+              <ScrollView
+                style={styles.content}
+                contentContainerStyle={styles.contentContainer}
+                showsVerticalScrollIndicator={false}
+              >
                 {/* Received Requests */}
                 {incomingRequests.length === 0 ? (
                   <View style={styles.emptyState}>
@@ -336,85 +338,7 @@ export default function FriendRequestsModal({
                         );
                       })}
                     </View>
-                  )
-                ) : (
-                  // Sent Requests Tab
-                  outgoingRequests.length === 0 ? (
-                    <View style={styles.emptyState}>
-                      <View style={styles.emptyStateIcon}>
-                        <Feather name="send" size={32} color="#9ca3af" />
-                      </View>
-                      <Text style={styles.emptyStateTitle}>
-                        No Sent Requests
-                      </Text>
-                      <Text style={styles.emptyStateText}>
-                        You haven't sent any friend requests yet.
-                      </Text>
-                      <View style={styles.emptyStateHint}>
-                        <Feather name="info" size={14} color="#9ca3af" />
-                        <Text style={styles.emptyStateHintText}>
-                          Use the Add Friend button to send requests to new friends
-                        </Text>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.requestsList}>
-                      {outgoingRequests.map((request) => {
-                        // For outgoing requests, the receiver's info is stored in sender field
-                        const receiverName =
-                          request.sender?.display_name ||
-                          (request.sender?.first_name && request.sender?.last_name
-                            ? `${request.sender.first_name} ${request.sender.last_name}`
-                            : request.sender?.username) ||
-                          "Unknown";
-                        const initials = receiverName
-                          .split(" ")
-                          .map((n: string) => n[0])
-                          .join("")
-                          .toUpperCase()
-                          .slice(0, 2);
-
-                        return (
-                          <View key={request.id} style={styles.requestItem}>
-                            <View style={styles.requestContent}>
-                              {/* Avatar */}
-                              <View style={styles.avatarContainer}>
-                                <View style={styles.avatar}>
-                                  {request.sender?.avatar_url ? (
-                                    <Image
-                                      source={{ uri: request.sender.avatar_url }}
-                                      style={styles.avatarImage}
-                                    />
-                                  ) : (
-                                    <Text style={styles.avatarText}>
-                                      {initials}
-                                    </Text>
-                                  )}
-                                </View>
-                              </View>
-
-                              {/* User Info */}
-                              <View style={styles.userInfo}>
-                                <Text style={styles.userName}>{receiverName}</Text>
-                                <Text style={styles.userUsername}>
-                                  @{request.sender?.username || "unknown"}
-                                </Text>
-                                <Text style={styles.requestTime}>
-                                  Sent {formatTimestamp(request.created_at)}
-                                </Text>
-                              </View>
-
-                              {/* Pending Badge */}
-                              <View style={styles.pendingBadge}>
-                                <Text style={styles.pendingBadgeText}>Pending</Text>
-                              </View>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )
-                )}
+                  )}
               </ScrollView>
 
               {/* Footer */}
@@ -605,11 +529,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 16,
   },
-  avatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-  },
   userInfo: {
     flex: 1,
     minWidth: 0,
@@ -682,5 +601,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     minHeight: 200,
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+    alignItems: "center",
+  },
+  footerText: {
+    fontSize: 13,
+    color: "#9ca3af",
+    textAlign: "center",
   },
 });
