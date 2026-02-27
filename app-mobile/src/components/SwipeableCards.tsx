@@ -215,6 +215,11 @@ export default function SwipeableCards({
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
+  const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
+  const batchSpinValue = useRef(new Animated.Value(0)).current;
+  const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
+    refreshKey
+  );
 
   // Get current session for board saving
   const {
@@ -355,6 +360,35 @@ export default function SwipeableCards({
     isAnyLoading ||
     (!hasCompletedInitialFetch && availableRecommendations.length === 0);
 
+  useEffect(() => {
+    if (
+      previousBatchRefreshKeyRef.current !== undefined &&
+      previousBatchRefreshKeyRef.current !== refreshKey
+    ) {
+      setShowNextBatchLoader(true);
+    }
+
+    previousBatchRefreshKeyRef.current = refreshKey;
+  }, [refreshKey]);
+
+  useEffect(() => {
+    if (!showNextBatchLoader) return;
+
+    if (
+      !isFetching &&
+      !isModeTransitioning &&
+      !isWaitingForSessionResolution
+    ) {
+      const hideTimer = setTimeout(() => setShowNextBatchLoader(false), 220);
+      return () => clearTimeout(hideTimer);
+    }
+  }, [
+    showNextBatchLoader,
+    isFetching,
+    isModeTransitioning,
+    isWaitingForSessionResolution,
+  ]);
+
   // Rotate tips every 5 seconds
   useEffect(() => {
     if (!shouldShowLoader) return;
@@ -383,7 +417,31 @@ export default function SwipeableCards({
     return () => spinAnimation.stop();
   }, [shouldShowLoader, spinValue]);
 
+  useEffect(() => {
+    if (!showNextBatchLoader) return;
+
+    const spinAnimation = Animated.loop(
+      Animated.timing(batchSpinValue, {
+        toValue: 1,
+        duration: 900,
+        useNativeDriver: true,
+      })
+    );
+
+    spinAnimation.start();
+
+    return () => {
+      spinAnimation.stop();
+      batchSpinValue.setValue(0);
+    };
+  }, [showNextBatchLoader, batchSpinValue]);
+
   const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
+  const batchSpin = batchSpinValue.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "360deg"],
   });
@@ -1049,6 +1107,19 @@ export default function SwipeableCards({
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         <View style={styles.cardContainer}>
+          {showNextBatchLoader && (
+            <View style={styles.nextBatchOverlay} pointerEvents="none">
+              <Animated.View
+                style={[
+                  styles.nextBatchSpinnerRing,
+                  { transform: [{ rotate: batchSpin }] },
+                ]}
+              >
+                <View style={styles.nextBatchSpinnerCore} />
+              </Animated.View>
+            </View>
+          )}
+
           {/* Next Card (behind current) - fully rendered with all details */}
           {availableRecommendations.length > 1 &&
             (() => {
@@ -1646,6 +1717,34 @@ const styles = StyleSheet.create({
     color: "#374151",
     textAlign: "center",
     lineHeight: 22,
+  },
+  nextBatchOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 60,
+    borderRadius: 24,
+    backgroundColor: "rgba(255, 255, 255, 0.38)",
+  },
+  nextBatchSpinnerRing: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 4,
+    borderColor: "rgba(235, 120, 37, 0.25)",
+    borderTopColor: "#eb7825",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  nextBatchSpinnerCore: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(235, 120, 37, 0.16)",
   },
   noCardsContainer: {
     flex: 1,

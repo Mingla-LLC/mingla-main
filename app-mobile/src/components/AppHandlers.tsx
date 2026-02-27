@@ -628,17 +628,48 @@ export function useAppHandlers(state: any) {
         );
 
         if (success) {
-          // Update offline cache with new preferences so useUserLocation gets fresh data
+          // Optimistically prime query and offline caches with the saved payload.
+          // This removes a blocking read-after-write roundtrip and allows
+          // Explore recommendations to refresh immediately.
+          queryClient.setQueryData(["userPreferences", user.id], {
+            mode: dbPreferences.mode,
+            budget_min: dbPreferences.budget_min,
+            budget_max: dbPreferences.budget_max,
+            people_count: dbPreferences.people_count,
+            categories: dbPreferences.categories,
+            travel_mode: dbPreferences.travel_mode,
+            travel_constraint_type: dbPreferences.travel_constraint_type,
+            travel_constraint_value: dbPreferences.travel_constraint_value,
+            datetime_pref: dbPreferences.datetime_pref,
+            date_option: dbPreferences.date_option,
+            time_slot: dbPreferences.time_slot,
+            exact_time: dbPreferences.exact_time,
+            custom_location: dbPreferences.custom_location,
+          });
+
           try {
-            const updatedPrefs = await PreferencesService.getUserPreferences(
-              user.id
-            );
-            if (updatedPrefs) {
-              await offlineService.cacheUserPreferences(updatedPrefs);
-            }
+            await offlineService.cacheUserPreferences({
+              profile_id: user.id,
+              mode: dbPreferences.mode,
+              budget_min: dbPreferences.budget_min,
+              budget_max: dbPreferences.budget_max,
+              people_count: dbPreferences.people_count,
+              categories: dbPreferences.categories,
+              travel_mode: dbPreferences.travel_mode,
+              travel_constraint_type: dbPreferences.travel_constraint_type,
+              travel_constraint_value: dbPreferences.travel_constraint_value,
+              datetime_pref: dbPreferences.datetime_pref,
+              date_option: dbPreferences.date_option,
+              time_slot: dbPreferences.time_slot,
+              exact_time: dbPreferences.exact_time,
+              custom_location: dbPreferences.custom_location,
+            } as any);
           } catch (cacheError) {
             console.error("Error updating offline cache:", cacheError);
           }
+
+          queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+          queryClient.invalidateQueries({ queryKey: ["userLocation"] });
 
           // Trigger refresh of experiences by updating refresh key
           if (setPreferencesRefreshKey) {

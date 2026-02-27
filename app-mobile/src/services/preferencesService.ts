@@ -77,17 +77,6 @@ export class PreferencesService {
         throw error;
       }
 
-      // Verify the save by fetching the preferences back
-      const { data: verifyData, error: verifyError } = await supabase
-        .from("preferences")
-        .select("*")
-        .eq("profile_id", userId)
-        .maybeSingle();
-
-      if (verifyError) {
-        console.warn("⚠️ Could not verify saved preferences:", verifyError);
-      }
-
       return true;
     } catch (error) {
       return false;

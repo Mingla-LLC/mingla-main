@@ -503,12 +503,13 @@ export default function PreferencesSheet({
             ].includes(item)
         ),
         selectedDateOption: loadedPreferences.date_option
-          ? {
+          ? ({
               now: "Now",
               today: "Today",
               weekend: "This Weekend",
               custom: "Pick a Date",
-            }[loadedPreferences.date_option] || "Now"
+            } as Record<string, DateOption>)[loadedPreferences.date_option] ||
+            "Now"
           : "Now",
         selectedTimeSlot: (loadedPreferences as any).time_slot || null,
         selectedDate: loadedPreferences.datetime_pref
@@ -771,6 +772,32 @@ export default function PreferencesSheet({
       useLocation,
       searchLocation,
     };
+
+    const nextUserPreferences = {
+      mode: "explore",
+      budget_min: typeof budgetMin === "number" ? budgetMin : 0,
+      budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
+      people_count: 1,
+      categories: selectedCategories,
+      travel_mode: travelMode,
+      travel_constraint_type: constraintType,
+      travel_constraint_value:
+        typeof constraintValue === "number" ? constraintValue : 20,
+      datetime_pref: selectedDate ? selectedDate.toISOString() : new Date().toISOString(),
+      date_option: selectedDateOption
+        ? {
+            Now: "now",
+            Today: "today",
+            "This Weekend": "weekend",
+            "Pick a Date": "custom",
+          }[selectedDateOption]
+        : null,
+      exact_time: exactTime || null,
+    } as any;
+
+    if (user?.id) {
+      queryClient.setQueryData(["userPreferences", user.id], nextUserPreferences);
+    }
 
     setIsSaving(true);
     try {
