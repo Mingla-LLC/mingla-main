@@ -12,8 +12,6 @@ import {
   Modal,
   Alert,
   Dimensions,
-  findNodeHandle,
-  UIManager,
 } from "react-native";
 import {
   SafeAreaView,
@@ -252,54 +250,75 @@ export default function PreferencesSheet({
   const isInternalUpdate = useRef(false);
   const { keyboardHeight: kbHeight } = useKeyboard();
   const kbHeightRef = useRef(0);
+  const currentScrollOffsetRef = useRef(0);
   kbHeightRef.current = kbHeight;
 
+  // Track scroll position in real-time
+  const handleScroll = (event: any) => {
+    currentScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+  };
+
   /**
-   * Scroll the field to sit just above the keyboard.
+   * Scroll the field to sit just above the keyboard with precision.
    * 
-   * Measures field position relative to ScrollView, then calculates exact scroll
-   * offset needed to position field bottom ~30px above keyboard.
+   * This function:
+   * 1. Gets the field's absolute screen position
+   * 2. Accounts for current scroll offset and modal positioning
+   * 3. Calculates exact scroll to position field just above keyboard
+   * 4. Scrolls smoothly to that position
    */
   const scrollToField = useCallback((fieldRef: React.RefObject<View | null>) => {
     if (!fieldRef.current || !scrollViewRef.current) return;
 
+    // Wait for keyboard animation to complete and layout to settle
     setTimeout(() => {
       const kbH = kbHeightRef.current;
-      if (kbH === 0) return; // keyboard not visible
+      if (kbH === 0) return; // keyboard not visible yet
       
-      const scrollNode = findNodeHandle(scrollViewRef.current!);
-      if (!scrollNode) return;
-      
-      // Measure field position relative to the scroll view's content
-      (fieldRef.current as any).measureLayout(
-        scrollNode,
-        (_x: number, y: number, _w: number, h: number) => {
-          // Field spans from 'y' to 'y + h' within scroll content
-          // We want to scroll so that field's bottom is visible and not blocked by keyboard
-          
-          const { height: screenHeight } = Dimensions.get('window');
-          const MODAL_HEIGHT = screenHeight * 0.88;
-          
-          // Space available to display content (excluding keyboard area)
-          const availableHeight = MODAL_HEIGHT - kbH;
-          
-          // Target: position field's bottom at 30px above where keyboard starts
-          // This means the field should appear at position (availableHeight - 30)
-          const targetFieldBottomInView = availableHeight - 30;
-          
-          // Field's bottom in scroll content is at 'y + h'
-          // We need to scroll to a position where 'y + h - scrollY = targetFieldBottomInView'
-          // Therefore: scrollY = (y + h) - targetFieldBottomInView
-          const scrollTarget = Math.max(0, (y + h) - targetFieldBottomInView);
-          
-          scrollViewRef.current?.scrollTo({
-            y: scrollTarget,
-            animated: true,
+      try {
+        // Get the ScrollView's absolute position on screen
+        (scrollViewRef.current as any).measureInWindow((svX: number, svY: number, svW: number, svH: number) => {
+          // Get the field's absolute position on screen
+          (fieldRef.current as any).measureInWindow((fX: number, fY: number, fW: number, fH: number) => {
+            const { height: screenHeight } = Dimensions.get('window');
+            
+            // The field's position relative to the ScrollView's top
+            // svY is where the scroll view starts on screen
+            // fY is where the field starts on screen
+            const fieldYRelativeToScrollView = fY - svY;
+            
+            // Field's bottom position relative to scroll view top
+            const fieldBottomRelativeToScrollView = fieldYRelativeToScrollView + fH;
+            
+            // Available height in scroll view (excluding keyboard)
+            const keyboardStartOnScreen = screenHeight - kbH;
+            const scrollViewBottomOnScreen = svY + svH;
+            const visibleHeightOfScrollView = Math.min(svH, keyboardStartOnScreen - svY);
+            
+            // Bottom offset for nav bar clearance
+            const BOTTOM_OFFSET = 48;
+            
+            // Where we want the field's bottom to appear in the visible area
+            // 30px above where keyboard starts, accounting for bottom offset
+            const targetFieldBottomPosition = visibleHeightOfScrollView - BOTTOM_OFFSET - 30;
+            
+            // How much is the field extending below the target position?
+            const overshoot = fieldBottomRelativeToScrollView - targetFieldBottomPosition;
+            
+            // If field is below target, scroll up
+            if (overshoot > 0) {
+              const newScrollOffset = currentScrollOffsetRef.current + overshoot;
+              scrollViewRef.current?.scrollTo({
+                y: newScrollOffset,
+                animated: true,
+              });
+            }
           });
-        },
-        () => {} // onFail callback
-      );
-    }, 250); // wait for keyboard animation to start
+        });
+      } catch (error) {
+        console.warn("Error scrolling to field:", error);
+      }
+    }, 350); // wait for keyboard animation + layout shifts
   }, []);
 
   // Track initial preferences for change detection
@@ -998,6 +1017,8 @@ export default function PreferencesSheet({
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
           >
           {/* Experience Type Section */}
           <View style={[styles.section, {marginTop: 20}]}>
