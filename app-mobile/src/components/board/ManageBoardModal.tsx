@@ -481,7 +481,8 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
         <View style={styles.modal}>
           {/* Header */}
           <View style={styles.header}>
-            <View>
+            <View style={styles.headerSidePlaceholder} />
+            <View style={styles.headerCenter}>
               <Text style={styles.title}>Manage Board</Text>
               <Text style={styles.subtitle}>{sessionName || "Board"}</Text>
             </View>
@@ -670,21 +671,42 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
     marginBottom: 20,
   },
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+  },
   title: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: "700",
-    color: "#111827",
+    color: "#1e293b",
+    textAlign: "center",
   },
   subtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginTop: 4,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#374151",
+    marginTop: 2,
+    textAlign: "center",
   },
   closeButton: {
-    padding: 4,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   membersSectionContainer: {
     marginBottom: 20,

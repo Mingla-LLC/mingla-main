@@ -110,14 +110,13 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.headerContent}>
+            <View style={styles.headerSidePlaceholder} />
+            <View style={styles.headerCenter}>
               <View style={styles.iconContainer}>
                 <Ionicons name="flag" size={20} color="#dc2626" />
               </View>
-              <View>
-                <Text style={styles.headerTitle}>Report User</Text>
-                <Text style={styles.headerSubtitle}>@{user.username}</Text>
-              </View>
+              <Text style={styles.headerTitle}>Report User</Text>
+              <Text style={styles.headerSubtitle}>@{user.username}</Text>
             </View>
             <TouchableOpacity
               onPress={handleClose}
@@ -255,14 +254,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
-  headerContent: {
-    flexDirection: 'row',
+  headerCenter: {
+    flex: 1,
     alignItems: 'center',
-    gap: 12,
   },
   iconContainer: {
     width: 40,
@@ -273,17 +273,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    textAlign: 'center',
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 2,
+    textAlign: 'center',
   },
   closeButton: {
-    padding: 8,
-    borderRadius: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   content: {
     flex: 1,

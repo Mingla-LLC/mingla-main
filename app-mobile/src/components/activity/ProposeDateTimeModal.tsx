@@ -533,25 +533,23 @@ export default function ProposeDateTimeModal({
           <View style={styles.modalContainer}>
             {/* Header */}
             <View style={styles.header}>
-              <View style={styles.headerLeft}>
-                <Ionicons name="calendar" size={24} color="white" />
-                <View style={styles.headerTextContainer}>
-                  <Text style={styles.headerTitle}>
-                    Propose New Date & Time
+              <View style={styles.headerSidePlaceholder} />
+              <View style={styles.headerTextContainerCentered}>
+                <Text style={styles.headerTitle}>
+                  Propose New Date & Time
+                </Text>
+                {card && (
+                  <Text style={styles.headerSubtitle} numberOfLines={1}>
+                    {card.title}
                   </Text>
-                  {card && (
-                    <Text style={styles.headerSubtitle} numberOfLines={1}>
-                      {card.title}
-                    </Text>
-                  )}
-                </View>
+                )}
               </View>
               <TouchableOpacity
                 onPress={handleClose}
                 style={styles.closeButton}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close" size={24} color="white" />
+                <Ionicons name="close" size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
@@ -770,12 +768,14 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   header: {
-    backgroundColor: "#ea580c",
+    backgroundColor: "#FFFFFF",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
@@ -789,24 +789,34 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
   },
+  headerTextContainerCentered: {
+    flex: 1,
+    alignItems: "center",
+  },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
-    color: "white",
+    color: "#1e293b",
+    textAlign: "center",
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: "white",
-    opacity: 0.9,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#374151",
     marginTop: 2,
+    textAlign: "center",
   },
   closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   content: {
     padding: 20,

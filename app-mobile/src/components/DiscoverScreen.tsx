@@ -3521,16 +3521,12 @@ export default function DiscoverScreen({
             </View>
             {/* Modal Header */}
             <View style={styles.addPersonModalHeader}>
-              <View>
+              <View style={styles.addPersonCloseButtonPlaceholder} />
+              <View style={styles.addPersonHeaderCenter}>
                 <Text style={styles.addPersonModalTitle}>Add Person</Text>
                 <Text style={styles.addPersonModalSubtitle}>Never miss a special day</Text>
               </View>
-              <TouchableOpacity
-                onPress={handleCloseAddPersonModal}
-                style={styles.modalCloseButton}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
+              <View style={styles.addPersonCloseButtonPlaceholder} />
             </View>
 
             {/* Description */}
@@ -3683,21 +3679,17 @@ export default function DiscoverScreen({
             >
               {/* Modal Header */}
               <View style={styles.customDayModalHeader}>
+                <View style={styles.customDayCloseButtonPlaceholder} />
                 <View style={styles.customDayHeaderLeft}>
                   <View style={styles.customDayIconContainer}>
                     <Ionicons name="calendar" size={20} color="white" />
                   </View>
-                  <View>
+                  <View style={styles.customDayHeaderTextCenter}>
                     <Text style={styles.addPersonModalTitle}>Add Custom Day</Text>
                     <Text style={styles.addPersonModalSubtitle}>Create a personal reminder</Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  onPress={handleCloseAddCustomDayModal}
-                  style={styles.modalCloseButton}
-                >
-                  <Ionicons name="close" size={24} color="#6b7280" />
-                </TouchableOpacity>
+                <View style={styles.customDayCloseButtonPlaceholder} />
               </View>
 
             {/* Day Name Field */}
@@ -4779,17 +4771,27 @@ const styles = StyleSheet.create({
   addPersonModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
     marginBottom: 16,
   },
+  addPersonHeaderCenter: {
+    flex: 1,
+    alignItems: "center",
+  },
   addPersonModalTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#eb7825",
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1e293b",
   },
   addPersonModalSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#374151",
     marginTop: 2,
   },
   addPersonDescription: {
@@ -4800,6 +4802,14 @@ const styles = StyleSheet.create({
   },
   modalCloseButton: {
     padding: 4,
+  },
+  addPersonCloseButtonPlaceholder: {
+    width: 32,
+    height: 32,
+  },
+  customDayCloseButtonPlaceholder: {
+    width: 32,
+    height: 32,
   },
   addPersonFieldContainer: {
     marginBottom: 20,
@@ -4914,13 +4924,23 @@ const styles = StyleSheet.create({
   customDayModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
     marginBottom: 20,
   },
   customDayHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    flex: 1,
+    justifyContent: "center",
+  },
+  customDayHeaderTextCenter: {
+    alignItems: "center",
   },
   customDayIconContainer: {
     width: 40,

@@ -106,7 +106,8 @@ export default function BoardMemberManagementModal({
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
-            <View>
+            <View style={styles.headerSidePlaceholder} />
+            <View style={styles.headerCenter}>
               <Text style={styles.headerTitle}>Manage Board</Text>
               <Text style={styles.headerSubtitle}>{board.name}</Text>
             </View>
@@ -334,7 +335,9 @@ const styles = StyleSheet.create({
     elevation: 16,
   },
   header: {
-    padding: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
   },
@@ -343,23 +346,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    textAlign: 'center',
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 2,
+    textAlign: 'center',
   },
   closeButton: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     backgroundColor: '#f3f4f6',
-    borderRadius: 16,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   membersList: {
     flex: 1,

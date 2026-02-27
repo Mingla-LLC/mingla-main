@@ -46,6 +46,7 @@ export default function ShareModal({
           />
           <View style={styles.modalContainer}>
             <View style={styles.header}>
+              <View style={styles.headerSidePlaceholder} />
               <Text style={styles.headerTitle}>Share Experience</Text>
               <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                 <Ionicons name="close" size={20} color="#111827" />
@@ -186,6 +187,7 @@ export default function ShareModal({
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
+            <View style={styles.headerSidePlaceholder} />
             <Text style={styles.headerTitle}>Share Experience</Text>
             <TouchableOpacity 
               onPress={onClose}
@@ -385,22 +387,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    textAlign: 'center',
   },
   closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#f3f4f6',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   scrollView: {
     maxHeight: 600,
