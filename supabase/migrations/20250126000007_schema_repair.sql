@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS public.collaboration_sessions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL DEFAULT '',
   created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  status TEXT DEFAULT 'active',
+  status TEXT DEFAULT 'pending',
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );

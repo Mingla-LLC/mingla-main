@@ -72,7 +72,7 @@ class BoardSessionService {
       }
 
       // 3. Filter for active board sessions only
-      // A session becomes "active" when it has at least 2 accepted members
+      // A session becomes "active" when at least one user accepts the invite
       // Only show sessions that are not archived AND have status 'active'
       const sessions = (allSessions || []).filter((s) => {
         const notArchived = s.archived_at === null;

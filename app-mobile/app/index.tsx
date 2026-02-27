@@ -298,7 +298,7 @@ function AppContent() {
       .eq('created_by', user.id)
       .eq('status', 'pending');
     
-    // Fetch pending sessions where user was invited (but hasn't accepted yet)
+    // Fetch pending sessions where user was invited
     // Include the inviter's profile information
     const { data: invitedSessions } = await supabase
       .from('collaboration_invites')
@@ -329,11 +329,11 @@ function AppContent() {
         createdAt: s.created_at,
       }));
     
-    // Transform pending invited sessions with inviter profile
-    // Include both 'pending' and 'active' sessions — an invitee should still see a grey pill
-    // even after someone else has accepted and the session became active
+    // Transform pending/accepted invited sessions with inviter profile
+    // Show as grey pills only if the user hasn't accepted yet (status = 'pending')
+    // Once accepted, they will appear in activeBoards instead
     const pendingInvitedSessions = (invitedSessions || [])
-      .filter((inv: any) => ['pending', 'active'].includes(inv.collaboration_sessions?.status))
+      .filter((inv: any) => inv.status === 'pending')
       .map((inv: any) => {
         const inviterProfile = inv.inviter;
         const inviterName = inviterProfile 
@@ -597,8 +597,8 @@ function AppContent() {
       if (!participantsError && allParticipants) {
         const acceptedCount = allParticipants.filter((p: any) => p.has_accepted === true).length;
         
-        // If 2+ members have accepted, session becomes active
-        if (acceptedCount >= 2) {
+        // If at least 1 member has accepted, session becomes active
+        if (acceptedCount >= 1) {
           const { error: sessionUpdateError } = await supabase
             .from('collaboration_sessions')
             .update({ status: 'active' })
