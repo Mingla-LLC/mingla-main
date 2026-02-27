@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Text,
   View,
-  Pressable,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -57,8 +56,13 @@ interface CollaborationSessionsProps {
   onAcceptInvite: (sessionId: string) => void;
   onDeclineInvite: (sessionId: string) => void;
   onCancelInvite: (sessionId: string) => void;
+  onSessionStateChanged?: () => void;
   availableFriends?: Friend[];
   isCreatingSession?: boolean;
+  inviteModalTrigger?: {
+    sessionId: string;
+    nonce: number;
+  } | null;
 }
 
 // Helper function to generate initials from a name
@@ -80,8 +84,10 @@ export default function CollaborationSessions({
   onAcceptInvite,
   onDeclineInvite,
   onCancelInvite,
+  onSessionStateChanged,
   availableFriends = [],
   isCreatingSession = false,
+  inviteModalTrigger = null,
 }: CollaborationSessionsProps) {
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -97,6 +103,7 @@ export default function CollaborationSessions({
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
   const [contentWidth, setContentWidth] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
+  const lastHandledInviteTriggerNonce = useRef<number | null>(null);
 
   const isSoloMode = currentMode === 'solo';
 
@@ -132,6 +139,23 @@ export default function CollaborationSessions({
     const hasOverflow = contentWidth > containerWidth;
     setShowRightArrow(hasOverflow);
   }, [contentWidth, containerWidth]);
+
+  useEffect(() => {
+    if (!inviteModalTrigger) return;
+    if (lastHandledInviteTriggerNonce.current === inviteModalTrigger.nonce) return;
+
+    const sessionToOpen = sessions.find(
+      (session) =>
+        session.id === inviteModalTrigger.sessionId &&
+        session.type === 'received-invite'
+    );
+
+    if (!sessionToOpen) return;
+
+    setInviteModalSession(sessionToOpen);
+    setShowInviteModal(true);
+    lastHandledInviteTriggerNonce.current = inviteModalTrigger.nonce;
+  }, [inviteModalTrigger, sessions]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -460,17 +484,23 @@ export default function CollaborationSessions({
       <Modal
         visible={showInviteModal}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setShowInviteModal(false)}
+        statusBarTranslucent
       >
-        <View style={styles.modalOverlay}>
-          <Pressable
-            style={styles.backdropTouch}
+        <View style={styles.inviteSheetOverlay}>
+          <TouchableOpacity
+            style={styles.inviteSheetBackdrop}
+            activeOpacity={1}
             onPress={() => setShowInviteModal(false)}
           />
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
+          <View style={[styles.inviteSheetContent, { paddingBottom: insets.bottom }]}>
+            <View style={styles.inviteDragHandleContainer}>
+              <View style={styles.inviteDragHandle} />
+            </View>
+
+            <View style={styles.inviteSheetHeader}>
+              <Text style={styles.inviteSheetTitle}>
                 {inviteModalSession?.type === 'received-invite'
                   ? 'Received Invite'
                   : 'Pending Invite'}
@@ -505,7 +535,7 @@ export default function CollaborationSessions({
             </View>
 
             {inviteModalSession?.type === 'received-invite' ? (
-              <View style={styles.modalActions}>
+              <View style={styles.inviteActions}>
                 <TouchableOpacity
                   style={styles.modalDeclineButton}
                   onPress={() => {
@@ -515,7 +545,7 @@ export default function CollaborationSessions({
                     setShowInviteModal(false);
                   }}
                 >
-                  <Ionicons name="person-remove" size={16} color="#DC2626" style={{ marginRight: 6 }} />
+                  <Ionicons name="person-remove" size={14} color="#DC2626" style={{ marginRight: 5 }} />
                   <Text style={styles.modalDeclineButtonText}>Decline Invite</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -527,12 +557,12 @@ export default function CollaborationSessions({
                     setShowInviteModal(false);
                   }}
                 >
-                  <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Ionicons name="checkmark-circle" size={14} color="#FFFFFF" style={{ marginRight: 5 }} />
                   <Text style={styles.modalAcceptButtonText}>Accept Invite</Text>
                 </TouchableOpacity>
               </View>
             ) : (
-              <View style={styles.modalActions}>
+              <View style={styles.inviteActions}>
                 <TouchableOpacity
                   style={styles.modalCancelInviteButton}
                   onPress={() => {
@@ -564,12 +594,14 @@ export default function CollaborationSessions({
           onSessionDeleted={() => {
             setShowSessionViewModal(false);
             setSessionToView(null);
-            // The parent will handle refreshing sessions
+            onSoloSelect();
+            onSessionStateChanged?.();
           }}
           onSessionExited={() => {
             setShowSessionViewModal(false);
             setSessionToView(null);
-            // The parent will handle refreshing sessions
+            onSoloSelect();
+            onSessionStateChanged?.();
           }}
         />
       )}
@@ -760,35 +792,49 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  // Invite modal styles (centered dialog — kept as-is)
-  modalOverlay: {
+  inviteSheetOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    justifyContent: 'flex-end',
   },
-  backdropTouch: {
-    ...StyleSheet.absoluteFillObject,
+  inviteSheetBackdrop: {
+    flex: 1,
   },
-  modalContent: {
-    width: screenWidth - 48,
-    maxWidth: 360,
+  inviteSheetContent: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 30,
   },
-  modalHeader: {
+  inviteDragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  inviteDragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+  },
+  inviteSheetHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 24,
-    paddingTop: 24,
+    marginBottom: 12,
+  },
+  inviteSheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    color: '#111827',
   },
   modalTitle: {
     fontSize: 18,
@@ -825,10 +871,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 20,
   },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
   modalCancelButton: {
     flex: 1,
     paddingVertical: 12,
@@ -859,7 +901,8 @@ const styles = StyleSheet.create({
   // Invite modal styles
   inviteDetails: {
     alignItems: 'center',
-    marginBottom: 24,
+    paddingHorizontal: 12,
+    marginBottom: 18,
   },
   inviteAvatarLarge: {
     width: 64,
@@ -871,58 +914,72 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   inviteAvatarText: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     color: '#374151',
   },
   inviteSessionName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
+    letterSpacing: 0.15,
     color: '#111827',
     marginBottom: 4,
   },
   inviteFromText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  inviteActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 14,
   },
   modalDeclineButton: {
     flex: 1,
     flexDirection: 'row',
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 10,
+    borderRadius: 9,
     backgroundColor: '#FEE2E2',
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalDeclineButtonText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
+    letterSpacing: 0.15,
     color: '#DC2626',
   },
   modalAcceptButton: {
     flex: 1,
     flexDirection: 'row',
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 10,
+    borderRadius: 9,
     backgroundColor: '#eb7825',
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalAcceptButtonText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
+    letterSpacing: 0.15,
     color: '#FFFFFF',
   },
   modalCancelInviteButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 10,
+    borderRadius: 9,
     backgroundColor: '#FEE2E2',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   modalCancelInviteButtonText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
+    letterSpacing: 0.15,
     color: '#DC2626',
   },
   // Extended modal for create session with friends

@@ -61,6 +61,8 @@ import { DebugModal } from "../src/components/debug/DebugModal";
 import { useDebugGesture } from "../src/hooks/useDebugGesture";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 
+const TAB_BAR_ICON_SIZE = 19;
+
 function AppContent() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
@@ -171,6 +173,7 @@ function AppContent() {
     boardsSessions,
     setBoardsSessions,
     isLoadingBoards,
+    setIsLoadingBoards,
     profileStats,
     setProfileStats,
     preferencesRefreshKey,
@@ -406,8 +409,12 @@ function AppContent() {
 
   // Helper function to refresh all sessions (active + pending)
   const refreshAllSessions = async () => {
-    if (!user?.id) return;
-    
+    if (!user?.id) {
+      setIsLoadingBoards(false);
+      return;
+    }
+
+    setIsLoadingBoards(true);
     // Fetch all session types in parallel for better performance
     const [activeBoards, createdResult, invitedResult] = await Promise.all([
       BoardSessionService.fetchUserBoardSessions(user.id),
@@ -420,10 +427,10 @@ function AppContent() {
         .from('collaboration_invites')
         .select(`
           session_id,
+          inviter_id,
           invited_by,
           status,
-          collaboration_sessions!inner(id, name, status, created_by, created_at),
-          inviter:profiles!collaboration_invites_invited_by_fkey(id, username, first_name, last_name, avatar_url)
+          collaboration_sessions!inner(id, name, status, created_by, created_at)
         `)
         .eq('invited_user_id', user.id)
         .eq('status', 'pending'),
@@ -449,18 +456,37 @@ function AppContent() {
         createdAt: s.created_at,
       }));
     
+    // Fetch inviter profiles for invited sessions
+    const invitedSessionsList = (invitedSessions || []).filter((inv: any) => inv.status === 'pending');
+    const inviterIds = [...new Set(invitedSessionsList.map((inv: any) => inv.inviter_id || inv.invited_by))];
+    
+    let inviterProfiles: any[] = [];
+    if (inviterIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username, first_name, last_name, avatar_url')
+        .in('id', inviterIds);
+      inviterProfiles = profiles || [];
+    }
+    
+    // Helper to get inviter profile name
+    const getInviterName = (inviterId: string | undefined) => {
+      const profile = inviterProfiles.find((p: any) => p.id === inviterId);
+      if (!profile) return 'Someone';
+      if (profile.first_name && profile.last_name) {
+        return `${profile.first_name} ${profile.last_name}`;
+      }
+      return profile.first_name || profile.username || 'Someone';
+    };
+    
     // Transform pending/accepted invited sessions with inviter profile
     // Show as grey pills only if the user hasn't accepted yet (status = 'pending')
     // Once accepted, they will appear in activeBoards instead
-    const pendingInvitedSessions = (invitedSessions || [])
-      .filter((inv: any) => inv.status === 'pending')
+    const pendingInvitedSessions = invitedSessionsList
       .map((inv: any) => {
-        const inviterProfile = inv.inviter;
-        const inviterName = inviterProfile 
-          ? (inviterProfile.first_name && inviterProfile.last_name 
-              ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
-              : inviterProfile.first_name || inviterProfile.username || 'Someone')
-          : 'Someone';
+        const inviterId = inv.inviter_id || inv.invited_by;
+        const inviterProfile = inviterProfiles.find((p: any) => p.id === inviterId);
+        const inviterName = getInviterName(inviterId);
         
         return {
           id: inv.collaboration_sessions.id,
@@ -468,9 +494,9 @@ function AppContent() {
           status: 'pending',
           creatorId: inv.collaboration_sessions.created_by,
           created_by: inv.collaboration_sessions.created_by,
-          invitedBy: inv.invited_by,
+          invitedBy: inviterId,
           inviterProfile: {
-            id: inv.invited_by,
+            id: inviterId,
             name: inviterName,
             username: inviterProfile?.username,
             avatar: inviterProfile?.avatar_url,
@@ -489,6 +515,7 @@ function AppContent() {
     }, []);
     
     updateBoardsSessions(uniqueSessions);
+    setIsLoadingBoards(false);
   };
 
   const handleCreateSession = async (sessionName: string, selectedFriends: Friend[] = []) => {
@@ -588,6 +615,7 @@ function AppContent() {
           .insert({
             session_id: session.id,
             inviter_id: user.id,
+            invited_by: user.id,
             invited_user_id: friendUserId,
             status: 'pending',
           })
@@ -755,6 +783,22 @@ function AppContent() {
       // Refresh all sessions
       await refreshAllSessions();
       toastManager.success(`Joined "${sessionName}" successfully!`);
+
+      const inviteNotifications = inAppNotificationService
+        .getAll()
+        .filter(
+          (notification) =>
+            notification.type === "board_invite" &&
+            notification.data?.sessionId === sessionId
+        );
+
+      if (inviteNotifications.length > 0) {
+        await Promise.all(
+          inviteNotifications.map((notification) =>
+            inAppNotificationService.remove(notification.id)
+          )
+        );
+      }
 
       // Log in-app notification
       inAppNotificationService.notifyBoardJoined(sessionName, sessionId);
@@ -1492,6 +1536,7 @@ function AppContent() {
             onAcceptInvite={handleAcceptInvite}
             onDeclineInvite={handleDeclineInvite}
             onCancelInvite={handleCancelInvite}
+            onSessionStateChanged={refreshAllSessions}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
@@ -1747,14 +1792,8 @@ function AppContent() {
                     .eq("invited_user_id", user.id);
                 }
 
-                // Refresh boards list from database to ensure consistency
-                const { BoardSessionService } = await import(
-                  "../src/services/boardSessionService"
-                );
-                const boards = await BoardSessionService.fetchUserBoardSessions(
-                  user.id
-                );
-                updateBoardsSessions(boards);
+                // Refresh boards list (active + pending) to ensure consistency
+                await refreshAllSessions();
 
                 // Refresh active session from database
                 const activeSession = await SessionService.getActiveSession(
@@ -1854,6 +1893,7 @@ function AppContent() {
             onAcceptInvite={handleAcceptInvite}
             onDeclineInvite={handleDeclineInvite}
             onCancelInvite={handleCancelInvite}
+            onSessionStateChanged={refreshAllSessions}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
             onNotificationNavigate={handleNotificationNavigate}
@@ -1877,52 +1917,6 @@ function AppContent() {
     profile &&
     profile.has_completed_onboarding === true
   ) {
-    // Show CollaborationPreferences as a bottom-sheet modal
-    if (showCollabPreferences && currentMode !== "solo" && currentSessionId) {
-      return (
-        <ErrorBoundary>
-          <PreferencesSheet
-            visible={true}
-            onClose={() => {
-              setShowCollabPreferences(false);
-            }}
-            onSave={handlers.handleCollabPreferencesSave}
-            sessionId={currentSessionId}
-            sessionName={currentMode ?? "solo"}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-          />
-        </ErrorBoundary>
-      );
-    }
-
-    // Show PreferencesSheet as a bottom-sheet modal
-    if (showPreferences) {
-      return (
-        <ErrorBoundary>
-          <PreferencesSheet
-            visible={true}
-            onClose={() => {
-              setShowPreferences(false);
-            }}
-            onSave={handlers.handleSavePreferences}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-          />
-        </ErrorBoundary>
-      );
-    }
-
     return (
       <>
         <CardsCacheProvider>
@@ -1992,21 +1986,8 @@ function AppContent() {
                         }
                         availableFriends={[]}
                         onRefreshBoards={async () => {
-                          // Refresh boards list immediately after accepting invite
-                          if (user?.id) {
-                            try {
-                              const { BoardSessionService } = await import(
-                                "../src/services/boardSessionService"
-                              );
-                              const boards =
-                                await BoardSessionService.fetchUserBoardSessions(
-                                  user.id
-                                );
-                              updateBoardsSessions(boards);
-                            } catch (error) {
-                              console.error("Error refreshing boards:", error);
-                            }
-                          }
+                          // Refresh boards list (active + pending) after accepting invite
+                          await refreshAllSessions();
                         }}
                       />
 
@@ -2029,13 +2010,15 @@ function AppContent() {
                             }}
                             style={styles.navItem}
                           >
-                            <Ionicons
-                              name="home-outline"
-                              size={24}
-                              color={
-                                currentPage === "home" ? "#eb7825" : "#9CA3AF"
-                              }
-                            />
+                            <View style={styles.navIconContainer}>
+                              <Ionicons
+                                name="home-outline"
+                                size={TAB_BAR_ICON_SIZE}
+                                color={
+                                  currentPage === "home" ? "#eb7825" : "#9CA3AF"
+                                }
+                              />
+                            </View>
                             <Text
                               style={[
                                 styles.navText,
@@ -2055,13 +2038,15 @@ function AppContent() {
                             }}
                             style={styles.navItem}
                           >
-                            <Ionicons
-                              name="compass-outline"
-                              size={24}
-                              color={
-                                currentPage === "discover" ? "#eb7825" : "#9CA3AF"
-                              }
-                            />
+                            <View style={styles.navIconContainer}>
+                              <Ionicons
+                                name="compass-outline"
+                                size={TAB_BAR_ICON_SIZE}
+                                color={
+                                  currentPage === "discover" ? "#eb7825" : "#9CA3AF"
+                                }
+                              />
+                            </View>
                             <Text
                               style={[
                                 styles.navText,
@@ -2084,7 +2069,7 @@ function AppContent() {
                             <View style={styles.navIconContainer}>
                               <Ionicons
                                 name="people-outline"
-                                size={24}
+                                size={TAB_BAR_ICON_SIZE}
                                 color={
                                   currentPage === "connections"
                                     ? "#eb7825"
@@ -2122,7 +2107,7 @@ function AppContent() {
                             <View style={styles.navIconContainer}>
                               <Ionicons
                                 name="heart-outline"
-                                size={24}
+                                size={TAB_BAR_ICON_SIZE}
                                 color={
                                   currentPage === "likes"
                                     ? "#eb7825"
@@ -2185,15 +2170,17 @@ function AppContent() {
                             }}
                             style={styles.navItem}
                           >
-                            <Ionicons
-                              name="person-outline"
-                              size={24}
-                              color={
-                                currentPage === "profile"
-                                  ? "#eb7825"
-                                  : "#9CA3AF"
-                              }
-                            />
+                            <View style={styles.navIconContainer}>
+                              <Ionicons
+                                name="person-outline"
+                                size={TAB_BAR_ICON_SIZE}
+                                color={
+                                  currentPage === "profile"
+                                    ? "#eb7825"
+                                    : "#9CA3AF"
+                                }
+                              />
+                            </View>
                             <Text
                               style={[
                                 styles.navText,
@@ -2327,6 +2314,43 @@ function AppContent() {
             </MobileFeaturesProvider>
           </RecommendationsProvider>
         </CardsCacheProvider>
+        {showCollabPreferences && currentMode !== "solo" && currentSessionId ? (
+          <ErrorBoundary>
+            <PreferencesSheet
+              visible={true}
+              onClose={() => {
+                setShowCollabPreferences(false);
+              }}
+              onSave={handlers.handleCollabPreferencesSave}
+              sessionId={currentSessionId}
+              sessionName={currentMode ?? "solo"}
+              accountPreferences={{
+                currency: accountPreferences?.currency || "USD",
+                measurementSystem:
+                  (accountPreferences?.measurementSystem as
+                    | "Metric"
+                    | "Imperial") || "Imperial",
+              }}
+            />
+          </ErrorBoundary>
+        ) : showPreferences ? (
+          <ErrorBoundary>
+            <PreferencesSheet
+              visible={true}
+              onClose={() => {
+                setShowPreferences(false);
+              }}
+              onSave={handlers.handleSavePreferences}
+              accountPreferences={{
+                currency: accountPreferences?.currency || "USD",
+                measurementSystem:
+                  (accountPreferences?.measurementSystem as
+                    | "Metric"
+                    | "Imperial") || "Imperial",
+              }}
+            />
+          </ErrorBoundary>
+        ) : null}
         <ToastContainer />
         <DebugModal
           isVisible={showDebugModal}
@@ -2367,11 +2391,15 @@ const styles = StyleSheet.create({
   navItem: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 5,
     borderRadius: 8,
   },
   navIconContainer: {
     position: "relative",
+    width: 22,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
   },
   tabBadge: {
     position: "absolute",
@@ -2393,12 +2421,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   navText: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 10,
+    marginTop: 2,
   },
   navTextActive: {
     color: "#eb7825",
-    fontWeight: "500",
+    fontWeight: "600",
   },
   navTextInactive: {
     color: "#9CA3AF",

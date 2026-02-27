@@ -116,7 +116,7 @@ function getNavigationLabel(nav: NavigationTarget): string | null {
     case "activity":
       return nav.tab ? `View ${nav.tab.charAt(0).toUpperCase() + nav.tab.slice(1)}` : "View Activity";
     case "board-view":
-      return "Open Board";
+      return "Accept Invite";
     case "discover":
       return "Discover";
     case "preferences":

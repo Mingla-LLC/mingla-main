@@ -550,8 +550,55 @@ export default function SessionViewModal({
           text: "Exit",
           style: "destructive",
           onPress: async () => {
-            if (onSessionExited) onSessionExited();
-            onClose();
+            try {
+              const { error: participantDeleteError } = await supabase
+                .from("session_participants")
+                .delete()
+                .eq("session_id", sessionId)
+                .eq("user_id", user.id);
+
+              if (participantDeleteError) {
+                throw participantDeleteError;
+              }
+
+              const { data: boardRows, error: boardLookupError } = await supabase
+                .from("boards")
+                .select("id")
+                .eq("session_id", sessionId);
+
+              if (boardLookupError) {
+                console.warn("Error looking up session boards on exit:", boardLookupError);
+              }
+
+              const boardIds = (boardRows || []).map((board: any) => board.id);
+              if (boardIds.length > 0) {
+                const { error: collaboratorDeleteError } = await supabase
+                  .from("board_collaborators")
+                  .delete()
+                  .eq("user_id", user.id)
+                  .in("board_id", boardIds);
+
+                if (collaboratorDeleteError) {
+                  console.warn("Error removing board collaborator on exit:", collaboratorDeleteError);
+                }
+              }
+
+              await supabase
+                .from("collaboration_invites")
+                .update({ status: "declined", updated_at: new Date().toISOString() })
+                .eq("session_id", sessionId)
+                .eq("invitee_id", user.id)
+                .eq("status", "pending");
+
+              if (onSessionExited) onSessionExited();
+              onClose();
+            } catch (error: any) {
+              console.error("Error exiting board:", error);
+              Alert.alert(
+                "Unable to Exit Board",
+                error?.message || "Please try again."
+              );
+            }
           },
         },
       ]
@@ -791,7 +838,8 @@ export default function SessionViewModal({
                     }
                     
                     // Check if profile picture exists
-                    const hasProfilePicture = p.profiles?.avatar_url && p.profiles.avatar_url.trim() !== "";
+                    const profilePictureUrl = p.profiles?.avatar_url?.trim() || "";
+                    const hasProfilePicture = profilePictureUrl !== "";
                     
                     return (
                       <View
@@ -803,7 +851,7 @@ export default function SessionViewModal({
                       >
                         {hasProfilePicture ? (
                           <Image
-                            source={{ uri: p.profiles.avatar_url }}
+                            source={{ uri: profilePictureUrl }}
                             style={styles.miniAvatarImage}
                           />
                         ) : (

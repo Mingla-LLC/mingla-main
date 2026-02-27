@@ -53,6 +53,7 @@ interface HomePageProps {
   onAcceptInvite?: (sessionId: string) => void;
   onDeclineInvite?: (sessionId: string) => void;
   onCancelInvite?: (sessionId: string) => void;
+  onSessionStateChanged?: () => void;
   availableFriends?: Friend[];
   isCreatingSession?: boolean;
   onNotificationNavigate?: (notification: InAppNotification) => void;
@@ -84,6 +85,7 @@ export default function HomePage({
   onAcceptInvite,
   onDeclineInvite,
   onCancelInvite,
+  onSessionStateChanged,
   availableFriends = [],
   isCreatingSession = false,
   onNotificationNavigate,
@@ -91,6 +93,10 @@ export default function HomePage({
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
+  const [inviteModalTrigger, setInviteModalTrigger] = useState<{
+    sessionId: string;
+    nonce: number;
+  } | null>(null);
   const {
     notifications,
     unreadCount: unreadNotificationCount,
@@ -109,6 +115,16 @@ export default function HomePage({
   const handleNotificationPress = (notification: InAppNotification) => {
     // Mark as read
     markAsRead(notification.id);
+
+    if (notification.type === "board_invite" && notification.data?.sessionId) {
+      setShowNotificationsModal(false);
+      setInviteModalTrigger({
+        sessionId: String(notification.data.sessionId),
+        nonce: Date.now(),
+      });
+      return;
+    }
+
     // For friend requests, don't close or navigate - just mark as read
     // The modal will be opened via callback
     if (notification.type !== "friend_request") {
@@ -211,7 +227,7 @@ export default function HomePage({
             >
               <Ionicons
                 name="options-outline"
-                size={24}
+                size={21}
                 color={currentMode !== "solo" ? "#eb7825" : "#1f2937"}
               />
             </TouchableOpacity>
@@ -234,7 +250,7 @@ export default function HomePage({
               activeOpacity={0.6}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="notifications-outline" size={24} color="#1f2937" />
+              <Ionicons name="notifications-outline" size={21} color="#1f2937" />
               {/* Notification indicator dot */}
               {unreadNotificationCount > 0 && <View style={styles.notificationDot} />}
             </TouchableOpacity>
@@ -272,8 +288,10 @@ export default function HomePage({
                 onAcceptInvite={onAcceptInvite || (() => {})}
                 onDeclineInvite={onDeclineInvite || (() => {})}
                 onCancelInvite={onCancelInvite || (() => {})}
+                onSessionStateChanged={onSessionStateChanged}
                 availableFriends={availableFriends}
                 isCreatingSession={isCreatingSession}
+                inviteModalTrigger={inviteModalTrigger}
               />
             </Animated.View>
           )}
@@ -353,33 +371,33 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   preferencesButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
+    padding: 7,
+    minWidth: 38,
+    minHeight: 38,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#ffffff",
-    borderRadius: 20,
+    borderRadius: 19,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
   },
   preferencesButtonActive: {
     backgroundColor: "#FEF3E7",
-    borderRadius: 20,
+    borderRadius: 19,
     shadowColor: "#eb7825",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   headerCenter: {
     flex: 1,
@@ -405,22 +423,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   notificationButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
+    padding: 7,
+    minWidth: 38,
+    minHeight: 38,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
     backgroundColor: "#ffffff",
-    borderRadius: 20,
+    borderRadius: 19,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
   },
   notificationDot: {
     position: "absolute",

@@ -13,10 +13,12 @@ import { useNavigation } from '../contexts/NavigationContext';
 
 const { width } = Dimensions.get('window');
 
+export type NotificationType = 'invite_received' | 'invite_sent' | 'session_update' | 'error' | 'success';
+
 export const NotificationBar: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [notification, setNotification] = useState<{
-    type: 'invite' | 'session_update' | 'error' | 'success';
+    type: NotificationType;
     title: string;
     message: string;
     action?: () => void;
@@ -28,13 +30,17 @@ export const NotificationBar: React.FC = () => {
   const slideAnim = new Animated.Value(-100);
 
   useEffect(() => {
-    // Show notification when there are pending invites
-    if (pendingInvites.length > 0) {
+    // Show notification when there are pending invites (RECEIVED INVITES)
+    if (pendingInvites && pendingInvites.length > 0) {
       const latestInvite = pendingInvites[0];
+      const inviterName = latestInvite.invitedBy?.name || 'Someone';
+      const inviterProfile = latestInvite.inviterProfile?.name || 'Someone';
+      const displayName = inviterProfile !== 'Someone' ? inviterProfile : inviterName;
+      
       setNotification({
-        type: 'invite',
-        title: 'New Collaboration Invite',
-        message: `You've been invited to join "${latestInvite.collaboration_sessions?.name}"`,
+        type: 'invite_received',
+        title: 'Collaboration Invite',
+        message: `${displayName} invited you to join "${latestInvite.name}"`,
         action: () => {
           openSessionSwitcher();
           hideNotification();
@@ -71,7 +77,8 @@ export const NotificationBar: React.FC = () => {
 
   const getNotificationStyle = () => {
     switch (notification?.type) {
-      case 'invite':
+      case 'invite_received':
+      case 'invite_sent':
         return styles.inviteNotification;
       case 'session_update':
         return styles.updateNotification;
@@ -86,8 +93,10 @@ export const NotificationBar: React.FC = () => {
 
   const getIcon = () => {
     switch (notification?.type) {
-      case 'invite':
+      case 'invite_received':
         return 'mail';
+      case 'invite_sent':
+        return 'send';
       case 'session_update':
         return 'people';
       case 'error':

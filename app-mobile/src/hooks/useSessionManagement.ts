@@ -150,6 +150,12 @@ export const useSessionManagement = () => {
       // Format sessions with correct status logic - include sessions even with 1 participant for pending invites
       const formattedSessions: CollaborationSession[] = allSessions
         .filter(session => {
+          const sessionParticipants = allParticipants.filter(p => p.session_id === session.id);
+
+          if (sessionParticipants.length < 2) {
+            return false;
+          }
+
           // Include sessions where:
           // 1. User is a participant (already filtered by sessionIds)
           // 2. OR user has a pending invite to this session
