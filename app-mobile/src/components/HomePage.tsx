@@ -13,7 +13,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
-import NotificationsModal, { Notification } from "./NotificationsModal";
+import NotificationsModal from "./NotificationsModal";
+import { InAppNotification } from "../services/inAppNotificationService";
+import { useInAppNotifications } from "../hooks/useInAppNotifications";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -51,6 +53,7 @@ interface HomePageProps {
   onCancelInvite?: (sessionId: string) => void;
   availableFriends?: Friend[];
   isCreatingSession?: boolean;
+  onNotificationNavigate?: (notification: InAppNotification) => void;
 }
 
 export default function HomePage({
@@ -81,72 +84,36 @@ export default function HomePage({
   onCancelInvite,
   availableFriends = [],
   isCreatingSession = false,
+  onNotificationNavigate,
 }: HomePageProps) {
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: "1",
-      type: "friend_request",
-      title: "New Friend Request",
-      description: "Sarah Chen wants to connect with you",
-      timestamp: "2m ago",
-      isRead: false,
-      data: { userId: "user1", userName: "Sarah Chen" },
-    },
-    {
-      id: "2",
-      type: "mention",
-      title: "Mentioned in Discussion",
-      description: 'Alex mentioned you in "Tokyo Food Tour" discussion',
-      timestamp: "15m ago",
-      isRead: false,
-      data: { sessionId: "session1", sessionName: "Tokyo Food Tour" },
-    },
-    {
-      id: "3",
-      type: "board_invite",
-      title: "Board Invitation",
-      description: 'Maria invited you to collaborate on "Paris Adventure"',
-      timestamp: "1h ago",
-      isRead: false,
-      data: { sessionId: "session2", sessionName: "Paris Adventure" },
-    },
-    {
-      id: "4",
-      type: "card_liked",
-      title: "Card Liked",
-      description: 'John liked your saved experience "Sunset Kayaking"',
-      timestamp: "2h ago",
-      isRead: true,
-      data: { cardId: "card1", cardName: "Sunset Kayaking" },
-    },
-    {
-      id: "5",
-      type: "comment",
-      title: "New Comment",
-      description: "Emma commented on your board",
-      timestamp: "3h ago",
-      isRead: true,
-    },
-  ]);
+  const {
+    notifications,
+    unreadCount: unreadNotificationCount,
+    markAsRead,
+    markAllAsRead,
+    clearAll,
+  } = useInAppNotifications();
 
   const handleMarkAllRead = () => {
-    setNotifications((prev) =>
-      prev.map((n) => ({ ...n, isRead: true }))
-    );
+    markAllAsRead();
   };
 
-  const handleNotificationPress = (notification: Notification) => {
+  const handleNotificationPress = (notification: InAppNotification) => {
     // Mark as read
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n))
-    );
-    // TODO: Navigate based on notification type
+    markAsRead(notification.id);
+    // Close modal
     setShowNotificationsModal(false);
+    // Navigate to the relevant page
+    if (onNotificationNavigate) {
+      onNotificationNavigate(notification);
+    }
   };
 
-  const unreadNotificationCount = notifications.filter((n) => !n.isRead).length;
+  const handleClearAll = () => {
+    clearAll();
+  };
 
   // Animation values
   const headerSlideAnim = useRef(new Animated.Value(-60)).current;
@@ -295,8 +262,10 @@ export default function HomePage({
           visible={showNotificationsModal}
           onClose={() => setShowNotificationsModal(false)}
           notifications={notifications}
+          unreadCount={unreadNotificationCount}
           onNotificationPress={handleNotificationPress}
           onMarkAllRead={handleMarkAllRead}
+          onClearAll={handleClearAll}
         />
 
       </View>

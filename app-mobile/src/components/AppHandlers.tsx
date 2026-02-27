@@ -9,6 +9,7 @@ import { BoardCardService } from "../services/boardCardService";
 import { toastManager } from "../components/ui/Toast";
 import { supabase } from "../services/supabase";
 import { offlineService } from "../services/offlineService";
+import { inAppNotificationService } from "../services/inAppNotificationService";
 
 export function useAppHandlers(state: any) {
   const queryClient = useQueryClient();
@@ -183,6 +184,9 @@ export function useAppHandlers(state: any) {
         [state.activeSessionData.id]: preferences,
       }));
     }
+
+    // Log in-app notification
+    inAppNotificationService.notifyPreferencesUpdated("collaboration");
 
     setShowCollabPreferences(false);
     setActiveSessionData(null);
@@ -643,6 +647,9 @@ export function useAppHandlers(state: any) {
             console.warn("⚠️ setPreferencesRefreshKey is not available");
           }
 
+          // Log in-app notification
+          inAppNotificationService.notifyPreferencesUpdated("solo");
+
           return true;
         } else {
           return false;
@@ -704,6 +711,12 @@ export function useAppHandlers(state: any) {
       dateTimePreferences: dateTimePrefs,
     });
     setShowShareModal(true);
+
+    // Log in-app notification
+    inAppNotificationService.notifyCardShared(
+      experienceData?.title || "Experience",
+      experienceData?.id
+    );
   };
 
   // Helper function to generate suggested dates
@@ -880,6 +893,9 @@ export function useAppHandlers(state: any) {
           "success",
           4000
         );
+
+        // Log in-app notification
+        inAppNotificationService.notifyCardSaved(card.title, card.id);
       } else {
         // Solo mode: save to general saved_experiences
         // IMPORTANT: Pass explicit source="solo" to ensure we use the current mode
@@ -895,6 +911,9 @@ export function useAppHandlers(state: any) {
           "success",
           3000
         );
+
+        // Log in-app notification
+        inAppNotificationService.notifyCardSaved(card.title, card.id);
       }
     } catch (error) {
       console.error("Error saving card:", error);

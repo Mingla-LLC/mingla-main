@@ -59,6 +59,7 @@ import { colors } from "../src/constants/colors";
 import { debugService } from "../src/services/debugService";
 import { DebugModal } from "../src/components/debug/DebugModal";
 import { useDebugGesture } from "../src/hooks/useDebugGesture";
+import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 
 function AppContent() {
   const state = useAppState();
@@ -81,6 +82,11 @@ function AppContent() {
   // Initialize debug service on mount
   useEffect(() => {
     debugService.initialize();
+  }, []);
+
+  // Initialize in-app notification service on mount
+  useEffect(() => {
+    inAppNotificationService.initialize();
   }, []);
 
   // Setup 5-tap gesture to open debug modal
@@ -267,6 +273,49 @@ function AppContent() {
     avatar: friend.avatar_url,
     status: 'offline' as const,
   }));
+
+  // Handle notification tap → navigate to the relevant page
+  const handleNotificationNavigate = (notification: InAppNotification) => {
+    const nav = notification.navigation;
+    switch (nav.page) {
+      case "home":
+        setCurrentPage("home");
+        break;
+      case "saved":
+        setCurrentPage("saved");
+        break;
+      case "connections":
+        setCurrentPage("connections");
+        break;
+      case "likes":
+        setCurrentPage("likes");
+        break;
+      case "profile":
+        setCurrentPage("profile");
+        break;
+      case "discover":
+        setCurrentPage("discover");
+        break;
+      case "activity":
+        setCurrentPage("activity");
+        if ((nav as any).tab) {
+          setActivityNavigation({ activeTab: (nav as any).tab });
+        }
+        break;
+      case "board-view":
+        if ((nav as any).sessionId) {
+          setBoardViewSessionId((nav as any).sessionId);
+          setCurrentPage("board-view");
+        }
+        break;
+      case "preferences":
+        setShowPreferences(true);
+        break;
+      case "none":
+      default:
+        break;
+    }
+  };
 
   // Session handlers for the CollaborationSessions bar
   const handleSessionSelect = (sessionId: string | null) => {
@@ -508,6 +557,9 @@ function AppContent() {
         ? `Session "${sessionName}" created! Invites sent to ${friendCount} friend${friendCount > 1 ? 's' : ''}.`
         : `Session "${sessionName}" created successfully!`;
       toastManager.success(message);
+
+      // Log in-app notification
+      inAppNotificationService.notifySessionCreated(sessionName, session.id);
       
       // Switch to the new session
       handlers.handleModeChange(sessionName);
@@ -632,6 +684,9 @@ function AppContent() {
       // Refresh all sessions
       await refreshAllSessions();
       toastManager.success(`Joined "${sessionName}" successfully!`);
+
+      // Log in-app notification
+      inAppNotificationService.notifyBoardJoined(sessionName, sessionId);
     } catch (error) {
       console.error('Error accepting invite:', error);
       toastManager.error('Failed to accept invite.');
@@ -1368,6 +1423,7 @@ function AppContent() {
             onCancelInvite={handleCancelInvite}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
+            onNotificationNavigate={handleNotificationNavigate}
           />
         );
       case "discover":
@@ -1711,6 +1767,7 @@ function AppContent() {
             onCancelInvite={handleCancelInvite}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
+            onNotificationNavigate={handleNotificationNavigate}
           />
         );
     }
