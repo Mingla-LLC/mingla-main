@@ -313,19 +313,27 @@ function AppContent() {
       .eq('status', 'pending');
     
     // Transform pending created sessions
-    const pendingCreatedSessions = (createdPendingSessions || []).map((s: any) => ({
-      id: s.id,
-      name: s.name,
-      status: s.status,
-      creatorId: s.created_by,
-      created_by: s.created_by,
-      participants: s.session_participants || [],
-      createdAt: s.created_at,
-    }));
+    // Only include sessions where the user is actually a participant (prevents ghost sessions
+    // from failed creation attempts from appearing as duplicate pills)
+    const pendingCreatedSessions = (createdPendingSessions || [])
+      .filter((s: any) =>
+        (s.session_participants || []).some((p: any) => p.user_id === user.id)
+      )
+      .map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        status: s.status,
+        creatorId: s.created_by,
+        created_by: s.created_by,
+        participants: s.session_participants || [],
+        createdAt: s.created_at,
+      }));
     
     // Transform pending invited sessions with inviter profile
+    // Include both 'pending' and 'active' sessions — an invitee should still see a grey pill
+    // even after someone else has accepted and the session became active
     const pendingInvitedSessions = (invitedSessions || [])
-      .filter((inv: any) => inv.collaboration_sessions?.status === 'pending')
+      .filter((inv: any) => ['pending', 'active'].includes(inv.collaboration_sessions?.status))
       .map((inv: any) => {
         const inviterProfile = inv.inviter;
         const inviterName = inviterProfile 
@@ -366,7 +374,40 @@ function AppContent() {
   const handleCreateSession = async (sessionName: string, selectedFriends: Friend[] = []) => {
     if (!user?.id) return;
     setIsCreatingSession(true);
+    let createdSessionId: string | null = null;
     try {
+      // Check for real duplicate: any session where user is an accepted participant with this name
+      const { data: participations } = await supabase
+        .from('session_participants')
+        .select('session_id, collaboration_sessions!inner(id, name)')
+        .eq('user_id', user.id)
+        .eq('has_accepted', true);
+
+      const hasDuplicate = (participations || []).some((p: any) => {
+        const s = Array.isArray(p.collaboration_sessions) ? p.collaboration_sessions[0] : p.collaboration_sessions;
+        return s?.name?.toLowerCase() === sessionName.trim().toLowerCase();
+      });
+
+      if (hasDuplicate) {
+        toastManager.error('A collaboration session already exists with that name.');
+        return;
+      }
+
+      // Clean up any ghost sessions with this name (created by user but no participant record)
+      // These accumulate from previous failed creation attempts
+      const { data: ghostSessions } = await supabase
+        .from('collaboration_sessions')
+        .select('id')
+        .eq('created_by', user.id)
+        .ilike('name', sessionName.trim());
+
+      if (ghostSessions && ghostSessions.length > 0) {
+        await supabase
+          .from('collaboration_sessions')
+          .delete()
+          .in('id', ghostSessions.map((s: any) => s.id));
+      }
+
       // Create the collaboration session (matching CreateTab.tsx pattern)
       // Status starts as 'pending' until participants accept
       const { data: session, error: sessionError } = await supabase
@@ -380,6 +421,7 @@ function AppContent() {
         .single();
 
       if (sessionError) throw sessionError;
+      createdSessionId = session.id;
 
       // Add creator as participant (auto-accepted)
       const { error: participantError } = await supabase
@@ -425,7 +467,7 @@ function AppContent() {
           .from('collaboration_invites')
           .insert({
             session_id: session.id,
-            invited_by: user.id,
+            inviter_id: user.id,
             invited_user_id: friendUserId,
             status: 'pending',
           })
@@ -472,6 +514,12 @@ function AppContent() {
       setCurrentSessionId(session.id);
     } catch (error) {
       console.error('Error creating session:', error);
+      // Roll back the ghost session if it was inserted before the failure
+      if (createdSessionId) {
+        supabase.from('collaboration_sessions').delete().eq('id', createdSessionId).then(({ error: deleteError }) => {
+          if (deleteError) console.error('Error cleaning up failed session:', deleteError);
+        });
+      }
       toastManager.error('Failed to create session. Please try again.');
     } finally {
       setIsCreatingSession(false);

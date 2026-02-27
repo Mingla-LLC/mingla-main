@@ -29,7 +29,7 @@ export const useSessionManagement = () => {
       const { data: receivedInvites, error: receivedError } = await supabase
         .from('collaboration_invites')
         .select('*')
-        .eq('invited_user_id', user.id)
+        .eq('invitee_id', user.id)
         .eq('status', 'pending');
 
       if (receivedError) {
@@ -118,7 +118,7 @@ export const useSessionManagement = () => {
       }
 
       // 6. Load inviter profiles for received invites
-      const inviterIds = [...new Set((receivedInvites || []).map(i => i.invited_by))];
+      const inviterIds = [...new Set((receivedInvites || []).map(i => i.inviter_id))];
       let inviterProfiles: any[] = [];
       if (inviterIds.length > 0) {
         const { data: invitersData, error: invitersError } = await supabase
@@ -214,14 +214,14 @@ export const useSessionManagement = () => {
       // Format invites for notification bar (only received invites)
       const formattedInvites: SessionInvite[] = (receivedInvites || []).map(invite => {
         const session = allSessions.find(s => s.id === invite.session_id);
-        const inviter = inviterProfiles.find(p => p.id === invite.invited_by);
+        const inviter = inviterProfiles.find(p => p.id === invite.inviter_id);
         
         return {
           id: invite.id,
           sessionId: invite.session_id,
           sessionName: session?.name || 'Collaboration Session',
           invitedBy: {
-            id: inviter?.id || invite.invited_by,
+            id: inviter?.id || invite.inviter_id,
             name: formatProfileName(inviter),
             username: inviter?.username || 'unknown',
             avatar: inviter?.avatar_url
@@ -252,12 +252,45 @@ export const useSessionManagement = () => {
       throw new Error('User not authenticated');
     }
 
+    let sessionData: any = null;
     try {
+      const resolvedName = sessionName || `Collaboration Session ${new Date().toLocaleDateString()}`;
+
+      // Check for real duplicate: any session where user is an accepted participant with this name
+      const { data: participations } = await supabase
+        .from('session_participants')
+        .select('session_id, collaboration_sessions!inner(id, name)')
+        .eq('user_id', user.id)
+        .eq('has_accepted', true);
+
+      const hasDuplicate = (participations || []).some((p: any) => {
+        const s = Array.isArray(p.collaboration_sessions) ? p.collaboration_sessions[0] : p.collaboration_sessions;
+        return s?.name?.toLowerCase() === resolvedName.toLowerCase();
+      });
+
+      if (hasDuplicate) {
+        throw new Error('A collaboration session already exists with that name.');
+      }
+
+      // Clean up any ghost sessions with this name (created by user but no participant record)
+      const { data: ghostSessions } = await supabase
+        .from('collaboration_sessions')
+        .select('id')
+        .eq('created_by', user.id)
+        .ilike('name', resolvedName);
+
+      if (ghostSessions && ghostSessions.length > 0) {
+        await supabase
+          .from('collaboration_sessions')
+          .delete()
+          .in('id', ghostSessions.map((s: any) => s.id));
+      }
+
       // Create the session (no board yet - only created when all accept)
-      const { data: sessionData, error: sessionError } = await supabase
+      const { data: createdSession, error: sessionError } = await supabase
         .from('collaboration_sessions')
         .insert({
-          name: sessionName || `Collaboration Session ${new Date().toLocaleDateString()}`,
+          name: resolvedName,
           created_by: user.id,
           status: 'pending',
           board_id: null
@@ -269,6 +302,7 @@ export const useSessionManagement = () => {
         console.error('Error creating session:', sessionError);
         throw sessionError;
       }
+      sessionData = createdSession;
 
       // Add creator as participant (auto-accepted)
       const { error: creatorParticipantError } = await supabase
@@ -337,8 +371,8 @@ export const useSessionManagement = () => {
           .from('collaboration_invites')
           .insert({
             session_id: sessionData.id,
-            invited_by: user.id,
-            invited_user_id: userData.id,
+            inviter_id: user.id,
+            invitee_id: userData.id,
             status: 'pending'
           });
 
@@ -366,6 +400,12 @@ export const useSessionManagement = () => {
 
     } catch (error) {
       console.error('Error creating collaborative session:', error);
+      // Roll back the ghost session if it was inserted before the failure
+      if (sessionData?.id) {
+        supabase.from('collaboration_sessions').delete().eq('id', sessionData.id).then(({ error: deleteError }) => {
+          if (deleteError) console.error('Error cleaning up failed session:', deleteError);
+        });
+      }
       return null;
     }
   }, [user, loadUserSessions]);
@@ -408,7 +448,7 @@ export const useSessionManagement = () => {
         const { data: inviterProfile, error: profileError } = await supabase
           .from('profiles')
           .select('id, username, first_name, last_name, avatar_url')
-          .eq('id', dbInvite.invited_by)
+          .eq('id', dbInvite.inviter_id)
           .single();
 
         // Convert database invite to our format
@@ -417,7 +457,7 @@ export const useSessionManagement = () => {
           sessionId: dbInvite.session_id,
           sessionName: sessionData?.name || 'Collaboration Session',
           invitedBy: {
-            id: dbInvite.invited_by,
+            id: dbInvite.inviter_id,
             name: inviterProfile?.first_name && inviterProfile?.last_name 
               ? `${inviterProfile.first_name} ${inviterProfile.last_name}` 
               : inviterProfile?.username || 'Unknown',
@@ -439,7 +479,7 @@ export const useSessionManagement = () => {
           updated_at: new Date().toISOString()
         })
         .eq('id', inviteId)
-        .eq('invited_user_id', user.id);
+        .eq('invitee_id', user.id);
 
       if (inviteUpdateError) {
         console.error('❌ Error updating invite status:', inviteUpdateError);
@@ -671,7 +711,7 @@ export const useSessionManagement = () => {
           updated_at: new Date().toISOString()
         })
         .eq('id', inviteId)
-        .eq('invited_user_id', user.id);
+        .eq('invitee_id', user.id);
 
       if (inviteUpdateError) {
         console.error('❌ Error declining invite:', inviteUpdateError);
@@ -800,7 +840,7 @@ export const useSessionManagement = () => {
           .from('collaboration_invites')
           .update({ status: 'declined' })
           .eq('session_id', sessionId)
-          .eq('invited_user_id', user.id);
+          .eq('invitee_id', user.id);
 
         // Switch to solo mode
         const newState = {
@@ -826,7 +866,7 @@ export const useSessionManagement = () => {
           .from('collaboration_invites')
           .update({ status: 'cancelled' })
           .eq('session_id', sessionId)
-          .eq('invited_by', user.id);
+          .eq('inviter_id', user.id);
 
         // Delete the session (this will cascade to participants and invites via trigger)
         await supabase
@@ -841,7 +881,7 @@ export const useSessionManagement = () => {
           .from('collaboration_invites')
           .update({ status: 'declined' })
           .eq('session_id', sessionId)
-          .eq('invited_user_id', user.id);
+          .eq('invitee_id', user.id);
 
         // Remove user from participants (this may trigger session cleanup)
         await supabase

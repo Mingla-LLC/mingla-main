@@ -247,7 +247,7 @@ export default function HomePage({
           />
 
           {/* Collaboration Sessions Bar with fade-in and scale animation */}
-          {onSessionSelect && onSoloSelect && onCreateSession && onAcceptInvite && onDeclineInvite && onCancelInvite && (
+          {onSessionSelect && onSoloSelect && onCreateSession && (
             <Animated.View
               style={{
                 opacity: sessionsOpacity,
@@ -262,9 +262,9 @@ export default function HomePage({
                 onSessionSelect={onSessionSelect}
                 onSoloSelect={onSoloSelect}
                 onCreateSession={onCreateSession}
-                onAcceptInvite={onAcceptInvite}
-                onDeclineInvite={onDeclineInvite}
-                onCancelInvite={onCancelInvite}
+                onAcceptInvite={onAcceptInvite || (() => {})}
+                onDeclineInvite={onDeclineInvite || (() => {})}
+                onCancelInvite={onCancelInvite || (() => {})}
                 availableFriends={availableFriends}
                 isCreatingSession={isCreatingSession}
               />

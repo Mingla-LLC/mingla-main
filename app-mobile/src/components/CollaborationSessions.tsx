@@ -177,7 +177,9 @@ export default function CollaborationSessions({
 
   const renderPill = (session: CollaborationSession) => {
     const isSelected = selectedSessionId === session.id && !isSoloMode;
-    const isInvite = session.type === 'sent-invite' || session.type === 'received-invite';
+    const isSentInvite = session.type === 'sent-invite';
+    const isReceivedInvite = session.type === 'received-invite';
+    const isInvite = isSentInvite || isReceivedInvite;
 
     return (
       <TouchableOpacity
@@ -185,10 +187,11 @@ export default function CollaborationSessions({
         style={[
           styles.pill,
           isInvite && styles.pillInvite,
+          isSentInvite && styles.pillSentInvite,
           isSelected && styles.pillSelected,
         ]}
         onPress={() => handlePillClick(session)}
-        activeOpacity={0.7}
+        activeOpacity={isSentInvite ? 0.5 : 0.7}
       >
         <Text
           style={[
@@ -200,9 +203,9 @@ export default function CollaborationSessions({
           {session.initials}
         </Text>
         {isInvite && (
-          <View style={styles.inviteBadge}>
+          <View style={[styles.inviteBadge, isSentInvite && styles.inviteBadgePending]}>
             <Ionicons
-              name={session.type === 'received-invite' ? 'mail' : 'paper-plane'}
+              name={isReceivedInvite ? 'mail' : 'time-outline'}
               size={7}
               color="#fff"
             />
@@ -659,6 +662,10 @@ const styles = StyleSheet.create({
   },
   pillInvite: {
     backgroundColor: '#F3F4F6',
+    borderColor: '#D1D5DB',
+  },
+  pillSentInvite: {
+    opacity: 0.6,
   },
   pillText: {
     fontSize: 12,
@@ -688,6 +695,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: '#FFFFFF',
+  },
+  inviteBadgePending: {
+    backgroundColor: '#9CA3AF',
   },
   // Modal styles
   modalOverlay: {

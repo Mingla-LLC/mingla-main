@@ -440,6 +440,38 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
 
     setIsCreating(true);
     try {
+      // Check for real duplicate: any session where user is an accepted participant with this name
+      const { data: participations } = await supabase
+        .from('session_participants')
+        .select('session_id, collaboration_sessions!inner(id, name)')
+        .eq('user_id', user.id)
+        .eq('has_accepted', true);
+
+      const hasDuplicate = (participations || []).some((p: any) => {
+        const s = Array.isArray(p.collaboration_sessions) ? p.collaboration_sessions[0] : p.collaboration_sessions;
+        return s?.name?.toLowerCase() === newSessionName.trim().toLowerCase();
+      });
+
+      if (hasDuplicate) {
+        Alert.alert('Session Already Exists', 'A collaboration session already exists with that name.');
+        setIsCreating(false);
+        return;
+      }
+
+      // Clean up any ghost sessions with this name (created by user but no participant record)
+      const { data: ghostSessions } = await supabase
+        .from('collaboration_sessions')
+        .select('id')
+        .eq('created_by', user.id)
+        .ilike('name', newSessionName.trim());
+
+      if (ghostSessions && ghostSessions.length > 0) {
+        await supabase
+          .from('collaboration_sessions')
+          .delete()
+          .in('id', ghostSessions.map((s: any) => s.id));
+      }
+
       // Create the session in the database
       // Status starts as 'pending' until at least 2 members have accepted
       const { data: sessionData, error: sessionError } = await supabase
@@ -470,6 +502,8 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
 
       if (creatorError) {
         console.error('Error adding creator as participant:', creatorError);
+        // Roll back the ghost session
+        await supabase.from('collaboration_sessions').delete().eq('id', sessionData.id);
         Alert.alert('Error', 'Failed to add you as a participant');
         return;
       }
