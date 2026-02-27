@@ -2998,6 +2998,11 @@ export default function DiscoverScreen({
         onRequestClose={handleCloseAddPersonModal}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.backdropTouch}
+            activeOpacity={1}
+            onPress={handleCloseAddPersonModal}
+          />
           <View style={styles.addPersonModalContent}>
             {/* Modal Header */}
             <View style={styles.addPersonModalHeader}>
@@ -3141,6 +3146,11 @@ export default function DiscoverScreen({
         onRequestClose={handleCloseAddCustomDayModal}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.backdropTouch}
+            activeOpacity={1}
+            onPress={handleCloseAddCustomDayModal}
+          />
           <View style={styles.addPersonModalContent}>
             {/* Modal Header */}
             <View style={styles.customDayModalHeader}>
@@ -3438,6 +3448,11 @@ export default function DiscoverScreen({
         onRequestClose={handleCloseFilterModal}
       >
         <View style={styles.filterModalOverlay}>
+          <TouchableOpacity
+            style={styles.backdropTouch}
+            activeOpacity={1}
+            onPress={handleCloseFilterModal}
+          />
           <View style={styles.filterModalContent}>
             {/* Modal Header */}
             <View style={styles.filterModalHeader}>
@@ -4219,6 +4234,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   addPersonModalContent: {
     backgroundColor: "white",

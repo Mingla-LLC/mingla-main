@@ -45,6 +45,11 @@ function CommandDialog({
       {...props}
     >
       <View style={styles.modalOverlay}>
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={[styles.modalContent, style]}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{title}</Text>
@@ -205,6 +210,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContent: {
     backgroundColor: 'white',

@@ -1,7 +1,5 @@
-create extension if not exists "uuid-ossp";
-
 create table if not exists saved_card (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   profile_id uuid not null references profiles(id) on delete cascade,
   experience_id text not null,
   title text,

@@ -701,6 +701,11 @@ export default function ActionButtons({
               onRequestClose={() => setShowDateTimePicker(false)}
             >
               <View style={styles.modalOverlay}>
+                <TouchableOpacity
+                  style={styles.backdropTouch}
+                  activeOpacity={1}
+                  onPress={() => setShowDateTimePicker(false)}
+                />
                 <SafeAreaView style={styles.modalContent}>
                   <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>
@@ -1046,6 +1051,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "flex-end",
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContent: {
     backgroundColor: "white",

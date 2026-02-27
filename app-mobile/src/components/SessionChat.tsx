@@ -6,12 +6,12 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRealtimeSession } from '../hooks/useRealtimeSession';
 import { useAppStore } from '../store/appStore';
+import { KeyboardAwareView } from './ui/KeyboardAwareView';
 
 interface SessionChatProps {
   sessionId: string;
@@ -61,9 +61,9 @@ export const SessionChat: React.FC<SessionChatProps> = ({ sessionId, onClose }) 
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAwareView 
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      dismissOnTap={false}
     >
       {/* Header */}
       <View style={styles.header}>
@@ -84,6 +84,8 @@ export const SessionChat: React.FC<SessionChatProps> = ({ sessionId, onClose }) 
         ref={scrollViewRef}
         style={styles.messagesContainer}
         contentContainerStyle={styles.messagesContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
         {sessionMessages.length === 0 ? (
           <View style={styles.emptyState}>
@@ -163,7 +165,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ sessionId, onClose }) 
           />
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardAwareView>
   );
 };
 

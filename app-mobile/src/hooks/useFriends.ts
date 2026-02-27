@@ -25,6 +25,7 @@ export interface FriendRequest {
     first_name?: string;
     last_name?: string;
     avatar_url?: string;
+    email?: string;
   };
   status: "pending" | "accepted" | "declined" | "cancelled";
   created_at: string;
@@ -50,6 +51,9 @@ export const useFriends = () => {
   // Fetch blocked users from blocked_users table (new system)
   const fetchBlockedUsers = useCallback(async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return; // Not authenticated yet, skip silently
+
       const result = await blockService.getBlockedUsers();
       
       if (result.error) {
@@ -210,9 +214,18 @@ export const useFriends = () => {
       for (const request of incomingRequests || []) {
         const { data: senderProfile, error: senderError } = await supabase
           .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url")
+          .select("id, username, first_name, last_name, avatar_url, email")
           .eq("id", request.sender_id)
           .single();
+
+        console.log(`[useFriends] Loaded sender profile for ${request.sender_id}:`, {
+          error: senderError?.message,
+          hasProfile: !!senderProfile,
+          avatar_url: senderProfile?.avatar_url,
+          email: senderProfile?.email,
+          username: senderProfile?.username,
+          fullProfile: senderProfile
+        });
 
         // If profile doesn't exist, create a basic one
         if (senderError && senderError.code === "PGRST116") {
@@ -222,7 +235,7 @@ export const useFriends = () => {
               id: request.sender_id,
               username: `user_${request.sender_id.substring(0, 8)}`,
             })
-            .select("id, username, first_name, last_name, avatar_url")
+            .select("id, username, first_name, last_name, avatar_url, email")
             .single();
 
           transformedRequests.push({
@@ -240,12 +253,18 @@ export const useFriends = () => {
               first_name: newProfile?.first_name,
               last_name: newProfile?.last_name,
               avatar_url: newProfile?.avatar_url,
+              email: newProfile?.email,
             },
             status: request.status,
             created_at: request.created_at,
             type: "incoming" as const,
           });
         } else {
+          console.log(`[useFriends] Adding transformed request for sender ${request.sender_id}:`, {
+            avatar_url: senderProfile?.avatar_url,
+            email: senderProfile?.email,
+            username: senderProfile?.username
+          });
           transformedRequests.push({
             id: request.id,
             sender_id: request.sender_id,
@@ -261,6 +280,7 @@ export const useFriends = () => {
               first_name: senderProfile?.first_name,
               last_name: senderProfile?.last_name,
               avatar_url: senderProfile?.avatar_url,
+              email: senderProfile?.email,
             },
             status: request.status,
             created_at: request.created_at,
@@ -273,7 +293,7 @@ export const useFriends = () => {
       for (const request of outgoingRequests || []) {
         const { data: receiverProfile, error: receiverError } = await supabase
           .from("profiles")
-          .select("id, username, first_name, last_name, avatar_url")
+          .select("id, username, first_name, last_name, avatar_url, email")
           .eq("id", request.receiver_id)
           .single();
 
@@ -285,7 +305,7 @@ export const useFriends = () => {
               id: request.receiver_id,
               username: `user_${request.receiver_id.substring(0, 8)}`,
             })
-            .select("id, username, first_name, last_name, avatar_url")
+            .select("id, username, first_name, last_name, avatar_url, email")
             .single();
 
           transformedRequests.push({
@@ -303,6 +323,7 @@ export const useFriends = () => {
               first_name: newProfile?.first_name,
               last_name: newProfile?.last_name,
               avatar_url: newProfile?.avatar_url,
+              email: newProfile?.email,
             },
             status: request.status,
             created_at: request.created_at,
@@ -324,6 +345,7 @@ export const useFriends = () => {
               first_name: receiverProfile?.first_name,
               last_name: receiverProfile?.last_name,
               avatar_url: receiverProfile?.avatar_url,
+              email: receiverProfile?.email,
             },
             status: request.status,
             created_at: request.created_at,
@@ -331,6 +353,13 @@ export const useFriends = () => {
           });
         }
       }
+
+      console.log(`[useFriends] Setting friend requests with data:`, transformedRequests.map(r => ({
+        id: r.id,
+        sender: r.sender.username,
+        avatar_url: r.sender.avatar_url,
+        email: r.sender.email
+      })));
 
       setFriendRequests(transformedRequests);
     } catch (error) {
@@ -406,6 +435,19 @@ export const useFriends = () => {
         } else {
           // Not a UUID - try to find by email (for email-only invites)
           if (receiverEmail) {
+            const { data: visibilityData } = await supabase.rpc(
+              "resolve_user_visibility_by_identifier",
+              { p_identifier: receiverEmail.trim().toLowerCase() }
+            );
+
+            const visibility = Array.isArray(visibilityData)
+              ? visibilityData[0]
+              : visibilityData;
+
+            if (visibility?.user_exists && (visibility?.is_blocked || !visibility?.can_view)) {
+              throw new Error("User not found. Please check the email and try again.");
+            }
+
             const { data: userByEmail, error: emailError } = await supabase
               .from("profiles")
               .select("id, username, email")
@@ -427,6 +469,11 @@ export const useFriends = () => {
                 receiverEmail,
                 userExists,
               });
+            } else if (visibility?.user_exists && visibility?.can_view && visibility?.profile_id) {
+              receiverId = visibility.profile_id;
+              userExists = true;
+              receiverEmail = visibility.email || receiverEmail;
+              receiverUsernameFinal = visibility.username || receiverUsernameFinal;
             } else {
               console.log("User not found by email:", receiverEmail);
             }

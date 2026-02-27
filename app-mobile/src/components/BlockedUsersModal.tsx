@@ -1,8 +1,9 @@
 /**
  * BlockedUsersModal
  * 
- * Full-screen modal for viewing and managing blocked users.
+ * Full-screen bottom sheet modal for viewing and managing blocked users.
  * Shows all blocked users with unblock functionality.
+ * Matches the design language of NotificationsModal and SessionViewModal.
  */
 
 import React, { useState, useEffect } from "react";
@@ -12,11 +13,13 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
-  FlatList,
   ActivityIndicator,
   Image,
   Alert,
+  Dimensions,
+  ScrollView,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFriends, BlockedUser } from "../hooks/useFriends";
 
@@ -31,6 +34,7 @@ export default function BlockedUsersModal({
   onClose,
   onUnblockUser,
 }: BlockedUsersModalProps) {
+  const insets = useSafeAreaInsets();
   const { blockedUsers = [], fetchBlockedUsers, unblockFriend } = useFriends();
   const [loading, setLoading] = useState(false);
   const [unblockingId, setUnblockingId] = useState<string | null>(null);
@@ -186,28 +190,42 @@ export default function BlockedUsersModal({
   return (
     <Modal
       visible={visible}
-      animationType="fade"
+      animationType="slide"
       transparent={true}
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
+      <View style={styles.sheetOverlay}>
+        {/* Tap backdrop to close */}
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+
+        <View style={[styles.sheetContent, { paddingBottom: insets.bottom }]}>
+          {/* Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <View style={styles.headerIcon}>
-                <Feather name="shield" size={20} color="white" />
-              </View>
-              <View>
-                <Text style={styles.title}>Blocked Users</Text>
-                <Text style={styles.subtitle}>
+            <View style={styles.headerContent}>
+              <View style={styles.headerLeft}>
+                <Text style={styles.headerTitle}>Blocked Users</Text>
+                <Text style={styles.headerSubtitle}>
                   {blockedUsers.length} {blockedUsers.length === 1 ? "user" : "users"} blocked
                 </Text>
               </View>
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.closeButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={20} color="#6b7280" />
-            </TouchableOpacity>
           </View>
 
           {/* Content */}
@@ -217,116 +235,127 @@ export default function BlockedUsersModal({
               <Text style={styles.loadingText}>Loading blocked users...</Text>
             </View>
           ) : (
-            <FlatList
-              data={blockedUsers}
-              renderItem={renderBlockedUser}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={
-                blockedUsers.length === 0
-                  ? styles.emptyListContainer
-                  : styles.listContainer
-              }
-              ListEmptyComponent={renderEmptyState}
+            <ScrollView
+              contentContainerStyle={styles.contentContainer}
+              style={styles.content}
               showsVerticalScrollIndicator={false}
-              style={styles.list}
-            />
-          )}
-
-          {/* Footer */}
-          <Text style={styles.footerText}>
-            Blocked users can't message you or see your activity
-          </Text>
+            >
+              {blockedUsers.length === 0 ? (
+                renderEmptyState()
+              ) : (
+                <View style={styles.listContainer}>
+                  {blockedUsers.map((item) => renderBlockedUser({ item, index: 0 }))}
+                </View>
+              )}
+            </ScrollView>
+            )}
         </View>
       </View>
     </Modal>
   );
 }
 
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
+
 const styles = StyleSheet.create({
-  modalOverlay: {
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    justifyContent: "flex-end",
   },
-  modalContainer: {
-    backgroundColor: "#f9fafb",
-    borderRadius: 16,
-    width: "100%",
-    maxWidth: 400,
-    height: "75%",
+  backdropTouch: {
+    flex: 1,
+  },
+  sheetContent: {
+    height: SHEET_HEIGHT,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 30,
+  },
+  dragHandleContainer: {
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D1D5DB",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
-    backgroundColor: "white",
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
+    borderBottomColor: "#F3F4F6",
   },
-  headerLeft: {
+  headerContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "space-between",
+    width: "100%",
   },
-  headerIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "#ef4444",
+  headerLeft: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
   },
-  closeButton: {
-    padding: 8,
-    borderRadius: 12,
+  content: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
   },
-  title: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
+  contentContainer: {
+    flexGrow: 1,
+    padding: 16,
   },
-  subtitle: {
-    fontSize: 14,
-    color: "#6b7280",
+
+  content: {
+    flex: 1,
   },
-  footerText: {
-    fontSize: 13,
-    color: "#6b7280",
-    textAlign: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "white",
+  contentContainer: {
+    flexGrow: 1,
+    padding: 16,
   },
   loadingContainer: {
     flex: 1,
-    padding: 40,
+    padding: 64,
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
+    minHeight: 200,
   },
   loadingText: {
     fontSize: 14,
     color: "#6b7280",
   },
-  list: {
-    flex: 1,
-  },
   listContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 32,
-  },
-  emptyListContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 24,
-    justifyContent: "center",
+    gap: 12,
   },
   userCard: {
     flexDirection: "row",
@@ -335,7 +364,6 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderRadius: 12,
     padding: 12,
-    marginBottom: 12,
   },
   userInfo: {
     flexDirection: "row",
@@ -345,6 +373,7 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     position: "relative",
+    flexShrink: 0,
   },
   avatar: {
     width: 44,
@@ -358,6 +387,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#eb7825",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   avatarText: {
     fontSize: 16,
@@ -371,7 +401,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: "#ef4444",
+    backgroundColor: "#eb7825",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -379,6 +409,7 @@ const styles = StyleSheet.create({
   },
   userDetails: {
     flex: 1,
+    minWidth: 0,
   },
   userName: {
     fontSize: 15,
@@ -388,7 +419,7 @@ const styles = StyleSheet.create({
   },
   userUsername: {
     fontSize: 13,
-    color: "#6b7280",
+    color: "#9ca3af",
   },
   blockedTime: {
     fontSize: 12,
@@ -396,47 +427,49 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   unblockButton: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     backgroundColor: "#eb7825",
     borderRadius: 8,
     minWidth: 80,
     alignItems: "center",
+    flexShrink: 0,
   },
   unblockButtonDisabled: {
     opacity: 0.6,
   },
   unblockButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
     color: "white",
   },
   emptyState: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 64,
+    paddingHorizontal: 32,
   },
   emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: "#f3f4f6",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 20,
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "600",
     color: "#111827",
-    marginBottom: 6,
+    marginBottom: 8,
     textAlign: "center",
   },
   emptySubtitle: {
-    fontSize: 13,
-    color: "#6b7280",
+    fontSize: 14,
+    color: "#9ca3af",
     textAlign: "center",
-    lineHeight: 18,
+    lineHeight: 22,
   },
 });

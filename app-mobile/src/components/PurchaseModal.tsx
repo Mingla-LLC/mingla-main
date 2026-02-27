@@ -312,6 +312,11 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={styles.modalContainer}>
           {paymentStep === 'selection' && renderSelectionStep()}
           {paymentStep === 'payment' && renderPaymentStep()}
@@ -328,6 +333,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContainer: {
     backgroundColor: 'white',

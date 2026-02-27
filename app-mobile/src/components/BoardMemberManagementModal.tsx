@@ -97,6 +97,11 @@ export default function BoardMemberManagementModal({
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={styles.modalContainer}>
         {/* Header */}
         <View style={styles.header}>
@@ -312,6 +317,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContainer: {
     backgroundColor: 'white',

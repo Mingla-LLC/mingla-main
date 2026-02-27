@@ -6,10 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
+  Keyboard,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -22,6 +22,7 @@ import { Participant } from "./ParticipantAvatars";
 import { BoardErrorHandler } from "../../services/boardErrorHandler";
 import { useNetworkMonitor } from "../../services/networkMonitor";
 import { MentionPopover } from "./MentionPopover";
+import { KeyboardAwareView } from "../ui/KeyboardAwareView";
 
 interface BoardDiscussionTabProps {
   sessionId: string;
@@ -429,10 +430,9 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
   }
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAwareView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      dismissOnTap={false}
     >
       {/* Messages List */}
       <ScrollView
@@ -440,6 +440,8 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
         style={styles.messagesContainer}
         contentContainerStyle={styles.messagesContent}
         showsVerticalScrollIndicator={true}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
         {messages.length === 0 ? (
           <View style={styles.emptyState}>
@@ -559,9 +561,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
             )}
           </TouchableOpacity>
         </View>
-        <Text style={styles.helperText}>
-          Use @ to mention participants • Use # to reference cards
-        </Text>
+
 
         {/* Mention Popover */}
         <MentionPopover
@@ -606,14 +606,15 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
           visible={showMentionPopover}
         />
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardAwareView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "#ffffff",
+    overflow: "hidden",
   },
   loadingContainer: {
     flex: 1,
@@ -627,10 +628,12 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     flex: 1,
+    backgroundColor: "#ffffff",
+    overflow: "hidden",
   },
   messagesContent: {
     paddingTop: 16,
-    paddingBottom: 8,
+    paddingBottom: 28,
   },
   emptyState: {
     flex: 1,
@@ -652,7 +655,7 @@ const styles = StyleSheet.create({
   },
   messageWrapper: {
     flexDirection: "row",
-    marginBottom: 16,
+    marginBottom: 12,
     paddingHorizontal: 16,
     alignItems: "flex-start",
   },
@@ -660,17 +663,22 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: "#eb7825",
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   avatarText: {
     color: "white",
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
   },
   messageContent: {
     flex: 1,
@@ -682,14 +690,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   senderName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1a1a1a",
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
   },
   messageText: {
-    fontSize: 15,
-    color: "#1a1a1a",
-    lineHeight: 22,
+    fontSize: 14,
+    color: "#1F2937",
+    lineHeight: 21,
+    fontWeight: "400",
   },
   mentionText: {
     color: "#eb7825",
@@ -700,8 +709,9 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   messageTime: {
-    fontSize: 12,
-    color: "#999",
+    fontSize: 11,
+    color: "#9CA3AF",
+    fontWeight: "400",
   },
   messageActions: {
     flexDirection: "row",
@@ -721,72 +731,99 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
   inputContainer: {
-    padding: 12,
-    backgroundColor: "white",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 24,
+    backgroundColor: "#ffffff",
     borderTopWidth: 1,
-    borderTopColor: "#e1e5e9",
+    borderTopColor: "#F0F1F3",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 8,
   },
   inputWrapper: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     gap: 8,
     marginBottom: 8,
+    paddingBottom: 2,
   },
   editingIndicator: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 8,
-    backgroundColor: "#FFF3CD",
-    borderRadius: 8,
-    marginBottom: 8,
+    padding: 10,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 10,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: "#FBBF24",
   },
   editingText: {
     fontSize: 12,
-    color: "#856404",
-    fontWeight: "500",
+    color: "#92400E",
+    fontWeight: "600",
   },
   input: {
     flex: 1,
-    height: 40,
-    backgroundColor: "#ffffff",
+    maxHeight: 90,
+    minHeight: 40,
+    backgroundColor: "#f9fafb",
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e1e5e9",
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    fontSize: 15,
+    borderWidth: 1.5,
+    borderColor: "#e5e7eb",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 11,
     color: "#1a1a1a",
+    fontWeight: "500",
   },
   inputFocused: {
     borderColor: "#eb7825",
+    backgroundColor: "#ffffff",
+    borderWidth: 2,
   },
   helpButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 22,
     backgroundColor: "#eb7825",
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#eb7825",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
   },
   helperText: {
-    fontSize: 12,
-    color: "#666",
-    marginBottom: 8,
-    paddingHorizontal: 4,
+    fontSize: 10,
+    color: "#9CA3AF",
+    marginTop: 8,
+    marginBottom: 12,
+    paddingHorizontal: 0,
+    fontWeight: "400",
+    letterSpacing: 0.3,
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#eb7825",
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#eb7825",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
     alignSelf: "flex-end",
   },
   sendButtonDisabled: {
-    backgroundColor: "#ccc",
-    opacity: 0.5,
+    backgroundColor: "#E5E7EB",
+    opacity: 1,
   },
   loadMoreButton: {
     padding: 12,

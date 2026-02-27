@@ -179,22 +179,41 @@ class AuthService {
 
   async updateUserProfile(userId: string, updates: Partial<UserProfile>) {
     try {
+      console.log("🔄 Updating user profile...", { userId, updates });
+
+      // Only update fields that are provided
+      const updateData: any = { ...updates };
+      
+      // Always set updated_at (removed from here since trigger handles it, but we can add explicitly)
+      if (!updateData.updated_at) {
+        updateData.updated_at = new Date().toISOString();
+      }
+
       const { data, error } = await supabase
         .from("profiles")
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", userId)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ Profile update error:", error);
+        console.error("   Error details:", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        throw error;
+      }
+
+      console.log("✅ Profile updated successfully");
 
       this.appStore.setProfile(data);
       return data;
-    } catch (error) {
-      console.error("Error updating user profile:", error);
+    } catch (error: any) {
+      console.error("❌ Error updating user profile:", error);
+      console.error("   Full error object:", error);
       throw error;
     }
   }
@@ -241,6 +260,8 @@ class AuthService {
       const fileName = `${userId}_${Date.now()}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
 
+      console.log("📸 Starting profile photo upload...", { userId, filePath });
+
       // Create FormData for React Native
       const formData = new FormData();
       formData.append("file", {
@@ -262,21 +283,69 @@ class AuthService {
         });
 
       if (uploadError) {
-        console.error("Error uploading profile photo:", uploadError);
+        console.error("❌ Storage upload error:", uploadError);
         throw uploadError;
       }
+
+      console.log("✅ File uploaded to storage successfully");
 
       // Get public URL
       const {
         data: { publicUrl },
       } = supabase.storage.from("avatars").getPublicUrl(filePath);
 
+      console.log("📝 Public URL generated:", publicUrl);
+
       // Update profile with new avatar URL
-      await this.updateUserProfile(userId, { avatar_url: publicUrl });
+      console.log("🔄 Updating profile with avatar_url...", { userId, avatarUrl: publicUrl });
+      
+      // First, try to update without select to isolate the issue
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ 
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", userId);
+
+      if (updateError) {
+        console.error("❌ Profile update error:", updateError);
+        console.error("   Update error details:", {
+          message: updateError.message,
+          code: updateError.code,
+          details: updateError.details,
+          hint: updateError.hint,
+          userId,
+          avatarUrl: publicUrl
+        });
+        throw updateError;
+      }
+
+      console.log("✅ Profile updated successfully with avatar_url");
+
+      // Now fetch the updated profile separately
+      const { data: updatedProfile, error: selectError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .single();
+
+      if (selectError) {
+        console.warn("⚠️ Could not fetch updated profile:", selectError);
+      } else if (updatedProfile) {
+        console.log("✅ Fetched updated profile:", { updatedProfile });
+        this.appStore.setProfile(updatedProfile);
+      }
 
       return publicUrl;
-    } catch (error) {
-      console.error("Error uploading profile photo:", error);
+    } catch (error: any) {
+      console.error("❌ Error uploading profile photo:", error);
+      console.error("   Error details:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
       return null;
     }
   }

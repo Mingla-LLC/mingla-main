@@ -298,7 +298,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: "center",
-    paddingVertical: 8,
+    paddingVertical: 0,
+    marginTop: 0,
+    backgroundColor: "white",
+    overflow: "hidden",
   },
   loadingContainer: {
     flex: 1,
@@ -328,7 +331,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    marginBottom: 10,
+    marginTop: 12,
+    marginBottom: 12,
+    paddingVertical: 4,
   },
   cardCountText: {
     fontSize: 14,
@@ -348,10 +353,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     position: "relative",
+    overflow: "hidden",
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingTop: 4,
+    paddingBottom: 16,
     gap: CARD_GAP,
   },
   navButton: {
@@ -389,7 +396,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   imageContainer: {
-    height: 320,
+    height: 260,
     position: "relative",
   },
   cardImage: {
@@ -422,9 +429,9 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     color: "white",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
-    marginBottom: 8,
+    marginBottom: 6,
     textShadowColor: "rgba(0, 0, 0, 0.5)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
@@ -449,8 +456,8 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   cardDetails: {
-    padding: 14,
-    gap: 8,
+    padding: 12,
+    gap: 6,
   },
   categoryRow: {
     flexDirection: "row",
@@ -469,8 +476,8 @@ const styles = StyleSheet.create({
   },
   actionButtonsRow: {
     flexDirection: "row",
-    gap: 8,
-    marginTop: 4,
+    gap: 6,
+    marginTop: 2,
   },
   voteButton: {
     flex: 1,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { Text, View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabase';
 import { useAppStore } from '../../store/appStore';
@@ -195,6 +195,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
       borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
+      overflow: 'hidden',
     },
     selectedFriendAvatarText: {
       color: 'white',
@@ -246,6 +247,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
+      overflow: 'hidden',
     },
     friendAvatarText: {
       color: 'white',
@@ -311,6 +313,7 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
       borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
+      overflow: 'hidden',
     },
     confirmFriendAvatarText: {
       color: 'white',
@@ -437,6 +440,38 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
 
     setIsCreating(true);
     try {
+      // Check for real duplicate: any session where user is an accepted participant with this name
+      const { data: participations } = await supabase
+        .from('session_participants')
+        .select('session_id, collaboration_sessions!inner(id, name)')
+        .eq('user_id', user.id)
+        .eq('has_accepted', true);
+
+      const hasDuplicate = (participations || []).some((p: any) => {
+        const s = Array.isArray(p.collaboration_sessions) ? p.collaboration_sessions[0] : p.collaboration_sessions;
+        return s?.name?.toLowerCase() === newSessionName.trim().toLowerCase();
+      });
+
+      if (hasDuplicate) {
+        Alert.alert('Session Already Exists', 'A collaboration session already exists with that name.');
+        setIsCreating(false);
+        return;
+      }
+
+      // Clean up any ghost sessions with this name (created by user but no participant record)
+      const { data: ghostSessions } = await supabase
+        .from('collaboration_sessions')
+        .select('id')
+        .eq('created_by', user.id)
+        .ilike('name', newSessionName.trim());
+
+      if (ghostSessions && ghostSessions.length > 0) {
+        await supabase
+          .from('collaboration_sessions')
+          .delete()
+          .in('id', ghostSessions.map((s: any) => s.id));
+      }
+
       // Create the session in the database
       // Status starts as 'pending' until at least 2 members have accepted
       const { data: sessionData, error: sessionError } = await supabase
@@ -467,6 +502,8 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
 
       if (creatorError) {
         console.error('Error adding creator as participant:', creatorError);
+        // Roll back the ghost session
+        await supabase.from('collaboration_sessions').delete().eq('id', sessionData.id);
         Alert.alert('Error', 'Failed to add you as a participant');
         return;
       }
@@ -672,9 +709,16 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
               {selectedFriends.map((friend) => (
                 <View key={friend.id} style={styles.selectedFriendTag}>
                   <View style={styles.selectedFriendAvatar}>
-                    <Text style={styles.selectedFriendAvatarText}>
-                      {friend.name[0]}
-                    </Text>
+                    {friend.avatar ? (
+                      <Image
+                        source={{ uri: friend.avatar }}
+                        style={{ width: 24, height: 24, borderRadius: 12 }}
+                      />
+                    ) : (
+                      <Text style={styles.selectedFriendAvatarText}>
+                        {friend.name[0]}
+                      </Text>
+                    )}
                   </View>
                   <Text style={styles.selectedFriendName}>{friend.name}</Text>
                   <TouchableOpacity 
@@ -722,9 +766,16 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
                     ]}
                   >
                     <View style={styles.friendAvatar}>
-                      <Text style={styles.friendAvatarText}>
-                        {friend.name[0]}
-                      </Text>
+                      {friend.avatar ? (
+                        <Image
+                          source={{ uri: friend.avatar }}
+                          style={{ width: 40, height: 40, borderRadius: 20 }}
+                        />
+                      ) : (
+                        <Text style={styles.friendAvatarText}>
+                          {friend.name[0]}
+                        </Text>
+                      )}
                     </View>
                     <View style={styles.friendInfo}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -796,9 +847,16 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
             {selectedFriends.map((friend) => (
               <View key={friend.id} style={styles.confirmFriendItem}>
                 <View style={styles.confirmFriendAvatar}>
-                  <Text style={styles.confirmFriendAvatarText}>
-                    {friend.name[0]}
-                  </Text>
+                  {friend.avatar ? (
+                    <Image
+                      source={{ uri: friend.avatar }}
+                      style={{ width: 32, height: 32, borderRadius: 16 }}
+                    />
+                  ) : (
+                    <Text style={styles.confirmFriendAvatarText}>
+                      {friend.name[0]}
+                    </Text>
+                  )}
                 </View>
                 <Text style={styles.confirmFriendName}>{friend.name}</Text>
                 <View style={[

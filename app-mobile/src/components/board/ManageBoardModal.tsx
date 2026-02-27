@@ -473,6 +473,11 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
       onRequestClose={handleClose}
     >
       <View style={styles.overlay}>
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={handleClose}
+        />
         <View style={styles.modal}>
           {/* Header */}
           <View style={styles.header}>
@@ -650,6 +655,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modal: {
     backgroundColor: "white",

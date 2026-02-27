@@ -482,6 +482,20 @@ export default function SignUpForm({
     <SafeAreaView style={styles.container}>
       {/*   <StatusBar barStyle="dark-content" backgroundColor="#ffffff" /> */}
 
+      {/* Header - Fixed outside ScrollView for responsiveness */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => {
+            console.log("👆 SignUpForm back button pressed");
+            onBack();
+          }}
+        >
+          <Ionicons name="arrow-back" size={20} color="#6b7280" />
+          <Text style={styles.backButtonText}>Back</Text>
+        </TouchableOpacity>
+      </View>
+
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
@@ -496,14 +510,6 @@ export default function SignUpForm({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={onBack}>
-              <Ionicons name="arrow-back" size={20} color="#6b7280" />
-              <Text style={styles.backButtonText}>Back</Text>
-            </TouchableOpacity>
-          </View>
-
           {/* Form Content */}
           <View style={styles.formContainer}>
             <View style={styles.headerCenter}>

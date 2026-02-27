@@ -534,6 +534,11 @@ export default function AccountSettings() {
         onRequestClose={closeDeleteModal}
       >
         <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.backdropTouch}
+            activeOpacity={1}
+            onPress={closeDeleteModal}
+          />
           <View style={styles.modalContainer}>
             {deleteStep === 'confirm' && (
               <>
@@ -913,6 +918,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContainer: {
     backgroundColor: "white",

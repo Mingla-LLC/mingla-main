@@ -746,7 +746,19 @@ export default function SwipeableCards({
         // Save to Supabase if swiped right (liked)
         if (direction === "right") {
           try {
-            await ExperiencesService.saveExperience(user.id, card.id, "liked");
+            await ExperiencesService.saveExperience(user.id, card.id, "liked", {
+              title: card.title,
+              category: card.category,
+              place_id: card.id,
+              lat: card.lat,
+              lng: card.lng,
+              image_url: card.image || card.images?.[0],
+              opening_hours: card.openingHours,
+              meta: {
+                matchScore: card.matchScore,
+                reviewCount: card.reviewCount,
+              },
+            });
           } catch (saveError: any) {
             if (saveError?.code === "23505") {
               console.warn(
@@ -768,7 +780,20 @@ export default function SwipeableCards({
             await ExperiencesService.saveExperience(
               user.id,
               card.id,
-              "disliked"
+              "disliked",
+              {
+                title: card.title,
+                category: card.category,
+                place_id: card.id,
+                lat: card.lat,
+                lng: card.lng,
+                image_url: card.image || card.images?.[0],
+                opening_hours: card.openingHours,
+                meta: {
+                  matchScore: card.matchScore,
+                  reviewCount: card.reviewCount,
+                },
+              }
             );
           } catch (dislikeError) {
             console.error("Error tracking dislike:", dislikeError);

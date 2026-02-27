@@ -9,7 +9,10 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Image,
+  Dimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSessionManagement } from '../hooks/useSessionManagement';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -33,6 +36,7 @@ interface SelectedFriend {
   name: string;
   username: string;
   avatar?: string;
+  avatar_url?: string;
 }
 
 export const CreateSessionModal: React.FC = () => {
@@ -63,6 +67,7 @@ export const CreateSessionModal: React.FC = () => {
   const { createCollaborativeSession } = useSessionManagement();
   const { isCreateSessionModalOpen, closeCreateSessionModal } = useNavigation();
   const { user } = useAppStore();
+  const insets = useSafeAreaInsets();
 
   // Load friends on mount
   useEffect(() => {
@@ -245,7 +250,8 @@ export const CreateSessionModal: React.FC = () => {
           id: friend.id,
           name: friend.name || friend.display_name || friend.username,
           username: friend.username,
-          avatar: friend.avatar || friend.avatar_url,
+          avatar: friend.avatar,
+          avatar_url: friend.avatar_url || friend.avatar,
         },
       ]);
     }
@@ -341,9 +347,27 @@ export const CreateSessionModal: React.FC = () => {
               <View style={styles.selectedFriendsContainer}>
                 {selectedFriends.map((friend) => (
                   <View key={friend.id} style={styles.selectedFriendItem}>
-                    <Text style={styles.selectedFriendText}>{friend.name}</Text>
+                    <View style={styles.selectedFriendAvatar}>
+                      {friend.avatar || friend.avatar_url ? (
+                        <Image
+                          source={{ uri: friend.avatar || friend.avatar_url }}
+                          style={styles.selectedFriendAvatarImage}
+                        />
+                      ) : (
+                        <View style={styles.selectedFriendAvatarPlaceholder}>
+                          <Text style={styles.selectedFriendAvatarText}>
+                            {friend.name.split(' ').map(n => n[0]).join('')}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.selectedFriendInfo}>
+                      <Text style={styles.selectedFriendText}>{friend.name}</Text>
+                      <Text style={styles.selectedFriendUsername}>@{friend.username}</Text>
+                    </View>
                     <TouchableOpacity
                       onPress={() => setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id))}
+                      style={styles.selectedFriendRemove}
                     >
                       <Ionicons name="close-circle" size={20} color="#FF3B30" />
                     </TouchableOpacity>
@@ -499,106 +523,164 @@ export const CreateSessionModal: React.FC = () => {
     <Modal
       visible={isCreateSessionModalOpen}
       animationType="slide"
-      presentationStyle="pageSheet"
+      transparent
       onRequestClose={closeCreateSessionModal}
+      statusBarTranslucent
     >
-      <View style={styles.container}>
-        <View style={styles.header}>
-          {currentStep !== 'type' && currentStep !== 'success' && (
-            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={24} color="#666" />
-            </TouchableOpacity>
-          )}
-          <Text style={styles.title}>{getStepTitle()}</Text>
-          <TouchableOpacity onPress={closeCreateSessionModal} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#666" />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView style={styles.content}>
-          {renderStepContent()}
-        </ScrollView>
-
-        {currentStep !== 'success' && (
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={[
-                styles.nextButton,
-                (!canProceed() || loading) && styles.nextButtonDisabled
-              ]}
-              onPress={handleNext}
-              disabled={!canProceed() || loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text style={styles.nextButtonText}>
-                  {currentStep === 'review' ? 'Create Session' : 'Next'}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {currentStep === 'success' && (
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.doneButton}
-              onPress={closeCreateSessionModal}
-            >
-              <Text style={styles.doneButtonText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <FriendSelectionModal
-          isOpen={showFriendModal}
-          onClose={() => setShowFriendModal(false)}
-          onSelectFriend={handleSelectFriend}
-          friends={friends.map(f => ({
-            id: f.friend_user_id,
-            name: f.display_name || f.username,
-            username: f.username,
-            avatar: f.avatar_url,
-            isOnline: false,
-          }))}
+      <View style={styles.sheetOverlay}>
+        {/* Tap backdrop to close */}
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={closeCreateSessionModal}
         />
+
+        <View style={[styles.sheetContent, { paddingBottom: insets.bottom }]}>
+          {/* Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.headerSide}>
+              {currentStep !== 'type' && currentStep !== 'success' ? (
+                <TouchableOpacity onPress={handleBack} style={styles.iconButton}>
+                  <Ionicons name="arrow-back" size={22} color="#6B7280" />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.iconButton} />
+              )}
+            </View>
+            <Text style={styles.title}>{getStepTitle()}</Text>
+            <View style={styles.headerSide}>
+              <TouchableOpacity onPress={closeCreateSessionModal} style={styles.iconButton}>
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            {renderStepContent()}
+          </ScrollView>
+
+          {currentStep !== 'success' && (
+            <View style={styles.footer}>
+              <TouchableOpacity
+                style={[
+                  styles.nextButton,
+                  (!canProceed() || loading) && styles.nextButtonDisabled
+                ]}
+                onPress={handleNext}
+                disabled={!canProceed() || loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.nextButtonText}>
+                    {currentStep === 'review' ? 'Create Session' : 'Next'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {currentStep === 'success' && (
+            <View style={styles.footer}>
+              <TouchableOpacity
+                style={styles.doneButton}
+                onPress={closeCreateSessionModal}
+              >
+                <Text style={styles.doneButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
       </View>
+
+      <FriendSelectionModal
+        isOpen={showFriendModal}
+        onClose={() => setShowFriendModal(false)}
+        onSelectFriend={handleSelectFriend}
+        friends={friends.map(f => ({
+          id: f.friend_user_id,
+          name: f.display_name || f.username,
+          username: f.username,
+          avatar: f.avatar_url,
+          isOnline: false,
+        }))}
+      />
     </Modal>
   );
 };
 
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
+
 const styles = StyleSheet.create({
-  container: {
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    justifyContent: 'flex-end',
+  },
+  backdropTouch: {
+    flex: 1,
+  },
+  sheetContent: {
+    height: SHEET_HEIGHT,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 30,
+  },
+  dragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#e1e5e9',
-    backgroundColor: 'white',
+    borderBottomColor: '#F3F4F6',
+  },
+  headerSide: {
+    width: 36,
+    alignItems: 'center',
   },
   title: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: '#111827',
     flex: 1,
     textAlign: 'center',
   },
-  backButton: {
-    padding: 4,
-  },
-  closeButton: {
-    padding: 4,
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    backgroundColor: '#f8f9fa',
   },
   stepContainer: {
     paddingVertical: 24,
@@ -641,8 +723,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   typeCardSelected: {
-    borderColor: '#007AFF',
-    backgroundColor: '#F0F8FF',
+    borderColor: '#eb7825',
+    backgroundColor: '#FFF7F0',
   },
   typeTitle: {
     fontSize: 20,
@@ -652,7 +734,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   typeTitleSelected: {
-    color: '#007AFF',
+    color: '#eb7825',
   },
   typeDescription: {
     fontSize: 14,
@@ -666,13 +748,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: '#eb7825',
     gap: 8,
     marginBottom: 16,
   },
   friendButtonText: {
     fontSize: 16,
-    color: '#007AFF',
+    color: '#eb7825',
     fontWeight: '600',
   },
   selectedFriendsContainer: {
@@ -681,16 +763,52 @@ const styles = StyleSheet.create({
   selectedFriendItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     backgroundColor: 'white',
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#e1e5e9',
+    borderColor: '#e5e7eb',
+  },
+  selectedFriendAvatar: {
+    position: 'relative',
+    flexShrink: 0,
+  },
+  selectedFriendAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+  },
+  selectedFriendAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#eb7825',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedFriendAvatarText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  selectedFriendInfo: {
+    flex: 1,
+    minWidth: 0,
   },
   selectedFriendText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1a1a1a',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  selectedFriendUsername: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  selectedFriendRemove: {
+    padding: 4,
+    flexShrink: 0,
   },
   reviewCard: {
     backgroundColor: 'white',
@@ -745,17 +863,17 @@ const styles = StyleSheet.create({
   footer: {
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: '#e1e5e9',
-    backgroundColor: 'white',
+    borderTopColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
   },
   nextButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#eb7825',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
   },
   nextButtonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: '#D1D5DB',
   },
   nextButtonText: {
     color: 'white',
@@ -763,7 +881,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   doneButton: {
-    backgroundColor: '#34C759',
+    backgroundColor: '#eb7825',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',

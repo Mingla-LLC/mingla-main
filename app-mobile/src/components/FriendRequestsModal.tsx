@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFriends } from "../hooks/useFriends";
 import { formatTimestamp } from "../utils/dateUtils";
@@ -22,6 +23,7 @@ export default function FriendRequestsModal({
   isOpen,
   onClose,
 }: FriendRequestsModalProps) {
+  const insets = useSafeAreaInsets();
   const {
     friendRequests,
     loadFriendRequests,
@@ -30,7 +32,6 @@ export default function FriendRequestsModal({
   } = useFriends();
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"received" | "sent">("received");
   const [processedRequests, setProcessedRequests] = useState<{
     [key: string]: "accepted" | "declined";
   }>({});
@@ -58,11 +59,6 @@ export default function FriendRequestsModal({
   // Filter only incoming pending requests
   const incomingRequests = friendRequests.filter(
     (req) => req.type === "incoming" && req.status === "pending"
-  );
-
-  // Filter outgoing pending requests
-  const outgoingRequests = friendRequests.filter(
-    (req) => req.type === "outgoing" && req.status === "pending"
   );
 
   const handleAcceptRequest = async (requestId: string) => {
@@ -131,102 +127,84 @@ export default function FriendRequestsModal({
     <Modal
       visible={isOpen}
       transparent={true}
-      animationType="fade"
+      animationType="slide"
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
+      <View style={styles.sheetOverlay}>
+        {/* Tap backdrop to close */}
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+
+        <View style={[styles.sheetContent, { paddingBottom: insets.bottom }]}>
+          {/* Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.headerContent}>
+              <View style={styles.headerLeft}>
+                <Text style={styles.headerTitle}>Friend Requests</Text>
+                <Text style={styles.headerSubtitle}>
+                  {initialLoading ? (
+                    "Loading..."
+                  ) : incomingRequests.length === 0 ? (
+                    "All caught up"
+                  ) : (
+                    <>
+                      {incomingRequests.length} pending{" "}
+                      {incomingRequests.length === 1 ? "request" : "requests"}
+                    </>
+                  )}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.closeButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Content */}
           {initialLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#eb7825" />
             </View>
           ) : (
-            <>
-              {/* Header */}
-              <View style={styles.header}>
-                <View style={styles.headerContent}>
-                  <View style={styles.headerIcon}>
-                    <Feather name="user-plus" size={20} color="white" />
-                  </View>
-                  <View>
-                    <Text style={styles.headerTitle}>Friend Requests</Text>
-                    <Text style={styles.headerSubtitle}>
-                      {incomingRequests.length + outgoingRequests.length} pending requests
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                  <Ionicons name="close" size={20} color="#6b7280" />
-                </TouchableOpacity>
-              </View>
-
-              {/* Tabs */}
-              <View style={styles.tabsContainer}>
-                <TouchableOpacity
-                  onPress={() => setActiveTab("received")}
-                  style={[styles.tab, activeTab === "received" && styles.tabActive]}
-                >
-                  <Feather
-                    name="inbox"
-                    size={16}
-                    color={activeTab === "received" ? "#eb7825" : "#6b7280"}
-                  />
-                  <Text
-                    style={[
-                      styles.tabText,
-                      activeTab === "received" && styles.tabTextActive,
-                    ]}
-                  >
-                    Received ({incomingRequests.length})
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setActiveTab("sent")}
-                  style={[styles.tab, activeTab === "sent" && styles.tabActive]}
-                >
-                  <Feather
-                    name="send"
-                    size={16}
-                    color={activeTab === "sent" ? "#eb7825" : "#6b7280"}
-                  />
-                  <Text
-                    style={[
-                      styles.tabText,
-                      activeTab === "sent" && styles.tabTextActive,
-                    ]}
-                  >
-                    Sent ({outgoingRequests.length})
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Content */}
-              <ScrollView
-                style={styles.content}
-                contentContainerStyle={styles.contentContainer}
-              >
-                {activeTab === "received" ? (
-                  // Received Requests Tab
-                  incomingRequests.length === 0 ? (
-                    <View style={styles.emptyState}>
-                      <View style={styles.emptyStateIcon}>
-                        <Feather name="inbox" size={32} color="#9ca3af" />
-                      </View>
-                      <Text style={styles.emptyStateTitle}>
-                        No Friend Requests
-                      </Text>
-                      <Text style={styles.emptyStateText}>
-                        You're all caught up! New friend requests will appear
-                        here.
-                      </Text>
-                      <View style={styles.emptyStateHint}>
-                        <Feather name="info" size={14} color="#9ca3af" />
-                        <Text style={styles.emptyStateHintText}>
-                          When someone sends you a friend request, you'll see it here
-                        </Text>
-                      </View>
+            <ScrollView
+              style={styles.content}
+              contentContainerStyle={styles.contentContainer}
+              showsVerticalScrollIndicator={false}
+            >
+                {/* Received Requests */}
+                {incomingRequests.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <View style={styles.emptyStateIcon}>
+                      <Feather name="inbox" size={32} color="#9ca3af" />
                     </View>
-                  ) : (
+                    <Text style={styles.emptyStateTitle}>
+                      No Friend Requests
+                    </Text>
+                    <Text style={styles.emptyStateText}>
+                      You're all caught up! New friend requests will appear
+                      here.
+                    </Text>
+                    <View style={styles.emptyStateHint}>
+                      <Feather name="info" size={14} color="#9ca3af" />
+                      <Text style={styles.emptyStateHintText}>
+                        When someone sends you a friend request, you'll see it here
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
                     <View style={styles.requestsList}>
                       {incomingRequests.map((request) => {
                         const status = processedRequests[request.id];
@@ -266,18 +244,30 @@ export default function FriendRequestsModal({
                                       {initials}
                                     </Text>
                                   )}
+                                  {request.sender.avatar_url ? (
+                                    <Image
+                                      source={{ uri: request.sender.avatar_url }}
+                                      style={styles.avatarImage}
+                                    />
+                                  ) : (
+                                    <Text style={styles.avatarText}>
+                                      {initials}
+                                    </Text>
+                                  )}
                                 </View>
                               </View>
 
                               {/* User Info */}
                               <View style={styles.userInfo}>
-                                <Text style={styles.userName}>{senderName}</Text>
-                                <Text style={styles.userUsername}>
+                                <Text style={styles.userName} numberOfLines={1}>{senderName}</Text>
+                                <Text style={styles.userUsername} numberOfLines={1}>
                                   @{request.sender.username}
                                 </Text>
-                                <Text style={styles.mutualFriends}>
-                                  7 mutual friends
-                                </Text>
+                                {request.sender.email && (
+                                  <Text style={styles.userEmail} numberOfLines={1}>
+                                    {request.sender.email}
+                                  </Text>
+                                )}
                                 <Text style={styles.requestTime}>
                                   {formatTimestamp(request.created_at)}
                                 </Text>
@@ -456,98 +446,79 @@ export default function FriendRequestsModal({
   );
 }
 
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
 const styles = StyleSheet.create({
-  modalOverlay: {
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    justifyContent: "flex-end",
   },
-  modalContainer: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    width: "100%",
-    maxWidth: 400,
-    minHeight: 400,
-    maxHeight: "80%",
+  backdropTouch: {
+    flex: 1,
+  },
+  sheetContent: {
+    height: SCREEN_HEIGHT * 0.88,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
-    flexDirection: "column",
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 30,
+  },
+  dragHandleContainer: {
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D1D5DB",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
   },
   headerContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "space-between",
+    width: "100%",
   },
-  headerIcon: {
-    width: 40,
-    height: 40,
-    backgroundColor: "#eb7825",
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+  headerLeft: {
+    flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
     color: "#111827",
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
   },
   closeButton: {
-    padding: 8,
-    borderRadius: 12,
-  },
-  tabsContainer: {
-    flexDirection: "row",
-    marginHorizontal: 20,
-    marginBottom: 16,
-    backgroundColor: "#e9eef9",
-    borderRadius: 12,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: "row",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-  },
-  tabActive: {
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#6b7280",
-  },
-  tabTextActive: {
-    color: "#eb7825",
   },
   content: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#FFFFFF",
   },
   contentContainer: {
     flexGrow: 1,
@@ -624,6 +595,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
   },
   avatarText: {
     color: "white",
@@ -638,25 +615,25 @@ const styles = StyleSheet.create({
   userInfo: {
     flex: 1,
     minWidth: 0,
+    gap: 2,
   },
   userName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#111827",
   },
   userUsername: {
-    fontSize: 14,
-    color: "#6b7280",
+    fontSize: 13,
+    color: "#9ca3af",
   },
-  mutualFriends: {
+  userEmail: {
     fontSize: 12,
-    color: "#6b7280",
-    marginTop: 2,
+    color: "#d1d5db",
   },
   requestTime: {
     fontSize: 12,
     color: "#9ca3af",
-    marginTop: 2,
+    marginTop: 1,
   },
   actionButtons: {
     flexDirection: "row",
@@ -701,29 +678,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  pendingBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: "#fef3c7",
-    borderRadius: 12,
-  },
-  pendingBadgeText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#d97706",
-  },
-  footer: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "white",
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-  },
-  footerText: {
-    fontSize: 13,
-    color: "#6b7280",
-    textAlign: "center",
-  },
+
   loadingContainer: {
     padding: 64,
     alignItems: "center",

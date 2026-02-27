@@ -72,7 +72,7 @@ class BoardSessionService {
       }
 
       // 3. Filter for active board sessions only
-      // A session becomes "active" when it has at least 2 accepted members
+      // A session becomes "active" when at least one user accepts the invite
       // Only show sessions that are not archived AND have status 'active'
       const sessions = (allSessions || []).filter((s) => {
         const notArchived = s.archived_at === null;
@@ -94,13 +94,14 @@ class BoardSessionService {
         return [];
       }
 
-      // 4. For each session, get participants and card count
+      // 4. Fetch all participants and card counts in parallel for all sessions
+      // This is much faster than fetching them one-by-one
 
       const boardSessionsData: BoardSessionData[] = await Promise.all(
         sessions.map(async (session) => {
-          // Get participants with admin status
-          const { data: participantsData, error: participantsError } =
-            await supabase
+          // Fetch participants and card count in parallel for this session
+          const [participantsResult, cardsResult] = await Promise.all([
+            supabase
               .from("session_participants")
               .select(
                 `
@@ -119,9 +120,15 @@ class BoardSessionService {
             `
               )
               .eq("session_id", session.id)
-              .eq("has_accepted", true);
+              .eq("has_accepted", true),
+            supabase
+              .from("board_saved_cards")
+              .select("*", { count: "exact", head: true })
+              .eq("session_id", session.id),
+          ]);
 
-          const participants = (participantsData || []).map((p: any) => {
+          const participantsData = participantsResult.data || [];
+          const participants = participantsData.map((p: any) => {
             const profile = p.profiles;
             const displayName =
               profile?.display_name ||
@@ -134,25 +141,14 @@ class BoardSessionService {
             return {
               id: p.user_id,
               name: displayName,
-              status: "online", // TODO: Implement actual online status
+              status: "online",
               lastActive: p.joined_at
                 ? new Date(p.joined_at).toISOString()
                 : undefined,
             };
           });
 
-          // Get card count - count board_saved_cards linked to this session
-          let cardsCount = 0;
-
-          const { count: boardCardsCount, error: boardCardsError } =
-            await supabase
-              .from("board_saved_cards")
-              .select("*", { count: "exact", head: true })
-              .eq("session_id", session.id);
-
-          if (!boardCardsError && boardCardsCount !== null) {
-            cardsCount = boardCardsCount;
-          }
+          const cardsCount = cardsResult.count || 0;
 
           // Determine status based on session status
           // Map database status to board status - show all statuses
@@ -201,7 +197,7 @@ class BoardSessionService {
 
           // Get admins: creator is always admin, plus any participants with is_admin = true
           const admins: string[] = [session.created_by];
-          (participantsData || []).forEach((p: any) => {
+          participantsData.forEach((p: any) => {
             if (p.is_admin && !admins.includes(p.user_id)) {
               admins.push(p.user_id);
             }

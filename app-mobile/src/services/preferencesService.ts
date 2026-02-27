@@ -42,7 +42,7 @@ export class PreferencesService {
         .from("preferences")
         .select("*")
         .eq("profile_id", userId)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error("Error fetching user preferences:", error);
@@ -82,7 +82,7 @@ export class PreferencesService {
         .from("preferences")
         .select("*")
         .eq("profile_id", userId)
-        .single();
+        .maybeSingle();
 
       if (verifyError) {
         console.warn("⚠️ Could not verify saved preferences:", verifyError);

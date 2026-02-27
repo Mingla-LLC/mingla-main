@@ -185,10 +185,11 @@ serve(async (req) => {
     const resendData = await resendResponse.json();
     console.log("Email sent successfully:", resendData);
 
-    // Send push notification if user exists
+    // Send push notifications to both inviter and invitee
+    // 1. Send notification to the INVITED USER (receiver)
     if (userExists && invitedUserId) {
       try {
-        // Get user's push token - check both possible table names
+        // Get invitee's push token - check both possible table names
         let pushToken = null;
 
         // Try user_push_tokens table first
@@ -214,7 +215,7 @@ serve(async (req) => {
         }
 
         if (pushToken) {
-          // Send push notification via Expo
+          // Send push notification via Expo to INVITEE
           const pushResponse = await fetch(
             "https://exp.host/--/api/v2/push/send",
             {
@@ -230,7 +231,7 @@ serve(async (req) => {
                 title: "New Collaboration Invite",
                 body: `${inviterUsername} invited you to join "${sessionName}"`,
                 data: {
-                  type: "collaboration_invite",
+                  type: "collaboration_invite_received",
                   sessionId: sessionId,
                   sessionName: sessionName,
                   inviteId: inviteId,
@@ -248,15 +249,91 @@ serve(async (req) => {
             pushResult.data[0] &&
             pushResult.data[0].status === "ok"
           ) {
-            console.log("Push notification sent successfully");
+            console.log("Push notification sent to invitee successfully");
           } else {
-            console.error("Failed to send push notification:", pushResult);
+            console.error("Failed to send push notification to invitee:", pushResult);
           }
         } else {
-          console.log("No push token found for user:", invitedUserId);
+          console.log("No push token found for invitee:", invitedUserId);
         }
       } catch (pushError) {
-        console.error("Error sending push notification:", pushError);
+        console.error("Error sending push notification to invitee:", pushError);
+        // Don't fail the whole request if push notification fails
+      }
+    }
+
+    // 2. Send notification to the INVITER (sender)
+    if (inviterId) {
+      try {
+        // Get inviter's push token
+        let inviterPushToken = null;
+
+        // Try user_push_tokens table first
+        const { data: inviterTokenData } = await supabase
+          .from("user_push_tokens")
+          .select("push_token")
+          .eq("user_id", inviterId)
+          .single();
+
+        if (inviterTokenData?.push_token) {
+          inviterPushToken = inviterTokenData.push_token;
+        } else {
+          // Try profiles table for expo_push_token
+          const { data: inviterProfileData } = await supabase
+            .from("profiles")
+            .select("expo_push_token")
+            .eq("id", inviterId)
+            .single();
+
+          if (inviterProfileData?.expo_push_token) {
+            inviterPushToken = inviterProfileData.expo_push_token;
+          }
+        }
+
+        if (inviterPushToken && invitedUsername) {
+          // Send push notification via Expo to INVITER
+          const inviterPushResponse = await fetch(
+            "https://exp.host/--/api/v2/push/send",
+            {
+              method: "POST",
+              headers: {
+                Accept: "application/json",
+                "Accept-encoding": "gzip, deflate",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                to: inviterPushToken,
+                sound: "default",
+                title: "Collaboration Invite Sent",
+                body: `You invited ${invitedUsername} to join "${sessionName}"`,
+                data: {
+                  type: "collaboration_invite_sent",
+                  sessionId: sessionId,
+                  sessionName: sessionName,
+                  inviteId: inviteId,
+                  invitedUserId: invitedUserId,
+                  invitedUsername: invitedUsername,
+                },
+                channelId: "collaboration-invites",
+              }),
+            }
+          );
+
+          const inviterPushResult = await inviterPushResponse.json();
+          if (
+            inviterPushResult.data &&
+            inviterPushResult.data[0] &&
+            inviterPushResult.data[0].status === "ok"
+          ) {
+            console.log("Push notification sent to inviter successfully");
+          } else {
+            console.error("Failed to send push notification to inviter:", inviterPushResult);
+          }
+        } else {
+          console.log("No push token or username found for inviter:", inviterId);
+        }
+      } catch (inviterPushError) {
+        console.error("Error sending push notification to inviter:", inviterPushError);
         // Don't fail the whole request if push notification fails
       }
     }

@@ -121,6 +121,11 @@ function NavigationMenuContent({
       {...props}
     >
       <View style={styles.navigationMenuContentOverlay}>
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={[styles.navigationMenuContent, style]}>
           {children}
         </View>
@@ -250,6 +255,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   navigationMenuContent: {
     backgroundColor: '#ffffff',

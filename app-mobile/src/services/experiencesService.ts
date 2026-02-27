@@ -36,7 +36,86 @@ export interface SaveData {
   scheduled_at?: string;
 }
 
+export interface ExperienceSeedData {
+  title?: string;
+  category?: string;
+  place_id?: string;
+  lat?: number;
+  lng?: number;
+  image_url?: string;
+  opening_hours?: any;
+  meta?: any;
+}
+
 export class ExperiencesService {
+  private static readonly UUID_REGEX =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  private static isUuid(value: string): boolean {
+    return this.UUID_REGEX.test(value);
+  }
+
+  private static async resolveExperienceId(
+    experienceIdentifier: string,
+    experienceData?: ExperienceSeedData
+  ): Promise<string | null> {
+    if (!experienceIdentifier) {
+      return null;
+    }
+
+    if (this.isUuid(experienceIdentifier)) {
+      return experienceIdentifier;
+    }
+
+    const placeId = experienceData?.place_id || experienceIdentifier;
+
+    const { data: existingByPlace, error: existingByPlaceError } = await supabase
+      .from('experiences')
+      .select('id')
+      .eq('place_id', placeId)
+      .maybeSingle();
+
+    if (existingByPlaceError) {
+      console.error('Error resolving experience by place_id:', existingByPlaceError);
+      return null;
+    }
+
+    if (existingByPlace?.id) {
+      return existingByPlace.id;
+    }
+
+    if (!experienceData) {
+      return null;
+    }
+
+    const experiencePayload = {
+      title: experienceData.title || 'Untitled Experience',
+      category: experienceData.category || 'Freestyle',
+      place_id: placeId,
+      lat: experienceData.lat ?? null,
+      lng: experienceData.lng ?? null,
+      price_min: 0,
+      price_max: 0,
+      duration_min: 60,
+      image_url: experienceData.image_url ?? null,
+      opening_hours: experienceData.opening_hours ?? null,
+      meta: experienceData.meta || {},
+    };
+
+    const { data: insertedExperience, error: insertError } = await supabase
+      .from('experiences')
+      .upsert(experiencePayload, { onConflict: 'place_id' })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      console.error('Error creating experience for save operation:', insertError);
+      return null;
+    }
+
+    return insertedExperience?.id || null;
+  }
+
   /**
    * Fetch all experiences from the database
    */
@@ -101,7 +180,13 @@ export class ExperiencesService {
         throw error;
       }
 
-      return data?.map(item => item.experiences).filter(Boolean) || [];
+      const savedExperiences = (data || [])
+        .flatMap((item: any) =>
+          Array.isArray(item.experiences) ? item.experiences : [item.experiences]
+        )
+        .filter(Boolean) as Experience[];
+
+      return savedExperiences;
     } catch (error) {
       console.error('Failed to fetch saved experiences:', error);
       return [];
@@ -111,15 +196,30 @@ export class ExperiencesService {
   /**
    * Save or unsave an experience
    */
-  static async saveExperience(userId: string, experienceId: string, status: 'liked' | 'disliked' | 'saved' | 'unsaved'): Promise<boolean> {
+  static async saveExperience(
+    userId: string,
+    experienceId: string,
+    status: 'liked' | 'disliked' | 'saved' | 'unsaved',
+    experienceData?: ExperienceSeedData
+  ): Promise<boolean> {
     try {
+      const resolvedExperienceId = await this.resolveExperienceId(experienceId, experienceData);
+
+      if (!resolvedExperienceId) {
+        console.warn('Unable to resolve experience ID for save operation', {
+          experienceId,
+          status,
+        });
+        return false;
+      }
+
       if (status === 'unsaved') {
         // Remove the save
         const { error } = await supabase
           .from('saves')
           .delete()
           .eq('profile_id', userId)
-          .eq('experience_id', experienceId);
+          .eq('experience_id', resolvedExperienceId);
 
         if (error) {
           console.error('Error removing save:', error);
@@ -131,7 +231,7 @@ export class ExperiencesService {
           .from('saves')
           .upsert({
             profile_id: userId,
-            experience_id: experienceId,
+            experience_id: resolvedExperienceId,
             status: status,
             scheduled_at: status === 'saved' ? new Date().toISOString() : null
           }, { onConflict: 'profile_id,experience_id' });

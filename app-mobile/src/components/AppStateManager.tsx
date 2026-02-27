@@ -634,43 +634,10 @@ export function useAppState() {
     }
   };
 
-  // Sync board sessions from database
-  useEffect(() => {
-    const syncBoardSessionsWithSupabase = async () => {
-      if (!user?.id) {
-        setBoardsSessions([]);
-        safeAsyncStorageSet("mingla_boards_sessions", []);
-        setProfileStats((prev) => ({
-          ...prev,
-          boardsCount: 0,
-        }));
-        setIsLoadingBoards(false);
-        return;
-      }
-
-      setIsLoadingBoards(true);
-      try {
-        const { BoardSessionService } = await import(
-          "../services/boardSessionService"
-        );
-        const boards = await BoardSessionService.fetchUserBoardSessions(
-          user.id
-        );
-        setBoardsSessions(boards);
-        safeAsyncStorageSet("mingla_boards_sessions", boards);
-        setProfileStats((prev) => ({
-          ...prev,
-          boardsCount: boards.length,
-        }));
-      } catch (error) {
-        console.error("Error syncing board sessions:", error);
-      } finally {
-        setIsLoadingBoards(false);
-      }
-    };
-
-    syncBoardSessionsWithSupabase();
-  }, [user?.id]);
+  // Board session sync is handled by refreshAllSessions() in app/index.tsx
+  // which fetches both active AND pending (sent-invite) sessions together.
+  // Having a separate sync here that only fetches active boards caused pending
+  // invite pills to blink/disappear by overwriting the full state.
 
   // Utility functions
   const updateBoardsSessions = (updatedBoards: any[]) => {
@@ -992,6 +959,7 @@ export function useAppState() {
     boardsSessions,
     setBoardsSessions,
     isLoadingBoards,
+    setIsLoadingBoards,
     profileStats,
     setProfileStats,
     preferencesRefreshKey,

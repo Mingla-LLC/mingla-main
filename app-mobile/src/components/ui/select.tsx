@@ -110,6 +110,11 @@ function SelectContent({
       {...props}
     >
       <View style={styles.selectOverlay}>
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={[styles.selectContent, style]}>
           <ScrollView style={styles.selectViewport}>
             {children}
@@ -266,6 +271,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   selectContent: {
     backgroundColor: '#ffffff',

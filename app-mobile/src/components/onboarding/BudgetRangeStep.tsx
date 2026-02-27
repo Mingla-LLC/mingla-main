@@ -30,31 +30,26 @@ const BudgetRangeStep = ({
   // Check if initial budgetRange is the default (0-1000)
   const initialIsDefault = budgetRange?.min === 0 && budgetRange?.max === 1000;
 
-  // If it's the default range, show empty inputs to indicate no selection
-  const [minValue, setMinValue] = useState<string>(
-    initialIsDefault ? "" : budgetRange?.min?.toString() || ""
-  );
+  // Only show max value (min is always 0)
   const [maxValue, setMaxValue] = useState<string>(
     initialIsDefault ? "" : budgetRange?.max?.toString() || ""
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [isMinFocused, setIsMinFocused] = useState(false);
   const [isMaxFocused, setIsMaxFocused] = useState(false);
   const [hasUserInteracted, setHasUserInteracted] = useState(!initialIsDefault);
 
-  // Popular budget ranges - defined early for use in validation
+  // Popular budget ranges - only showing max values (min is always 0)
   const popularRanges = [
-    { min: 0, max: 25, label: "$0-25" },
-    { min: 25, max: 75, label: "$25-75" },
-    { min: 75, max: 150, label: "$75-150" },
-    { min: 150, max: null, label: "$150+" },
+    { max: 100, label: "Up to $100" },
+    { max: 200, label: "Up to $200" },
+    { max: 500, label: "Up to $500" },
   ];
 
   // Check if the current budgetRange matches any popular range
   const checkIfPopularRangeSelected = () => {
     if (!budgetRange) return false;
     return popularRanges.some(
-      (range) => budgetRange.min === range.min && budgetRange.max === range.max
+      (range) => budgetRange.max === range.max
     );
   };
 
@@ -73,27 +68,6 @@ const BudgetRangeStep = ({
     }
   }, [budgetRange]);
 
-  const handleMinChange = (text: string) => {
-    // Allow only numbers
-    const numericValue = text.replace(/[^0-9]/g, "");
-    setMinValue(numericValue);
-    setHasUserInteracted(true);
-
-    const numValue = numericValue ? parseInt(numericValue, 10) : 0;
-    if (!isNaN(numValue)) {
-      onBudgetRangeChange({
-        min: numValue,
-        max: budgetRange.max ?? (maxValue ? parseInt(maxValue, 10) : null),
-      });
-    } else if (numericValue === "") {
-      // Empty min value
-      onBudgetRangeChange({
-        min: 0,
-        max: budgetRange.max ?? (maxValue ? parseInt(maxValue, 10) : null),
-      });
-    }
-  };
-
   const handleMaxChange = (text: string) => {
     // Allow only numbers
     const numericValue = text.replace(/[^0-9]/g, "");
@@ -101,31 +75,26 @@ const BudgetRangeStep = ({
     setHasUserInteracted(true);
 
     if (numericValue === "") {
-      // Empty means no limit (for $150+)
+      // Empty means no max limit
       onBudgetRangeChange({
-        min: budgetRange.min ?? (minValue ? parseInt(minValue, 10) : 0),
+        min: 0,
         max: null,
       });
     } else {
       const numValue = parseInt(numericValue, 10);
       if (!isNaN(numValue)) {
         onBudgetRangeChange({
-          min: budgetRange.min ?? (minValue ? parseInt(minValue, 10) : 0),
+          min: 0,
           max: numValue,
         });
       }
     }
   };
 
-  const handlePopularRangeSelect = (min: number, max: number | null) => {
-    setMinValue(min.toString());
-    if (max === null) {
-      setMaxValue("");
-    } else {
-      setMaxValue(max.toString());
-    }
+  const handlePopularRangeSelect = (max: number) => {
+    setMaxValue(max.toString());
     setHasUserInteracted(true);
-    onBudgetRangeChange({ min, max });
+    onBudgetRangeChange({ min: 0, max });
   };
 
   const styles = StyleSheet.create({
@@ -337,28 +306,20 @@ const BudgetRangeStep = ({
 
   // Check if a popular range is selected (for highlighting)
   const isPopularRangeSelected = (range: {
-    min: number;
-    max: number | null;
+    max: number;
   }) => {
     if (!budgetRange) return false;
-    return budgetRange.min === range.min && budgetRange.max === range.max;
+    return budgetRange.max === range.max;
   };
 
-  // Validation: min should not be greater than max (if max is set)
-  const currentMin = budgetRange?.min ?? 0;
+  // Validation: max should be set and greater than 0
   const currentMax = budgetRange?.max ?? null;
-  const isInvalidRange = currentMax !== null && currentMin > currentMax;
+  const hasValidMax = currentMax !== null && currentMax > 0;
 
   // Button should be disabled if:
   // 1. The range is still the default (0-1000), OR
-  // 2. Range is invalid (min > max when max is set), OR
-  // 3. Min value is not set or is invalid
-  const hasValidMin =
-    budgetRange?.min !== undefined &&
-    budgetRange?.min !== null &&
-    !isNaN(budgetRange.min);
-
-  const isNextDisabled = isDefaultRange || isInvalidRange || !hasValidMin;
+  // 2. Max value is not set or is invalid
+  const isNextDisabled = isDefaultRange || !hasValidMax;
 
   return (
     <View style={styles.container}>
@@ -411,7 +372,7 @@ const BudgetRangeStep = ({
                       isSelected && styles.popularRangeButtonSelected,
                     ]}
                     onPress={() =>
-                      handlePopularRangeSelect(range.min, range.max)
+                      handlePopularRangeSelect(range.max)
                     }
                     activeOpacity={0.7}
                   >
@@ -431,43 +392,21 @@ const BudgetRangeStep = ({
 
           {/* Separator */}
           <View style={styles.separator}>
-            <Text style={styles.separatorText}>or custom range</Text>
+            <Text style={styles.separatorText}>or set custom maximum</Text>
           </View>
 
-          {/* Custom Range Inputs */}
+          {/* Custom Max Input Only */}
           <View style={styles.customRangeSection}>
             <View style={styles.customRangeRow}>
-              {/* Min Input */}
-              <View style={styles.customRangeInputContainer}>
-                <Text style={styles.customRangeLabel}>Min per person</Text>
-                <View
-                  style={[
-                    styles.customRangeInputWrapper,
-                    isMinFocused && styles.customRangeInputWrapperFocused,
-                  ]}
-                >
-                  <Text style={styles.dollarSign}>$</Text>
-                  <TextInput
-                    style={styles.customRangeInput}
-                    value={minValue}
-                    onChangeText={handleMinChange}
-                    onFocus={() => setIsMinFocused(true)}
-                    onBlur={() => setIsMinFocused(false)}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor="#9ca3af"
-                  />
-                </View>
-              </View>
-
-              {/* Max Input */}
+              {/* Max Input Only */}
               <View
                 style={[
                   styles.customRangeInputContainer,
                   styles.customRangeInputContainerLast,
+                  { width: '100%' },
                 ]}
               >
-                <Text style={styles.customRangeLabel}>Max per person</Text>
+                <Text style={styles.customRangeLabel}>Maximum per person</Text>
                 <View
                   style={[
                     styles.customRangeInputWrapper,
@@ -482,7 +421,7 @@ const BudgetRangeStep = ({
                     onFocus={() => setIsMaxFocused(true)}
                     onBlur={() => setIsMaxFocused(false)}
                     keyboardType="numeric"
-                    placeholder="100"
+                    placeholder="500"
                     placeholderTextColor="#9ca3af"
                   />
                 </View>
@@ -492,7 +431,7 @@ const BudgetRangeStep = ({
 
           {/* Helper Text */}
           <Text style={styles.helperText}>
-            Free experiences will always be shown
+            Budget range is $0 to your maximum. Free experiences will always be shown
           </Text>
         </ScrollView>
 

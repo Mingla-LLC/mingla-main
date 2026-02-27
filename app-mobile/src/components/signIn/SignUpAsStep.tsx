@@ -225,31 +225,37 @@ const SignUpAsStep = ({ onSelectAccountType, onBack }: SignUpAsStepProps) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
 
+      {/* Header - Fixed outside ScrollView for responsiveness */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => {
+            console.log("👆 SignUpAsStep back button pressed");
+            onBack();
+          }}
+        >
+          <Ionicons name="arrow-back" size={20} color="#6b7280" />
+          <Text style={styles.backButtonText}>Back</Text>
+        </TouchableOpacity>
+
+        <View style={styles.headerCenter}>
+          <View style={styles.logoContainer}>
+            <Image
+              source={minglaLogo}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
+        </View>
+
+        <View style={{ width: 80 }} />
+      </View>
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Ionicons name="arrow-back" size={20} color="#6b7280" />
-            <Text style={styles.backButtonText}>Back</Text>
-          </TouchableOpacity>
-
-          <View style={styles.headerCenter}>
-            <View style={styles.logoContainer}>
-              <Image
-                source={minglaLogo}
-                style={styles.logo}
-                resizeMode="contain"
-              />
-            </View>
-          </View>
-
-          <View style={{ width: 80 }} />
-        </View>
-
         {/* Title Section */}
         <View style={styles.titleSection}>
           <Text style={styles.title}>Sign Up as...</Text>

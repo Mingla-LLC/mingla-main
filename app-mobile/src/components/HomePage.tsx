@@ -13,7 +13,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
-import NotificationsModal, { Notification } from "./NotificationsModal";
+import NotificationsModal from "./NotificationsModal";
+import FriendRequestsModal from "./FriendRequestsModal";
+import { InAppNotification, inAppNotificationService } from "../services/inAppNotificationService";
+import { useInAppNotifications } from "../hooks/useInAppNotifications";
+import { useFriends } from "../hooks/useFriends";
 import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.png";
 
 // Animation duration constant for consistency
@@ -49,8 +53,10 @@ interface HomePageProps {
   onAcceptInvite?: (sessionId: string) => void;
   onDeclineInvite?: (sessionId: string) => void;
   onCancelInvite?: (sessionId: string) => void;
+  onSessionStateChanged?: () => void;
   availableFriends?: Friend[];
   isCreatingSession?: boolean;
+  onNotificationNavigate?: (notification: InAppNotification) => void;
 }
 
 export default function HomePage({
@@ -79,74 +85,89 @@ export default function HomePage({
   onAcceptInvite,
   onDeclineInvite,
   onCancelInvite,
+  onSessionStateChanged,
   availableFriends = [],
   isCreatingSession = false,
+  onNotificationNavigate,
 }: HomePageProps) {
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: "1",
-      type: "friend_request",
-      title: "New Friend Request",
-      description: "Sarah Chen wants to connect with you",
-      timestamp: "2m ago",
-      isRead: false,
-      data: { userId: "user1", userName: "Sarah Chen" },
-    },
-    {
-      id: "2",
-      type: "mention",
-      title: "Mentioned in Discussion",
-      description: 'Alex mentioned you in "Tokyo Food Tour" discussion',
-      timestamp: "15m ago",
-      isRead: false,
-      data: { sessionId: "session1", sessionName: "Tokyo Food Tour" },
-    },
-    {
-      id: "3",
-      type: "board_invite",
-      title: "Board Invitation",
-      description: 'Maria invited you to collaborate on "Paris Adventure"',
-      timestamp: "1h ago",
-      isRead: false,
-      data: { sessionId: "session2", sessionName: "Paris Adventure" },
-    },
-    {
-      id: "4",
-      type: "card_liked",
-      title: "Card Liked",
-      description: 'John liked your saved experience "Sunset Kayaking"',
-      timestamp: "2h ago",
-      isRead: true,
-      data: { cardId: "card1", cardName: "Sunset Kayaking" },
-    },
-    {
-      id: "5",
-      type: "comment",
-      title: "New Comment",
-      description: "Emma commented on your board",
-      timestamp: "3h ago",
-      isRead: true,
-    },
-  ]);
+  const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
+  const [inviteModalTrigger, setInviteModalTrigger] = useState<{
+    sessionId: string;
+    nonce: number;
+  } | null>(null);
+  const {
+    notifications,
+    unreadCount: unreadNotificationCount,
+    markAsRead,
+    markAllAsRead,
+    clearAll,
+  } = useInAppNotifications();
+
+  // Get friend request handlers from useFriends hook
+  const { acceptFriendRequest, declineFriendRequest } = useFriends();
 
   const handleMarkAllRead = () => {
-    setNotifications((prev) =>
-      prev.map((n) => ({ ...n, isRead: true }))
-    );
+    markAllAsRead();
   };
 
-  const handleNotificationPress = (notification: Notification) => {
+  const handleNotificationPress = (notification: InAppNotification) => {
     // Mark as read
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n))
-    );
-    // TODO: Navigate based on notification type
-    setShowNotificationsModal(false);
+    markAsRead(notification.id);
+
+    if (notification.type === "board_invite" && notification.data?.sessionId) {
+      setShowNotificationsModal(false);
+      setInviteModalTrigger({
+        sessionId: String(notification.data.sessionId),
+        nonce: Date.now(),
+      });
+      return;
+    }
+
+    // For friend requests, don't close or navigate - just mark as read
+    // The modal will be opened via callback
+    if (notification.type !== "friend_request") {
+      // Close modal
+      setShowNotificationsModal(false);
+      // Navigate to the relevant page
+      if (onNotificationNavigate) {
+        onNotificationNavigate(notification);
+      }
+    }
   };
 
-  const unreadNotificationCount = notifications.filter((n) => !n.isRead).length;
+  const handleOpenFriendRequestsModal = () => {
+    setShowFriendRequestsModal(true);
+  };
+
+  const handleAcceptFriendRequest = async (requestId: string, notificationId: string) => {
+    try {
+      if (requestId) {
+        await acceptFriendRequest(requestId);
+      }
+    } catch (error) {
+      console.error("Error accepting friend request:", error);
+    } finally {
+      await inAppNotificationService.remove(notificationId);
+    }
+  };
+
+  const handleRejectFriendRequest = async (requestId: string, notificationId: string) => {
+    try {
+      if (requestId) {
+        await declineFriendRequest(requestId);
+      }
+    } catch (error) {
+      console.error("Error rejecting friend request:", error);
+    } finally {
+      await inAppNotificationService.remove(notificationId);
+    }
+  };
+
+  const handleClearAll = () => {
+    clearAll();
+  };
 
   // Animation values
   const headerSlideAnim = useRef(new Animated.Value(-60)).current;
@@ -206,7 +227,7 @@ export default function HomePage({
             >
               <Ionicons
                 name="options-outline"
-                size={24}
+                size={21}
                 color={currentMode !== "solo" ? "#eb7825" : "#1f2937"}
               />
             </TouchableOpacity>
@@ -229,7 +250,7 @@ export default function HomePage({
               activeOpacity={0.6}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="notifications-outline" size={24} color="#1f2937" />
+              <Ionicons name="notifications-outline" size={21} color="#1f2937" />
               {/* Notification indicator dot */}
               {unreadNotificationCount > 0 && <View style={styles.notificationDot} />}
             </TouchableOpacity>
@@ -241,18 +262,20 @@ export default function HomePage({
 
         <View style={styles.mainContent}>
           <LinearGradient
-            colors={['rgba(0, 0, 0, 0.15)', 'rgba(0, 0, 0, 0.05)', 'transparent']}
+            colors={['rgba(0, 0, 0, 0.04)', 'rgba(0, 0, 0, 0.01)', 'transparent']}
             style={styles.innerShadowTop}
             pointerEvents="none"
           />
 
           {/* Collaboration Sessions Bar with fade-in and scale animation */}
-          {onSessionSelect && onSoloSelect && onCreateSession && onAcceptInvite && onDeclineInvite && onCancelInvite && (
+          {onSessionSelect && onSoloSelect && onCreateSession && (
             <Animated.View
               style={{
                 opacity: sessionsOpacity,
                 transform: [{ scaleX: sessionsScale }],
                 width: '100%',
+                backgroundColor: '#FFFFFF',
+                zIndex: 20,
               }}
             >
               <CollaborationSessions
@@ -262,11 +285,13 @@ export default function HomePage({
                 onSessionSelect={onSessionSelect}
                 onSoloSelect={onSoloSelect}
                 onCreateSession={onCreateSession}
-                onAcceptInvite={onAcceptInvite}
-                onDeclineInvite={onDeclineInvite}
-                onCancelInvite={onCancelInvite}
+                onAcceptInvite={onAcceptInvite || (() => {})}
+                onDeclineInvite={onDeclineInvite || (() => {})}
+                onCancelInvite={onCancelInvite || (() => {})}
+                onSessionStateChanged={onSessionStateChanged}
                 availableFriends={availableFriends}
                 isCreatingSession={isCreatingSession}
+                inviteModalTrigger={inviteModalTrigger}
               />
             </Animated.View>
           )}
@@ -295,9 +320,22 @@ export default function HomePage({
           visible={showNotificationsModal}
           onClose={() => setShowNotificationsModal(false)}
           notifications={notifications}
+          unreadCount={unreadNotificationCount}
           onNotificationPress={handleNotificationPress}
           onMarkAllRead={handleMarkAllRead}
+          onClearAll={handleClearAll}
+          onOpenRequestsModal={handleOpenFriendRequestsModal}
+          onAcceptFriendRequest={handleAcceptFriendRequest}
+          onRejectFriendRequest={handleRejectFriendRequest}
         />
+
+        {/* Friend Requests Modal - Opens on top of Notifications Modal */}
+        {showFriendRequestsModal && (
+          <FriendRequestsModal
+            isOpen={showFriendRequestsModal}
+            onClose={() => setShowFriendRequestsModal(false)}
+          />
+        )}
 
       </View>
     </View>
@@ -333,33 +371,33 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   preferencesButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
+    padding: 7,
+    minWidth: 38,
+    minHeight: 38,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#ffffff",
-    borderRadius: 20,
+    borderRadius: 19,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
   },
   preferencesButtonActive: {
     backgroundColor: "#FEF3E7",
-    borderRadius: 20,
+    borderRadius: 19,
     shadowColor: "#eb7825",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   headerCenter: {
     flex: 1,
@@ -385,22 +423,22 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   notificationButton: {
-    padding: 8,
-    minWidth: 40,
-    minHeight: 40,
+    padding: 7,
+    minWidth: 38,
+    minHeight: 38,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
     backgroundColor: "#ffffff",
-    borderRadius: 20,
+    borderRadius: 19,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
   },
   notificationDot: {
     position: "absolute",
@@ -435,7 +473,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 40,
+    height: 20,
     zIndex: 10,
   },
 });

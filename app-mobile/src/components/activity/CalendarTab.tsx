@@ -950,7 +950,7 @@ const CalendarTab = ({
       paddingVertical: 12,
       borderBottomWidth: 1,
       borderBottomColor: "#e5e7eb",
-      backgroundColor: "#f3f4f6",
+      backgroundColor: "#FFFFFF",
       borderWidth: 1,
       borderColor: "#e5e7eb",
       borderRadius: 12,

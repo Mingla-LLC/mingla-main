@@ -196,7 +196,10 @@ class UserInteractionService {
         });
 
       if (error) {
-        console.error('Error tracking interaction:', error);
+        // 42501 = RLS policy violation — analytics tracking is non-critical, skip silently
+        if (error.code !== '42501') {
+          console.error('Error tracking interaction:', error);
+        }
         return;
       } else {
         // Also track in enhanced profile service for gamified features

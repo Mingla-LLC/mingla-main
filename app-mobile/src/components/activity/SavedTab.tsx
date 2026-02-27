@@ -340,7 +340,7 @@ const SavedTab = ({
       paddingHorizontal: 16,
       paddingVertical: 12,
       borderBottomColor: "#e5e7eb",
-      backgroundColor: "#f3f4f6",
+      backgroundColor: "#FFFFFF",
       borderWidth: 1,
       borderColor: "#e5e7eb",
       borderRadius: 12,

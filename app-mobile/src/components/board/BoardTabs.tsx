@@ -75,7 +75,8 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: "white",
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: "#F3F4F6",
+    paddingBottom: 0,
   },
   tabsContainer: {
     flexDirection: "row",
@@ -89,9 +90,10 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   tabLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "500",
     color: "#9CA3AF",
+    letterSpacing: 0.2,
   },
   tabLabelActive: {
     color: "#eb7825",
@@ -104,11 +106,11 @@ const styles = StyleSheet.create({
   },
   activeIndicator: {
     position: "absolute",
-    bottom: 0,
+    bottom: -1,
     left: 16,
     right: 16,
-    height: 2,
+    height: 3,
     backgroundColor: "#eb7825",
-    borderRadius: 1,
+    borderRadius: 1.5,
   },
 });

@@ -143,10 +143,11 @@ class SmartNotificationService {
         .single();
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          return null; // Not found
+        if (error.code === 'PGRST116' || error.code === 'PGRST205') {
+          // PGRST116: Not found, PGRST205: Table doesn't exist
+          return null;
         }
-        console.error('Error fetching notification preferences:', error);
+        console.warn('Error fetching notification preferences:', error.message);
         return null;
       }
 
@@ -210,7 +211,7 @@ class SmartNotificationService {
 
       return data;
     } catch (error) {
-      console.error('Error in createDefaultPreferences:', error);
+      console.warn('Error in createDefaultPreferences:', error);
       return null;
     }
   }
@@ -229,7 +230,12 @@ class SmartNotificationService {
         .eq('user_id', userId);
 
       if (error) {
-        console.error('Error updating notification preferences:', error);
+        // PGRST205 means table doesn't exist - silently handle this
+        if (error.code === 'PGRST205') {
+          console.warn('Notification preferences table does not exist');
+          return false;
+        }
+        console.warn('Error updating notification preferences:', error.message);
         return false;
       }
 
@@ -241,7 +247,7 @@ class SmartNotificationService {
 
       return true;
     } catch (error) {
-      console.error('Error in updateUserPreferences:', error);
+      console.warn('Error in updateUserPreferences:', error);
       return false;
     }
   }

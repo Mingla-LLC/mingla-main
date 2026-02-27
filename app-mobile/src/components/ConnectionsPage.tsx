@@ -1036,14 +1036,95 @@ export default function ConnectionsPageRefactored({
     onShareSavedCard?.(friend);
   };
 
-  const handleRemoveFriend = async (friend: Friend) => {
+  /**
+   * Clean up collaboration sessions that only have the current user and the
+   * given other user as participants. Sessions with more participants are left intact.
+   */
+  const cleanupSharedSessions = async (otherUserId: string) => {
     try {
-      await removeFriend(friend.id);
-      await fetchFriends(); // Reload friends after removal
-      onRemoveFriend?.(friend);
+      if (!user) return;
+
+      // Find all sessions where the other user is a participant
+      const { data: otherUserSessions, error: fetchError } = await supabase
+        .from("session_participants")
+        .select("session_id")
+        .eq("user_id", otherUserId);
+
+      if (fetchError || !otherUserSessions?.length) return;
+
+      const sessionIds = otherUserSessions.map((s: any) => s.session_id);
+
+      // Find which of those sessions the current user is also in
+      const { data: mySharedSessions, error: myError } = await supabase
+        .from("session_participants")
+        .select("session_id")
+        .eq("user_id", user.id)
+        .in("session_id", sessionIds);
+
+      if (myError || !mySharedSessions?.length) return;
+
+      const sharedSessionIds = mySharedSessions.map((s: any) => s.session_id);
+
+      // For each shared session, count total participants
+      for (const sessionId of sharedSessionIds) {
+        const { count, error: countError } = await supabase
+          .from("session_participants")
+          .select("id", { count: "exact", head: true })
+          .eq("session_id", sessionId);
+
+        if (countError) {
+          console.error("Error counting participants:", countError);
+          continue;
+        }
+
+        // Only delete if exactly 2 participants (just the two of us)
+        if (count !== null && count <= 2) {
+          // Delete invites first
+          await supabase
+            .from("collaboration_invites")
+            .delete()
+            .eq("session_id", sessionId);
+
+          // Delete session (cascades to participants)
+          const { error: deleteError } = await supabase
+            .from("collaboration_sessions")
+            .delete()
+            .eq("id", sessionId);
+
+          if (deleteError) {
+            console.error("Error deleting session:", deleteError);
+          }
+        }
+      }
     } catch (error) {
-      console.error("Error removing friend:", error);
+      console.error("Error cleaning up shared sessions:", error);
     }
+  };
+
+  const handleRemoveFriend = (friend: Friend) => {
+    Alert.alert(
+      "Remove Friend",
+      `Are you sure you want to remove ${friend.name} as a friend?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Clean up collaboration sessions with just the two of us
+              await cleanupSharedSessions(friend.id);
+              await removeFriend(friend.id);
+              await fetchFriends();
+              onRemoveFriend?.(friend);
+            } catch (error) {
+              console.error("Error removing friend:", error);
+              Alert.alert("Error", "Failed to remove friend. Please try again.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleMuteUser = async (friend: Friend) => {
@@ -1092,6 +1173,8 @@ export default function ConnectionsPageRefactored({
     
     setBlockLoading(true);
     try {
+      // Clean up collaboration sessions with just the two of us
+      await cleanupSharedSessions(selectedUserToBlock.id);
       await blockFriend(selectedUserToBlock.id, reason);
       onBlockUser?.(selectedUserToBlock);
       await fetchFriends();

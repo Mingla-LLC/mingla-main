@@ -56,6 +56,12 @@ import { BoardSessionService } from "../src/services/boardSessionService";
 import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
+import { debugService } from "../src/services/debugService";
+import { DebugModal } from "../src/components/debug/DebugModal";
+import { useDebugGesture } from "../src/hooks/useDebugGesture";
+import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
+
+const TAB_BAR_ICON_SIZE = 19;
 
 function AppContent() {
   const state = useAppState();
@@ -71,7 +77,38 @@ function AppContent() {
   const [showWelcomeDialog, setShowWelcomeDialog] = useState<boolean>(false);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
+  const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
   const helpButtonDismissedRef = useRef<boolean>(false);
+  const viewShotRef = useRef<any>(null);
+  const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
+
+  // Initialize debug service on mount
+  useEffect(() => {
+    debugService.initialize();
+  }, []);
+
+  // Initialize in-app notification service on mount
+  useEffect(() => {
+    inAppNotificationService.initialize().then(async () => {
+      // Clean up old notifications with "New Connection Request" title
+      const all = inAppNotificationService.getAll();
+      for (const notif of all) {
+        if (notif.title === "New Connection Request") {
+          console.warn(`[AppInit] Removing old notification: ${notif.id} - "${notif.title}"`);
+          await inAppNotificationService.remove(notif.id);
+        }
+      }
+    });
+  }, []);
+
+  // Setup 5-tap gesture to open debug modal
+  const { handleTap: handleDebugTap } = useDebugGesture({
+    onTrigger: () => {
+      setShowDebugModal(true);
+      console.log('🐛 Debug modal opened via tap gesture');
+    },
+    enabled: true,
+  });
 
   // Destructure commonly used state
   const {
@@ -136,6 +173,7 @@ function AppContent() {
     boardsSessions,
     setBoardsSessions,
     isLoadingBoards,
+    setIsLoadingBoards,
     profileStats,
     setProfileStats,
     preferencesRefreshKey,
@@ -185,7 +223,7 @@ function AppContent() {
   }, [user?.id]);
 
   // Get friends from useFriends hook for session creation
-  const { friends: dbFriends, fetchFriends } = useFriends();
+  const { friends: dbFriends, fetchFriends, loadFriendRequests, friendRequests } = useFriends();
   
   // Fetch friends when component mounts
   useEffect(() => {
@@ -193,6 +231,108 @@ function AppContent() {
       fetchFriends();
     }
   }, [user, fetchFriends]);
+
+  // Check for new incoming friend requests and fire notifications
+  useEffect(() => {
+    if (!user?.id || !isAuthenticated) return;
+
+    const checkFriendRequests = async () => {
+      try {
+        await loadFriendRequests();
+      } catch (error) {
+        console.error("Error checking friend requests:", error);
+      }
+    };
+
+    // Check immediately on mount
+    checkFriendRequests();
+
+    // Then check every 15 seconds
+    const interval = setInterval(checkFriendRequests, 15000);
+    return () => clearInterval(interval);
+  }, [user?.id, isAuthenticated, loadFriendRequests]);
+
+  // Fire notifications for new incoming friend requests
+  useEffect(() => {
+    if (!friendRequests || friendRequests.length === 0) return;
+
+    // Filter for incoming pending requests
+    const incomingRequests = friendRequests.filter(
+      (req: any) => req.type === "incoming" && req.status === "pending"
+    );
+
+    // For each request, check if we've already notified about it
+    incomingRequests.forEach((request: any) => {
+      if (!notifiedFriendRequestIdsRef.current.has(request.id)) {
+        // Fire notification for this new friend request
+        const senderName =
+          request.sender?.display_name ||
+          request.sender?.first_name ||
+          request.sender?.username ||
+          "Someone";
+
+        console.log(`[FriendRequest Notification] Sender data:`, {
+          id: request.sender_id,
+          name: senderName,
+          avatar_url: request.sender?.avatar_url,
+          email: request.sender?.email,
+          fullSender: request.sender
+        });
+
+        inAppNotificationService.notifyFriendRequest(
+          senderName,
+          request.sender_id,
+          request.sender?.avatar_url,
+          request.sender?.email,
+          request.id
+        );
+        
+        // Mark as notified
+        notifiedFriendRequestIdsRef.current.add(request.id);
+      }
+    });
+  }, [friendRequests]);
+
+  // Log current page for debugging
+  useEffect(() => {
+    if (isLoadingAuth && !authTimeout) {
+      console.log(`📄 Current screen: loading`);
+    } else if (!isAuthenticated || (user && !profile && !isLoadingAuth)) {
+      console.log(`📄 Current screen: sign-in/sign-up (showSignUpForm=${showSignUpForm})`);
+    } else if (showOnboardingFlow || needsOnboarding) {
+      console.log(`📄 Current screen: onboarding`);
+    } else if (needsEmailVerification && !showSignUpForm) {
+      console.log(`📄 Current screen: email-verification`);
+    } else if (showPreferences) {
+      console.log(`📄 Current screen: preferences`);
+    } else if (showTermsOfService) {
+      console.log(`📄 Current screen: terms-of-service`);
+    } else if (showPrivacyPolicy) {
+      console.log(`📄 Current screen: privacy-policy`);
+    } else if (showAccountSettings) {
+      console.log(`📄 Current screen: account-settings`);
+    } else if (showProfileSettings) {
+      console.log(`📄 Current screen: profile-settings`);
+    } else {
+      console.log(`📄 Current page: ${currentPage}`);
+    }
+  }, [
+    currentPage,
+    isAuthenticated,
+    profile,
+    isLoadingAuth,
+    authTimeout,
+    user,
+    showOnboardingFlow,
+    needsOnboarding,
+    needsEmailVerification,
+    showSignUpForm,
+    showPreferences,
+    showTermsOfService,
+    showPrivacyPolicy,
+    showAccountSettings,
+    showProfileSettings,
+  ]);
 
   // Transform friends to Friend format for session creation
   // dbFriends from useFriends has: id, friend_user_id, username, display_name, first_name, last_name, avatar_url
@@ -207,6 +347,49 @@ function AppContent() {
     avatar: friend.avatar_url,
     status: 'offline' as const,
   }));
+
+  // Handle notification tap → navigate to the relevant page
+  const handleNotificationNavigate = (notification: InAppNotification) => {
+    const nav = notification.navigation;
+    switch (nav.page) {
+      case "home":
+        setCurrentPage("home");
+        break;
+      case "saved":
+        setCurrentPage("saved");
+        break;
+      case "connections":
+        setCurrentPage("connections");
+        break;
+      case "likes":
+        setCurrentPage("likes");
+        break;
+      case "profile":
+        setCurrentPage("profile");
+        break;
+      case "discover":
+        setCurrentPage("discover");
+        break;
+      case "activity":
+        setCurrentPage("activity");
+        if ((nav as any).tab) {
+          setActivityNavigation({ activeTab: (nav as any).tab });
+        }
+        break;
+      case "board-view":
+        if ((nav as any).sessionId) {
+          setBoardViewSessionId((nav as any).sessionId);
+          setCurrentPage("board-view");
+        }
+        break;
+      case "preferences":
+        setShowPreferences(true);
+        break;
+      case "none":
+      default:
+        break;
+    }
+  };
 
   // Session handlers for the CollaborationSessions bar
   const handleSessionSelect = (sessionId: string | null) => {
@@ -226,53 +409,84 @@ function AppContent() {
 
   // Helper function to refresh all sessions (active + pending)
   const refreshAllSessions = async () => {
-    if (!user?.id) return;
-    
-    // Fetch active sessions
-    const activeBoards = await BoardSessionService.fetchUserBoardSessions(user.id);
-    
-    // Fetch pending sessions the user created
-    const { data: createdPendingSessions } = await supabase
-      .from('collaboration_sessions')
-      .select('*, session_participants(user_id, has_accepted)')
-      .eq('created_by', user.id)
-      .eq('status', 'pending');
-    
-    // Fetch pending sessions where user was invited (but hasn't accepted yet)
-    // Include the inviter's profile information
-    const { data: invitedSessions } = await supabase
-      .from('collaboration_invites')
-      .select(`
-        session_id,
-        invited_by,
-        status,
-        collaboration_sessions!inner(id, name, status, created_by, created_at),
-        inviter:profiles!collaboration_invites_invited_by_fkey(id, username, first_name, last_name, avatar_url)
-      `)
-      .eq('invited_user_id', user.id)
-      .eq('status', 'pending');
+    if (!user?.id) {
+      setIsLoadingBoards(false);
+      return;
+    }
+
+    setIsLoadingBoards(true);
+    // Fetch all session types in parallel for better performance
+    const [activeBoards, createdResult, invitedResult] = await Promise.all([
+      BoardSessionService.fetchUserBoardSessions(user.id),
+      supabase
+        .from('collaboration_sessions')
+        .select('*, session_participants(user_id, has_accepted)')
+        .eq('created_by', user.id)
+        .eq('status', 'pending'),
+      supabase
+        .from('collaboration_invites')
+        .select(`
+          session_id,
+          inviter_id,
+          invited_by,
+          status,
+          collaboration_sessions!inner(id, name, status, created_by, created_at)
+        `)
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending'),
+    ]);
+
+    const createdPendingSessions = createdResult.data;
+    const invitedSessions = invitedResult.data;
     
     // Transform pending created sessions
-    const pendingCreatedSessions = (createdPendingSessions || []).map((s: any) => ({
-      id: s.id,
-      name: s.name,
-      status: s.status,
-      creatorId: s.created_by,
-      created_by: s.created_by,
-      participants: s.session_participants || [],
-      createdAt: s.created_at,
-    }));
+    // Only include sessions where the user is actually a participant (prevents ghost sessions
+    // from failed creation attempts from appearing as duplicate pills)
+    const pendingCreatedSessions = (createdPendingSessions || [])
+      .filter((s: any) =>
+        (s.session_participants || []).some((p: any) => p.user_id === user.id)
+      )
+      .map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        status: s.status,
+        creatorId: s.created_by,
+        created_by: s.created_by,
+        participants: s.session_participants || [],
+        createdAt: s.created_at,
+      }));
     
-    // Transform pending invited sessions with inviter profile
-    const pendingInvitedSessions = (invitedSessions || [])
-      .filter((inv: any) => inv.collaboration_sessions?.status === 'pending')
+    // Fetch inviter profiles for invited sessions
+    const invitedSessionsList = (invitedSessions || []).filter((inv: any) => inv.status === 'pending');
+    const inviterIds = [...new Set(invitedSessionsList.map((inv: any) => inv.inviter_id || inv.invited_by))];
+    
+    let inviterProfiles: any[] = [];
+    if (inviterIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username, first_name, last_name, avatar_url')
+        .in('id', inviterIds);
+      inviterProfiles = profiles || [];
+    }
+    
+    // Helper to get inviter profile name
+    const getInviterName = (inviterId: string | undefined) => {
+      const profile = inviterProfiles.find((p: any) => p.id === inviterId);
+      if (!profile) return 'Someone';
+      if (profile.first_name && profile.last_name) {
+        return `${profile.first_name} ${profile.last_name}`;
+      }
+      return profile.first_name || profile.username || 'Someone';
+    };
+    
+    // Transform pending/accepted invited sessions with inviter profile
+    // Show as grey pills only if the user hasn't accepted yet (status = 'pending')
+    // Once accepted, they will appear in activeBoards instead
+    const pendingInvitedSessions = invitedSessionsList
       .map((inv: any) => {
-        const inviterProfile = inv.inviter;
-        const inviterName = inviterProfile 
-          ? (inviterProfile.first_name && inviterProfile.last_name 
-              ? `${inviterProfile.first_name} ${inviterProfile.last_name}`
-              : inviterProfile.first_name || inviterProfile.username || 'Someone')
-          : 'Someone';
+        const inviterId = inv.inviter_id || inv.invited_by;
+        const inviterProfile = inviterProfiles.find((p: any) => p.id === inviterId);
+        const inviterName = getInviterName(inviterId);
         
         return {
           id: inv.collaboration_sessions.id,
@@ -280,9 +494,9 @@ function AppContent() {
           status: 'pending',
           creatorId: inv.collaboration_sessions.created_by,
           created_by: inv.collaboration_sessions.created_by,
-          invitedBy: inv.invited_by,
+          invitedBy: inviterId,
           inviterProfile: {
-            id: inv.invited_by,
+            id: inviterId,
             name: inviterName,
             username: inviterProfile?.username,
             avatar: inviterProfile?.avatar_url,
@@ -301,12 +515,46 @@ function AppContent() {
     }, []);
     
     updateBoardsSessions(uniqueSessions);
+    setIsLoadingBoards(false);
   };
 
   const handleCreateSession = async (sessionName: string, selectedFriends: Friend[] = []) => {
     if (!user?.id) return;
     setIsCreatingSession(true);
+    let createdSessionId: string | null = null;
     try {
+      // Check for real duplicate: any session where user is an accepted participant with this name
+      const { data: participations } = await supabase
+        .from('session_participants')
+        .select('session_id, collaboration_sessions!inner(id, name)')
+        .eq('user_id', user.id)
+        .eq('has_accepted', true);
+
+      const hasDuplicate = (participations || []).some((p: any) => {
+        const s = Array.isArray(p.collaboration_sessions) ? p.collaboration_sessions[0] : p.collaboration_sessions;
+        return s?.name?.toLowerCase() === sessionName.trim().toLowerCase();
+      });
+
+      if (hasDuplicate) {
+        toastManager.error('A collaboration session already exists with that name.');
+        return;
+      }
+
+      // Clean up any ghost sessions with this name (created by user but no participant record)
+      // These accumulate from previous failed creation attempts
+      const { data: ghostSessions } = await supabase
+        .from('collaboration_sessions')
+        .select('id')
+        .eq('created_by', user.id)
+        .ilike('name', sessionName.trim());
+
+      if (ghostSessions && ghostSessions.length > 0) {
+        await supabase
+          .from('collaboration_sessions')
+          .delete()
+          .in('id', ghostSessions.map((s: any) => s.id));
+      }
+
       // Create the collaboration session (matching CreateTab.tsx pattern)
       // Status starts as 'pending' until participants accept
       const { data: session, error: sessionError } = await supabase
@@ -320,6 +568,7 @@ function AppContent() {
         .single();
 
       if (sessionError) throw sessionError;
+      createdSessionId = session.id;
 
       // Add creator as participant (auto-accepted)
       const { error: participantError } = await supabase
@@ -365,6 +614,7 @@ function AppContent() {
           .from('collaboration_invites')
           .insert({
             session_id: session.id,
+            inviter_id: user.id,
             invited_by: user.id,
             invited_user_id: friendUserId,
             status: 'pending',
@@ -406,12 +656,21 @@ function AppContent() {
         ? `Session "${sessionName}" created! Invites sent to ${friendCount} friend${friendCount > 1 ? 's' : ''}.`
         : `Session "${sessionName}" created successfully!`;
       toastManager.success(message);
+
+      // Log in-app notification
+      inAppNotificationService.notifySessionCreated(sessionName, session.id);
       
       // Switch to the new session
       handlers.handleModeChange(sessionName);
       setCurrentSessionId(session.id);
     } catch (error) {
       console.error('Error creating session:', error);
+      // Roll back the ghost session if it was inserted before the failure
+      if (createdSessionId) {
+        supabase.from('collaboration_sessions').delete().eq('id', createdSessionId).then(({ error: deleteError }) => {
+          if (deleteError) console.error('Error cleaning up failed session:', deleteError);
+        });
+      }
       toastManager.error('Failed to create session. Please try again.');
     } finally {
       setIsCreatingSession(false);
@@ -489,8 +748,8 @@ function AppContent() {
       if (!participantsError && allParticipants) {
         const acceptedCount = allParticipants.filter((p: any) => p.has_accepted === true).length;
         
-        // If 2+ members have accepted, session becomes active
-        if (acceptedCount >= 2) {
+        // If at least 1 member has accepted, session becomes active
+        if (acceptedCount >= 1) {
           const { error: sessionUpdateError } = await supabase
             .from('collaboration_sessions')
             .update({ status: 'active' })
@@ -524,6 +783,25 @@ function AppContent() {
       // Refresh all sessions
       await refreshAllSessions();
       toastManager.success(`Joined "${sessionName}" successfully!`);
+
+      const inviteNotifications = inAppNotificationService
+        .getAll()
+        .filter(
+          (notification) =>
+            notification.type === "board_invite" &&
+            notification.data?.sessionId === sessionId
+        );
+
+      if (inviteNotifications.length > 0) {
+        await Promise.all(
+          inviteNotifications.map((notification) =>
+            inAppNotificationService.remove(notification.id)
+          )
+        );
+      }
+
+      // Log in-app notification
+      inAppNotificationService.notifyBoardJoined(sessionName, sessionId);
     } catch (error) {
       console.error('Error accepting invite:', error);
       toastManager.error('Failed to accept invite.');
@@ -1152,6 +1430,8 @@ function AppContent() {
           }}
           onBackToWelcome={() => {
             setShowOnboardingFlow(false);
+            // Reset sign-up form flag to ensure we show welcome screen
+            setShowSignUpForm(false);
             // If user has completed onboarding, mark it as complete in local state
             if (profile?.has_completed_onboarding === true) {
               setHasCompletedOnboarding(true);
@@ -1256,8 +1536,10 @@ function AppContent() {
             onAcceptInvite={handleAcceptInvite}
             onDeclineInvite={handleDeclineInvite}
             onCancelInvite={handleCancelInvite}
+            onSessionStateChanged={refreshAllSessions}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
+            onNotificationNavigate={handleNotificationNavigate}
           />
         );
       case "discover":
@@ -1439,6 +1721,24 @@ function AppContent() {
                 state.setCurrentMode("solo");
               }
             }}
+            onDeleteBoard={(deletedBoardId: string, deletedBoardName: string) => {
+              // OPTIMISTIC UPDATE: Remove deleted board from list immediately
+              if (deletedBoardId && boardsSessions) {
+                const updatedBoards = boardsSessions.filter(
+                  (board: any) =>
+                    board.id !== deletedBoardId &&
+                    (board as any).session_id !== deletedBoardId
+                );
+                updateBoardsSessions(updatedBoards);
+              }
+
+              // Update mode if this was the active session
+              if (deletedBoardName && currentMode === deletedBoardName) {
+                state.setCurrentMode("solo");
+              }
+
+              toastManager.success(`"${deletedBoardName}" board deleted`);
+            }}
           />
         );
       case "board-view":
@@ -1492,14 +1792,8 @@ function AppContent() {
                     .eq("invited_user_id", user.id);
                 }
 
-                // Refresh boards list from database to ensure consistency
-                const { BoardSessionService } = await import(
-                  "../src/services/boardSessionService"
-                );
-                const boards = await BoardSessionService.fetchUserBoardSessions(
-                  user.id
-                );
-                updateBoardsSessions(boards);
+                // Refresh boards list (active + pending) to ensure consistency
+                await refreshAllSessions();
 
                 // Refresh active session from database
                 const activeSession = await SessionService.getActiveSession(
@@ -1599,8 +1893,10 @@ function AppContent() {
             onAcceptInvite={handleAcceptInvite}
             onDeclineInvite={handleDeclineInvite}
             onCancelInvite={handleCancelInvite}
+            onSessionStateChanged={refreshAllSessions}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
+            onNotificationNavigate={handleNotificationNavigate}
           />
         );
     }
@@ -1621,50 +1917,6 @@ function AppContent() {
     profile &&
     profile.has_completed_onboarding === true
   ) {
-    // Show CollaborationPreferences as full screen if collaboration preferences are open
-    if (showCollabPreferences && currentMode !== "solo" && currentSessionId) {
-      return (
-        <ErrorBoundary>
-          <PreferencesSheet
-            onClose={() => {
-              setShowCollabPreferences(false);
-            }}
-            onSave={handlers.handleCollabPreferencesSave}
-            sessionId={currentSessionId}
-            sessionName={currentMode ?? "solo"}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-          />
-        </ErrorBoundary>
-      );
-    }
-
-    // Show PreferencesSheet as full screen if preferences are open
-    if (showPreferences) {
-      return (
-        <ErrorBoundary>
-          <PreferencesSheet
-            onClose={() => {
-              setShowPreferences(false);
-            }}
-            onSave={handlers.handleSavePreferences}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-          />
-        </ErrorBoundary>
-      );
-    }
-
     return (
       <>
         <CardsCacheProvider>
@@ -1682,6 +1934,12 @@ function AppContent() {
                     <StatusBar
                       barStyle="dark-content"
                       backgroundColor="white"
+                    />
+                    {/* Invisible tap zone: tap 5 times quickly to open debug console */}
+                    <TouchableOpacity
+                      activeOpacity={1}
+                      onPress={handleDebugTap}
+                      style={{ position: 'absolute', top: 0, right: 0, width: 44, height: 44, zIndex: 9999 }}
                     />
                     <View style={styles.container}>
                       {/* Main Content */}
@@ -1728,21 +1986,8 @@ function AppContent() {
                         }
                         availableFriends={[]}
                         onRefreshBoards={async () => {
-                          // Refresh boards list immediately after accepting invite
-                          if (user?.id) {
-                            try {
-                              const { BoardSessionService } = await import(
-                                "../src/services/boardSessionService"
-                              );
-                              const boards =
-                                await BoardSessionService.fetchUserBoardSessions(
-                                  user.id
-                                );
-                              updateBoardsSessions(boards);
-                            } catch (error) {
-                              console.error("Error refreshing boards:", error);
-                            }
-                          }
+                          // Refresh boards list (active + pending) after accepting invite
+                          await refreshAllSessions();
                         }}
                       />
 
@@ -1765,13 +2010,15 @@ function AppContent() {
                             }}
                             style={styles.navItem}
                           >
-                            <Ionicons
-                              name="home-outline"
-                              size={24}
-                              color={
-                                currentPage === "home" ? "#eb7825" : "#9CA3AF"
-                              }
-                            />
+                            <View style={styles.navIconContainer}>
+                              <Ionicons
+                                name="home-outline"
+                                size={TAB_BAR_ICON_SIZE}
+                                color={
+                                  currentPage === "home" ? "#eb7825" : "#9CA3AF"
+                                }
+                              />
+                            </View>
                             <Text
                               style={[
                                 styles.navText,
@@ -1791,13 +2038,15 @@ function AppContent() {
                             }}
                             style={styles.navItem}
                           >
-                            <Ionicons
-                              name="compass-outline"
-                              size={24}
-                              color={
-                                currentPage === "discover" ? "#eb7825" : "#9CA3AF"
-                              }
-                            />
+                            <View style={styles.navIconContainer}>
+                              <Ionicons
+                                name="compass-outline"
+                                size={TAB_BAR_ICON_SIZE}
+                                color={
+                                  currentPage === "discover" ? "#eb7825" : "#9CA3AF"
+                                }
+                              />
+                            </View>
                             <Text
                               style={[
                                 styles.navText,
@@ -1820,7 +2069,7 @@ function AppContent() {
                             <View style={styles.navIconContainer}>
                               <Ionicons
                                 name="people-outline"
-                                size={24}
+                                size={TAB_BAR_ICON_SIZE}
                                 color={
                                   currentPage === "connections"
                                     ? "#eb7825"
@@ -1858,7 +2107,7 @@ function AppContent() {
                             <View style={styles.navIconContainer}>
                               <Ionicons
                                 name="heart-outline"
-                                size={24}
+                                size={TAB_BAR_ICON_SIZE}
                                 color={
                                   currentPage === "likes"
                                     ? "#eb7825"
@@ -1921,15 +2170,17 @@ function AppContent() {
                             }}
                             style={styles.navItem}
                           >
-                            <Ionicons
-                              name="person-outline"
-                              size={24}
-                              color={
-                                currentPage === "profile"
-                                  ? "#eb7825"
-                                  : "#9CA3AF"
-                              }
-                            />
+                            <View style={styles.navIconContainer}>
+                              <Ionicons
+                                name="person-outline"
+                                size={TAB_BAR_ICON_SIZE}
+                                color={
+                                  currentPage === "profile"
+                                    ? "#eb7825"
+                                    : "#9CA3AF"
+                                }
+                              />
+                            </View>
                             <Text
                               style={[
                                 styles.navText,
@@ -2063,7 +2314,49 @@ function AppContent() {
             </MobileFeaturesProvider>
           </RecommendationsProvider>
         </CardsCacheProvider>
+        {showCollabPreferences && currentMode !== "solo" && currentSessionId ? (
+          <ErrorBoundary>
+            <PreferencesSheet
+              visible={true}
+              onClose={() => {
+                setShowCollabPreferences(false);
+              }}
+              onSave={handlers.handleCollabPreferencesSave}
+              sessionId={currentSessionId}
+              sessionName={currentMode ?? "solo"}
+              accountPreferences={{
+                currency: accountPreferences?.currency || "USD",
+                measurementSystem:
+                  (accountPreferences?.measurementSystem as
+                    | "Metric"
+                    | "Imperial") || "Imperial",
+              }}
+            />
+          </ErrorBoundary>
+        ) : showPreferences ? (
+          <ErrorBoundary>
+            <PreferencesSheet
+              visible={true}
+              onClose={() => {
+                setShowPreferences(false);
+              }}
+              onSave={handlers.handleSavePreferences}
+              accountPreferences={{
+                currency: accountPreferences?.currency || "USD",
+                measurementSystem:
+                  (accountPreferences?.measurementSystem as
+                    | "Metric"
+                    | "Imperial") || "Imperial",
+              }}
+            />
+          </ErrorBoundary>
+        ) : null}
         <ToastContainer />
+        <DebugModal
+          isVisible={showDebugModal}
+          onClose={() => setShowDebugModal(false)}
+          viewShotRef={viewShotRef}
+        />
       </>
     );
   }
@@ -2098,11 +2391,15 @@ const styles = StyleSheet.create({
   navItem: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 5,
     borderRadius: 8,
   },
   navIconContainer: {
     position: "relative",
+    width: 22,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
   },
   tabBadge: {
     position: "absolute",
@@ -2124,12 +2421,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   navText: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 10,
+    marginTop: 2,
   },
   navTextActive: {
     color: "#eb7825",
-    fontWeight: "500",
+    fontWeight: "600",
   },
   navTextInactive: {
     color: "#9CA3AF",

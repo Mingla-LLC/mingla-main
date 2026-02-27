@@ -10,7 +10,9 @@ import {
   ActivityIndicator,
   Dimensions,
   Image,
+  Image,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../services/supabase";
 import { useFriends } from "../hooks/useFriends";
@@ -36,6 +38,7 @@ export default function AddFriendModal({
   isOpen,
   onClose,
 }: AddFriendModalProps) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<"add" | "sent">("add");
   const [searchInput, setSearchInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +49,7 @@ export default function AddFriendModal({
   const [error, setError] = useState("");
   const [searchCompleted, setSearchCompleted] = useState(false);
   const [userNotFound, setUserNotFound] = useState(false);
+  const [suppressInviteAction, setSuppressInviteAction] = useState(false);
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(
     null
   );
@@ -80,6 +84,7 @@ export default function AddFriendModal({
       setIsSearching(false);
       setSearchCompleted(false);
       setUserNotFound(false);
+      setSuppressInviteAction(false);
       return;
     }
 
@@ -87,6 +92,7 @@ export default function AddFriendModal({
     setError("");
     setSearchCompleted(false);
     setUserNotFound(false);
+    setSuppressInviteAction(false);
 
     // Debounce search by 500ms
     searchTimeoutRef.current = setTimeout(async () => {
@@ -134,9 +140,31 @@ export default function AddFriendModal({
 
         // Check if no results found
         if (filteredResults.length === 0) {
+          let shouldSuppressInvite = false;
+
+          if (searchTerm.length >= 3) {
+            const { data: visibilityData } = await supabase.rpc(
+              "resolve_user_visibility_by_identifier",
+              { p_identifier: searchTerm }
+            );
+
+            const visibility = Array.isArray(visibilityData)
+              ? visibilityData[0]
+              : visibilityData;
+
+            if (
+              visibility?.user_exists &&
+              (visibility?.is_blocked || !visibility?.can_view)
+            ) {
+              shouldSuppressInvite = true;
+            }
+          }
+
+          setSuppressInviteAction(shouldSuppressInvite);
           setUserNotFound(true);
           setSelectedUser(null);
         } else {
+          setSuppressInviteAction(false);
           setUserNotFound(false);
           // If exact match found, auto-select it
           if (filteredResults.length === 1) {
@@ -160,6 +188,7 @@ export default function AddFriendModal({
         setSearchResults([]);
         setSearchCompleted(false);
         setUserNotFound(false);
+        setSuppressInviteAction(false);
       } finally {
         setIsSearching(false);
       }
@@ -263,6 +292,7 @@ export default function AddFriendModal({
     setIsSearching(false);
     setSearchCompleted(false);
     setUserNotFound(false);
+    setSuppressInviteAction(false);
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
@@ -279,38 +309,43 @@ export default function AddFriendModal({
     <Modal
       visible={isOpen}
       transparent={true}
-      animationType="fade"
+      animationType="slide"
       onRequestClose={handleClose}
+      statusBarTranslucent
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
+      <View style={styles.sheetOverlay}>
+        {/* Tap backdrop to close */}
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={handleClose}
+        />
+
+        <View style={[styles.sheetContent, { paddingBottom: insets.bottom }]}>
+          {/* Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <View style={styles.headerLeft}>
-                <View style={styles.headerIcon}>
-                  <Ionicons
-                    name={activeTab === "add" ? "person-add" : "time"}
-                    size={20}
-                    color="white"
-                  />
-                </View>
-                <View>
-                  <Text style={styles.headerTitle}>
-                    {activeTab === "add" ? "Add Friend" : "Sent Requests"}
-                  </Text>
-                  <Text style={styles.headerSubtitle}>
-                    {activeTab === "add"
-                      ? "Send a friend request"
-                      : "Manage pending requests"}
-                  </Text>
-                </View>
+                <Text style={styles.headerTitle}>
+                  {activeTab === "add" ? "Add Friend" : "Sent Requests"}
+                </Text>
+                <Text style={styles.headerSubtitle}>
+                  {activeTab === "add"
+                    ? "Send a friend request"
+                    : "Manage pending requests"}
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={handleClose}
                 style={styles.closeButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close" size={20} color="#6b7280" />
+                <Ionicons name="close" size={22} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
@@ -324,6 +359,9 @@ export default function AddFriendModal({
                   setSelectedUser(null);
                   setRequestSent(false);
                   setError("");
+                  setSearchCompleted(false);
+                  setUserNotFound(false);
+                  setSuppressInviteAction(false);
                 }}
                 style={[styles.tab, activeTab === "add" && styles.tabActive]}
               >
@@ -429,10 +467,10 @@ export default function AddFriendModal({
                     </Text>
                     <Text style={styles.notFoundSubtext}>
                       {searchInput.includes("@")
-                        ? "Invite them to join Mingla and connect with you!"
-                        : "To invite someone who isn't on Mingla, please use their email address."}
+                        ? "Try a different email or check for typos."
+                        : "Try a different username."}
                     </Text>
-                    {searchInput.includes("@") && (
+                    {searchInput.includes("@") && !suppressInviteAction && (
                       <TouchableOpacity
                         onPress={async () => {
                           setIsLoading(true);
@@ -555,14 +593,14 @@ export default function AddFriendModal({
                 {selectedUser && (
                   <View style={styles.searchResult}>
                     <View style={styles.searchResultHeader}>
-                      <View style={styles.searchResultAvatar}>
+                      <View style={styles.selectedUserAvatar}>
                         {selectedUser.avatar_url ? (
                           <Image
                             source={{ uri: selectedUser.avatar_url }}
                             style={styles.searchResultAvatarImage}
                           />
                         ) : (
-                          <Text style={styles.searchResultAvatarText}>
+                          <Text style={styles.selectedUserAvatarText}>
                             {(
                               selectedUser.display_name ||
                               selectedUser.first_name ||
@@ -587,11 +625,6 @@ export default function AddFriendModal({
                         <Text style={styles.searchResultUsername}>
                           @{selectedUser.username}
                         </Text>
-                        {selectedUser.email && (
-                          <Text style={styles.searchResultEmail}>
-                            {selectedUser.email}
-                          </Text>
-                        )}
                       </View>
                       <TouchableOpacity
                         onPress={() => {
@@ -639,22 +672,6 @@ export default function AddFriendModal({
                     )}
                   </View>
                 )}
-
-                {/* Tips */}
-                <View style={styles.tipsContainer}>
-                  <Text style={styles.tipsTitle}>Tips:</Text>
-                  <View style={styles.tipsList}>
-                    <Text style={styles.tipItem}>
-                      • Enter their exact username (e.g., @johndoe)
-                    </Text>
-                    <Text style={styles.tipItem}>
-                      • Or use their email address
-                    </Text>
-                    <Text style={styles.tipItem}>
-                      • Make sure the spelling is correct
-                    </Text>
-                  </View>
-                </View>
               </View>
             ) : (
               <View style={styles.sentTabContent}>
@@ -745,7 +762,8 @@ export default function AddFriendModal({
                           </TouchableOpacity>
                         </View>
                       </View>
-                    ))}
+                    );
+                    })}
                   </View>
                 )}
               </View>
@@ -758,79 +776,91 @@ export default function AddFriendModal({
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    justifyContent: "flex-end",
   },
-  modalContainer: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    width: "100%",
-    maxWidth: 400,
-    height: SCREEN_HEIGHT * 0.8,
-    maxHeight: SCREEN_HEIGHT * 0.8,
+  backdropTouch: {
+    flex: 1,
+  },
+  sheetContent: {
+    height: SHEET_HEIGHT,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 30,
+  },
+  dragHandleContainer: {
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D1D5DB",
   },
   header: {
-    padding: 24,
+    flexDirection: "column",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
+    borderBottomColor: "#F3F4F6",
   },
   headerContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  headerIcon: {
-    width: 40,
-    height: 40,
-    backgroundColor: "#eb7825",
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+    flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
     color: "#111827",
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
   },
   closeButton: {
-    padding: 8,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
   },
   tabsContainer: {
     flexDirection: "row",
-    backgroundColor: "#e9eef9",
-    borderRadius: 12,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 8,
+    padding: 4,
+    gap: 4,
+    marginTop: 12,
   },
   tab: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 6,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 12,
+    borderRadius: 6,
   },
   tabActive: {
     backgroundColor: "#FFFFFF",
@@ -838,10 +868,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
-    elevation: 2,
+    elevation: 1,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
     color: "#6b7280",
   },
@@ -866,18 +896,22 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 24,
+    backgroundColor: "#f5f5f5",
+    padding: 16,
   },
   addTabContent: {
     gap: 24,
   },
   searchSection: {
     gap: 8,
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 12,
   },
   searchLabel: {
     color: "#374151",
     fontWeight: "500",
-    fontSize: 14,
+    fontSize: 13,
   },
   searchInputContainer: {
     position: "relative",
@@ -893,11 +927,11 @@ const styles = StyleSheet.create({
     width: "100%",
     paddingLeft: 40,
     paddingRight: 16,
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    borderRadius: 12,
-    fontSize: 16,
+    borderRadius: 8,
+    fontSize: 15,
     backgroundColor: "white",
   },
   errorContainer: {
@@ -919,10 +953,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 11,
     paddingHorizontal: 16,
     backgroundColor: "#eb7825",
-    borderRadius: 12,
+    borderRadius: 8,
   },
   searchButtonDisabled: {
     backgroundColor: "#d1d5db",
@@ -941,12 +975,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   searchResult: {
-    backgroundColor: "#f9fafb",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    backgroundColor: "white",
     borderRadius: 12,
-    padding: 16,
-    gap: 16,
+    padding: 12,
+    gap: 12,
   },
   searchResultHeader: {
     flexDirection: "row",
@@ -954,12 +986,18 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   searchResultAvatar: {
-    width: 48,
-    height: 48,
+    width: 52,
+    height: 52,
     backgroundColor: "#eb7825",
-    borderRadius: 24,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  searchResultAvatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
   searchResultAvatarText: {
     color: "white",
@@ -973,15 +1011,18 @@ const styles = StyleSheet.create({
   },
   searchResultInfo: {
     flex: 1,
+    gap: 2,
   },
   searchResultName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#111827",
+    letterSpacing: 0.2,
   },
   searchResultUsername: {
-    fontSize: 14,
-    color: "#6b7280",
+    fontSize: 13,
+    color: "#9ca3af",
+    letterSpacing: 0.2,
   },
   searchResultMutual: {
     fontSize: 12,
@@ -1007,10 +1048,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 11,
     paddingHorizontal: 16,
     backgroundColor: "#eb7825",
-    borderRadius: 12,
+    borderRadius: 8,
   },
   sendButtonDisabled: {
     backgroundColor: "#d1d5db",
@@ -1020,28 +1061,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
   },
-  tipsContainer: {
-    backgroundColor: "#fef3e2",
-    borderWidth: 1,
-    borderColor: "#fed7aa",
-    borderRadius: 12,
-    padding: 16,
-  },
-  tipsTitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#eb7825",
-    marginBottom: 8,
-  },
-  tipsList: {
-    gap: 4,
-  },
-  tipItem: {
-    fontSize: 14,
-    color: "#374151",
-  },
+
   sentTabContent: {
-    gap: 16,
+    gap: 12,
   },
   emptyState: {
     alignItems: "center",
@@ -1075,7 +1097,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: "#eb7825",
-    borderRadius: 12,
+    borderRadius: 8,
   },
   emptyStateButtonText: {
     color: "white",
@@ -1086,11 +1108,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   sentRequestItem: {
-    backgroundColor: "#f9fafb",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    backgroundColor: "white",
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
   },
   sentRequestHeader: {
     flexDirection: "row",
@@ -1104,6 +1124,12 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  sentRequestAvatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   sentRequestAvatarText: {
     color: "white",
@@ -1169,9 +1195,11 @@ const styles = StyleSheet.create({
   searchResultItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
+    gap: 12,
   },
   searchResultEmail: {
     fontSize: 12,
@@ -1230,10 +1258,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 11,
     paddingHorizontal: 16,
     backgroundColor: "#eb7825",
-    borderRadius: 12,
+    borderRadius: 8,
   },
   inviteButtonDisabled: {
     backgroundColor: "#d1d5db",

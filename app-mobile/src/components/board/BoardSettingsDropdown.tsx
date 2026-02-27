@@ -61,95 +61,17 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   // Check if current user can manage session (is creator or admin)
   const canManageSession = currentUserId && (sessionCreatorId === currentUserId || isAdmin);
 
-  // Handle exit board with rules for member count and admin promotion
+  // Handle exit board by delegating to parent handler
+  // Parent owns source-of-truth leave logic and post-exit refresh behavior.
   const handleExitBoardWithRules = useCallback(async () => {
-    if (exitingBoard || !sessionId || !currentUserId) return;
+    if (exitingBoard) return;
 
     try {
       setExitingBoard(true);
       onClose();
 
-      // Fetch current participants
-      const { data: participants, error: fetchError } = await supabase
-        .from("session_participants")
-        .select("user_id, is_admin, joined_at")
-        .eq("session_id", sessionId)
-        .eq("has_accepted", true);
-
-      if (fetchError) throw fetchError;
-
-      const currentMemberCount = participants?.length || 0;
-
-      // Rule 1: If 2 or fewer members, delete the board after leaving
-      if (currentMemberCount <= 2) {
-        // Delete the session (this will cascade delete participants)
-        const { error: deleteError } = await supabase
-          .from("collaboration_sessions")
-          .delete()
-          .eq("id", sessionId);
-
-        if (deleteError) throw deleteError;
-
-        Alert.alert(
-          "Board Deleted",
-          "The board has been deleted because it requires at least 2 members to remain active."
-        );
-
-        if (onSessionDeleted) {
-          onSessionDeleted();
-        }
-        return;
-      }
-
-      // Rule 3: If I'm the only admin, promote the oldest remaining member
-      const admins = participants?.filter(p => 
-        p.is_admin || p.user_id === sessionCreatorId
-      ) || [];
-      const isOnlyAdmin = admins.length === 1 && 
-        (admins[0].user_id === currentUserId || sessionCreatorId === currentUserId);
-
-      if (isOnlyAdmin) {
-        // Find the oldest remaining member (excluding current user)
-        const remainingMembers = participants
-          ?.filter(p => p.user_id !== currentUserId)
-          .sort((a, b) => new Date(a.joined_at || 0).getTime() - new Date(b.joined_at || 0).getTime());
-
-        if (remainingMembers && remainingMembers.length > 0) {
-          const oldestMember = remainingMembers[0];
-          
-          // Promote oldest member to admin
-          const { error: promoteError } = await supabase
-            .from("session_participants")
-            .update({ is_admin: true })
-            .eq("session_id", sessionId)
-            .eq("user_id", oldestMember.user_id);
-
-          if (promoteError) {
-            console.warn("Error promoting new admin:", promoteError);
-          }
-        }
-      }
-
-      // Delete the user's invite to allow re-inviting later
-      await supabase
-        .from("collaboration_invites")
-        .delete()
-        .eq("session_id", sessionId)
-        .eq("invited_user_id", currentUserId);
-
-      // Remove current user from session
-      const { error: leaveError } = await supabase
-        .from("session_participants")
-        .delete()
-        .eq("session_id", sessionId)
-        .eq("user_id", currentUserId);
-
-      if (leaveError) throw leaveError;
-
-      Alert.alert("Left Board", "You have successfully left the board.");
-
       if (onExitBoard) {
-        onExitBoard();
+        await Promise.resolve(onExitBoard());
       }
     } catch (error: any) {
       console.error("Error exiting board:", error);
@@ -160,7 +82,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
     } finally {
       setExitingBoard(false);
     }
-  }, [exitingBoard, sessionId, currentUserId, sessionCreatorId, onClose, onExitBoard, onSessionDeleted]);
+  }, [exitingBoard, onClose, onExitBoard]);
 
   // Handle edit session name
   const handleEditSessionName = useCallback(() => {

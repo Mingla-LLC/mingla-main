@@ -42,6 +42,11 @@ export default function FriendSelectionModal({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
@@ -91,9 +96,9 @@ export default function FriendSelectionModal({
                   style={styles.friendItem}
                 >
                   <View style={styles.avatarContainer}>
-                    {friend.avatar ? (
+                    {friend.avatar || friend.avatar_url ? (
                       <ImageWithFallback
-                        source={{ uri: friend.avatar }}
+                        source={{ uri: friend.avatar || friend.avatar_url }}
                         style={styles.avatar}
                       />
                     ) : (
@@ -143,6 +148,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
+  },
+  backdropTouch: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalContainer: {
     backgroundColor: 'white',

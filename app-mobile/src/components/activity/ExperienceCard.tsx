@@ -602,7 +602,7 @@ const ExperienceCard = ({
                 <Text style={styles.socialStatsTitle}>Community Stats</Text>
                 <View style={styles.socialStatsRow}>
                   <View style={styles.socialStatItem}>
-                    <Ionicons name="eye" size={16} color="#6b7280"} />
+                    <Ionicons name="eye" size={16} color="#6b7280" />
                     <Text style={styles.socialStatText}>{experience.socialStats.views} views</Text>
                   </View>
                   <View style={styles.socialStatItem}>

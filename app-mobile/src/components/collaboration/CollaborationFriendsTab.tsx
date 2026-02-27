@@ -11,6 +11,7 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
+  Image,
 } from "react-native";
 
 const ANIMATION_DURATION = 250;
@@ -292,11 +293,10 @@ export default function CollaborationFriendsTab({
             <View style={styles.friendContent}>
               <View style={styles.avatarContainer}>
                 {friend.avatar ? (
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {getInitials(friend.name)}
-                    </Text>
-                  </View>
+                  <Image
+                    source={{ uri: friend.avatar }}
+                    style={styles.avatarImage}
+                  />
                 ) : (
                   <View style={[styles.avatar, { backgroundColor: "#8B5CF6" }]}>
                     <Text style={styles.avatarText}>
@@ -652,10 +652,16 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   avatarText: {
     color: "#FFFFFF",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
   },
   statusDot: {
