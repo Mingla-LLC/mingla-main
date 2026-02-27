@@ -4,12 +4,12 @@
     "slug": "mingla-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/MINGLA Official Logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "scheme": "com.mingla.app.v2",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/MINGLA Official Logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#f8f9fa"
     },
@@ -28,7 +28,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/MINGLA Official Logo.png",
         "backgroundColor": "#f8f9fa"
       },
       "edgeToEdgeEnabled": true,
