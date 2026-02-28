@@ -160,13 +160,16 @@ function getHighlightForTarget(target: string) {
   switch (target) {
     case "preferencesButton": {
       const safeAreaTop = 44;
-      const headerPaddingTop = 8;
-      const buttonLeft = 16;
-      const buttonSize = 60;
-      const pad = 10;
+      const headerPaddingV = 8;
+      const headerHeight = headerPaddingV * 2 + 38; // paddingVertical + button minHeight
+      const buttonLeft = 16; // header paddingHorizontal
+      const buttonSize = 38; // matches minWidth/minHeight of the actual button
+      const pad = 6;
       const s = buttonSize + pad * 2;
+      // Vertically center: safeAreaTop + headerPaddingV + (buttonSize/2) - s/2
+      const btnTop = safeAreaTop + headerPaddingV;
       return {
-        top: safeAreaTop + headerPaddingTop - pad,
+        top: btnTop - pad,
         left: buttonLeft - pad,
         width: s,
         height: s,
@@ -175,12 +178,14 @@ function getHighlightForTarget(target: string) {
     }
     case "sessionPills": {
       const safeAreaTop = 44;
-      const headerHeight = 56;
-      const marginTop = 10;
-      const marginH = 17;
-      const pad = 10;
-      const barTop = safeAreaTop + headerHeight + marginTop;
-      const barHeight = 52; // paddingVertical(10*2) + pill(32)
+      // Header: paddingVertical(8*2) + tallest child (logoContainer 50) + borderBottom(1)
+      const headerHeight = 8 + 50 + 8 + 1;
+      const marginTop = 10; // container marginVertical
+      const marginH = 17; // container marginHorizontal
+      const pad = 6;
+      const barTop = safeAreaTop + headerHeight + marginTop - 4;
+      // Container inner: scrollContent paddingVertical(10*2) + pill height(32)
+      const barHeight = 52;
       return {
         top: barTop - pad,
         left: marginH - pad,
@@ -191,15 +196,16 @@ function getHighlightForTarget(target: string) {
     }
     case "soloButton": {
       const safeAreaTop = 44;
-      const headerHeight = 56;
-      const marginTop = 10;
+      // Header: paddingVertical(8*2) + logoContainer(50) + borderBottom(1)
+      const headerHeight = 8 + 50 + 8 + 1;
+      const marginTop = 10; // container marginVertical
       const containerPadH = 4;
       const scrollPadH = 12;
       const scrollPadV = 10;
       const pillHeight = 32;
-      const pillWidth = 62; // "Solo" text + paddingHorizontal(14*2)
-      const pad = 8;
-      const barTop = safeAreaTop + headerHeight + marginTop;
+      const pillWidth = 60; // "Solo" text (~32px) + paddingHorizontal(14*2)
+      const pad = 6;
+      const barTop = safeAreaTop + headerHeight + marginTop - 4; // same offset as sessionPills
       const pillLeft = 17 + containerPadH + scrollPadH;
       return {
         top: barTop + scrollPadV - pad,
@@ -211,18 +217,19 @@ function getHighlightForTarget(target: string) {
     }
     case "createSessionButton": {
       const safeAreaTop = 44;
-      const headerHeight = 56;
-      const marginTop = 10;
+      // Header: paddingVertical(8*2) + logoContainer(50) + borderBottom(1)
+      const headerHeight = 8 + 50 + 8 + 1;
+      const marginTop = 10; // container marginVertical
       const containerPadH = 4;
       const scrollPadH = 12;
       const scrollPadV = 10;
       const pillHeight = 32;
-      const soloPillWidth = 62;
+      const soloPillWidth = 60; // matches soloButton step
       const gap = 6;
       const createSize = 32; // width & height of + pill
-      const pad = 10;
-      const barTop = safeAreaTop + headerHeight + marginTop;
-      const btnLeft = 17 + containerPadH + scrollPadH + soloPillWidth + gap;
+      const pad = 6;
+      const barTop = safeAreaTop + headerHeight + marginTop - 4; // same offset as sessionPills
+      const btnLeft = 17 + containerPadH + scrollPadH + soloPillWidth + gap - 4;
       return {
         top: barTop + scrollPadV - pad,
         left: btnLeft - pad,
@@ -232,29 +239,63 @@ function getHighlightForTarget(target: string) {
       };
     }
     case "swipeCard": {
-      const cardWidth = SCREEN_WIDTH - 40;
-      const cardHeight = SCREEN_HEIGHT * 0.52;
+      const safeAreaTop = 44;
+      // Header + sessions bar + container padding
+      const headerHeight = 8 + 50 + 8 + 1;
+      const sessionsBarHeight = 10 + 52 + 10; // marginVertical(10) + inner(52) + marginVertical(10)
+      const containerPadV = 8; // SwipeableCards container paddingVertical
+      const cardContainerPad = 12; // cardContainer padding
+      const cardTop = safeAreaTop + headerHeight + sessionsBarHeight + containerPadV + cardContainerPad;
+
+      // Card width: screenWidth * 0.92 container, card is absolute inside with padding 12 on each side
+      const containerWidth = SCREEN_WIDTH * 0.92;
+      const cardWidth = containerWidth - cardContainerPad * 2;
+      const cardLeft = (SCREEN_WIDTH - containerWidth) / 2 + cardContainerPad;
+
+      // Card height: fills remaining space minus bottom padding
+      const bottomPad = containerPadV + cardContainerPad;
+      const cardHeight = SCREEN_HEIGHT - cardTop - bottomPad;
+
+      const pad = 18;
       return {
-        top: SCREEN_HEIGHT - cardHeight - 90,
-        left: 20,
-        width: cardWidth,
-        height: cardHeight,
+        top: cardTop - pad,
+        left: cardLeft - pad,
+        width: cardWidth + pad * 2,
+        height: cardHeight + pad * 2,
         borderRadius: 24,
       };
     }
     case "viewMoreButton": {
-      // "View More" badge sits near the bottom of the card image
-      const badgeWidth = 120;
-      const badgeHeight = 34;
-      const pad = 12;
-      const badgeTop = SCREEN_HEIGHT - 90 - 50 - badgeHeight - 10;
-      const badgeLeft = SCREEN_WIDTH / 2 - badgeWidth / 2 - badgeWidth;
+      // Reuse card geometry from swipeCard
+      const safeAreaTop = 44;
+      const headerHeight = 8 + 50 + 8 + 1;
+      const sessionsBarHeight = 10 + 52 + 10;
+      const containerPadV = 8;
+      const cardContainerPad = 12;
+      const cardTop = safeAreaTop + headerHeight + sessionsBarHeight + containerPadV + cardContainerPad;
+      const containerWidth = SCREEN_WIDTH * 0.92;
+      const cardWidth = containerWidth - cardContainerPad * 2;
+      const cardLeft = (SCREEN_WIDTH - containerWidth) / 2 + cardContainerPad;
+      const bottomPad = containerPadV + cardContainerPad;
+      const cardHeight = SCREEN_HEIGHT - cardTop - bottomPad;
+
+      // Image section is 88% of card height
+      const imageHeight = cardHeight * 0.88;
+      // titleOverlay: paddingBottom 24, viewMoreRow marginTop 8
+      // "View more" badge is near the bottom of the image overlay
+      const badgeWidth = 105; // icon(12) + gap(4) + text + paddingH(12*2)
+      const badgeHeight = 28; // paddingVertical(6*2) + text(~16)
+      // Badge position: bottom of image section, offset by overlay padding
+      const badgeTop = cardTop + imageHeight - 24 - badgeHeight - badgeHeight - 9; // shift up by full badge height + 9
+      const badgeLeft = cardLeft + 20 - 13; // shift left
+
+      const pad = 6;
       return {
         top: badgeTop - pad,
         left: badgeLeft - pad,
         width: badgeWidth + pad * 2,
         height: badgeHeight + pad * 2,
-        borderRadius: 20,
+        borderRadius: 16,
       };
     }
     case "discoverForYou": {
@@ -271,16 +312,22 @@ function getHighlightForTarget(target: string) {
       };
     }
     case "discoverAddPerson": {
-      // Add Person button: 40x40 circle after "For You" pill in the pills row
+      // Add Person button: 40x40 dashed circle after "For You" pill
       const safeAreaTop = 44;
-      const tabsHeight = 56; // For You / Night Out tabs
-      const contentPad = 16;
-      const forYouPillWidth = 72; // "For You" text + paddingHorizontal(12*2)
-      const gap = 12;
+      // Tabs: paddingVertical(12*2) + icon(18) + gap(4) + text(~14) + borderBottom(3) ≈ 51
+      const tabsHeight = 51;
+      const contentPad = 16; // contentContainer padding
+      // tabHeaderScrollView has marginHorizontal: -16, tabHeaderContent has paddingHorizontal: 16
+      // So pills start at x = 16 (net 0 offset from content edge)
+      // "For You" pill: paddingH(12*2) + text(~45) ≈ 69
+      const forYouPillWidth = 69;
+      const gap = 12; // gap between items in tabHeaderContent
+      const btnMarginLeft = 4; // addUserButtonPill marginLeft
       const btnSize = 40;
-      const pad = 10;
-      const btnTop = safeAreaTop + tabsHeight + contentPad + 6;
-      const btnLeft = contentPad + forYouPillWidth + gap + 8;
+      const pad = 6;
+      // Vertical: pills row is at top of content, add button is vertically centered
+      const btnTop = safeAreaTop + tabsHeight + contentPad + btnSize - btnSize / 2 - 2;
+      const btnLeft = contentPad + forYouPillWidth + gap + btnMarginLeft + btnSize / 2 - btnSize / 2 + 8;
       return {
         top: btnTop - pad,
         left: btnLeft - pad,
@@ -404,6 +451,10 @@ export default function CoachMarkTour({
   const handScale = useRef(new Animated.Value(1)).current;
   const handOpacity = useRef(new Animated.Value(1)).current;
 
+  // Worm dot indicator
+  const wormLeft = useRef(new Animated.Value(0)).current;
+  const wormWidth = useRef(new Animated.Value(8)).current;
+
   // ─── Enter / transition ──────────────────────────────────────────────
   useEffect(() => {
     if (!visible) return;
@@ -414,6 +465,8 @@ export default function CoachMarkTour({
     cardOpacity.setValue(0);
     shimmerAnim.setValue(-1);
     arrowBounce.setValue(0);
+    wormLeft.setValue(0);
+    wormWidth.setValue(8);
 
     // Notify parent of first step
     onStepChange?.(0, TOUR_STEPS[0].target);
@@ -670,7 +723,69 @@ export default function CoachMarkTour({
   }, [visible]);
 
   // ─── Navigation ──────────────────────────────────────────────────────
+  // ─── Worm dot animation ────────────────────────────────────────────
+  const WORM_DOT_SIZE = 8;
+  const WORM_DOT_GAP = 5;
+  const WORM_DOT_STEP = WORM_DOT_SIZE + WORM_DOT_GAP; // 13
+
+  const animateWorm = (fromIndex: number, toIndex: number) => {
+    const isForward = toIndex > fromIndex;
+
+    if (isForward) {
+      // Phase 1: Stretch leading edge to next dot position
+      Animated.timing(wormWidth, {
+        toValue: (toIndex - fromIndex) * WORM_DOT_STEP + WORM_DOT_SIZE,
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start(() => {
+        // Phase 2: Contract trailing edge to new position
+        Animated.parallel([
+          Animated.timing(wormLeft, {
+            toValue: toIndex * WORM_DOT_STEP,
+            duration: 200,
+            easing: Easing.inOut(Easing.cubic),
+            useNativeDriver: false,
+          }),
+          Animated.timing(wormWidth, {
+            toValue: WORM_DOT_SIZE,
+            duration: 200,
+            easing: Easing.inOut(Easing.cubic),
+            useNativeDriver: false,
+          }),
+        ]).start();
+      });
+    } else {
+      // Moving backward: stretch leading edge left first
+      Animated.parallel([
+        Animated.timing(wormLeft, {
+          toValue: toIndex * WORM_DOT_STEP,
+          duration: 200,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(wormWidth, {
+          toValue: (fromIndex - toIndex) * WORM_DOT_STEP + WORM_DOT_SIZE,
+          duration: 200,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+      ]).start(() => {
+        // Contract from right edge
+        Animated.timing(wormWidth, {
+          toValue: WORM_DOT_SIZE,
+          duration: 200,
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: false,
+        }).start();
+      });
+    }
+  };
+
   const animateTransition = (nextIndex: number) => {
+    // Animate worm dot indicator
+    animateWorm(currentIndex, nextIndex);
+
     // Slide card out
     Animated.parallel([
       Animated.timing(cardOpacity, {
@@ -956,7 +1071,7 @@ export default function CoachMarkTour({
         {/* ── Swipe card overlays (Pass / Like / Hand) ────────────── */}
         {hasHighlight && step.target === "swipeCard" && (
           <>
-            {/* Pass label + arrow (left side) */}
+            {/* Pass label (left side) */}
             <Animated.View
               style={[
                 styles.swipeLabel,
@@ -964,17 +1079,17 @@ export default function CoachMarkTour({
                   top: hl.top + hl.height / 2 - 20,
                   left: hl.left + 14,
                 },
-                { opacity: overlayAnim },
+                {
+                  opacity: overlayAnim,
+                  transform: [{ translateX: passArrowBounce }],
+                },
               ]}
               pointerEvents="none"
             >
-              <Animated.View style={{ transform: [{ translateX: passArrowBounce }] }}>
-                <Ionicons name="arrow-back" size={18} color="#eb7825" />
-              </Animated.View>
               <Text style={styles.swipeLabelText}>Pass</Text>
             </Animated.View>
 
-            {/* Like label + arrow (right side) */}
+            {/* Like label (right side) */}
             <Animated.View
               style={[
                 styles.swipeLabel,
@@ -982,14 +1097,14 @@ export default function CoachMarkTour({
                   top: hl.top + hl.height / 2 - 20,
                   right: SCREEN_WIDTH - (hl.left + hl.width) + 14,
                 },
-                { opacity: overlayAnim },
+                {
+                  opacity: overlayAnim,
+                  transform: [{ translateX: likeArrowBounce }],
+                },
               ]}
               pointerEvents="none"
             >
               <Text style={styles.swipeLabelText}>Like</Text>
-              <Animated.View style={{ transform: [{ translateX: likeArrowBounce }] }}>
-                <Ionicons name="arrow-forward" size={18} color="#eb7825" />
-              </Animated.View>
             </Animated.View>
 
             {/* Center hand icon */}
@@ -1029,7 +1144,7 @@ export default function CoachMarkTour({
           <Text style={styles.title}>{step.title}</Text>
           <Text style={styles.description}>{step.description}</Text>
 
-          {/* ── Progress dots ─────────────────────────────────────── */}
+          {/* ── Progress dots with worm animation ─────────────────── */}
           <View style={styles.progressRow}>
             <View style={styles.dots}>
               {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
@@ -1037,10 +1152,20 @@ export default function CoachMarkTour({
                   key={i}
                   style={[
                     styles.dot,
-                    i <= currentIndex ? styles.dotActive : styles.dotInactive,
+                    i < currentIndex ? styles.dotActive : styles.dotInactive,
                   ]}
                 />
               ))}
+              {/* Animated worm indicator */}
+              <Animated.View
+                style={[
+                  styles.wormDot,
+                  {
+                    left: wormLeft,
+                    width: wormWidth,
+                  },
+                ]}
+              />
             </View>
             <Text style={styles.stepCounter}>
               ✨ Step {currentIndex + 1} of {TOTAL_STEPS}
@@ -1263,6 +1388,13 @@ const styles = StyleSheet.create({
   },
   dotInactive: {
     backgroundColor: "#d1d5db",
+  },
+  wormDot: {
+    position: "absolute",
+    top: 0,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#eb7825",
   },
   stepCounter: {
     fontSize: 13,
