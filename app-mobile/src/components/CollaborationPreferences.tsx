@@ -63,24 +63,20 @@ const budgetPresetsUSD = [
 
 // Categories
 const categories = [
-  { id: "Stroll", label: "Take a Stroll", icon: "eye-outline" },
-  { id: "Sip & Chill", label: "Sip & Chill", icon: "cafe-outline" },
-  { id: "Casual Eats", label: "Casual Eats", icon: "restaurant-outline" },
-  { id: "screenRelax", label: "Screen & Relax", icon: "desktop-outline" },
+  { id: "nature", label: "Nature", icon: "leaf-outline" },
+  { id: "first_meet", label: "First Meet", icon: "chatbubbles-outline" },
+  { id: "picnic", label: "Picnic", icon: "basket-outline" },
+  { id: "drink", label: "Drink", icon: "wine-outline" },
+  { id: "casual_eats", label: "Casual Eats", icon: "fast-food-outline" },
+  { id: "fine_dining", label: "Fine Dining", icon: "restaurant-outline" },
+  { id: "watch", label: "Watch", icon: "film-outline" },
   {
-    id: "Creative & Hands-On",
-    label: "Creative & Hands-On",
+    id: "creative_arts",
+    label: "Creative & Arts",
     icon: "color-palette-outline",
   },
-  { id: "Picnics", label: "Picnics", icon: "basket-outline" },
-  { id: "Play & Move", label: "Play & Move", icon: "game-controller-outline" },
-  {
-    id: "Dining Experiences",
-    label: "Dining Experiences",
-    icon: "restaurant-outline",
-  },
-  { id: "Wellness Dates", label: "Wellness Dates", icon: "leaf-outline" },
-  { id: "Freestyle", label: "Freestyle", icon: "sparkles-outline" },
+  { id: "play", label: "Play", icon: "game-controller-outline" },
+  { id: "wellness", label: "Wellness", icon: "body-outline" },
 ];
 
 // Travel modes
@@ -113,25 +109,25 @@ type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
 // Compatibility matrix: maps intent IDs to allowed category IDs
 // null means all categories are allowed
 const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
+  "solo-adventure": null, // All categories
   "first-dates": [
-    "Stroll",
-    "Sip & Chill",
-    "Picnics",
-    "screenRelax",
-    "Creative & Hands-On",
-    "Play & Move",
-    "Dining Experiences",
+    "nature",
+    "first_meet",
+    "drink",
+    "watch",
+    "creative_arts",
+    "picnic",
   ],
-  romantic: ["Sip & Chill", "Picnics", "Dining Experiences", "Wellness Dates"],
+  romantic: ["first_meet", "drink", "picnic", "fine_dining", "wellness", "nature"],
   friendly: null, // All categories
   "group-fun": [
-    "Play & Move",
-    "Creative & Hands-On",
-    "Casual Eats",
-    "screenRelax",
-    "Freestyle",
+    "play",
+    "creative_arts",
+    "casual_eats",
+    "watch",
+    "drink",
   ],
-  business: ["Stroll", "Sip & Chill", "Dining Experiences"],
+  business: ["first_meet", "drink", "fine_dining"],
 };
 
 // Get allowed category IDs based on selected intents
@@ -683,10 +679,10 @@ export default function CollaborationPreferences({
             </View>
           </View>
 
-          {/* Budget per Person Section - Hide when only "Take a Stroll" is selected */}
+          {/* Budget per Person Section - Hide when only "Nature" is selected */}
           {!(
             selectedCategories.length === 1 &&
-            selectedCategories[0] === "Stroll"
+            selectedCategories[0] === "nature"
           ) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Budget per Person</Text>

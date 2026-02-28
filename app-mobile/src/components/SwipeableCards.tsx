@@ -15,7 +15,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { formatCurrency, formatDistance, parseAndFormatDistance } from "./utils/formatters";
+import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange } from "./utils/formatters";
 import {
   ExperiencesService,
   Experience,
@@ -1159,7 +1159,7 @@ export default function SwipeableCards({
                     <View style={styles.titleOverlay}>
                       <Text style={styles.cardTitle}>{nextCard.title}</Text>
 
-                      {/* Info badges: distance, rating, category */}
+                      {/* Info badges: distance, rating, price, category */}
                       <View style={styles.detailsBadges}>
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
@@ -1171,6 +1171,12 @@ export default function SwipeableCards({
                           <Ionicons name="star" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {nextCard.rating.toFixed(1)}
+                          </Text>
+                        </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="pricetag" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {formatPriceRange(nextCard.priceRange, accountPreferences?.currency)}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
@@ -1281,7 +1287,7 @@ export default function SwipeableCards({
                 ]}>
                   <Text style={styles.cardTitle}>{currentRec.title}</Text>
 
-                  {/* Info badges: distance, rating, category */}
+                  {/* Info badges: distance, rating, price, category */}
                   <View style={styles.detailsBadges}>
                     <View style={styles.detailBadge}>
                       <Ionicons name="location" size={12} color="white" />
@@ -1293,6 +1299,12 @@ export default function SwipeableCards({
                       <Ionicons name="star" size={12} color="white" />
                       <Text style={styles.detailBadgeText}>
                         {currentRec.rating.toFixed(1)}
+                      </Text>
+                    </View>
+                    <View style={styles.detailBadge}>
+                      <Ionicons name="pricetag" size={12} color="white" />
+                      <Text style={styles.detailBadgeText}>
+                        {formatPriceRange(currentRec.priceRange, accountPreferences?.currency)}
                       </Text>
                     </View>
                     <View style={styles.detailBadge}>

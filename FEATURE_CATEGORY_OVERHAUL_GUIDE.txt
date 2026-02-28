@@ -1,0 +1,1139 @@
+================================================================================
+IMPLEMENTATION GUIDE: Category System Overhaul (v2)
+Branch: Seth-Features
+Date: 2026-02-28
+================================================================================
+
+READ THIS FIRST
+---------------
+You are replacing the old 9-category system (Take a Stroll, Sip & Chill, Casual
+Eats, Screen & Relax, Creative & Hands-On, Picnics, Play & Move, Dining
+Experiences, Wellness Dates, Freestyle) with a new 10-category system:
+
+  1. Nature          (slug: nature)
+  2. First Meet      (slug: first_meet)
+  3. Picnic          (slug: picnic)
+  4. Drink           (slug: drink)
+  5. Casual Eats     (slug: casual_eats)
+  6. Fine Dining     (slug: fine_dining)
+  7. Watch           (slug: watch)
+  8. Creative & Arts (slug: creative_arts)
+  9. Play            (slug: play)
+ 10. Wellness        (slug: wellness)
+
+This change touches 7 mobile source files, 3–4 edge functions, the DB schema
+default, and requires a migration SQL file. Work through the steps in order.
+Do NOT skip ahead — later steps depend on earlier ones being correct.
+
+Do NOT run the DB migration until you have finished all code changes, deployed
+the updated edge functions, and confirmed the app compiles without errors.
+
+================================================================================
+STEP 1 — Rewrite app-mobile/src/constants/categories.ts
+================================================================================
+
+File: app-mobile/src/constants/categories.ts
+
+The Category interface at the top of this file stays UNCHANGED. Only the
+`categories` array (line 41 onward) changes. Delete every existing Category
+object and replace with the 10 below. Keep all utility functions at the bottom
+of the file unchanged (getCategoryBySlug, areCategoriesCompatible, etc.).
+
+Paste in this exact array:
+
+---------- BEGIN categories array replacement ----------
+
+export const categories: Category[] = [
+  {
+    slug: 'nature',
+    name: 'Nature',
+    icon: '🌿',
+    description: 'Outdoor spaces for walks, scenery, and fresh air',
+    detailedDescription: 'Parks, beaches, botanical gardens, hiking trails, zoos, and wildlife parks. Best for calm, scenic, outdoor experiences with space to breathe and explore.',
+    expectedActivities: [
+      'Parks, botanical gardens, nature reserves',
+      'Beaches, hiking trails, national parks',
+      'Zoos, wildlife parks, state parks'
+    ],
+    pairedExperiences: ['Ice cream stop', 'Food truck nearby', 'Picnic spot'],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: [
+          'park', 'botanical_garden', 'hiking_area', 'national_park',
+          'state_park', 'beach', 'zoo', 'wildlife_park'
+        ],
+        attributes: ['outdoor', 'scenic', 'nature'],
+        excludedAttributes: ['bar', 'night_club', 'casino', 'movie_theater'],
+      },
+      eventbrite: {
+        eventTypes: ['outdoor', 'nature', 'hiking'],
+        tags: ['outdoor', 'nature', 'parks'],
+      },
+    },
+    logic: {
+      hardFilter: 'outdoor venues only',
+      hierarchy: {
+        broad: 'Outdoor',
+        niche: ['parks', 'beaches', 'botanical gardens', 'hiking', 'wildlife'],
+      },
+      fallbackBehavior: 'Widen radius if no parks found nearby',
+    },
+    ux: {
+      activeColor: '#10B981',
+      subcategories: ['Parks', 'Beaches', 'Hiking', 'Wildlife', 'Gardens'],
+      contextualPreview: 'Find parks, beaches, and outdoor spots near you',
+    },
+    compatibleWith: ['picnic', 'wellness', 'creative_arts'],
+    incompatibleWith: ['watch', 'fine_dining', 'play'],
+    activityType: 'mobile',
+    duration: 'medium',
+  },
+  {
+    slug: 'first_meet',
+    name: 'First Meet',
+    icon: '🤝',
+    description: 'Low-pressure spots perfect for a first meeting or casual intro',
+    detailedDescription: 'Bookstores, coffee shops, bars, wine bars, tea houses, pubs, and planetariums. Relaxed venues that are easy to navigate and great for conversation.',
+    expectedActivities: [
+      'Coffee shops and tea houses',
+      'Bookstores and casual bars',
+      'Planetariums and low-key pubs'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: [
+          'bookstore', 'bar', 'pub', 'wine_bar', 'tea_house', 'coffee_shop', 'planetarium'
+        ],
+        attributes: ['casual', 'conversational', 'low-pressure'],
+        excludedAttributes: ['amusement_park', 'water_park', 'spa', 'bowling_alley'],
+      },
+      eventbrite: {
+        eventTypes: ['social', 'networking'],
+        tags: ['coffee', 'drinks', 'casual'],
+      },
+    },
+    logic: {
+      hardFilter: 'social, conversational venues only',
+      hierarchy: {
+        broad: 'Social',
+        niche: ['coffee shops', 'bookstores', 'wine bars', 'pubs'],
+      },
+      fallbackBehavior: 'Default to coffee shops if no bookstores nearby',
+    },
+    ux: {
+      activeColor: '#6366F1',
+      subcategories: ['Coffee', 'Books', 'Wine Bars', 'Pubs', 'Tea'],
+      contextualPreview: 'Chill spots for a first meet — coffee, books, and good vibes',
+    },
+    compatibleWith: ['drink', 'watch', 'creative_arts'],
+    incompatibleWith: ['wellness', 'picnic'],
+    activityType: 'stationary',
+    duration: 'medium',
+  },
+  {
+    slug: 'picnic',
+    name: 'Picnic',
+    icon: '🧺',
+    description: 'Outdoor picnic grounds, parks, and open green spaces',
+    detailedDescription: 'Dedicated picnic areas, parks with open lawns, beaches, and botanical gardens ideal for a bring-your-own-food outdoor experience.',
+    expectedActivities: [
+      'Picnic grounds and designated picnic areas',
+      'Open parks and lawns',
+      'Beaches and botanical gardens'
+    ],
+    pairedExperiences: ['Nearby deli or grocery for supplies', 'Food truck'],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['picnic_ground', 'park', 'beach', 'botanical_garden'],
+        attributes: ['outdoor', 'open space', 'family-friendly'],
+        excludedAttributes: ['dog_park', 'amusement_park', 'bar', 'night_club', 'casino'],
+      },
+      eventbrite: {
+        eventTypes: ['outdoor', 'picnic'],
+        tags: ['picnic', 'outdoor', 'parks'],
+      },
+    },
+    logic: {
+      hardFilter: 'outdoor open-space venues only',
+      hierarchy: {
+        broad: 'Outdoor',
+        niche: ['picnic grounds', 'parks', 'beaches', 'gardens'],
+      },
+      fallbackBehavior: 'Fall back to nearest open park if no dedicated picnic ground found',
+    },
+    ux: {
+      activeColor: '#84CC16',
+      subcategories: ['Picnic Grounds', 'Parks', 'Beaches', 'Gardens'],
+      contextualPreview: 'Open-air spots with room to spread out and relax',
+    },
+    compatibleWith: ['nature', 'drink', 'casual_eats'],
+    incompatibleWith: ['fine_dining', 'watch', 'wellness'],
+    activityType: 'mixed',
+    duration: 'medium',
+  },
+  {
+    slug: 'drink',
+    name: 'Drink',
+    icon: '🍹',
+    description: 'Bars, pubs, wine bars, coffee shops, and tea houses',
+    detailedDescription: 'Any venue centred around drinks — cocktail bars, pubs, wine bars, coffee shops, and tea houses. Good for casual hangs, first meets, or pre-dinner drinks.',
+    expectedActivities: [
+      'Cocktail bars and pubs',
+      'Wine bars and tea houses',
+      'Coffee shops and juice bars'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['bar', 'pub', 'wine_bar', 'tea_house', 'coffee_shop'],
+        attributes: ['drinks', 'social', 'casual'],
+        excludedAttributes: ['fine_dining_restaurant', 'spa', 'amusement_park'],
+      },
+      eventbrite: {
+        eventTypes: ['social', 'drinks'],
+        tags: ['bar', 'drinks', 'wine', 'coffee'],
+      },
+    },
+    logic: {
+      hardFilter: 'drink-focused venues only',
+      hierarchy: {
+        broad: 'Social Drinks',
+        niche: ['bars', 'pubs', 'wine bars', 'coffee', 'tea'],
+      },
+      fallbackBehavior: 'Default to coffee shop if no bars nearby',
+    },
+    ux: {
+      activeColor: '#F59E0B',
+      subcategories: ['Bars', 'Wine Bars', 'Pubs', 'Coffee', 'Tea'],
+      contextualPreview: 'Drinks spots — from espresso to cocktails',
+    },
+    compatibleWith: ['first_meet', 'casual_eats', 'fine_dining', 'watch', 'play', 'creative_arts', 'picnic'],
+    incompatibleWith: ['wellness', 'nature'],
+    activityType: 'stationary',
+    duration: 'short',
+  },
+  {
+    slug: 'casual_eats',
+    name: 'Casual Eats',
+    icon: '🍔',
+    description: 'Relaxed restaurants, diners, and food spots for an easy meal',
+    detailedDescription: 'Everything from diners and fast food to ramen, pizza, sushi, and global cuisine at a relaxed price point. No dress codes, no reservations required.',
+    expectedActivities: [
+      'Diners, fast food, and food courts',
+      'Pizza, ramen, sushi, and burgers',
+      'International cuisine at casual price points'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: [
+          'buffet_restaurant', 'brunch_restaurant', 'diner', 'fast_food_restaurant',
+          'food_court', 'hamburger_restaurant', 'pizza_restaurant', 'ramen_restaurant',
+          'sandwich_shop', 'sushi_restaurant', 'afghani_restaurant', 'african_restaurant',
+          'american_restaurant', 'asian_restaurant', 'barbecue_restaurant',
+          'brazilian_restaurant', 'breakfast_restaurant', 'indian_restaurant',
+          'indonesian_restaurant', 'japanese_restaurant', 'korean_restaurant',
+          'lebanese_restaurant', 'mediterranean_restaurant', 'mexican_restaurant',
+          'middle_eastern_restaurant', 'seafood_restaurant', 'spanish_restaurant',
+          'thai_restaurant', 'turkish_restaurant', 'vegan_restaurant',
+          'vegetarian_restaurant', 'vietnamese_restaurant', 'chinese_restaurant'
+        ],
+        attributes: ['casual', 'affordable', 'restaurant'],
+        excludedAttributes: ['fine_dining_restaurant', 'bar', 'night_club', 'spa'],
+      },
+      eventbrite: {
+        eventTypes: ['food', 'dining'],
+        tags: ['casual dining', 'restaurant', 'food'],
+      },
+    },
+    logic: {
+      hardFilter: 'casual-price restaurants only',
+      hierarchy: {
+        broad: 'Food',
+        niche: ['diners', 'fast food', 'international cuisine', 'brunch'],
+      },
+      fallbackBehavior: 'Broaden to any restaurant type if specific types not found',
+    },
+    ux: {
+      activeColor: '#F97316',
+      subcategories: ['Burgers', 'Pizza', 'Asian', 'Brunch', 'International'],
+      contextualPreview: 'Good food, no fuss — diners, ramen, pizza, and more',
+    },
+    compatibleWith: ['drink', 'watch', 'play', 'picnic'],
+    incompatibleWith: ['wellness', 'fine_dining'],
+    activityType: 'stationary',
+    duration: 'short',
+  },
+  {
+    slug: 'fine_dining',
+    name: 'Fine Dining',
+    icon: '🍽️',
+    description: 'Upscale restaurants for a special occasion meal',
+    detailedDescription: 'Fine dining restaurants, steakhouses, and upscale cuisine — French, Italian, Greek, and more. Best for special occasions, anniversaries, or impressing someone.',
+    expectedActivities: [
+      'Fine dining restaurants and steakhouses',
+      'French, Italian, and Greek cuisine',
+      'Chef-driven tasting menus'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: [
+          'fine_dining_restaurant', 'steak_house', 'french_restaurant',
+          'greek_restaurant', 'italian_restaurant'
+        ],
+        attributes: ['upscale', 'fine dining', 'reservation'],
+        excludedAttributes: ['fast_food_restaurant', 'food_court', 'bar', 'bowling_alley', 'amusement_park'],
+      },
+      eventbrite: {
+        eventTypes: ['food', 'dining'],
+        tags: ['fine dining', 'upscale', 'gourmet'],
+      },
+    },
+    logic: {
+      hardFilter: 'upscale restaurant venues only',
+      hierarchy: {
+        broad: 'Dining',
+        niche: ['fine dining', 'steakhouse', 'French', 'Italian', 'Greek'],
+      },
+      fallbackBehavior: 'Widen to any fine_dining_restaurant in a larger radius',
+    },
+    ux: {
+      activeColor: '#7C3AED',
+      subcategories: ['Steakhouse', 'French', 'Italian', 'Greek', 'Tasting Menu'],
+      contextualPreview: 'Elevated dining — for nights worth dressing up for',
+    },
+    compatibleWith: ['drink', 'watch'],
+    incompatibleWith: ['casual_eats', 'picnic', 'play', 'nature'],
+    activityType: 'stationary',
+    duration: 'long',
+  },
+  {
+    slug: 'watch',
+    name: 'Watch',
+    icon: '🎬',
+    description: 'Movie theaters and comedy clubs for a great show',
+    detailedDescription: 'Movie theaters (all formats) and comedy clubs. Perfect when you want to sit back, enjoy a show, and have something to talk about after.',
+    expectedActivities: [
+      'Movie theaters and cinemas',
+      'Comedy clubs and stand-up shows'
+    ],
+    pairedExperiences: ['Pre-show drinks at nearby bar', 'Post-show dinner'],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['movie_theater', 'comedy_club'],
+        companionAnchors: ['bar', 'restaurant'],
+        attributes: ['entertainment', 'indoor', 'show'],
+        excludedAttributes: ['spa', 'botanical_garden', 'park', 'restaurant'],
+      },
+      eventbrite: {
+        eventTypes: ['film', 'comedy'],
+        tags: ['movies', 'comedy', 'show'],
+      },
+    },
+    logic: {
+      hardFilter: 'entertainment venues with scheduled shows only',
+      hierarchy: {
+        broad: 'Entertainment',
+        niche: ['cinema', 'comedy club'],
+      },
+      fallbackBehavior: 'Fall back to movie theaters if no comedy clubs found',
+    },
+    ux: {
+      activeColor: '#3B82F6',
+      subcategories: ['Movies', 'Comedy'],
+      contextualPreview: 'Catch a film or laugh the night away',
+    },
+    compatibleWith: ['drink', 'casual_eats', 'fine_dining', 'first_meet'],
+    incompatibleWith: ['nature', 'picnic', 'wellness'],
+    activityType: 'stationary',
+    duration: 'medium',
+  },
+  {
+    slug: 'creative_arts',
+    name: 'Creative & Arts',
+    icon: '🎨',
+    description: 'Art galleries, museums, planetariums, karaoke, and creative studios',
+    detailedDescription: 'Galleries, museums, planetariums, karaoke bars, and coffee roasteries. Also includes specialty workshops like pottery, sip-and-paint, cooking classes, and more — though these require text search.',
+    expectedActivities: [
+      'Art galleries and museums',
+      'Planetariums and science centers',
+      'Karaoke and coffee roasteries',
+      'Pottery, sip-and-paint, cooking classes (text search)'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['art_gallery', 'museum', 'planetarium', 'karaoke', 'coffee_roastery'],
+        attributes: ['creative', 'arts', 'culture'],
+        excludedAttributes: ['fast_food_restaurant', 'bar', 'bowling_alley', 'spa'],
+      },
+      eventbrite: {
+        eventTypes: ['arts', 'culture', 'class'],
+        tags: ['art', 'museum', 'creative', 'workshop'],
+      },
+    },
+    logic: {
+      hardFilter: 'creative and cultural venues only',
+      hierarchy: {
+        broad: 'Arts & Culture',
+        niche: ['galleries', 'museums', 'karaoke', 'workshops', 'planetarium'],
+      },
+      fallbackBehavior: 'Fall back to art_gallery or museum if specialty venues not found',
+    },
+    ux: {
+      activeColor: '#EC4899',
+      subcategories: ['Galleries', 'Museums', 'Karaoke', 'Workshops', 'Planetarium'],
+      contextualPreview: 'Get creative — art, culture, karaoke, and hands-on fun',
+    },
+    compatibleWith: ['drink', 'first_meet', 'nature', 'play'],
+    incompatibleWith: ['wellness', 'fine_dining'],
+    activityType: 'mixed',
+    duration: 'medium',
+  },
+  {
+    slug: 'play',
+    name: 'Play',
+    icon: '🎯',
+    description: 'Active fun — arcades, escape rooms, bowling, and more',
+    detailedDescription: 'Bowling alleys, amusement parks, water parks, arcades, karaoke, casinos, trampoline parks, mini golf, ice skating, skate parks, and escape rooms. High-energy experiences that get you moving.',
+    expectedActivities: [
+      'Bowling alleys, arcades, and escape rooms',
+      'Amusement parks, water parks, trampoline parks',
+      'Mini golf, ice skating, skate parks'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: [
+          'bowling_alley', 'amusement_park', 'water_park', 'video_arcade',
+          'karaoke', 'casino', 'trampoline_park', 'mini_golf_course',
+          'ice_skating_rink', 'skate_park', 'escape_room', 'adventure_park'
+        ],
+        attributes: ['entertainment', 'active', 'fun'],
+        excludedAttributes: ['spa', 'sauna', 'botanical_garden', 'fine_dining_restaurant'],
+      },
+      eventbrite: {
+        eventTypes: ['sports', 'recreation', 'entertainment'],
+        tags: ['bowling', 'arcade', 'escape room', 'fun'],
+      },
+    },
+    logic: {
+      hardFilter: 'active entertainment venues only',
+      hierarchy: {
+        broad: 'Entertainment',
+        niche: ['arcades', 'bowling', 'escape rooms', 'theme parks', 'skating'],
+      },
+      fallbackBehavior: 'Fall back to bowling_alley or video_arcade if specialty venues not found',
+    },
+    ux: {
+      activeColor: '#EF4444',
+      subcategories: ['Arcade', 'Bowling', 'Escape Room', 'Theme Park', 'Skating'],
+      contextualPreview: 'High-energy fun — games, thrills, and good times',
+    },
+    compatibleWith: ['drink', 'casual_eats', 'creative_arts'],
+    incompatibleWith: ['wellness', 'fine_dining', 'nature'],
+    activityType: 'mobile',
+    duration: 'medium',
+  },
+  {
+    slug: 'wellness',
+    name: 'Wellness',
+    icon: '🧘',
+    description: 'Spas, saunas, and hot springs for rest and rejuvenation',
+    detailedDescription: 'Spas, saunas, and hot springs. A calm, restorative category for when rest is the goal. Future support: Turkish baths, float tanks, cold plunge facilities.',
+    expectedActivities: [
+      'Spas and full-service wellness centers',
+      'Saunas and steam rooms',
+      'Hot springs and thermal baths'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['spa', 'sauna', 'hot_spring'],
+        attributes: ['wellness', 'relaxation', 'spa'],
+        excludedAttributes: ['bar', 'night_club', 'casino', 'bowling_alley', 'amusement_park'],
+      },
+      eventbrite: {
+        eventTypes: ['wellness', 'health'],
+        tags: ['spa', 'wellness', 'relaxation'],
+      },
+    },
+    logic: {
+      hardFilter: 'wellness and relaxation venues only',
+      hierarchy: {
+        broad: 'Wellness',
+        niche: ['spas', 'saunas', 'hot springs'],
+      },
+      fallbackBehavior: 'Fall back to nearest spa in a wider radius',
+    },
+    ux: {
+      activeColor: '#14B8A6',
+      subcategories: ['Spas', 'Saunas', 'Hot Springs'],
+      contextualPreview: 'Rest, recharge, and unwind — spas, saunas, and more',
+    },
+    compatibleWith: ['nature'],
+    incompatibleWith: ['play', 'drink', 'watch', 'casual_eats', 'fine_dining'],
+    activityType: 'stationary',
+    duration: 'long',
+  },
+];
+
+---------- END categories array replacement ----------
+
+After the array, keep all existing utility functions unchanged:
+  getCategoryBySlug, areCategoriesCompatible, getAvailableCategories,
+  getIncompatibleCategories, getCompatibleCategories,
+  getCategoryExperienceTypeCombinations
+
+HOW TO TEST THIS STEP:
+Run: npx tsc --noEmit
+Should produce zero errors from this file.
+
+================================================================================
+STEP 2 — Update app-mobile/src/utils/categoryUtils.ts
+================================================================================
+
+File: app-mobile/src/utils/categoryUtils.ts
+
+This file has three functions that all use hardcoded lookup maps. Replace each
+map entirely.
+
+--- 2a. getReadableCategoryName() ---
+
+Replace the categoryMap inside this function with:
+
+  const categoryMap: Record<string, string> = {
+    // Full translation keys → new category names
+    'category.screen_nature':    'Nature',
+    'category.screen_drink':     'Drink',
+    'category.screen_relax':     'Watch',
+    'category.screen_creative':  'Creative & Arts',
+    'category.screen_dining':    'Fine Dining',
+    'category.screen_wellness':  'Wellness',
+    'category.screen_play':      'Play',
+    'category.screen_eat':       'Casual Eats',
+    'category.screen_sip':       'Drink',
+    'category.screen_stroll':    'Nature',
+    // Short keys (without category. prefix)
+    'screen_nature':    'Nature',
+    'screen_drink':     'Drink',
+    'screen_relax':     'Watch',
+    'screen_creative':  'Creative & Arts',
+    'screen_dining':    'Fine Dining',
+    'screen_wellness':  'Wellness',
+    'screen_play':      'Play',
+    'screen_eat':       'Casual Eats',
+    'screen_sip':       'Drink',
+    'screen_stroll':    'Nature',
+    // Direct slug lookups
+    'nature':          'Nature',
+    'first_meet':      'First Meet',
+    'picnic':          'Picnic',
+    'drink':           'Drink',
+    'casual_eats':     'Casual Eats',
+    'fine_dining':     'Fine Dining',
+    'watch':           'Watch',
+    'creative_arts':   'Creative & Arts',
+    'play':            'Play',
+    'wellness':        'Wellness',
+    // Legacy slug fallbacks (so old stored values still display gracefully)
+    'stroll':          'Nature',
+    'sip':             'Drink',
+    'dining':          'Fine Dining',
+    'creative':        'Creative & Arts',
+    'play_move':       'Play',
+    'screenRelax':     'Watch',
+  };
+
+--- 2b. getCategorySlug() ---
+
+Replace the nameToSlugMap inside this function with:
+
+  const nameToSlugMap: Record<string, string> = {
+    'Nature':          'nature',
+    'First Meet':      'first_meet',
+    'Picnic':          'picnic',
+    'Drink':           'drink',
+    'Casual Eats':     'casual_eats',
+    'Fine Dining':     'fine_dining',
+    'Watch':           'watch',
+    'Creative & Arts': 'creative_arts',
+    'Play':            'play',
+    'Wellness':        'wellness',
+    // Legacy display names (for safety)
+    'Take a Stroll':        'nature',
+    'Sip & Chill':          'drink',
+    'Screen & Relax':       'watch',
+    'Creative & Hands-On':  'creative_arts',
+    'Picnics':              'picnic',
+    'Play & Move':          'play',
+    'Dining Experiences':   'fine_dining',
+    'Wellness Dates':       'wellness',
+    'Freestyle':            'nature',
+  };
+
+--- 2c. getCategoryIcon() ---
+
+Replace the iconMap inside this function with:
+
+  const iconMap: Record<string, string> = {
+    'nature':          'leaf-outline',
+    'first_meet':      'chatbubbles-outline',
+    'picnic':          'basket-outline',
+    'drink':           'wine-outline',
+    'casual_eats':     'fast-food-outline',
+    'fine_dining':     'restaurant-outline',
+    'watch':           'film-outline',
+    'creative_arts':   'color-palette-outline',
+    'play':            'game-controller-outline',
+    'wellness':        'body-outline',
+  };
+
+--- 2d. getCategoryColor() ---
+
+Replace the colorMap inside this function with:
+
+  const colorMap: Record<string, string> = {
+    'nature':          '#10B981',
+    'first_meet':      '#6366F1',
+    'picnic':          '#84CC16',
+    'drink':           '#F59E0B',
+    'casual_eats':     '#F97316',
+    'fine_dining':     '#7C3AED',
+    'watch':           '#3B82F6',
+    'creative_arts':   '#EC4899',
+    'play':            '#EF4444',
+    'wellness':        '#14B8A6',
+  };
+
+HOW TO TEST THIS STEP:
+Run: npx tsc --noEmit
+Should still produce zero errors.
+
+================================================================================
+STEP 3 — Update app-mobile/src/components/PreferencesSheet.tsx
+================================================================================
+
+File: app-mobile/src/components/PreferencesSheet.tsx
+
+There are TWO separate edits in this file.
+
+--- EDIT 3a: Replace the `categories` array (around line 83) ---
+
+Find the block that starts with:
+  // Categories with exact icons from image
+  const categories = [
+
+Delete from that line through the closing `];` (which ends around line 101).
+
+Replace with:
+
+  // Categories — v2 system
+  const categories = [
+    { id: 'Nature',          label: 'Nature',          icon: 'leaf-outline' },
+    { id: 'First Meet',      label: 'First Meet',      icon: 'chatbubbles-outline' },
+    { id: 'Picnic',          label: 'Picnic',           icon: 'basket-outline' },
+    { id: 'Drink',           label: 'Drink',            icon: 'wine-outline' },
+    { id: 'Casual Eats',     label: 'Casual Eats',      icon: 'fast-food-outline' },
+    { id: 'Fine Dining',     label: 'Fine Dining',      icon: 'restaurant-outline' },
+    { id: 'Watch',           label: 'Watch',            icon: 'film-outline' },
+    { id: 'Creative & Arts', label: 'Creative & Arts',  icon: 'color-palette-outline' },
+    { id: 'Play',            label: 'Play',             icon: 'game-controller-outline' },
+    { id: 'Wellness',        label: 'Wellness',         icon: 'body-outline' },
+  ];
+
+IMPORTANT: The `id` field is what gets stored in the `preferences.categories`
+database column and sent to the edge function. Do NOT use underscored slugs here
+— use display-name-style IDs (e.g., 'Casual Eats', not 'casual_eats') to match
+the existing pattern in this file.
+
+--- EDIT 3b: Replace INTENT_CATEGORY_COMPATIBILITY (around line 133) ---
+
+Find the block:
+  const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
+
+Delete from that line through the closing `};` (ends around line 154).
+
+Replace with:
+
+  const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
+    'solo-adventure': null,
+    'first-dates': [
+      'Nature', 'First Meet', 'Drink', 'Watch', 'Creative & Arts', 'Picnic'
+    ],
+    romantic: [
+      'First Meet', 'Drink', 'Picnic', 'Fine Dining', 'Wellness', 'Nature'
+    ],
+    friendly: null,
+    'group-fun': [
+      'Play', 'Creative & Arts', 'Casual Eats', 'Watch', 'Drink'
+    ],
+    business: ['First Meet', 'Drink', 'Fine Dining'],
+  };
+
+HOW TO TEST THIS STEP:
+  1. Run: npx tsc --noEmit (zero errors)
+  2. Launch the app in development mode
+  3. Open the Preferences Sheet
+  4. Confirm 10 new category chips appear
+  5. Select "Romantic" intent — verify only Nature, First Meet, Drink, Picnic,
+     Fine Dining, Wellness are enabled/shown
+
+================================================================================
+STEP 4 — Rewrite CATEGORY_MAPPINGS in generate-experiences/index.ts
+================================================================================
+
+File: supabase/functions/generate-experiences/index.ts
+
+Find the block starting at line 19:
+  const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
+
+Delete from that line through line 497 (the closing `};`).
+
+Replace with the following (follow the existing multi-variation-per-key pattern):
+
+---------- BEGIN CATEGORY_MAPPINGS replacement ----------
+
+const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
+  // ── NATURE ──────────────────────────────────────────────────────────────
+  nature: ["park", "botanical_garden", "hiking_area", "national_park", "state_park", "beach", "zoo", "wildlife_park"],
+  "Nature": ["park", "botanical_garden", "hiking_area", "national_park", "state_park", "beach", "zoo", "wildlife_park"],
+  "nature-outdoor": ["park", "botanical_garden", "hiking_area", "national_park", "state_park", "beach", "zoo", "wildlife_park"],
+
+  // ── FIRST MEET ───────────────────────────────────────────────────────────
+  first_meet: ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
+  "first meet": ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
+  "First Meet": ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
+  "first-meet": ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
+  firstmeet: ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
+
+  // ── PICNIC ───────────────────────────────────────────────────────────────
+  picnic: ["picnic_ground", "park", "beach", "botanical_garden"],
+  "Picnic": ["picnic_ground", "park", "beach", "botanical_garden"],
+
+  // ── DRINK ────────────────────────────────────────────────────────────────
+  drink: ["bar", "pub", "wine_bar", "tea_house", "coffee_shop"],
+  "Drink": ["bar", "pub", "wine_bar", "tea_house", "coffee_shop"],
+
+  // ── CASUAL EATS ──────────────────────────────────────────────────────────
+  casual_eats: [
+    "buffet_restaurant", "brunch_restaurant", "diner", "fast_food_restaurant",
+    "food_court", "hamburger_restaurant", "pizza_restaurant", "ramen_restaurant",
+    "sandwich_shop", "sushi_restaurant", "afghani_restaurant", "african_restaurant",
+    "american_restaurant", "asian_restaurant", "barbecue_restaurant",
+    "brazilian_restaurant", "breakfast_restaurant", "indian_restaurant",
+    "indonesian_restaurant", "japanese_restaurant", "korean_restaurant",
+    "lebanese_restaurant", "mediterranean_restaurant", "mexican_restaurant",
+    "middle_eastern_restaurant", "seafood_restaurant", "spanish_restaurant",
+    "thai_restaurant", "turkish_restaurant", "vegan_restaurant",
+    "vegetarian_restaurant", "vietnamese_restaurant", "chinese_restaurant"
+  ],
+  "casual eats": [
+    "buffet_restaurant", "brunch_restaurant", "diner", "fast_food_restaurant",
+    "food_court", "hamburger_restaurant", "pizza_restaurant", "ramen_restaurant",
+    "sandwich_shop", "sushi_restaurant", "afghani_restaurant", "african_restaurant",
+    "american_restaurant", "asian_restaurant", "barbecue_restaurant",
+    "brazilian_restaurant", "breakfast_restaurant", "indian_restaurant",
+    "indonesian_restaurant", "japanese_restaurant", "korean_restaurant",
+    "lebanese_restaurant", "mediterranean_restaurant", "mexican_restaurant",
+    "middle_eastern_restaurant", "seafood_restaurant", "spanish_restaurant",
+    "thai_restaurant", "turkish_restaurant", "vegan_restaurant",
+    "vegetarian_restaurant", "vietnamese_restaurant", "chinese_restaurant"
+  ],
+  "Casual Eats": [
+    "buffet_restaurant", "brunch_restaurant", "diner", "fast_food_restaurant",
+    "food_court", "hamburger_restaurant", "pizza_restaurant", "ramen_restaurant",
+    "sandwich_shop", "sushi_restaurant", "afghani_restaurant", "african_restaurant",
+    "american_restaurant", "asian_restaurant", "barbecue_restaurant",
+    "brazilian_restaurant", "breakfast_restaurant", "indian_restaurant",
+    "indonesian_restaurant", "japanese_restaurant", "korean_restaurant",
+    "lebanese_restaurant", "mediterranean_restaurant", "mexican_restaurant",
+    "middle_eastern_restaurant", "seafood_restaurant", "spanish_restaurant",
+    "thai_restaurant", "turkish_restaurant", "vegan_restaurant",
+    "vegetarian_restaurant", "vietnamese_restaurant", "chinese_restaurant"
+  ],
+  "casual-eats": [
+    "buffet_restaurant", "brunch_restaurant", "diner", "fast_food_restaurant",
+    "food_court", "hamburger_restaurant", "pizza_restaurant", "ramen_restaurant",
+    "sandwich_shop", "sushi_restaurant", "afghani_restaurant", "african_restaurant",
+    "american_restaurant", "asian_restaurant", "barbecue_restaurant",
+    "brazilian_restaurant", "breakfast_restaurant", "indian_restaurant",
+    "indonesian_restaurant", "japanese_restaurant", "korean_restaurant",
+    "lebanese_restaurant", "mediterranean_restaurant", "mexican_restaurant",
+    "middle_eastern_restaurant", "seafood_restaurant", "spanish_restaurant",
+    "thai_restaurant", "turkish_restaurant", "vegan_restaurant",
+    "vegetarian_restaurant", "vietnamese_restaurant", "chinese_restaurant"
+  ],
+  casualeats: [
+    "buffet_restaurant", "brunch_restaurant", "diner", "fast_food_restaurant",
+    "food_court", "hamburger_restaurant", "pizza_restaurant", "ramen_restaurant",
+    "sandwich_shop", "sushi_restaurant", "afghani_restaurant", "african_restaurant",
+    "american_restaurant", "asian_restaurant", "barbecue_restaurant",
+    "brazilian_restaurant", "breakfast_restaurant", "indian_restaurant",
+    "indonesian_restaurant", "japanese_restaurant", "korean_restaurant",
+    "lebanese_restaurant", "mediterranean_restaurant", "mexican_restaurant",
+    "middle_eastern_restaurant", "seafood_restaurant", "spanish_restaurant",
+    "thai_restaurant", "turkish_restaurant", "vegan_restaurant",
+    "vegetarian_restaurant", "vietnamese_restaurant", "chinese_restaurant"
+  ],
+
+  // ── FINE DINING ──────────────────────────────────────────────────────────
+  fine_dining: ["fine_dining_restaurant", "steak_house", "french_restaurant", "greek_restaurant", "italian_restaurant"],
+  "fine dining": ["fine_dining_restaurant", "steak_house", "french_restaurant", "greek_restaurant", "italian_restaurant"],
+  "Fine Dining": ["fine_dining_restaurant", "steak_house", "french_restaurant", "greek_restaurant", "italian_restaurant"],
+  "fine-dining": ["fine_dining_restaurant", "steak_house", "french_restaurant", "greek_restaurant", "italian_restaurant"],
+  finedining: ["fine_dining_restaurant", "steak_house", "french_restaurant", "greek_restaurant", "italian_restaurant"],
+
+  // ── WATCH ────────────────────────────────────────────────────────────────
+  watch: ["movie_theater", "comedy_club"],
+  "Watch": ["movie_theater", "comedy_club"],
+
+  // ── CREATIVE & ARTS ──────────────────────────────────────────────────────
+  creative_arts: ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
+  "creative & arts": ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
+  "Creative & Arts": ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
+  "creative-arts": ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
+  creativearts: ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
+  "creative arts": ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
+
+  // ── PLAY ─────────────────────────────────────────────────────────────────
+  play: [
+    "bowling_alley", "amusement_park", "water_park", "video_arcade",
+    "karaoke", "casino", "trampoline_park", "mini_golf_course",
+    "ice_skating_rink", "skate_park", "escape_room", "adventure_park"
+  ],
+  "Play": [
+    "bowling_alley", "amusement_park", "water_park", "video_arcade",
+    "karaoke", "casino", "trampoline_park", "mini_golf_course",
+    "ice_skating_rink", "skate_park", "escape_room", "adventure_park"
+  ],
+
+  // ── WELLNESS ─────────────────────────────────────────────────────────────
+  wellness: ["spa", "sauna", "hot_spring"],
+  "Wellness": ["spa", "sauna", "hot_spring"],
+};
+
+---------- END CATEGORY_MAPPINGS replacement ----------
+
+Next, find the EXCLUDED_TYPES object (starts around line 499 with:
+  const EXCLUDED_TYPES: { [key: string]: string[] } = {
+).
+
+Delete it entirely and replace with:
+
+---------- BEGIN EXCLUDED_TYPES replacement ----------
+
+const EXCLUDED_TYPES: { [key: string]: string[] } = {
+  nature: [
+    "bar", "night_club", "casino", "movie_theater", "video_arcade",
+    "bowling_alley", "fine_dining_restaurant", "fast_food_restaurant",
+    "food_court", "atm", "bank", "parking", "gas_station", "airport",
+    "car_repair", "car_dealer", "storage", "post_office", "government_office",
+    "courthouse", "police", "fire_station", "city_hall", "apartment_building", "housing_complex"
+  ],
+  first_meet: [
+    "amusement_park", "water_park", "bowling_alley", "spa", "sauna",
+    "fine_dining_restaurant", "fast_food_restaurant", "food_court",
+    "night_club", "casino", "parking", "atm", "bank", "gas_station"
+  ],
+  "first meet": [
+    "amusement_park", "water_park", "bowling_alley", "spa", "sauna",
+    "fine_dining_restaurant", "fast_food_restaurant", "food_court",
+    "night_club", "casino", "parking", "atm", "bank", "gas_station"
+  ],
+  "First Meet": [
+    "amusement_park", "water_park", "bowling_alley", "spa", "sauna",
+    "fine_dining_restaurant", "fast_food_restaurant", "food_court",
+    "night_club", "casino", "parking", "atm", "bank", "gas_station"
+  ],
+  picnic: [
+    "dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park",
+    "bar", "night_club", "casino", "movie_theater", "video_arcade",
+    "atm", "bank", "parking", "gas_station", "airport", "car_repair",
+    "car_dealer", "storage", "post_office", "government_office",
+    "courthouse", "police", "fire_station", "city_hall", "apartment_building"
+  ],
+  drink: [
+    "fine_dining_restaurant", "spa", "sauna", "amusement_park",
+    "water_park", "bowling_alley", "atm", "bank", "parking",
+    "gas_station", "airport", "car_repair", "government_office"
+  ],
+  casual_eats: [
+    "fine_dining_restaurant", "bar", "night_club", "spa", "amusement_park",
+    "atm", "bank", "parking", "gas_station", "airport", "car_repair",
+    "government_office", "courthouse", "police"
+  ],
+  "casual eats": [
+    "fine_dining_restaurant", "bar", "night_club", "spa", "amusement_park",
+    "atm", "bank", "parking", "gas_station", "airport", "car_repair",
+    "government_office"
+  ],
+  "Casual Eats": [
+    "fine_dining_restaurant", "bar", "night_club", "spa", "amusement_park",
+    "atm", "bank", "parking", "gas_station", "airport", "car_repair"
+  ],
+  fine_dining: [
+    "fast_food_restaurant", "food_court", "bar", "bowling_alley",
+    "amusement_park", "water_park", "video_arcade", "night_club",
+    "atm", "bank", "parking", "gas_station", "car_repair"
+  ],
+  "fine dining": [
+    "fast_food_restaurant", "food_court", "bar", "bowling_alley",
+    "amusement_park", "water_park", "video_arcade", "night_club",
+    "atm", "bank", "parking", "gas_station"
+  ],
+  "Fine Dining": [
+    "fast_food_restaurant", "food_court", "bar", "bowling_alley",
+    "amusement_park", "water_park", "video_arcade", "night_club",
+    "atm", "bank", "parking", "gas_station"
+  ],
+  watch: [
+    "spa", "sauna", "botanical_garden", "park", "beach",
+    "atm", "bank", "parking", "gas_station", "government_office"
+  ],
+  creative_arts: [
+    "fast_food_restaurant", "food_court", "bar", "bowling_alley",
+    "amusement_park", "water_park", "spa", "sauna", "night_club",
+    "atm", "bank", "parking", "gas_station", "government_office"
+  ],
+  "Creative & Arts": [
+    "fast_food_restaurant", "food_court", "bar", "bowling_alley",
+    "amusement_park", "water_park", "spa", "sauna", "night_club",
+    "atm", "bank", "parking", "gas_station"
+  ],
+  play: [
+    "spa", "sauna", "botanical_garden", "fine_dining_restaurant",
+    "atm", "bank", "parking", "gas_station", "airport", "car_repair",
+    "government_office", "courthouse", "police", "fire_station", "city_hall"
+  ],
+  wellness: [
+    "bar", "night_club", "casino", "bowling_alley", "amusement_park",
+    "water_park", "video_arcade", "fast_food_restaurant", "food_court",
+    "atm", "bank", "parking", "gas_station", "government_office", "airport"
+  ],
+};
+
+---------- END EXCLUDED_TYPES replacement ----------
+
+HOW TO TEST THIS STEP:
+Deploy the edge function to your dev Supabase project:
+  supabase functions deploy generate-experiences --project-ref YOUR_PROJECT_REF
+
+Then POST a test payload:
+  curl -X POST https://YOUR_PROJECT.supabase.co/functions/v1/generate-experiences \
+    -H "Authorization: Bearer YOUR_ANON_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{"category": "Nature", "latitude": 40.7128, "longitude": -74.0060}'
+
+Verify the response contains venues for parks, beaches, or botanical gardens.
+Repeat for "Fine Dining" and "Watch" to confirm those work too.
+
+================================================================================
+STEP 5 — Search and update other edge functions
+================================================================================
+
+Run these searches in your editor across the supabase/functions/ directory:
+
+Search for: "stroll", "sip & chill", "wellness dates", "play & move",
+            "dining experience", "creative & hands-on", "screenRelax", "freestyle"
+
+Files to check:
+  supabase/functions/recommendations-enhanced/index.ts
+  supabase/functions/discover-experiences/index.ts
+  supabase/functions/generate-session-experiences/index.ts
+
+For each match found:
+  - If the file has its own CATEGORY_MAPPINGS object, replace it using the same
+    new mappings from Step 4.
+  - If the file has isolated string comparisons (e.g., if (category === 'stroll')),
+    update those string values to their new equivalents.
+  - If the file references old category slugs as array elements, update them.
+
+New slug/name equivalents for quick reference:
+  stroll / take a stroll  →  'nature' / 'Nature'
+  sip / sip & chill       →  'drink' / 'Drink'
+  casual eats             →  'casual_eats' / 'Casual Eats'  (unchanged ID)
+  screenRelax             →  'watch' / 'Watch'
+  creative                →  'creative_arts' / 'Creative & Arts'
+  picnics / picnic        →  'picnic' / 'Picnic'
+  play_move / play & move →  'play' / 'Play'
+  dining                  →  'fine_dining' / 'Fine Dining'
+  wellness dates          →  'wellness' / 'Wellness'
+  freestyle               →  'nature' / 'Nature'
+
+HOW TO TEST THIS STEP:
+Deploy all modified edge functions, then test a collaboration session card
+generation to confirm the session-based generator also returns correct cards.
+
+================================================================================
+STEP 6 — Update app-mobile/src/components/OnboardingFlow.tsx
+================================================================================
+
+File: app-mobile/src/components/OnboardingFlow.tsx
+
+Find the section around lines 186–228 that maps intent selections to category
+objects (or category IDs). It likely contains references to old category names
+like "Stroll", "Sip & Chill", "Dining Experiences", etc.
+
+Update each old category ID/name to the new equivalent using the mapping table
+above (Step 5 reference table).
+
+Example: if you find:
+  { id: 'Stroll', label: 'Take a Stroll', icon: 'eye-outline' }
+Replace with:
+  { id: 'Nature', label: 'Nature', icon: 'leaf-outline' }
+
+IMPORTANT: The icon names and labels must match EXACTLY what PreferencesSheet.tsx
+uses (from Step 3), because both files share category IDs that get stored in DB.
+
+HOW TO TEST THIS STEP:
+Go through onboarding on a dev device/simulator. Verify:
+  - Category selection step shows new category names
+  - After completing onboarding, check the preferences table in Supabase:
+    SELECT categories FROM preferences WHERE user_id = 'YOUR_TEST_USER_ID';
+  - Verify array contains new category names like 'Nature', 'Casual Eats', etc.
+
+================================================================================
+STEP 7 — Update CollaborationPreferences.tsx and DiscoverScreen.tsx
+================================================================================
+
+Files:
+  app-mobile/src/components/CollaborationPreferences.tsx
+  app-mobile/src/components/DiscoverScreen.tsx
+
+Search both files for any hardcoded references to old category names:
+  "Stroll", "Sip & Chill", "screenRelax", "Play & Move", "Wellness Dates",
+  "Dining Experiences", "Creative & Hands-On", "Freestyle"
+
+Update each to the new equivalent.
+
+Also check:
+  app-mobile/src/components/collaboration/CreateSessionModal.tsx
+  app-mobile/src/components/collaboration/SessionsTab.tsx
+
+These may show category chips in a collaboration session UI. Update any
+hardcoded category arrays in those files to match the new list.
+
+HOW TO TEST THIS STEP:
+  1. Open the Discover page — verify category filter chips show new names
+  2. Create a collaboration session — verify category picker shows new categories
+  3. Start a collaboration session with another user — verify both see new categories
+
+================================================================================
+STEP 8 — Update supabase/schema.sql
+================================================================================
+
+File: supabase/schema.sql
+
+Search for:
+  DEFAULT ARRAY['Stroll', 'Sip & Chill']
+
+Replace with:
+  DEFAULT ARRAY['Nature', 'Casual Eats', 'Drink']
+
+This is the default applied to new users who sign up after the migration.
+
+Note: This change is for documentation/reference only. The actual running
+database is modified via the migration file in Step 9. Update schema.sql to
+keep it in sync with the live schema.
+
+================================================================================
+STEP 9 — Write and run the database migration
+================================================================================
+
+DO THIS LAST — only after all code changes compile and edge functions are
+deployed and tested.
+
+Create the file:
+  supabase/migrations/20260228000001_update_categories.sql
+
+Paste in the exact SQL from FEATURE_CATEGORY_OVERHAUL_SPEC.md (the "Database
+Migration" section). Run it:
+
+  supabase db push
+
+OR via the Supabase dashboard SQL editor. Run the entire script as a single
+transaction (it already wraps in BEGIN; ... COMMIT;).
+
+After running, verify:
+  -- Should return only new category names
+  SELECT DISTINCT unnest(categories) as cat FROM preferences ORDER BY cat;
+
+  -- Should return: Casual Eats, Creative & Arts, Drink, Fine Dining,
+  --   First Meet, Nature, Picnic, Play, Watch, Wellness (only)
+  -- Should NOT return: Stroll, Sip & Chill, screenRelax, Freestyle, etc.
+
+  -- Verify no null arrays
+  SELECT COUNT(*) FROM preferences
+  WHERE categories IS NULL OR array_length(categories, 1) = 0;
+  -- Should return 0
+
+================================================================================
+STEP 10 — Final end-to-end test
+================================================================================
+
+Run through each of these manually:
+
+  [1] Open PreferencesSheet. Confirm 10 new categories appear. Select "Drink".
+      Save. Go to Explore tab. Swipe through cards. All cards should be bars,
+      pubs, wine bars, tea houses, or coffee shops.
+
+  [2] Set intent to "Romantic" in PreferencesSheet. Confirm only Nature, First
+      Meet, Drink, Picnic, Fine Dining, Wellness are selectable/shown.
+
+  [3] Select "Fine Dining" only. Generate cards. Verify cards are for
+      fine_dining_restaurant, steak_house, french_restaurant, etc.
+
+  [4] Select "Play" only. Generate cards. Verify cards include bowling alleys,
+      escape rooms, arcades, trampoline parks, etc.
+
+  [5] Select "Wellness" only. Verify cards are for spas, saunas, hot springs.
+
+  [6] Open collaboration session creation. Confirm new categories appear in
+      category picker. Verify compatibility warnings trigger correctly when
+      incompatible categories are combined (e.g., Wellness + Play).
+
+  [7] Check the Discover page — filter chips should show new category names.
+
+  [8] Run: npx tsc --noEmit from app-mobile/
+      Should produce zero TypeScript errors.
+
+================================================================================
+COMMON MISTAKES TO AVOID
+================================================================================
+
+1. DON'T mix slugs and display names in the PreferencesSheet categories array.
+   The `id` field in that array is what gets stored in the DB. Use display-name
+   IDs like 'Fine Dining', not 'fine_dining'. The edge function handles both
+   via its multi-variation CATEGORY_MAPPINGS.
+
+2. DON'T forget to update the EXCLUDED_TYPES as well as CATEGORY_MAPPINGS in
+   the edge function. Missing exclusions will cause irrelevant venues to appear.
+
+3. DON'T run the DB migration before the code is live. Users' preferences will
+   be migrated to new names, but if the old code is still running it will get
+   confused by the new names in the DB.
+
+4. DON'T assume chef_led_restaurant, upscale_restaurant, cinema, cold_plunge_facility,
+   or float_tank_center are real Google Places API types. They are not. The API
+   silently ignores them — this is fine, but don't add them expecting results.
+
+5. DON'T forget to update OnboardingFlow.tsx. New users going through onboarding
+   will write their selected categories directly to the DB. If OnboardingFlow
+   still uses old category names, new users will have migrated-already values
+   written over with old names.
+
+6. DO deploy the edge function changes BEFORE running the migration. Edge
+   functions need to understand new category names before user preferences
+   contain them.
+
+================================================================================
+DONE WHEN
+================================================================================
+
+The implementation is complete when ALL of the following are true:
+
+  ✓ npx tsc --noEmit exits with zero errors in app-mobile/
+  ✓ PreferencesSheet shows exactly 10 new categories, no old ones
+  ✓ Intent filtering in PreferencesSheet correctly gates categories
+  ✓ Swipe card generation returns contextually correct venues for each category
+  ✓ Discover page shows new category names in filter chips
+  ✓ Collaboration session category picker shows new categories
+  ✓ DB migration ran successfully — no old category names in preferences table
+  ✓ New user onboarding writes new category names to DB
+  ✓ Zero TypeScript errors across all modified files

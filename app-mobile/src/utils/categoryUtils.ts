@@ -7,52 +7,76 @@
  * Convert translation key to readable category name
  */
 export const getReadableCategoryName = (categoryKey: string): string => {
-  // Convert translation keys to readable names based on actual category slugs
+  // Convert translation keys and old slugs to readable names based on new category system
   const categoryMap: Record<string, string> = {
-    // Full translation keys
-    'category.screen_relax': 'Sip & Chill',
-    'category.screen_eat': 'Dining Experience',
-    'category.screen_drink': 'Sip & Chill',
-    'category.screen_play': 'Social & Nightlife',
-    'category.screen_shop': 'Market & Shopping',
-    'category.screen_learn': 'Creative & Hands-On',
-    'category.screen_exercise': 'Health & Wellness',
-    'category.screen_culture': 'Arts & Culture',
-    'category.screen_nature': 'Take a Stroll',
-    'category.screen_social': 'Social & Nightlife',
-    'category.screen_romantic': 'Dining Experience',
-    'category.screen_family': 'Take a Stroll',
-    'category.screen_business': 'Dining Experience',
-    'category.screen_travel': 'Take a Stroll',
-    'category.screen_wellness': 'Health & Wellness',
-    'category.screen_stroll': 'Take a Stroll',
-    'category.screen_sip': 'Sip & Chill',
-    'category.screen_dining': 'Dining Experience',
-    'category.screen_creative': 'Creative & Hands-On',
-    'category.screen_shopping': 'Market & Shopping',
-    'category.screen_nightlife': 'Social & Nightlife',
+    // New category slugs -> display names
+    'nature': 'Nature',
+    'first_meet': 'First Meet',
+    'picnic': 'Picnic',
+    'drink': 'Drink',
+    'casual_eats': 'Casual Eats',
+    'fine_dining': 'Fine Dining',
+    'watch': 'Watch',
+    'creative_arts': 'Creative & Arts',
+    'play': 'Play',
+    'wellness': 'Wellness',
+    // Legacy translation keys -> new names
+    'category.screen_nature': 'Nature',
+    'category.screen_drink': 'Drink',
+    'category.screen_relax': 'Watch',
+    'category.screen_creative': 'Creative & Arts',
+    'category.screen_dining': 'Fine Dining',
+    'category.screen_wellness': 'Wellness',
+    'category.screen_play': 'Play',
+    'category.screen_eat': 'Casual Eats',
+    'category.screen_social': 'Drink',
+    'category.screen_romantic': 'Fine Dining',
+    'category.screen_family': 'Nature',
+    'category.screen_business': 'Fine Dining',
+    'category.screen_travel': 'Nature',
+    'category.screen_stroll': 'Nature',
+    'category.screen_sip': 'Drink',
+    'category.screen_shop': 'Creative & Arts',
+    'category.screen_learn': 'Creative & Arts',
+    'category.screen_exercise': 'Wellness',
+    'category.screen_culture': 'Creative & Arts',
+    'category.screen_nightlife': 'Play',
+    'category.screen_shopping': 'Creative & Arts',
     // Short keys (without category. prefix)
-    'screen_relax': 'Sip & Chill',
-    'screen_eat': 'Dining Experience',
-    'screen_drink': 'Sip & Chill',
-    'screen_play': 'Social & Nightlife',
-    'screen_shop': 'Market & Shopping',
-    'screen_learn': 'Creative & Hands-On',
-    'screen_exercise': 'Health & Wellness',
-    'screen_culture': 'Arts & Culture',
-    'screen_nature': 'Take a Stroll',
-    'screen_social': 'Social & Nightlife',
-    'screen_romantic': 'Dining Experience',
-    'screen_family': 'Take a Stroll',
-    'screen_business': 'Dining Experience',
-    'screen_travel': 'Take a Stroll',
-    'screen_wellness': 'Health & Wellness',
-    'screen_stroll': 'Take a Stroll',
-    'screen_sip': 'Sip & Chill',
-    'screen_dining': 'Dining Experience',
-    'screen_creative': 'Creative & Hands-On',
-    'screen_shopping': 'Market & Shopping',
-    'screen_nightlife': 'Social & Nightlife'
+    'screen_nature': 'Nature',
+    'screen_drink': 'Drink',
+    'screen_relax': 'Watch',
+    'screen_creative': 'Creative & Arts',
+    'screen_dining': 'Fine Dining',
+    'screen_wellness': 'Wellness',
+    'screen_play': 'Play',
+    'screen_eat': 'Casual Eats',
+    'screen_social': 'Drink',
+    'screen_romantic': 'Fine Dining',
+    'screen_family': 'Nature',
+    'screen_business': 'Fine Dining',
+    'screen_travel': 'Nature',
+    'screen_stroll': 'Nature',
+    'screen_sip': 'Drink',
+    'screen_shop': 'Creative & Arts',
+    'screen_learn': 'Creative & Arts',
+    'screen_exercise': 'Wellness',
+    'screen_culture': 'Creative & Arts',
+    'screen_nightlife': 'Play',
+    'screen_shopping': 'Creative & Arts',
+    // Old slug -> new name fallbacks
+    'stroll': 'Nature',
+    'sip': 'Drink',
+    'sip_and_chill': 'Drink',
+    'screen_relax_old': 'Watch',
+    'creative': 'Creative & Arts',
+    'creative_arts': 'Creative & Arts',
+    'play_move': 'Play',
+    'dining': 'Fine Dining',
+    'casual eats': 'Casual Eats',
+    'fine dining': 'Fine Dining',
+    'creative & arts': 'Creative & Arts',
+    'first meet': 'First Meet'
   };
   
   // Check for exact match first
@@ -77,14 +101,27 @@ export const getCategorySlug = (categoryKey: string): string => {
   
   // Map readable names to slugs
   const nameToSlugMap: Record<string, string> = {
-    'Sip & Chill': 'sip',
-    'Dining Experience': 'dining',
-    'Social & Nightlife': 'nightlife',
-    'Market & Shopping': 'shopping',
-    'Creative & Hands-On': 'creative',
-    'Health & Wellness': 'wellness',
-    'Arts & Culture': 'culture',
-    'Take a Stroll': 'stroll'
+    'Nature': 'nature',
+    'First Meet': 'first_meet',
+    'Picnic': 'picnic',
+    'Drink': 'drink',
+    'Casual Eats': 'casual_eats',
+    'Fine Dining': 'fine_dining',
+    'Watch': 'watch',
+    'Creative & Arts': 'creative_arts',
+    'Play': 'play',
+    'Wellness': 'wellness',
+    // Legacy names
+    'Take a Stroll': 'nature',
+    'Sip & Chill': 'drink',
+    'Screen & Relax': 'watch',
+    'Creative & Hands-On': 'creative_arts',
+    'Play & Move': 'play',
+    'Dining Experience': 'fine_dining',
+    'Dining Experiences': 'fine_dining',
+    'Wellness Dates': 'wellness',
+    'Freestyle': 'nature',
+    'Picnics': 'picnic'
   };
   
   return nameToSlugMap[readableName] || readableName.toLowerCase().replace(/\s+/g, '-');
@@ -97,14 +134,16 @@ export const getCategoryIcon = (categoryKey: string): string => {
   const slug = getCategorySlug(categoryKey);
   
   const iconMap: Record<string, string> = {
-    'stroll': 'walk',
-    'sip': 'cafe',
-    'dining': 'restaurant',
-    'creative': 'brush',
-    'shopping': 'bag',
-    'wellness': 'fitness',
-    'culture': 'library',
-    'nightlife': 'wine'
+    'nature': 'leaf-outline',
+    'first_meet': 'chatbubbles-outline',
+    'picnic': 'basket-outline',
+    'drink': 'wine-outline',
+    'casual_eats': 'fast-food-outline',
+    'fine_dining': 'restaurant-outline',
+    'watch': 'film-outline',
+    'creative_arts': 'color-palette-outline',
+    'play': 'game-controller-outline',
+    'wellness': 'body-outline'
   };
   
   return iconMap[slug] || 'location';
@@ -117,14 +156,16 @@ export const getCategoryColor = (categoryKey: string): string => {
   const slug = getCategorySlug(categoryKey);
   
   const colorMap: Record<string, string> = {
-    'stroll': '#10B981', // green
-    'sip': '#F59E0B', // amber
-    'dining': '#EF4444', // red
-    'creative': '#8B5CF6', // purple
-    'shopping': '#3B82F6', // blue
-    'wellness': '#06B6D4', // cyan
-    'culture': '#EC4899', // pink
-    'nightlife': '#6366F1' // indigo
+    'nature': '#10B981',       // emerald
+    'first_meet': '#6366F1',   // indigo
+    'picnic': '#84CC16',       // lime
+    'drink': '#F59E0B',        // amber
+    'casual_eats': '#F97316',  // orange
+    'fine_dining': '#7C3AED',  // violet
+    'watch': '#3B82F6',        // blue
+    'creative_arts': '#EC4899', // pink
+    'play': '#EF4444',         // red
+    'wellness': '#14B8A6'      // teal
   };
   
   return colorMap[slug] || '#6B7280'; // gray fallback

@@ -27,62 +27,92 @@ const getUsDateKey = (): string => usDateFormatter.format(new Date());
 
 // All 10 discover categories
 const DISCOVER_CATEGORIES = [
-  "Stroll",
-  "Sip & Chill",
+  "Nature",
+  "First Meet",
+  "Picnic",
+  "Drink",
   "Casual Eats",
-  "Screen & Relax",
-  "Creative & Hands-On",
-  "Picnics",
-  "Play & Move",
-  "Dining Experiences",
-  "Wellness Dates",
-  "Freestyle",
+  "Fine Dining",
+  "Watch",
+  "Creative & Arts",
+  "Play",
+  "Wellness",
 ];
 
 // Category to Google Places type mapping (using CONFIRMED valid Google Places API New types)
 // Reference: https://developers.google.com/maps/documentation/places/web-service/place-types
 // Each category uses distinct types where possible to avoid duplicates
 const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
-  "Stroll": [
+  "Nature": [
     "park",
     "hiking_area",
+    "botanical_garden",
+    "national_park",
+    "state_park",
+    "beach",
+    "zoo",
+    "wildlife_park",
   ],
-  "Sip & Chill": [
+  "First Meet": [
+    "bookstore",
     "bar",
-    "cafe",
+    "pub",
+    "wine_bar",
+    "tea_house",
+    "coffee_shop",
+    "planetarium",
+  ],
+  "Picnic": [
+    "picnic_ground",
+    "park",
+    "beach",
+    "botanical_garden",
+  ],
+  "Drink": [
+    "bar",
+    "pub",
+    "wine_bar",
+    "tea_house",
+    "coffee_shop",
   ],
   "Casual Eats": [
-    "restaurant",
+    "sandwich_shop",
+    "fast_food_restaurant",
+    "pizza_restaurant",
+    "hamburger_restaurant",
+    "american_restaurant",
+    "mexican_restaurant",
+    "diner",
   ],
-  "Screen & Relax": [
+  "Fine Dining": [
+    "fine_dining_restaurant",
+    "steak_house",
+    "french_restaurant",
+    "italian_restaurant",
+  ],
+  "Watch": [
     "movie_theater",
+    "comedy_club",
   ],
-  "Creative & Hands-On": [
+  "Creative & Arts": [
     "art_gallery",
     "museum",
+    "planetarium",
+    "karaoke",
   ],
-  "Picnics": [
-    "beach", // outdoor spots good for picnics
-    "marina",
-    "park", // Fallback
-  ],
-  "Play & Move": [
+  "Play": [
     "bowling_alley",
     "amusement_park",
+    "water_park",
+    "video_arcade",
+    "escape_room",
+    "mini_golf_course",
+    "ice_skating_rink",
   ],
-  "Dining Experiences": [
-    "bakery",
-    "ice_cream_shop",
-  ],
-  "Wellness Dates": [
+  "Wellness": [
     "spa",
-    "gym",
-  ],
-  "Freestyle": [
-    "tourist_attraction",
-    "night_club",
-    "aquarium",
-    "zoo",
+    "sauna",
+    "hot_spring",
   ],
 };
 
@@ -300,10 +330,10 @@ serve(async (req) => {
 
     console.log(`Total unused candidates for featured card: ${allUnusedCandidates.length}`);
 
-    // Filter to only dining experiences (ONLY "Dining Experiences" category, not "Casual Eats")
-    const diningCategories = ["Dining Experiences"];
+    // Filter to only fine dining experiences (ONLY "Fine Dining" category, not "Casual Eats")
+    const diningCategories = ["Fine Dining"];
     const unusedDiningCandidates = allUnusedCandidates.filter(
-      (c) => c.category === "Dining Experiences"
+      (c) => c.category === "Fine Dining"
     );
 
     console.log(`Dining Experience candidates for featured card: ${unusedDiningCandidates.length}`);
@@ -331,7 +361,7 @@ serve(async (req) => {
     if (featuredPlace) {
       // Add featured to used set to ensure it's tracked
       usedPlaceIds.add(featuredPlace.placeId);
-      const isDiningExperience = featuredPlace.category === "Dining Experiences";
+      const isDiningExperience = featuredPlace.category === "Fine Dining";
       console.log(`✓ Selected featured card: "${featuredPlace.name}" (category: ${featuredPlace.category}, ${isDiningExperience ? 'DINING EXPERIENCE ✓' : 'FALLBACK - not Dining Experience'}, id: ${featuredPlace.id}, placeId: ${featuredPlace.placeId}) from ${allUnusedCandidates.length} unused candidates`);
     } else {
       console.log(`✗ No unused candidates available for featured card`);
@@ -781,32 +811,32 @@ async function generateHighlights(place: any): Promise<string[]> {
 
 function generateFallbackDescription(place: any): string {
   const descriptions: { [key: string]: string } = {
-    "Stroll": "Scenic walking adventure through beautiful surroundings. Perfect for relaxation and exploration.",
-    "Sip & Chill": "Cozy spot for great drinks and conversation in a relaxed atmosphere.",
+    "Nature": "Scenic outdoor adventure through beautiful natural surroundings. Perfect for relaxation and exploration.",
+    "First Meet": "A welcoming spot to break the ice and spark great conversation.",
+    "Picnic": "Beautiful outdoor space perfect for a relaxing picnic experience.",
+    "Drink": "Cozy spot for great drinks and conversation in a relaxed atmosphere.",
     "Casual Eats": "Delicious food in a welcoming environment. Great for any occasion.",
-    "Screen & Relax": "Entertainment and relaxation combined for a perfect outing.",
-    "Creative & Hands-On": "Engage your creativity in an inspiring artistic environment.",
-    "Picnics": "Beautiful outdoor space perfect for a relaxing picnic experience.",
-    "Play & Move": "Fun and active entertainment for an exciting time out.",
-    "Dining Experiences": "Exceptional culinary journey with outstanding service.",
-    "Wellness Dates": "Relax and rejuvenate in a peaceful wellness setting.",
-    "Freestyle": "Unique experience waiting to be discovered.",
+    "Fine Dining": "Exceptional culinary journey with outstanding service.",
+    "Watch": "Entertainment and relaxation combined for a perfect outing.",
+    "Creative & Arts": "Engage your creativity in an inspiring artistic environment.",
+    "Play": "Fun and active entertainment for an exciting time out.",
+    "Wellness": "Relax and rejuvenate in a peaceful wellness setting.",
   };
   return descriptions[place.category] || "An amazing experience waiting for you.";
 }
 
 function generateFallbackHighlights(place: any): string[] {
   const highlights: { [key: string]: string[] } = {
-    "Stroll": ["Scenic Views", "Nature Trail"],
-    "Sip & Chill": ["Great Atmosphere", "Quality Drinks"],
+    "Nature": ["Scenic Views", "Nature Trail"],
+    "First Meet": ["Great Atmosphere", "Conversation Starter"],
+    "Picnic": ["Outdoor", "Relaxing"],
+    "Drink": ["Great Atmosphere", "Quality Drinks"],
     "Casual Eats": ["Tasty Food", "Good Service"],
-    "Screen & Relax": ["Entertainment", "Comfortable"],
-    "Creative & Hands-On": ["Artistic", "Interactive"],
-    "Picnics": ["Outdoor", "Relaxing"],
-    "Play & Move": ["Fun Activities", "Exciting"],
-    "Dining Experiences": ["Fine Cuisine", "Elegant"],
-    "Wellness Dates": ["Relaxing", "Rejuvenating"],
-    "Freestyle": ["Unique", "Memorable"],
+    "Fine Dining": ["Fine Cuisine", "Elegant"],
+    "Watch": ["Entertainment", "Comfortable"],
+    "Creative & Arts": ["Artistic", "Interactive"],
+    "Play": ["Fun Activities", "Exciting"],
+    "Wellness": ["Relaxing", "Rejuvenating"],
   };
   return highlights[place.category] || ["Great Experience", "Highly Rated"];
 }
