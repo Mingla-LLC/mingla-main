@@ -2,73 +2,102 @@ import { supabase } from "./supabase";
 
 export interface NightOutVenue {
   id: string;
-  placeName: string;
   eventName: string;
-  hostName: string;
+  artistName: string;
+  venueName: string;
   image: string;
   images: string[];
+  priceMin: number | null;
+  priceMax: number | null;
+  priceCurrency: string;
   price: string;
-  matchPercentage: number;
   date: string;
   time: string;
-  timeRange: string;
+  localDate: string;
+  dateTimeUTC: string;
   location: string;
-  tags: string[];
-  musicGenre: string;
-  peopleGoing: number;
   address: string;
-  description: string;
-  rating: number;
-  reviewCount: number;
   coordinates: { lat: number; lng: number };
-  distance?: string;
-  travelTime?: string;
+  genre: string;
+  subGenre: string;
+  tags: string[];
+  ticketUrl: string;
+  ticketStatus: string;
+  distance?: number;
+  seatMapUrl?: string;
 }
 
-export interface NightOutResponse {
-  venues: NightOutVenue[];
-  meta: {
-    totalResults: number;
-    totalCandidates: number;
-  };
+export interface EventsMeta {
+  totalResults: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  fromCache: boolean;
+  keywords: string[];
 }
 
 /**
- * Service to fetch night-out experiences (clubs, bars, live music, etc.)
+ * Service to fetch real Ticketmaster events for Night Out tab.
+ * Replaces the old Google Places + OpenAI night-out-experiences flow.
  */
 export class NightOutExperiencesService {
   /**
-   * Fetch night-out venues for the given location
+   * Fetch real events from Ticketmaster via the ticketmaster-events edge function
    */
-  static async getNightOutVenues(
+  static async getEvents(
     location: { lat: number; lng: number },
-    radius?: number
-  ): Promise<NightOutVenue[]> {
+    options?: {
+      radius?: number;
+      keywords?: string[];
+      startDate?: string;
+      endDate?: string;
+      sort?: string;
+      page?: number;
+    }
+  ): Promise<{ events: NightOutVenue[]; meta: EventsMeta }> {
     try {
-      console.log("[NightOutService] Fetching night-out venues:", location);
+      console.log("[NightOutService] Fetching Ticketmaster events:", location);
 
       const { data, error } = await supabase.functions.invoke(
-        "night-out-experiences",
+        "ticketmaster-events",
         {
           body: {
             location,
-            radius: radius || 10000,
+            radius: options?.radius || 50,
+            keywords: options?.keywords || [],
+            startDate: options?.startDate,
+            endDate: options?.endDate,
+            sort: options?.sort || "date,asc",
+            page: options?.page || 0,
+            size: 20,
           },
         }
       );
 
       if (error) {
         console.error("[NightOutService] Error:", error);
-        throw new Error(`Failed to fetch night-out venues: ${error.message}`);
+        throw new Error(`Failed to fetch events: ${error.message}`);
       }
 
-      if (!data || !data.venues || data.venues.length === 0) {
-        console.log("[NightOutService] No venues returned");
-        return [];
+      if (!data || !data.events) {
+        console.log("[NightOutService] No events returned");
+        return {
+          events: [],
+          meta: {
+            totalResults: 0,
+            page: 0,
+            pageSize: 20,
+            totalPages: 0,
+            fromCache: false,
+            keywords: options?.keywords || [],
+          },
+        };
       }
 
-      console.log(`[NightOutService] Received ${data.venues.length} venues`);
-      return data.venues as NightOutVenue[];
+      console.log(
+        `[NightOutService] Received ${data.events.length} events (fromCache: ${data.meta?.fromCache})`
+      );
+      return { events: data.events as NightOutVenue[], meta: data.meta as EventsMeta };
     } catch (error) {
       console.error("[NightOutService] Failed:", error);
       throw error;

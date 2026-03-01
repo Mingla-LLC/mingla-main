@@ -460,8 +460,10 @@ export const RecommendationsProvider: React.FC<
   const curatedSessionId = isCollaborationMode ? resolvedSessionId : undefined;
 
   // In solo mode: hooks fire based on user's selected experience types
-  // In collaboration mode: ALL hooks fire; the edge function returns empty []
-  // for experience types not selected by any participant (fast, no API cost)
+  // In collaboration mode: only solo-adventure fires (Turbo Pipeline).
+  // Other experience types use the legacy fallback pipeline which produces
+  // non-curated-format cards — these get mixed in and look wrong.
+  // The session edge function handles location aggregation server-side.
   const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo, isFullBatchLoaded: isSoloBatchLoaded } = useCuratedExperiences({
     experienceType: 'solo-adventure',
     ...baseParams,
@@ -476,7 +478,7 @@ export const RecommendationsProvider: React.FC<
     sessionId: curatedSessionId ?? undefined,
     enabled: isSoloMode
       ? experienceTypes.includes('first-dates')
-      : isCollaborationMode,
+      : false,  // Disabled in collab — fallback pipeline produces non-curated cards
   });
   const { cards: curatedRomCards, isLoading: isLoadingCuratedRom, isFullBatchLoaded: isRomBatchLoaded } = useCuratedExperiences({
     experienceType: 'romantic',
@@ -484,7 +486,7 @@ export const RecommendationsProvider: React.FC<
     sessionId: curatedSessionId ?? undefined,
     enabled: isSoloMode
       ? experienceTypes.includes('romantic')
-      : isCollaborationMode,
+      : false,  // Disabled in collab — fallback pipeline produces non-curated cards
   });
   const { cards: curatedFriendCards, isLoading: isLoadingCuratedFriend, isFullBatchLoaded: isFriendBatchLoaded } = useCuratedExperiences({
     experienceType: 'friendly',
@@ -492,7 +494,7 @@ export const RecommendationsProvider: React.FC<
     sessionId: curatedSessionId ?? undefined,
     enabled: isSoloMode
       ? experienceTypes.includes('friendly')
-      : isCollaborationMode,
+      : false,  // Disabled in collab — fallback pipeline produces non-curated cards
   });
   const { cards: curatedGroupCards, isLoading: isLoadingCuratedGroup, isFullBatchLoaded: isGroupBatchLoaded } = useCuratedExperiences({
     experienceType: 'group-fun',
@@ -500,7 +502,7 @@ export const RecommendationsProvider: React.FC<
     sessionId: curatedSessionId ?? undefined,
     enabled: isSoloMode
       ? experienceTypes.includes('group-fun')
-      : isCollaborationMode,
+      : false,  // Disabled in collab — fallback pipeline produces non-curated cards
   });
 
   // True when ALL enabled curated hooks have finished loading (success or error).

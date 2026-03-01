@@ -39,6 +39,7 @@ import ActionButtons from "./expandedCard/ActionButtons";
 import FeedbackModal from "./expandedCard/FeedbackModal";
 import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
+import * as WebBrowser from 'expo-web-browser';
 import { colors } from "../constants/colors";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -563,19 +564,24 @@ function CuratedPlanView({
                 </View>
 
                 {/* Policies & Reservations — always visible */}
-                {stop.website && (
-                  <TouchableOpacity
-                    style={curatedStyles.policiesButton}
-                    onPress={() => {
+                <TouchableOpacity
+                  style={curatedStyles.policiesButton}
+                  onPress={() => {
+                    if (stop.website) {
                       setBrowserTitle(stop.placeName);
-                      setBrowserUrl(stop.website!);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="globe-outline" size={15} color="#ffffff" />
-                    <Text style={curatedStyles.policiesButtonText}>Policies & Reservations</Text>
-                  </TouchableOpacity>
-                )}
+                      setBrowserUrl(stop.website);
+                    } else {
+                      // Fallback: open Google Maps place page for policies/hours/reservations
+                      const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${stop.placeId}`;
+                      setBrowserTitle(stop.placeName);
+                      setBrowserUrl(mapsUrl);
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="globe-outline" size={15} color="#ffffff" />
+                  <Text style={curatedStyles.policiesButtonText}>Policies & Reservations</Text>
+                </TouchableOpacity>
 
                 {/* Opening Hours — visible when expanded */}
                 {isExpanded && Object.keys(stop.openingHours).length > 0 && (
@@ -925,7 +931,7 @@ export default function ExpandedCardModal({
     if (coords) {
       const url = Platform.select({
         ios: `maps:0,0?q=${coords.lat},${coords.lng}`,
-        android: `geo:${coords.lat},${coords.lng}?q=${coords.lat},${coords.lng}(${encodeURIComponent(nightOut?.placeName || "")})`,
+        android: `geo:${coords.lat},${coords.lng}?q=${coords.lat},${coords.lng}(${encodeURIComponent(nightOut?.venueName || "")})`,
       });
       if (url) Linking.openURL(url);
     } else if (address) {
@@ -1009,15 +1015,44 @@ export default function ExpandedCardModal({
                 {/* Event Title */}
                 <Text style={nightOutStyles.title}>{card.title}</Text>
 
-                {/* Category + Host Row */}
+                {/* Venue + Artist Row */}
                 <View style={nightOutStyles.categoryHostRow}>
                   <Ionicons name="musical-notes" size={16} color="#eb7825" />
-                  <Text style={nightOutStyles.categoryText}>{nightOut.placeName}</Text>
+                  <Text style={nightOutStyles.categoryText}>{nightOut.venueName}</Text>
                   <Text style={nightOutStyles.dotSep}>•</Text>
-                  <Text style={nightOutStyles.hostText}>Hosted by {nightOut.hostName}</Text>
+                  <Text style={nightOutStyles.hostText}>{nightOut.artistName}</Text>
                 </View>
 
-                {/* Date/Time + Entry Fee Cards */}
+                {/* Genre + SubGenre Badges */}
+                {(nightOut.genre || nightOut.subGenre) && (
+                  <View style={nightOutStyles.tagsRow}>
+                    {nightOut.genre && (
+                      <View style={nightOutStyles.vibeBadge}>
+                        <Text style={nightOutStyles.vibeBadgeText}>{nightOut.genre}</Text>
+                      </View>
+                    )}
+                    {nightOut.subGenre && (
+                      <View style={nightOutStyles.vibeBadge}>
+                        <Text style={nightOutStyles.vibeBadgeText}>{nightOut.subGenre}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Ticket Status Badge */}
+                <View style={[nightOutStyles.ticketStatusBadge,
+                  nightOut.ticketStatus === "onsale" ? { backgroundColor: '#10B981' } :
+                  nightOut.ticketStatus === "offsale" ? { backgroundColor: '#EF4444' } :
+                  { backgroundColor: '#F59E0B' }
+                ]}>
+                  <Ionicons name="ticket-outline" size={16} color="#fff" />
+                  <Text style={nightOutStyles.ticketStatusText}>
+                    {nightOut.ticketStatus === "onsale" ? "On Sale" :
+                     nightOut.ticketStatus === "offsale" ? "Sold Out" : "Coming Soon"}
+                  </Text>
+                </View>
+
+                {/* Date/Time + Price Cards */}
                 <View style={nightOutStyles.infoCardsRow}>
                   {/* Date & Time Card */}
                   <View style={nightOutStyles.infoCard}>
@@ -1026,34 +1061,19 @@ export default function ExpandedCardModal({
                       <Text style={nightOutStyles.infoCardLabel}>Date & Time</Text>
                     </View>
                     <Text style={nightOutStyles.infoCardPrimary}>{nightOut.date}</Text>
-                    <Text style={nightOutStyles.infoCardSecondary}>{nightOut.timeRange}</Text>
+                    <Text style={nightOutStyles.infoCardSecondary}>{nightOut.time}</Text>
                   </View>
 
-                  {/* Entry Fee Card */}
+                  {/* Ticket Price Card */}
                   <View style={nightOutStyles.infoCard}>
                     <View style={nightOutStyles.infoCardHeader}>
                       <Ionicons name="pricetag-outline" size={14} color="#eb7825" />
-                      <Text style={nightOutStyles.infoCardLabel}>Entry Fee</Text>
+                      <Text style={nightOutStyles.infoCardLabel}>Tickets</Text>
                     </View>
                     <Text style={nightOutStyles.infoCardPrice} numberOfLines={1} adjustsFontSizeToFit>{formatPriceRange(nightOut.price, accountPreferences?.currency)}</Text>
-                    <Text style={nightOutStyles.infoCardSecondary}>per person</Text>
+                    <Text style={nightOutStyles.infoCardSecondary}>per ticket</Text>
                   </View>
                 </View>
-
-                {/* People Going Badge */}
-                <View style={nightOutStyles.goingBadge}>
-                  <Feather name="users" size={18} color="#eb7825" />
-                  <Text style={nightOutStyles.goingText}>{nightOut.peopleGoing} going</Text>
-                </View>
-
-                {/* Divider */}
-                <View style={nightOutStyles.divider} />
-
-                {/* About This Event */}
-                <Text style={nightOutStyles.sectionTitle}>About This Event</Text>
-                <Text style={nightOutStyles.descriptionText}>
-                  {card.description || card.fullDescription || "No description available."}
-                </Text>
 
                 {/* Divider */}
                 <View style={nightOutStyles.divider} />
@@ -1072,17 +1092,6 @@ export default function ExpandedCardModal({
                   </>
                 )}
 
-                {/* Music Genre */}
-                {nightOut.musicGenre && (
-                  <View style={nightOutStyles.musicGenreContainer}>
-                    <View style={nightOutStyles.musicGenreHeader}>
-                      <Ionicons name="musical-note-outline" size={16} color="#6b7280" />
-                      <Text style={nightOutStyles.musicGenreLabel}>Music Genre</Text>
-                    </View>
-                    <Text style={nightOutStyles.musicGenreValue}>{nightOut.musicGenre}</Text>
-                  </View>
-                )}
-
                 {/* Divider */}
                 <View style={nightOutStyles.divider} />
 
@@ -1093,7 +1102,7 @@ export default function ExpandedCardModal({
                       <Ionicons name="location" size={20} color="#eb7825" />
                     </View>
                     <View style={nightOutStyles.venueDetails}>
-                      <Text style={nightOutStyles.venueName}>{nightOut.placeName}</Text>
+                      <Text style={nightOutStyles.venueName}>{nightOut.venueName}</Text>
                       <Text style={nightOutStyles.venueAddress}>{card.address}</Text>
                     </View>
                   </View>
@@ -1106,6 +1115,18 @@ export default function ExpandedCardModal({
                     <Text style={nightOutStyles.directionsText}>Get Directions</Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* Seat Map (if available) */}
+                {nightOut.seatMapUrl && (
+                  <View style={{ marginTop: 16 }}>
+                    <Text style={nightOutStyles.sectionTitle}>Seat Map</Text>
+                    <Image
+                      source={{ uri: nightOut.seatMapUrl }}
+                      style={{ width: '100%', height: 200, borderRadius: 12 }}
+                      resizeMode="contain"
+                    />
+                  </View>
+                )}
 
                 {/* Bottom spacer for the sticky button */}
                 <View style={{ height: 80 }} />
@@ -1377,18 +1398,30 @@ export default function ExpandedCardModal({
           {isNightOut && nightOut && (
             <View style={nightOutStyles.stickyButtonContainer}>
               <View style={nightOutStyles.stickyButtonRow}>
-                <TouchableOpacity
-                  style={nightOutStyles.getTicketsButton}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    // Could open a ticket URL in the future
-                  }}
-                >
-                  <Ionicons name="ticket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={nightOutStyles.getTicketsText} numberOfLines={1} adjustsFontSizeToFit>
-                    Get Tickets – {formatPriceRange(nightOut.price, accountPreferences?.currency)}
-                  </Text>
-                </TouchableOpacity>
+                {nightOut.ticketUrl && nightOut.ticketStatus === "onsale" ? (
+                  <TouchableOpacity
+                    style={nightOutStyles.getTicketsButton}
+                    activeOpacity={0.8}
+                    onPress={async () => {
+                      await WebBrowser.openBrowserAsync(nightOut.ticketUrl, {
+                        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+                        toolbarColor: '#1A1A2E',
+                        controlsColor: '#FF6B35',
+                      });
+                    }}
+                  >
+                    <Ionicons name="ticket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={nightOutStyles.getTicketsText} numberOfLines={1} adjustsFontSizeToFit>
+                      Get Tickets – {formatPriceRange(nightOut.price, accountPreferences?.currency)}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={[nightOutStyles.getTicketsButton, { backgroundColor: '#666' }]}>
+                    <Text style={nightOutStyles.getTicketsText}>
+                      {nightOut.ticketStatus === "offsale" ? "Sold Out" : "Tickets Coming Soon"}
+                    </Text>
+                  </View>
+                )}
                 <TouchableOpacity
                   style={nightOutStyles.shareButton}
                   activeOpacity={0.7}
@@ -1419,7 +1452,7 @@ export default function ExpandedCardModal({
               dateTimePreferences={{
                 timeOfDay: nightOut.time,
                 dayOfWeek: nightOut.date,
-                planningTimeframe: nightOut.timeRange,
+                planningTimeframe: nightOut.date,
               }}
               accountPreferences={accountPreferences}
             />
@@ -1683,6 +1716,22 @@ const nightOutStyles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 6,
     elevation: 4,
+  },
+  ticketStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    alignSelf: "flex-start",
+  },
+  ticketStatusText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#ffffff",
   },
 });
 

@@ -1,0 +1,817 @@
+================================================================================
+  TICKETMASTER NIGHT OUT — IMPLEMENTATION GUIDE
+  Mingla Mobile App
+  Date: 2026-03-01
+================================================================================
+
+OVERVIEW
+--------
+Replace the AI-generated Night Out tab (Google Places + OpenAI) with real
+Ticketmaster events. Users browse real upcoming parties, filter by genre/date/
+price, and buy tickets via an in-app browser. No Stripe. No Google Places.
+
+Read the companion FEATURE_TICKETMASTER_NIGHT_OUT_SPEC.md for full type
+definitions and architecture details. This guide tells you WHAT to do and in
+WHAT ORDER.
+
+
+================================================================================
+STEP 1: DATABASE MIGRATION
+================================================================================
+
+Create file:
+  supabase/migrations/20260301000003_ticketmaster_cache.sql
+
+Paste this exact SQL:
+
+  CREATE TABLE IF NOT EXISTS ticketmaster_events_cache (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    cache_key TEXT NOT NULL UNIQUE,
+    events JSONB NOT NULL DEFAULT '[]',
+    total_results INTEGER NOT NULL DEFAULT 0,
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '2 hours'),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
+  CREATE INDEX idx_tm_cache_key ON ticketmaster_events_cache(cache_key);
+  CREATE INDEX idx_tm_cache_expires ON ticketmaster_events_cache(expires_at);
+
+  ALTER TABLE ticketmaster_events_cache ENABLE ROW LEVEL SECURITY;
+
+  CREATE POLICY "Service role full access" ON ticketmaster_events_cache
+    FOR ALL USING (true) WITH CHECK (true);
+
+HOW TO TEST:
+  Run `supabase db reset` or `supabase migration up` locally.
+  Verify the table exists: `SELECT * FROM ticketmaster_events_cache LIMIT 1;`
+
+
+================================================================================
+STEP 2: SET TICKETMASTER API KEY AS ENV SECRET
+================================================================================
+
+IMPORTANT: NEVER hardcode the API key in source code.
+
+For local development:
+  Add to supabase/functions/.env (create if needed):
+
+  TICKETMASTER_API_KEY=Pau3bK2jrF0UljroOwIwDBcHlmNFRib1
+
+For production (Supabase dashboard):
+  Project Settings → Edge Functions → Secrets → Add:
+    Key:   TICKETMASTER_API_KEY
+    Value: Pau3bK2jrF0UljroOwIwDBcHlmNFRib1
+
+HOW TO TEST:
+  In a Deno edge function, `Deno.env.get("TICKETMASTER_API_KEY")` returns the key.
+
+
+================================================================================
+STEP 3: CREATE THE TICKETMASTER EDGE FUNCTION
+================================================================================
+
+Create folder + file:
+  supabase/functions/ticketmaster-events/index.ts
+
+This function:
+  1. Receives { location, radius?, keywords?, startDate?, endDate?, sort?, page?, size? }
+  2. Builds a cache key from location (rounded to 1 decimal) + keywords + date
+  3. Checks ticketmaster_events_cache for a non-expired entry
+  4. On cache HIT: returns cached events immediately
+  5. On cache MISS: calls Ticketmaster Discovery API v2, transforms response, caches, returns
+
+--- KEY IMPLEMENTATION DETAILS ---
+
+A) TICKETMASTER API CALL
+
+   URL: https://app.ticketmaster.com/discovery/v2/events.json
+
+   Query parameters:
+     apikey          = Deno.env.get("TICKETMASTER_API_KEY")
+     geoPoint        = "{lat},{lng}"   (from request body location)
+     radius          = request radius or 50
+     unit            = "km"
+     segmentId       = "KZFzniwnSyZfZ7v7nJ"  (Music — hardcode this)
+     keyword         = keywords.join(",")  (default: "afrobeats,amapiano,dancehall")
+     startDateTime   = startDate or now() in "YYYY-MM-DDTHH:mm:ssZ" format
+     endDateTime     = endDate or now()+30d in "YYYY-MM-DDTHH:mm:ssZ" format
+     sort            = sort or "date,asc"
+     size            = size or 20
+     page            = page or 0
+
+   Example full URL:
+     https://app.ticketmaster.com/discovery/v2/events.json?apikey=KEY&geoPoint=40.7484,-73.9857&radius=50&unit=km&segmentId=KZFzniwnSyZfZ7v7nJ&keyword=afrobeats,amapiano,dancehall&startDateTime=2026-03-01T00:00:00Z&endDateTime=2026-03-31T23:59:59Z&sort=date,asc&size=20&page=0
+
+B) RESPONSE TRANSFORMATION
+
+   Ticketmaster returns: { _embedded: { events: [...] }, page: {...} }
+
+   For each event in _embedded.events:
+
+     id            = event.id
+     eventName     = event.name
+     artistName    = event._embedded?.attractions?.[0]?.name || "Various Artists"
+     venueName     = event._embedded?.venues?.[0]?.name || "TBA"
+
+     image         = Pick from event.images[]:
+                     Prefer ratio "16_9" AND width >= 1024
+                     Fallback: largest image by width
+     images        = event.images.map(i => i.url) (deduplicated)
+
+     priceMin      = event.priceRanges?.[0]?.min || null
+     priceMax      = event.priceRanges?.[0]?.max || null
+     priceCurrency = event.priceRanges?.[0]?.currency || "USD"
+     price         = Format as "$25 - $75" or "TBA" if no priceRanges
+
+     date          = Format event.dates.start.localDate as "Fri, Mar 15"
+     time          = Format event.dates.start.localTime as "8:00 PM"
+                     (handle missing localTime → "Time TBA")
+     localDate     = event.dates.start.localDate
+     localTime     = event.dates.start.localTime || ""
+     dateTimeUTC   = event.dates.start.dateTime || ""
+
+     location      = `${venue.city.name}, ${venue.state.stateCode}`
+     address       = venue.address?.line1 || ""
+     coordinates   = {
+                       lat: parseFloat(venue.location?.latitude || "0"),
+                       lng: parseFloat(venue.location?.longitude || "0")
+                     }
+
+     genre         = event.classifications?.[0]?.genre?.name || "Music"
+     subGenre      = event.classifications?.[0]?.subGenre?.name || ""
+     tags          = Derive from [genre, subGenre, segment.name].filter(Boolean)
+                     Add "Live" if there are attractions
+
+     ticketUrl     = event.url
+     ticketStatus  = event.dates.status?.code || "onsale"
+     seatMapUrl    = event.seatmap?.staticUrl || undefined
+
+     distance      = Calculate haversine distance from user location to venue coords
+                     Format as km rounded to 1 decimal
+
+C) CACHE KEY FORMAT
+
+   `geo:${lat.toFixed(1)}:${lng.toFixed(1)}:kw:${keywords.sort().join(",")}:d:${startDate.slice(0,10)}`
+
+   Example: "geo:40.7:-74.0:kw:afrobeats,amapiano,dancehall:d:2026-03-01"
+
+D) CACHE WRITE (fire-and-forget)
+
+   UPSERT into ticketmaster_events_cache:
+     cache_key = computed key
+     events    = JSON array of transformed events
+     total_results = page.totalElements
+     fetched_at = now()
+     expires_at = now() + 2 hours
+
+   ON CONFLICT (cache_key) DO UPDATE SET events=..., fetched_at=..., expires_at=...
+
+E) CLEANUP (opportunistic, on every cache write)
+
+   DELETE FROM ticketmaster_events_cache WHERE expires_at < now();
+
+F) HAVERSINE DISTANCE (no Google API needed)
+
+   function haversineKm(lat1, lng1, lat2, lng2): number {
+     const R = 6371; // Earth radius in km
+     const dLat = (lat2 - lat1) * Math.PI / 180;
+     const dLng = (lng2 - lng1) * Math.PI / 180;
+     const a = Math.sin(dLat/2)**2 +
+               Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+               Math.sin(dLng/2)**2;
+     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+   }
+
+G) ERROR HANDLING
+
+   - Ticketmaster 429 → check cache for ANY non-expired entry for this geo, return it
+   - Ticketmaster 5xx → same fallback
+   - Empty _embedded.events → return { events: [], meta: { totalResults: 0 } }
+   - Missing env var → return 500 with clear message
+
+H) CORS HEADERS (same pattern as all other edge functions)
+
+   const corsHeaders = {
+     "Access-Control-Allow-Origin": "*",
+     "Access-Control-Allow-Headers":
+       "authorization, x-client-info, apikey, content-type",
+   };
+
+HOW TO TEST:
+  Deploy with `supabase functions deploy ticketmaster-events`
+  Call via curl:
+    curl -X POST https://<project>.supabase.co/functions/v1/ticketmaster-events \
+      -H "Authorization: Bearer <anon_key>" \
+      -H "Content-Type: application/json" \
+      -d '{"location":{"lat":40.7128,"lng":-74.0060}}'
+
+  Verify: Returns JSON with events array, each event has ticketUrl, artistName, etc.
+  Verify: Second call within 2 hours returns fromCache: true.
+
+
+================================================================================
+STEP 4: UPDATE THE SERVICE LAYER
+================================================================================
+
+File: app-mobile/src/services/nightOutExperiencesService.ts
+
+WHAT TO DO:
+  1. Replace NightOutVenue interface with the new type (see spec)
+  2. Replace NightOutResponse interface
+  3. Rename the static method from getNightOutVenues to getEvents
+  4. Update the supabase.functions.invoke call to target "ticketmaster-events"
+  5. Pass the new request body shape (location, radius, keywords, dates, sort, page)
+  6. Return { events, meta } instead of just venues[]
+
+NEW INTERFACE (replace the existing one):
+
+  export interface NightOutVenue {
+    id: string;
+    eventName: string;
+    artistName: string;
+    venueName: string;
+    image: string;
+    images: string[];
+    priceMin: number | null;
+    priceMax: number | null;
+    priceCurrency: string;
+    price: string;
+    date: string;
+    time: string;
+    localDate: string;
+    dateTimeUTC: string;
+    location: string;
+    address: string;
+    coordinates: { lat: number; lng: number };
+    genre: string;
+    subGenre: string;
+    tags: string[];
+    ticketUrl: string;
+    ticketStatus: string;
+    distance?: number;
+    seatMapUrl?: string;
+  }
+
+  export interface EventsMeta {
+    totalResults: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    fromCache: boolean;
+    keywords: string[];
+  }
+
+NEW METHOD SIGNATURE:
+
+  static async getEvents(
+    location: { lat: number; lng: number },
+    options?: {
+      radius?: number;
+      keywords?: string[];
+      startDate?: string;
+      endDate?: string;
+      sort?: string;
+      page?: number;
+    }
+  ): Promise<{ events: NightOutVenue[]; meta: EventsMeta }>
+
+  The body of the method:
+    - Calls supabase.functions.invoke("ticketmaster-events", { body: { location, ...options } })
+    - Returns { events: data.events, meta: data.meta }
+
+HOW TO TEST:
+  Import the service in a test file or console.
+  Call NightOutExperiencesService.getEvents({ lat: 40.7128, lng: -74.006 })
+  Verify it returns real events with ticketUrl fields.
+
+
+================================================================================
+STEP 5: UPDATE EXPANDED CARD TYPES
+================================================================================
+
+File: app-mobile/src/types/expandedCardTypes.ts
+
+WHAT TO CHANGE:
+  Replace the nightOutData property (lines 132-144) with:
+
+  nightOutData?: {
+    eventName: string;
+    venueName: string;
+    artistName: string;
+    date: string;
+    time: string;
+    price: string;
+    genre?: string;
+    subGenre?: string;
+    tags: string[];
+    coordinates?: { lat: number; lng: number };
+    ticketUrl: string;
+    ticketStatus: string;
+    seatMapUrl?: string;
+  };
+
+REMOVED FIELDS:
+  - placeName → renamed to venueName
+  - hostName → renamed to artistName
+  - timeRange → removed (events have single start time)
+  - musicGenre → split into genre + subGenre
+  - peopleGoing → removed
+
+ADDED FIELDS:
+  - ticketUrl, ticketStatus, seatMapUrl, subGenre
+
+HOW TO TEST:
+  TypeScript compiler should show errors in DiscoverScreen.tsx and
+  ExpandedCardModal.tsx until you update those files (Steps 6-7).
+  That's expected and correct.
+
+
+================================================================================
+STEP 6: UPDATE DISCOVERSCREEN.TSX — NIGHT OUT TAB
+================================================================================
+
+File: app-mobile/src/components/DiscoverScreen.tsx
+
+This is the biggest change. Work through these sub-steps in order:
+
+6A) UPDATE NightOutCardData INTERFACE (around line 305)
+
+  Replace the existing NightOutCardData with:
+
+  interface NightOutCardData {
+    id: string;
+    eventName: string;
+    artistName: string;
+    venueName: string;
+    image: string;
+    images?: string[];
+    price: string;
+    priceMin: number | null;
+    priceMax: number | null;
+    date: string;
+    time: string;
+    localDate: string;
+    location: string;
+    tags: string[];
+    genre?: string;
+    subGenre?: string;
+    address?: string;
+    coordinates?: { lat: number; lng: number };
+    ticketUrl: string;
+    ticketStatus: string;
+    distance?: number;
+  }
+
+6B) UPDATE GenreFilter TYPE (around line 340)
+
+  Keep the same type — the genre IDs stay the same. But add a GENRE_TO_KEYWORDS
+  mapping object right after the type definition:
+
+  const GENRE_TO_KEYWORDS: Record<GenreFilter, string[]> = {
+    "all":             ["afrobeats", "amapiano", "dancehall"],
+    "afrobeats":       ["afrobeats", "amapiano"],
+    "dancehall":       ["dancehall", "soca"],
+    "hiphop-rnb":      ["hip hop", "r&b", "rnb", "hip-hop"],
+    "house":           ["house", "deep house", "afro house"],
+    "techno":          ["techno", "electronic"],
+    "jazz-blues":      ["jazz", "blues"],
+    "latin-salsa":     ["latin", "salsa", "reggaeton"],
+    "reggae":          ["reggae", "dub"],
+    "kpop":            ["kpop", "k-pop"],
+    "acoustic-indie":  ["acoustic", "indie"],
+  };
+
+6C) UPDATE DATE FILTER HELPER
+
+  Replace the existing date matching logic with a function that returns
+  { startDate, endDate } strings (ISO 8601 UTC) for the API call:
+
+  function getDateRange(filter: DateFilter): { startDate: string; endDate: string } {
+    const now = new Date();
+    const startOfDay = (d: Date) => {
+      const copy = new Date(d);
+      copy.setHours(0, 0, 0, 0);
+      return copy;
+    };
+    const endOfDay = (d: Date) => {
+      const copy = new Date(d);
+      copy.setHours(23, 59, 59, 0);
+      return copy;
+    };
+
+    switch (filter) {
+      case "today":
+        return { startDate: now.toISOString(), endDate: endOfDay(now).toISOString() };
+      case "tomorrow": {
+        const tmrw = new Date(now);
+        tmrw.setDate(tmrw.getDate() + 1);
+        return { startDate: startOfDay(tmrw).toISOString(), endDate: endOfDay(tmrw).toISOString() };
+      }
+      case "weekend": {
+        // Find next Friday 6pm
+        const dayOfWeek = now.getDay();
+        const daysUntilFri = (5 - dayOfWeek + 7) % 7 || 7;
+        const friday = new Date(now);
+        friday.setDate(friday.getDate() + (dayOfWeek <= 5 && dayOfWeek > 0 ? daysUntilFri : 0));
+        friday.setHours(18, 0, 0, 0);
+        const sunday = new Date(friday);
+        sunday.setDate(sunday.getDate() + 2);
+        sunday.setHours(23, 59, 59, 0);
+        // If it's already the weekend, start from now
+        if (dayOfWeek === 0 || dayOfWeek === 6 || (dayOfWeek === 5 && now.getHours() >= 18)) {
+          return { startDate: now.toISOString(), endDate: sunday.toISOString() };
+        }
+        return { startDate: friday.toISOString(), endDate: sunday.toISOString() };
+      }
+      case "next-week": {
+        const monday = new Date(now);
+        monday.setDate(monday.getDate() + (8 - now.getDay()) % 7);
+        monday.setHours(0, 0, 0, 0);
+        const nextSunday = new Date(monday);
+        nextSunday.setDate(nextSunday.getDate() + 6);
+        nextSunday.setHours(23, 59, 59, 0);
+        return { startDate: monday.toISOString(), endDate: nextSunday.toISOString() };
+      }
+      case "month":
+      case "any":
+      default: {
+        const monthLater = new Date(now);
+        monthLater.setDate(monthLater.getDate() + 30);
+        return { startDate: now.toISOString(), endDate: monthLater.toISOString() };
+      }
+    }
+  }
+
+6D) UPDATE THE FETCH EFFECT (around line 1832)
+
+  Replace the existing fetch logic. The new flow:
+
+  1. When activeTab === "night-out" AND location is available:
+  2. Check AsyncStorage cache (same key pattern but add genre)
+  3. On cache miss, call:
+       NightOutExperiencesService.getEvents(
+         { lat, lng },
+         {
+           radius: 50,
+           keywords: GENRE_TO_KEYWORDS[selectedFilters.genre],
+           ...getDateRange(selectedFilters.date),
+           sort: "date,asc",
+         }
+       )
+  4. Transform events to NightOutCardData (minimal — types nearly match)
+  5. Store in AsyncStorage cache
+  6. Set nightOutCards state
+
+  IMPORTANT: Genre and date filters now trigger a RE-FETCH (server-side).
+  Price filter remains client-side.
+
+  The re-fetch should happen when selectedFilters.genre or selectedFilters.date
+  changes. Add these to the useEffect dependency array. Use a debounce (300ms)
+  to avoid rapid re-fetches during filter changes.
+
+6E) UPDATE PRICE FILTER (client-side)
+
+  Replace the existing price matching logic in the filteredNightOutCards useMemo:
+
+  const filteredNightOutCards = useMemo(() => {
+    let filtered = nightOutCards;
+
+    // Price filter (client-side only — genre and date are server-side now)
+    if (selectedFilters.price !== "any") {
+      filtered = filtered.filter((card) => {
+        if (card.priceMin === null && card.priceMax === null) return false; // TBA → hide
+        const min = card.priceMin || 0;
+        const max = card.priceMax || min;
+        switch (selectedFilters.price) {
+          case "free": return max === 0;
+          case "under-25": return min < 25;
+          case "25-50": return min <= 50 && max >= 25;
+          case "50-100": return min <= 100 && max >= 50;
+          case "over-100": return max > 100;
+          default: return true;
+        }
+      });
+    }
+
+    return filtered;
+  }, [nightOutCards, selectedFilters.price]);
+
+  REMOVE the date and genre filtering from this useMemo — they're server-side now.
+
+6F) UPDATE NightOutCard COMPONENT (around line 499)
+
+  Changes to the card UI:
+
+  - Replace all references to `card.placeName` → `card.venueName`
+  - Replace all references to `card.hostName` → `card.artistName`
+  - Remove the "X going" / peopleGoing row
+  - Remove the matchPercentage badge
+  - Remove the timeRange display (just show time)
+
+  Add ticket status badge:
+    {card.ticketStatus === "onsale" && (
+      <View style={[styles.statusBadge, { backgroundColor: '#10B981' }]}>
+        <Text style={styles.statusText}>On Sale</Text>
+      </View>
+    )}
+    {card.ticketStatus === "offsale" && (
+      <View style={[styles.statusBadge, { backgroundColor: '#EF4444' }]}>
+        <Text style={styles.statusText}>Sold Out</Text>
+      </View>
+    )}
+
+  Add genre badge (where matchPercentage was):
+    <View style={styles.genreBadge}>
+      <Ionicons name="musical-notes-outline" size={12} color="#FF6B35" />
+      <Text style={styles.genreText}>{card.genre}</Text>
+    </View>
+
+  Add distance if available:
+    {card.distance && (
+      <Text style={styles.distanceText}>{card.distance.toFixed(1)} km</Text>
+    )}
+
+6G) UPDATE handleNightOutCardPress (around line 1966)
+
+  Replace the card-to-expanded transformation:
+
+  const handleNightOutCardPress = (card: NightOutCardData) => {
+    const expandedCardData: ExpandedCardData = {
+      id: card.id,
+      title: card.eventName,
+      category: "Night Out",
+      categoryIcon: "moon-outline",
+      description: `${card.artistName} at ${card.venueName}`,
+      fullDescription: `${card.artistName} at ${card.venueName} — ${card.date} at ${card.time}`,
+      image: card.image,
+      images: card.images || [card.image],
+      rating: 0,
+      reviewCount: 0,
+      priceRange: card.price,
+      distance: card.distance ? `${card.distance.toFixed(1)} km` : "",
+      travelTime: "",
+      address: card.address || card.location,
+      highlights: [card.venueName, card.artistName, card.price].filter(Boolean),
+      tags: card.tags,
+      matchScore: 0,
+      matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
+      socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+      location: card.coordinates,
+      nightOutData: {
+        eventName: card.eventName,
+        venueName: card.venueName,
+        artistName: card.artistName,
+        date: card.date,
+        time: card.time,
+        price: card.price,
+        genre: card.genre,
+        subGenre: card.subGenre,
+        tags: card.tags,
+        coordinates: card.coordinates,
+        ticketUrl: card.ticketUrl,
+        ticketStatus: card.ticketStatus,
+      },
+    };
+    setSelectedCardForExpansion(expandedCardData);
+    setIsExpandedModalVisible(true);
+  };
+
+6H) REMOVE OLD GENRE FILTERING LOGIC
+
+  Delete the GENRE_KEYWORDS map (around line 2039) and the fuzzy genre matching
+  logic — it's no longer needed since genres come from Ticketmaster classifications.
+
+HOW TO TEST:
+  - Start the app, go to Night Out tab
+  - Verify real events appear (not AI-generated)
+  - Verify genre filter triggers a new fetch (watch console logs)
+  - Verify date filter triggers a new fetch
+  - Verify price filter works client-side (no new fetch)
+  - Tap a card to open expanded view → verify data displays correctly
+
+
+================================================================================
+STEP 7: UPDATE EXPANDEDCARDMODAL.TSX — TICKET PURCHASE
+================================================================================
+
+File: app-mobile/src/components/ExpandedCardModal.tsx
+
+7A) ADD IMPORT at top of file:
+
+  import * as WebBrowser from 'expo-web-browser';
+
+7B) UPDATE THE NIGHT OUT SECTION (around lines 1007-1112)
+
+  Replace the Night Out expanded view rendering. Key changes:
+
+  - Replace "Hosted by {hostName}" → "Performing: {artistName}"
+  - Replace "placeName" → "venueName"
+  - Remove "People Going" badge
+  - Remove "timeRange" → just show date + time
+  - Add genre + subGenre badges
+  - Add ticket status badge (On Sale / Sold Out / Coming Soon)
+  - Remove: weather section, busyness section, match factors (not relevant for events)
+
+  PRIMARY CTA — "Get Tickets" Button:
+
+  Replace any existing action button for Night Out with:
+
+  {nightOut?.ticketUrl && nightOut.ticketStatus === "onsale" && (
+    <TouchableOpacity
+      style={styles.getTicketsButton}
+      onPress={async () => {
+        await WebBrowser.openBrowserAsync(nightOut.ticketUrl, {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+          toolbarColor: '#1A1A2E',
+          controlsColor: '#FF6B35',
+        });
+      }}
+      activeOpacity={0.8}
+    >
+      <Ionicons name="ticket-outline" size={20} color="#FFFFFF" />
+      <Text style={styles.getTicketsText}>Get Tickets</Text>
+      <Text style={styles.getTicketsPrice}>{nightOut.price}</Text>
+    </TouchableOpacity>
+  )}
+
+  {nightOut?.ticketStatus === "offsale" && (
+    <View style={[styles.getTicketsButton, { backgroundColor: '#666' }]}>
+      <Text style={styles.getTicketsText}>Sold Out</Text>
+    </View>
+  )}
+
+  Styles for the button:
+
+  getTicketsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF6B35',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    marginHorizontal: 16,
+    marginTop: 16,
+    gap: 8,
+  },
+  getTicketsText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  getTicketsPrice: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+    opacity: 0.9,
+  },
+
+7C) UPDATE nightOutData REFERENCES
+
+  Find-and-replace throughout the file:
+  - nightOut.placeName  → nightOut.venueName
+  - nightOut.hostName   → nightOut.artistName
+  - nightOut.musicGenre → nightOut.genre
+  - nightOut.timeRange  → nightOut.time
+  - nightOut.peopleGoing → REMOVE all references
+
+7D) KEEP "Get Directions" BUTTON
+
+  The venue location card with "Get Directions" should stay — it uses
+  Linking.openURL with coordinates, which still works.
+
+7E) OPTIONAL: SEAT MAP
+
+  If nightOut.seatMapUrl exists, add an Image component showing the seat map:
+
+  {nightOut.seatMapUrl && (
+    <View style={styles.seatMapSection}>
+      <Text style={styles.seatMapTitle}>Seat Map</Text>
+      <Image
+        source={{ uri: nightOut.seatMapUrl }}
+        style={styles.seatMapImage}
+        resizeMode="contain"
+      />
+    </View>
+  )}
+
+HOW TO TEST:
+  - Tap a Night Out card → expanded modal opens
+  - Verify: event name, artist, venue, date/time, price, genre display correctly
+  - Tap "Get Tickets" → in-app browser opens Ticketmaster checkout page
+  - Close browser → returns to expanded modal
+  - Verify "Sold Out" state renders correctly for offsale events
+  - Verify "Get Directions" still works
+
+
+================================================================================
+STEP 8: CLEAN UP OLD CODE
+================================================================================
+
+8A) DELETE the old edge function:
+  supabase/functions/night-out-experiences/index.ts
+  (and its folder)
+
+  NOTE: Don't delete yet during development. Delete after the new flow is
+  fully tested and deployed.
+
+8B) CLEAN UP card_pool entries (optional):
+  The old night-out-experiences stored cards in card_pool with category "Drink".
+  These entries are now orphaned. You can clean them up with:
+
+    DELETE FROM card_pool WHERE category = 'Drink'
+      AND source_function = 'night-out-experiences';
+
+  Only do this AFTER confirming the new flow works end-to-end.
+
+8C) REMOVE old imports/references:
+  - In DiscoverScreen.tsx, remove any remaining references to:
+    - Old NightOutVenue type fields (matchPercentage, peopleGoing, etc.)
+    - GENRE_KEYWORDS map
+    - Old date matching helper functions that parsed "Wed, Feb 19" format
+    - Old price parsing from "$10-$60" string format
+
+8D) UPDATE the service import path if the service file was renamed.
+
+
+================================================================================
+STEP 9: VERIFY END-TO-END
+================================================================================
+
+Full test checklist:
+
+[ ] Night Out tab loads real Ticketmaster events
+[ ] Events show real artist names (not AI-generated "DJ Phantom")
+[ ] Events show real venue names (not Google Places bars)
+[ ] Events show real ticket prices (from priceRanges)
+[ ] Events show real dates/times
+[ ] Genre filter changes API keywords → new results fetched
+[ ] Date filter changes API date range → new results fetched
+[ ] Price filter works client-side → cards filtered without new fetch
+[ ] "Get Tickets" opens Ticketmaster checkout in in-app browser
+[ ] Closing in-app browser returns to expanded modal
+[ ] "Sold Out" events show disabled ticket button
+[ ] "Get Directions" opens native maps app
+[ ] Cache works: second visit shows events instantly
+[ ] Error state: disable wifi → shows error with retry
+[ ] Empty state: remote location → shows "No events found"
+[ ] "For You" tab completely unaffected
+[ ] No console errors or TypeScript errors
+[ ] No Google Places API calls in Night Out flow
+[ ] No OpenAI API calls in Night Out flow
+
+
+================================================================================
+COMMON MISTAKES TO AVOID
+================================================================================
+
+1. DON'T hardcode the Ticketmaster API key in the edge function source.
+   Use Deno.env.get("TICKETMASTER_API_KEY").
+
+2. DON'T forget that Ticketmaster geoPoint format is "lat,lng" NOT "lng,lat".
+
+3. DON'T forget the segmentId parameter — without it you'll get non-music
+   events (sports, theater, etc.).
+
+4. DON'T parse prices from strings — use priceMin/priceMax numbers directly.
+   The old code parsed "$10-$60" strings; the new code uses numeric fields.
+
+5. DON'T forget to handle events with no priceRanges (some events don't list
+   prices yet). Show "TBA" instead of "$0".
+
+6. DON'T forget to handle events with no localTime — some events have date
+   but no time. Show "Time TBA".
+
+7. DON'T re-fetch on every price filter change — price is client-side only.
+   Only genre and date trigger server re-fetch.
+
+8. DON'T delete the old edge function until the new flow is fully tested.
+
+9. DON'T forget CORS headers on the new edge function — mobile calls will
+   fail silently without them.
+
+10. DON'T open the ticket URL with Linking.openURL — use WebBrowser.openBrowserAsync
+    for an in-app experience. Linking.openURL opens the system browser (leaves app).
+
+
+================================================================================
+DONE WHEN
+================================================================================
+
+You know it's working when:
+
+1. Open Night Out tab → see cards with REAL event names from Ticketmaster
+   (not "Neon Pulse Friday" or other AI names)
+
+2. Each card shows a real artist, real venue, real price range, real date
+
+3. Tap "Get Tickets" → in-app browser opens the actual Ticketmaster
+   purchase page for that specific event
+
+4. User can buy a ticket entirely within the browser and return to the app
+
+5. Zero Google API calls, zero OpenAI calls, zero Stripe involvement
+   in the Night Out tab
+
+6. The "For You" tab still works exactly as before

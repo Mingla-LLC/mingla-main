@@ -131,16 +131,18 @@ export interface ExpandedCardData {
   // Night Out-specific data
   nightOutData?: {
     eventName: string;
-    placeName: string;
-    hostName: string;
+    venueName: string;
+    artistName: string;
     date: string;
     time: string;
-    timeRange: string;
     price: string;
-    musicGenre?: string;
-    peopleGoing: number;
+    genre?: string;
+    subGenre?: string;
     tags: string[];
     coordinates?: { lat: number; lng: number };
+    ticketUrl: string;
+    ticketStatus: string;
+    seatMapUrl?: string;
   };
 }
 

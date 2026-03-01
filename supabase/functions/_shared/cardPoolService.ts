@@ -95,7 +95,9 @@ async function queryPoolCards(
   const lngDelta = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180));
 
   const resolvedCats = resolveCategories(categories);
-  if (resolvedCats.length === 0) {
+  // For curated cards, categories span multiple types — skip category filter
+  // (experienceType filter on line ~118-120 is sufficient)
+  if (resolvedCats.length === 0 && cardType !== 'curated') {
     return { poolCards: [], totalPoolSize: 0 };
   }
 
@@ -104,8 +106,15 @@ async function queryPoolCards(
     .from('card_pool')
     .select('*')
     .eq('is_active', true)
-    .eq('card_type', cardType)
-    .overlaps('categories', resolvedCats)
+    .eq('card_type', cardType);
+
+  // Only apply category filter if we have categories
+  // (curated cards span multiple categories, so skip when empty)
+  if (resolvedCats.length > 0) {
+    query = query.overlaps('categories', resolvedCats);
+  }
+
+  query = query
     .gte('lat', lat - latDelta)
     .lte('lat', lat + latDelta)
     .gte('lng', lng - lngDelta)

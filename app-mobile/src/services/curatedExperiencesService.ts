@@ -13,6 +13,7 @@ interface GenerateCuratedParams {
   limit?: number;
   skipDescriptions?: boolean;
   sessionId?: string;
+  batchSeed?: number;
 }
 
 class CuratedExperiencesService {

@@ -304,25 +304,26 @@ interface GridCardProps {
 // Night Out Card Data Interface
 interface NightOutCardData {
   id: string;
-  placeName: string;
   eventName: string;
-  hostName: string;
+  artistName: string;
+  venueName: string;
   image: string;
   images?: string[];
   price: string;
-  matchPercentage: number;
+  priceMin: number | null;
+  priceMax: number | null;
   date: string;
   time: string;
-  timeRange: string;
+  localDate: string;
   location: string;
   tags: string[];
-  musicGenre?: string;
-  peopleGoing: number;
+  genre?: string;
+  subGenre?: string;
   address?: string;
-  description?: string;
-  rating?: number;
-  reviewCount?: number;
   coordinates?: { lat: number; lng: number };
+  ticketUrl: string;
+  ticketStatus: string;
+  distance?: number;
 }
 
 interface NightOutCardProps {
@@ -334,12 +335,82 @@ interface NightOutCardProps {
 // Filter types
 type DateFilter = "any" | "today" | "tomorrow" | "weekend" | "next-week" | "month";
 type PriceFilter = "any" | "free" | "under-25" | "25-50" | "50-100" | "over-100";
-type GenreFilter = "all" | "afrobeats" | "hiphop-rnb" | "house" | "techno" | "jazz-blues" | "latin-salsa" | "reggae" | "kpop" | "lounge-ambient" | "acoustic-indie";
+type GenreFilter = "all" | "afrobeats" | "dancehall" | "hiphop-rnb" | "house" | "techno" | "jazz-blues" | "latin-salsa" | "reggae" | "kpop" | "acoustic-indie";
 
 interface NightOutFilters {
   date: DateFilter;
   price: PriceFilter;
   genre: GenreFilter;
+}
+
+const GENRE_TO_KEYWORDS: Record<GenreFilter, string[]> = {
+  "all":             [],
+  "afrobeats":       ["afrobeats", "amapiano"],
+  "dancehall":       ["dancehall", "soca"],
+  "hiphop-rnb":      ["hip hop", "r&b", "rnb", "hip-hop"],
+  "house":           ["house", "deep house", "afro house"],
+  "techno":          ["techno", "electronic"],
+  "jazz-blues":      ["jazz", "blues"],
+  "latin-salsa":     ["latin", "salsa", "reggaeton"],
+  "reggae":          ["reggae", "dub"],
+  "kpop":            ["kpop", "k-pop"],
+  "acoustic-indie":  ["acoustic", "indie"],
+};
+
+function getDateRange(filter: DateFilter): { startDate: string; endDate: string } {
+  const now = new Date();
+  // Ticketmaster requires ISO 8601 WITHOUT milliseconds: YYYY-MM-DDTHH:mm:ssZ
+  const toISONoMs = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const startOfDay = (d: Date) => {
+    const copy = new Date(d);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+  };
+  const endOfDay = (d: Date) => {
+    const copy = new Date(d);
+    copy.setHours(23, 59, 59, 0);
+    return copy;
+  };
+
+  switch (filter) {
+    case "today":
+      return { startDate: toISONoMs(now), endDate: toISONoMs(endOfDay(now)) };
+    case "tomorrow": {
+      const tmrw = new Date(now);
+      tmrw.setDate(tmrw.getDate() + 1);
+      return { startDate: toISONoMs(startOfDay(tmrw)), endDate: toISONoMs(endOfDay(tmrw)) };
+    }
+    case "weekend": {
+      const dayOfWeek = now.getDay();
+      const daysUntilFri = (5 - dayOfWeek + 7) % 7 || 7;
+      const friday = new Date(now);
+      friday.setDate(friday.getDate() + (dayOfWeek <= 5 && dayOfWeek > 0 ? daysUntilFri : 0));
+      friday.setHours(18, 0, 0, 0);
+      const sunday = new Date(friday);
+      sunday.setDate(sunday.getDate() + 2);
+      sunday.setHours(23, 59, 59, 0);
+      if (dayOfWeek === 0 || dayOfWeek === 6 || (dayOfWeek === 5 && now.getHours() >= 18)) {
+        return { startDate: toISONoMs(now), endDate: toISONoMs(sunday) };
+      }
+      return { startDate: toISONoMs(friday), endDate: toISONoMs(sunday) };
+    }
+    case "next-week": {
+      const monday = new Date(now);
+      monday.setDate(monday.getDate() + (8 - now.getDay()) % 7);
+      monday.setHours(0, 0, 0, 0);
+      const nextSunday = new Date(monday);
+      nextSunday.setDate(nextSunday.getDate() + 6);
+      nextSunday.setHours(23, 59, 59, 0);
+      return { startDate: toISONoMs(monday), endDate: toISONoMs(nextSunday) };
+    }
+    case "month":
+    case "any":
+    default: {
+      const monthLater = new Date(now);
+      monthLater.setDate(monthLater.getDate() + 30);
+      return { startDate: toISONoMs(now), endDate: toISONoMs(monthLater) };
+    }
+  }
 }
 
 interface DiscoverScreenProps {
@@ -495,84 +566,79 @@ const GridCard: React.FC<GridCardProps> = ({ card, currency = "USD", onPress }) 
   );
 };
 
-// Night Out Card Component (60% height of featured card)
+// Night Out Card Component — compact horizontal layout
 const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onPress }) => {
   const formattedPrice = formatPriceRange(card.price, currency);
-  // Split price into parts to color currency symbols orange
-  const priceWithOrangeSymbol = (price: string) => {
-    if (!price || price.toLowerCase() === "free") return <Text style={styles.bottomInfoPrice}>{price || "—"}</Text>;
-    // Match currency symbols at the start or after " - "
-    const parts = price.split(/([^\d,.\s\-–+]+)/g).filter(Boolean);
-    return (
-      <Text style={styles.bottomInfoPrice}>
-        {parts.map((part, i) =>
-          /^[^\d,.\s\-–+]+$/.test(part) ? (
-            <Text key={i} style={styles.bottomInfoPriceCurrency}>{part}</Text>
-          ) : (
-            <Text key={i}>{part}</Text>
-          )
-        )}
-      </Text>
-    );
-  };
+  const displayPrice = formattedPrice || card.price || "TBA";
+  const statusColor = card.ticketStatus === "onsale" ? "#10B981" : card.ticketStatus === "offsale" ? "#EF4444" : "#F59E0B";
+  const statusLabel = card.ticketStatus === "onsale" ? "On Sale" : card.ticketStatus === "offsale" ? "Sold Out" : "Soon";
+
   return (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.nightOutCard}
       onPress={onPress}
-      activeOpacity={0.9}
+      activeOpacity={0.85}
     >
-      {/* Card Image Section */}
-      <View style={styles.nightOutCardImageContainer}>
-        <Image
-          source={{ uri: card.image }}
-          style={styles.nightOutCardImage}
-          resizeMode="cover"
-        />
-      </View>
-
-      {/* Card Content Section */}
-      <View style={styles.nightOutCardContent}>
-        {/* Event Name and Host Row */}
-        <View style={styles.eventHostRow}>
-          <Ionicons name="musical-notes" size={16} color="#eb7825" />
-          <Text style={styles.eventName} numberOfLines={1}>{card.eventName}</Text>
-          <Text style={styles.dotSeparator}>•</Text>
-          <Text style={styles.hostName} numberOfLines={1}>{card.hostName}</Text>
+      {/* Compact horizontal layout: image left, info right */}
+      <View style={styles.nightOutCardRow}>
+        {/* Thumbnail */}
+        <View style={styles.nightOutThumbWrap}>
+          <Image
+            source={{ uri: card.image }}
+            style={styles.nightOutThumb}
+            resizeMode="cover"
+          />
+          {/* Status dot */}
+          <View style={[styles.nightOutStatusDot, { backgroundColor: statusColor }]} />
         </View>
 
-        {/* Tags Row */}
-        <View style={styles.tagsRow}>
-          {card.tags.slice(0, 4).map((tag, index) => (
-            <View key={index} style={styles.tagBadge}>
-              <Text style={styles.tagText}>{tag}</Text>
+        {/* Info */}
+        <View style={styles.nightOutInfo}>
+          {/* Event title */}
+          <Text style={styles.nightOutTitle} numberOfLines={1}>{card.eventName}</Text>
+
+          {/* Artist */}
+          <Text style={styles.nightOutArtist} numberOfLines={1}>{card.artistName}</Text>
+
+          {/* Date · Time row */}
+          <View style={styles.nightOutMetaRow}>
+            <Feather name="calendar" size={12} color="#eb7825" />
+            <Text style={styles.nightOutMetaText}>{card.date}</Text>
+            <Text style={styles.nightOutMetaDot}>·</Text>
+            <Feather name="clock" size={12} color="#eb7825" />
+            <Text style={styles.nightOutMetaText}>{card.time}</Text>
+          </View>
+
+          {/* Venue row */}
+          <View style={styles.nightOutMetaRow}>
+            <Ionicons name="location-outline" size={12} color="#eb7825" />
+            <Text style={styles.nightOutMetaText} numberOfLines={1}>{card.venueName}{card.location ? `, ${card.location}` : ""}</Text>
+          </View>
+        </View>
+
+        {/* Right column: price + status */}
+        <View style={styles.nightOutRight}>
+          <Text style={styles.nightOutPrice} numberOfLines={1}>{displayPrice}</Text>
+          <Text style={[styles.nightOutStatusLabel, { color: statusColor }]}>{statusLabel}</Text>
+        </View>
+      </View>
+
+      {/* Tags strip (only show genre + first 2 tags) */}
+      {(card.genre || card.tags.length > 0) && (
+        <View style={styles.nightOutTagStrip}>
+          {card.genre && (
+            <View style={styles.nightOutTagChip}>
+              <Ionicons name="musical-notes-outline" size={10} color="#eb7825" />
+              <Text style={styles.nightOutTagLabel}>{card.genre}</Text>
+            </View>
+          )}
+          {card.tags.filter(t => t !== card.genre && t !== "Music" && t !== "Live").slice(0, 2).map((tag, i) => (
+            <View key={i} style={styles.nightOutTagChip}>
+              <Text style={styles.nightOutTagLabel}>{tag}</Text>
             </View>
           ))}
         </View>
-
-        {/* Bottom Info Row */}
-        <View style={styles.nightOutBottomRow}>
-          {/* Left: Date and People */}
-          <View style={styles.leftInfoColumn}>
-            <View style={styles.bottomInfoItem}>
-              <Feather name="calendar" size={14} color="#eb7825" />
-              <Text style={styles.bottomInfoLabel}>{card.date}</Text>
-            </View>
-            <View style={styles.bottomInfoItem}>
-              <Feather name="users" size={14} color="#eb7825" />
-              <Text style={styles.bottomInfoValue}>{card.peopleGoing} going</Text>
-            </View>
-          </View>
-          
-          {/* Right: Time Range and Price */}
-          <View style={styles.rightInfoColumn}>
-            <View style={styles.bottomInfoItem}>
-              <Feather name="clock" size={14} color="#eb7825" />
-              <Text style={styles.bottomInfoLabel}>{card.timeRange}</Text>
-            </View>
-            {priceWithOrangeSymbol(formattedPrice || card.price)}
-          </View>
-        </View>
-      </View>
+      )}
     </TouchableOpacity>
   );
 };
@@ -1076,7 +1142,6 @@ export default function DiscoverScreen({
   const [nightOutCards, setNightOutCards] = useState<NightOutCardData[]>([]);
   const [nightOutLoading, setNightOutLoading] = useState(true);
   const [nightOutError, setNightOutError] = useState<string | null>(null);
-  const nightOutFetchedRef = useRef(false);
 
   // Night Out reuses the shared device GPS coordinates
   const nightOutGpsLat = deviceGpsLat;
@@ -1769,17 +1834,18 @@ export default function DiscoverScreen({
   interface NightOutCache {
     date: string;
     venues: NightOutCardData[];
+    genre: string;
   }
 
-  // Include GPS location in cache key so changing location gets fresh results
-  const nightOutCacheKey = `${NIGHT_OUT_CACHE_KEY}_${user?.id}_${nightOutGpsLat?.toFixed(2)}_${nightOutGpsLng?.toFixed(2)}`;
+  // Include GPS location AND genre in cache key so changing filters gets fresh results
+  const nightOutCacheKey = `${NIGHT_OUT_CACHE_KEY}_${user?.id}_${nightOutGpsLat?.toFixed(2)}_${nightOutGpsLng?.toFixed(2)}_${selectedFilters.genre}`;
 
   const saveNightOutCache = async (venues: NightOutCardData[]) => {
     if (!user?.id) return;
     try {
-      const cacheData: NightOutCache = { date: getTodayDateString(), venues };
+      const cacheData: NightOutCache = { date: getTodayDateString(), venues, genre: selectedFilters.genre };
       await AsyncStorage.setItem(nightOutCacheKey, JSON.stringify(cacheData));
-      console.log("Saved night-out cache:", venues.length, "venues");
+      console.log("Saved night-out cache:", venues.length, "events");
     } catch (err) {
       console.error("Error saving night-out cache:", err);
     }
@@ -1805,35 +1871,37 @@ export default function DiscoverScreen({
     return null;
   };
 
-  // Fetch night-out venues (transform NightOutVenue -> NightOutCardData)
+  // Transform NightOutVenue -> NightOutCardData (types nearly match now)
   const transformNightOutVenue = (venue: NightOutVenue): NightOutCardData => ({
     id: venue.id,
-    placeName: venue.placeName,
     eventName: venue.eventName,
-    hostName: venue.hostName,
+    artistName: venue.artistName,
+    venueName: venue.venueName,
     image: venue.image,
     images: venue.images,
     price: venue.price,
-    matchPercentage: venue.matchPercentage,
+    priceMin: venue.priceMin,
+    priceMax: venue.priceMax,
     date: venue.date,
     time: venue.time,
-    timeRange: venue.timeRange,
+    localDate: venue.localDate,
     location: venue.location,
     tags: venue.tags,
-    musicGenre: venue.musicGenre || undefined,
-    peopleGoing: venue.peopleGoing,
+    genre: venue.genre || undefined,
+    subGenre: venue.subGenre || undefined,
     address: venue.address,
-    description: venue.description,
-    rating: venue.rating,
-    reviewCount: venue.reviewCount,
     coordinates: venue.coordinates,
+    ticketUrl: venue.ticketUrl,
+    ticketStatus: venue.ticketStatus,
+    distance: venue.distance,
   });
 
+  // Debounce ref for filter changes
+  const nightOutFetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    const fetchNightOutVenues = async () => {
+    const fetchNightOutEvents = async () => {
       if (!nightOutGpsLat || !nightOutGpsLng) return;
-      if (nightOutFetchedRef.current) return;
-      nightOutFetchedRef.current = true;
 
       setNightOutLoading(true);
       setNightOutError(null);
@@ -1841,36 +1909,53 @@ export default function DiscoverScreen({
       try {
         // Check cache first
         const cached = await loadNightOutCache();
-        if (cached && cached.date === getTodayDateString() && cached.venues.length > 0) {
-          console.log("Night-out cache hit:", cached.venues.length, "venues");
+        if (cached && cached.date === getTodayDateString() && cached.venues.length > 0 && cached.genre === selectedFilters.genre) {
+          console.log("Night-out cache hit:", cached.venues.length, "events");
           setNightOutCards(cached.venues);
           setNightOutLoading(false);
           return;
         }
 
-        console.log("Night-out cache miss. Fetching fresh data using GPS...");
-        const venues = await NightOutExperiencesService.getNightOutVenues(
+        console.log("Night-out cache miss. Fetching Ticketmaster events...");
+        const { startDate, endDate } = getDateRange(selectedFilters.date);
+        const { events } = await NightOutExperiencesService.getEvents(
           { lat: nightOutGpsLat, lng: nightOutGpsLng },
-          10000
+          {
+            radius: 50,
+            keywords: GENRE_TO_KEYWORDS[selectedFilters.genre],
+            startDate,
+            endDate,
+            sort: "date,asc",
+          }
         );
 
-        const cards = venues.map(transformNightOutVenue);
+        const cards = events.map(transformNightOutVenue);
         setNightOutCards(cards);
         saveNightOutCache(cards);
       } catch (err) {
-        console.error("Error fetching night-out venues:", err);
-        setNightOutError("Failed to load nightlife venues");
-        nightOutFetchedRef.current = false; // Allow retry
+        console.error("Error fetching night-out events:", err);
+        setNightOutError("Failed to load events");
       } finally {
         setNightOutLoading(false);
       }
     };
 
-    // Fetch when GPS coords are ready and tab is active (or eagerly)
-    if (activeTab === "night-out" || nightOutGpsLat) {
-      fetchNightOutVenues();
+    // Debounce to avoid rapid re-fetches during filter changes
+    if (nightOutFetchTimeoutRef.current) {
+      clearTimeout(nightOutFetchTimeoutRef.current);
     }
-  }, [nightOutGpsLat, nightOutGpsLng, activeTab]);
+    nightOutFetchTimeoutRef.current = setTimeout(() => {
+      if (activeTab === "night-out" || nightOutGpsLat) {
+        fetchNightOutEvents();
+      }
+    }, 300);
+
+    return () => {
+      if (nightOutFetchTimeoutRef.current) {
+        clearTimeout(nightOutFetchTimeoutRef.current);
+      }
+    };
+  }, [nightOutGpsLat, nightOutGpsLng, activeTab, selectedFilters.genre, selectedFilters.date]);
 
   // Transform FeaturedCardData to ExpandedCardData
   const handleCardPress = (card: FeaturedCardData) => {
@@ -1969,46 +2054,35 @@ export default function DiscoverScreen({
       title: card.eventName,
       category: "Night Out",
       categoryIcon: "moon-outline",
-      description: card.description || "",
-      fullDescription: card.description || "",
+      description: `${card.artistName} at ${card.venueName}`,
+      fullDescription: `${card.artistName} at ${card.venueName} — ${card.date} at ${card.time}`,
       image: card.image,
       images: card.images || [card.image],
-      rating: card.rating || 4.5,
-      reviewCount: card.reviewCount || 0,
+      rating: 0,
+      reviewCount: 0,
       priceRange: card.price,
-      distance: "",
+      distance: card.distance ? `${card.distance.toFixed(1)} km` : "",
       travelTime: "",
       address: card.address || card.location,
-      highlights: [card.placeName, card.hostName, `${card.peopleGoing} going`],
+      highlights: [card.venueName, card.artistName, card.price].filter(Boolean),
       tags: card.tags,
-      matchScore: card.matchPercentage,
-      matchFactors: {
-        location: 90,
-        budget: 85,
-        category: card.matchPercentage,
-        time: 85,
-        popularity: 88,
-      },
-      socialStats: {
-        views: card.peopleGoing * 5,
-        likes: Math.floor(card.peopleGoing * 2.5),
-        saves: Math.floor(card.peopleGoing * 0.8),
-        shares: Math.floor(card.peopleGoing * 0.3),
-      },
+      matchScore: 0,
+      matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
+      socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
       location: card.coordinates,
-      selectedDateTime: new Date(),
       nightOutData: {
         eventName: card.eventName,
-        placeName: card.placeName,
-        hostName: card.hostName,
+        venueName: card.venueName,
+        artistName: card.artistName,
         date: card.date,
         time: card.time,
-        timeRange: card.timeRange,
         price: card.price,
-        musicGenre: card.musicGenre,
-        peopleGoing: card.peopleGoing,
+        genre: card.genre,
+        subGenre: card.subGenre,
         tags: card.tags,
         coordinates: card.coordinates,
+        ticketUrl: card.ticketUrl,
+        ticketStatus: card.ticketStatus,
       },
     };
     setSelectedCardForExpansion(expandedCardData);
@@ -2035,143 +2109,36 @@ export default function DiscoverScreen({
     return opt?.label || "All Genres";
   };
 
-  // Client-side genre keyword mapping for fuzzy matching
-  const GENRE_KEYWORDS: Record<string, string[]> = {
-    afrobeats: ["afrobeats", "afro", "afropop", "amapiano"],
-    "hiphop-rnb": ["hiphop", "hip-hop", "hip hop", "rnb", "r&b", "rap", "trap"],
-    house: ["house", "deep house", "electronic", "edm", "dance"],
-    techno: ["techno", "trance", "industrial", "minimal"],
-    "jazz-blues": ["jazz", "blues", "soul", "swing", "bebop"],
-    "latin-salsa": ["latin", "salsa", "bachata", "reggaeton", "cumbia", "merengue"],
-    reggae: ["reggae", "dancehall", "ska", "dub", "roots"],
-    kpop: ["kpop", "k-pop", "korean", "jpop", "j-pop"],
-    "lounge-ambient": ["lounge", "ambient", "chill", "downtempo", "chillout"],
-    "acoustic-indie": ["acoustic", "indie", "folk", "singer-songwriter", "unplugged"],
-  };
-
-  // Extract USD price from card price string (e.g. "$10-$60" → {min:10, max:60}, "Free" → {min:0, max:0})
-  const extractUsdPrice = (price: string): { min: number; max: number } => {
-    if (!price || price.toLowerCase() === "free") return { min: 0, max: 0 };
-    const rangeMatch = price.match(/\$?([\d,]+)\s*[-–]\s*\$?([\d,]+)/);
-    if (rangeMatch) {
-      return { min: parseFloat(rangeMatch[1].replace(/,/g, "")), max: parseFloat(rangeMatch[2].replace(/,/g, "")) };
-    }
-    const singleMatch = price.match(/\$?([\d,]+)/);
-    if (singleMatch) {
-      const v = parseFloat(singleMatch[1].replace(/,/g, ""));
-      return { min: v, max: v };
-    }
-    return { min: -1, max: -1 }; // unknown
-  };
-
-  const matchesPriceFilter = (card: NightOutCardData, filter: PriceFilter): boolean => {
-    if (filter === "any") return true;
-    const { min, max } = extractUsdPrice(card.price);
-    if (min === -1) return true; // can't parse → don't exclude
-    switch (filter) {
-      case "free": return min === 0 && max === 0;
-      case "under-25": return max < 25 || (max === 0 && min === 0);
-      case "25-50": return max >= 25 && min <= 50;
-      case "50-100": return max >= 50 && min <= 100;
-      case "over-100": return max > 100;
-      default: return true;
-    }
-  };
-
-  const matchesDateFilter = (card: NightOutCardData, filter: DateFilter): boolean => {
-    if (filter === "any") return true;
-    // card.date is like "Wed, Feb 19" or "Feb 19" — parse it relative to the current year
-    const now = new Date();
-    const year = now.getFullYear();
-    // Strip weekday prefix if present (e.g. "Wed, Feb 19" → "Feb 19")
-    const dateOnly = card.date.replace(/^[A-Za-z]{3},\s*/, "");
-
-    // Manually parse "Mon DD" format — new Date("Feb 23, 2026") is unreliable on Hermes/JSC
-    const monthMap: { [key: string]: number } = {
-      Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-      Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
-    };
-    const parts = dateOnly.match(/^([A-Za-z]{3})\s+(\d{1,2})$/);
-    if (!parts) return true; // can't parse → don't exclude
-    const monthIndex = monthMap[parts[1]];
-    const dayNum = parseInt(parts[2], 10);
-    if (monthIndex === undefined || isNaN(dayNum)) return true;
-
-    // Normalize dates to midnight for comparison
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const cardDay = new Date(year, monthIndex, dayNum);
-    const diffDays = Math.round((cardDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-    switch (filter) {
-      case "today":
-        return diffDays === 0;
-      case "tomorrow":
-        return diffDays === 1;
-      case "weekend": {
-        const dayOfWeek = cardDay.getDay(); // 0=Sun, 6=Sat
-        // Card falls on Fri/Sat/Sun AND is within next 7 days
-        return (dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6) && diffDays >= 0 && diffDays <= 7;
-      }
-      case "next-week": {
-        // Next Monday through Sunday (days 1-7 from next Monday)
-        const todayDow = today.getDay();
-        const daysUntilNextMon = todayDow === 0 ? 1 : 8 - todayDow;
-        return diffDays >= daysUntilNextMon && diffDays < daysUntilNextMon + 7;
-      }
-      case "month":
-        return cardDay.getMonth() === now.getMonth() && cardDay.getFullYear() === now.getFullYear();
-      default:
-        return true;
-    }
-  };
-
-  // Filter night-out cards based on selected date, price, AND genre
+  // Filter night-out cards and sort by nearest date
   const filteredNightOutCards = useMemo(() => {
-    let cards = nightOutCards;
+    let filtered = nightOutCards;
 
-    // Date filter
-    if (selectedFilters.date !== "any") {
-      cards = cards.filter((card) => matchesDateFilter(card, selectedFilters.date));
-    }
-
-    // Price filter
+    // Price filter (client-side only — genre and date are server-side now)
     if (selectedFilters.price !== "any") {
-      cards = cards.filter((card) => matchesPriceFilter(card, selectedFilters.price));
-    }
-
-    // Genre filter
-    if (selectedFilters.genre !== "all") {
-      const genreId = selectedFilters.genre;
-      const keywords = GENRE_KEYWORDS[genreId] || [];
-      cards = cards.filter((card) => {
-        if (card.musicGenre === genreId) return true;
-        const searchable = [
-          ...(card.tags || []),
-          card.eventName || "",
-          card.description || "",
-        ]
-          .join(" ")
-          .toLowerCase();
-        return keywords.some((kw) => searchable.includes(kw));
+      filtered = filtered.filter((card) => {
+        if (card.priceMin === null && card.priceMax === null) return false; // TBA → hide
+        const min = card.priceMin || 0;
+        const max = card.priceMax || min;
+        switch (selectedFilters.price) {
+          case "free": return max === 0;
+          case "under-25": return min < 25;
+          case "25-50": return min <= 50 && max >= 25;
+          case "50-100": return min <= 100 && max >= 50;
+          case "over-100": return max > 100;
+          default: return true;
+        }
       });
     }
 
-    // Sort by date ascending (closest events first)
-    const monthMap: { [key: string]: number } = {
-      Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-      Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
-    };
-    const parseCardDate = (dateStr: string): number => {
-      const stripped = dateStr.replace(/^[A-Za-z]{3},\s*/, "");
-      const parts = stripped.match(/^([A-Za-z]{3})\s+(\d{1,2})$/);
-      if (!parts || monthMap[parts[1]] === undefined) return Infinity;
-      const year = new Date().getFullYear();
-      return new Date(year, monthMap[parts[1]], parseInt(parts[2], 10)).getTime();
-    };
-    cards.sort((a, b) => parseCardDate(a.date) - parseCardDate(b.date));
+    // Sort by nearest date (localDate is YYYY-MM-DD)
+    filtered = [...filtered].sort((a, b) => {
+      const dateA = a.localDate || "9999-12-31";
+      const dateB = b.localDate || "9999-12-31";
+      return dateA.localeCompare(dateB);
+    });
 
-    return cards;
-  }, [nightOutCards, selectedFilters.date, selectedFilters.genre, selectedFilters.price]);
+    return filtered;
+  }, [nightOutCards, selectedFilters.price]);
 
   // Count active filters (non-default values)
   const activeFilterCount = useMemo(() => {
@@ -2339,6 +2306,7 @@ export default function DiscoverScreen({
   const genreFilterOptions: { id: GenreFilter; label: string }[] = [
     { id: "all", label: "All Genres" },
     { id: "afrobeats", label: "Afrobeats" },
+    { id: "dancehall", label: "Dancehall / Soca" },
     { id: "hiphop-rnb", label: "Hip-Hop / R&B" },
     { id: "house", label: "House / Electronic" },
     { id: "techno", label: "Techno / Electronic" },
@@ -2346,7 +2314,6 @@ export default function DiscoverScreen({
     { id: "latin-salsa", label: "Latin / Salsa" },
     { id: "reggae", label: "Reggae" },
     { id: "kpop", label: "K-Pop" },
-    { id: "lounge-ambient", label: "Lounge / Ambient" },
     { id: "acoustic-indie", label: "Acoustic / Indie" },
   ];
 
@@ -3469,7 +3436,6 @@ export default function DiscoverScreen({
                     style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 20, backgroundColor: "#eb7825", borderRadius: 8 }}
                     onPress={async () => {
                       await clearNightOutCache();
-                      nightOutFetchedRef.current = false;
                       deviceGpsFetchedRef.current = false;
                       setNightOutError(null);
                       setNightOutLoading(true);
@@ -3493,8 +3459,8 @@ export default function DiscoverScreen({
               {!nightOutLoading && !nightOutError && nightOutCards.length === 0 && (
                 <View style={styles.emptyStateContainer}>
                   <Ionicons name="moon-outline" size={48} color="#eb7825" />
-                  <Text style={styles.emptyStateTitle}>No nightlife found</Text>
-                  <Text style={styles.emptyStateSubtitle}>No clubs or venues found near your location</Text>
+                  <Text style={styles.emptyStateTitle}>No events found</Text>
+                  <Text style={styles.emptyStateSubtitle}>No events found near your location. Try increasing your radius.</Text>
                 </View>
               )}
 
@@ -4475,25 +4441,114 @@ const styles = StyleSheet.create({
   // Night Out Card styles
   nightOutCard: {
     backgroundColor: "white",
-    borderRadius: 20,
+    borderRadius: 14,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-    marginBottom: 16,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 3,
+    marginBottom: 10,
   },
-  nightOutCardImageContainer: {
+  nightOutCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    gap: 10,
+  },
+  nightOutThumbWrap: {
     position: "relative",
-    height: 190,
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    overflow: "hidden",
   },
-  nightOutCardImage: {
+  nightOutThumb: {
     width: "100%",
     height: "100%",
+  },
+  nightOutStatusDot: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: "white",
+  },
+  nightOutInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  nightOutTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  nightOutArtist: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#6b7280",
+  },
+  nightOutMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 1,
+  },
+  nightOutMetaText: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#6b7280",
+    flexShrink: 1,
+  },
+  nightOutMetaDot: {
+    fontSize: 11,
+    color: "#d1d5db",
+    marginHorizontal: 2,
+  },
+  nightOutRight: {
+    alignItems: "flex-end",
+    justifyContent: "center",
+    gap: 4,
+    paddingLeft: 4,
+    minWidth: 60,
+  },
+  nightOutPrice: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "right",
+  },
+  nightOutStatusLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    textAlign: "right",
+  },
+  nightOutTagStrip: {
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingBottom: 8,
+    paddingTop: 0,
+  },
+  nightOutTagChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#FEF3E7",
+    borderWidth: 1,
+    borderColor: "#fcd9b6",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  nightOutTagLabel: {
+    fontSize: 10,
+    fontWeight: "500",
+    color: "#eb7825",
   },
   matchBadge: {
     position: "absolute",

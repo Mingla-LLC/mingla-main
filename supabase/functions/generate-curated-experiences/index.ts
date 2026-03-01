@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { searchPlacesWithCache } from '../_shared/placesCache.ts';
 import { serveCuratedCardsFromPool, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
-import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -141,8 +141,12 @@ const ADVENTURE_SUPER_CATEGORIES: Record<string, {
   label: string;
 }> = {
   'outdoor-nature': {
-    includedTypes: ['park', 'botanical_garden', 'hiking_area', 'beach', 'zoo', 'national_park', 'state_park'],
+    includedTypes: ['park', 'botanical_garden', 'hiking_area', 'beach', 'national_park', 'state_park'],
     label: 'outdoor-nature',
+  },
+  'active-recreation': {
+    includedTypes: ['zoo', 'amusement_park', 'bowling_alley', 'spa', 'gym', 'swimming_pool'],
+    label: 'active-recreation',
   },
   'food-dining': {
     includedTypes: ['restaurant', 'cafe', 'bakery', 'ice_cream_shop', 'pizza_restaurant', 'ramen_restaurant', 'seafood_restaurant'],
@@ -152,9 +156,13 @@ const ADVENTURE_SUPER_CATEGORIES: Record<string, {
     includedTypes: ['bar', 'wine_bar', 'pub', 'coffee_shop', 'tea_house', 'night_club'],
     label: 'cafes-bars-casual',
   },
-  'culture-active': {
-    includedTypes: ['art_gallery', 'museum', 'movie_theater', 'bowling_alley', 'amusement_park', 'spa', 'performing_arts_theater'],
-    label: 'arts-culture',
+  'culture-arts': {
+    includedTypes: ['art_gallery', 'museum', 'performing_arts_theater', 'library'],
+    label: 'culture-arts',
+  },
+  'entertainment': {
+    includedTypes: ['movie_theater', 'shopping_mall', 'book_store', 'tourist_attraction'],
+    label: 'entertainment',
   },
 };
 
@@ -402,7 +410,7 @@ const PRICE_LEVEL_RANGES: Record<string, { min: number; max: number }> = {
 };
 
 function priceLevelToRange(level: string | undefined): { min: number; max: number } {
-  return PRICE_LEVEL_RANGES[level ?? ''] ?? { min: 10, max: 30 };
+  return PRICE_LEVEL_RANGES[level ?? ''] ?? { min: 0, max: 20 };
 }
 
 function priceLevelToLabel(level: string | undefined): string {
@@ -572,6 +580,7 @@ function buildTriadsFromSuperCategories(
   targetDatetime: Date,
   experienceType: string,
   skipDescriptions: boolean,
+  batchSeed: number = 0,
 ): any[] {
   const superCatNames = Object.keys(superCatPlaces).filter(
     k => superCatPlaces[k].length > 0
@@ -590,7 +599,9 @@ function buildTriadsFromSuperCategories(
 
   const shuffledPatterns = shuffle(patterns);
   const triads: any[] = [];
-  const usedPlaceIds = new Set<string>();
+  const usedTriadKeys = new Set<string>();     // dedup on full 3-place combo, not individual places
+  const placeUsageCount = new Map<string, number>(); // cap per-place reuse for variety
+  const MAX_PLACE_REUSE = 4;
   const perStopBudget = budgetMax > 0 ? Math.ceil(budgetMax / 3) : Infinity;
 
   // Speed config for travel constraint
@@ -603,7 +614,7 @@ function buildTriadsFromSuperCategories(
 
   let patternIdx = 0;
   let totalAttempts = 0;
-  const MAX_ATTEMPTS = limit * 8;
+  const MAX_ATTEMPTS = limit * 20;
 
   while (triads.length < limit && totalAttempts < MAX_ATTEMPTS) {
     const pattern = shuffledPatterns[patternIdx % shuffledPatterns.length];
@@ -612,10 +623,12 @@ function buildTriadsFromSuperCategories(
 
     const [cat1, cat2, cat3] = pattern;
 
-    // Filter available places (not used, affordable)
+    // Filter available places (reuse-capped, affordable, open)
     const isUsable = (p: any) =>
-      p.id && !usedPlaceIds.has(p.id) &&
-      priceLevelToRange(p.priceLevel).min <= perStopBudget;
+      p.id &&
+      (placeUsageCount.get(p.id) ?? 0) < MAX_PLACE_REUSE &&
+      priceLevelToRange(p.priceLevel).min <= perStopBudget &&
+      isPlaceOpenAt(p, targetDatetime);
 
     const pool1 = superCatPlaces[cat1].filter(isUsable);
     const pool2 = superCatPlaces[cat2].filter(isUsable);
@@ -623,26 +636,30 @@ function buildTriadsFromSuperCategories(
 
     if (!pool1.length || !pool2.length || !pool3.length) continue;
 
-    // Pick random place from top 5 in each super-category for quality
-    const p1 = pool1[Math.floor(Math.random() * Math.min(pool1.length, 5))];
-    const p2 = pool2[Math.floor(Math.random() * Math.min(pool2.length, 5))];
-    const p3 = pool3[Math.floor(Math.random() * Math.min(pool3.length, 5))];
-
+    // Pick from pool using seeded randomness for batch diversity
+    // Each batchSeed produces a completely different selection pattern
+    const pick = (pool: any[], salt: number) => {
+      // Seeded hash: combine batchSeed, salt, and attempt counter for deterministic-yet-varied picks
+      const hash = ((batchSeed * 2654435761 + salt * 40503 + totalAttempts * 12979) >>> 0);
+      const idx = hash % pool.length;
+      return pool[idx];
+    };
+    const p1 = pick(pool1, 1);
+    const p2 = pick(pool2, 2);
+    const p3 = pick(pool3, 3);
     // Travel constraint: first stop must be reachable
     const p1Lat = p1.location?.latitude ?? userLat;
     const p1Lng = p1.location?.longitude ?? userLng;
     const distToFirst = haversineKm(userLat, userLng, p1Lat, p1Lng);
     if (distToFirst > maxDistKm) continue;
 
-    // Opening hours check
-    if (!isPlaceOpenAt(p1, targetDatetime) ||
-        !isPlaceOpenAt(p2, targetDatetime) ||
-        !isPlaceOpenAt(p3, targetDatetime)) continue;
-
-    // Mark as used (global dedup)
-    usedPlaceIds.add(p1.id);
-    usedPlaceIds.add(p2.id);
-    usedPlaceIds.add(p3.id);
+    // Dedup on the full triad combination (not individual places)
+    const triadKey = [p1.id, p2.id, p3.id].sort().join('|');
+    if (usedTriadKeys.has(triadKey)) continue;
+    usedTriadKeys.add(triadKey);
+    placeUsageCount.set(p1.id, (placeUsageCount.get(p1.id) ?? 0) + 1);
+    placeUsageCount.set(p2.id, (placeUsageCount.get(p2.id) ?? 0) + 1);
+    placeUsageCount.set(p3.id, (placeUsageCount.get(p3.id) ?? 0) + 1);
 
     // Build stops (same structure as resolvePairingFromCategories)
     const selectedPlaces = [p1, p2, p3];
@@ -720,7 +737,9 @@ function buildTriadsFromSuperCategories(
     });
   }
 
-  console.log(`[turbo] Built ${triads.length} triads from ${usedPlaceIds.size} unique places (${totalAttempts} attempts)`);
+  const uniquePlaces = new Set<string>();
+  for (const t of triads) for (const s of t.stops) uniquePlaces.add(s.placeId);
+  console.log(`[turbo] Built ${triads.length} triads from ${uniquePlaces.size} unique places (${totalAttempts} attempts, ${usedTriadKeys.size} unique combos)`);
   return triads;
 }
 
@@ -1218,7 +1237,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
     const body = await req.json();
-    let { experienceType = 'solo-adventure', location, budgetMin = 0, budgetMax = 200, travelMode = 'walking', travelConstraintType = 'time', travelConstraintValue = 30, datetimePref, skipDescriptions = false, limit = 20, session_id } = body;
+    let { experienceType = 'solo-adventure', location, budgetMin = 0, budgetMax = 200, travelMode = 'walking', travelConstraintType = 'time', travelConstraintValue = 30, datetimePref, skipDescriptions = false, limit = 20, session_id, batchSeed = 0 } = body;
 
     // If session_id is provided, aggregate preferences from all participants
     if (session_id) {
@@ -1317,7 +1336,9 @@ serve(async (req) => {
     }
     // ── End warmPool support ────────────────────────────────────────
 
-    if (poolAdmin && poolUserId !== 'anonymous') {
+    // Pool-first: only for batch 0 (first load). Subsequent batches (batchSeed > 0)
+    // must always generate fresh cards via Turbo/Fallback pipeline.
+    if (poolAdmin && poolUserId !== 'anonymous' && batchSeed === 0) {
       try {
         const poolResult = await serveCuratedCardsFromPool({
           supabaseAdmin: poolAdmin,
@@ -1325,7 +1346,7 @@ serve(async (req) => {
           lat: location.lat,
           lng: location.lng,
           radiusMeters: clampedRadius,
-          categories: resolveCategories([]),
+          categories: [],  // Intentionally empty — curated cards span multiple categories
           budgetMin: budgetMin || 0,
           budgetMax: budgetMax || 1000,
           limit: limit || 20,
@@ -1333,7 +1354,7 @@ serve(async (req) => {
           experienceType: experienceType,
         }, GOOGLE_PLACES_API_KEY!);
 
-        if (poolResult.cards.length >= Math.max(limit - 5, 2)) {
+        if (poolResult.cards.length >= Math.ceil(limit * 0.75)) {
           console.log(`[pool-first-curated] Served ${poolResult.cards.length} curated cards from pool`);
           return new Response(
             JSON.stringify({
@@ -1355,6 +1376,8 @@ serve(async (req) => {
       } catch (poolError) {
         console.warn('[pool-first-curated] Pool query failed, falling back:', poolError);
       }
+    } else if (batchSeed > 0) {
+      console.log(`[pool-skip] batchSeed=${batchSeed}, skipping pool-first to generate fresh cards`);
     }
     // ── End pool-first pipeline ─────────────────────────────────────
 
@@ -1374,6 +1397,7 @@ serve(async (req) => {
         location.lat, location.lng,
         travelConstraintType, travelConstraintValue,
         targetDatetime, experienceType, skipDescriptions,
+        batchSeed,
       );
 
       console.log(`[turbo] Built ${allTriads.length} triads, serving ${Math.min(allTriads.length, limit)}`);
@@ -1415,7 +1439,7 @@ serve(async (req) => {
                 address: card.stops?.[0]?.address || '',
                 lat: card.stops?.[0]?.lat || location.lat,
                 lng: card.stops?.[0]?.lng || location.lng,
-                rating: card.matchScore || 85,
+                rating: Math.min(5, (card.matchScore || 85) / 20),
                 reviewCount: 0,
                 stopPlacePoolIds,
                 stopGooglePlaceIds,
@@ -1507,7 +1531,7 @@ serve(async (req) => {
               address: card.stops?.[0]?.address || '',
               lat: card.stops?.[0]?.lat || location.lat,
               lng: card.stops?.[0]?.lng || location.lng,
-              rating: card.matchScore || 85,
+              rating: Math.min(5, (card.matchScore || 85) / 20),
               reviewCount: 0,
               stopPlacePoolIds,
               stopGooglePlaceIds,

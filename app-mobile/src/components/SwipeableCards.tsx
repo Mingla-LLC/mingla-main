@@ -277,6 +277,7 @@ export default function SwipeableCards({
   const recommendationsRef = useRef<Recommendation[]>([]);
   const removedCardsRef = useRef<Set<string>>(new Set());
   const currentCardIndexRef = useRef(0);
+  const previousBatchIdsRef = useRef<string>('');
 
   // Update refs when state changes
   useEffect(() => {
@@ -628,6 +629,27 @@ export default function SwipeableCards({
     currentMode,
     refreshKey,
   ]);
+
+  // Clear removedCards when the batch changes (Generate Another 20)
+  useEffect(() => {
+    if (!recommendations || recommendations.length === 0) return;
+
+    const batchKey = recommendations
+      .slice(0, 5)
+      .map((r) => r.id)
+      .sort()
+      .join(",");
+
+    if (
+      previousBatchIdsRef.current !== "" &&
+      previousBatchIdsRef.current !== batchKey
+    ) {
+      setRemovedCards(new Set());
+      setCurrentCardIndex(0);
+    }
+
+    previousBatchIdsRef.current = batchKey;
+  }, [recommendations]);
 
   // PanResponder for swipe gestures
   const panResponder = useRef(
