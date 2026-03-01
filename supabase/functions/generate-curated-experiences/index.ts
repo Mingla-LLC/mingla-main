@@ -5,60 +5,60 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const GOOGLE_PLACES_API_KEY = Deno.env.get('GOOGLE_PLACES_API_KEY') ?? '';
+const GOOGLE_PLACES_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') ?? '';
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 
-const SOLO_ADVENTURE_PAIRINGS: [string, string, string][] = [
-  ["park", "coffee_shop", "movie_theater"],
-  ["botanical_garden", "brunch_restaurant", "art_gallery"],
-  ["hiking_area", "diner", "bowling_alley"],
-  ["beach", "seafood_restaurant", "sip_and_paint"],
-  ["zoo", "food_court", "escape_room"],
-  ["national_park", "sandwich_shop", "planetarium"],
-  ["state_park", "vietnamese_restaurant", "museum"],
-  ["park", "tea_house", "pottery"],
-  ["botanical_garden", "vegan_restaurant", "cooking_classes"],
-  ["beach", "bar", "comedy_club"],
-  ["hiking_area", "thai_restaurant", "board_game_cafe"],
-  ["zoo", "pizza_restaurant", "mini_golf_course"],
-  ["park", "wine_bar", "karaoke"],
-  ["national_park", "mexican_restaurant", "rock_climbing_gym"],
-  ["botanical_garden", "japanese_restaurant", "virtual_reality_center"],
-  ["beach", "ramen_restaurant", "video_arcade"],
-  ["state_park", "korean_restaurant", "ice_skating_rink"],
-  ["park", "pub", "billiards_hall"],
-  ["zoo", "american_restaurant", "trampoline_park"],
-  ["hiking_area", "mediterranean_restaurant", "flower_arranging_studio"],
-  ["beach", "turkish_restaurant", "glass_blowing_studio"],
-  ["botanical_garden", "indian_restaurant", "perfume_lab"],
-  ["park", "chinese_restaurant", "laser_tag_center"],
-  ["national_park", "african_restaurant", "photography_walk"],
-  ["state_park", "sushi_restaurant", "sauna"],
-  ["zoo", "barbecue_restaurant", "dart_bar"],
-  ["beach", "wine_bar", "comedy_club"],
-  ["hiking_area", "breakfast_restaurant", "jewelry_making_studio"],
-  ["botanical_garden", "french_restaurant", "planetarium"],
-  ["park", "hamburger_restaurant", "go_kart_track"],
-  ["state_park", "lebanese_restaurant", "float_tank_center"],
-  ["beach", "buffet_restaurant", "adventure_park"],
-  ["zoo", "vegetarian_restaurant", "sewing_class"],
-  ["national_park", "spanish_restaurant", "hot_spring"],
-  ["botanical_garden", "coffee_shop", "bakery_workshop"],
-  ["park", "middle_eastern_restaurant", "escape_room"],
-  ["hiking_area", "indonesian_restaurant", "woodworking_class"],
-  ["beach", "pub", "karaoke"],
-  ["zoo", "brazilian_restaurant", "paintball_center"],
-  ["state_park", "afghani_restaurant", "cold_plunge_facility"],
-  ["botanical_garden", "greek_restaurant", "cooking_classes"],
-  ["park", "asian_restaurant", "ice_skating_rink"],
-  ["national_park", "diner", "stargazing_spot"],
-  ["beach", "fast_food_restaurant", "skate_park"],
-  ["zoo", "ramen_restaurant", "pottery"],
-  ["hiking_area", "coffee_shop", "museum"],
-  ["botanical_garden", "wine_bar", "sip_and_paint"],
-  ["park", "tea_house", "board_game_cafe"],
-  ["beach", "korean_restaurant", "virtual_reality_center"],
-  ["state_park", "italian_restaurant", "spa"],
-];
+const STOP_DURATION_MINUTES: Record<string, number> = {
+  park: 60, botanical_garden: 60, hiking_area: 90, beach: 90,
+  zoo: 120, national_park: 90, state_park: 90,
+  coffee_shop: 30, tea_house: 30, brunch_restaurant: 60, diner: 45,
+  bar: 60, pub: 60, wine_bar: 60, food_court: 30, sandwich_shop: 30,
+  seafood_restaurant: 60, vegan_restaurant: 60, pizza_restaurant: 45,
+  thai_restaurant: 60, japanese_restaurant: 60, ramen_restaurant: 45,
+  korean_restaurant: 60, vietnamese_restaurant: 60, mexican_restaurant: 60,
+  american_restaurant: 60, mediterranean_restaurant: 60, italian_restaurant: 75,
+  french_restaurant: 90, greek_restaurant: 75, steak_house: 90,
+  fine_dining_restaurant: 90, upscale_restaurant: 90, chef_led_restaurant: 90,
+  movie_theater: 150, art_gallery: 60, museum: 90, planetarium: 60,
+  escape_room: 75, bowling_alley: 60, mini_golf_course: 45, karaoke: 90,
+  comedy_club: 90, board_game_cafe: 90, video_arcade: 60,
+  rock_climbing_gym: 90, trampoline_park: 60, ice_skating_rink: 60,
+  virtual_reality_center: 60, billiards_hall: 60,
+  sip_and_paint: 120, pottery: 90, cooking_classes: 120,
+  flower_arranging_studio: 60,
+};
+const DEFAULT_STOP_DURATION = 45;
+
+// Category-based place groupings for dynamic pairing
+const PLACE_CATEGORIES: Record<string, string[]> = {
+  'outdoor-nature': ['park', 'botanical_garden', 'hiking_area', 'beach', 'zoo', 'national_park', 'state_park', 'pier', 'marina', 'sculpture_garden', 'historic_site'],
+  'food-restaurants': ['brunch_restaurant', 'diner', 'seafood_restaurant', 'sandwich_shop', 'vietnamese_restaurant', 'vegan_restaurant', 'thai_restaurant', 'pizza_restaurant', 'mexican_restaurant', 'japanese_restaurant', 'ramen_restaurant', 'korean_restaurant', 'american_restaurant', 'mediterranean_restaurant', 'turkish_restaurant', 'indian_restaurant', 'chinese_restaurant', 'african_restaurant', 'sushi_restaurant', 'barbecue_restaurant', 'breakfast_restaurant', 'french_restaurant', 'hamburger_restaurant', 'lebanese_restaurant', 'buffet_restaurant', 'vegetarian_restaurant', 'spanish_restaurant', 'middle_eastern_restaurant', 'indonesian_restaurant', 'brazilian_restaurant', 'afghani_restaurant', 'greek_restaurant', 'asian_restaurant', 'fast_food_restaurant', 'italian_restaurant', 'fine_dining_restaurant', 'steak_house'],
+  'cafes-bars-casual': ['coffee_shop', 'tea_house', 'bar', 'wine_bar', 'pub', 'rooftop_bar', 'whiskey_bar', 'cat_cafe', 'bubble_tea_shop', 'ice_cream_shop', 'dessert_shop', 'food_court', 'food_truck', 'craft_brewery', 'distillery', 'winery'],
+  'shopping-markets': ['bookstore', 'thrift_store', 'record_store', 'farmers_market', 'flea_market'],
+  'arts-culture': ['art_gallery', 'museum', 'planetarium', 'aquarium', 'library', 'observation_deck'],
+  'entertainment-nightlife': ['movie_theater', 'comedy_club', 'karaoke', 'night_club', 'jazz_club', 'live_music_venue', 'casino', 'video_arcade', 'virtual_reality_center', 'board_game_cafe'],
+  'active-sports': ['rock_climbing_gym', 'climbing_gym', 'bowling_alley', 'mini_golf_course', 'ice_skating_rink', 'trampoline_park', 'go_kart_track', 'laser_tag_center', 'paintball_center', 'skate_park', 'batting_cage', 'driving_range', 'amusement_park', 'theme_park', 'waterpark', 'axe_throwing', 'swimming_pool', 'ferris_wheel'],
+  'wellness-relaxation': ['spa', 'massage', 'sauna', 'hot_spring', 'yoga_studio'],
+  'creative-workshops': ['sip_and_paint', 'pottery_studio', 'cooking_class', 'glass_blowing_studio', 'escape_room'],
+};
+
+const CATEGORY_NAMES = Object.keys(PLACE_CATEGORIES);
+
+// Generate all 3-category combinations (C(9,3) = 84 combinations)
+function generateCategoryCombinations(): string[][] {
+  const combinations: string[][] = [];
+  for (let i = 0; i < CATEGORY_NAMES.length; i++) {
+    for (let j = i + 1; j < CATEGORY_NAMES.length; j++) {
+      for (let k = j + 1; k < CATEGORY_NAMES.length; k++) {
+        combinations.push([CATEGORY_NAMES[i], CATEGORY_NAMES[j], CATEGORY_NAMES[k]]);
+      }
+    }
+  }
+  return combinations;
+}
+
+// Kept for backwards compatibility with other experience types
+const SOLO_ADVENTURE_PAIRINGS: [string, string, string][] = [];
 
 const FIRST_DATES_PAIRINGS: [string, string, string][] = [
   ["botanical_garden", "wine_bar", "sip_and_paint"],
@@ -133,7 +133,7 @@ const GROUP_FUN_PAIRINGS: [string, string, string][] = [
 ];
 
 const PAIRINGS_BY_TYPE: Record<string, [string, string, string][]> = {
-  'solo-adventure': SOLO_ADVENTURE_PAIRINGS,
+  'solo-adventure': SOLO_ADVENTURE_PAIRINGS, // Will be generated dynamically
   'first-dates':    FIRST_DATES_PAIRINGS,
   'romantic':       ROMANTIC_PAIRINGS,
   'friendly':       FRIENDLY_PAIRINGS,
@@ -355,6 +355,231 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+async function generateStopDescriptions(
+  stops: any[],
+  experienceType: string
+): Promise<string[]> {
+  if (!OPENAI_API_KEY) {
+    return stops.map(s => `A wonderful stop at ${s.placeName} — perfect for your ${experienceType} day.`);
+  }
+  try {
+    const stopList = stops
+      .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${s.placeType.replace(/_/g, ' ')}), rated ${s.rating.toFixed(1)}/5`)
+      .join('\n');
+    const prompt = `You are a travel writer creating short descriptions for a "${experienceType}" day out.
+Write exactly 3 short paragraphs (one per stop, 2-3 sentences each), telling the visitor what to do and the vibe.
+Be specific, warm, and fun. Address the reader directly as "you".
+Output ONLY a JSON array of 3 strings with no markdown and no extra keys.
+
+Stops:
+${stopList}`;
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 400,
+        temperature: 0.8,
+      }),
+    });
+    const json = await res.json();
+    const content = json.choices?.[0]?.message?.content?.trim() ?? '[]';
+    const parsed: string[] = JSON.parse(content);
+    if (Array.isArray(parsed) && parsed.length === stops.length) return parsed;
+    throw new Error('Unexpected shape');
+  } catch (_) {
+    return stops.map(s => `${s.placeName} is a great ${s.placeType.replace(/_/g, ' ')} worth visiting on your day out.`);
+  }
+}
+
+// Fetch multiple places from each category in parallel (increased from 10 to 20 for better diversity)
+// Optionally filters out already-used places for global deduplication
+async function fetchPlacesByCategory(
+  userLat: number,
+  userLng: number,
+  radiusMeters: number,
+  excludedPlaceIds?: Set<string>
+): Promise<Record<string, any[]>> {
+  const categoryPlaces: Record<string, any[]> = {};
+  const excluded = excludedPlaceIds || new Set();
+
+  await Promise.all(
+    CATEGORY_NAMES.map(async (categoryName) => {
+      const placeTypes = PLACE_CATEGORIES[categoryName] || [];
+      const allPlaces: any[] = [];
+
+      // Fetch from all place types in this category
+      const placesFetched = await Promise.all(
+        placeTypes.map(async (placeType) => {
+          const config = PLACE_TYPE_SEARCH_CONFIG[placeType];
+          if (!config) return [];
+          
+          try {
+            const places = config.strategy === 'nearby'
+              ? await searchNearby(config.includedType, userLat, userLng, radiusMeters)
+              : await searchByText(config.textQuery, userLat, userLng, radiusMeters);
+            return places.map(p => ({ ...p, placeType })); // Tag with place type
+          } catch {
+            return [];
+          }
+        })
+      );
+
+      // Combine all places from this category
+      placesFetched.forEach(places => allPlaces.push(...places));
+
+      // Sort by rating and take top 20 (increased from 10 for better diversity)
+      // Filter out already-used places for deduplication
+      const topPlaces = allPlaces
+        .sort((a, b) => scorePlace(b) - scorePlace(a))
+        .filter(p => !excluded.has(p.id ?? ''))
+        .slice(0, 20);
+
+      categoryPlaces[categoryName] = topPlaces;
+    })
+  );
+
+  return categoryPlaces;
+}
+
+// Build a card from 3 categories by picking one place from each
+// Implements: global deduplication (tracks usedPlaceIds), smarter budget matching, retry logic
+async function resolvePairingFromCategories(
+  categoryNames: [string, string, string],
+  categoryPlaces: Record<string, any[]>,
+  userLat: number,
+  userLng: number,
+  travelMode: string,
+  budgetMax: number,
+  usedPlaceIds: Set<string>,
+  experienceType: string = 'solo-adventure',
+  retryCount: number = 0
+): Promise<any | null> {
+  const [cat1, cat2, cat3] = categoryNames;
+  const MAX_RETRIES = 3; // Try up to 3 different random place combinations
+  
+  // Get places, filtering out already-used ones (GLOBAL DEDUPLICATION)
+  const places1 = (categoryPlaces[cat1] || [])
+    .filter(p => !usedPlaceIds.has(p.id ?? ''));
+  const places2 = (categoryPlaces[cat2] || [])
+    .filter(p => !usedPlaceIds.has(p.id ?? ''));
+  const places3 = (categoryPlaces[cat3] || [])
+    .filter(p => !usedPlaceIds.has(p.id ?? ''));
+
+  // If any category has no available places, this pairing can't be made
+  if (places1.length === 0 || places2.length === 0 || places3.length === 0) {
+    return null;
+  }
+
+  // Randomly pick one place from each category
+  const place1 = places1[Math.floor(Math.random() * places1.length)];
+  const place2 = places2[Math.floor(Math.random() * places2.length)];
+  const place3 = places3[Math.floor(Math.random() * places3.length)];
+
+  const stops = [];
+
+  // Build stop info
+  for (let idx = 0; idx < 3; idx++) {
+    const place = [place1, place2, place3][idx];
+    const placeType = place.placeType || '';
+    const priceRange = priceLevelToRange(place.priceLevel);
+    const { hours, isOpenNow } = parseOpeningHours(place);
+    const placeLocation = place.location ?? {};
+    const lat = placeLocation.latitude ?? userLat;
+    const lng = placeLocation.longitude ?? userLng;
+    const distKm = haversineKm(userLat, userLng, lat, lng);
+    const travelTimeFromUser = await getTravelTime(userLat, userLng, lat, lng, travelMode);
+    const stopLabels: Array<'Start Here' | 'Then' | 'End With'> = ['Start Here', 'Then', 'End With'];
+
+    stops.push({
+      stopNumber: idx + 1,
+      stopLabel: stopLabels[idx],
+      placeId: place.id ?? '',
+      placeName: place.displayName?.text ?? place.displayName ?? '',
+      placeType,
+      address: place.formattedAddress ?? '',
+      rating: place.rating ?? 0,
+      reviewCount: place.userRatingCount ?? 0,
+      imageUrl: getPhotoUrl(place),
+      priceLevelLabel: priceLevelToLabel(place.priceLevel),
+      priceMin: priceRange.min,
+      priceMax: priceRange.max,
+      openingHours: hours,
+      isOpenNow,
+      website: place.websiteUri ?? null,
+      lat,
+      lng,
+      distanceFromUserKm: Math.round(distKm * 10) / 10,
+      travelTimeFromUserMin: travelTimeFromUser,
+      travelTimeFromPreviousStopMin: null,
+      travelModeFromPreviousStop: null,
+    });
+  }
+
+  // IMPROVED BUDGET MATCHING: Check minimum total price (more realistic than maximum prices)
+  // Focus on the minimum cost users would realistically pay
+  const totalPriceMin = stops.reduce((sum: number, s: any) => sum + s.priceMin, 0);
+  
+  if (budgetMax > 0 && totalPriceMin > budgetMax) {
+    // If minimum price exceeds budget AND retries remain, try different places
+    if (retryCount < MAX_RETRIES) {
+      return resolvePairingFromCategories(
+        categoryNames,
+        categoryPlaces,
+        userLat,
+        userLng,
+        travelMode,
+        budgetMax,
+        usedPlaceIds,
+        experienceType,
+        retryCount + 1
+      );
+    }
+    // If out of retries, still allow card (prioritize diversity over strict budget filtering)
+  }
+
+  // Calculate travel times between stops
+  for (let i = 1; i < stops.length; i++) {
+    const travelMin = await getTravelTime(stops[i - 1].lat, stops[i - 1].lng, stops[i].lat, stops[i].lng, travelMode);
+    stops[i].travelTimeFromPreviousStopMin = travelMin;
+    stops[i].travelModeFromPreviousStop = travelMode;
+  }
+
+  // Generate AI descriptions
+  const descriptions = await generateStopDescriptions(stops, experienceType);
+  for (let i = 0; i < stops.length; i++) {
+    stops[i].aiDescription = descriptions[i];
+    stops[i].estimatedDurationMinutes = STOP_DURATION_MINUTES[stops[i].placeType] ?? DEFAULT_STOP_DURATION;
+  }
+
+  // totalPriceMin already calculated above for budget check — reuse it
+  const totalPriceMax = stops.reduce((sum: number, s: any) => sum + s.priceMax, 0);
+  const avgRating = stops.reduce((sum: number, s: any) => sum + s.rating, 0) / stops.length;
+  const pairingKey = categoryNames.join('+');
+  const travelTotal = stops.slice(1).reduce((s: number, st: any) => s + (st.travelTimeFromPreviousStopMin ?? 15), 0);
+  const shortNames = stops.map((s: any) => s.placeName.split(' ').slice(0, 2).join(' '));
+  const taglines = ['A full solo day out', 'Three stops, zero plans needed', 'Discover your city, one stop at a time', 'The perfect day for one'];
+
+  return {
+    id: `curated_${pairingKey}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    cardType: 'curated',
+    experienceType,
+    pairingKey,
+    title: shortNames.join(' \u2192 '),
+    tagline: taglines[Math.floor(Math.random() * taglines.length)],
+    stops,
+    totalPriceMin,
+    totalPriceMax,
+    estimatedDurationMinutes: travelTotal + stops.reduce((s: number, st: any) => s + st.estimatedDurationMinutes, 0),
+    matchScore: Math.round(avgRating * 18 + 10),
+  };
+}
+
 async function resolvePairing(pairing: [string, string, string], userLat: number, userLng: number, radiusMeters: number, travelMode: string, budgetMax: number, experienceType: string = 'solo-adventure'): Promise<any | null> {
   const stopResults = await Promise.all(
     pairing.map(async (type, index) => {
@@ -404,6 +629,12 @@ async function resolvePairing(pairing: [string, string, string], userLat: number
     stops[i].travelTimeFromPreviousStopMin = travelMin;
     stops[i].travelModeFromPreviousStop = travelMode;
   }
+  // Generate AI descriptions for all stops in one OpenAI call
+  const descriptions = await generateStopDescriptions(stops, experienceType);
+  for (let i = 0; i < stops.length; i++) {
+    stops[i].aiDescription = descriptions[i];
+    stops[i].estimatedDurationMinutes = STOP_DURATION_MINUTES[stops[i].placeType] ?? DEFAULT_STOP_DURATION;
+  }
   const totalPriceMax = stops.reduce((sum: number, s: any) => sum + s.priceMax, 0);
   if (budgetMax > 0 && totalPriceMax > budgetMax * 1.2) return null;
   const totalPriceMin = stops.reduce((sum: number, s: any) => sum + s.priceMin, 0);
@@ -422,7 +653,7 @@ async function resolvePairing(pairing: [string, string, string], userLat: number
     stops,
     totalPriceMin,
     totalPriceMax,
-    estimatedDurationMinutes: travelTotal + 210,
+    estimatedDurationMinutes: travelTotal + stops.reduce((s: number, st: any) => s + st.estimatedDurationMinutes, 0),
     matchScore: Math.round(avgRating * 18 + 10),
   };
 }
@@ -431,12 +662,79 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
     const body = await req.json();
-    const { experienceType = 'solo_adventure', location, budgetMin = 0, budgetMax = 200, travelMode = 'walking', travelConstraintType = 'time', travelConstraintValue = 30, limit = 15 } = body;
+    const { experienceType = 'solo-adventure', location, budgetMin = 0, budgetMax = 200, travelMode = 'walking', travelConstraintType = 'time', travelConstraintValue = 30, limit = 20 } = body;
     if (!location?.lat || !location?.lng) {
       return new Response(JSON.stringify({ error: 'location.lat and location.lng are required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     const radiusMeters = travelConstraintType === 'time' ? travelConstraintValue * 80 : travelConstraintValue;
     const clampedRadius = Math.min(Math.max(radiusMeters, 1000), 50000);
+
+    // NEW: Category-based generation for solo adventures with GLOBAL DEDUPLICATION
+    if (experienceType === 'solo-adventure') {
+      console.log('[solo-adventure] Fetching 20 places from each of 9 categories...');
+      
+      // Fetch 20 places from all 9 categories in parallel
+      let categoryPlaces = await fetchPlacesByCategory(location.lat, location.lng, clampedRadius);
+      
+      // Log what we got
+      let categorySummary = Object.entries(categoryPlaces)
+        .map(([cat, places]) => `${cat}: ${places.length} places`)
+        .join('; ');
+      console.log(`[solo-adventure] Fetched places: ${categorySummary}`);
+      
+      // Generate all 84 category combinations
+      const categoryCombinations = generateCategoryCombinations();
+      console.log(`[solo-adventure] Generated ${categoryCombinations.length} category combinations`);
+      
+      // GLOBAL DEDUPLICATION: Track all used place IDs across the entire batch
+      const usedPlaceIds = new Set<string>();
+      const cards = [];
+      
+      // Shuffle combinations for variety
+      const shuffledCombos = shuffle(categoryCombinations);
+      
+      // Attempt combinations sequentially to build diversity and track deduplication
+      for (const combo of shuffledCombos) {
+        if (cards.length >= limit) break; // Stop when we have enough cards
+        
+        try {
+          const card = await resolvePairingFromCategories(
+            combo as [string, string, string],
+            categoryPlaces,
+            location.lat,
+            location.lng,
+            travelMode,
+            budgetMax,
+            usedPlaceIds,
+            experienceType
+          );
+          
+          if (card) {
+            // Track all place IDs in this card to prevent future duplicates
+            card.stops.forEach((stop: any) => {
+              usedPlaceIds.add(stop.placeId);
+            });
+            cards.push(card);
+          }
+        } catch (err) {
+          // Log but continue on individual card failures
+          console.warn(`[solo-adventure] Failed to generate card for combo ${combo.join('+')}: ${err}`);
+        }
+      }
+      
+      console.log(`[solo-adventure] Generated ${cards.length} unique cards out of ${shuffledCombos.length} attempted combinations`);
+      return new Response(
+        JSON.stringify({ 
+          cards,
+          pairingsAttempted: shuffledCombos.length,
+          pairingsResolved: cards.length,
+          uniquePlacesUsed: usedPlaceIds.size 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // FALLBACK: Original pairing-based generation for other experience types
     const pairingSet = PAIRINGS_BY_TYPE[experienceType] ?? SOLO_ADVENTURE_PAIRINGS;
     const pairings = shuffle(pairingSet).slice(0, Math.min(limit, 50));
     const results = await Promise.allSettled(pairings.map(pairing => resolvePairing(pairing as [string, string, string], location.lat, location.lng, clampedRadius, travelMode, budgetMax, experienceType)));

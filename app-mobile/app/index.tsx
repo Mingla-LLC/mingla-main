@@ -2549,6 +2549,20 @@ const styles = StyleSheet.create({
 });
 
 export default function App() {
+  // Gate: clear corrupted/oversized React Query persisted cache BEFORE provider mounts
+  // PersistQueryClientProvider crashes on mount if the cache exceeds Android's 2MB CursorWindow
+  const [cacheReady, setCacheReady] = React.useState(false);
+
+  React.useEffect(() => {
+    AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE')
+      .catch(() => {})
+      .finally(() => setCacheReady(true));
+  }, []);
+
+  if (!cacheReady) {
+    return null; // Brief blank frame while clearing corrupted cache
+  }
+
   return (
     <PersistQueryClientProvider
       client={queryClient}
@@ -2557,18 +2571,27 @@ export default function App() {
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
 
         dehydrateOptions: {
-          // Exclude savedCards and calendarEntries queries from persistence
+          // Exclude large/transient queries from persistence to prevent
+          // Android CursorWindow overflow (2MB SQLite row limit)
           shouldDehydrateQuery: (query) => {
             const queryKey = query.queryKey;
 
-            // Don't persist queries with queryKey starting with "savedCards" or "calendarEntries"
             if (Array.isArray(queryKey)) {
               const firstKey = queryKey[0];
-              if (firstKey === "savedCards" || firstKey === "calendarEntries") {
+              // Never persist these heavy/transient queries:
+              // - savedCards, calendarEntries: refetched on mount
+              // - curated-experiences: very large payload (20 cards × 3 stops)
+              // - recommendations: large + stale quickly
+              if (
+                firstKey === "savedCards" ||
+                firstKey === "calendarEntries" ||
+                firstKey === "curated-experiences" ||
+                firstKey === "recommendations"
+              ) {
                 return false;
               }
             }
-            // Persist all other queries
+            // Persist lightweight queries (preferences, location, etc.)
             return true;
           },
         },

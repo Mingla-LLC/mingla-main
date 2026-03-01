@@ -797,7 +797,7 @@ export default function PreferencesSheet({
       budget_min: typeof budgetMin === "number" ? budgetMin : 0,
       budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
       people_count: 1,
-      categories: selectedCategories,
+      categories: [...selectedIntents, ...selectedCategories],
       travel_mode: travelMode,
       travel_constraint_type: constraintType,
       travel_constraint_value:
@@ -822,7 +822,7 @@ export default function PreferencesSheet({
     try {
       if (isCollaborationMode) {
         const dbPrefs: any = {
-          categories: selectedCategories,
+          categories: [...selectedIntents, ...selectedCategories],
           budget_min: typeof budgetMin === "number" ? budgetMin : 0,
           budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
           travel_mode: travelMode,

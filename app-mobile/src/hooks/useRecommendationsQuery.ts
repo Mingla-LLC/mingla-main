@@ -16,6 +16,7 @@ interface FetchRecommendationsParams {
   boardPreferences: any;
   isCollaborationMode: boolean;
   isWaitingForSessionResolution?: boolean;
+  batchSeed?: number;
 }
 
 const getDefaultPreferences = (): UserPreferences => ({
@@ -174,6 +175,9 @@ export const useRecommendationsQuery = (
     boardPreferences?.budget_min,
     boardPreferences?.budget_max,
     boardPreferences?.group_size,
+    // Note: batchSeed intentionally excluded — regular recommendations don't
+    // use it on the backend.  Re-fetching them wastes time; only curated cards
+    // change per batch.
   ];
 
   return useQuery({

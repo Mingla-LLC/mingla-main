@@ -107,21 +107,100 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-/** Inserts one curated card after every 3rd regular card */
+/** Converts a CuratedExperienceCard into a Recommendation so SwipeableCards can render it */
+function curatedToRecommendation(card: any): Recommendation {
+  const stops = card.stops ?? [];
+  const firstStop = stops[0];
+  const avgRating =
+    stops.length > 0
+      ? stops.reduce((s: number, st: any) => s + (st.rating ?? 0), 0) / stops.length
+      : 0;
+  const firstImage = firstStop?.imageUrl || '';
+  const allImages = stops.map((s: any) => s.imageUrl).filter(Boolean);
+
+  return {
+    // Preserve curated card identity so ExpandedCardModal can detect it
+    cardType: 'curated' as const,
+    // Preserve original curated fields for CuratedPlanView and TimelineSection
+    stops: card.stops,
+    totalPriceMin: card.totalPriceMin,
+    totalPriceMax: card.totalPriceMax,
+    estimatedDurationMinutes: card.estimatedDurationMinutes,
+    pairingKey: card.pairingKey,
+    tagline: card.tagline,
+    id: card.id,
+    title: card.title,
+    category: card.experienceType ?? 'solo-adventure',
+    categoryIcon: 'compass',
+    lat: firstStop?.lat,
+    lng: firstStop?.lng,
+    timeAway: `${card.estimatedDurationMinutes ?? 0} min`,
+    description: card.tagline ?? '',
+    budget: `$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
+    rating: avgRating,
+    image: firstImage,
+    images: allImages.length > 0 ? allImages : [firstImage || ''],
+    priceRange: `$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
+    distance: firstStop ? `${firstStop.distanceFromUserKm ?? 0} km` : '0 km',
+    travelTime: firstStop ? `${firstStop.travelTimeFromUserMin ?? 0} min` : '0 min',
+    experienceType: card.experienceType ?? 'solo-adventure',
+    highlights: stops.map((s: any) => s.placeName),
+    fullDescription: card.tagline ?? '',
+    address: firstStop?.address ?? '',
+    openingHours: null,
+    tags: stops.map((s: any) => s.placeType),
+    matchScore: card.matchScore ?? 50,
+    reviewCount: stops.reduce((s: number, st: any) => s + (st.reviewCount ?? 0), 0),
+    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+    matchFactors: { location: 0.5, budget: 0.5, category: 0.5, time: 0.5, popularity: 0.5 },
+    // Preserve curated data for expanded view
+    strollData: {
+      anchor: {
+        id: firstStop?.placeId ?? '',
+        name: firstStop?.placeName ?? '',
+        location: { lat: firstStop?.lat ?? 0, lng: firstStop?.lng ?? 0 },
+        address: firstStop?.address ?? '',
+      },
+      companionStops: stops.slice(1).map((s: any) => ({
+        id: s.placeId ?? '',
+        name: s.placeName ?? '',
+        location: { lat: s.lat ?? 0, lng: s.lng ?? 0 },
+        address: s.address ?? '',
+        rating: s.rating,
+        reviewCount: s.reviewCount,
+        imageUrl: s.imageUrl,
+        placeId: s.placeId ?? '',
+        type: s.placeType ?? '',
+      })),
+      route: {
+        duration: card.estimatedDurationMinutes ?? 0,
+        startLocation: { lat: firstStop?.lat ?? 0, lng: firstStop?.lng ?? 0 },
+        endLocation: {
+          lat: stops[stops.length - 1]?.lat ?? 0,
+          lng: stops[stops.length - 1]?.lng ?? 0,
+        },
+      },
+      timeline: stops.map((s: any, i: number) => ({
+        step: i + 1,
+        type: s.placeType ?? '',
+        title: s.placeName ?? '',
+        location: { lat: s.lat ?? 0, lng: s.lng ?? 0 },
+        description: `${s.stopLabel}: ${s.placeName}`,
+        duration: 60,
+      })),
+    },
+  } as Recommendation;
+}
+
+/** Puts curated cards first so user sees all 20, then appends regular cards after */
 function interleaveCards(
   regular: Recommendation[],
   curated: Recommendation[]
 ): Recommendation[] {
   if (curated.length === 0) return regular;
-  const result: Recommendation[] = [];
-  let curatedIdx = 0;
-  regular.forEach((card, idx) => {
-    result.push(card);
-    if ((idx + 1) % 3 === 0 && curatedIdx < curated.length) {
-      result.push(curated[curatedIdx++]);
-    }
-  });
-  return result;
+  if (regular.length === 0) return curated;
+  // Show curated cards as the primary content, regular cards fill in after
+  return [...curated, ...regular];
 }
 
 const getDefaultPreferences = (): UserPreferences => ({
@@ -151,6 +230,8 @@ interface RecommendationsContextType {
     cardId: string,
     strollData: Recommendation["strollData"]
   ) => void;
+  batchSeed: number;
+  generateNextBatch: () => void;
 }
 
 const RecommendationsContext = createContext<
@@ -171,6 +252,7 @@ export const RecommendationsProvider: React.FC<
   refreshKey: propRefreshKey,
 }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [batchSeed, setBatchSeed] = useState(0);
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const [hasCompletedFetchForCurrentMode, setHasCompletedFetchForCurrentMode] =
     useState(false);
@@ -259,6 +341,10 @@ export const RecommendationsProvider: React.FC<
     currentMode !== "solo" && resolvedSessionId
   );
 
+  const generateNextBatch = useCallback(() => {
+    setBatchSeed(prev => prev + 1);
+  }, []);
+
   const {
     data: recommendationsData,
     isLoading: isLoadingRecommendations,
@@ -274,6 +360,7 @@ export const RecommendationsProvider: React.FC<
     boardPreferences,
     isCollaborationMode,
     isWaitingForSessionResolution,
+    batchSeed,
     enabled: Boolean(
       userLocation &&
         !isWaitingForSessionResolution &&
@@ -295,34 +382,38 @@ export const RecommendationsProvider: React.FC<
     travelConstraintType:
       (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
     travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
+    batchSeed,
   };
   const isSoloMode = currentMode === 'solo';
 
-  const { cards: curatedSoloCards } = useCuratedExperiences({
+  // Always enable solo-adventure as default curated type in solo mode
+  const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo } = useCuratedExperiences({
     experienceType: 'solo-adventure',
     ...baseParams,
-    enabled: isSoloMode && experienceTypes.includes('solo-adventure'),
+    enabled: isSoloMode && (experienceTypes.length === 0 || experienceTypes.includes('solo-adventure')),
   });
-  const { cards: curatedDateCards } = useCuratedExperiences({
+  const { cards: curatedDateCards, isLoading: isLoadingCuratedDate } = useCuratedExperiences({
     experienceType: 'first-dates',
     ...baseParams,
     enabled: isSoloMode && experienceTypes.includes('first-dates'),
   });
-  const { cards: curatedRomCards } = useCuratedExperiences({
+  const { cards: curatedRomCards, isLoading: isLoadingCuratedRom } = useCuratedExperiences({
     experienceType: 'romantic',
     ...baseParams,
     enabled: isSoloMode && experienceTypes.includes('romantic'),
   });
-  const { cards: curatedFriendCards } = useCuratedExperiences({
+  const { cards: curatedFriendCards, isLoading: isLoadingCuratedFriend } = useCuratedExperiences({
     experienceType: 'friendly',
     ...baseParams,
     enabled: isSoloMode && experienceTypes.includes('friendly'),
   });
-  const { cards: curatedGroupCards } = useCuratedExperiences({
+  const { cards: curatedGroupCards, isLoading: isLoadingCuratedGroup } = useCuratedExperiences({
     experienceType: 'group-fun',
     ...baseParams,
     enabled: isSoloMode && experienceTypes.includes('group-fun'),
   });
+
+  const isLoadingAnyCurated = isLoadingCuratedSolo || isLoadingCuratedDate || isLoadingCuratedRom || isLoadingCuratedFriend || isLoadingCuratedGroup;
 
   const allCuratedCards = [
     ...curatedSoloCards,
@@ -331,7 +422,7 @@ export const RecommendationsProvider: React.FC<
     ...curatedFriendCards,
     ...curatedGroupCards,
   ];
-  const curatedRecommendations = shuffleArray(allCuratedCards) as unknown as Recommendation[];
+  const curatedRecommendations = shuffleArray(allCuratedCards).map(curatedToRecommendation);
 
   // Get stable references to cache methods to avoid dependency issues
   const generateCacheKey = cardsCache.generateCacheKey;
@@ -342,35 +433,37 @@ export const RecommendationsProvider: React.FC<
   const previousRecommendationsRef = useRef<Recommendation[] | undefined>(
     undefined
   );
-  const previousCuratedLengthRef = useRef<number>(0);
+  const previousCuratedIdsRef = useRef<string>('');
 
   // Sync recommendations from TanStack Query to local state and CardsCache
   useEffect(() => {
     // Handle undefined or empty recommendations
-    if (!recommendationsData) {
-      return; // Don't update state if data is still loading
+    // Allow curated cards to surface even when regular fetch errors/returns undefined
+    if (!recommendationsData && curatedRecommendations.length === 0) {
+      return; // Don't update state if data is still loading and no curated cards
     }
+    const regularCards = recommendationsData ?? [];
 
     // Check if recommendations have actually changed (including curated)
     const prevRecs = previousRecommendationsRef.current;
-    const curatedChanged =
-      previousCuratedLengthRef.current !== curatedRecommendations.length;
+    const curatedIdsKey = curatedRecommendations.map(c => c.id).sort().join(',');
+    const curatedChanged = previousCuratedIdsRef.current !== curatedIdsKey;
     const hasChanged =
       curatedChanged ||
       !prevRecs ||
-      prevRecs.length !== recommendationsData.length ||
-      prevRecs.some((prev, idx) => prev.id !== recommendationsData[idx]?.id);
+      prevRecs.length !== regularCards.length ||
+      prevRecs.some((prev, idx) => prev.id !== regularCards[idx]?.id);
 
     if (!hasChanged) {
       return; // No change, skip update
     }
 
-    previousRecommendationsRef.current = recommendationsData;
-    previousCuratedLengthRef.current = curatedRecommendations.length;
+    previousRecommendationsRef.current = regularCards;
+    previousCuratedIdsRef.current = curatedIdsKey;
 
-    if (recommendationsData.length > 0) {
+    if (regularCards.length > 0 || curatedRecommendations.length > 0) {
       setRecommendations(
-        interleaveCards(recommendationsData, curatedRecommendations)
+        interleaveCards(regularCards, curatedRecommendations)
       );
 
       // Also cache in CardsCacheContext for card state management
@@ -385,7 +478,7 @@ export const RecommendationsProvider: React.FC<
         // Check if there's an existing cache entry with matching recommendations
         const existingCache = getCachedCards(cacheKey);
         const currentCardIds = new Set(
-          recommendationsData.map((r: Recommendation) => r.id)
+          regularCards.map((r: Recommendation) => r.id)
         );
         const cachedCardIds = existingCache
           ? new Set(existingCache.cards.map((c: Recommendation) => c.id))
@@ -403,7 +496,7 @@ export const RecommendationsProvider: React.FC<
 
           setCachedCards(
             cacheKey,
-            recommendationsData,
+            regularCards,
             existingCache.currentCardIndex,
             existingCache.removedCardIds || [],
             currentMode,
@@ -414,7 +507,7 @@ export const RecommendationsProvider: React.FC<
 
           setCachedCards(
             cacheKey,
-            recommendationsData,
+            regularCards,
             0,
             [],
             currentMode,
@@ -424,17 +517,17 @@ export const RecommendationsProvider: React.FC<
         currentCacheKeyRef.current = cacheKey;
 
         // Track interaction
-        if (user?.id && recommendationsData.length > 0) {
+        if (user?.id && regularCards.length > 0) {
           ExperiencesService.trackInteraction(
             user.id,
-            recommendationsData[0].id,
+            regularCards[0].id,
             "view"
           ).catch((error) => {
             console.error("Error tracking view interaction:", error);
           });
         }
       }
-    } else if (recommendationsData.length === 0) {
+    } else if (regularCards.length === 0) {
       // Empty array - always sync to state to ensure consistency
       // This is important during mode transitions to show the correct state
       if (recommendations.length !== 0) {
@@ -503,7 +596,7 @@ export const RecommendationsProvider: React.FC<
 
   // Compute loading and error states from TanStack Query (moved up for use in effect)
   const loading =
-    isLoadingLocation || isLoadingPreferences || isLoadingRecommendations;
+    isLoadingLocation || isLoadingPreferences || isLoadingRecommendations || isLoadingAnyCurated;
   const isFetching = isFetchingRecommendations;
 
   // Reset mode transitioning and mark fetch as complete when query finishes
@@ -660,6 +753,8 @@ export const RecommendationsProvider: React.FC<
     refreshRecommendations,
     clearRecommendations,
     updateCardStrollData,
+    batchSeed,
+    generateNextBatch,
   };
 
   return (

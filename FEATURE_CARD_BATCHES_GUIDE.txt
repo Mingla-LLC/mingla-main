@@ -1,0 +1,453 @@
+====================================================================
+IMPLEMENTATION GUIDE
+Feature: Card Batch System — 20 Cards Per Batch + Bug Fix
+====================================================================
+
+This guide covers two things:
+  A) BUG FIX — curated cards not showing when only an intent is selected
+  B) FEATURE — 20-card batches with "Review Previous" / "Generate Another 20"
+
+DONE WHEN:
+  - Selecting solo-adventure alone shows curated plan cards
+  - Swipe deck is capped at 20 cards
+  - After swiping all 20, "Batch complete!" screen shows
+  - "Review Previous Batch" button resets to beginning of same 20
+  - "Generate Another 20" fetches a new set of 20 fresh cards
+
+====================================================================
+PART A — BUG FIX (do this first, it's one change)
+File: app-mobile/src/contexts/RecommendationsContext.tsx
+====================================================================
+
+Find the useEffect that syncs recommendations. It starts with something
+like (around line 427-432):
+
+  useEffect(() => {
+    if (!recommendationsData) {
+      return;
+    }
+    // ... change detection logic ...
+    if (recommendationsData.length > 0 || curatedRecommendations.length > 0) {
+      setRecommendations(interleaveCards(recommendationsData, curatedRecommendations));
+    }
+  }, [...]);
+
+MAKE THESE TWO CHANGES inside that effect:
+
+CHANGE 1 — Replace the early return guard:
+  OLD:
+    if (!recommendationsData) {
+      return;
+    }
+  NEW:
+    if (!recommendationsData && curatedRecommendations.length === 0) {
+      return;
+    }
+    const regularCards = recommendationsData ?? [];
+
+CHANGE 2 — Replace every reference to `recommendationsData` inside this
+effect with `regularCards`. There are typically 3-4 references:
+  a) In the change detection: `prevRecs.length !== recommendationsData.length`
+     → becomes: `prevRecs.length !== regularCards.length`
+  b) `prevRecs.some((prev, idx) => prev.id !== recommendationsData[idx]?.id)`
+     → becomes: `prevRecs.some((prev, idx) => prev.id !== regularCards[idx]?.id)`
+  c) `previousRecommendationsRef.current = recommendationsData;`
+     → becomes: `previousRecommendationsRef.current = regularCards;`
+  d) The `interleaveCards()` call:
+     `interleaveCards(recommendationsData, curatedRecommendations)`
+     → becomes: `interleaveCards(regularCards, curatedRecommendations)`
+
+TEST for the bug fix:
+  1. In the app, select ONLY "Solo Adventure" intent, apply preferences
+  2. Confirm the swipe deck shows curated plan cards instead of "No matches found"
+  3. Also confirm that selecting regular categories (Nature, Drink) still works normally
+
+====================================================================
+PART B — BATCH SYSTEM
+Step 1: Add batchSeed to RecommendationsContext
+File: app-mobile/src/contexts/RecommendationsContext.tsx
+====================================================================
+
+--- 1A. Add import for useCallback (if not already imported) ---
+In the React import at line 1-8, ensure useCallback is included:
+  import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
+
+--- 1B. Add batchSeed state ---
+Find where other useState calls are, add:
+  const [batchSeed, setBatchSeed] = useState(0);
+
+--- 1C. Add generateNextBatch function ---
+  const generateNextBatch = useCallback(() => {
+    setBatchSeed(prev => prev + 1);
+  }, []);
+
+--- 1D. Pass batchSeed to useRecommendationsQuery ---
+In the useRecommendationsQuery call (around line 347), add batchSeed to
+the params object:
+  const { data: recommendationsData, ... } = useRecommendationsQuery({
+    userId: user?.id,
+    currentMode,
+    userLocation,
+    userPreferences: userPrefs,
+    resolvedSessionId,
+    isBoardSession,
+    boardPreferences,
+    isCollaborationMode,
+    isWaitingForSessionResolution,
+    batchSeed,          // ADD THIS
+    enabled: Boolean(...),
+  });
+
+--- 1E. Pass batchSeed to all 5 useCuratedExperiences calls ---
+Each call looks like:
+  const { cards: curatedSoloCards } = useCuratedExperiences({
+    experienceType: 'solo-adventure',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('solo-adventure'),
+  });
+
+Add batchSeed to baseParams OR add it directly to each call:
+  const baseParams = {
+    location: userLocation,
+    budgetMin: userPrefs?.budget_min ?? 0,
+    budgetMax: userPrefs?.budget_max ?? 1000,
+    travelMode: userPrefs?.travel_mode ?? 'walking',
+    travelConstraintType: ...,
+    travelConstraintValue: ...,
+    batchSeed,     // ADD THIS to baseParams
+  };
+
+--- 1F. Cap recommendations at 20 ---
+Inside the useEffect where setRecommendations is called, change:
+  const allCards = interleaveCards(regularCards, curatedRecommendations);
+  setRecommendations(allCards);
+To:
+  const allCards = interleaveCards(regularCards, curatedRecommendations);
+  setRecommendations(allCards.slice(0, 20));
+
+If the interleaveCards result is passed directly, wrap it:
+  setRecommendations(
+    interleaveCards(regularCards, curatedRecommendations).slice(0, 20)
+  );
+
+--- 1G. Expose batchSeed and generateNextBatch via context value ---
+Find where the context value object is returned (the big object passed
+to the Provider's `value` prop). Add:
+  batchSeed,
+  generateNextBatch,
+
+--- 1H. Update the context type interface ---
+Find the interface/type that describes the context value (likely named
+RecommendationsContextType or similar). Add:
+  batchSeed: number;
+  generateNextBatch: () => void;
+
+====================================================================
+Step 2: Update useRecommendationsQuery
+File: app-mobile/src/hooks/useRecommendationsQuery.ts
+====================================================================
+
+--- 2A. Add batchSeed to the params type ---
+Find the FetchRecommendationsParams interface (or whatever the params
+type is named). Add:
+  batchSeed?: number;
+
+--- 2B. Add batchSeed to the queryKey array ---
+Find the queryKey array inside the hook. It ends with entries like
+boardPreferences?.budget_max, etc. Append at the end:
+  params.batchSeed ?? 0,
+
+This is the critical change: when batchSeed increments, the query key
+changes → React Query fires a fresh network request, bypassing the
+staleTime cache.
+
+====================================================================
+Step 3: Update useCuratedExperiences
+File: app-mobile/src/hooks/useCuratedExperiences.ts
+====================================================================
+
+--- 3A. Add batchSeed to UseCuratedExperiencesParams ---
+  interface UseCuratedExperiencesParams {
+    experienceType: CuratedExperienceType;
+    location: { lat: number; lng: number } | null;
+    budgetMin: number;
+    budgetMax: number;
+    travelMode: string;
+    travelConstraintType: 'time' | 'distance';
+    travelConstraintValue: number;
+    enabled: boolean;
+    batchSeed?: number;   // ADD THIS
+  }
+
+--- 3B. Add batchSeed to the queryKey ---
+Current queryKey:
+  queryKey: [
+    'curated-experiences',
+    params.experienceType,
+    location?.lat,
+    location?.lng,
+    params.budgetMin,
+    params.budgetMax,
+  ],
+
+Add batchSeed at the end:
+  queryKey: [
+    'curated-experiences',
+    params.experienceType,
+    location?.lat,
+    location?.lng,
+    params.budgetMin,
+    params.budgetMax,
+    params.batchSeed ?? 0,   // ADD THIS
+  ],
+
+NOTE: batchSeed should NOT be in the queryFn params passed to the
+edge function — it's only a React Query cache discriminator.
+
+====================================================================
+Step 4: Update SwipeableCards — pull generateNextBatch from context
+File: app-mobile/src/components/SwipeableCards.tsx
+====================================================================
+
+--- 4A. Destructure generateNextBatch from useRecommendations ---
+Find the line where context is consumed (around line 197):
+  const { recommendations, loading, error, refreshRecommendations, ... } = useRecommendations();
+
+Add generateNextBatch to the destructuring:
+  const {
+    recommendations,
+    loading,
+    error,
+    refreshRecommendations,
+    generateNextBatch,   // ADD THIS
+    ...
+  } = useRecommendations();
+
+====================================================================
+Step 5: Replace "all caught up" screen with "Batch Complete" screen
+File: app-mobile/src/components/SwipeableCards.tsx
+====================================================================
+
+Find the block that starts (around line 1080):
+  if (
+    hasCompletedInitialFetch &&
+    availableRecommendations.length === 0 &&
+    !loading &&
+    !isModeTransitioning &&
+    !isWaitingForSessionResolution
+  ) {
+    return (
+      <View style={styles.noCardsContainer}>
+        ... "You're all caught up!" JSX ...
+      </View>
+    );
+  }
+
+KEEP the condition check exactly as-is.
+REPLACE only the JSX body (the return statement) with:
+
+  return (
+    <View style={styles.noCardsContainer}>
+      <View style={styles.noCardsContent}>
+        <View style={styles.sparklesContainer}>
+          <Ionicons name="checkmark-circle-outline" size={48} color="#eb7825" />
+        </View>
+        <Text style={styles.noCardsTitle}>Batch complete!</Text>
+        <Text style={styles.noCardsSubtitle}>
+          You've seen all the cards in this batch.
+        </Text>
+
+        {/* Primary CTA: fresh 20 */}
+        <TouchableOpacity
+          style={styles.generateNextButton}
+          onPress={() => {
+            generateNextBatch();
+            handleViewCardsAgain();
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="refresh-outline" size={18} color="#ffffff" />
+          <Text style={styles.generateNextButtonText}>Generate Another 20</Text>
+        </TouchableOpacity>
+
+        {/* Secondary: review same batch */}
+        <TouchableOpacity
+          style={styles.reviewBatchButton}
+          onPress={handleViewCardsAgain}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-undo-outline" size={16} color="#eb7825" />
+          <Text style={styles.reviewBatchButtonText}>Review Previous Batch</Text>
+        </TouchableOpacity>
+
+        {/* Tertiary: change preferences */}
+        <TouchableOpacity
+          onPress={handleOpenPreferences}
+          activeOpacity={0.7}
+          style={styles.changePrefsLink}
+        >
+          <Text style={styles.changePrefsLinkText}>Change preferences</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+====================================================================
+Step 6: Add new styles
+File: app-mobile/src/components/SwipeableCards.tsx
+====================================================================
+
+Find the StyleSheet.create({ ... }) block. Add these entries:
+
+  generateNextButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eb7825',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+    marginTop: 20,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  generateNextButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  reviewBatchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#eb7825',
+    marginTop: 10,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  reviewBatchButtonText: {
+    color: '#eb7825',
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  changePrefsLink: {
+    marginTop: 16,
+  },
+  changePrefsLinkText: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
+
+NOTE: If `gap` style causes errors (older RN), use marginLeft/marginTop
+instead of gap in the button styles.
+
+====================================================================
+Step 7: TypeScript check
+====================================================================
+
+Run from app-mobile directory:
+  npx tsc --noEmit
+
+Fix expected errors:
+- "Property 'batchSeed' does not exist on FetchRecommendationsParams"
+  → You missed Step 2A
+- "Property 'generateNextBatch' does not exist on RecommendationsContextType"
+  → You missed Step 1H
+- "Property 'batchSeed' does not exist on UseCuratedExperiencesParams"
+  → You missed Step 3A
+
+====================================================================
+MANUAL TESTING CHECKLIST
+====================================================================
+
+TEST A — Bug fix (solo adventure, no categories):
+1. Open PreferencesSheet
+2. Select ONLY "Solo Adventure" intent (no category chips like Nature/Drink)
+3. Apply preferences
+4. CONFIRM: Deck shows curated plan cards (solo adventure multi-stop cards)
+5. CONFIRM: "No matches found" screen does NOT appear
+
+TEST B — Regular categories still work:
+1. Select "Nature" + "Drink" (no intent)
+2. Apply preferences
+3. CONFIRM: Regular single-place cards show up in the deck
+4. CONFIRM: Deck is capped at 20 cards
+
+TEST C — 20-card cap:
+1. Select any combination of categories/intents
+2. Swipe through all visible cards
+3. CONFIRM: After 20 swipes (or fewer if fewer cards available),
+   "Batch complete!" screen appears
+4. CONFIRM: Two large buttons are visible:
+   - "Generate Another 20" (orange, solid)
+   - "Review Previous Batch" (orange, outlined)
+5. CONFIRM: "Change preferences" text link also visible below
+
+TEST D — "Review Previous Batch":
+1. Reach the "Batch complete!" screen
+2. Tap "Review Previous Batch"
+3. CONFIRM: The same deck of cards reappears from card #1
+4. CONFIRM: No loading spinner (cards come from existing data)
+
+TEST E — "Generate Another 20":
+1. Reach the "Batch complete!" screen
+2. Tap "Generate Another 20"
+3. CONFIRM: Loading spinner appears briefly
+4. CONFIRM: A new deck of (up to) 20 cards appears
+5. CONFIRM: The cards are visually different from the previous batch
+   (place names differ — edge function shuffles results)
+
+TEST F — Category selection behaves the same:
+1. Select ONLY "Fine Dining" category (no intent)
+2. Apply preferences
+3. Swipe through all 20 cards
+4. CONFIRM: Same "Batch complete!" screen with same two buttons
+
+====================================================================
+COMMON MISTAKES TO AVOID
+====================================================================
+
+1. DON'T add batchSeed to the edge function request body.
+   It's only a React Query cache discriminator key.
+   The edge functions already shuffle independently.
+
+2. DON'T put the .slice(0, 20) BEFORE the interleaveCards call.
+   It must go AFTER, on the combined array:
+   interleaveCards(regularCards, curatedRecommendations).slice(0, 20)
+
+3. DON'T forget to pass batchSeed to ALL 5 useCuratedExperiences calls
+   (solo-adventure, first-dates, romantic, friendly, group-fun).
+   Missing even one means that type's cache won't bust on "Generate Another 20".
+
+4. The existing `handleViewCardsAgain` function in SwipeableCards
+   clears removedCards and resets currentCardIndex to 0.
+   DON'T rewrite it — just call it as-is for "Review Previous Batch".
+   For "Generate Another 20", call generateNextBatch() first, THEN
+   handleViewCardsAgain() to reset the swipe state for the new deck.
+
+5. DON'T change the "no matches" condition in SwipeableCards.
+   The Part A bug fix in RecommendationsContext already prevents the
+   no_matches error from blocking curated cards. The SwipeableCards
+   "no matches" screen will only show when there are truly zero
+   recommendations (which is correct behaviour).
+
+6. DON'T touch collaboration mode code. The batchSeed is initialized
+   to 0 and only changes on user action. Collaboration mode won't be
+   affected since it has its own query path.
+
+====================================================================
+DONE WHEN
+====================================================================
+
+- npx tsc --noEmit passes
+- Solo Adventure (intent only) shows curated cards
+- Regular category selections show up to 20 cards
+- After 20 swipes: "Batch complete!" screen with 2 buttons
+- "Review Previous Batch" resets swipe position (same cards)
+- "Generate Another 20" fetches new cards (different from previous)
+- No regressions in non-solo or collaboration flows

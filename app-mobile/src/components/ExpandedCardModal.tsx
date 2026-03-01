@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Modal,
   View,
@@ -11,11 +11,14 @@ import {
   Image,
   Linking,
   Platform,
+  Animated,
+  LayoutAnimation,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatDistanceFromMeters, formatPriceRange } from "./utils/formatters";
+import { curatedStopsToTimeline } from "../utils/curatedToTimeline";
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
 import { bookingService, BookingOption } from "../services/bookingService";
@@ -35,6 +38,7 @@ import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
 import ActionButtons from "./expandedCard/ActionButtons";
 import FeedbackModal from "./expandedCard/FeedbackModal";
 import ShareModal from "./ShareModal";
+import InAppBrowserModal from "./InAppBrowserModal";
 import { colors } from "../constants/colors";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -235,7 +239,127 @@ const curatedStyles = StyleSheet.create({
   saveButtonTextSaved: {
     color: '#eb7825',
   },
+  stopHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  openBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  openBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  expandedSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  aiDescription: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  hoursSection: {
+    marginBottom: 10,
+  },
+  hoursSectionLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  hoursRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  hoursDay: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.45)',
+    width: 36,
+  },
+  hoursDayToday: {
+    color: '#eb7825',
+    fontWeight: '700',
+  },
+  hoursTime: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.45)',
+    flex: 1,
+    textAlign: 'right',
+  },
+  hoursTimeToday: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  reserveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#7C3AED',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  reserveButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  totalTimeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(235,120,37,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(235,120,37,0.3)',
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 16,
+  },
+  totalTimeTextBlock: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  totalTimeLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontWeight: '600',
+  },
+  totalTimeValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginTop: 2,
+  },
+  totalTimeBreakdown: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: 2,
+  },
 });
+
+const FINE_DINING_TYPES = new Set([
+  'fine_dining_restaurant',
+  'steak_house',
+  'french_restaurant',
+  'greek_restaurant',
+  'italian_restaurant',
+  'chef_led_restaurant',
+  'upscale_restaurant',
+]);
 
 /** Private component — renders the multi-stop plan for a curated experience */
 function CuratedPlanView({
@@ -253,11 +377,56 @@ function CuratedPlanView({
     card.stops.length > 0
       ? (card.stops.reduce((s, st) => s + st.rating, 0) / card.stops.length).toFixed(1)
       : '–';
-  const durationHrs = (card.estimatedDurationMinutes / 60).toFixed(1);
+
   const priceText =
     card.totalPriceMin === 0 && card.totalPriceMax === 0
       ? 'Free'
       : `$${card.totalPriceMin}–$${card.totalPriceMax}`;
+
+  // Total time calculation
+  const totalStopMinutes = card.stops.reduce((s, st) => s + (st.estimatedDurationMinutes ?? 45), 0);
+  const totalTravelMinutes = card.stops
+    .slice(1)
+    .reduce((s, st) => s + (st.travelTimeFromPreviousStopMin ?? 0), 0);
+  const grandTotalMinutes = totalStopMinutes + totalTravelMinutes;
+  const totalHrs = Math.floor(grandTotalMinutes / 60);
+  const totalMins = grandTotalMinutes % 60;
+  const totalTimeLabel = totalHrs > 0
+    ? `${totalHrs}h ${totalMins > 0 ? totalMins + 'min' : ''}`
+    : `${totalMins}min`;
+
+  // Accordion state
+  const [expandedStops, setExpandedStops] = useState<Set<number>>(new Set());
+  const [browserUrl, setBrowserUrl] = useState<string | null>(null);
+  const [browserTitle, setBrowserTitle] = useState('');
+
+  // Stagger entry animations
+  const stopAnims = useRef(card.stops.map(() => new Animated.Value(0))).current;
+  useEffect(() => {
+    Animated.stagger(
+      120,
+      stopAnims.map(anim =>
+        Animated.timing(anim, { toValue: 1, duration: 350, useNativeDriver: true })
+      )
+    ).start();
+  }, []);
+
+  const toggleStop = (stopNumber: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedStops(prev => {
+      const next = new Set(prev);
+      next.has(stopNumber) ? next.delete(stopNumber) : next.add(stopNumber);
+      return next;
+    });
+  };
+
+  const travelIcon = (mode: string | null): any => {
+    if (mode === 'driving') return 'car-outline';
+    if (mode === 'walking') return 'walk-outline';
+    if (mode === 'bicycling' || mode === 'biking') return 'bicycle-outline';
+    if (mode === 'transit') return 'bus-outline';
+    return 'navigate-outline';
+  };
 
   const openDirectionsForStop = (stop: CuratedStop) => {
     const url = Platform.select({
@@ -267,12 +436,7 @@ function CuratedPlanView({
     if (url) Linking.openURL(url);
   };
 
-  const travelIcon = (mode: string | null): any => {
-    if (mode === 'driving') return 'car-outline';
-    if (mode === 'walking') return 'walk-outline';
-    if (mode === 'bicycling') return 'bicycle-outline';
-    return 'navigate-outline';
-  };
+  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
   return (
     <View style={curatedStyles.container}>
@@ -288,7 +452,7 @@ function CuratedPlanView({
           <Text style={curatedStyles.summaryDot}>·</Text>
           <View style={curatedStyles.summaryItem}>
             <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.7)" />
-            <Text style={curatedStyles.summaryText}>~{durationHrs} hrs</Text>
+            <Text style={curatedStyles.summaryText}>{totalTimeLabel}</Text>
           </View>
           <Text style={curatedStyles.summaryDot}>·</Text>
           <View style={curatedStyles.summaryItem}>
@@ -300,94 +464,184 @@ function CuratedPlanView({
 
       {/* Stops */}
       <View style={curatedStyles.stopsContainer}>
-        {card.stops.map((stop, idx) => (
-          <View key={stop.placeId}>
-            {/* Travel connector from previous stop */}
-            {idx > 0 && stop.travelTimeFromPreviousStopMin != null && (
-              <View style={curatedStyles.travelConnector}>
-                <View style={curatedStyles.travelLine} />
-                <View style={curatedStyles.travelBadge}>
+        {card.stops.map((stop, idx) => {
+          const isExpanded = expandedStops.has(stop.stopNumber);
+          const isFineDining = FINE_DINING_TYPES.has(stop.placeType) && stop.website;
+          const anim = stopAnims[idx];
+          return (
+            <Animated.View
+              key={stop.placeId}
+              style={{
+                opacity: anim,
+                transform: [{
+                  translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }),
+                }],
+              }}
+            >
+              {/* Travel connector from previous stop */}
+              {idx > 0 && stop.travelTimeFromPreviousStopMin != null && (
+                <View style={curatedStyles.travelConnector}>
+                  <View style={curatedStyles.travelLine} />
+                  <View style={curatedStyles.travelBadge}>
+                    <Ionicons
+                      name={travelIcon(stop.travelModeFromPreviousStop)}
+                      size={12}
+                      color="#6b7280"
+                    />
+                    <Text style={curatedStyles.travelText}>
+                      {stop.travelTimeFromPreviousStopMin} min
+                    </Text>
+                  </View>
+                  <View style={curatedStyles.travelLine} />
+                </View>
+              )}
+
+              {/* Stop card */}
+              <View style={curatedStyles.stopCard}>
+                {/* Tappable header row */}
+                <TouchableOpacity
+                  style={curatedStyles.stopHeaderRow}
+                  onPress={() => toggleStop(stop.stopNumber)}
+                  activeOpacity={0.7}
+                >
+                  <View style={curatedStyles.stopLabelRow}>
+                    <View style={curatedStyles.stopNumberBadge}>
+                      <Text style={curatedStyles.stopNumberText}>{stop.stopNumber}</Text>
+                    </View>
+                    <View>
+                      <Text style={curatedStyles.stopLabel}>{stop.stopLabel}</Text>
+                      <Text style={curatedStyles.placeName}>{stop.placeName}</Text>
+                    </View>
+                  </View>
                   <Ionicons
-                    name={travelIcon(stop.travelModeFromPreviousStop)}
-                    size={12}
-                    color="#6b7280"
+                    name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                    size={18}
+                    color="rgba(255,255,255,0.5)"
                   />
-                  <Text style={curatedStyles.travelText}>
-                    {stop.travelTimeFromPreviousStopMin} min
-                  </Text>
+                </TouchableOpacity>
+
+                {/* Always-visible: image + quick meta */}
+                {stop.imageUrl ? (
+                  <Image
+                    source={{ uri: stop.imageUrl }}
+                    style={curatedStyles.stopImage}
+                    resizeMode="cover"
+                  />
+                ) : null}
+
+                <Text style={curatedStyles.placeType}>
+                  {stop.placeType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </Text>
+
+                <View style={curatedStyles.stopMetaRow}>
+                  {stop.rating > 0 && (
+                    <View style={curatedStyles.stopMetaItem}>
+                      <Ionicons name="star" size={12} color="#F59E0B" />
+                      <Text style={curatedStyles.stopMetaText}>{stop.rating.toFixed(1)}</Text>
+                    </View>
+                  )}
+                  {stop.priceLevelLabel ? (
+                    <>
+                      <Text style={curatedStyles.stopMetaDot}>·</Text>
+                      <Text style={curatedStyles.stopMetaText}>{stop.priceLevelLabel}</Text>
+                    </>
+                  ) : null}
+                  <Text style={curatedStyles.stopMetaDot}>·</Text>
+                  <View style={[
+                    curatedStyles.openBadge,
+                    { backgroundColor: stop.isOpenNow ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)' },
+                  ]}>
+                    <Text style={[
+                      curatedStyles.openBadgeText,
+                      { color: stop.isOpenNow ? '#10b981' : '#ef4444' },
+                    ]}>
+                      {stop.isOpenNow ? 'Open Now' : 'Closed'}
+                    </Text>
+                  </View>
                 </View>
-                <View style={curatedStyles.travelLine} />
-              </View>
-            )}
 
-            {/* Stop card */}
-            <View style={curatedStyles.stopCard}>
-              <View style={curatedStyles.stopLabelRow}>
-                <View style={curatedStyles.stopNumberBadge}>
-                  <Text style={curatedStyles.stopNumberText}>{stop.stopNumber}</Text>
-                </View>
-                <Text style={curatedStyles.stopLabel}>{stop.stopLabel}</Text>
-              </View>
+                {/* Expanded detail section */}
+                {isExpanded && (
+                  <View style={curatedStyles.expandedSection}>
+                    {/* AI Description */}
+                    {stop.aiDescription ? (
+                      <Text style={curatedStyles.aiDescription}>{stop.aiDescription}</Text>
+                    ) : null}
 
-              {stop.imageUrl ? (
-                <Image
-                  source={{ uri: stop.imageUrl }}
-                  style={curatedStyles.stopImage}
-                  resizeMode="cover"
-                />
-              ) : null}
+                    {/* Opening Hours */}
+                    {Object.keys(stop.openingHours).length > 0 && (
+                      <View style={curatedStyles.hoursSection}>
+                        <Text style={curatedStyles.hoursSectionLabel}>Hours</Text>
+                        {Object.entries(stop.openingHours).map(([day, hours]) => {
+                          const isToday = day === todayName;
+                          return (
+                            <View key={day} style={curatedStyles.hoursRow}>
+                              <Text style={[
+                                curatedStyles.hoursDay,
+                                isToday && curatedStyles.hoursDayToday,
+                              ]}>
+                                {day.slice(0, 3)}
+                              </Text>
+                              <Text style={[
+                                curatedStyles.hoursTime,
+                                isToday && curatedStyles.hoursTimeToday,
+                              ]}>
+                                {hours}
+                              </Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
 
-              <Text style={curatedStyles.placeName}>{stop.placeName}</Text>
-              <Text style={curatedStyles.placeType}>
-                {stop.placeType.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-              </Text>
+                    {/* Address + Directions */}
+                    <View style={curatedStyles.stopAddressRow}>
+                      <Ionicons name="location-outline" size={13} color="#9ca3af" />
+                      <Text style={curatedStyles.stopAddress} numberOfLines={2}>
+                        {stop.address}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={curatedStyles.directionsButton}
+                      onPress={() => openDirectionsForStop(stop)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="navigate-outline" size={14} color="#eb7825" />
+                      <Text style={curatedStyles.directionsText}>Get Directions</Text>
+                    </TouchableOpacity>
 
-              <View style={curatedStyles.stopMetaRow}>
-                {stop.rating > 0 && (
-                  <View style={curatedStyles.stopMetaItem}>
-                    <Ionicons name="star" size={12} color="#F59E0B" />
-                    <Text style={curatedStyles.stopMetaText}>{stop.rating.toFixed(1)}</Text>
+                    {/* Reserve button — fine dining only */}
+                    {isFineDining && (
+                      <TouchableOpacity
+                        style={curatedStyles.reserveButton}
+                        onPress={() => {
+                          setBrowserTitle(stop.placeName);
+                          setBrowserUrl(stop.website!);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="calendar-outline" size={15} color="#ffffff" />
+                        <Text style={curatedStyles.reserveButtonText}>Reserve a Table</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
-                {stop.priceLevelLabel ? (
-                  <>
-                    <Text style={curatedStyles.stopMetaDot}>·</Text>
-                    <Text style={curatedStyles.stopMetaText}>{stop.priceLevelLabel}</Text>
-                  </>
-                ) : null}
-                {stop.isOpenNow !== undefined && (
-                  <>
-                    <Text style={curatedStyles.stopMetaDot}>·</Text>
-                    <Text
-                      style={[
-                        curatedStyles.stopMetaText,
-                        { color: stop.isOpenNow ? '#10b981' : '#ef4444' },
-                      ]}
-                    >
-                      {stop.isOpenNow ? 'Open' : 'Closed'}
-                    </Text>
-                  </>
-                )}
               </View>
+            </Animated.View>
+          );
+        })}
 
-              <View style={curatedStyles.stopAddressRow}>
-                <Ionicons name="location-outline" size={13} color="#9ca3af" />
-                <Text style={curatedStyles.stopAddress} numberOfLines={1}>
-                  {stop.address}
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={curatedStyles.directionsButton}
-                onPress={() => openDirectionsForStop(stop)}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="navigate-outline" size={14} color="#eb7825" />
-                <Text style={curatedStyles.directionsText}>Get Directions</Text>
-              </TouchableOpacity>
-            </View>
+        {/* Total time estimate footer */}
+        <View style={curatedStyles.totalTimeCard}>
+          <Ionicons name="time-outline" size={20} color="#eb7825" />
+          <View style={curatedStyles.totalTimeTextBlock}>
+            <Text style={curatedStyles.totalTimeLabel}>Total Time Estimate</Text>
+            <Text style={curatedStyles.totalTimeValue}>{totalTimeLabel}</Text>
+            <Text style={curatedStyles.totalTimeBreakdown}>
+              {totalStopMinutes}min at stops · {totalTravelMinutes}min travel
+            </Text>
           </View>
-        ))}
+        </View>
       </View>
 
       {/* Save */}
@@ -407,6 +661,14 @@ function CuratedPlanView({
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* In-app browser for reservations */}
+      <InAppBrowserModal
+        visible={browserUrl !== null}
+        url={browserUrl ?? ''}
+        title={browserTitle}
+        onClose={() => setBrowserUrl(null)}
+      />
     </View>
   );
 }
@@ -700,12 +962,27 @@ export default function ExpandedCardModal({
           >
             {/* ===== Curated Experience Plan ===== */}
             {isCuratedCard && curatedCard && (
-              <CuratedPlanView
-                card={curatedCard}
-                isSaved={isSaved}
-                onSave={onSave}
-                onClose={onClose}
-              />
+              <>
+                <CuratedPlanView
+                  card={curatedCard}
+                  isSaved={isSaved}
+                  onSave={onSave}
+                  onClose={onClose}
+                />
+
+                {/* Animated Timeline for Curated Cards */}
+                {curatedCard.stops && curatedCard.stops.length > 0 && (
+                  <TimelineSection
+                    category={curatedCard.experienceType || 'solo-adventure'}
+                    title={curatedCard.title}
+                    address={curatedCard.stops[0]?.address}
+                    priceRange={`$${curatedCard.totalPriceMin}–$${curatedCard.totalPriceMax}`}
+                    travelTime={`${Math.floor((curatedCard.estimatedDurationMinutes || 0) / 60)}h`}
+                    strollTimeline={curatedStopsToTimeline(curatedCard.stops)}
+                    routeDuration={curatedCard.estimatedDurationMinutes}
+                  />
+                )}
+              </>
             )}
 
             {/* Image Gallery (non-curated only) */}

@@ -20,12 +20,14 @@ export interface CuratedStop {
   travelTimeFromUserMin: number;
   travelTimeFromPreviousStopMin: number | null;
   travelModeFromPreviousStop: string | null;
+  aiDescription: string;
+  estimatedDurationMinutes: number;
 }
 
 export interface CuratedExperienceCard {
   id: string;
   cardType: 'curated';
-  experienceType: 'solo_adventure';
+  experienceType: string;
   pairingKey: string;
   title: string;
   tagline: string;

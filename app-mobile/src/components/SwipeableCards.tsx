@@ -194,6 +194,7 @@ export default function SwipeableCards({
     isWaitingForSessionResolution,
     hasCompletedInitialFetch,
     refreshRecommendations,
+    generateNextBatch,
   } = useRecommendations();
 
   // Combine all loading states for UI consistency and to prevent animation freezing
@@ -1088,26 +1089,41 @@ export default function SwipeableCards({
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
           <View style={styles.sparklesContainer}>
-            <Ionicons name="sparkles" size={40} color="#eb7825" />
+            <Ionicons name="checkmark-circle-outline" size={48} color="#eb7825" />
           </View>
-          <Text style={styles.noCardsTitle}>You're all caught up!</Text>
+          <Text style={styles.noCardsTitle}>Batch complete!</Text>
           <Text style={styles.noCardsSubtitle}>
-            You've reviewed all available recommendations. You can{" "}
-            <Text
-              style={styles.actionButtonText}
-              onPress={handleOpenPreferences}
-            >
-              update your preferences
-            </Text>{" "}
-            to see new suggestions or{" "}
-            <Text
-              style={styles.actionButtonText}
-              onPress={handleViewCardsAgain}
-            >
-              view your cards again
-            </Text>
-            .
+            You've seen all the cards in this batch.
           </Text>
+
+          <TouchableOpacity
+            style={styles.generateNextButton}
+            onPress={() => {
+              generateNextBatch();
+              handleViewCardsAgain();
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="refresh-outline" size={18} color="#ffffff" />
+            <Text style={styles.generateNextButtonText}>Generate Another 20</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.reviewBatchButton}
+            onPress={handleViewCardsAgain}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-undo-outline" size={16} color="#eb7825" />
+            <Text style={styles.reviewBatchButtonText}>Review Previous Batch</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleOpenPreferences}
+            activeOpacity={0.7}
+            style={styles.changePrefsLink}
+          >
+            <Text style={styles.changePrefsLinkText}>Change preferences</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -1947,5 +1963,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6b7280",
     fontWeight: "500",
+  },
+  generateNextButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#eb7825",
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+    marginTop: 20,
+    width: "100%",
+    justifyContent: "center",
+  },
+  generateNextButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "700",
+    marginLeft: 8,
+  },
+  reviewBatchButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#eb7825",
+    marginTop: 10,
+    width: "100%",
+    justifyContent: "center",
+  },
+  reviewBatchButtonText: {
+    color: "#eb7825",
+    fontSize: 15,
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+  changePrefsLink: {
+    marginTop: 16,
+  },
+  changePrefsLinkText: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 13,
+    textDecorationLine: "underline",
   },
 });
