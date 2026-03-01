@@ -877,8 +877,7 @@ export default function ExpandedCardModal({
     if (!card) return;
 
     const isPicnicCard =
-      card.category?.toLowerCase().includes("picnic") ||
-      card.category?.toLowerCase() === "picnics";
+      card.category === 'Picnic Date';
 
     if (!isPicnicCard) return;
 
@@ -943,8 +942,7 @@ export default function ExpandedCardModal({
 
   const isPicnicCard =
     !isCuratedCard &&
-    (card.category?.toLowerCase().includes("picnic") ||
-      card.category?.toLowerCase() === "picnics");
+    card.category === 'Picnic Date';
 
   const isNightOut = !isCuratedCard && !!card.nightOutData;
   const nightOut = isCuratedCard ? null : card.nightOutData;

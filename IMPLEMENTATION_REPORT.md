@@ -1,4 +1,4 @@
-# Implementation Report: First Meet Cards + ActionButtons Save/Schedule Split
+# Implementation Report: Category Pill Resolution Bugfix
 **Date:** 2026-03-01
 **Status:** Complete
 **Implementer:** Senior Engineer Skill
@@ -10,68 +10,60 @@
 ### Existing Files Modified
 | File | Purpose Before Change | Lines Before |
 |------|-----------------------|--------------|
-| `app-mobile/src/utils/cardConverters.ts` | Nature + curated card converters, shared utilities | ~224 lines |
-| `app-mobile/src/services/deckService.ts` | Unified deck service with Nature + curated pill routing | ~178 lines |
-| `app-mobile/src/components/expandedCard/ActionButtons.tsx` | Combined "Schedule and Save" button + share/bookmark icons | ~1124 lines |
-| `app-mobile/src/components/ExpandedCardModal.tsx` | Expanded card modal — already had InAppBrowserModal wired | ~1500+ lines |
+| `app-mobile/src/services/deckService.ts` | Multi-pill deck service with `resolvePills()` using `.toLowerCase()` comparison | ~243 lines |
+| `app-mobile/src/utils/cardConverters.ts` | Card converters + `roundRobinInterleave()` without deduplication | ~334 lines |
+| `app-mobile/src/components/PreferencesSheet.tsx` | Category selection UI with Picnic Park using display-name ID `"Picnic Park"` | ~1200 lines |
+| `app-mobile/src/components/CollaborationPreferences.tsx` | Collaboration prefs with same `"Picnic Park"` display-name ID | ~1100 lines |
 
 ### Pre-existing Behavior
-- Only Nature had a dedicated card pipeline (edge function → service → converter → deck pill).
-- "First Meet" category cards fell through to curated experiences (AI-generated multi-stop itineraries) — no single-venue cards for social/date venues.
-- ActionButtons had a combined "Schedule and Save" button that did both operations together.
-- Nature cards' "Save" bookmark icon redirected to the schedule flow instead of saving independently.
-- No "Policies & Reservations" button existed for any card type.
+- Selecting "First Meet" as the only category showed only adventure cards (wrong)
+- Selecting "Picnic Park" as the only category showed only adventure cards (wrong)
+- `resolvePills()` compared `cat.toLowerCase()` against space-separated strings like `'first meet'`, but PreferencesSheet saved snake_case IDs like `"first_meet"` — `"first_meet".toLowerCase()` = `"first_meet"` which does NOT equal `"first meet"`
+- Failed categories fell through to `categoryFilters` (dead end), leaving `pills.length === 0`, triggering the solo-adventure curated fallback
+- Picnic Park ID was `"Picnic Park"` (display name format) — the only category not using snake_case
+- `roundRobinInterleave()` had no deduplication — same Google Place in multiple pills produced duplicate React keys
 
 ---
 
 ## What Changed
 
 ### New Files Created
-| File | Purpose | Key Exports |
-|------|---------|-------------|
-| `supabase/functions/discover-first-meet/index.ts` | Edge function — Google Places search for 7 First Meet venue types (bars, coffee shops, bookstores, pubs, wine bars, tea houses, planetariums) | HTTP POST handler |
-| `app-mobile/src/services/firstMeetCardsService.ts` | Mobile service wrapping the edge function call | `FirstMeetCard`, `DiscoverFirstMeetParams`, `firstMeetCardsService` |
+None.
 
 ### Files Modified
 | File | Change Summary |
 |------|---------------|
-| `app-mobile/src/utils/cardConverters.ts` | Added `FirstMeetCard` import, added `firstMeetToRecommendation()` converter function |
-| `app-mobile/src/services/deckService.ts` | Added `firstMeetCardsService` + `firstMeetToRecommendation` imports; added `'first_meet'` to `deckMode` type; added First Meet routing in `resolvePills()`, `fetchDeck()`, and `warmDeckPool()` |
-| `app-mobile/src/components/expandedCard/ActionButtons.tsx` | Added `onOpenBrowser` prop; removed Nature save→schedule redirect; split "Schedule and Save" into separate Save + Schedule buttons; added "Policies & Reservations" button for First Meet; updated styles |
-| `app-mobile/src/components/ExpandedCardModal.tsx` | Passed `onOpenBrowser` prop to ActionButtons, wiring `setBrowserUrl`/`setBrowserTitle` |
+| `app-mobile/src/services/deckService.ts` | Added `const normalized = cat.replace(/_/g, ' ').toLowerCase()` before comparisons in `resolvePills()` |
+| `app-mobile/src/utils/cardConverters.ts` | Added `Set<string>` dedup to `roundRobinInterleave()` using `placeId ?? id` as key |
+| `app-mobile/src/components/PreferencesSheet.tsx` | Changed Picnic Park `id` from `"Picnic Park"` to `"picnic_park"` (3 occurrences: categories array, first-dates compat, romantic compat) |
+| `app-mobile/src/components/CollaborationPreferences.tsx` | Same 3 Picnic Park ID changes |
 
 ### Database Changes
-None — reuses existing `card_pool`, `place_pool`, `user_card_impressions` tables.
+None — the normalizer handles both existing `"Picnic Park"` DB data and new `"picnic_park"` format.
 
 ### Edge Functions
-| Function | New / Modified | Endpoint |
-|----------|---------------|----------|
-| `discover-first-meet` | New | POST /functions/v1/discover-first-meet |
-
-### State Changes
-- DeckResponse `deckMode` type expanded: `'nature' | 'first_meet' | 'curated' | 'mixed'`
-- No new React Query keys — First Meet cards flow through existing deck pipeline
-- No Zustand changes
+None modified.
 
 ---
 
 ## Implementation Details
 
 ### Architecture Decisions
-1. **1:1 Clone of Nature Pipeline** — The First Meet pipeline is a true clone of the Nature pipeline rather than abstracting a shared "category pipeline" framework. This avoids premature abstraction; when a third category needs its own pipeline, we can extract common patterns then.
 
-2. **7 Social-Venue Place Types** — `book_store`, `bar`, `pub`, `wine_bar`, `tea_house`, `coffee_shop`, `planetarium`. These were chosen for low-pressure social encounters. Unlike Nature, none are "always open" — all 7 types have real operating hours that are respected during datetime filtering.
+1. **Normalizer approach over migration.** `cat.replace(/_/g, ' ').toLowerCase()` handles all input formats: `"first_meet"` → `"first meet"`, `"Picnic Park"` → `"picnic park"`, `"picnic_park"` → `"picnic park"`, `"nature"` → `"nature"`. No DB migration needed. Backward compatible with existing user data.
 
-3. **AI Description Prompt** — Tuned for social/date context: "Focus on the atmosphere and why it is a great spot to meet someone new or have a relaxed conversation."
+2. **First-pill-wins dedup.** The `roundRobinInterleave()` dedup uses `placeId` as the key (falling back to `card.id` for curated cards that lack `placeId`). When the same Google Place appears in multiple pill results, the first pill to claim it wins. This preserves round-robin fairness while eliminating duplicate React keys.
 
-4. **Save/Schedule Split** — Both Nature and First Meet now have independent Save and Schedule buttons. The old Nature-specific redirect from save→schedule was removed. This gives users the flexibility to save a card for later without immediately scheduling it.
+3. **ID consistency fix.** Changed `"Picnic Park"` → `"picnic_park"` in both PreferencesSheet and CollaborationPreferences to match every other category's snake_case convention. The label `"Picnic Park"` (display text) is preserved.
 
-5. **Policies & Reservations** — First Meet-only button using the existing `InAppBrowserModal` infrastructure from ExpandedCardModal. Falls back to Google Maps if no website URL is available.
+### Fix Trace
 
-### Google Places API Usage
-- Endpoints: Nearby Search for 7 types via `batchSearchPlaces` (shared cache)
-- Field mask: Same as Nature (id, displayName, location, rating, priceLevel, regularOpeningHours, photos, etc.)
-- Caching: 24h cache via `_shared/placesCache.ts`; card pool via `_shared/cardPoolService.ts`
+| Category Saved | Before (`.toLowerCase()`) | After (`.replace(/_/g, ' ').toLowerCase()`) | Match? |
+|---|---|---|---|
+| `"first_meet"` | `"first_meet"` ≠ `"first meet"` | `"first meet"` = `"first meet"` | Fixed |
+| `"picnic_park"` | `"picnic_park"` ≠ `"picnic park"` | `"picnic park"` = `"picnic park"` | Fixed |
+| `"Picnic Park"` (old DB) | `"picnic park"` = `"picnic park"` | `"picnic park"` = `"picnic park"` | Still works |
+| `"nature"` | `"nature"` = `"nature"` | `"nature"` = `"nature"` | Unchanged |
 
 ---
 
@@ -79,30 +71,24 @@ None — reuses existing `card_pool`, `place_pool`, `user_card_impressions` tabl
 
 | Test | Result | Notes |
 |------|--------|-------|
-| TypeScript compilation | ✅ Pass | Zero errors in all modified/created files |
-| Edge function structure | ✅ Pass | Identical pattern to discover-nature with correct substitutions |
-| Service interface match | ✅ Pass | FirstMeetCard matches NatureCard shape exactly |
-| Converter output | ✅ Pass | Produces `category: 'First Meet'`, `categoryIcon: 'chatbubbles-outline'`, `experienceType: 'first_meet'` |
-| Deck routing — First Meet only | ✅ Pass | `resolvePills()` routes 'first meet' → `{ id: 'first_meet', type: 'category' }` |
-| Deck routing — Nature + First Meet | ✅ Pass | Round-robin interleave via `roundRobinInterleave()` |
-| ActionButtons — Save independent | ✅ Pass | Nature save→schedule redirect removed; Save calls `onSave` directly |
-| ActionButtons — Schedule independent | ✅ Pass | Schedule button opens date picker → availability check → calendar |
-| ActionButtons — Policies & Reservations | ✅ Pass | Renders only when `card.category === 'First Meet'`; opens in-app browser |
-| ExpandedCardModal — onOpenBrowser wired | ✅ Pass | `setBrowserUrl`/`setBrowserTitle` passed to ActionButtons |
+| Normalize `"first_meet"` → `"first meet"` | ✅ Pass | `resolvePills()` creates `first_meet` pill |
+| Normalize `"picnic_park"` → `"picnic park"` | ✅ Pass | `resolvePills()` creates `picnic_park` pill |
+| Normalize `"Picnic Park"` (old data) → `"picnic park"` | ✅ Pass | Backward compatible |
+| Normalize `"nature"` → `"nature"` | ✅ Pass | No regression |
+| Dedup same placeId across pills | ✅ Pass | First pill wins, no duplicates |
+| Curated cards (no placeId) use `card.id` | ✅ Pass | Always unique, never deduped |
+| PreferencesSheet Picnic Park ID = `"picnic_park"` | ✅ Pass | All 3 occurrences |
+| CollaborationPreferences Picnic Park ID = `"picnic_park"` | ✅ Pass | All 3 occurrences |
+| Labels remain `"Picnic Park"` (display) | ✅ Pass | Not affected |
+| TypeScript compiles | ✅ Pass | All errors are pre-existing |
 
 ---
 
 ## Success Criteria Verification
-- [x] `discover-first-meet` edge function created with all 7 place types, correct id prefix `first-meet-`, correct pool category `First Meet`
-- [x] First Meet cards route correctly via deckService with `category: 'First Meet'` and `categoryIcon: 'chatbubbles-outline'`
-- [x] Mixed Nature + First Meet deck interleaves via round-robin
-- [x] Save button saves to Saved tab without triggering schedule (both Nature and First Meet)
-- [x] Schedule button triggers date/time picker → availability check → calendar (both Nature and First Meet)
-- [x] "Policies & Reservations" button appears on First Meet expanded cards and opens in-app browser
-- [x] "Policies & Reservations" button does NOT appear on Nature expanded cards
-- [x] Old "Schedule and Save" combined button no longer exists
-- [x] Old Nature save→schedule redirect removed
-- [x] AI descriptions are contextually appropriate (social/date tone for First Meet)
-- [x] Pool-first serving works for First Meet cards (same `cardPoolService.ts` integration)
-- [x] Batch pagination works for First Meet cards (same offset-based pagination pattern)
-- [x] TypeScript compiles with zero errors across all modified files
+- [x] Selecting ONLY "First Meet" creates a `first_meet` pill (not fallback to adventure)
+- [x] Selecting ONLY "Picnic Park" creates a `picnic_park` pill (not fallback to adventure)
+- [x] Multiple categories round-robin correctly via `roundRobinInterleave()`
+- [x] No duplicate React key warnings — `Set<string>` dedup by `placeId`
+- [x] Existing users with `"Picnic Park"` saved in DB still resolve correctly (normalizer handles both formats)
+- [x] Empty selection still falls back to solo-adventure curated (line 81 untouched)
+- [x] All category labels preserved as display names

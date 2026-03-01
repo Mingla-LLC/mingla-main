@@ -75,7 +75,7 @@ export const categories: Category[] = [
     },
     activityType: 'mobile',
     duration: 'medium',
-    compatibleWith: ['picnic', 'wellness', 'creative_arts'],
+    compatibleWith: ['picnic_park', 'wellness', 'creative_arts'],
     incompatibleWith: ['watch', 'fine_dining', 'play']
   },
   {
@@ -116,22 +116,22 @@ export const categories: Category[] = [
     activityType: 'stationary',
     duration: 'short',
     compatibleWith: ['drink', 'watch', 'creative_arts'],
-    incompatibleWith: ['wellness', 'picnic']
+    incompatibleWith: ['wellness', 'picnic_park']
   },
   {
-    slug: 'picnic',
-    name: 'Picnic',
+    slug: 'picnic_park',
+    name: 'Picnic Park',
     icon: '🧺',
-    description: 'Outdoor picnic experiences in parks, beaches, and botanical gardens',
-    detailedDescription: 'Curated spots for a relaxed outdoor picnic — parks, beaches, botanical gardens, and picnic grounds. Bring your own or pick up supplies nearby.',
+    description: 'Outdoor picnic grounds — designated areas with tables, shelters, and scenic views',
+    detailedDescription: 'Dedicated picnic grounds perfect for an outdoor meal. Tables, benches, shelters, and scenic settings for a relaxed time with friends, family, or a date.',
     expectedActivities: [
-      'Picnic grounds and parks',
-      'Beaches and botanical gardens',
-      'Outdoor green spaces'
+      'Designated picnic grounds with tables',
+      'Scenic outdoor areas for dining',
+      'Parks with picnic shelters'
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['picnic_ground', 'park', 'beach', 'botanical_garden'],
+        coreAnchors: ['picnic_ground'],
         attributes: ['outdoor', 'open_space', 'family_friendly'],
         excludedAttributes: ['dog_park', 'amusement_park', 'water_park', 'bar', 'night_club', 'casino', 'movie_theater']
       },
@@ -140,17 +140,17 @@ export const categories: Category[] = [
       }
     },
     logic: {
-      hardFilter: 'Must be an outdoor open space suitable for a picnic',
+      hardFilter: 'Must be a designated picnic ground with outdoor facilities',
       hierarchy: {
-        broad: 'Picnic',
-        niche: ['Parks', 'Beaches', 'Botanical Gardens', 'Picnic Grounds']
+        broad: 'Picnic Park',
+        niche: ['Picnic Grounds']
       },
-      fallbackBehavior: 'If no picnic ground, fall back to nearest park or beach.'
+      fallbackBehavior: 'If no picnic ground nearby, show closest available result.'
     },
     ux: {
       activeColor: '#84CC16',
-      subcategories: ['Parks', 'Beaches', 'Botanical Gardens', 'Picnic Grounds'],
-      contextualPreview: 'Waterfront park with picnic tables — beautiful sunset views.'
+      subcategories: ['Picnic Grounds'],
+      contextualPreview: 'Waterfront picnic ground with tables — beautiful sunset views.'
     },
     activityType: 'mixed',
     duration: 'medium',
@@ -193,7 +193,7 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'short',
-    compatibleWith: ['first_meet', 'casual_eats', 'fine_dining', 'watch', 'play', 'creative_arts', 'picnic'],
+    compatibleWith: ['first_meet', 'casual_eats', 'fine_dining', 'watch', 'play', 'creative_arts', 'picnic_park'],
     incompatibleWith: ['wellness', 'nature']
   },
   {
@@ -241,7 +241,7 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'short',
-    compatibleWith: ['drink', 'watch', 'play', 'picnic'],
+    compatibleWith: ['drink', 'watch', 'play', 'picnic_park'],
     incompatibleWith: ['wellness', 'fine_dining']
   },
   {
@@ -281,7 +281,7 @@ export const categories: Category[] = [
     activityType: 'stationary',
     duration: 'long',
     compatibleWith: ['drink', 'watch'],
-    incompatibleWith: ['casual_eats', 'picnic', 'play', 'nature']
+    incompatibleWith: ['casual_eats', 'picnic_park', 'play', 'nature']
   },
   {
     slug: 'watch',
@@ -319,7 +319,7 @@ export const categories: Category[] = [
     activityType: 'stationary',
     duration: 'medium',
     compatibleWith: ['drink', 'casual_eats', 'fine_dining', 'first_meet'],
-    incompatibleWith: ['nature', 'picnic', 'wellness']
+    incompatibleWith: ['nature', 'picnic_park', 'wellness']
   },
   {
     slug: 'creative_arts',

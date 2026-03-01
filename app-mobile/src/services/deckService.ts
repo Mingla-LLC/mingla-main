@@ -10,11 +10,13 @@
  */
 import { natureCardsService } from './natureCardsService';
 import { firstMeetCardsService } from './firstMeetCardsService';
+import { picnicParkCardsService } from './picnicParkCardsService';
 import { curatedExperiencesService } from './curatedExperiencesService';
 import {
   separateIntentsAndCategories,
   natureToRecommendation,
   firstMeetToRecommendation,
+  picnicParkToRecommendation,
   curatedToRecommendation,
   roundRobinInterleave,
 } from '../utils/cardConverters';
@@ -37,7 +39,7 @@ export interface DeckParams {
 
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'first_meet' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
 }
@@ -58,10 +60,13 @@ class DeckService {
 
     // Category pills — Nature and First Meet have dedicated edge functions
     for (const cat of cats) {
-      if (cat.toLowerCase() === 'nature') {
+      const normalized = cat.replace(/_/g, ' ').toLowerCase();
+      if (normalized === 'nature') {
         pills.push({ id: 'nature', type: 'category' });
-      } else if (cat.toLowerCase() === 'first meet') {
+      } else if (normalized === 'first meet') {
         pills.push({ id: 'first_meet', type: 'category' });
+      } else if (normalized === 'picnic park') {
+        pills.push({ id: 'picnic_park', type: 'category' });
       } else {
         // No dedicated edge function yet — pass as filter to curated pills
         categoryFilters.push(cat);
@@ -105,6 +110,20 @@ class DeckService {
                 limit: perPillLimit,
               });
               return cards.map(firstMeetToRecommendation);
+            } else if (pill.id === 'picnic_park') {
+              const cards = await picnicParkCardsService.discoverPicnicPark({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: perPillLimit,
+              });
+              return cards.map(picnicParkToRecommendation);
             }
             // Default: Nature
             const cards = await natureCardsService.discoverNature({
@@ -149,7 +168,7 @@ class DeckService {
     const deckMode: DeckResponse['deckMode'] =
       pills.length === 1
         ? (pills[0].type === 'category'
-            ? (pills[0].id === 'first_meet' ? 'first_meet' : 'nature')
+            ? (pills[0].id as DeckResponse['deckMode'])
             : 'curated')
         : 'mixed';
 
@@ -171,6 +190,17 @@ class DeckService {
           if (pill.type === 'category') {
             if (pill.id === 'first_meet') {
               await firstMeetCardsService.warmFirstMeetPool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            } else if (pill.id === 'picnic_park') {
+              await picnicParkCardsService.warmPicnicParkPool({
                 location: params.location,
                 budgetMax: params.budgetMax,
                 travelMode: params.travelMode,

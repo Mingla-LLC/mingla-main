@@ -84,7 +84,7 @@ const budgetPresets = [
 const categories = [
   { id: "nature", label: "Nature", icon: "leaf-outline" },
   { id: "first_meet", label: "First Meet", icon: "chatbubbles-outline" },
-  { id: "picnic", label: "Picnic", icon: "basket-outline" },
+  { id: "picnic_park", label: "Picnic Park", icon: "basket-outline" },
   { id: "drink", label: "Drink", icon: "wine-outline" },
   { id: "casual_eats", label: "Casual Eats", icon: "fast-food-outline" },
   { id: "fine_dining", label: "Fine Dining", icon: "restaurant-outline" },
@@ -135,9 +135,9 @@ const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
     "drink",
     "watch",
     "creative_arts",
-    "picnic",
+    "picnic_park",
   ],
-  romantic: ["first_meet", "drink", "picnic", "fine_dining", "wellness", "nature"],
+  romantic: ["first_meet", "drink", "picnic_park", "fine_dining", "wellness", "nature"],
   friendly: null, // All categories
   "group-fun": [
     "play",
