@@ -334,11 +334,24 @@ export default function PreferencesSheet({
 
     if (isCollaborationMode) {
       // Load from board session preferences
-      if (loadedPreferences.experience_types) {
-        setSelectedIntents(loadedPreferences.experience_types);
-      }
-      if (loadedPreferences.categories) {
-        setSelectedCategories(loadedPreferences.categories);
+      // Intents and categories are both stored in the `categories` column —
+      // split them the same way solo mode does.
+      const intentIds = new Set([
+        "solo-adventure", "first-dates", "romantic",
+        "friendly", "group-fun", "business",
+      ]);
+      if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
+        const loadedIntents: string[] = [];
+        const loadedCats: string[] = [];
+        loadedPreferences.categories.forEach((item: string) => {
+          if (intentIds.has(item)) {
+            loadedIntents.push(item);
+          } else {
+            loadedCats.push(item);
+          }
+        });
+        setSelectedIntents(loadedIntents);
+        setSelectedCategories(loadedCats);
       }
       if ((loadedPreferences as any).budget_min !== undefined) {
         setBudgetMin((loadedPreferences as any).budget_min);
@@ -377,10 +390,14 @@ export default function PreferencesSheet({
       }
 
       setInitialPreferences({
-        selectedIntents: loadedPreferences.experience_types || [],
+        selectedIntents: (loadedPreferences.categories || []).filter((item: string) =>
+          ["solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business"].includes(item)
+        ),
         budgetMin: (loadedPreferences as any).budget_min || 0,
         budgetMax: (loadedPreferences as any).budget_max || 200,
-        selectedCategories: loadedPreferences.categories || [],
+        selectedCategories: (loadedPreferences.categories || []).filter((item: string) =>
+          !["solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business"].includes(item)
+        ),
         selectedDateOption: "Now",
         selectedTimeSlot: (loadedPreferences as any).time_of_day || null,
         selectedDate: (loadedPreferences as any).datetime_pref

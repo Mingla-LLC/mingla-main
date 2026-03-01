@@ -194,15 +194,16 @@ function curatedToRecommendation(card: any): Recommendation {
   } as Recommendation;
 }
 
-/** Puts curated cards first so user sees all 20, then appends regular cards after */
+/** When curated cards exist, show ONLY curated cards — no legacy regular cards.
+ *  Legacy cards use a different single-place format and look "weird" mixed in.
+ *  If curated cards failed to load / returned empty, fall back to regular cards
+ *  so the user still sees something rather than an empty state.  */
 function interleaveCards(
   regular: Recommendation[],
   curated: Recommendation[]
 ): Recommendation[] {
-  if (curated.length === 0) return regular;
-  if (regular.length === 0) return curated;
-  // Show curated cards as the primary content, regular cards fill in after
-  return [...curated, ...regular];
+  if (curated.length > 0) return curated;
+  return regular;
 }
 
 const getDefaultPreferences = (): UserPreferences => ({

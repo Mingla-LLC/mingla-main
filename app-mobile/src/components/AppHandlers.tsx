@@ -137,8 +137,13 @@ export function useAppHandlers(state: any) {
 
     if (sessionId) {
       // Transform preferences to database format
+      // Include both intents AND categories — mirrors how handleSavePreferences
+      // builds the categories array for the solo preferences table.
       const dbPreferences: any = {
-        categories: preferences.selectedCategories || [],
+        categories: [
+          ...(preferences.selectedIntents || []),
+          ...(preferences.selectedCategories || []),
+        ],
         budget_min:
           typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
         budget_max:
@@ -174,6 +179,37 @@ export function useAppHandlers(state: any) {
 
       if (error) {
         console.error("Error saving collaboration preferences:", error);
+      }
+    }
+
+    // Also persist to the solo preferences table so that
+    // useUserPreferences (which drives curated-hook enabled flags) stays
+    // correct even after the TanStack cache staleTime expires.
+    if (user?.id) {
+      const soloDB: any = {
+        mode: preferences.selectedIntents?.length > 0 ? "custom" : "explore",
+        budget_min: typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
+        budget_max: typeof preferences.budgetMax === "number" ? preferences.budgetMax : 1000,
+        categories: [
+          ...(preferences.selectedIntents || []),
+          ...(preferences.selectedCategories || []),
+        ],
+        travel_mode: preferences.travelMode || "walking",
+        travel_constraint_type: preferences.constraintType || "time",
+        travel_constraint_value:
+          typeof preferences.constraintValue === "number" ? preferences.constraintValue : 20,
+        datetime_pref: preferences.selectedDate
+          ? new Date(preferences.selectedDate).toISOString()
+          : new Date().toISOString(),
+      };
+      try {
+        await PreferencesService.updateUserPreferences(user.id, soloDB);
+        // Prime the TanStack + offline caches so future refetches return
+        // the correct data instead of stale pre-collab values.
+        queryClient.setQueryData(["userPreferences", user.id], soloDB);
+        await offlineService.cacheUserPreferences({ profile_id: user.id, ...soloDB } as any);
+      } catch (err) {
+        console.error("Error mirroring collab prefs to solo table:", err);
       }
     }
 

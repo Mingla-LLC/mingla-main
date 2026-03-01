@@ -708,6 +708,7 @@ export default function ExpandedCardModal({
   const [picnicData, setPicnicData] = useState(card?.picnicData);
   const [loadingPicnicData, setLoadingPicnicData] = useState(false);
   const [isNightOutShareOpen, setIsNightOutShareOpen] = useState(false);
+  const [ticketBrowserUrl, setTicketBrowserUrl] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackCardId, setFeedbackCardId] = useState("");
   const [feedbackTitle, setFeedbackTitle] = useState("");
@@ -1402,13 +1403,7 @@ export default function ExpandedCardModal({
                   <TouchableOpacity
                     style={nightOutStyles.getTicketsButton}
                     activeOpacity={0.8}
-                    onPress={async () => {
-                      await WebBrowser.openBrowserAsync(nightOut.ticketUrl, {
-                        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-                        toolbarColor: '#1A1A2E',
-                        controlsColor: '#FF6B35',
-                      });
-                    }}
+                    onPress={() => setTicketBrowserUrl(nightOut.ticketUrl)}
                   >
                     <Ionicons name="ticket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
                     <Text style={nightOutStyles.getTicketsText} numberOfLines={1} adjustsFontSizeToFit>
@@ -1434,6 +1429,16 @@ export default function ExpandedCardModal({
           )}
 
           {/* Night Out Share Modal */}
+          {/* In-app ticket browser */}
+          {isNightOut && nightOut && (
+            <InAppBrowserModal
+              visible={ticketBrowserUrl !== null}
+              url={ticketBrowserUrl ?? ''}
+              title={`Tickets – ${nightOut.eventName}`}
+              onClose={() => setTicketBrowserUrl(null)}
+            />
+          )}
+
           {isNightOut && nightOut && (
             <ShareModal
               isOpen={isNightOutShareOpen}
