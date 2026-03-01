@@ -1,0 +1,771 @@
+================================================================================
+  IMPLEMENTATION GUIDE — First Meet Cards + ActionButtons Save/Schedule Split
+  Date: 2026-03-01
+================================================================================
+
+OVERVIEW
+--------
+Two parallel workstreams:
+
+  A) First Meet Pipeline  — clone Nature pipeline with 7 social-venue place types
+  B) ActionButtons Split  — split "Schedule and Save" into separate Save + Schedule
+                            for both Nature and First Meet; add "Policies &
+                            Reservations" button for First Meet only
+
+Do workstream A first (new files), then B (modify existing files). This order
+avoids merge conflicts and lets you test each piece independently.
+
+
+================================================================================
+STEP 1: Create the Edge Function — discover-first-meet
+================================================================================
+
+FILE: supabase/functions/discover-first-meet/index.ts
+
+Copy the ENTIRE contents of supabase/functions/discover-nature/index.ts and make
+these exact changes:
+
+1.1  Replace the NATURE_TYPES array (lines 36-45) with:
+
+     const FIRST_MEET_TYPES = [
+       'book_store',
+       'bar',
+       'pub',
+       'wine_bar',
+       'tea_house',
+       'coffee_shop',
+       'planetarium',
+     ];
+
+1.2  DELETE the ALWAYS_OPEN_TYPES set entirely (lines 48-50 in nature).
+     First Meet venues all have real hours — no types should skip hours filtering.
+     If ALWAYS_OPEN_TYPES is referenced anywhere in the datetime filter logic,
+     remove those references too. In the original discover-nature, ALWAYS_OPEN_TYPES
+     is defined but only used conceptually in comments — the actual filterByDateTime
+     function does NOT reference it. So just delete the const declaration.
+
+1.3  Replace every console.log/warn/error prefix from '[discover-nature]' to
+     '[discover-first-meet]'. Use find-and-replace: discover-nature → discover-first-meet
+
+1.4  Change the card ID prefix from 'nature-' to 'first-meet-':
+
+     BEFORE:  id: `nature-${p.id}`,
+     AFTER:   id: `first-meet-${p.id}`,
+
+1.5  Change the pool category from 'Nature' to 'First Meet':
+
+     BEFORE:  categories: ['Nature'],   (in serveCardsFromPipeline call)
+     AFTER:   categories: ['First Meet'],
+
+     BEFORE:  category: 'Nature',       (in insertCardToPool call)
+     AFTER:   category: 'First Meet',
+
+     BEFORE:  categories: ['Nature'],   (in insertCardToPool call)
+     AFTER:   categories: ['First Meet'],
+
+1.6  Change the pool source tag:
+
+     BEFORE:  'nature_discover'         (in upsertPlaceToPool call)
+     AFTER:   'first_meet_discover'
+
+1.7  Update the AI description prompt. Replace the system message content:
+
+     BEFORE:
+       'Generate a short, appealing 1-2 sentence description for each nature spot. ' +
+       'Focus on what makes each place special for visitors. Be vivid but concise. ' +
+       'Return a JSON object with key "descriptions" containing an array of strings, one per place, in the same order.',
+
+     AFTER:
+       'Generate a short, appealing 1-2 sentence description for each venue. ' +
+       'Focus on the atmosphere and why it is a great spot to meet someone new or have a relaxed conversation. ' +
+       'Be warm and inviting but concise. ' +
+       'Return a JSON object with key "descriptions" containing an array of strings, one per venue, in the same order.',
+
+1.8  Update the user prompt:
+
+     BEFORE:  `Write descriptions for these ${places.length} nature spots:\n${placeList}`
+     AFTER:   `Write descriptions for these ${places.length} venues:\n${placeList}`
+
+1.9  Update the fallback descriptions (3 occurrences):
+
+     BEFORE:  `A beautiful ${formatPlaceType(...).toLowerCase()} perfect for outdoor exploration and relaxation.`
+     AFTER:   `A welcoming ${formatPlaceType(...).toLowerCase()} perfect for relaxed conversation and meeting someone new.`
+
+     BEFORE:  `A beautiful ${formatPlaceType(...).toLowerCase()} perfect for outdoor exploration.`
+     AFTER:   `A welcoming ${formatPlaceType(...).toLowerCase()} ideal for a casual get-together.`
+
+1.10 Replace all remaining references to NATURE_TYPES with FIRST_MEET_TYPES:
+     - The batchSearchPlaces call: pass FIRST_MEET_TYPES instead of NATURE_TYPES
+
+1.11 Update the variable name in the type description helper if used:
+     - In the placeList builder, 'nature spot' references should become 'venue'
+
+HOW TO TEST STEP 1:
+  - Deploy: supabase functions deploy discover-first-meet
+  - Test via curl or Supabase dashboard:
+    POST /functions/v1/discover-first-meet
+    Body: { "location": { "lat": 40.7128, "lng": -74.0060 }, "limit": 5 }
+  - Verify: returns cards with id prefix "first-meet-", place types like
+    "coffee_shop", "bar", etc., and descriptions mentioning social atmosphere.
+
+
+================================================================================
+STEP 2: Create the Mobile Service — firstMeetCardsService.ts
+================================================================================
+
+FILE: app-mobile/src/services/firstMeetCardsService.ts
+
+Copy the ENTIRE contents of app-mobile/src/services/natureCardsService.ts and make
+these exact changes:
+
+2.1  Rename the interface:
+     BEFORE: export interface NatureCard { ... }
+     AFTER:  export interface FirstMeetCard { ... }
+     (Keep all fields identical — same shape)
+
+2.2  Rename the params interface:
+     BEFORE: export interface DiscoverNatureParams { ... }
+     AFTER:  export interface DiscoverFirstMeetParams { ... }
+     (Keep all fields identical)
+
+2.3  Rename the class:
+     BEFORE: class NatureCardsService { ... }
+     AFTER:  class FirstMeetCardsService { ... }
+
+2.4  Rename the methods:
+     BEFORE: async discoverNature(params: DiscoverNatureParams): Promise<NatureCard[]>
+     AFTER:  async discoverFirstMeet(params: DiscoverFirstMeetParams): Promise<FirstMeetCard[]>
+
+     BEFORE: async warmNaturePool(params: ...): Promise<void>
+     AFTER:  async warmFirstMeetPool(params: ...): Promise<void>
+
+2.5  Change the edge function name:
+     BEFORE: await supabase.functions.invoke('discover-nature', { body: params });
+     AFTER:  await supabase.functions.invoke('discover-first-meet', { body: params });
+
+     (Same for the warmPool method)
+
+2.6  Rename the export:
+     BEFORE: export const natureCardsService = new NatureCardsService();
+     AFTER:  export const firstMeetCardsService = new FirstMeetCardsService();
+
+HOW TO TEST STEP 2:
+  - TypeScript compiles without errors
+  - Import works: import { firstMeetCardsService } from './firstMeetCardsService';
+
+
+================================================================================
+STEP 3: Add the Card Converter — firstMeetToRecommendation
+================================================================================
+
+FILE: app-mobile/src/utils/cardConverters.ts
+
+3.1  Add import for FirstMeetCard at the top, next to the NatureCard import:
+
+     BEFORE:
+       import type { NatureCard } from '../services/natureCardsService';
+
+     AFTER:
+       import type { NatureCard } from '../services/natureCardsService';
+       import type { FirstMeetCard } from '../services/firstMeetCardsService';
+
+3.2  Add the converter function AFTER natureToRecommendation (after line 177):
+
+     /** Converts a FirstMeetCard from the discover-first-meet edge function into a Recommendation */
+     export function firstMeetToRecommendation(card: FirstMeetCard): Recommendation {
+       const priceText =
+         card.priceMin === 0 && card.priceMax === 0
+           ? 'Free'
+           : `$${card.priceMin}–$${card.priceMax}`;
+
+       return {
+         id: card.id,
+         title: card.title,
+         category: 'First Meet',
+         categoryIcon: 'chatbubbles-outline',
+         lat: card.lat,
+         lng: card.lng,
+         timeAway: `${card.travelTimeMin} min`,
+         description: card.description,
+         budget: priceText,
+         rating: card.rating,
+         image: card.image,
+         images: card.images.length > 0 ? card.images : [card.image].filter(Boolean),
+         priceRange: priceText,
+         distance: `${card.distanceKm} km`,
+         travelTime: `${card.travelTimeMin} min`,
+         experienceType: 'first_meet',
+         highlights: [card.placeTypeLabel],
+         fullDescription: card.description,
+         address: card.address,
+         openingHours: Object.keys(card.openingHours).length > 0
+           ? {
+               open_now: card.isOpenNow,
+               weekday_text: Object.entries(card.openingHours).map(
+                 ([day, hours]) =>
+                   `${day.charAt(0).toUpperCase() + day.slice(1)}: ${hours}`
+               ),
+             }
+           : card.isOpenNow != null
+             ? { open_now: card.isOpenNow }
+             : null,
+         tags: [card.placeType, card.placeTypeLabel],
+         matchScore: card.matchScore,
+         reviewCount: card.reviewCount,
+         website: card.website,
+         placeId: card.placeId,
+         socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+         matchFactors: {
+           location: 0.5,
+           budget: 0.5,
+           category: 1.0,
+           time: 0.5,
+           popularity: card.rating > 4 ? 0.8 : 0.5,
+         },
+       };
+     }
+
+HOW TO TEST STEP 3:
+  - TypeScript compiles
+  - Converter produces Recommendation with category 'First Meet' and
+    categoryIcon 'chatbubbles-outline'
+
+
+================================================================================
+STEP 4: Wire First Meet into the Deck Service
+================================================================================
+
+FILE: app-mobile/src/services/deckService.ts
+
+4.1  Add imports at the top:
+
+     BEFORE:
+       import { natureCardsService } from './natureCardsService';
+       import { curatedExperiencesService } from './curatedExperiencesService';
+       import {
+         separateIntentsAndCategories,
+         natureToRecommendation,
+         curatedToRecommendation,
+         roundRobinInterleave,
+       } from '../utils/cardConverters';
+
+     AFTER:
+       import { natureCardsService } from './natureCardsService';
+       import { firstMeetCardsService } from './firstMeetCardsService';
+       import { curatedExperiencesService } from './curatedExperiencesService';
+       import {
+         separateIntentsAndCategories,
+         natureToRecommendation,
+         firstMeetToRecommendation,
+         curatedToRecommendation,
+         roundRobinInterleave,
+       } from '../utils/cardConverters';
+
+4.2  Update the DeckResponse deckMode type:
+
+     BEFORE:
+       deckMode: 'nature' | 'curated' | 'mixed';
+
+     AFTER:
+       deckMode: 'nature' | 'first_meet' | 'curated' | 'mixed';
+
+4.3  Update resolvePills() to route First Meet:
+
+     BEFORE (lines 58-65):
+       for (const cat of cats) {
+         if (cat.toLowerCase() === 'nature') {
+           pills.push({ id: 'nature', type: 'category' });
+         } else {
+           categoryFilters.push(cat);
+         }
+       }
+
+     AFTER:
+       for (const cat of cats) {
+         if (cat.toLowerCase() === 'nature') {
+           pills.push({ id: 'nature', type: 'category' });
+         } else if (cat.toLowerCase() === 'first meet') {
+           pills.push({ id: 'first_meet', type: 'category' });
+         } else {
+           categoryFilters.push(cat);
+         }
+       }
+
+4.4  Update fetchDeck() pill fetcher to handle First Meet:
+
+     BEFORE (lines 89-102):
+       if (pill.type === 'category') {
+         const cards = await natureCardsService.discoverNature({
+           location: params.location,
+           budgetMax: params.budgetMax,
+           travelMode: params.travelMode,
+           travelConstraintType: params.travelConstraintType,
+           travelConstraintValue: params.travelConstraintValue,
+           datetimePref: params.datetimePref,
+           dateOption: params.dateOption,
+           timeSlot: params.timeSlot,
+           batchSeed: params.batchSeed,
+           limit: perPillLimit,
+         });
+         return cards.map(natureToRecommendation);
+
+     AFTER:
+       if (pill.type === 'category') {
+         if (pill.id === 'first_meet') {
+           const cards = await firstMeetCardsService.discoverFirstMeet({
+             location: params.location,
+             budgetMax: params.budgetMax,
+             travelMode: params.travelMode,
+             travelConstraintType: params.travelConstraintType,
+             travelConstraintValue: params.travelConstraintValue,
+             datetimePref: params.datetimePref,
+             dateOption: params.dateOption,
+             timeSlot: params.timeSlot,
+             batchSeed: params.batchSeed,
+             limit: perPillLimit,
+           });
+           return cards.map(firstMeetToRecommendation);
+         }
+         // Default: Nature
+         const cards = await natureCardsService.discoverNature({
+           location: params.location,
+           budgetMax: params.budgetMax,
+           travelMode: params.travelMode,
+           travelConstraintType: params.travelConstraintType,
+           travelConstraintValue: params.travelConstraintValue,
+           datetimePref: params.datetimePref,
+           dateOption: params.dateOption,
+           timeSlot: params.timeSlot,
+           batchSeed: params.batchSeed,
+           limit: perPillLimit,
+         });
+         return cards.map(natureToRecommendation);
+
+4.5  Update warmDeckPool() to warm First Meet:
+
+     BEFORE (lines 149-159):
+       if (pill.type === 'category') {
+         await natureCardsService.warmNaturePool({
+           ...
+         });
+       }
+
+     AFTER:
+       if (pill.type === 'category') {
+         if (pill.id === 'first_meet') {
+           await firstMeetCardsService.warmFirstMeetPool({
+             location: params.location,
+             budgetMax: params.budgetMax,
+             travelMode: params.travelMode,
+             travelConstraintType: params.travelConstraintType,
+             travelConstraintValue: params.travelConstraintValue,
+             datetimePref: params.datetimePref,
+             dateOption: params.dateOption,
+             timeSlot: params.timeSlot,
+           });
+         } else {
+           await natureCardsService.warmNaturePool({
+             location: params.location,
+             budgetMax: params.budgetMax,
+             travelMode: params.travelMode,
+             travelConstraintType: params.travelConstraintType,
+             travelConstraintValue: params.travelConstraintValue,
+             datetimePref: params.datetimePref,
+             dateOption: params.dateOption,
+             timeSlot: params.timeSlot,
+           });
+         }
+       }
+
+4.6  Update deckMode resolution:
+
+     BEFORE (lines 129-132):
+       const deckMode: DeckResponse['deckMode'] =
+         pills.length === 1
+           ? (pills[0].type === 'category' ? 'nature' : 'curated')
+           : 'mixed';
+
+     AFTER:
+       const deckMode: DeckResponse['deckMode'] =
+         pills.length === 1
+           ? (pills[0].type === 'category'
+               ? (pills[0].id === 'first_meet' ? 'first_meet' : 'nature')
+               : 'curated')
+           : 'mixed';
+
+HOW TO TEST STEP 4:
+  - Select "First Meet" only in preferences → deck returns First Meet cards
+  - Select "Nature" + "First Meet" → deck round-robin interleaves both
+  - Select "First Meet" + "solo-adventure" → mixed deck with First Meet + curated
+
+
+================================================================================
+STEP 5: Redesign ActionButtons — Split Save/Schedule + Policies & Reservations
+================================================================================
+
+FILE: app-mobile/src/components/expandedCard/ActionButtons.tsx
+
+This is the most delicate step. Read the current file carefully before editing.
+
+5.1  ADD a new prop for opening the in-app browser:
+
+     BEFORE (in ActionButtonsProps interface, around line 25-37):
+       interface ActionButtonsProps {
+         card: ExpandedCardData;
+         bookingOptions: BookingOption[];
+         onSave: (card: ExpandedCardData) => Promise<void> | void;
+         onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;
+         onShare?: (card: ExpandedCardData) => void;
+         onClose?: () => void;
+         isSaved?: boolean;
+         userPreferences?: any;
+         currentMode?: string;
+         onCardRemoved?: (cardId: string) => void;
+         onScheduleSuccess?: (card: ExpandedCardData) => void;
+       }
+
+     AFTER:
+       interface ActionButtonsProps {
+         card: ExpandedCardData;
+         bookingOptions: BookingOption[];
+         onSave: (card: ExpandedCardData) => Promise<void> | void;
+         onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;
+         onShare?: (card: ExpandedCardData) => void;
+         onClose?: () => void;
+         isSaved?: boolean;
+         userPreferences?: any;
+         currentMode?: string;
+         onCardRemoved?: (cardId: string) => void;
+         onScheduleSuccess?: (card: ExpandedCardData) => void;
+         onOpenBrowser?: (url: string, title: string) => void;
+       }
+
+     Also destructure it in the function signature (add onOpenBrowser).
+
+5.2  REMOVE the Nature save→schedule redirect in handleSave:
+
+     BEFORE (lines 339-344):
+       const handleSave = async () => {
+         // For Nature cards, redirect to the scheduling flow instead of just saving
+         if (card.category === "Nature") {
+           handleSchedule();
+           return;
+         }
+
+     AFTER:
+       const handleSave = async () => {
+
+     (Just remove the 4 lines of the Nature override. Keep the rest of handleSave
+     exactly as-is from line 346 onward.)
+
+5.3  ADD a handler for Policies & Reservations:
+
+     Add this function after handleShare (around line 614):
+
+       const handlePoliciesAndReservations = () => {
+         if (onOpenBrowser) {
+           if (card.website) {
+             let url = card.website;
+             if (!url.startsWith('http://') && !url.startsWith('https://')) {
+               url = `https://${url}`;
+             }
+             onOpenBrowser(url, card.title);
+           } else if (card.placeId) {
+             const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${card.placeId}`;
+             onOpenBrowser(mapsUrl, card.title);
+           }
+         }
+       };
+
+       const isFirstMeet = card.category === 'First Meet';
+
+5.4  REPLACE the button layout in the JSX return.
+
+     The current layout (lines 738-804) is:
+
+       <View style={styles.topRow}>
+         <View style={styles.scheduleButtonContainer}>
+           <TouchableOpacity ... onPress={handleSchedule}>
+             "Schedule and Save"
+           </TouchableOpacity>
+         </View>
+         <View style={styles.iconButtonsContainer}>
+           <TouchableOpacity onPress={handleShare}>share icon</TouchableOpacity>
+           <TouchableOpacity onPress={handleSave}>bookmark icon</TouchableOpacity>
+         </View>
+       </View>
+
+     REPLACE with:
+
+       {/* Action Buttons Row: Save + Schedule + Share */}
+       <View style={styles.topRow}>
+         {/* Save Button */}
+         <TouchableOpacity
+           style={[
+             styles.saveButton,
+             (isSaving || isSaved) && styles.actionButtonDisabled,
+           ]}
+           onPress={handleSave}
+           activeOpacity={0.7}
+           disabled={isSaving || isSaved}
+         >
+           {isSaving ? (
+             <ActivityIndicator size="small" color="#ffffff" />
+           ) : (
+             <>
+               <Ionicons
+                 name={isSaved ? 'bookmark' : 'bookmark-outline'}
+                 size={20}
+                 color="#ffffff"
+               />
+               <Text style={styles.saveButtonText}>
+                 {isSaved ? 'Saved' : 'Save'}
+               </Text>
+             </>
+           )}
+         </TouchableOpacity>
+
+         {/* Schedule Button */}
+         <TouchableOpacity
+           style={[
+             styles.scheduleButton,
+             (isScheduling || isScheduled) && styles.scheduleButtonDisabled,
+           ]}
+           onPress={handleSchedule}
+           activeOpacity={0.7}
+           disabled={isScheduling || isScheduled}
+         >
+           {isScheduling ? (
+             <ActivityIndicator size="small" color="#ffffff" />
+           ) : (
+             <>
+               <Ionicons
+                 name={isScheduled ? 'checkmark-circle' : 'calendar-outline'}
+                 size={20}
+                 color="#ffffff"
+               />
+               <Text style={styles.scheduleButtonText}>
+                 {isScheduled ? 'Scheduled' : 'Schedule'}
+               </Text>
+             </>
+           )}
+         </TouchableOpacity>
+
+         {/* Share Button */}
+         <TouchableOpacity
+           style={styles.shareIconButton}
+           onPress={handleShare}
+           activeOpacity={0.7}
+         >
+           <Ionicons name="share-outline" size={20} color="#6b7280" />
+         </TouchableOpacity>
+       </View>
+
+       {/* Policies & Reservations — First Meet only */}
+       {isFirstMeet && (
+         <TouchableOpacity
+           style={styles.policiesButton}
+           onPress={handlePoliciesAndReservations}
+           activeOpacity={0.8}
+         >
+           <Ionicons name="globe-outline" size={18} color="#ffffff" />
+           <Text style={styles.policiesButtonText}>Policies & Reservations</Text>
+         </TouchableOpacity>
+       )}
+
+5.5  UPDATE the styles. Add new styles and modify existing ones:
+
+     ADD these new styles to the StyleSheet:
+
+       saveButton: {
+         flex: 1,
+         flexDirection: 'row',
+         alignItems: 'center',
+         justifyContent: 'center',
+         backgroundColor: '#6366F1',
+         paddingVertical: 14,
+         borderRadius: 12,
+         gap: 8,
+       },
+       saveButtonText: {
+         fontSize: 16,
+         fontWeight: '600',
+         color: '#ffffff',
+       },
+       actionButtonDisabled: {
+         opacity: 0.6,
+       },
+       shareIconButton: {
+         width: 48,
+         height: 48,
+         backgroundColor: '#ffffff',
+         borderWidth: 1,
+         borderColor: '#e5e7eb',
+         borderRadius: 12,
+         alignItems: 'center',
+         justifyContent: 'center',
+       },
+       policiesButton: {
+         flexDirection: 'row',
+         alignItems: 'center',
+         justifyContent: 'center',
+         backgroundColor: '#1f2937',
+         paddingVertical: 14,
+         borderRadius: 12,
+         gap: 8,
+       },
+       policiesButtonText: {
+         fontSize: 15,
+         fontWeight: '600',
+         color: '#ffffff',
+       },
+
+     The existing scheduleButton style stays but update it:
+       - Keep flex: 1
+       - Keep backgroundColor: '#eb7825'
+       - Keep paddingVertical: 14, borderRadius: 12, gap: 8
+
+     REMOVE these styles that are no longer needed:
+       - scheduleButtonContainer (the wrapper is gone)
+       - iconButtonsContainer (replaced by inline share button)
+       - iconButton (replaced by shareIconButton)
+       - iconButtonSaved (no longer needed)
+
+     Keep scheduleButtonDisabled, scheduleButtonText as-is.
+
+5.6  WIRE the onOpenBrowser prop from ExpandedCardModal.
+
+     FILE: app-mobile/src/components/ExpandedCardModal.tsx
+
+     Find where ActionButtons is rendered (around line 1400-1416):
+
+       <ActionButtons
+         card={card}
+         bookingOptions={bookingOptions}
+         onSave={onSave}
+         onPurchase={onPurchase}
+         onShare={onShare}
+         onClose={onClose}
+         isSaved={isSaved}
+         userPreferences={userPreferences}
+         currentMode={currentMode}
+         onCardRemoved={onCardRemoved}
+         onScheduleSuccess={(scheduledCard) => {
+           onClose();
+         }}
+       />
+
+     ADD the onOpenBrowser prop:
+
+       <ActionButtons
+         card={card}
+         bookingOptions={bookingOptions}
+         onSave={onSave}
+         onPurchase={onPurchase}
+         onShare={onShare}
+         onClose={onClose}
+         isSaved={isSaved}
+         userPreferences={userPreferences}
+         currentMode={currentMode}
+         onCardRemoved={onCardRemoved}
+         onScheduleSuccess={(scheduledCard) => {
+           onClose();
+         }}
+         onOpenBrowser={(url, title) => {
+           setBrowserUrl(url);
+           setBrowserTitle(title);
+         }}
+       />
+
+     The ExpandedCardModal already has browserUrl/browserTitle state (line 734-735)
+     and an InAppBrowserModal wired to them (line 1466-1471). No other changes needed.
+
+
+HOW TO TEST STEP 5:
+  - Open a Nature card expanded view → see separate "Save" and "Schedule" buttons
+  - Tap "Save" on Nature card → card appears in Saved tab, NO schedule dialog
+  - Tap "Schedule" on Nature card → date picker → availability check → calendar
+  - Open a First Meet card expanded view → see "Save", "Schedule", and
+    "Policies & Reservations" buttons
+  - Tap "Policies & Reservations" → in-app browser opens with venue website
+  - Verify "Policies & Reservations" does NOT appear on Nature cards
+  - Verify "Buy Now" button still appears below when booking options exist
+
+
+================================================================================
+COMMON MISTAKES TO AVOID
+================================================================================
+
+1. DO NOT use 'coffee_shop' with an uppercase C in the edge function.
+   Google Places API (New) uses lowercase: 'coffee_shop', NOT 'Coffee_shop'.
+
+2. DO NOT add ALWAYS_OPEN_TYPES for First Meet. Bars/coffee shops have real
+   opening hours that must be respected.
+
+3. DO NOT forget to change the card ID prefix from 'nature-' to 'first-meet-'.
+   Without this, card IDs will collide between Nature and First Meet in the pool
+   and impressions tables.
+
+4. DO NOT forget to update the pool category to 'First Meet' (with space).
+   This must match the category name in the categories constant file.
+
+5. DO NOT pass onOpenBrowser as a required prop — keep it optional (?).
+   Other card types (curated, stroll, picnic) don't use it.
+
+6. DO NOT remove the "Buy Now" button. It should remain below the new
+   Policies & Reservations button. Both can coexist.
+
+7. DO NOT change the Schedule flow logic. The date picker, availability check,
+   and calendar save logic stays exactly the same — we're only splitting the
+   button, not changing the underlying scheduling behavior.
+
+8. When updating resolvePills(), match on 'first meet' (lowercase with space),
+   NOT 'first_meet' (slug with underscore). The categories array from preferences
+   contains display names like 'First Meet', and toLowerCase() gives 'first meet'.
+
+
+================================================================================
+DONE WHEN
+================================================================================
+
+You can declare this feature complete when ALL of the following are true:
+
+[ ] discover-first-meet edge function is deployed and returns cards for all
+    7 place types with correct id prefix 'first-meet-', AI descriptions
+    mentioning social/conversational atmosphere
+
+[ ] firstMeetCardsService.ts exists, compiles, and successfully calls the
+    edge function
+
+[ ] firstMeetToRecommendation converter produces Recommendation objects with
+    category 'First Meet', categoryIcon 'chatbubbles-outline',
+    experienceType 'first_meet'
+
+[ ] Selecting "First Meet" only in preferences produces a deck of First Meet
+    cards in the solo swipe view
+
+[ ] Selecting "Nature" + "First Meet" produces a round-robin interleaved deck
+
+[ ] The old combined "Schedule and Save" button is gone from both Nature and
+    First Meet expanded cards
+
+[ ] Separate "Save" button on Nature card saves to Saved tab without scheduling
+
+[ ] Separate "Schedule" button on Nature card opens date picker → checks
+    availability → saves to calendar
+
+[ ] Separate "Save" button on First Meet card saves to Saved tab
+
+[ ] Separate "Schedule" button on First Meet card opens date picker → checks
+    availability → saves to calendar
+
+[ ] "Policies & Reservations" button appears ONLY on First Meet expanded cards
+
+[ ] "Policies & Reservations" opens venue website in in-app browser (or Google
+    Maps fallback)
+
+[ ] "Policies & Reservations" does NOT appear on Nature cards
+
+[ ] Pool-first serving works for First Meet cards (second request = 0 API calls)
+
+[ ] TypeScript compiles with zero errors across all modified files

@@ -1,19 +1,22 @@
 /**
  * Unified Deck Service — single entry point for the solo swipeable deck.
  *
- * Routes to existing edge functions (discover-nature / generate-curated-experiences)
- * based on user preferences. The client has one service call, one response shape.
+ * Multi-pill parallel pipeline: resolves user's selections into independent
+ * "pills" (Nature, solo-adventure, romantic, etc.), fetches ALL pills in
+ * parallel via Promise.all, then round-robin interleaves the results.
  *
- * This replaces the 7-hook orchestra with a single deterministic pipeline:
- * 1. Parse categories → determine deckMode (nature vs curated)
- * 2. Call the appropriate edge function(s)
- * 3. Return unified response with deckMode discriminator
+ * Latency = max(pill1, pill2, ...) — NOT sum(). Graceful degradation:
+ * if one pill fails, the others still serve cards.
  */
 import { natureCardsService } from './natureCardsService';
-import type { NatureCard } from './natureCardsService';
 import { curatedExperiencesService } from './curatedExperiencesService';
-import type { CuratedExperienceCard } from '../types/curatedExperience';
-import { separateIntentsAndCategories, isNatureMode, shuffleArray } from '../utils/cardConverters';
+import {
+  separateIntentsAndCategories,
+  natureToRecommendation,
+  curatedToRecommendation,
+  roundRobinInterleave,
+} from '../utils/cardConverters';
+import type { Recommendation } from '../types/recommendation';
 
 export interface DeckParams {
   location: { lat: number; lng: number };
@@ -31,117 +34,144 @@ export interface DeckParams {
 }
 
 export interface DeckResponse {
-  cards: NatureCard[] | CuratedExperienceCard[];
-  deckMode: 'nature' | 'curated';
+  cards: Recommendation[];
+  deckMode: 'nature' | 'curated' | 'mixed';
+  activePills: string[];
   total: number;
 }
 
+interface DeckPill {
+  id: string;
+  type: 'category' | 'curated';
+}
+
 class DeckService {
-  async fetchDeck(params: DeckParams): Promise<DeckResponse> {
-    const { intents, categories } = separateIntentsAndCategories(params.categories);
-    const isNature = isNatureMode(params.categories);
+  private resolvePills(categories: string[]): {
+    pills: DeckPill[];
+    categoryFilters: string[];
+  } {
+    const { intents, categories: cats } = separateIntentsAndCategories(categories);
+    const pills: DeckPill[] = [];
+    const categoryFilters: string[] = [];
 
-    if (isNature) {
-      return this.fetchNatureDeck(params);
-    } else {
-      return this.fetchCuratedDeck(params, intents, categories);
+    // Category pills — currently only Nature has its own edge function
+    for (const cat of cats) {
+      if (cat.toLowerCase() === 'nature') {
+        pills.push({ id: 'nature', type: 'category' });
+      } else {
+        // No dedicated edge function yet — pass as filter to curated pills
+        categoryFilters.push(cat);
+      }
     }
+
+    // Intent pills — one curated pill per selected intent
+    for (const intent of intents) {
+      pills.push({ id: intent, type: 'curated' });
+    }
+
+    // Fallback: if nothing resolved, default to solo-adventure
+    if (pills.length === 0) {
+      pills.push({ id: 'solo-adventure', type: 'curated' });
+    }
+
+    return { pills, categoryFilters };
   }
 
-  private async fetchNatureDeck(params: DeckParams): Promise<DeckResponse> {
-    const cards = await natureCardsService.discoverNature({
-      location: params.location,
-      budgetMax: params.budgetMax,
-      travelMode: params.travelMode,
-      travelConstraintType: params.travelConstraintType,
-      travelConstraintValue: params.travelConstraintValue,
-      datetimePref: params.datetimePref,
-      dateOption: params.dateOption,
-      timeSlot: params.timeSlot,
-      batchSeed: params.batchSeed,
-      limit: params.limit ?? 20,
-    });
-
-    return {
-      cards,
-      deckMode: 'nature',
-      total: cards.length,
-    };
-  }
-
-  private async fetchCuratedDeck(
-    params: DeckParams,
-    intents: string[],
-    categories: string[]
-  ): Promise<DeckResponse> {
-    // Default to solo-adventure if no intents selected
-    const activeTypes = intents.length > 0 ? intents : ['solo-adventure'];
+  async fetchDeck(params: DeckParams): Promise<DeckResponse> {
+    const { pills, categoryFilters } = this.resolvePills(params.categories);
     const limit = params.limit ?? 20;
-    const perTypeLimit = Math.ceil(limit / activeTypes.length);
+    const perPillLimit = Math.ceil(limit / pills.length);
 
-    // Fetch all active types in parallel
+    // Fetch ALL pills in parallel — latency = max(pill), not sum(pill)
     const results = await Promise.all(
-      activeTypes.map(type =>
-        curatedExperiencesService.generateCuratedExperiences({
-          experienceType: type as any,
-          location: params.location,
-          budgetMin: params.budgetMin,
-          budgetMax: params.budgetMax,
-          travelMode: params.travelMode,
-          travelConstraintType: params.travelConstraintType,
-          travelConstraintValue: params.travelConstraintValue,
-          datetimePref: params.datetimePref,
-          batchSeed: params.batchSeed,
-          selectedCategories: categories.length > 0 ? categories : undefined,
-          limit: perTypeLimit,
-          skipDescriptions: true,
-        }).catch(err => {
-          console.warn(`[DeckService] Failed to fetch ${type}:`, err);
-          return [] as CuratedExperienceCard[];
-        })
-      )
+      pills.map(async (pill): Promise<Recommendation[]> => {
+        try {
+          if (pill.type === 'category') {
+            const cards = await natureCardsService.discoverNature({
+              location: params.location,
+              budgetMax: params.budgetMax,
+              travelMode: params.travelMode,
+              travelConstraintType: params.travelConstraintType,
+              travelConstraintValue: params.travelConstraintValue,
+              datetimePref: params.datetimePref,
+              dateOption: params.dateOption,
+              timeSlot: params.timeSlot,
+              batchSeed: params.batchSeed,
+              limit: perPillLimit,
+            });
+            return cards.map(natureToRecommendation);
+          } else {
+            const cards = await curatedExperiencesService.generateCuratedExperiences({
+              experienceType: pill.id as any,
+              location: params.location,
+              budgetMin: params.budgetMin,
+              budgetMax: params.budgetMax,
+              travelMode: params.travelMode,
+              travelConstraintType: params.travelConstraintType,
+              travelConstraintValue: params.travelConstraintValue,
+              datetimePref: params.datetimePref,
+              batchSeed: params.batchSeed,
+              selectedCategories: categoryFilters.length > 0 ? categoryFilters : undefined,
+              limit: perPillLimit,
+              skipDescriptions: true,
+            });
+            return cards.map(curatedToRecommendation);
+          }
+        } catch (err) {
+          console.warn(`[DeckService] Pill ${pill.id} failed:`, err);
+          return []; // Graceful degradation
+        }
+      })
     );
 
-    // Merge all types, shuffle, and limit to requested count
-    const allCards = results.flat();
-    const shuffled = shuffleArray(allCards).slice(0, limit);
+    const interleaved = roundRobinInterleave(results);
+
+    const deckMode: DeckResponse['deckMode'] =
+      pills.length === 1
+        ? (pills[0].type === 'category' ? 'nature' : 'curated')
+        : 'mixed';
 
     return {
-      cards: shuffled,
-      deckMode: 'curated',
-      total: allCards.length,
+      cards: interleaved,
+      deckMode,
+      activePills: pills.map(p => p.id),
+      total: interleaved.length,
     };
   }
 
-  /** Pre-warm the appropriate pool based on preferences */
+  /** Pre-warm ALL active pill pools in parallel */
   async warmDeckPool(params: Omit<DeckParams, 'limit' | 'batchSeed'>): Promise<void> {
-    const isNature = isNatureMode(params.categories);
+    const { pills } = this.resolvePills(params.categories);
 
-    try {
-      if (isNature) {
-        await natureCardsService.warmNaturePool({
-          location: params.location,
-          budgetMax: params.budgetMax,
-          travelMode: params.travelMode,
-          travelConstraintType: params.travelConstraintType,
-          travelConstraintValue: params.travelConstraintValue,
-          datetimePref: params.datetimePref,
-          dateOption: params.dateOption,
-          timeSlot: params.timeSlot,
-        });
-      } else {
-        await curatedExperiencesService.warmPool({
-          experienceType: 'solo-adventure',
-          location: params.location,
-          budgetMax: params.budgetMax,
-          travelMode: params.travelMode,
-          travelConstraintType: params.travelConstraintType as string,
-          travelConstraintValue: params.travelConstraintValue,
-        });
-      }
-    } catch {
-      // Silent — non-critical background operation
-    }
+    await Promise.all(
+      pills.map(async (pill) => {
+        try {
+          if (pill.type === 'category') {
+            await natureCardsService.warmNaturePool({
+              location: params.location,
+              budgetMax: params.budgetMax,
+              travelMode: params.travelMode,
+              travelConstraintType: params.travelConstraintType,
+              travelConstraintValue: params.travelConstraintValue,
+              datetimePref: params.datetimePref,
+              dateOption: params.dateOption,
+              timeSlot: params.timeSlot,
+            });
+          } else {
+            await curatedExperiencesService.warmPool({
+              experienceType: pill.id as any,
+              location: params.location,
+              budgetMax: params.budgetMax,
+              travelMode: params.travelMode,
+              travelConstraintType: params.travelConstraintType as string,
+              travelConstraintValue: params.travelConstraintValue,
+            });
+          }
+        } catch {
+          // Silent — non-critical background operation
+        }
+      })
+    );
   }
 }
 

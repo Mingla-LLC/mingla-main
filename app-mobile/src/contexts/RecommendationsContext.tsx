@@ -20,10 +20,10 @@ import { useRecommendationsQuery } from "../hooks/useRecommendationsQuery";
 import { useCuratedExperiences } from "../hooks/useCuratedExperiences";
 import { useDeckCards } from "../hooks/useDeckCards";
 import { deckService } from "../services/deckService";
-import { computePrefsHash, isNatureMode } from "../utils/cardConverters";
+import { computePrefsHash } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
-import type { NatureCardBatch } from "../store/appStore";
+import type { DeckBatch } from "../store/appStore";
 import { Recommendation } from "../types/recommendation";
 
 // Re-export so all existing consumer imports keep working
@@ -61,12 +61,12 @@ interface RecommendationsContextType {
   batchSeed: number;
   generateNextBatch: () => void;
   restorePreviousBatch: () => void;
-  // Nature card batch history
-  natureCardBatches: NatureCardBatch[];
-  currentNatureBatchIndex: number;
-  navigateToNatureBatch: (index: number) => void;
-  totalNatureCardsViewed: number;
-  handleNatureCardProgress: (currentIndex: number, total: number) => void;
+  // Deck card batch history
+  deckBatches: DeckBatch[];
+  currentDeckBatchIndex: number;
+  navigateToDeckBatch: (index: number) => void;
+  totalDeckCardsViewed: number;
+  handleDeckCardProgress: (currentIndex: number, total: number) => void;
 }
 
 const RecommendationsContext = createContext<
@@ -101,14 +101,14 @@ export const RecommendationsProvider: React.FC<
   const warmPoolFired = useRef(false);
   const queryClient = useQueryClient();
 
-  // ── Nature card batch history (Zustand) ───────────────────────────────
+  // ── Deck card batch history (Zustand) ────────────────────────────────
   const {
-    addNatureBatch,
-    resetNatureHistory,
-    naturePrefsHash,
-    natureCardBatches,
-    currentNatureBatchIndex,
-    navigateToNatureBatch,
+    addDeckBatch,
+    resetDeckHistory,
+    deckPrefsHash,
+    deckBatches,
+    currentDeckBatchIndex,
+    navigateToDeckBatch,
   } = useAppStore();
 
   const { user } = useAuthSimple();
@@ -210,6 +210,7 @@ export const RecommendationsProvider: React.FC<
   const {
     cards: deckCards,
     deckMode,
+    activePills,
     isLoading: isDeckLoading,
     isFetching: isDeckFetching,
     isFullBatchLoaded: isDeckBatchLoaded,
@@ -227,8 +228,6 @@ export const RecommendationsProvider: React.FC<
     batchSeed,
     enabled: isSoloMode && !!userLocation && !isWaitingForSessionResolution,
   });
-
-  const isNatureSelected = deckMode === 'nature';
 
   // ── Collaboration Mode: useRecommendationsQuery (fallback) ──────────────
   const {
@@ -336,42 +335,42 @@ export const RecommendationsProvider: React.FC<
     return () => clearTimeout(timeout);
   }, [isRefreshingAfterPrefChange]);
 
-  // ── Nature batch history: detect pref changes → reset ─────────────────
+  // ── Deck batch history: detect pref changes → reset ──────────────────
   useEffect(() => {
     if (!userPrefs) return;
     const newHash = computePrefsHash(userPrefs);
-    if (newHash && newHash !== naturePrefsHash) {
-      resetNatureHistory(newHash);
+    if (newHash && newHash !== deckPrefsHash) {
+      resetDeckHistory(newHash);
     }
-  }, [userPrefs, naturePrefsHash, resetNatureHistory]);
+  }, [userPrefs, deckPrefsHash, resetDeckHistory]);
 
-  // ── Nature batch history: store arriving batches ──────────────────────
+  // ── Deck batch history: store arriving batches ───────────────────────
   useEffect(() => {
-    if (isNatureSelected && deckCards.length > 0 && isDeckBatchLoaded) {
-      addNatureBatch({
+    if (deckCards.length > 0 && isDeckBatchLoaded) {
+      addDeckBatch({
         batchSeed,
-        cards: deckCards as any, // Store as Recommendation[]
+        cards: deckCards,
+        activePills,
         timestamp: Date.now(),
       });
     }
-  }, [deckCards, isDeckBatchLoaded, batchSeed, isNatureSelected, addNatureBatch]);
+  }, [deckCards, isDeckBatchLoaded, batchSeed, activePills, addDeckBatch]);
 
-  // ── Nature batch navigation: when navigating to a historical batch ────
+  // ── Deck batch navigation: when navigating to a historical batch ─────
   useEffect(() => {
     if (
-      currentNatureBatchIndex >= 0 &&
-      currentNatureBatchIndex < natureCardBatches.length &&
-      isNatureSelected
+      currentDeckBatchIndex >= 0 &&
+      currentDeckBatchIndex < deckBatches.length
     ) {
-      const batch = natureCardBatches[currentNatureBatchIndex];
+      const batch = deckBatches[currentDeckBatchIndex];
       if (batch.batchSeed !== batchSeed) {
         setBatchSeed(batch.batchSeed);
       }
     }
-  }, [currentNatureBatchIndex, natureCardBatches, isNatureSelected]);
+  }, [currentDeckBatchIndex, deckBatches]);
 
   // ── Pre-fetch next batch at 75% consumption ───────────────────────────
-  const handleNatureCardProgress = useCallback((currentIndex: number, total: number) => {
+  const handleDeckCardProgress = useCallback((currentIndex: number, total: number) => {
     if (!userLocation || !userPrefs) return;
     if (currentIndex >= Math.floor(total * 0.75) && total > 0) {
       const nextSeed = batchSeed + 1;
@@ -686,11 +685,11 @@ export const RecommendationsProvider: React.FC<
     batchSeed,
     generateNextBatch,
     restorePreviousBatch,
-    natureCardBatches,
-    currentNatureBatchIndex,
-    navigateToNatureBatch,
-    totalNatureCardsViewed: natureCardBatches.reduce((sum, b) => sum + b.cards.length, 0),
-    handleNatureCardProgress,
+    deckBatches,
+    currentDeckBatchIndex,
+    navigateToDeckBatch,
+    totalDeckCardsViewed: deckBatches.reduce((sum, b) => sum + b.cards.length, 0),
+    handleDeckCardProgress,
   };
 
   return (

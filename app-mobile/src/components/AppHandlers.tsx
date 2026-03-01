@@ -718,11 +718,11 @@ export function useAppHandlers(state: any) {
           queryClient.invalidateQueries({ queryKey: ["recommendations"] });
           queryClient.invalidateQueries({ queryKey: ["userLocation"] });
 
-          // Reset nature card history if preferences changed
+          // Reset deck card history if preferences changed
           const newHashStr = computePrefsHash(dbPreferences);
-          const { naturePrefsHash, resetNatureHistory } = useAppStore.getState();
-          if (newHashStr !== naturePrefsHash) {
-            resetNatureHistory(newHashStr);
+          const { deckPrefsHash, resetDeckHistory } = useAppStore.getState();
+          if (newHashStr !== deckPrefsHash) {
+            resetDeckHistory(newHashStr);
           }
 
           // Trigger refresh of experiences by updating refresh key

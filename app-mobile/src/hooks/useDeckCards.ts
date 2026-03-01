@@ -4,18 +4,12 @@
  * Replaces 7+ independent hooks (5 curated + 1 nature + 1 regular) with
  * ONE query key, ONE loading state, and smooth transitions via placeholderData.
  *
- * Why this fixes the race conditions:
- * 1. One hook = one lifecycle — no interdependent enabled gates
- * 2. Query key includes ALL prefs — key changes = auto-refetch
- * 3. placeholderData — old cards visible during transition, no empty deck
- * 4. Server (deckService) determines mode — no client-side derivation race
- * 5. Single isLoading — no allBatchesLoaded computation across 7 hooks
+ * Card conversion now happens inside deckService.fetchDeck() — this hook
+ * receives ready-to-use Recommendation[] directly.
  */
-import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { deckService, DeckResponse } from '../services/deckService';
 import type { Recommendation } from '../types/recommendation';
-import { natureToRecommendation, curatedToRecommendation } from '../utils/cardConverters';
 
 interface UseDeckCardsParams {
   location: { lat: number; lng: number } | null;
@@ -34,7 +28,8 @@ interface UseDeckCardsParams {
 
 export interface UseDeckCardsResult {
   cards: Recommendation[];
-  deckMode: 'nature' | 'curated';
+  deckMode: 'nature' | 'curated' | 'mixed';
+  activePills: string[];
   isLoading: boolean;
   isFetching: boolean;
   isFullBatchLoaded: boolean;
@@ -74,23 +69,13 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     placeholderData: (previousData) => previousData,
   });
 
-  // Map server cards to Recommendation[] based on deckMode
-  const cards: Recommendation[] = useMemo(() => {
-    if (!query.data?.cards) return [];
-    const deckMode = query.data.deckMode;
-    return query.data.cards.map(card =>
-      deckMode === 'nature'
-        ? natureToRecommendation(card as any)
-        : curatedToRecommendation(card as any)
-    );
-  }, [query.data]);
-
   return {
-    cards,
+    cards: query.data?.cards ?? [],
     deckMode: query.data?.deckMode ?? 'curated',
+    activePills: query.data?.activePills ?? [],
     isLoading: query.isLoading,
     isFetching: query.isFetching,
-    isFullBatchLoaded: !query.isLoading && !query.isFetching,
+    isFullBatchLoaded: (query.data?.total ?? 0) >= (20 * 0.5),
     error: query.error as Error | null,
     refetch: query.refetch,
   };

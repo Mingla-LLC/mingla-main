@@ -1,0 +1,769 @@
+================================================================================
+  MULTI-PILL PARALLEL DECK — IMPLEMENTATION GUIDE
+  Step-by-step instructions for a developer
+================================================================================
+
+OVERVIEW
+--------
+Transform the unified deck from a binary "Nature OR Curated" switch into a
+multi-source parallel pipeline. Users select multiple pills (Nature, Adventurous,
+etc.) and see round-robin interleaved cards from each source.
+
+NO server changes. NO new edge functions. ALL changes are client-side.
+6 files modified, 0 files created.
+
+PREREQUISITES
+-------------
+- The unified deck pipeline (useDeckCards, deckService, cardConverters,
+  RecommendationsContext) must be in place from the previous implementation.
+- Branch: Seth-Features (current)
+
+
+================================================================================
+STEP 1: Add roundRobinInterleave to cardConverters.ts
+================================================================================
+
+File: app-mobile/src/utils/cardConverters.ts
+
+WHAT: Add a utility function that takes N arrays of Recommendation[] and
+interleaves them round-robin: one card from each array per cycle.
+
+WHERE: After the existing `shuffleArray` function (around line 18), add:
+
+```typescript
+/**
+ * Round-robin interleave multiple card arrays.
+ * Given [[N1,N2,N3], [A1,A2,A3]], produces [N1,A1,N2,A2,N3,A3].
+ * Handles unequal lengths gracefully — exhausted arrays are skipped.
+ */
+export function roundRobinInterleave(pillResults: Recommendation[][]): Recommendation[] {
+  const result: Recommendation[] = [];
+  const maxLen = Math.max(0, ...pillResults.map(p => p.length));
+
+  for (let round = 0; round < maxLen; round++) {
+    for (let p = 0; p < pillResults.length; p++) {
+      if (round < pillResults[p].length) {
+        result.push(pillResults[p][round]);
+      }
+    }
+  }
+  return result;
+}
+```
+
+ALSO: Remove the `isNatureMode` function entirely (lines 206-210). It's no
+longer needed — the binary switch is being replaced by pill resolution.
+
+Remove this:
+```typescript
+export function isNatureMode(categories: string[]): boolean {
+  const { categories: cats } = separateIntentsAndCategories(categories);
+  return cats.some(c => c.toLowerCase() === 'nature');
+}
+```
+
+WHY: isNatureMode was the binary gate. Pill resolution replaces it.
+
+TEST: TypeScript should compile. Search for all imports of `isNatureMode` —
+they will break (deckService.ts and RecommendationsContext.tsx). That's expected;
+we'll fix them in the next steps.
+
+
+================================================================================
+STEP 2: Refactor deckService.ts — Pill Resolution + Parallel Fetch
+================================================================================
+
+File: app-mobile/src/services/deckService.ts
+
+This is the biggest change. The file goes from ~148 lines to ~165 lines.
+
+2a. UPDATE IMPORTS
+------------------
+Remove: `isNatureMode` from the cardConverters import.
+Add: `natureToRecommendation`, `curatedToRecommendation`, `roundRobinInterleave`
+from cardConverters.
+
+Change the import line to:
+```typescript
+import {
+  separateIntentsAndCategories,
+  shuffleArray,
+  natureToRecommendation,
+  curatedToRecommendation,
+  roundRobinInterleave,
+} from '../utils/cardConverters';
+```
+
+Also add the Recommendation import:
+```typescript
+import type { Recommendation } from '../types/recommendation';
+```
+
+2b. ADD DeckPill INTERFACE
+--------------------------
+Above the DeckService class, add:
+```typescript
+interface DeckPill {
+  id: string;
+  type: 'category' | 'curated';
+}
+```
+
+2c. UPDATE DeckResponse INTERFACE
+---------------------------------
+Change from:
+```typescript
+export interface DeckResponse {
+  cards: NatureCard[] | CuratedExperienceCard[];
+  deckMode: 'nature' | 'curated';
+  total: number;
+}
+```
+
+To:
+```typescript
+export interface DeckResponse {
+  cards: Recommendation[];
+  deckMode: 'nature' | 'curated' | 'mixed';
+  activePills: string[];
+  total: number;
+}
+```
+
+2d. ADD resolvePills METHOD
+---------------------------
+Inside the DeckService class, add this private method:
+
+```typescript
+private resolvePills(categories: string[]): {
+  pills: DeckPill[];
+  categoryFilters: string[];
+} {
+  const { intents, categories: cats } = separateIntentsAndCategories(categories);
+  const pills: DeckPill[] = [];
+  const categoryFilters: string[] = [];
+
+  // Category pills — currently only Nature has its own edge function
+  for (const cat of cats) {
+    if (cat.toLowerCase() === 'nature') {
+      pills.push({ id: 'nature', type: 'category' });
+    } else {
+      // No dedicated edge function yet — pass as filter to curated pills
+      categoryFilters.push(cat);
+    }
+  }
+
+  // Intent pills — one curated pill per selected intent
+  for (const intent of intents) {
+    pills.push({ id: intent, type: 'curated' });
+  }
+
+  // Fallback: if nothing resolved, default to solo-adventure
+  if (pills.length === 0) {
+    pills.push({ id: 'solo-adventure', type: 'curated' });
+  }
+
+  return { pills, categoryFilters };
+}
+```
+
+2e. REWRITE fetchDeck METHOD
+-----------------------------
+Replace the entire fetchDeck method with:
+
+```typescript
+async fetchDeck(params: DeckParams): Promise<DeckResponse> {
+  const { pills, categoryFilters } = this.resolvePills(params.categories);
+  const limit = params.limit ?? 20;
+  const perPillLimit = Math.ceil(limit / pills.length);
+
+  // Fetch ALL pills in parallel — latency = max(pill), not sum(pill)
+  const results = await Promise.all(
+    pills.map(async (pill): Promise<Recommendation[]> => {
+      try {
+        if (pill.type === 'category') {
+          const cards = await natureCardsService.discoverNature({
+            location: params.location,
+            budgetMax: params.budgetMax,
+            travelMode: params.travelMode,
+            travelConstraintType: params.travelConstraintType,
+            travelConstraintValue: params.travelConstraintValue,
+            datetimePref: params.datetimePref,
+            dateOption: params.dateOption,
+            timeSlot: params.timeSlot,
+            batchSeed: params.batchSeed,
+            limit: perPillLimit,
+          });
+          return cards.map(natureToRecommendation);
+        } else {
+          const cards = await curatedExperiencesService.generateCuratedExperiences({
+            experienceType: pill.id as any,
+            location: params.location,
+            budgetMin: params.budgetMin,
+            budgetMax: params.budgetMax,
+            travelMode: params.travelMode,
+            travelConstraintType: params.travelConstraintType,
+            travelConstraintValue: params.travelConstraintValue,
+            datetimePref: params.datetimePref,
+            batchSeed: params.batchSeed,
+            selectedCategories: categoryFilters.length > 0 ? categoryFilters : undefined,
+            limit: perPillLimit,
+            skipDescriptions: true,
+          });
+          return cards.map(curatedToRecommendation);
+        }
+      } catch (err) {
+        console.warn(`[DeckService] Pill ${pill.id} failed:`, err);
+        return []; // Graceful degradation
+      }
+    })
+  );
+
+  const interleaved = roundRobinInterleave(results);
+
+  const deckMode: DeckResponse['deckMode'] =
+    pills.length === 1
+      ? (pills[0].type === 'category' ? 'nature' : 'curated')
+      : 'mixed';
+
+  return {
+    cards: interleaved,
+    deckMode,
+    activePills: pills.map(p => p.id),
+    total: interleaved.length,
+  };
+}
+```
+
+2f. DELETE fetchNatureDeck AND fetchCuratedDeck
+-----------------------------------------------
+Remove both private methods entirely. Their logic is now inside fetchDeck.
+
+2g. REWRITE warmDeckPool METHOD
+-------------------------------
+Replace the warmDeckPool method with:
+
+```typescript
+async warmDeckPool(params: Omit<DeckParams, 'limit' | 'batchSeed'>): Promise<void> {
+  const { pills } = this.resolvePills(params.categories);
+
+  await Promise.all(
+    pills.map(async (pill) => {
+      try {
+        if (pill.type === 'category') {
+          await natureCardsService.warmNaturePool({
+            location: params.location,
+            budgetMax: params.budgetMax,
+            travelMode: params.travelMode,
+            travelConstraintType: params.travelConstraintType,
+            travelConstraintValue: params.travelConstraintValue,
+            datetimePref: params.datetimePref,
+            dateOption: params.dateOption,
+            timeSlot: params.timeSlot,
+          });
+        } else {
+          await curatedExperiencesService.warmPool({
+            experienceType: pill.id as any,
+            location: params.location,
+            budgetMax: params.budgetMax,
+            travelMode: params.travelMode,
+            travelConstraintType: params.travelConstraintType as string,
+            travelConstraintValue: params.travelConstraintValue,
+          });
+        }
+      } catch {
+        // Silent — non-critical background operation
+      }
+    })
+  );
+}
+```
+
+TEST: deckService.ts should compile (the DeckResponse type changed, so
+useDeckCards will have TS errors — that's expected, we fix it next).
+
+
+================================================================================
+STEP 3: Simplify useDeckCards.ts — Remove Conversion, Add activePills
+================================================================================
+
+File: app-mobile/src/hooks/useDeckCards.ts
+
+3a. REMOVE UNUSED IMPORTS
+--------------------------
+Remove these imports (conversion moved to deckService):
+```typescript
+import { useMemo } from 'react';
+import { natureToRecommendation, curatedToRecommendation } from '../utils/cardConverters';
+```
+
+Keep:
+```typescript
+import { useQuery } from '@tanstack/react-query';
+import { deckService, DeckResponse } from '../services/deckService';
+import type { Recommendation } from '../types/recommendation';
+```
+
+3b. UPDATE UseDeckCardsResult
+-----------------------------
+Change from:
+```typescript
+export interface UseDeckCardsResult {
+  cards: Recommendation[];
+  deckMode: 'nature' | 'curated';
+  isLoading: boolean;
+  isFetching: boolean;
+  isFullBatchLoaded: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+```
+
+To:
+```typescript
+export interface UseDeckCardsResult {
+  cards: Recommendation[];
+  deckMode: 'nature' | 'curated' | 'mixed';
+  activePills: string[];
+  isLoading: boolean;
+  isFetching: boolean;
+  isFullBatchLoaded: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+```
+
+3c. REPLACE useMemo BLOCK AND RETURN
+-------------------------------------
+Remove the entire useMemo block (lines 77-86) and replace the return with:
+
+```typescript
+return {
+  cards: query.data?.cards ?? [],
+  deckMode: query.data?.deckMode ?? 'curated',
+  activePills: query.data?.activePills ?? [],
+  isLoading: query.isLoading,
+  isFetching: query.isFetching,
+  isFullBatchLoaded: (query.data?.total ?? 0) >= ((20) * 0.5),
+  error: query.error as Error | null,
+  refetch: query.refetch,
+};
+```
+
+Note: `isFullBatchLoaded` now checks the actual total returned, not just
+"not loading and not fetching". This is more accurate for multi-pill where
+one pill might return fewer cards.
+
+TEST: useDeckCards.ts should compile cleanly.
+
+
+================================================================================
+STEP 4: Rename Batch History in appStore.ts
+================================================================================
+
+File: app-mobile/src/store/appStore.ts
+
+4a. REPLACE NatureCardBatch WITH DeckBatch
+------------------------------------------
+Change the import at line 12:
+  FROM: import type { NatureCard } from "../services/natureCardsService";
+  TO:   import type { Recommendation } from "../types/recommendation";
+
+Replace the interface:
+  FROM:
+  ```typescript
+  export interface NatureCardBatch {
+    batchSeed: number;
+    cards: NatureCard[];
+    timestamp: number;
+  }
+  ```
+  TO:
+  ```typescript
+  export interface DeckBatch {
+    batchSeed: number;
+    cards: Recommendation[];
+    activePills: string[];
+    timestamp: number;
+  }
+  ```
+
+4b. RENAME ALL STATE FIELDS AND ACTIONS
+----------------------------------------
+In the AppState interface AND the store implementation, rename:
+
+  natureCardBatches     → deckBatches
+  currentNatureBatchIndex → currentDeckBatchIndex
+  naturePrefsHash       → deckPrefsHash
+  addNatureBatch        → addDeckBatch
+  navigateToNatureBatch → navigateToDeckBatch
+  resetNatureHistory    → resetDeckHistory
+
+This is a pure find-and-replace within this file. Every occurrence of
+"nature" in the batch history section becomes "deck".
+
+4c. UPDATE INITIAL STATE
+-------------------------
+  natureCardBatches: []      → deckBatches: []
+  currentNatureBatchIndex: -1 → currentDeckBatchIndex: -1
+  naturePrefsHash: ''        → deckPrefsHash: ''
+
+4d. UPDATE addDeckBatch ACTION
+------------------------------
+The logic stays identical, just with renamed fields:
+```typescript
+addDeckBatch: (batch) => set((state) => {
+  const exists = state.deckBatches.some(b => b.batchSeed === batch.batchSeed);
+  if (exists) return state;
+  return {
+    deckBatches: [...state.deckBatches, batch],
+    currentDeckBatchIndex: state.deckBatches.length,
+  };
+}),
+```
+
+4e. UPDATE navigateToDeckBatch AND resetDeckHistory
+---------------------------------------------------
+```typescript
+navigateToDeckBatch: (index) => set({ currentDeckBatchIndex: index }),
+
+resetDeckHistory: (newPrefsHash) => set({
+  deckBatches: [],
+  currentDeckBatchIndex: -1,
+  deckPrefsHash: newPrefsHash,
+}),
+```
+
+4f. UPDATE clearUserData
+-------------------------
+```typescript
+deckBatches: [],
+currentDeckBatchIndex: -1,
+deckPrefsHash: '',
+```
+
+4g. UPDATE partialize (PERSISTENCE)
+------------------------------------
+```typescript
+partialize: (state) => ({
+  ...existing fields...,
+  deckBatches: state.deckBatches,
+  currentDeckBatchIndex: state.currentDeckBatchIndex,
+  deckPrefsHash: state.deckPrefsHash,
+}),
+```
+
+TEST: appStore.ts should compile. Imports of NatureCardBatch from other files
+will break — that's expected.
+
+
+================================================================================
+STEP 5: Update RecommendationsContext.tsx
+================================================================================
+
+File: app-mobile/src/contexts/RecommendationsContext.tsx
+
+This is a rename-heavy change. The logic stays identical.
+
+5a. UPDATE IMPORTS
+------------------
+Change:
+  FROM: import type { NatureCardBatch } from "../store/appStore";
+  TO:   import type { DeckBatch } from "../store/appStore";
+
+Remove: import { isNatureMode } from "../utils/cardConverters";
+(isNatureMode no longer exists)
+
+5b. UPDATE RecommendationsContextType INTERFACE
+-----------------------------------------------
+Rename the batch history fields:
+```typescript
+// Before:
+  natureCardBatches: NatureCardBatch[];
+  currentNatureBatchIndex: number;
+  navigateToNatureBatch: (index: number) => void;
+  totalNatureCardsViewed: number;
+  handleNatureCardProgress: (currentIndex: number, total: number) => void;
+
+// After:
+  deckBatches: DeckBatch[];
+  currentDeckBatchIndex: number;
+  navigateToDeckBatch: (index: number) => void;
+  totalDeckCardsViewed: number;
+  handleDeckCardProgress: (currentIndex: number, total: number) => void;
+```
+
+5c. UPDATE useAppStore DESTRUCTURE
+-----------------------------------
+Change (around line 105-112):
+```typescript
+const {
+  addDeckBatch,
+  resetDeckHistory,
+  deckPrefsHash,
+  deckBatches,
+  currentDeckBatchIndex,
+  navigateToDeckBatch,
+} = useAppStore();
+```
+
+5d. UPDATE useDeckCards DESTRUCTURE
+-----------------------------------
+Add activePills to the destructured result (around line 210-229):
+```typescript
+const {
+  cards: deckCards,
+  deckMode,
+  activePills,    // NEW
+  isLoading: isDeckLoading,
+  isFetching: isDeckFetching,
+  isFullBatchLoaded: isDeckBatchLoaded,
+} = useDeckCards({ ... });
+```
+
+5e. REPLACE isNatureSelected
+-----------------------------
+Remove:
+```typescript
+const isNatureSelected = deckMode === 'nature';
+```
+
+The batch history should now store ALL deck batches, not just nature ones.
+Everywhere that previously checked `isNatureSelected` before storing a batch,
+remove that gate. Batches are stored regardless of deck mode.
+
+5f. UPDATE BATCH HISTORY EFFECTS
+---------------------------------
+
+Pref change detection (around line 339-346):
+```typescript
+useEffect(() => {
+  if (!userPrefs) return;
+  const newHash = computePrefsHash(userPrefs);
+  if (newHash && newHash !== deckPrefsHash) {
+    resetDeckHistory(newHash);
+  }
+}, [userPrefs, deckPrefsHash, resetDeckHistory]);
+```
+
+Store arriving batches (around line 349-357):
+```typescript
+useEffect(() => {
+  // Store ALL arriving batches — not just nature
+  if (deckCards.length > 0 && isDeckBatchLoaded) {
+    addDeckBatch({
+      batchSeed,
+      cards: deckCards,
+      activePills: activePills,
+      timestamp: Date.now(),
+    });
+  }
+}, [deckCards, isDeckBatchLoaded, batchSeed, activePills, addDeckBatch]);
+```
+
+Note: removed the `isNatureSelected &&` gate. ALL batches are stored now.
+
+Batch navigation (around line 360-371):
+```typescript
+useEffect(() => {
+  if (
+    currentDeckBatchIndex >= 0 &&
+    currentDeckBatchIndex < deckBatches.length
+  ) {
+    const batch = deckBatches[currentDeckBatchIndex];
+    if (batch.batchSeed !== batchSeed) {
+      setBatchSeed(batch.batchSeed);
+    }
+  }
+}, [currentDeckBatchIndex, deckBatches]);
+```
+
+Note: removed the `isNatureSelected` check. Navigation works for any deck mode.
+
+5g. RENAME handleNatureCardProgress → handleDeckCardProgress
+-------------------------------------------------------------
+Just rename the function (around line 374). Logic is identical:
+```typescript
+const handleDeckCardProgress = useCallback((currentIndex: number, total: number) => {
+  // ... same pre-fetch logic ...
+}, [batchSeed, userLocation, userPrefs, queryClient]);
+```
+
+5h. UPDATE CONTEXT VALUE
+--------------------------
+```typescript
+const value: RecommendationsContextType = {
+  ...existing fields...,
+  deckBatches,
+  currentDeckBatchIndex,
+  navigateToDeckBatch,
+  totalDeckCardsViewed: deckBatches.reduce((sum, b) => sum + b.cards.length, 0),
+  handleDeckCardProgress,
+};
+```
+
+TEST: RecommendationsContext.tsx should compile. SwipeableCards will have
+import errors — fixed next.
+
+
+================================================================================
+STEP 6: Update SwipeableCards.tsx
+================================================================================
+
+File: app-mobile/src/components/SwipeableCards.tsx
+
+6a. UPDATE useRecommendations DESTRUCTURE
+------------------------------------------
+Find the destructured context values and rename:
+
+```typescript
+const {
+  ...existing fields...,
+  deckBatches,              // was: natureCardBatches
+  currentDeckBatchIndex,    // was: currentNatureBatchIndex
+  navigateToDeckBatch,      // was: navigateToNatureBatch
+  handleDeckCardProgress,   // was: handleNatureCardProgress
+} = useRecommendations();
+```
+
+6b. UPDATE ALL REFERENCES
+---------------------------
+Search and replace within this file:
+  natureCardBatches      → deckBatches
+  currentNatureBatchIndex → currentDeckBatchIndex
+  navigateToNatureBatch  → navigateToDeckBatch
+  handleNatureCardProgress → handleDeckCardProgress
+
+These appear in:
+- The batch history navigation UI (forward/back buttons)
+- The handleNatureCardProgress call in the swipe lifecycle
+- The "Generate Another 20" / batch complete section
+
+NO rendering logic changes needed. The existing cardType === 'curated' checks
+already handle both nature and curated cards correctly in the interleaved deck.
+
+TEST: Full TypeScript compilation should pass across all 6 changed files.
+
+
+================================================================================
+STEP 7: Verify & Test
+================================================================================
+
+7a. TypeScript compilation
+  Run: npx tsc --noEmit
+  Expected: 0 errors across all changed files.
+
+7b. Single-pill backward compatibility
+  - Open app → select only Nature → verify nature cards appear (same as before)
+  - Open app → select only Adventurous → verify curated cards appear (same as before)
+
+7c. Multi-pill interleave
+  - Select Nature + Adventurous → verify alternating cards:
+    Card 1: Nature (single place, no stops)
+    Card 2: Curated (multi-stop, has "curated" badge)
+    Card 3: Nature
+    Card 4: Curated
+    ...
+
+7d. Card interactions in interleaved deck
+  - Swipe right on a Nature card → verify save works (Supabase interaction tracked)
+  - Swipe right on a Curated card → verify save works (cardType === 'curated' path)
+  - Tap/swipe-up a Nature card → verify expanded view shows place details
+  - Tap/swipe-up a Curated card → verify expanded view shows CuratedPlanView (timeline)
+
+7e. Smooth transitions
+  - Switch from Nature-only to Nature+Adventure → verify no blank deck
+    (old Nature cards visible as placeholder during refetch)
+  - Switch from Nature+Adventure to Adventure-only → same smooth transition
+
+7f. Batch generation
+  - Swipe through all 20 cards → tap "Generate Another 20"
+  - Verify new batch loads with interleaved cards
+  - Verify batch history allows navigating back to previous batch
+
+7g. Performance
+  - Compare load times: single pill vs multi-pill
+  - Expected: identical (parallel fetch)
+  - Check console logs for "[DeckService] Pill X failed" — should not appear
+    under normal conditions
+
+7h. Pool warming
+  - Fresh app load with Nature+Adventure selected
+  - Check console/network: both discover-nature (warmPool) AND
+    generate-curated-experiences (warmPool) should fire on first load
+
+
+================================================================================
+COMMON MISTAKES TO AVOID
+================================================================================
+
+1. DO NOT change PreferencesSheet.tsx. Multi-select already works for both
+   intents and categories. The combined array is already saved correctly.
+
+2. DO NOT change any edge functions. The parallel fetch happens client-side.
+   discover-nature and generate-curated-experiences are untouched.
+
+3. DO NOT use useQueries instead of useQuery. The single useQuery with
+   parallel internal fetch (Promise.all in deckService) is simpler and
+   maintains the exact same caching/placeholder behavior.
+
+4. DO NOT forget to remove the isNatureMode import from
+   RecommendationsContext.tsx. It will cause a compile error since the
+   function no longer exists.
+
+5. DO NOT keep the isNatureSelected gate on batch storage. All batches
+   (nature, curated, or mixed) should be stored in deckBatches for
+   navigation.
+
+6. DO NOT change the React Query key structure. Categories are already
+   in the key via `params.categories.sort().join(',')`. Adding/removing
+   pills changes the categories → changes the key → automatic refetch.
+
+7. DO NOT store NatureCard[] in DeckBatch. Store Recommendation[] instead,
+   since the batch may contain a mix of card types.
+
+
+================================================================================
+DONE WHEN
+================================================================================
+
+The feature is complete when:
+
+1. You can select Nature + Adventurous in PreferencesSheet and see
+   alternating Nature/Curated cards in the swipe deck.
+
+2. Selecting a single pill (Nature only OR Adventurous only) produces
+   identical behavior to the current system.
+
+3. Speed is identical or faster — no perceptible loading time increase.
+
+4. "Generate Another 20" produces a new interleaved batch.
+
+5. Batch history (back/forward navigation) works with interleaved batches.
+
+6. Card expand, save, like, and share all work correctly for both card
+   types within the interleaved deck.
+
+7. TypeScript compiles with zero errors.
+
+8. No edge functions were changed or deployed.
+
+
+================================================================================
+ADDING FUTURE PILL TYPES (Developer Reference)
+================================================================================
+
+To add a new CATEGORY pill (e.g., "Drink" with its own discovery edge function):
+  1. Create supabase/functions/discover-drink/index.ts (similar to discover-nature)
+  2. Create app-mobile/src/services/drinkCardsService.ts
+  3. Add a converter: drinkToRecommendation() in cardConverters.ts
+  4. In deckService.resolvePills(): add an else-if for 'drink' → new pill
+  5. In deckService.fetchDeck(): add a case for the new pill type
+  6. Done. Round-robin automatically includes it.
+
+To add a new INTENT pill (e.g., "nightlife"):
+  1. Add 'nightlife' to INTENT_IDS in cardConverters.ts
+  2. Add to experienceTypes array in PreferencesSheet.tsx
+  3. generate-curated-experiences already handles any experienceType
+  4. resolvePills() already creates one pill per intent → automatic!
+  5. Done.

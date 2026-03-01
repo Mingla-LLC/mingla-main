@@ -198,10 +198,10 @@ export default function SwipeableCards({
     refreshRecommendations,
     generateNextBatch,
     restorePreviousBatch,
-    natureCardBatches,
-    currentNatureBatchIndex,
-    navigateToNatureBatch,
-    handleNatureCardProgress,
+    deckBatches,
+    currentDeckBatchIndex,
+    navigateToDeckBatch,
+    handleDeckCardProgress,
   } = useRecommendations();
 
   // Combine all loading states for UI consistency and to prevent animation freezing
@@ -735,7 +735,7 @@ export default function SwipeableCards({
             // Report card progress for nature pre-fetch at 75%
             const viewedCount = removedCardsRef.current.size + 1;
             const totalCount = recommendationsRef.current.length;
-            handleNatureCardProgress?.(viewedCount, totalCount);
+            handleDeckCardProgress?.(viewedCount, totalCount);
 
             // Wait for React to render the next card before resetting position
             // This prevents the flash/flicker
@@ -1149,28 +1149,28 @@ export default function SwipeableCards({
           </TouchableOpacity>
 
           {/* Multi-batch review section */}
-          {natureCardBatches.length > 1 ? (
+          {deckBatches.length > 1 ? (
             <View style={styles.batchHistorySection}>
               <Text style={styles.batchHistoryTitle}>
-                Review History ({natureCardBatches.length} batches,{' '}
-                {natureCardBatches.reduce((s, b) => s + b.cards.length, 0)} cards total)
+                Review History ({deckBatches.length} batches,{' '}
+                {deckBatches.reduce((s, b) => s + b.cards.length, 0)} cards total)
               </Text>
-              {natureCardBatches.map((batch, index) => (
+              {deckBatches.map((batch, index) => (
                 <TouchableOpacity
                   key={batch.batchSeed}
                   style={[
                     styles.batchHistoryItem,
-                    index === currentNatureBatchIndex && styles.batchHistoryItemActive,
+                    index === currentDeckBatchIndex && styles.batchHistoryItemActive,
                   ]}
                   onPress={() => {
-                    navigateToNatureBatch(index);
+                    navigateToDeckBatch(index);
                     handleViewCardsAgain();
                   }}
                   activeOpacity={0.7}
                 >
                   <Text style={[
                     styles.batchHistoryItemText,
-                    index === currentNatureBatchIndex && styles.batchHistoryItemTextActive,
+                    index === currentDeckBatchIndex && styles.batchHistoryItemTextActive,
                   ]}>
                     Batch {index + 1} — {batch.cards.length} cards
                   </Text>

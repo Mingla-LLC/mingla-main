@@ -17,6 +17,25 @@ export function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
+/**
+ * Round-robin interleave multiple card arrays.
+ * Given [[N1,N2,N3], [A1,A2,A3]], produces [N1,A1,N2,A2,N3,A3].
+ * Handles unequal lengths gracefully — exhausted arrays are skipped.
+ */
+export function roundRobinInterleave(pillResults: Recommendation[][]): Recommendation[] {
+  const result: Recommendation[] = [];
+  const maxLen = Math.max(0, ...pillResults.map(p => p.length));
+
+  for (let round = 0; round < maxLen; round++) {
+    for (let p = 0; p < pillResults.length; p++) {
+      if (round < pillResults[p].length) {
+        result.push(pillResults[p][round]);
+      }
+    }
+  }
+  return result;
+}
+
 /** Converts a CuratedExperienceCard into a Recommendation so SwipeableCards can render it */
 export function curatedToRecommendation(card: any): Recommendation {
   const stops = card.stops ?? [];
@@ -203,8 +222,3 @@ export function separateIntentsAndCategories(categories: string[]): {
   return { intents, categories: cats };
 }
 
-/** Check if nature mode should be active based on selected categories */
-export function isNatureMode(categories: string[]): boolean {
-  const { categories: cats } = separateIntentsAndCategories(categories);
-  return cats.some(c => c.toLowerCase() === 'nature');
-}
