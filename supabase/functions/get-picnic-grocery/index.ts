@@ -1,5 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { batchSearchPlaces } from '../_shared/placesCache.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +10,9 @@ const corsHeaders = {
 };
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseAdmin = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '');
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -121,50 +126,24 @@ async function findGroceryStore(
     "deli",
   ];
 
-  // Places API (New) base URL
-  const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
-
-  // Field mask for Places API (New) - specify which fields we need
-  const fieldMask =
-    "places.id,places.displayName,places.location,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.types";
-
   try {
-    const requestBody = {
-      includedTypes: groceryTypes,
-      maxResultCount: 10,
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: picnicLocation.lat,
-            longitude: picnicLocation.lng,
-          },
-          radius: maxDistance,
-        },
-      },
-    };
+    const { results: typeResults } = await batchSearchPlaces(
+      supabaseAdmin,
+      GOOGLE_API_KEY!,
+      groceryTypes,
+      picnicLocation.lat,
+      picnicLocation.lng,
+      maxDistance,
+      { maxResultsPerType: 5, ttlHours: 24 }
+    );
 
-    const response = await fetch(baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": fieldMask,
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(
-        "Error fetching grocery stores:",
-        response.status,
-        errorText
-      );
-      return null;
+    // Merge all results
+    const allRawPlaces: any[] = [];
+    for (const places of Object.values(typeResults)) {
+      allRawPlaces.push(...places);
     }
 
-    const data = await response.json();
-    if (!data.places?.length) {
+    if (allRawPlaces.length === 0) {
       return null;
     }
 
@@ -182,7 +161,7 @@ async function findGroceryStore(
       "produce",
     ];
 
-    const allGroceryStores = data.places
+    const allGroceryStores = allRawPlaces
       .filter((place: any) => {
         // If place has explicit grocery types, include it
         const hasGroceryType = place.types?.some((type: string) =>

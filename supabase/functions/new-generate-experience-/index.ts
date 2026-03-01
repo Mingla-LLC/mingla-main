@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { batchSearchPlaces } from '../_shared/placesCache.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,8 @@ const corsHeaders = {
 // Environment variables
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 // Category to Google Places type mapping
 // Maps category IDs from preferences sheets to Google Places API types
@@ -2310,48 +2313,129 @@ async function fetchGooglePlaces(
       ? Math.min((preferences.travel_constraint_value || 5) * 1000, 50000)
       : 10000; // Default 10km
 
-  // Places API (New) base URL
-  const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
+  // Create admin client for cache operations
+  const supabaseAdmin = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    : null;
+
+  // Collect primary place type per category (one type each for better caching)
+  const categoryTypeMap: { category: string; placeType: string }[] = [];
+  const uniqueTypes = new Set<string>();
 
   for (const category of preferences.categories || []) {
-    // Convert category to lowercase for case-insensitive lookup
     const categoryKey = category.toLowerCase();
     const placeTypes = CATEGORY_MAPPINGS[categoryKey] || ["tourist_attraction"];
+    const primaryType = placeTypes[0];
+    categoryTypeMap.push({ category, placeType: primaryType });
+    uniqueTypes.add(primaryType);
+  }
 
-    // For picnic categories, iterate through 7 types; otherwise use 3
-    const isPicnicCategory =
-      categoryKey === "picnic" || categoryKey === "picnics";
-    const maxTypes = isPicnicCategory ? 8 : 3;
+  if (supabaseAdmin && uniqueTypes.size > 0) {
+    // Use batch cache lookup for all unique types at once
+    const { results: typeResults } = await batchSearchPlaces(
+      supabaseAdmin,
+      GOOGLE_API_KEY,
+      Array.from(uniqueTypes),
+      location.lat,
+      location.lng,
+      radius,
+      { maxResultsPerType: 10, ttlHours: 24 }
+    );
 
-    for (const placeType of placeTypes.slice(0, maxTypes)) {
+    // Map results back through the same transformation logic
+    for (const { category, placeType } of categoryTypeMap) {
+      const places = typeResults[placeType] || [];
+      if (places.length > 0) {
+        const transformed = places.map((place: any) => {
+          const primaryPhoto = place.photos?.[0];
+          const imageUrl = primaryPhoto?.name
+            ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
+            : null;
+
+          const images =
+            place.photos
+              ?.slice(0, 5)
+              .map((photo: any) => {
+                return photo.name
+                  ? `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
+                  : null;
+              })
+              .filter((img: string | null) => img !== null) || [];
+
+          const priceLevel = place.priceLevel || 0;
+          const price_min =
+            priceLevel === 0
+              ? 0
+              : priceLevel === 1
+              ? 0
+              : priceLevel === 2
+              ? 15
+              : priceLevel === 3
+              ? 50
+              : 100;
+          const price_max =
+            priceLevel === 0
+              ? 0
+              : priceLevel === 1
+              ? 25
+              : priceLevel === 2
+              ? 75
+              : priceLevel === 3
+              ? 150
+              : 500;
+
+          return {
+            id: place.id,
+            name: place.displayName?.text || "Unknown Place",
+            category,
+            location: {
+              lat: place.location?.latitude || location.lat,
+              lng: place.location?.longitude || location.lng,
+            },
+            address: place.formattedAddress || "",
+            priceLevel: priceLevel,
+            rating: place.rating || 0,
+            reviewCount: place.userRatingCount || 0,
+            imageUrl: imageUrl,
+            images: images.filter((img: string | null) => img !== null),
+            placeId: place.id,
+            openingHours: place.regularOpeningHours
+              ? {
+                  open_now: place.regularOpeningHours.openNow || false,
+                  weekday_text:
+                    place.regularOpeningHours.weekdayDescriptions || [],
+                }
+              : null,
+            placeTypes: place.types || [],
+            price_min,
+            price_max,
+          };
+        });
+        allPlaces.push(...transformed);
+      }
+    }
+  } else {
+    // Fallback: direct API calls (no cache available)
+    const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
+
+    for (const { category, placeType } of categoryTypeMap) {
       try {
-        // Convert legacy place type to new API format (e.g., "restaurant" -> "restaurant")
-        // Most types remain the same, but we need to ensure proper format
-        const includedType = placeType;
-
-        // Field mask for Places API (New) - specify which fields we need
-        // Note: Use places.id (not places.placeId) for the place identifier
+        const categoryKey = category.toLowerCase();
+        const excludedTypes = EXCLUDED_TYPES[categoryKey] || null;
         const fieldMask =
           "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours";
 
-        // Check if this category has excluded types (e.g., picnic)
-        const excludedTypes = EXCLUDED_TYPES[categoryKey] || null;
-
         const requestBody: any = {
-          includedTypes: [includedType],
+          includedTypes: [placeType],
           maxResultCount: 10,
           locationRestriction: {
             circle: {
-              center: {
-                latitude: location.lat,
-                longitude: location.lng,
-              },
+              center: { latitude: location.lat, longitude: location.lng },
               radius: radius,
             },
           },
         };
 
-        // Add excludedTypes if this is a picnic category
         if (excludedTypes && excludedTypes.length > 0) {
           requestBody.excludedTypes = excludedTypes;
         }
@@ -2381,8 +2465,6 @@ async function fetchGooglePlaces(
 
         if (data.places?.length) {
           const places = data.places.map((place: any) => {
-            // Extract photo reference from new API format
-            // Photo name format: "places/{place_id}/photos/{photo_id}"
             const primaryPhoto = place.photos?.[0];
             const imageUrl = primaryPhoto?.name
               ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
@@ -2398,8 +2480,6 @@ async function fetchGooglePlaces(
                 })
                 .filter((img: string | null) => img !== null) || [];
 
-            // Convert price level (0-4) to dollar ranges
-            // 0 = Free, 1 = $, 2 = $$, 3 = $$$, 4 = $$$$
             const priceLevel = place.priceLevel || 0;
             const price_min =
               priceLevel === 0
@@ -2436,7 +2516,7 @@ async function fetchGooglePlaces(
               reviewCount: place.userRatingCount || 0,
               imageUrl: imageUrl,
               images: images.filter((img: string | null) => img !== null),
-              placeId: place.id, // In new API, place.id is the identifier
+              placeId: place.id,
               openingHours: place.regularOpeningHours
                 ? {
                     open_now: place.regularOpeningHours.openNow || false,

@@ -191,16 +191,19 @@ export default function SwipeableCards({
     error,
     userLocation,
     isModeTransitioning,
+    isBatchTransitioning,
     isWaitingForSessionResolution,
     hasCompletedInitialFetch,
     refreshRecommendations,
     generateNextBatch,
+    restorePreviousBatch,
   } = useRecommendations();
 
   // Combine all loading states for UI consistency and to prevent animation freezing
   // Note: We only block the UI for initial loading (loading), not background refetches (isFetching)
+  // Include isBatchTransitioning so the spinner shows while curated batch is loading
   const isAnyLoading =
-    loading || isModeTransitioning || isWaitingForSessionResolution;
+    loading || isModeTransitioning || isWaitingForSessionResolution || isBatchTransitioning;
 
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -1110,7 +1113,10 @@ export default function SwipeableCards({
 
           <TouchableOpacity
             style={styles.reviewBatchButton}
-            onPress={handleViewCardsAgain}
+            onPress={() => {
+              restorePreviousBatch();
+              handleViewCardsAgain();
+            }}
             activeOpacity={0.7}
           >
             <Ionicons name="arrow-undo-outline" size={16} color="#eb7825" />

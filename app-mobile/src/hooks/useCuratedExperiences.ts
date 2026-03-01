@@ -76,6 +76,8 @@ export function useCuratedExperiences(params: UseCuratedExperiencesParams): {
     staleTime: 30 * 60 * 1000,   // 30 minutes
     gcTime: 2 * 60 * 60 * 1000,  // 2 hours
     retry: 1,
+    // Show previous batch's data while new batch loads to prevent flash of empty cards
+    placeholderData: (previousData) => previousData,
   });
 
   // ── Background batch (remaining cards) ─────────────────────────────────
@@ -91,6 +93,8 @@ export function useCuratedExperiences(params: UseCuratedExperiencesParams): {
     staleTime: 30 * 60 * 1000,   // 30 minutes
     gcTime: 2 * 60 * 60 * 1000,  // 2 hours
     retry: 1,
+    // Show previous batch's data while new batch loads to prevent flash of empty cards
+    placeholderData: (previousData) => previousData,
   });
 
   // ── Merge & deduplicate by stop placeId ────────────────────────────────

@@ -223,6 +223,7 @@ interface RecommendationsContextType {
   error: string | null;
   userLocation: { lat: number; lng: number } | null;
   isModeTransitioning: boolean;
+  isBatchTransitioning: boolean;
   isWaitingForSessionResolution: boolean;
   hasCompletedInitialFetch: boolean;
   refreshRecommendations: (refreshKey?: number | string) => void;
@@ -233,6 +234,7 @@ interface RecommendationsContextType {
   ) => void;
   batchSeed: number;
   generateNextBatch: () => void;
+  restorePreviousBatch: () => void;
 }
 
 const RecommendationsContext = createContext<
@@ -257,8 +259,13 @@ export const RecommendationsProvider: React.FC<
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const [hasCompletedFetchForCurrentMode, setHasCompletedFetchForCurrentMode] =
     useState(false);
+  // Track whether a batch transition is in-flight so we don't wipe recommendations mid-load
+  const [isBatchTransitioning, setIsBatchTransitioning] = useState(false);
+  // Store previous batch recommendations so "Review Previous Batch" can restore them
+  const previousBatchRef = useRef<Recommendation[]>([]);
   const currentMode = propCurrentMode;
   const refreshKey = propRefreshKey;
+  const previousRefreshKeyRef = useRef(propRefreshKey);
   const currentCacheKeyRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -343,8 +350,29 @@ export const RecommendationsProvider: React.FC<
   );
 
   const generateNextBatch = useCallback(() => {
+    // Save current recommendations so "Review Previous Batch" can restore them
+    previousBatchRef.current = recommendations;
+    setIsBatchTransitioning(true);
     setBatchSeed(prev => prev + 1);
+  }, [recommendations]);
+
+  // Restore the previous batch (used by "Review Previous Batch")
+  const restorePreviousBatch = useCallback(() => {
+    if (previousBatchRef.current.length > 0) {
+      setRecommendations(previousBatchRef.current);
+    }
   }, []);
+
+  // Reset batchSeed when preferences change (refreshKey changes)
+  useEffect(() => {
+    if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
+      setBatchSeed(0);
+      setIsBatchTransitioning(false);
+      // Invalidate curated-experiences so they refetch with fresh params
+      queryClient.invalidateQueries({ queryKey: ['curated-experiences'] });
+    }
+    previousRefreshKeyRef.current = refreshKey;
+  }, [refreshKey, queryClient]);
 
   const {
     data: recommendationsData,
@@ -485,9 +513,12 @@ export const RecommendationsProvider: React.FC<
     previousCuratedIdsRef.current = curatedIdsKey;
 
     if (regularCards.length > 0 || curatedRecommendations.length > 0) {
-      setRecommendations(
-        interleaveCards(regularCards, curatedRecommendations)
-      );
+      const merged = interleaveCards(regularCards, curatedRecommendations);
+      setRecommendations(merged);
+      // Clear batch-transitioning flag once we have new data
+      if (isBatchTransitioning) {
+        setIsBatchTransitioning(false);
+      }
 
       // Also cache in CardsCacheContext for card state management
       if (userLocation && userPrefs) {
@@ -551,8 +582,15 @@ export const RecommendationsProvider: React.FC<
         }
       }
     } else if (regularCards.length === 0) {
-      // Empty array - always sync to state to ensure consistency
-      // This is important during mode transitions to show the correct state
+      // Both regular and curated are empty.
+      // During a batch transition (Generate Another 20), KEEP the previous
+      // recommendations visible instead of flashing an empty state while the
+      // new curated cards are loading.
+      if (isBatchTransitioning) {
+        // Preserve existing recommendations — the new curated batch is still loading
+        return;
+      }
+      // Not transitioning — genuinely empty; sync to state
       if (recommendations.length !== 0) {
         setRecommendations([]);
       }
@@ -568,6 +606,7 @@ export const RecommendationsProvider: React.FC<
     generateCacheKey,
     getCachedCards,
     setCachedCards,
+    isBatchTransitioning,
   ]);
 
   // Handle mode transitions
@@ -670,8 +709,8 @@ export const RecommendationsProvider: React.FC<
         (hasRecommendationsInState &&
           !isInTransition &&
           !isLoadingRecommendations) ||
-        // Case 3: Query had an error AND finished AND we have a result (error is a valid completion)
-        (!!recommendationsError && queryFinished && hasQueryResult);
+        // Case 3: Query had an error AND finished (error is a valid completion even without data)
+        (!!recommendationsError && queryFinished);
 
       if (shouldMarkComplete) {
         // Mark fetch as completed
@@ -772,6 +811,7 @@ export const RecommendationsProvider: React.FC<
     error,
     userLocation,
     isModeTransitioning,
+    isBatchTransitioning,
     isWaitingForSessionResolution,
     hasCompletedInitialFetch,
     refreshRecommendations,
@@ -779,6 +819,7 @@ export const RecommendationsProvider: React.FC<
     updateCardStrollData,
     batchSeed,
     generateNextBatch,
+    restorePreviousBatch,
   };
 
   return (

@@ -1,15 +1,12 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { batchSearchPlaces } from '../_shared/placesCache.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Simple 5-minute cache
-const cache = new Map<string, { data: any; expires: number }>();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // Category slug to Google Places types mapping
 const categoryMapping: Record<string, string[]> = {
@@ -34,15 +31,6 @@ serve(async (req) => {
     if (!lat || !lng || !category_slug) {
       return new Response(JSON.stringify({ error: 'Missing required parameters' }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const cacheKey = `${lat},${lng},${radiusMeters},${category_slug},${openAtIso || 'anytime'}`;
-    const cached = cache.get(cacheKey);
-    
-    if (cached && cached.expires > Date.now()) {
-      return new Response(JSON.stringify(cached.data), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -76,11 +64,6 @@ serve(async (req) => {
         distance: Math.floor(Math.random() * radiusMeters) // Fake distance within radius
       }));
 
-      cache.set(cacheKey, {
-        data: nearbyExperiences,
-        expires: Date.now() + CACHE_DURATION
-      });
-
       return new Response(JSON.stringify(nearbyExperiences), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -88,79 +71,95 @@ serve(async (req) => {
 
     const placeTypes = categoryMapping[category_slug] || ['tourist_attraction'];
 
-    let allPlaces: any[] = [];
+    const { results: typeResults } = await batchSearchPlaces(
+      supabase,
+      apiKey,
+      placeTypes,
+      lat,
+      lng,
+      radiusMeters,
+      { maxResultsPerType: 10, ttlHours: 24 }
+    );
 
-    for (const placeType of placeTypes) {
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radiusMeters}&type=${placeType}&key=${apiKey}`;
-      
-      const response = await fetch(url);
-      if (!response.ok) {
-        console.error(`Places API error for ${placeType}:`, response.status);
-        continue;
-      }
-
-      const data = await response.json();
-      
-      if (data.results) {
-        const normalizedPlaces = data.results.slice(0, 10).map((place: any) => ({
-          id: crypto.randomUUID(),
-          title: place.name,
-          category_slug: category_slug,
-          place_id: place.place_id,
-          lat: place.geometry.location.lat,
-          lng: place.geometry.location.lng,
-          price_min: place.price_level ? place.price_level * 10 : 0,
-          price_max: place.price_level ? (place.price_level + 1) * 20 : 50,
-          duration_min: category_slug === 'stroll' ? 60 : category_slug === 'dining' ? 120 : 90,
-          image_url: place.photos?.[0] 
-            ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.photos[0].photo_reference}&key=${apiKey}`
-            : `https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400`,
-          opening_hours: place.opening_hours?.periods ? 
-            place.opening_hours.periods.reduce((acc: any, period: any) => {
-              const day = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][period.open.day];
-              acc[day] = `${period.open.time || '0000'}-${period.close?.time || '2359'}`;
-              return acc;
-            }, {}) : null,
-          meta: {
-            rating: place.rating || 4.0,
-            reviews: place.user_ratings_total || 0,
-            is_open: place.opening_hours?.open_now
-          }
-        }));
-
-        // Filter by opening hours if requested
-        const filteredPlaces = openAtIso ? 
-          normalizedPlaces.filter(place => {
-            if (!place.opening_hours) return place.meta.is_open !== false;
-            
-            const requestedTime = new Date(openAtIso);
-            const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][requestedTime.getDay()];
-            const hours = place.opening_hours[dayName];
-            
-            if (!hours || hours === 'closed') return false;
-            
-            const [openTime, closeTime] = hours.split('-');
-            const requestedHour = requestedTime.getHours() * 100 + requestedTime.getMinutes();
-            
-            return requestedHour >= parseInt(openTime) && requestedHour <= parseInt(closeTime);
-          }) : normalizedPlaces;
-
-        allPlaces.push(...filteredPlaces);
-
-        // Upsert to database
-        for (const place of filteredPlaces) {
-          await supabase
-            .from('experiences')
-            .upsert(place, { onConflict: 'place_id' });
-        }
-      }
+    // Merge all results from all types
+    const rawPlaces: any[] = [];
+    for (const places of Object.values(typeResults)) {
+      rawPlaces.push(...places);
     }
 
-    // Cache the result
-    cache.set(cacheKey, {
-      data: allPlaces,
-      expires: Date.now() + CACHE_DURATION
+    // Transform from new Places API format to our experience format
+    const normalizedPlaces = rawPlaces.slice(0, 20).map((place: any) => {
+      const primaryPhoto = place.photos?.[0];
+      const imageUrl = primaryPhoto?.name
+        ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=400&key=${apiKey}`
+        : `https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400`;
+
+      // Map priceLevel enum to numeric range
+      const priceLevelMap: Record<string, number> = {
+        'PRICE_LEVEL_FREE': 0,
+        'PRICE_LEVEL_INEXPENSIVE': 1,
+        'PRICE_LEVEL_MODERATE': 2,
+        'PRICE_LEVEL_EXPENSIVE': 3,
+        'PRICE_LEVEL_VERY_EXPENSIVE': 4,
+      };
+      const priceNum = priceLevelMap[place.priceLevel] ?? 0;
+
+      // Convert regularOpeningHours to our format
+      const openingHours = place.regularOpeningHours?.periods ?
+        place.regularOpeningHours.periods.reduce((acc: any, period: any) => {
+          const dayIndex = period.open?.day ?? 0;
+          const day = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayIndex];
+          const openH = String(period.open?.hour ?? 0).padStart(2, '0');
+          const openM = String(period.open?.minute ?? 0).padStart(2, '0');
+          const closeH = String(period.close?.hour ?? 23).padStart(2, '0');
+          const closeM = String(period.close?.minute ?? 59).padStart(2, '0');
+          acc[day] = `${openH}${openM}-${closeH}${closeM}`;
+          return acc;
+        }, {}) : null;
+
+      return {
+        id: crypto.randomUUID(),
+        title: place.displayName?.text || 'Unknown Place',
+        category_slug: category_slug,
+        place_id: place.id,
+        lat: place.location?.latitude,
+        lng: place.location?.longitude,
+        price_min: priceNum * 10,
+        price_max: (priceNum + 1) * 20,
+        duration_min: category_slug === 'stroll' ? 60 : category_slug === 'dining' ? 120 : 90,
+        image_url: imageUrl,
+        opening_hours: openingHours,
+        meta: {
+          rating: place.rating || 4.0,
+          reviews: place.userRatingCount || 0,
+          is_open: place.regularOpeningHours?.openNow
+        }
+      };
     });
+
+    // Filter by opening hours if requested
+    const allPlaces = openAtIso ?
+      normalizedPlaces.filter(place => {
+        if (!place.opening_hours) return place.meta.is_open !== false;
+
+        const requestedTime = new Date(openAtIso);
+        const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][requestedTime.getDay()];
+        const hours = place.opening_hours[dayName];
+
+        if (!hours || hours === 'closed') return false;
+
+        const [openTime, closeTime] = hours.split('-');
+        const requestedHour = requestedTime.getHours() * 100 + requestedTime.getMinutes();
+
+        return requestedHour >= parseInt(openTime) && requestedHour <= parseInt(closeTime);
+      }) : normalizedPlaces;
+
+    // Upsert to database
+    for (const place of allPlaces) {
+      await supabase
+        .from('experiences')
+        .upsert(place, { onConflict: 'place_id' });
+    }
 
     return new Response(JSON.stringify(allPlaces), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

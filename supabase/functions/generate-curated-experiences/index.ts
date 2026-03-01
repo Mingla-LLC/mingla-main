@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { searchPlacesWithCache } from '../_shared/placesCache.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -406,39 +407,34 @@ const PLACES_FIELD_MASK =
   'places.regularOpeningHours,places.websiteUri,places.photos';
 
 async function searchNearby(includedType: string, lat: number, lng: number, radiusMeters: number): Promise<any[]> {
-  const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-      'X-Goog-FieldMask': PLACES_FIELD_MASK,
-    },
-    body: JSON.stringify({
-      includedTypes: [includedType],
-      maxResultCount: 5,
-      locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: radiusMeters } },
-    }),
+  const { places } = await searchPlacesWithCache({
+    supabaseAdmin,
+    apiKey: GOOGLE_PLACES_API_KEY,
+    placeType: includedType,
+    lat,
+    lng,
+    radiusMeters,
+    maxResults: 5,
+    strategy: 'nearby',
+    ttlHours: 24,
   });
-  const data = await res.json();
-  return data.places ?? [];
+  return places;
 }
 
 async function searchByText(textQuery: string, lat: number, lng: number, radiusMeters: number): Promise<any[]> {
-  const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-      'X-Goog-FieldMask': PLACES_FIELD_MASK,
-    },
-    body: JSON.stringify({
-      textQuery,
-      maxResultCount: 5,
-      locationBias: { circle: { center: { latitude: lat, longitude: lng }, radius: radiusMeters } },
-    }),
+  const { places } = await searchPlacesWithCache({
+    supabaseAdmin,
+    apiKey: GOOGLE_PLACES_API_KEY,
+    placeType: textQuery.replace(/\s+/g, '_').toLowerCase(),
+    lat,
+    lng,
+    radiusMeters,
+    maxResults: 5,
+    strategy: 'text',
+    textQuery,
+    ttlHours: 24,
   });
-  const data = await res.json();
-  return data.places ?? [];
+  return places;
 }
 
 function scorePlace(place: any): number {

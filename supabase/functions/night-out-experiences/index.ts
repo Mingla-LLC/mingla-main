@@ -1,5 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { batchSearchPlaces } from '../_shared/placesCache.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,6 +11,9 @@ const corsHeaders = {
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseAdmin = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '');
 
 // Night-out venue types mapped to Google Places API (New) types
 // All use Nearby Search with strict locationRestriction for accurate local results
@@ -166,60 +171,29 @@ async function fetchVenuesForType(
   radius: number
 ): Promise<NightOutPlace[]> {
   try {
-    // Always use Nearby Search with strict locationRestriction
-    // This ensures results are strictly within the user's area
-    const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
+    const { results: typeResults } = await batchSearchPlaces(
+      supabaseAdmin,
+      GOOGLE_API_KEY!,
+      search.types,
+      location.lat,
+      location.lng,
+      radius,
+      { maxResultsPerType: 20, rankPreference: 'POPULARITY', ttlHours: 24 }
+    );
 
-    const fieldMask = [
-      "places.id",
-      "places.displayName",
-      "places.location",
-      "places.formattedAddress",
-      "places.priceLevel",
-      "places.rating",
-      "places.userRatingCount",
-      "places.photos",
-      "places.types",
-      "places.regularOpeningHours",
-    ].join(",");
-
-    const requestBody = {
-      includedTypes: search.types,
-      maxResultCount: 20,
-      locationRestriction: {
-        circle: {
-          center: { latitude: location.lat, longitude: location.lng },
-          radius: radius,
-        },
-      },
-      rankPreference: "POPULARITY",
-    };
-
-    const response = await fetch(baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY!,
-        "X-Goog-FieldMask": fieldMask,
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Google Places API error for ${search.label}:`, response.status, errorText);
-      return [];
+    // Merge all results
+    const allPlaces: any[] = [];
+    for (const places of Object.values(typeResults)) {
+      allPlaces.push(...places);
     }
 
-    const data = await response.json();
-
-    if (!data.places || data.places.length === 0) {
+    if (allPlaces.length === 0) {
       console.log(`No venues found for: ${search.label}`);
       return [];
     }
 
     // Sort by rating + review count score
-    const sorted = data.places.sort((a: any, b: any) => {
+    const sorted = allPlaces.sort((a: any, b: any) => {
       const aScore = (a.rating || 0) * Math.min(1, (a.userRatingCount || 0) / 50);
       const bScore = (b.rating || 0) * Math.min(1, (b.userRatingCount || 0) / 50);
       return bScore - aScore;

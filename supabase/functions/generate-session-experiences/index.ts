@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { batchSearchPlaces } from '../_shared/placesCache.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,9 @@ const corsHeaders = {
 // Environment variables
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseAdmin = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '');
 
 // Category to Google Places type mapping (same as generate-experiences)
 const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
@@ -633,22 +637,17 @@ async function fetchGooglePlaces(
       ? Math.min((preferences.travel_constraint_value || 5) * 1000, 50000)
       : 10000; // Default 10km
 
-  // Places API (New) base URL
-  const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
-
   // Collect all place types from all categories
   const allIncludedTypes: string[] = [];
   const allExcludedTypes = new Set<string>();
 
   for (const category of preferences.categories || []) {
-    // Convert category to lowercase for case-insensitive lookup
     const categoryKey = category.toLowerCase();
     const placeTypes = CATEGORY_MAPPINGS[categoryKey] ||
       CATEGORY_MAPPINGS[category] || ["tourist_attraction"];
 
     allIncludedTypes.push(...placeTypes);
 
-    // Collect excluded types for this category
     const excludedTypes = EXCLUDED_TYPES[categoryKey] || [];
     excludedTypes.forEach((type) => allExcludedTypes.add(type));
   }
@@ -667,67 +666,43 @@ async function fetchGooglePlaces(
   );
 
   try {
-    // Field mask for Places API (New) - specify which fields we need
-    const fieldMask =
-      "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours";
+    // Use batchSearchPlaces to search each type individually with caching
+    const { results: typeResults } = await batchSearchPlaces(
+      supabaseAdmin,
+      GOOGLE_API_KEY,
+      uniqueIncludedTypes.slice(0, 50),
+      location.lat,
+      location.lng,
+      radius,
+      {
+        maxResultsPerType: 20,
+        excludedTypes: filteredExcludedTypes.slice(0, 50),
+        ttlHours: 24,
+      }
+    );
 
-    const requestBody: any = {
-      includedTypes: uniqueIncludedTypes.slice(0, 50),
-      maxResultCount: 20,
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: location.lat,
-            longitude: location.lng,
-          },
-          radius: radius,
-        },
-      },
-    };
-
-    // Add excludedTypes if we have any (after filtering conflicts)
-    if (filteredExcludedTypes.length > 0) {
-      requestBody.excludedTypes = filteredExcludedTypes.slice(0, 50);
+    // Merge all results from all types
+    const allRawPlaces: any[] = [];
+    for (const places of Object.values(typeResults)) {
+      allRawPlaces.push(...places);
     }
 
-    const response = await fetch(baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": fieldMask,
-      },
-      body: JSON.stringify(requestBody),
-    });
+    // Deduplicate by place id
+    const seenIds = new Set<string>();
+    const dedupedPlaces: any[] = [];
+    for (const place of allRawPlaces) {
+      if (!seenIds.has(place.id)) {
+        seenIds.add(place.id);
+        dedupedPlaces.push(place);
+      }
+    }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(
-        `Google Places API error:`,
-        response.status,
-        response.statusText,
-        errorText
-      );
+    if (dedupedPlaces.length === 0) {
       return [];
     }
 
-    const data = await response.json();
-
-    if (data.error) {
-      console.error(
-        `Google Places API returned error:`,
-        data.error.message || data.error
-      );
-      return [];
-    }
-
-    if (!data.places?.length) {
-      return [];
-    }
-
-    // Map places to our format
-    const places = data.places.map((place: any) => {
-      // Extract photo references from new API format
+    // Map places to our format (same transformation as before)
+    const places = dedupedPlaces.map((place: any) => {
       const primaryPhoto = place.photos?.[0];
       const imageUrl = primaryPhoto?.name
         ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
@@ -747,7 +722,6 @@ async function fetchGooglePlaces(
       const placeTypeSet = new Set(place.types || []);
       let matchedCategory = preferences.categories?.[0] || "general";
 
-      // Try to match the place types to one of the user's selected categories
       for (const category of preferences.categories || []) {
         const categoryKey = category.toLowerCase();
         const categoryTypes =

@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { batchSearchPlaces } from '../_shared/placesCache.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,6 +9,8 @@ const corsHeaders = {
 };
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 // Experience categories available in Mingla (v2)
 const DISCOVER_CATEGORIES = [
@@ -301,6 +305,11 @@ serve(async (req) => {
     console.log("Pre-fetching experience pool from all categories...");
     const experiencePool: Map<string, ExperienceCard[]> = new Map();
     const poolPlaceIds = new Set<string>(); // Track ALL place IDs in the entire pool
+
+    // Create admin client for cache operations
+    const supabaseAdmin = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+      ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+      : null;
     
     for (const category of DISCOVER_CATEGORIES) {
       try {
@@ -309,7 +318,8 @@ serve(async (req) => {
           location,
           radius,
           15, // Fetch plenty per category
-          poolPlaceIds // Pass shared set to avoid duplicates across categories
+          poolPlaceIds, // Pass shared set to avoid duplicates across categories
+          supabaseAdmin
         );
         experiencePool.set(category, experiences);
         console.log(`Pool: ${experiences.length} experiences for ${category}`);
@@ -488,7 +498,8 @@ async function fetchExperiencesForCategory(
   location: { lat: number; lng: number },
   radius: number,
   maxResults: number,
-  sharedUsedPlaceIds: Set<string>
+  sharedUsedPlaceIds: Set<string>,
+  supabaseAdmin: any
 ): Promise<ExperienceCard[]> {
   const experiences: ExperienceCard[] = [];
   
@@ -499,61 +510,78 @@ async function fetchExperiencesForCategory(
   }
 
   try {
-    const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
-    
-    const fieldMask = [
-      "places.id",
-      "places.displayName",
-      "places.location",
-      "places.formattedAddress",
-      "places.priceLevel",
-      "places.rating",
-      "places.userRatingCount",
-      "places.photos",
-      "places.types",
-      "places.regularOpeningHours",
-    ].join(",");
+    let allRawPlaces: any[] = [];
 
-    const requestBody = {
-      includedTypes: placeTypes,
-      maxResultCount: 20, // Fetch more to account for duplicates
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: location.lat,
-            longitude: location.lng,
+    if (supabaseAdmin) {
+      // Use batch cache for all place types in this category
+      const { results: typeResults } = await batchSearchPlaces(
+        supabaseAdmin,
+        GOOGLE_API_KEY!,
+        placeTypes,
+        location.lat,
+        location.lng,
+        radius,
+        { maxResultsPerType: 10, rankPreference: 'POPULARITY', ttlHours: 24 }
+      );
+
+      // Merge all results from typeResults, deduplicating by place.id
+      const seenIds = new Set<string>();
+      for (const places of Object.values(typeResults)) {
+        for (const place of places) {
+          if (!seenIds.has(place.id)) {
+            seenIds.add(place.id);
+            allRawPlaces.push(place);
+          }
+        }
+      }
+    } else {
+      // Fallback: direct API call
+      const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
+      const fieldMask = [
+        "places.id","places.displayName","places.location","places.formattedAddress",
+        "places.priceLevel","places.rating","places.userRatingCount",
+        "places.photos","places.types","places.regularOpeningHours",
+      ].join(",");
+
+      const requestBody = {
+        includedTypes: placeTypes,
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: {
+            center: { latitude: location.lat, longitude: location.lng },
+            radius: radius,
           },
-          radius: radius,
         },
-      },
-      rankPreference: "POPULARITY",
-    };
+        rankPreference: "POPULARITY",
+      };
 
-    const response = await fetch(baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY!,
-        "X-Goog-FieldMask": fieldMask,
-      },
-      body: JSON.stringify(requestBody),
-    });
+      const response = await fetch(baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_API_KEY!,
+          "X-Goog-FieldMask": fieldMask,
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Google Places API error for ${category}:`, response.status, errorText);
-      return experiences;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Google Places API error for ${category}:`, response.status, errorText);
+        return experiences;
+      }
+
+      const data = await response.json();
+      allRawPlaces = data.places || [];
     }
 
-    const data = await response.json();
-
-    if (!data.places || data.places.length === 0) {
+    if (allRawPlaces.length === 0) {
       console.log(`No places found for category: ${category}`);
       return experiences;
     }
 
     // Filter out excluded types
-    const validPlaces = data.places.filter((place: any) => {
+    const validPlaces = allRawPlaces.filter((place: any) => {
       const placeTypeSet = new Set(place.types || []);
       return !Array.from(EXCLUDED_TYPES).some((excluded) => placeTypeSet.has(excluded));
     });
@@ -583,185 +611,6 @@ async function fetchExperiencesForCategory(
   }
 
   return experiences;
-}
-
-/**
- * Fetch up to maxResults experiences for the given categories
- */
-async function fetchExperiencesForCategories(
-  categories: string[],
-  location: { lat: number; lng: number },
-  radius: number,
-  maxResults: number = 8
-): Promise<ExperienceCard[]> {
-  const allExperiences: ExperienceCard[] = [];
-  const usedPlaceIds = new Set<string>();
-
-  // Fetch from each category, spreading the maxResults cards across categories
-  const cardsPerCategory = Math.max(2, Math.ceil(maxResults / categories.length));
-  
-  for (const category of categories) {
-    const placeTypes = CATEGORY_TO_PLACE_TYPES[category];
-    if (!placeTypes || placeTypes.length === 0) {
-      console.warn(`No place types defined for category: ${category}`);
-      continue;
-    }
-
-    try {
-      const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
-      
-      const fieldMask = [
-        "places.id",
-        "places.displayName",
-        "places.location",
-        "places.formattedAddress",
-        "places.priceLevel",
-        "places.rating",
-        "places.userRatingCount",
-        "places.photos",
-        "places.types",
-        "places.regularOpeningHours",
-      ].join(",");
-
-      const requestBody = {
-        includedTypes: placeTypes,
-        maxResultCount: 10,
-        locationRestriction: {
-          circle: {
-            center: {
-              latitude: location.lat,
-              longitude: location.lng,
-            },
-            radius: radius,
-          },
-        },
-        rankPreference: "POPULARITY",
-      };
-
-      const response = await fetch(baseUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": GOOGLE_API_KEY!,
-          "X-Goog-FieldMask": fieldMask,
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Google Places API error for ${category}:`, response.status, errorText);
-        continue;
-      }
-
-      const data = await response.json();
-
-      if (!data.places || data.places.length === 0) {
-        console.log(`No places found for category: ${category}`);
-        continue;
-      }
-
-      // Filter out excluded types
-      const validPlaces = data.places.filter((place: any) => {
-        const placeTypeSet = new Set(place.types || []);
-        return !Array.from(EXCLUDED_TYPES).some((excluded) => placeTypeSet.has(excluded));
-      });
-
-      // Sort by rating
-      const sortedPlaces = validPlaces.sort((a: any, b: any) => {
-        const aScore = (a.rating || 0) * Math.min(1, (a.userRatingCount || 0) / 100);
-        const bScore = (b.rating || 0) * Math.min(1, (b.userRatingCount || 0) / 100);
-        return bScore - aScore;
-      });
-
-      // Add unique places up to the limit for this category
-      let addedCount = 0;
-      for (const place of sortedPlaces) {
-        if (addedCount >= cardsPerCategory) break;
-        if (usedPlaceIds.has(place.id)) continue;
-
-        usedPlaceIds.add(place.id);
-        allExperiences.push(transformToExperienceCard(place, category));
-        addedCount++;
-      }
-
-      console.log(`Added ${addedCount} experiences from ${category}`);
-    } catch (error) {
-      console.error(`Error fetching places for category ${category}:`, error);
-    }
-
-    // Stop if we have enough
-    if (allExperiences.length >= maxResults) break;
-  }
-
-  // If we still need more, fill from remaining categories
-  if (allExperiences.length < maxResults) {
-    console.log(`Only ${allExperiences.length} experiences, trying to fetch more...`);
-    // Try to get more from any available category
-    for (const category of DISCOVER_CATEGORIES) {
-      if (allExperiences.length >= maxResults) break;
-      
-      const placeTypes = CATEGORY_TO_PLACE_TYPES[category];
-      if (!placeTypes) continue;
-
-      try {
-        const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
-        const fieldMask = [
-          "places.id",
-          "places.displayName",
-          "places.location",
-          "places.formattedAddress",
-          "places.priceLevel",
-          "places.rating",
-          "places.userRatingCount",
-          "places.photos",
-          "places.types",
-        ].join(",");
-
-        const requestBody = {
-          includedTypes: placeTypes,
-          maxResultCount: 5,
-          locationRestriction: {
-            circle: {
-              center: {
-                latitude: location.lat,
-                longitude: location.lng,
-              },
-              radius: radius,
-            },
-          },
-          rankPreference: "POPULARITY",
-        };
-
-        const response = await fetch(baseUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": GOOGLE_API_KEY!,
-            "X-Goog-FieldMask": fieldMask,
-          },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!response.ok) continue;
-
-        const data = await response.json();
-        if (!data.places) continue;
-
-        for (const place of data.places) {
-          if (allExperiences.length >= maxResults) break;
-          if (usedPlaceIds.has(place.id)) continue;
-
-          usedPlaceIds.add(place.id);
-          allExperiences.push(transformToExperienceCard(place, category));
-        }
-      } catch (_error) {
-        // Continue to next category
-      }
-    }
-  }
-
-  return allExperiences.slice(0, maxResults);
 }
 
 /**

@@ -853,6 +853,7 @@ export default function PreferencesSheet({
         }
 
         queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+        queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
         queryClient.invalidateQueries({ queryKey: ["userLocation"] });
 
         if (onSave) {
@@ -882,6 +883,7 @@ export default function PreferencesSheet({
         }
 
         queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+        queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
         queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
         queryClient.invalidateQueries({ queryKey: ["userLocation"] });
 
