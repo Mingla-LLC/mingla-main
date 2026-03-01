@@ -1,0 +1,575 @@
+CARD POOL DATA PIPELINE — IMPLEMENTATION GUIDE
+================================================
+
+This guide implements the FEATURE_CARD_POOL_PIPELINE_SPEC.md.
+Follow each step in order. Each step is independently testable.
+
+
+================================================================
+PHASE 1: DATABASE MIGRATION
+================================================================
+
+STEP 1 — Create the pool tables migration
+------------------------------------------
+
+File: supabase/migrations/YYYYMMDD_card_pool_pipeline.sql
+
+Copy the full SQL from the spec's "Database Changes" section. This creates:
+  • place_pool — shared Google Places data
+  • card_pool — pre-built enriched cards (single + curated)
+  • user_card_impressions — per-user "seen" tracking
+  • Indexes (geo, GIN on categories/types, popularity, refresh)
+  • RLS policies (service_role all, authenticated read)
+  • Triggers (updated_at auto-update)
+  • Cleanup functions (cleanup_stale_impressions, deactivate_stale_places)
+
+Run:
+  supabase db push
+or:
+  supabase migration up
+
+Verify:
+  SELECT count(*) FROM place_pool;        -- should return 0
+  SELECT count(*) FROM card_pool;          -- should return 0
+  SELECT count(*) FROM user_card_impressions;  -- should return 0
+
+Also verify that the update_updated_at_column() trigger function already exists
+(it's used in the existing schema). If not, create it:
+
+  CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+  RETURNS TRIGGER AS $$
+  BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+
+
+================================================================
+PHASE 2: SHARED CARD POOL SERVICE
+================================================================
+
+STEP 2 — Create _shared/cardPoolService.ts
+-------------------------------------------
+
+File: supabase/functions/_shared/cardPoolService.ts
+
+This is the heart of the pipeline. Import it from ALL edge functions.
+
+A. Define interfaces:
+
+  interface PoolQueryParams {
+    supabaseAdmin: SupabaseClient;
+    userId: string;
+    lat: number;
+    lng: number;
+    radiusMeters: number;
+    categories: string[];
+    budgetMin: number;
+    budgetMax: number;
+    limit: number;
+    cardType?: 'single' | 'curated';
+    experienceType?: string;
+    excludeCardIds?: string[];
+  }
+
+  interface PoolQueryResult {
+    cards: any[];
+    fromPool: number;
+    fromApi: number;
+    totalPoolSize: number;
+  }
+
+B. Implement queryPoolCards():
+   - Get user's preferences.updated_at
+   - Calculate lat/lng bounding box from radiusMeters:
+       latDelta = radiusMeters / 111320
+       lngDelta = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180))
+   - Build SQL query:
+       SELECT cp.* FROM card_pool cp
+       WHERE cp.is_active = true
+         AND cp.card_type = $cardType
+         AND cp.categories && $categories::text[]
+         AND cp.lat BETWEEN ($lat - $latDelta) AND ($lat + $latDelta)
+         AND cp.lng BETWEEN ($lng - $lngDelta) AND ($lng + $lngDelta)
+         AND cp.price_max <= $budgetMax
+         AND cp.price_min >= $budgetMin
+         AND cp.id NOT IN (
+           SELECT card_pool_id FROM user_card_impressions
+           WHERE user_id = $userId
+             AND created_at >= $prefUpdatedAt
+         )
+       ORDER BY cp.popularity_score DESC
+       LIMIT $limit
+   - Use supabaseAdmin.rpc() or .from('card_pool').select() with filters
+
+C. Implement upsertPlaceToPool():
+   - Takes a Google Places API result object
+   - Maps fields to place_pool columns
+   - UPSERT via ON CONFLICT (google_place_id):
+       INSERT INTO place_pool (google_place_id, name, address, lat, lng, types, ...)
+       VALUES (...)
+       ON CONFLICT (google_place_id) DO UPDATE SET
+         name = EXCLUDED.name,
+         rating = EXCLUDED.rating,
+         ...
+         last_detail_refresh = now()
+       RETURNING id
+   - Return the place_pool UUID
+
+D. Implement insertCardToPool():
+   - Takes: place_pool_id, card display data (title, description, highlights, etc.)
+   - INSERT INTO card_pool (place_pool_id, google_place_id, card_type, title, ...)
+   - For single cards: set card_type = 'single', category, lat/lng, etc.
+   - For curated cards: set card_type = 'curated', stops JSONB, stop_place_pool_ids[], etc.
+   - Calculate popularity_score = rating * Math.log10((review_count || 0) + 1)
+   - Return card_pool UUID
+
+E. Implement recordImpressions():
+   - Takes: userId, cardPoolIds[], batchNumber
+   - Single batch INSERT with unnest:
+       INSERT INTO user_card_impressions (user_id, card_pool_id, batch_number)
+       SELECT $userId, unnest($cardPoolIds::uuid[]), $batchNumber
+       ON CONFLICT (user_id, card_pool_id) DO NOTHING
+
+F. Implement updateServedCounts():
+   - UPDATE card_pool SET served_count = served_count + 1, last_served_at = now()
+     WHERE id = ANY($cardPoolIds)
+
+G. Implement the main serveCardsFromPipeline():
+   1. Call queryPoolCards() → get pool hits
+   2. If pool hits >= limit → recordImpressions() → return
+   3. Gap analysis:
+      - Count cards per category in pool hits
+      - Identify categories that need more cards
+      - Calculate how many cards needed per category
+   4. For each gap category:
+      a. Map Mingla category → Google Place types (reuse existing mappings from edge functions)
+      b. Check if place_pool has places of those types in the bounding box
+         that aren't yet in card_pool → if so, build cards from them
+      c. If still not enough → call Google Places API Nearby Search
+      d. Upsert new places → build cards → insert to card_pool
+   5. Combine pool hits + fresh cards → limit to requested count
+   6. recordImpressions() for all served cards
+   7. Return { cards, fromPool, fromApi, totalPoolSize }
+
+IMPORTANT: The Google API call logic (searchNearby) should be extracted from the
+existing edge functions. The format is already in new-generate-experience-/index.ts
+in the fetchGooglePlaces() function (around line 2296). Refactor it into a
+reusable function in this shared module.
+
+
+STEP 3 — Category-to-PlaceType mapping
+---------------------------------------
+
+File: supabase/functions/_shared/categoryPlaceTypes.ts
+
+Extract the category → Google place type mappings from each edge function into
+a shared constant. Currently these mappings are duplicated across:
+  • new-generate-experience-/index.ts (CATEGORY_SETTINGS ~line 90)
+  • discover-experiences/index.ts (DISCOVER_CATEGORIES ~line 21)
+  • generate-curated-experiences/index.ts (PLACE_CATEGORIES ~line 30)
+  • holiday-experiences/index.ts
+  • night-out-experiences/index.ts
+
+Create a unified mapping:
+
+  export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
+    'Nature': ['park', 'national_park', 'hiking_area', 'botanical_garden'],
+    'Casual Eats': ['restaurant', 'cafe', 'bakery', 'fast_food_restaurant'],
+    'Fine Dining': ['restaurant'],
+    'Drink': ['bar', 'night_club', 'wine_bar', 'pub'],
+    'Creative & Arts': ['art_gallery', 'museum', 'performing_arts_theater'],
+    'Play': ['bowling_alley', 'amusement_park', 'movie_theater', 'gym'],
+    'Wellness': ['spa', 'beauty_salon', 'yoga_studio'],
+    'Watch': ['stadium', 'movie_theater', 'performing_arts_theater'],
+    'First Meet': ['cafe', 'tea_house', 'ice_cream_shop', 'dessert_shop'],
+    'Picnic': ['park', 'picnic_ground', 'garden'],
+    // ... extend from all existing edge function mappings
+  };
+
+
+================================================================
+PHASE 3: MIGRATE EDGE FUNCTIONS (ONE AT A TIME)
+================================================================
+
+STEP 4 — Migrate new-generate-experience-
+------------------------------------------
+
+File: supabase/functions/new-generate-experience-/index.ts
+
+This is the highest-impact function (generates the most API calls).
+
+A. Import the shared service:
+     import { serveCardsFromPipeline } from '../_shared/cardPoolService.ts';
+     import { MINGLA_CATEGORY_PLACE_TYPES } from '../_shared/categoryPlaceTypes.ts';
+
+B. In the main handler, BEFORE the existing fetchGooglePlaces() call:
+
+     // ── Pool-first pipeline ──
+     const poolResult = await serveCardsFromPipeline({
+       supabaseAdmin: supabaseClient,
+       userId: userId,
+       lat: location.lat,
+       lng: location.lng,
+       radiusMeters: radiusMeters,
+       categories: categories,
+       budgetMin: budgetRange.min,
+       budgetMax: budgetRange.max,
+       limit: 20,
+       cardType: 'single',
+     }, GOOGLE_API_KEY, MINGLA_CATEGORY_PLACE_TYPES, {
+       enrichWithAI: true,
+       openaiApiKey: OPENAI_API_KEY,
+       travelMode: travelMode,
+       travelConstraintType: travelConstraintType,
+       travelConstraintValue: travelConstraintValue,
+     });
+
+     if (poolResult.cards.length >= 15) {
+       return new Response(JSON.stringify({
+         success: true,
+         cards: poolResult.cards,
+         meta: {
+           fromPool: poolResult.fromPool,
+           fromApi: poolResult.fromApi,
+           poolSize: poolResult.totalPoolSize,
+         },
+       }));
+     }
+
+     // ── Fallback: original logic for remaining gap ──
+     // (existing fetchGooglePlaces code stays as fallback)
+
+C. After the existing Google Places fetch + enrichment:
+   - Upsert all fetched places to place_pool
+   - Build and insert cards to card_pool
+   - Record impressions for all served cards
+   - This ensures the NEXT request for this area hits the pool
+
+D. Existing function behavior is PRESERVED as fallback. No breaking changes.
+
+TESTING:
+  1. Call with a location that has no pool data → should fetch from Google + store
+  2. Call again same location → should serve from pool (check meta.fromPool > 0)
+  3. Call from different user, same location → should serve from pool
+
+
+STEP 5 — Migrate discover-experiences
+--------------------------------------
+
+File: supabase/functions/discover-experiences/index.ts
+
+A. Add the same import + pool-first pipeline.
+
+B. For discover, the query is slightly different:
+   - 10 categories, 1 card each + 1 featured card
+   - Query pool with limit = 2 per category (1 regular + 1 featured candidate)
+   - Use existing discover_daily_cache as a second layer:
+     Pool → daily cache → Google API (triple fallback)
+
+C. Store any Google-fetched results in the pool for future requests.
+
+D. The per-user discover_daily_cache can still be used for the card _selection_
+   (which of the 10 cards to feature) while the underlying places come from pool.
+
+
+STEP 6 — Migrate generate-curated-experiences
+----------------------------------------------
+
+File: supabase/functions/generate-curated-experiences/index.ts
+
+A. For curated cards (3-stop plans):
+
+   First, check card_pool for pre-built curated cards:
+     SELECT * FROM card_pool
+     WHERE card_type = 'curated'
+       AND experience_type = $experienceType
+       AND within bounding box
+       AND id NOT IN (user impressions)
+     LIMIT 2
+
+   If found → serve directly (zero API calls, zero AI calls).
+
+   If not found → check place_pool for the needed place types:
+     SELECT * FROM place_pool
+     WHERE types && $neededTypes
+       AND within bounding box
+       AND is_active = true
+
+   If enough places → build curated pairings server-side → AI describe → store → serve.
+
+   If not enough places → call Google API for missing types → store → build → serve.
+
+B. This function already has curated_places_cache — that becomes redundant once
+   place_pool is in use. Keep it as a fallback during migration, remove later.
+
+
+STEP 7 — Migrate holiday-experiences
+-------------------------------------
+
+File: supabase/functions/holiday-experiences/index.ts
+
+Same pattern: import shared service → pool-first → fallback to Google → store.
+This function has backfill logic that makes extra API calls — those become
+unnecessary once the pool is populated.
+
+
+STEP 8 — Migrate night-out-experiences
+---------------------------------------
+
+File: supabase/functions/night-out-experiences/index.ts
+
+Same pattern. Currently has zero caching — pool-first is the biggest win here.
+
+
+STEP 9 — Migrate generate-session-experiences
+----------------------------------------------
+
+File: supabase/functions/generate-session-experiences/index.ts
+
+Mirrors new-generate-experience- so apply the same changes.
+
+
+================================================================
+PHASE 4: DAILY REFRESH JOB
+================================================================
+
+STEP 10 — Create refresh-place-pool edge function
+--------------------------------------------------
+
+File: supabase/functions/refresh-place-pool/index.ts
+
+A. Query for stale places:
+     SELECT id, google_place_id FROM place_pool
+     WHERE is_active = true
+       AND last_detail_refresh < now() - interval '24 hours'
+     ORDER BY last_detail_refresh ASC
+     LIMIT 500
+
+B. For each place, call Place Details by ID:
+     const url = `https://places.googleapis.com/v1/places/${googlePlaceId}`;
+     const headers = {
+       'X-Goog-Api-Key': GOOGLE_API_KEY,
+       'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,types,primaryType,regularOpeningHours,rating,userRatingCount,priceLevel,photos',
+     };
+
+   Basic fields (id, displayName, formattedAddress, location, types, regularOpeningHours)
+   are FREE ($0.00). Essential fields (rating, userRatingCount, priceLevel, photos) cost
+   $0.005 per call. Include them for full refresh — at 500 places/day = $2.50/day.
+
+C. Process each response:
+   - OK → UPDATE place_pool + UPDATE card_pool (refresh rating, hours, photos)
+   - NOT_FOUND → SET is_active = false on place + cards
+   - Error → INCREMENT refresh_failures
+
+D. After batch: run deactivate_stale_places() and cleanup_stale_impressions().
+
+E. Add batching with delays (50ms between calls) to respect rate limits.
+
+F. Return summary: { refreshed: N, deactivated: N, errors: N }
+
+
+STEP 11 — Schedule the daily refresh
+-------------------------------------
+
+Option A: pg_cron (if available on your Supabase plan):
+  SELECT cron.schedule(
+    'refresh-place-pool',
+    '0 4 * * *',
+    $$
+    SELECT net.http_post(
+      url := 'https://YOUR_PROJECT.supabase.co/functions/v1/refresh-place-pool',
+      headers := jsonb_build_object(
+        'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY',
+        'Content-Type', 'application/json'
+      ),
+      body := '{}'
+    );
+    $$
+  );
+
+Option B: External cron (GitHub Actions, Vercel Cron, cron-job.org):
+  Schedule a POST to /functions/v1/refresh-place-pool with service role auth.
+
+Option C: Manual invocation during early rollout:
+  curl -X POST https://YOUR_PROJECT.supabase.co/functions/v1/refresh-place-pool \
+    -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY"
+
+
+================================================================
+PHASE 5: MOBILE-SIDE ADJUSTMENTS
+================================================================
+
+STEP 12 — Ensure user_id is passed to all edge functions
+---------------------------------------------------------
+
+File: app-mobile/src/services/experienceGenerationService.ts
+
+Verify that all edge function calls include the user's ID:
+  • generateExperiences() — already passes userId ✓
+  • discoverExperiences() — verify userId is in the request body
+  • generateCuratedExperiences() — verify userId is in the request body
+
+If any are missing, add: userId: session.user.id to the request body.
+
+
+STEP 13 — Add pool metrics to debug panel (optional)
+-----------------------------------------------------
+
+File: app-mobile/src/debug/ (or wherever debug UI lives)
+
+When the edge function returns meta.fromPool and meta.fromApi, display them
+in the debug overlay so you can see the pool hit rate in real-time.
+
+In experienceGenerationService.ts, pass through the meta object:
+  return {
+    cards: response.cards,
+    poolStats: response.meta,  // { fromPool, fromApi, poolSize }
+  };
+
+In the debug panel, show:
+  Pool: 18/20 | API: 2/20 | Pool size: 342
+
+
+================================================================
+PHASE 6: MONITORING + OPTIMIZATION
+================================================================
+
+STEP 14 — Pool health monitoring queries
+-----------------------------------------
+
+Run these periodically to monitor pool growth and efficiency:
+
+-- Total pool size by region (rounded to 1 decimal lat/lng)
+SELECT
+  round(lat::numeric, 1) as region_lat,
+  round(lng::numeric, 1) as region_lng,
+  count(*) as places,
+  count(*) FILTER (WHERE is_active) as active
+FROM place_pool
+GROUP BY 1, 2
+ORDER BY places DESC;
+
+-- Card pool coverage
+SELECT
+  category,
+  card_type,
+  count(*) as total,
+  count(*) FILTER (WHERE is_active) as active,
+  avg(popularity_score) as avg_pop
+FROM card_pool
+GROUP BY category, card_type
+ORDER BY total DESC;
+
+-- Pool hit rate (from edge function logs)
+SELECT
+  date_trunc('hour', created_at) as hour,
+  count(*) as total_impressions,
+  count(DISTINCT user_id) as unique_users
+FROM user_card_impressions
+GROUP BY 1
+ORDER BY 1 DESC
+LIMIT 24;
+
+-- Refresh health
+SELECT
+  count(*) FILTER (WHERE last_detail_refresh >= now() - interval '24 hours') as fresh,
+  count(*) FILTER (WHERE last_detail_refresh < now() - interval '24 hours') as stale,
+  count(*) FILTER (WHERE NOT is_active) as deactivated,
+  avg(refresh_failures) as avg_failures
+FROM place_pool;
+
+
+STEP 15 — Performance optimization
+-----------------------------------
+
+If pool queries are slow (>100ms), consider:
+
+A. Add a PostGIS geography column for precise radius queries:
+     ALTER TABLE place_pool ADD COLUMN geog GEOGRAPHY(POINT, 4326);
+     UPDATE place_pool SET geog = ST_MakePoint(lng, lat)::geography;
+     CREATE INDEX idx_place_pool_geog ON place_pool USING GIST (geog);
+   Then use ST_DWithin(geog, ST_MakePoint($lng, $lat)::geography, $radius)
+
+B. Partition card_pool by broad region (continent or country) if it grows very large.
+
+C. Add a materialized view for popular category+region combos:
+     CREATE MATERIALIZED VIEW card_pool_hot AS
+     SELECT * FROM card_pool
+     WHERE served_count > 10 AND is_active = true;
+
+D. Set up VACUUM and ANALYZE schedules for the pool tables.
+
+
+STEP 16 — Impression cleanup automation
+----------------------------------------
+
+Add to the daily refresh job (or as a separate schedule):
+
+  -- Delete impressions older than 30 days
+  DELETE FROM user_card_impressions
+  WHERE created_at < now() - interval '30 days';
+
+  -- Delete impressions for users whose preferences changed
+  -- (these are already functionally "stale" but cleaning them saves space)
+  DELETE FROM user_card_impressions uci
+  USING preferences p
+  WHERE uci.user_id = p.profile_id
+    AND uci.created_at < p.updated_at;
+
+This keeps the impressions table lean.
+
+
+STEP 17 — Pool seeding (optional, for launch)
+----------------------------------------------
+
+To pre-fill the pool for popular areas before users hit it:
+
+Create a one-time script that:
+  1. Defines a list of target cities: NYC, LA, London, etc.
+  2. For each city, for each Mingla category:
+     a. Call Google Nearby Search with the city center + 5km radius
+     b. Upsert all results into place_pool
+     c. Build and insert card_pool entries
+  3. This pre-fills the pool so first users get instant results.
+
+Cost: ~20 cities × 10 categories × 3 types = 600 API calls = ~$19.
+One-time cost for dramatically better first-user experience.
+
+
+================================================================
+SUMMARY: EXPECTED COST IMPACT
+================================================================
+
+Current state (estimated from 9,473 requests):
+  • ~9,500 Nearby/Text Search calls × $0.032 = ~$304/month
+
+After pipeline (conservative estimate):
+  • First week: 70% reduction → ~2,850 calls = ~$91/month
+  • After 1 month: 90% reduction → ~950 calls = ~$30/month
+  • Daily refresh: 5,000 places × $0.005 = $25/day = $750/month (essential fields)
+    OR: 5,000 places × $0.00 = $0/month (basic fields only)
+
+RECOMMENDATION: Start with basic-only refresh (FREE), add essential fields
+later if you need updated ratings/photos. Basic fields include:
+  id, displayName, formattedAddress, location, types, regularOpeningHours
+
+This gives you opening hours freshness (the most time-sensitive data) at $0.
+
+TOTAL ESTIMATED SAVINGS: $200-270/month in Google Places API costs,
+PLUS significantly faster response times for pool-served cards.
+
+
+================================================================
+ROLLOUT ORDER
+================================================================
+
+Phase 1 (Day 1):    Steps 1        — DB migration
+Phase 2 (Day 2-3):  Steps 2-3      — Shared service + category mapping
+Phase 3 (Day 3-5):  Steps 4 then 5-9 — Migrate edge functions one by one
+                     Start with Step 4 (new-generate-experience-) as it's highest impact
+                     Test thoroughly before moving to next function
+Phase 4 (Day 5-6):  Steps 10-11    — Daily refresh job
+Phase 5 (Day 6):    Steps 12-13    — Mobile adjustments + debug panel
+Phase 6 (Day 7+):   Steps 14-17    — Monitoring, optimization, seeding

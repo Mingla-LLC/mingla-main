@@ -356,10 +356,23 @@ export const RecommendationsProvider: React.FC<
     setBatchSeed(prev => prev + 1);
   }, [recommendations]);
 
+  // Safety timeout: if isBatchTransitioning stays true for >15 s, clear it
+  // so the user isn't stuck on a spinner if the background query hangs.
+  useEffect(() => {
+    if (!isBatchTransitioning) return;
+    const timeout = setTimeout(() => {
+      console.warn('[RecommendationsContext] Batch transition safety timeout — clearing spinner');
+      setIsBatchTransitioning(false);
+    }, 15_000);
+    return () => clearTimeout(timeout);
+  }, [isBatchTransitioning]);
+
   // Restore the previous batch (used by "Review Previous Batch")
   const restorePreviousBatch = useCallback(() => {
     if (previousBatchRef.current.length > 0) {
       setRecommendations(previousBatchRef.current);
+      // Ensure the spinner is cleared when restoring
+      setIsBatchTransitioning(false);
     }
   }, []);
 
@@ -420,7 +433,7 @@ export const RecommendationsProvider: React.FC<
   // In solo mode: hooks fire based on user's selected experience types
   // In collaboration mode: ALL hooks fire; the edge function returns empty []
   // for experience types not selected by any participant (fast, no API cost)
-  const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo } = useCuratedExperiences({
+  const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo, isFullBatchLoaded: isSoloBatchLoaded } = useCuratedExperiences({
     experienceType: 'solo-adventure',
     ...baseParams,
     sessionId: curatedSessionId ?? undefined,
@@ -428,7 +441,7 @@ export const RecommendationsProvider: React.FC<
       ? (experienceTypes.length === 0 || experienceTypes.includes('solo-adventure'))
       : isCollaborationMode,
   });
-  const { cards: curatedDateCards, isLoading: isLoadingCuratedDate } = useCuratedExperiences({
+  const { cards: curatedDateCards, isLoading: isLoadingCuratedDate, isFullBatchLoaded: isDateBatchLoaded } = useCuratedExperiences({
     experienceType: 'first-dates',
     ...baseParams,
     sessionId: curatedSessionId ?? undefined,
@@ -436,7 +449,7 @@ export const RecommendationsProvider: React.FC<
       ? experienceTypes.includes('first-dates')
       : isCollaborationMode,
   });
-  const { cards: curatedRomCards, isLoading: isLoadingCuratedRom } = useCuratedExperiences({
+  const { cards: curatedRomCards, isLoading: isLoadingCuratedRom, isFullBatchLoaded: isRomBatchLoaded } = useCuratedExperiences({
     experienceType: 'romantic',
     ...baseParams,
     sessionId: curatedSessionId ?? undefined,
@@ -444,7 +457,7 @@ export const RecommendationsProvider: React.FC<
       ? experienceTypes.includes('romantic')
       : isCollaborationMode,
   });
-  const { cards: curatedFriendCards, isLoading: isLoadingCuratedFriend } = useCuratedExperiences({
+  const { cards: curatedFriendCards, isLoading: isLoadingCuratedFriend, isFullBatchLoaded: isFriendBatchLoaded } = useCuratedExperiences({
     experienceType: 'friendly',
     ...baseParams,
     sessionId: curatedSessionId ?? undefined,
@@ -452,7 +465,7 @@ export const RecommendationsProvider: React.FC<
       ? experienceTypes.includes('friendly')
       : isCollaborationMode,
   });
-  const { cards: curatedGroupCards, isLoading: isLoadingCuratedGroup } = useCuratedExperiences({
+  const { cards: curatedGroupCards, isLoading: isLoadingCuratedGroup, isFullBatchLoaded: isGroupBatchLoaded } = useCuratedExperiences({
     experienceType: 'group-fun',
     ...baseParams,
     sessionId: curatedSessionId ?? undefined,
@@ -460,6 +473,12 @@ export const RecommendationsProvider: React.FC<
       ? experienceTypes.includes('group-fun')
       : isCollaborationMode,
   });
+
+  // True when ALL enabled curated hooks have finished loading both priority
+  // and background batches (success or error). Used to gate isBatchTransitioning.
+  const allCuratedBatchesLoaded =
+    isSoloBatchLoaded && isDateBatchLoaded && isRomBatchLoaded &&
+    isFriendBatchLoaded && isGroupBatchLoaded;
 
   const allCuratedCards = [
     ...curatedSoloCards,
@@ -515,8 +534,12 @@ export const RecommendationsProvider: React.FC<
     if (regularCards.length > 0 || curatedRecommendations.length > 0) {
       const merged = interleaveCards(regularCards, curatedRecommendations);
       setRecommendations(merged);
-      // Clear batch-transitioning flag once we have new data
-      if (isBatchTransitioning) {
+      // Clear batch-transitioning flag only once the FULL curated batch
+      // (priority + background) has settled. Previously this cleared as
+      // soon as priority data arrived, which dropped the spinner while
+      // background was still in-flight. If background then errored, the
+      // card count regressed from ~20 to PRIORITY_LIMIT (2).
+      if (isBatchTransitioning && allCuratedBatchesLoaded) {
         setIsBatchTransitioning(false);
       }
 
@@ -607,6 +630,7 @@ export const RecommendationsProvider: React.FC<
     getCachedCards,
     setCachedCards,
     isBatchTransitioning,
+    allCuratedBatchesLoaded,
   ]);
 
   // Handle mode transitions

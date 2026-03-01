@@ -21,8 +21,7 @@ CREATE TABLE IF NOT EXISTS public.google_places_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_places_cache_lookup 
-  ON public.google_places_cache (place_type, location_key, radius_bucket, search_strategy)
-  WHERE expires_at > now();
+  ON public.google_places_cache (place_type, location_key, radius_bucket, search_strategy);
 
 CREATE INDEX IF NOT EXISTS idx_places_cache_expiry 
   ON public.google_places_cache (expires_at);

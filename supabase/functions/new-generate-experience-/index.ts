@@ -2,6 +2,8 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2170,6 +2172,55 @@ serve(async (req) => {
       );
     }
 
+    // ── Pool-first pipeline ─────────────────────────────────────────
+    const userId = request.user_id || 'anonymous';
+    const supabaseAdmin = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+      ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+      : null;
+
+    if (supabaseAdmin && userId !== 'anonymous') {
+      try {
+        const radiusMeters = preferences.travel_constraint_type === 'distance'
+          ? Math.min((preferences.travel_constraint_value || 5) * 1000, 50000)
+          : 10000;
+
+        const poolResult = await serveCardsFromPipeline({
+          supabaseAdmin,
+          userId,
+          lat: location.lat,
+          lng: location.lng,
+          radiusMeters,
+          categories: resolveCategories(preferences.categories || []),
+          budgetMin: preferences.budget_min || 0,
+          budgetMax: preferences.budget_max || 1000,
+          limit: 20,
+          cardType: 'single',
+        }, GOOGLE_API_KEY!);
+
+        if (poolResult.cards.length >= 15) {
+          console.log(`[pool-first] Served ${poolResult.cards.length} cards from pool (${poolResult.fromPool} pool, ${poolResult.fromApi} API)`);
+          return new Response(
+            JSON.stringify({
+              cards: poolResult.cards,
+              meta: {
+                totalResults: poolResult.cards.length,
+                fromPool: poolResult.fromPool,
+                fromApi: poolResult.fromApi,
+                poolSize: poolResult.totalPoolSize,
+              },
+            }),
+            {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+        console.log(`[pool-first] Pool had only ${poolResult.cards.length} cards, falling back to full pipeline`);
+      } catch (poolError) {
+        console.warn('[pool-first] Pool query failed, falling back:', poolError);
+      }
+    }
+    // ── End pool-first pipeline (fallback continues below) ──────────
+
     // Fetch places from Google Places API
     let places: any[] = [];
     try {
@@ -2261,6 +2312,59 @@ serve(async (req) => {
 
     // Convert to card format
     const cards = enriched.map((place) => convertToCard(place, preferences));
+
+    // ── Store fresh cards in pool for future reuse ──────────────────
+    if (supabaseAdmin && cards.length > 0) {
+      // Fire-and-forget: don't block the response
+      (async () => {
+        try {
+          const cardPoolIds: string[] = [];
+          for (const card of cards) {
+            if (!card.placeId) continue;
+            const placePoolId = await upsertPlaceToPool(supabaseAdmin, {
+              id: card.placeId,
+              displayName: { text: card.title },
+              formattedAddress: card.address,
+              location: { latitude: card.lat, longitude: card.lng },
+              rating: card.rating,
+              userRatingCount: card.reviewCount,
+              priceLevel: null,
+              types: [],
+              photos: [],
+            }, GOOGLE_API_KEY!);
+
+            const cardId = await insertCardToPool(supabaseAdmin, {
+              placePoolId: placePoolId || undefined,
+              googlePlaceId: card.placeId,
+              cardType: 'single',
+              title: card.title,
+              category: card.category,
+              categories: [card.category],
+              description: card.description,
+              highlights: card.highlights,
+              imageUrl: card.image,
+              images: card.images,
+              address: card.address,
+              lat: card.lat,
+              lng: card.lng,
+              rating: card.rating,
+              reviewCount: card.reviewCount,
+              priceMin: 0,
+              priceMax: 0,
+              openingHours: card.openingHours,
+            });
+            if (cardId) cardPoolIds.push(cardId);
+          }
+          if (userId !== 'anonymous' && cardPoolIds.length > 0) {
+            await recordImpressions(supabaseAdmin, userId, cardPoolIds);
+          }
+          console.log(`[pool-store] Stored ${cardPoolIds.length} cards in pool`);
+        } catch (storeError) {
+          console.warn('[pool-store] Error storing cards:', storeError);
+        }
+      })();
+    }
+    // ── End store fresh cards ───────────────────────────────────────
 
     return new Response(
       JSON.stringify({

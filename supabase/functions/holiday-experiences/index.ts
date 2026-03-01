@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -299,7 +301,155 @@ serve(async (req) => {
     const globalUsedPlaceIds = new Set<string>();
     const MIN_EXPERIENCES_PER_HOLIDAY = 2;
     const MAX_EXPERIENCES_PER_HOLIDAY = 3;
-    
+
+    // ── Pool-first pipeline: try to serve from card_pool before hitting Google ──
+    const allHolidayCategories = [...new Set(upcomingHolidays.flatMap(h => h.definition.categories))];
+    const poolAdminClient = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+      ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+      : null;
+
+    if (poolAdminClient && GOOGLE_API_KEY && allHolidayCategories.length > 0) {
+      try {
+        const totalNeeded = upcomingHolidays.length * MAX_EXPERIENCES_PER_HOLIDAY;
+        const poolResult = await serveCardsFromPipeline(
+          {
+            supabaseAdmin: poolAdminClient,
+            userId: 'anonymous',
+            lat: location.lat,
+            lng: location.lng,
+            radiusMeters: radius,
+            categories: allHolidayCategories,
+            budgetMin: 0,
+            budgetMax: 500,
+            limit: totalNeeded + 20, // extra buffer
+            cardType: 'single',
+          },
+          GOOGLE_API_KEY,
+        );
+
+        // Check if pool has enough cards per holiday (>= 10 per holiday in the pool)
+        const poolCardsPerHoliday = upcomingHolidays.length > 0
+          ? Math.floor(poolResult.totalPoolSize / upcomingHolidays.length)
+          : 0;
+
+        if (poolCardsPerHoliday >= 10 && poolResult.cards.length >= totalNeeded) {
+          console.log(`[pool-first] Serving holiday experiences from pool (${poolResult.fromPool} pool, ${poolResult.fromApi} API, ${poolCardsPerHoliday} per holiday)`);
+
+          // Distribute pool cards across holidays
+          let poolCardIndex = 0;
+          const poolHolidaysWithExperiences: HolidayWithExperiences[] = [];
+
+          for (const holiday of upcomingHolidays) {
+            const experiences: ExperienceCard[] = [];
+            for (let i = 0; i < MAX_EXPERIENCES_PER_HOLIDAY && poolCardIndex < poolResult.cards.length; i++) {
+              const poolCard = poolResult.cards[poolCardIndex++];
+              experiences.push({
+                id: poolCard.placeId || poolCard.id,
+                name: poolCard.title,
+                category: poolCard.category,
+                location: { lat: poolCard.lat, lng: poolCard.lng },
+                address: poolCard.address || '',
+                rating: poolCard.rating || 0,
+                reviewCount: poolCard.reviewCount || 0,
+                imageUrl: poolCard.image || null,
+                images: poolCard.images || [],
+                placeId: poolCard.placeId || poolCard.id,
+                priceLevel: 0,
+                openingHours: poolCard.openingHours || null,
+              });
+            }
+
+            poolHolidaysWithExperiences.push({
+              id: `holiday-${holiday.definition.date}-${holiday.definition.name.replace(/\s+/g, "-").toLowerCase()}`,
+              name: holiday.definition.name,
+              description: holiday.definition.description,
+              date: holiday.date.toISOString(),
+              daysAway: holiday.daysAway,
+              primaryCategory: holiday.definition.categories[0],
+              categories: holiday.definition.categories,
+              gender: holiday.definition.gender,
+              experiences,
+            });
+          }
+
+          // Also handle custom holidays from pool
+          let poolCustomHolidays: HolidayWithExperiences[] = [];
+          if (customHolidays && customHolidays.length > 0) {
+            for (const customHoliday of customHolidays) {
+              const experiences: ExperienceCard[] = [];
+              for (let i = 0; i < MAX_EXPERIENCES_PER_HOLIDAY && poolCardIndex < poolResult.cards.length; i++) {
+                const poolCard = poolResult.cards[poolCardIndex++];
+                experiences.push({
+                  id: poolCard.placeId || poolCard.id,
+                  name: poolCard.title,
+                  category: poolCard.category,
+                  location: { lat: poolCard.lat, lng: poolCard.lng },
+                  address: poolCard.address || '',
+                  rating: poolCard.rating || 0,
+                  reviewCount: poolCard.reviewCount || 0,
+                  imageUrl: poolCard.image || null,
+                  images: poolCard.images || [],
+                  placeId: poolCard.placeId || poolCard.id,
+                  priceLevel: 0,
+                  openingHours: poolCard.openingHours || null,
+                });
+              }
+
+              const today2 = new Date();
+              today2.setHours(0, 0, 0, 0);
+              let customDate: Date;
+              if (/^\d{2}-\d{2}$/.test(customHoliday.date)) {
+                const [month, day] = customHoliday.date.split("-").map(Number);
+                customDate = new Date(today2.getFullYear(), month - 1, day);
+                if (customDate < today2) customDate.setFullYear(customDate.getFullYear() + 1);
+              } else {
+                const legacyDate = new Date(customHoliday.date);
+                customDate = new Date(today2.getFullYear(), legacyDate.getMonth(), legacyDate.getDate());
+                if (customDate < today2) customDate.setFullYear(customDate.getFullYear() + 1);
+              }
+              customDate.setHours(0, 0, 0, 0);
+              const daysAway = Math.ceil((customDate.getTime() - today2.getTime()) / (1000 * 60 * 60 * 24));
+
+              poolCustomHolidays.push({
+                id: customHoliday.id,
+                name: customHoliday.name,
+                description: customHoliday.description,
+                date: customDate.toISOString(),
+                daysAway,
+                primaryCategory: customHoliday.category,
+                categories: [customHoliday.category],
+                gender: null,
+                experiences,
+                isCustom: true,
+              });
+            }
+          }
+
+          return new Response(
+            JSON.stringify({
+              holidays: poolHolidaysWithExperiences,
+              customHolidays: poolCustomHolidays,
+              meta: {
+                totalHolidays: poolHolidaysWithExperiences.length,
+                totalCustomHolidays: poolCustomHolidays.length,
+                daysAhead: days,
+                gender,
+                poolFirst: true,
+                fromPool: poolResult.fromPool,
+                fromApi: poolResult.fromApi,
+              },
+            }),
+            {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+        console.log(`[pool-first] Pool has ${poolCardsPerHoliday} cards/holiday (need >= 10). Falling back to Google API.`);
+      } catch (poolError) {
+        console.warn("[pool-first] Pool query failed, falling back to Google API:", poolError);
+      }
+    }
+
     // Pre-fetch a large pool of experiences from ALL categories
     // Use a shared set to prevent the same place appearing in multiple category pools
     console.log("Pre-fetching experience pool from all categories...");
@@ -458,6 +608,62 @@ serve(async (req) => {
       }
       
       console.log(`Processed ${customHolidaysWithExperiences.length} custom holidays with experiences`);
+    }
+
+    // ── Pool storage: store generated experience cards in card_pool (fire-and-forget) ──
+    const storageAdmin = supabaseAdmin || poolAdminClient;
+    if (storageAdmin && GOOGLE_API_KEY) {
+      const allExperiences = [
+        ...holidaysWithExperiences.flatMap(h => h.experiences),
+        ...customHolidaysWithExperiences.flatMap(h => h.experiences),
+      ];
+      (async () => {
+        try {
+          for (const exp of allExperiences) {
+            const placePoolId = await upsertPlaceToPool(
+              storageAdmin,
+              {
+                id: exp.placeId,
+                placeId: exp.placeId,
+                displayName: { text: exp.name },
+                name: exp.name,
+                formattedAddress: exp.address,
+                location: { latitude: exp.location.lat, longitude: exp.location.lng },
+                rating: exp.rating,
+                userRatingCount: exp.reviewCount,
+                types: [],
+                photos: [],
+                priceLevel: exp.priceLevel,
+                regularOpeningHours: exp.openingHours,
+              },
+              GOOGLE_API_KEY!,
+              'holiday_experiences'
+            );
+
+            await insertCardToPool(storageAdmin, {
+              placePoolId: placePoolId || undefined,
+              googlePlaceId: exp.placeId,
+              cardType: 'single',
+              title: exp.name,
+              category: exp.category,
+              categories: [exp.category],
+              imageUrl: exp.imageUrl,
+              images: exp.images,
+              address: exp.address,
+              lat: exp.location.lat,
+              lng: exp.location.lng,
+              rating: exp.rating,
+              reviewCount: exp.reviewCount,
+              priceMin: 0,
+              priceMax: 0,
+              openingHours: exp.openingHours,
+            });
+          }
+          console.log(`[pool-storage] Stored ${allExperiences.length} holiday experience cards in pool`);
+        } catch (e) {
+          console.warn('[pool-storage] Error storing holiday experience cards:', e);
+        }
+      })();
     }
 
     return new Response(

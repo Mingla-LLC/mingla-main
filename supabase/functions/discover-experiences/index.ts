@@ -2,6 +2,8 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -329,6 +331,54 @@ serve(async (req) => {
 
     console.log(`Fetching discover experiences for location: ${location.lat}, ${location.lng} | categories: ${categoriesToFetch.join(", ")}`);
 
+    // ── Pool-first pipeline: try to serve from card_pool before hitting Google ──
+    if (adminClient && userId) {
+      try {
+        const poolResult = await serveCardsFromPipeline(
+          {
+            supabaseAdmin: adminClient,
+            userId,
+            lat: location.lat,
+            lng: location.lng,
+            radiusMeters: radius,
+            categories: categoriesToFetch,
+            budgetMin: 0,
+            budgetMax: 500,
+            limit: 11, // 10 category cards + 1 featured
+            cardType: 'single',
+          },
+          GOOGLE_API_KEY!,
+        );
+
+        if (poolResult.fromPool >= 8) {
+          console.log(`[pool-first] Serving ${poolResult.cards.length} discover cards from pool (${poolResult.fromPool} pool, ${poolResult.fromApi} API)`);
+          const poolCards = poolResult.cards.slice(0, 10);
+          const poolFeaturedCard = poolResult.cards.length > 10 ? poolResult.cards[10] : null;
+          return new Response(
+            JSON.stringify({
+              cards: poolCards,
+              featuredCard: poolFeaturedCard,
+              meta: {
+                totalResults: poolCards.length,
+                categories: categoriesToFetch,
+                successfulCategories: categoriesToFetch,
+                failedCategories: [],
+                poolFirst: true,
+                fromPool: poolResult.fromPool,
+                fromApi: poolResult.fromApi,
+              },
+            }),
+            {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+        console.log(`[pool-first] Pool has ${poolResult.fromPool} cards, need >= 8. Falling back to Google API.`);
+      } catch (poolError) {
+        console.warn("[pool-first] Pool query failed, falling back to Google API:", poolError);
+      }
+    }
+
     // Fetch candidate places for filtered categories in parallel
     // Create an admin client for cache operations if we don't have one yet
     if (!adminClient && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
@@ -498,6 +548,68 @@ serve(async (req) => {
       } else {
         console.log(`Persisted discover daily cache for user ${userId} (${usDateKey})`);
       }
+    }
+
+    // ── Pool storage: store generated cards in card_pool (fire-and-forget) ──
+    if (adminClient) {
+      const allCardsToStore = featuredCard ? [...cards, featuredCard] : cards;
+      const poolCardIds: string[] = [];
+      (async () => {
+        try {
+          for (const card of allCardsToStore) {
+            const placePoolId = await upsertPlaceToPool(
+              adminClient,
+              {
+                id: card.placeId,
+                placeId: card.placeId,
+                displayName: { text: card.title },
+                name: card.title,
+                formattedAddress: card.address,
+                location: { latitude: card.lat, longitude: card.lng },
+                rating: card.rating,
+                userRatingCount: card.reviewCount,
+                types: [],
+                photos: [],
+                priceLevel: 0,
+                regularOpeningHours: card.openingHours,
+              },
+              GOOGLE_API_KEY!,
+              'discover_experiences'
+            );
+
+            const cardPoolId = await insertCardToPool(adminClient, {
+              placePoolId: placePoolId || undefined,
+              googlePlaceId: card.placeId,
+              cardType: 'single',
+              title: card.title,
+              category: card.category,
+              categories: [card.category],
+              description: card.description,
+              highlights: card.highlights,
+              imageUrl: card.image,
+              images: card.images,
+              address: card.address,
+              lat: card.lat,
+              lng: card.lng,
+              rating: card.rating,
+              reviewCount: card.reviewCount,
+              priceMin: 0,
+              priceMax: 0,
+              openingHours: card.openingHours,
+            });
+
+            if (cardPoolId) poolCardIds.push(cardPoolId);
+          }
+
+          if (userId && poolCardIds.length > 0) {
+            await recordImpressions(adminClient, userId, poolCardIds);
+          }
+
+          console.log(`[pool-storage] Stored ${poolCardIds.length} discover cards in pool`);
+        } catch (e) {
+          console.warn('[pool-storage] Error storing discover cards:', e);
+        }
+      })();
     }
 
     console.log(`Returning ${cards.length} grid cards + featured card: "${featuredCard?.title}"`);

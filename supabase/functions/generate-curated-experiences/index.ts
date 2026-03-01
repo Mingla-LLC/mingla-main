@@ -1,6 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { searchPlacesWithCache } from '../_shared/placesCache.ts';
+import { serveCuratedCardsFromPool, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -939,6 +941,67 @@ serve(async (req) => {
       : travelConstraintValue * 1000;
     const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
+    // ── Pool-first pipeline for curated cards ───────────────────────
+    const poolSupabaseUrl = Deno.env.get('SUPABASE_URL');
+    const poolServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const poolAdmin = (poolSupabaseUrl && poolServiceRoleKey)
+      ? createClient(poolSupabaseUrl, poolServiceRoleKey)
+      : null;
+
+    // Extract userId from auth if available
+    const authHeader = req.headers.get('Authorization');
+    let poolUserId = 'anonymous';
+    if (poolAdmin && authHeader) {
+      try {
+        const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+        const authClient = createClient(poolSupabaseUrl!, anonKey);
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user } } = await authClient.auth.getUser(token);
+        if (user?.id) poolUserId = user.id;
+      } catch {}
+    }
+
+    if (poolAdmin && poolUserId !== 'anonymous') {
+      try {
+        const poolResult = await serveCuratedCardsFromPool({
+          supabaseAdmin: poolAdmin,
+          userId: poolUserId,
+          lat: location.lat,
+          lng: location.lng,
+          radiusMeters: clampedRadius,
+          categories: resolveCategories([]),
+          budgetMin: budgetMin || 0,
+          budgetMax: budgetMax || 1000,
+          limit: limit || 20,
+          cardType: 'curated',
+          experienceType: experienceType,
+        }, GOOGLE_PLACES_API_KEY!);
+
+        if (poolResult.cards.length >= Math.max(limit - 5, 2)) {
+          console.log(`[pool-first-curated] Served ${poolResult.cards.length} curated cards from pool`);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              cards: poolResult.cards,
+              meta: {
+                totalResults: poolResult.cards.length,
+                fromPool: poolResult.fromPool,
+                fromApi: poolResult.fromApi,
+                poolSize: poolResult.totalPoolSize,
+              },
+            }),
+            {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            }
+          );
+        }
+        console.log(`[pool-first-curated] Pool had only ${poolResult.cards.length} curated cards, falling back`);
+      } catch (poolError) {
+        console.warn('[pool-first-curated] Pool query failed, falling back:', poolError);
+      }
+    }
+    // ── End pool-first pipeline ─────────────────────────────────────
+
     // NEW: Category-based generation for solo adventures with GLOBAL DEDUPLICATION
     if (experienceType === 'solo-adventure') {
       console.log('[solo-adventure] Fetching 20 places from each of 9 categories...');
@@ -1028,12 +1091,74 @@ serve(async (req) => {
       }
       
       console.log(`[solo-adventure] Generated ${cards.length} unique cards out of ${shuffledCombos.length} attempted combinations`);
+
+      // ── Store curated cards in pool for future reuse ────────────────
+      if (poolAdmin && cards.length > 0) {
+        (async () => {
+          try {
+            const poolIds: string[] = [];
+            for (const card of cards) {
+              const stopPlacePoolIds: string[] = [];
+              const stopGooglePlaceIds: string[] = [];
+              for (const stop of card.stops || []) {
+                if (stop.placeId) {
+                  const ppId = await upsertPlaceToPool(poolAdmin, {
+                    id: stop.placeId,
+                    displayName: { text: stop.placeName || '' },
+                    formattedAddress: stop.address || '',
+                    location: { latitude: stop.lat || 0, longitude: stop.lng || 0 },
+                    rating: stop.rating || 0,
+                    userRatingCount: stop.reviewCount || 0,
+                    types: [],
+                    photos: [],
+                  }, GOOGLE_PLACES_API_KEY!);
+                  if (ppId) stopPlacePoolIds.push(ppId);
+                  stopGooglePlaceIds.push(stop.placeId);
+                }
+              }
+
+              const cardId = await insertCardToPool(poolAdmin, {
+                cardType: 'curated',
+                title: card.title || `${experienceType} Experience`,
+                category: card.stops?.[0]?.placeType || 'Nature',
+                categories: (card.stops || []).map((s: any) => s.placeType).filter(Boolean),
+                description: card.tagline || '',
+                highlights: [],
+                imageUrl: card.stops?.[0]?.imageUrl || null,
+                images: (card.stops || []).map((s: any) => s.imageUrl).filter(Boolean),
+                address: card.stops?.[0]?.address || '',
+                lat: card.stops?.[0]?.lat || location.lat,
+                lng: card.stops?.[0]?.lng || location.lng,
+                rating: card.matchScore || 85,
+                reviewCount: 0,
+                stopPlacePoolIds,
+                stopGooglePlaceIds,
+                experienceType,
+                stops: card.stops,
+                tagline: card.tagline || '',
+                totalPriceMin: card.totalPriceMin || 0,
+                totalPriceMax: card.totalPriceMax || 0,
+                estimatedDurationMinutes: card.estimatedDurationMinutes || 0,
+              });
+              if (cardId) poolIds.push(cardId);
+            }
+            if (poolUserId !== 'anonymous' && poolIds.length > 0) {
+              await recordImpressions(poolAdmin, poolUserId, poolIds);
+            }
+            console.log(`[pool-store-curated] Stored ${poolIds.length} curated cards in pool`);
+          } catch (storeError) {
+            console.warn('[pool-store-curated] Error storing curated cards:', storeError);
+          }
+        })();
+      }
+      // ── End store curated cards ─────────────────────────────────────
+
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           cards,
           pairingsAttempted: shuffledCombos.length,
           pairingsResolved: cards.length,
-          uniquePlacesUsed: usedPlaceIds.size 
+          uniquePlacesUsed: usedPlaceIds.size
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -1044,6 +1169,68 @@ serve(async (req) => {
     const pairings = shuffle(pairingSet).slice(0, Math.min(limit, 50));
     const results = await Promise.allSettled(pairings.map(pairing => resolvePairing(pairing as [string, string, string], location.lat, location.lng, clampedRadius, travelMode, budgetMax, experienceType)));
     const cards = results.filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value !== null).map(r => r.value);
+
+    // ── Store curated cards in pool for future reuse ────────────────
+    if (poolAdmin && cards.length > 0) {
+      (async () => {
+        try {
+          const poolIds: string[] = [];
+          for (const card of cards) {
+            const stopPlacePoolIds: string[] = [];
+            const stopGooglePlaceIds: string[] = [];
+            for (const stop of card.stops || []) {
+              if (stop.placeId) {
+                const ppId = await upsertPlaceToPool(poolAdmin, {
+                  id: stop.placeId,
+                  displayName: { text: stop.placeName || '' },
+                  formattedAddress: stop.address || '',
+                  location: { latitude: stop.lat || 0, longitude: stop.lng || 0 },
+                  rating: stop.rating || 0,
+                  userRatingCount: stop.reviewCount || 0,
+                  types: [],
+                  photos: [],
+                }, GOOGLE_PLACES_API_KEY!);
+                if (ppId) stopPlacePoolIds.push(ppId);
+                stopGooglePlaceIds.push(stop.placeId);
+              }
+            }
+
+            const cardId = await insertCardToPool(poolAdmin, {
+              cardType: 'curated',
+              title: card.title || `${experienceType} Experience`,
+              category: card.stops?.[0]?.placeType || 'Nature',
+              categories: (card.stops || []).map((s: any) => s.placeType).filter(Boolean),
+              description: card.tagline || '',
+              highlights: [],
+              imageUrl: card.stops?.[0]?.imageUrl || null,
+              images: (card.stops || []).map((s: any) => s.imageUrl).filter(Boolean),
+              address: card.stops?.[0]?.address || '',
+              lat: card.stops?.[0]?.lat || location.lat,
+              lng: card.stops?.[0]?.lng || location.lng,
+              rating: card.matchScore || 85,
+              reviewCount: 0,
+              stopPlacePoolIds,
+              stopGooglePlaceIds,
+              experienceType,
+              stops: card.stops,
+              tagline: card.tagline || '',
+              totalPriceMin: card.totalPriceMin || 0,
+              totalPriceMax: card.totalPriceMax || 0,
+              estimatedDurationMinutes: card.estimatedDurationMinutes || 0,
+            });
+            if (cardId) poolIds.push(cardId);
+          }
+          if (poolUserId !== 'anonymous' && poolIds.length > 0) {
+            await recordImpressions(poolAdmin, poolUserId, poolIds);
+          }
+          console.log(`[pool-store-curated] Stored ${poolIds.length} curated cards in pool`);
+        } catch (storeError) {
+          console.warn('[pool-store-curated] Error storing curated cards:', storeError);
+        }
+      })();
+    }
+    // ── End store curated cards ─────────────────────────────────────
+
     return new Response(JSON.stringify({ cards, pairingsAttempted: pairings.length, pairingsResolved: cards.length }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('generate-curated-experiences error:', err);
