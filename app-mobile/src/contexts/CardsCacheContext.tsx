@@ -8,45 +8,7 @@ import React, {
   useMemo,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-export interface Recommendation {
-  id: string;
-  title: string;
-  category: string;
-  categoryIcon: string;
-  lat?: number;
-  lng?: number;
-  timeAway: string;
-  description: string;
-  budget: string;
-  rating: number;
-  image: string;
-  images: string[];
-  priceRange: string;
-  distance: string;
-  travelTime: string;
-  experienceType: string;
-  highlights: string[];
-  fullDescription: string;
-  address: string;
-  openingHours: string;
-  tags: string[];
-  matchScore: number;
-  reviewCount: number;
-  socialStats: {
-    views: number;
-    likes: number;
-    saves: number;
-    shares: number;
-  };
-  matchFactors: {
-    location: number;
-    budget: number;
-    category: number;
-    time: number;
-    popularity: number;
-  };
-}
+import { Recommendation } from "../types/recommendation";
 
 interface CardsCacheEntry {
   cards: Recommendation[];

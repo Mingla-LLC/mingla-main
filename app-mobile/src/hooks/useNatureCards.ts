@@ -8,6 +8,8 @@ interface UseNatureCardsParams {
   travelConstraintType: 'time' | 'distance';
   travelConstraintValue: number;
   datetimePref?: string;
+  dateOption?: string;
+  timeSlot?: string | null;
   batchSeed?: number;
   enabled: boolean;
 }
@@ -37,6 +39,8 @@ export function useNatureCards(params: UseNatureCardsParams): {
       params.travelConstraintValue,
       params.datetimePref,
       params.batchSeed ?? 0,
+      params.dateOption ?? 'now',
+      params.timeSlot ?? '',
     ],
     queryFn: () =>
       natureCardsService.discoverNature({

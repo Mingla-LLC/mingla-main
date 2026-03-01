@@ -10,6 +10,8 @@ import { toastManager } from "../components/ui/Toast";
 import { supabase } from "../services/supabase";
 import { offlineService } from "../services/offlineService";
 import { inAppNotificationService } from "../services/inAppNotificationService";
+import { useAppStore } from "../store/appStore";
+import { computePrefsHash } from "../utils/cardConverters";
 
 export function useAppHandlers(state: any) {
   const queryClient = useQueryClient();
@@ -711,9 +713,17 @@ export function useAppHandlers(state: any) {
             console.error("Error updating offline cache:", cacheError);
           }
 
+          // Invalidate unified deck + collaboration fallback + location
+          queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
           queryClient.invalidateQueries({ queryKey: ["recommendations"] });
-          queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
           queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+
+          // Reset nature card history if preferences changed
+          const newHashStr = computePrefsHash(dbPreferences);
+          const { naturePrefsHash, resetNatureHistory } = useAppStore.getState();
+          if (newHashStr !== naturePrefsHash) {
+            resetNatureHistory(newHashStr);
+          }
 
           // Trigger refresh of experiences by updating refresh key
           if (setPreferencesRefreshKey) {

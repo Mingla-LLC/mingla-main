@@ -337,15 +337,18 @@ export default function ActionButtons({
   };
 
   const handleSave = async () => {
+    // For Nature cards, redirect to the scheduling flow instead of just saving
+    if (card.category === "Nature") {
+      handleSchedule();
+      return;
+    }
+
     if (isSaving) return; // Prevent multiple saves
 
     setIsSaving(true);
     try {
-      // onSave will handle saving, moving to next card, and closing modal
       await onSave(card);
     } catch (error: any) {
-      // Error saving - show alert but don't close modal
-      // (onSave already handles 23505 "already saved" case and closes modal)
       Alert.alert("Error", "Failed to save the card. Please try again.");
     } finally {
       setIsSaving(false);
@@ -785,7 +788,13 @@ export default function ActionButtons({
               <ActivityIndicator size="small" color="#eb7825" />
             ) : (
               <Ionicons
-                name={isSaved ? "bookmark" : "bookmark-outline"}
+                name={
+                  isSaved
+                    ? "bookmark"
+                    : card.category === "Nature"
+                      ? "calendar-outline"
+                      : "bookmark-outline"
+                }
                 size={18}
                 color={isSaved ? "#eb7825" : "#6b7280"}
               />

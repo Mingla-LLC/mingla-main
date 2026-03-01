@@ -5,13 +5,11 @@ import React, {
   useEffect,
   useRef,
   useCallback,
-  useMemo,
 } from "react";
 import {
   ExperiencesService,
   UserPreferences,
 } from "../services/experiencesService";
-import { ExperienceGenerationService } from "../services/experienceGenerationService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -20,245 +18,16 @@ import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useRecommendationsQuery } from "../hooks/useRecommendationsQuery";
 import { useCuratedExperiences } from "../hooks/useCuratedExperiences";
-import { curatedExperiencesService } from "../services/curatedExperiencesService";
-import { useNatureCards } from "../hooks/useNatureCards";
-import type { NatureCard } from "../services/natureCardsService";
+import { useDeckCards } from "../hooks/useDeckCards";
+import { deckService } from "../services/deckService";
+import { computePrefsHash, isNatureMode } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAppStore } from "../store/appStore";
+import type { NatureCardBatch } from "../store/appStore";
+import { Recommendation } from "../types/recommendation";
 
-export interface Recommendation {
-  id: string;
-  title: string;
-  category: string;
-  categoryIcon: string;
-  lat?: number;
-  lng?: number;
-  timeAway: string;
-  description: string;
-  budget: string;
-  rating: number;
-  image: string;
-  images: string[];
-  priceRange: string;
-  distance: string;
-  travelTime: string;
-  experienceType: string;
-  highlights: string[];
-  fullDescription: string;
-  address: string;
-  openingHours:
-    | string
-    | {
-        open_now?: boolean;
-        weekday_text?: string[];
-      }
-    | null;
-  tags: string[];
-  matchScore: number;
-  reviewCount: number;
-  website?: string | null;
-  phone?: string | null;
-  placeId?: string;
-  socialStats: {
-    views: number;
-    likes: number;
-    saves: number;
-    shares: number;
-  };
-  matchFactors: {
-    location: number;
-    budget: number;
-    category: number;
-    time: number;
-    popularity: number;
-  };
-  strollData?: {
-    anchor: {
-      id: string;
-      name: string;
-      location: { lat: number; lng: number };
-      address: string;
-    };
-    companionStops: Array<{
-      id: string;
-      name: string;
-      location: { lat: number; lng: number };
-      address: string;
-      rating?: number;
-      reviewCount?: number;
-      imageUrl?: string | null;
-      placeId: string;
-      type: string;
-    }>;
-    route: {
-      duration: number;
-      startLocation: { lat: number; lng: number };
-      endLocation: { lat: number; lng: number };
-    };
-    timeline: Array<{
-      step: number;
-      type: string;
-      title: string;
-      location: any;
-      description: string;
-      duration: number;
-    }>;
-  };
-}
-
-function shuffleArray<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-/** Converts a CuratedExperienceCard into a Recommendation so SwipeableCards can render it */
-function curatedToRecommendation(card: any): Recommendation {
-  const stops = card.stops ?? [];
-  const firstStop = stops[0];
-  const avgRating =
-    stops.length > 0
-      ? stops.reduce((s: number, st: any) => s + (st.rating ?? 0), 0) / stops.length
-      : 0;
-  const firstImage = firstStop?.imageUrl || '';
-  const allImages = stops.map((s: any) => s.imageUrl).filter(Boolean);
-
-  return {
-    // Preserve curated card identity so ExpandedCardModal can detect it
-    cardType: 'curated' as const,
-    // Preserve original curated fields for CuratedPlanView and TimelineSection
-    stops: card.stops,
-    totalPriceMin: card.totalPriceMin,
-    totalPriceMax: card.totalPriceMax,
-    estimatedDurationMinutes: card.estimatedDurationMinutes,
-    pairingKey: card.pairingKey,
-    tagline: card.tagline,
-    categoryLabel: card.categoryLabel,
-    id: card.id,
-    title: card.title,
-    category: card.categoryLabel || 'Adventurous',
-    categoryIcon: card.categoryLabel?.toLowerCase() === 'nature' ? 'leaf' : 'compass',
-    lat: firstStop?.lat,
-    lng: firstStop?.lng,
-    timeAway: `${card.estimatedDurationMinutes ?? 0} min`,
-    description: card.tagline ?? '',
-    budget: `$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
-    rating: avgRating,
-    image: firstImage,
-    images: allImages.length > 0 ? allImages : [firstImage || ''],
-    priceRange: `$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
-    distance: firstStop ? `${firstStop.distanceFromUserKm ?? 0} km` : '0 km',
-    travelTime: firstStop ? `${firstStop.travelTimeFromUserMin ?? 0} min` : '0 min',
-    experienceType: card.experienceType ?? 'solo-adventure',
-    highlights: stops.map((s: any) => s.placeName),
-    fullDescription: card.tagline ?? '',
-    address: firstStop?.address ?? '',
-    openingHours: null,
-    tags: stops.map((s: any) => s.placeType),
-    matchScore: card.matchScore ?? 50,
-    reviewCount: stops.reduce((s: number, st: any) => s + (st.reviewCount ?? 0), 0),
-    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
-    matchFactors: { location: 0.5, budget: 0.5, category: 0.5, time: 0.5, popularity: 0.5 },
-    // Preserve curated data for expanded view
-    strollData: {
-      anchor: {
-        id: firstStop?.placeId ?? '',
-        name: firstStop?.placeName ?? '',
-        location: { lat: firstStop?.lat ?? 0, lng: firstStop?.lng ?? 0 },
-        address: firstStop?.address ?? '',
-      },
-      companionStops: stops.slice(1).map((s: any) => ({
-        id: s.placeId ?? '',
-        name: s.placeName ?? '',
-        location: { lat: s.lat ?? 0, lng: s.lng ?? 0 },
-        address: s.address ?? '',
-        rating: s.rating,
-        reviewCount: s.reviewCount,
-        imageUrl: s.imageUrl,
-        placeId: s.placeId ?? '',
-        type: s.placeType ?? '',
-      })),
-      route: {
-        duration: card.estimatedDurationMinutes ?? 0,
-        startLocation: { lat: firstStop?.lat ?? 0, lng: firstStop?.lng ?? 0 },
-        endLocation: {
-          lat: stops[stops.length - 1]?.lat ?? 0,
-          lng: stops[stops.length - 1]?.lng ?? 0,
-        },
-      },
-      timeline: stops.map((s: any, i: number) => ({
-        step: i + 1,
-        type: s.placeType ?? '',
-        title: s.placeName ?? '',
-        location: { lat: s.lat ?? 0, lng: s.lng ?? 0 },
-        description: `${s.stopLabel}: ${s.placeName}`,
-        duration: 60,
-      })),
-    },
-  } as Recommendation;
-}
-
-/** Converts a NatureCard from the discover-nature edge function into a Recommendation */
-function natureToRecommendation(card: NatureCard): Recommendation {
-  const priceText =
-    card.priceMin === 0 && card.priceMax === 0
-      ? 'Free'
-      : `$${card.priceMin}–$${card.priceMax}`;
-
-  return {
-    id: card.id,
-    title: card.title,
-    category: 'Nature',
-    categoryIcon: 'leaf',
-    lat: card.lat,
-    lng: card.lng,
-    timeAway: `${card.travelTimeMin} min`,
-    description: card.description,
-    budget: priceText,
-    rating: card.rating,
-    image: card.image,
-    images: card.images.length > 0 ? card.images : [card.image].filter(Boolean),
-    priceRange: priceText,
-    distance: `${card.distanceKm} km`,
-    travelTime: `${card.travelTimeMin} min`,
-    experienceType: 'nature',
-    highlights: [card.placeTypeLabel],
-    fullDescription: card.description,
-    address: card.address,
-    openingHours: card.isOpenNow != null
-      ? { open_now: card.isOpenNow }
-      : null,
-    tags: [card.placeType, card.placeTypeLabel],
-    matchScore: card.matchScore,
-    reviewCount: card.reviewCount,
-    website: card.website,
-    placeId: card.placeId,
-    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
-    matchFactors: {
-      location: 0.5,
-      budget: 0.5,
-      category: 1.0,
-      time: 0.5,
-      popularity: card.rating > 4 ? 0.8 : 0.5,
-    },
-  };
-}
-
-/** Priority: nature cards → curated cards → regular cards.
- *  When nature is selected, show nature cards exclusively.
- *  When curated cards exist, show ONLY curated — no legacy regular cards.
- *  If none available, fall back to regular cards.  */
-function interleaveCards(
-  regular: Recommendation[],
-  curated: Recommendation[],
-  nature: Recommendation[] = []
-): Recommendation[] {
-  if (nature.length > 0) return nature;
-  if (curated.length > 0) return curated;
-  return regular;
-}
+// Re-export so all existing consumer imports keep working
+export type { Recommendation };
 
 const getDefaultPreferences = (): UserPreferences => ({
   mode: "explore",
@@ -281,6 +50,7 @@ interface RecommendationsContextType {
   isModeTransitioning: boolean;
   isBatchTransitioning: boolean;
   isWaitingForSessionResolution: boolean;
+  isRefreshingAfterPrefChange: boolean;
   hasCompletedInitialFetch: boolean;
   refreshRecommendations: (refreshKey?: number | string) => void;
   clearRecommendations: () => void;
@@ -291,6 +61,12 @@ interface RecommendationsContextType {
   batchSeed: number;
   generateNextBatch: () => void;
   restorePreviousBatch: () => void;
+  // Nature card batch history
+  natureCardBatches: NatureCardBatch[];
+  currentNatureBatchIndex: number;
+  navigateToNatureBatch: (index: number) => void;
+  totalNatureCardsViewed: number;
+  handleNatureCardProgress: (currentIndex: number, total: number) => void;
 }
 
 const RecommendationsContext = createContext<
@@ -315,9 +91,8 @@ export const RecommendationsProvider: React.FC<
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const [hasCompletedFetchForCurrentMode, setHasCompletedFetchForCurrentMode] =
     useState(false);
-  // Track whether a batch transition is in-flight so we don't wipe recommendations mid-load
   const [isBatchTransitioning, setIsBatchTransitioning] = useState(false);
-  // Store previous batch recommendations so "Review Previous Batch" can restore them
+  const [isRefreshingAfterPrefChange, setIsRefreshingAfterPrefChange] = useState(false);
   const previousBatchRef = useRef<Recommendation[]>([]);
   const currentMode = propCurrentMode;
   const refreshKey = propRefreshKey;
@@ -325,6 +100,16 @@ export const RecommendationsProvider: React.FC<
   const currentCacheKeyRef = useRef<string | null>(null);
   const warmPoolFired = useRef(false);
   const queryClient = useQueryClient();
+
+  // ── Nature card batch history (Zustand) ───────────────────────────────
+  const {
+    addNatureBatch,
+    resetNatureHistory,
+    naturePrefsHash,
+    natureCardBatches,
+    currentNatureBatchIndex,
+    navigateToNatureBatch,
+  } = useAppStore();
 
   const { user } = useAuthSimple();
   const cardsCache = useCardsCache();
@@ -335,26 +120,21 @@ export const RecommendationsProvider: React.FC<
     loading: sessionsLoading,
   } = useSessionManagement();
 
-  // Wait for cache to be loaded from storage before checking cache
   const shouldCheckCache = cardsCache.isCacheLoaded;
 
-  // Resolve session ID from currentMode
+  // ── Session Resolution ──────────────────────────────────────────────────
   const resolvedSessionId = React.useMemo(() => {
     if (currentMode === "solo") return null;
     if (currentSession?.id) return currentSession.id;
-
-    // Check if currentMode itself looks like a UUID (session ID)
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(currentMode)) return currentMode;
-
     const session = availableSessions.find(
       (s) => s.id === currentMode || s.name === currentMode
     );
     return session?.id || null;
   }, [currentMode, currentSession, availableSessions]);
 
-  // Add a state to track if we've given up on session resolution
   const [hasTimedOutWaitingForSession, setHasTimedOutWaitingForSession] =
     useState(false);
 
@@ -387,7 +167,7 @@ export const RecommendationsProvider: React.FC<
   );
   const boardPreferences = boardSessionResult?.preferences || null;
 
-  // Use TanStack Query hooks
+  // ── Location & Preferences ──────────────────────────────────────────────
   const {
     data: userLocationData,
     isLoading: isLoadingLocation,
@@ -401,82 +181,56 @@ export const RecommendationsProvider: React.FC<
   const { data: userPrefs, isLoading: isLoadingPreferences } =
     useUserPreferences(user?.id);
 
-  // ── Turbo Pipeline: Pre-warm curated pool on app load ──────────
-  useEffect(() => {
-    if (userLocation && userPrefs && !warmPoolFired.current) {
-      warmPoolFired.current = true;
-      curatedExperiencesService.warmPool({
-        experienceType: 'solo-adventure',
-        location: userLocation,
-        budgetMax: userPrefs.budget_max ?? 1000,
-        travelMode: userPrefs.travel_mode ?? 'walking',
-        travelConstraintType: (userPrefs.travel_constraint_type as string) ?? 'time',
-        travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
-      }).catch(() => {}); // Fire and forget
-    }
-  }, [userLocation, userPrefs]);
-
-  // Use TanStack Query for recommendations
+  // ── Collaboration mode flag ─────────────────────────────────────────────
   const isCollaborationMode: boolean = Boolean(
     currentMode !== "solo" && resolvedSessionId
   );
+  const isSoloMode = currentMode === "solo";
 
-  const generateNextBatch = useCallback(() => {
-    // Save current recommendations so "Review Previous Batch" can restore them
-    previousBatchRef.current = recommendations;
-    setIsBatchTransitioning(true);
-    setBatchSeed(prev => prev + 1);
-    // Pre-warm for the next-next batch (fire-and-forget)
-    if (userLocation && userPrefs) {
-      curatedExperiencesService.warmPool({
-        experienceType: 'solo-adventure',
+  // ── Unified Deck Pool Warming ───────────────────────────────────────────
+  useEffect(() => {
+    if (userLocation && userPrefs && !warmPoolFired.current) {
+      warmPoolFired.current = true;
+      deckService.warmDeckPool({
         location: userLocation,
+        categories: userPrefs.categories ?? [],
+        budgetMin: userPrefs.budget_min ?? 0,
         budgetMax: userPrefs.budget_max ?? 1000,
         travelMode: userPrefs.travel_mode ?? 'walking',
-        travelConstraintType: (userPrefs.travel_constraint_type as string) ?? 'time',
+        travelConstraintType: (userPrefs.travel_constraint_type as 'time' | 'distance') ?? 'time',
         travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
+        datetimePref: userPrefs.datetime_pref,
+        dateOption: userPrefs.date_option ?? 'now',
+        timeSlot: userPrefs.time_slot ?? null,
       }).catch(() => {});
     }
-  }, [recommendations, userLocation, userPrefs]);
+  }, [userLocation, userPrefs]);
 
-  // Safety timeout: if isBatchTransitioning stays true for >15 s, clear it
-  // so the user isn't stuck on a spinner if the background query hangs.
-  useEffect(() => {
-    if (!isBatchTransitioning) return;
-    const timeout = setTimeout(() => {
-      console.warn('[RecommendationsContext] Batch transition safety timeout — clearing spinner');
-      setIsBatchTransitioning(false);
-    }, 15_000);
-    return () => clearTimeout(timeout);
-  }, [isBatchTransitioning]);
+  // ── Unified Deck Hook (replaces 7 independent hooks) ────────────────────
+  const {
+    cards: deckCards,
+    deckMode,
+    isLoading: isDeckLoading,
+    isFetching: isDeckFetching,
+    isFullBatchLoaded: isDeckBatchLoaded,
+  } = useDeckCards({
+    location: userLocation,
+    categories: userPrefs?.categories ?? [],
+    budgetMin: userPrefs?.budget_min ?? 0,
+    budgetMax: userPrefs?.budget_max ?? 1000,
+    travelMode: userPrefs?.travel_mode ?? 'walking',
+    travelConstraintType: (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
+    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
+    datetimePref: userPrefs?.datetime_pref,
+    dateOption: userPrefs?.date_option ?? 'now',
+    timeSlot: userPrefs?.time_slot ?? null,
+    batchSeed,
+    enabled: isSoloMode && !!userLocation && !isWaitingForSessionResolution,
+  });
 
-  // Restore the previous batch (used by "Review Previous Batch")
-  // Decrement batchSeed so TanStack Query re-fetches the previous batch from
-  // its cache (staleTime = 30 min), giving the user the actual last 20 cards
-  // they swiped through rather than a stale snapshot.
-  const restorePreviousBatch = useCallback(() => {
-    if (batchSeed > 0) {
-      setIsBatchTransitioning(true);
-      setBatchSeed(prev => prev - 1);
-    } else if (previousBatchRef.current.length > 0) {
-      // Already at seed 0, fall back to ref snapshot
-      setRecommendations(previousBatchRef.current);
-      setIsBatchTransitioning(false);
-    }
-  }, [batchSeed]);
+  const isNatureSelected = deckMode === 'nature';
 
-  // Reset batchSeed when preferences change (refreshKey changes)
-  useEffect(() => {
-    if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
-      setBatchSeed(0);
-      setIsBatchTransitioning(false);
-      warmPoolFired.current = false; // Allow re-warm after pref change
-      // Invalidate curated-experiences so they refetch with fresh params
-      queryClient.invalidateQueries({ queryKey: ['curated-experiences'] });
-    }
-    previousRefreshKeyRef.current = refreshKey;
-  }, [refreshKey, queryClient]);
-
+  // ── Collaboration Mode: useRecommendationsQuery (fallback) ──────────────
   const {
     data: recommendationsData,
     isLoading: isLoadingRecommendations,
@@ -494,20 +248,18 @@ export const RecommendationsProvider: React.FC<
     isWaitingForSessionResolution,
     batchSeed,
     enabled: Boolean(
-      userLocation &&
+      isCollaborationMode &&
+        userLocation &&
         !isWaitingForSessionResolution &&
-        (currentMode === "solo" || !!resolvedSessionId) &&
+        !!resolvedSessionId &&
         Boolean(cardsCache.isCacheLoaded)
     ),
   });
 
-  // Curated Experiences — interleaved into solo swipe stack
-  // Derive experience types from the categories array (which stores both intents and categories)
-  const INTENT_IDS = new Set(['solo-adventure', 'first-dates', 'romantic', 'friendly', 'group-fun', 'business']);
-  const experienceTypes: string[] = (userPrefs?.categories ?? []).filter(c => INTENT_IDS.has(c));
-  const userSelectedCategories: string[] = (userPrefs?.categories ?? []).filter(c => !INTENT_IDS.has(c));
-
-  const baseParams = {
+  // ── Collaboration Mode: useCuratedExperiences (solo-adventure only) ─────
+  const curatedSessionId = isCollaborationMode ? resolvedSessionId : undefined;
+  const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo } = useCuratedExperiences({
+    experienceType: 'solo-adventure',
     location: userLocation,
     budgetMin: userPrefs?.budget_min ?? 0,
     budgetMax: userPrefs?.budget_max ?? 1000,
@@ -517,248 +269,235 @@ export const RecommendationsProvider: React.FC<
     travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
     datetimePref: userPrefs?.datetime_pref ?? new Date().toISOString(),
     batchSeed,
-    selectedCategories: userSelectedCategories.length > 0 ? userSelectedCategories : undefined,
-  };
-  const isSoloMode = currentMode === 'solo';
-  const curatedSessionId = isCollaborationMode ? resolvedSessionId : undefined;
-
-  // In solo mode: hooks fire based on user's selected experience types
-  // In collaboration mode: only solo-adventure fires (Turbo Pipeline).
-  // Other experience types use the legacy fallback pipeline which produces
-  // non-curated-format cards — these get mixed in and look wrong.
-  // The session edge function handles location aggregation server-side.
-  // When nature is selected, skip curated hooks — nature has its own system.
-  const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo, isFullBatchLoaded: isSoloBatchLoaded } = useCuratedExperiences({
-    experienceType: 'solo-adventure',
-    ...baseParams,
     sessionId: curatedSessionId ?? undefined,
-    enabled: isSoloMode
-      ? !isNatureSelected && (experienceTypes.length === 0 || experienceTypes.includes('solo-adventure'))
-      : isCollaborationMode,
-  });
-  const { cards: curatedDateCards, isLoading: isLoadingCuratedDate, isFullBatchLoaded: isDateBatchLoaded } = useCuratedExperiences({
-    experienceType: 'first-dates',
-    ...baseParams,
-    sessionId: curatedSessionId ?? undefined,
-    enabled: isSoloMode
-      ? experienceTypes.includes('first-dates')
-      : false,  // Disabled in collab — fallback pipeline produces non-curated cards
-  });
-  const { cards: curatedRomCards, isLoading: isLoadingCuratedRom, isFullBatchLoaded: isRomBatchLoaded } = useCuratedExperiences({
-    experienceType: 'romantic',
-    ...baseParams,
-    sessionId: curatedSessionId ?? undefined,
-    enabled: isSoloMode
-      ? experienceTypes.includes('romantic')
-      : false,  // Disabled in collab — fallback pipeline produces non-curated cards
-  });
-  const { cards: curatedFriendCards, isLoading: isLoadingCuratedFriend, isFullBatchLoaded: isFriendBatchLoaded } = useCuratedExperiences({
-    experienceType: 'friendly',
-    ...baseParams,
-    sessionId: curatedSessionId ?? undefined,
-    enabled: isSoloMode
-      ? experienceTypes.includes('friendly')
-      : false,  // Disabled in collab — fallback pipeline produces non-curated cards
-  });
-  const { cards: curatedGroupCards, isLoading: isLoadingCuratedGroup, isFullBatchLoaded: isGroupBatchLoaded } = useCuratedExperiences({
-    experienceType: 'group-fun',
-    ...baseParams,
-    sessionId: curatedSessionId ?? undefined,
-    enabled: isSoloMode
-      ? experienceTypes.includes('group-fun')
-      : false,  // Disabled in collab — fallback pipeline produces non-curated cards
+    enabled: isCollaborationMode,
   });
 
-  // True when ALL enabled curated hooks have finished loading (success or error).
-  // Used to gate isBatchTransitioning.
-  const allCuratedBatchesLoaded =
-    isSoloBatchLoaded && isDateBatchLoaded && isRomBatchLoaded &&
-    isFriendBatchLoaded && isGroupBatchLoaded;
+  // ── Generate Next Batch ─────────────────────────────────────────────────
+  const generateNextBatch = useCallback(() => {
+    previousBatchRef.current = recommendations;
+    setIsBatchTransitioning(true);
+    setBatchSeed(prev => prev + 1);
+  }, [recommendations]);
 
-  // ── Standalone Nature Card System ──────────────────────────────────────────
-  // When user selects "Nature" category, fire the dedicated discover-nature
-  // edge function instead of funneling through the curated pipeline.
-  const isNatureSelected = userSelectedCategories.some(
-    c => c.toLowerCase() === 'nature'
-  );
-
-  const { cards: natureCards, isLoading: isLoadingNature, isFullBatchLoaded: isNatureBatchLoaded } = useNatureCards({
-    location: userLocation,
-    budgetMax: userPrefs?.budget_max ?? 1000,
-    travelMode: userPrefs?.travel_mode ?? 'walking',
-    travelConstraintType:
-      (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
-    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
-    datetimePref: userPrefs?.datetime_pref ?? new Date().toISOString(),
-    batchSeed,
-    enabled: isSoloMode && isNatureSelected,
-  });
-
-  const natureRecommendations = useMemo(() => {
-    if (natureCards.length === 0) return [];
-    return natureCards.map(natureToRecommendation);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [natureCards.map(c => c.id).sort().join(',')]);
-
-  // Include nature batch status in the "all loaded" gate
-  const allBatchesLoaded = allCuratedBatchesLoaded && (isNatureSelected ? isNatureBatchLoaded : true);
-
-  const allCuratedCards = [
-    ...curatedSoloCards,
-    ...curatedDateCards,
-    ...curatedRomCards,
-    ...curatedFriendCards,
-    ...curatedGroupCards,
-  ];
-  // Stabilize with useMemo keyed on card IDs to prevent re-shuffle every render
-  const curatedRecommendations = useMemo(() => {
-    if (allCuratedCards.length === 0) return [];
-    return shuffleArray(allCuratedCards).map(curatedToRecommendation);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCuratedCards.map(c => c.id).sort().join(',')]);
-
-  // Get stable references to cache methods to avoid dependency issues
-  const generateCacheKey = cardsCache.generateCacheKey;
-  const getCachedCards = cardsCache.getCachedCards;
-  const setCachedCards = cardsCache.setCachedCards;
-
-  // Track previous recommendations to prevent unnecessary updates
-  const previousRecommendationsRef = useRef<Recommendation[] | undefined>(
-    undefined
-  );
-  const previousCuratedIdsRef = useRef<string>('');
-  const previousNatureIdsRef = useRef<string>('');
-
-  // Sync recommendations from TanStack Query to local state and CardsCache
+  // Safety timeout: if isBatchTransitioning stays true for >15s, clear it
   useEffect(() => {
-    // Handle undefined or empty recommendations
-    // Allow curated/nature cards to surface even when regular fetch errors/returns undefined
-    if (!recommendationsData && curatedRecommendations.length === 0 && natureRecommendations.length === 0) {
-      return; // Don't update state if data is still loading and no curated/nature cards
-    }
-    const regularCards = recommendationsData ?? [];
+    if (!isBatchTransitioning) return;
+    const timeout = setTimeout(() => {
+      console.warn('[RecommendationsContext] Batch transition safety timeout — clearing spinner');
+      setIsBatchTransitioning(false);
+    }, 15_000);
+    return () => clearTimeout(timeout);
+  }, [isBatchTransitioning]);
 
-    // Check if recommendations have actually changed (including curated and nature)
+  // Restore the previous batch (used by "Review Previous Batch")
+  const restorePreviousBatch = useCallback(() => {
+    if (batchSeed > 0) {
+      setIsBatchTransitioning(true);
+      setBatchSeed(prev => prev - 1);
+    } else if (previousBatchRef.current.length > 0) {
+      setRecommendations(previousBatchRef.current);
+      setIsBatchTransitioning(false);
+    }
+  }, [batchSeed]);
+
+  // ── Refresh Key Handler ─────────────────────────────────────────────────
+  // When preferences change (refreshKey increments), reset state and refetch
+  useEffect(() => {
+    if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
+      setBatchSeed(0);
+      setIsBatchTransitioning(false);
+      warmPoolFired.current = false;
+      setIsRefreshingAfterPrefChange(true);
+      // Invalidate deck-cards so it refetches with fresh params
+      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
+      // Also invalidate collaboration fallback queries
+      queryClient.invalidateQueries({ queryKey: ['curated-experiences'] });
+    }
+    previousRefreshKeyRef.current = refreshKey;
+  }, [refreshKey, queryClient]);
+
+  // ── Clear isRefreshingAfterPrefChange once deck settles ─────────────────
+  useEffect(() => {
+    if (!isRefreshingAfterPrefChange) return;
+    const allSettled = isDeckBatchLoaded && !isDeckFetching;
+    if (allSettled) {
+      setIsRefreshingAfterPrefChange(false);
+    }
+  }, [isRefreshingAfterPrefChange, isDeckBatchLoaded, isDeckFetching]);
+
+  // Safety timeout: prevent infinite spinner if deck hangs
+  useEffect(() => {
+    if (!isRefreshingAfterPrefChange) return;
+    const timeout = setTimeout(() => {
+      console.warn('[RecommendationsContext] Preference refresh safety timeout — clearing spinner');
+      setIsRefreshingAfterPrefChange(false);
+    }, 8_000);
+    return () => clearTimeout(timeout);
+  }, [isRefreshingAfterPrefChange]);
+
+  // ── Nature batch history: detect pref changes → reset ─────────────────
+  useEffect(() => {
+    if (!userPrefs) return;
+    const newHash = computePrefsHash(userPrefs);
+    if (newHash && newHash !== naturePrefsHash) {
+      resetNatureHistory(newHash);
+    }
+  }, [userPrefs, naturePrefsHash, resetNatureHistory]);
+
+  // ── Nature batch history: store arriving batches ──────────────────────
+  useEffect(() => {
+    if (isNatureSelected && deckCards.length > 0 && isDeckBatchLoaded) {
+      addNatureBatch({
+        batchSeed,
+        cards: deckCards as any, // Store as Recommendation[]
+        timestamp: Date.now(),
+      });
+    }
+  }, [deckCards, isDeckBatchLoaded, batchSeed, isNatureSelected, addNatureBatch]);
+
+  // ── Nature batch navigation: when navigating to a historical batch ────
+  useEffect(() => {
+    if (
+      currentNatureBatchIndex >= 0 &&
+      currentNatureBatchIndex < natureCardBatches.length &&
+      isNatureSelected
+    ) {
+      const batch = natureCardBatches[currentNatureBatchIndex];
+      if (batch.batchSeed !== batchSeed) {
+        setBatchSeed(batch.batchSeed);
+      }
+    }
+  }, [currentNatureBatchIndex, natureCardBatches, isNatureSelected]);
+
+  // ── Pre-fetch next batch at 75% consumption ───────────────────────────
+  const handleNatureCardProgress = useCallback((currentIndex: number, total: number) => {
+    if (!userLocation || !userPrefs) return;
+    if (currentIndex >= Math.floor(total * 0.75) && total > 0) {
+      const nextSeed = batchSeed + 1;
+      queryClient.prefetchQuery({
+        queryKey: [
+          'deck-cards',
+          userLocation.lat, userLocation.lng,
+          (userPrefs.categories ?? []).sort().join(','),
+          userPrefs.budget_min ?? 0,
+          userPrefs.budget_max ?? 1000,
+          userPrefs.travel_mode ?? 'walking',
+          userPrefs.travel_constraint_type ?? 'time',
+          userPrefs.travel_constraint_value ?? 30,
+          userPrefs.datetime_pref,
+          userPrefs.date_option ?? 'now',
+          userPrefs.time_slot ?? '',
+          nextSeed,
+        ],
+        queryFn: () => deckService.fetchDeck({
+          location: userLocation,
+          categories: userPrefs.categories ?? [],
+          budgetMin: userPrefs.budget_min ?? 0,
+          budgetMax: userPrefs.budget_max ?? 1000,
+          travelMode: userPrefs.travel_mode ?? 'walking',
+          travelConstraintType: (userPrefs.travel_constraint_type as 'time' | 'distance') ?? 'time',
+          travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
+          datetimePref: userPrefs.datetime_pref,
+          dateOption: userPrefs.date_option ?? 'now',
+          timeSlot: userPrefs.time_slot ?? null,
+          batchSeed: nextSeed,
+          limit: 20,
+        }),
+        staleTime: 30 * 60 * 1000,
+      });
+    }
+  }, [batchSeed, userLocation, userPrefs, queryClient]);
+
+  // ── Sync deck cards to recommendations state ────────────────────────────
+  // This replaces the massive 130-line sync effect with a simple one.
+  // The deck hook already handles nature/curated routing, conversion, and dedup.
+  const previousDeckIdsRef = useRef<string>('');
+
+  useEffect(() => {
+    if (isSoloMode) {
+      // Solo mode: use unified deck cards
+      if (deckCards.length > 0) {
+        const deckIdsKey = deckCards.map(c => c.id).sort().join(',');
+        if (previousDeckIdsRef.current !== deckIdsKey) {
+          previousDeckIdsRef.current = deckIdsKey;
+          setRecommendations(deckCards);
+        }
+        if (isBatchTransitioning && isDeckBatchLoaded) {
+          setIsBatchTransitioning(false);
+        }
+      } else if (!isBatchTransitioning && deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching) {
+        // Genuinely empty — no cards available for these preferences
+        if (recommendations.length !== 0) {
+          setRecommendations([]);
+          previousDeckIdsRef.current = '';
+        }
+      }
+      // During batch transition with 0 cards, keep previous recommendations visible
+    }
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSoloMode]);
+
+  // ── Collaboration mode sync ─────────────────────────────────────────────
+  const previousRecommendationsRef = useRef<Recommendation[] | undefined>(undefined);
+
+  useEffect(() => {
+    if (!isCollaborationMode) return;
+    if (!recommendationsData && curatedSoloCards.length === 0) return;
+
+    const regularCards = recommendationsData ?? [];
     const prevRecs = previousRecommendationsRef.current;
-    const curatedIdsKey = curatedRecommendations.map(c => c.id).sort().join(',');
-    const natureIdsKey = natureRecommendations.map(c => c.id).sort().join(',');
-    const curatedChanged = previousCuratedIdsRef.current !== curatedIdsKey;
-    const natureChanged = previousNatureIdsRef.current !== natureIdsKey;
     const hasChanged =
-      curatedChanged ||
-      natureChanged ||
       !prevRecs ||
       prevRecs.length !== regularCards.length ||
       prevRecs.some((prev, idx) => prev.id !== regularCards[idx]?.id);
 
-    if (!hasChanged) {
-      return; // No change, skip update
+    if (!hasChanged) return;
+    previousRecommendationsRef.current = regularCards;
+
+    if (regularCards.length > 0) {
+      setRecommendations(regularCards);
     }
 
-    previousRecommendationsRef.current = regularCards;
-    previousCuratedIdsRef.current = curatedIdsKey;
-    previousNatureIdsRef.current = natureIdsKey;
+    // Cache for card state management
+    if (userLocation && userPrefs) {
+      const generateCacheKey = cardsCache.generateCacheKey;
+      const getCachedCards = cardsCache.getCachedCards;
+      const setCachedCards = cardsCache.setCachedCards;
+      const cacheKey = generateCacheKey(currentMode, userLocation, userPrefs, refreshKey);
+      const existingCache = getCachedCards(cacheKey);
+      const currentCardIds = new Set(regularCards.map((r: Recommendation) => r.id));
+      const cachedCardIds = existingCache
+        ? new Set(existingCache.cards.map((c: Recommendation) => c.id))
+        : null;
 
-    if (regularCards.length > 0 || curatedRecommendations.length > 0 || natureRecommendations.length > 0) {
-      const merged = interleaveCards(regularCards, curatedRecommendations, natureRecommendations);
-      setRecommendations(merged);
-      // Clear batch-transitioning flag once all batches have settled.
-      if (isBatchTransitioning && allBatchesLoaded) {
-        setIsBatchTransitioning(false);
+      if (
+        existingCache && cachedCardIds &&
+        currentCardIds.size === cachedCardIds.size &&
+        Array.from(currentCardIds).every((id) => cachedCardIds.has(id))
+      ) {
+        setCachedCards(cacheKey, regularCards, existingCache.currentCardIndex, existingCache.removedCardIds || [], currentMode, userLocation);
+      } else {
+        setCachedCards(cacheKey, regularCards, 0, [], currentMode, userLocation);
       }
+      currentCacheKeyRef.current = cacheKey;
 
-      // Also cache in CardsCacheContext for card state management
-      if (userLocation && userPrefs) {
-        const cacheKey = generateCacheKey(
-          currentMode,
-          userLocation,
-          userPrefs,
-          refreshKey
-        );
-
-        // Check if there's an existing cache entry with matching recommendations
-        const existingCache = getCachedCards(cacheKey);
-        const currentCardIds = new Set(
-          regularCards.map((r: Recommendation) => r.id)
-        );
-        const cachedCardIds = existingCache
-          ? new Set(existingCache.cards.map((c: Recommendation) => c.id))
-          : null;
-
-        // If cache exists and recommendations match, preserve existing state
-        if (
-          existingCache &&
-          cachedCardIds &&
-          currentCardIds.size === cachedCardIds.size &&
-          Array.from(currentCardIds).every((id) => cachedCardIds.has(id))
-        ) {
-          // Recommendations match - preserve existing cache entry
-          // Only update the cards array if it's different, but keep state
-
-          setCachedCards(
-            cacheKey,
-            regularCards,
-            existingCache.currentCardIndex,
-            existingCache.removedCardIds || [],
-            currentMode,
-            userLocation
-          );
-        } else {
-          // New recommendations or cache doesn't exist - initialize with defaults
-
-          setCachedCards(
-            cacheKey,
-            regularCards,
-            0,
-            [],
-            currentMode,
-            userLocation
-          );
-        }
-        currentCacheKeyRef.current = cacheKey;
-
-        // Track interaction
-        if (user?.id && regularCards.length > 0) {
-          ExperiencesService.trackInteraction(
-            user.id,
-            regularCards[0].id,
-            "view"
-          ).catch((error) => {
-            console.error("Error tracking view interaction:", error);
-          });
-        }
-      }
-    } else if (regularCards.length === 0) {
-      // Both regular and curated are empty.
-      // During a batch transition (Generate Another 20), KEEP the previous
-      // recommendations visible instead of flashing an empty state while the
-      // new curated cards are loading.
-      if (isBatchTransitioning) {
-        // Preserve existing recommendations — the new curated batch is still loading
-        return;
-      }
-      // Not transitioning — genuinely empty; sync to state
-      if (recommendations.length !== 0) {
-        setRecommendations([]);
+      if (user?.id && regularCards.length > 0) {
+        ExperiencesService.trackInteraction(user.id, regularCards[0].id, "view").catch(() => {});
       }
     }
   }, [
     recommendationsData,
-    curatedRecommendations,
+    curatedSoloCards,
+    isCollaborationMode,
     userLocation,
     userPrefs,
     currentMode,
     refreshKey,
     user?.id,
-    generateCacheKey,
-    getCachedCards,
-    setCachedCards,
-    isBatchTransitioning,
-    allBatchesLoaded,
-    natureRecommendations,
+    cardsCache,
   ]);
 
-  // Handle mode transitions
+  // ── Mode Transition Handling ────────────────────────────────────────────
   const previousModeRef = useRef<string | undefined>(undefined);
   const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -768,7 +507,6 @@ export const RecommendationsProvider: React.FC<
       previousModeRef.current !== currentMode;
 
     if (modeChanged) {
-      // Clear any existing timeout
       if (completionTimeoutRef.current) {
         clearTimeout(completionTimeoutRef.current);
         completionTimeoutRef.current = null;
@@ -777,29 +515,22 @@ export const RecommendationsProvider: React.FC<
       setIsModeTransitioning(true);
       setRecommendations([]);
       setHasCompletedFetchForCurrentMode(false);
-
-      // Reset the previous recommendations ref so new data is properly detected
       previousRecommendationsRef.current = undefined;
+      previousDeckIdsRef.current = '';
 
-      // Set a safety timeout to force completion after 5 seconds
-      // This prevents infinite loading if something goes wrong
       completionTimeoutRef.current = setTimeout(() => {
         console.warn("Recommendations fetch timeout - forcing completion");
         setHasCompletedFetchForCurrentMode(true);
         setIsModeTransitioning(false);
       }, 5000);
 
-      // Invalidate recommendations query to trigger refetch for new mode
-      // Since query keys include currentMode, different modes get separate cache entries
-      // This prevents stale data from previous mode while allowing in-flight queries to complete gracefully
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
       queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
-      queryClient.invalidateQueries({ queryKey: ["nature-cards"] });
     }
 
     previousModeRef.current = currentMode;
 
-    // Cleanup timeout on unmount
     return () => {
       if (completionTimeoutRef.current) {
         clearTimeout(completionTimeoutRef.current);
@@ -807,69 +538,53 @@ export const RecommendationsProvider: React.FC<
     };
   }, [currentMode, queryClient]);
 
-  // Compute loading and error states from TanStack Query (moved up for use in effect)
-  const loading =
-    isLoadingLocation || isLoadingPreferences || isLoadingRecommendations || isLoadingCuratedSolo || (isNatureSelected && isLoadingNature);
-  const isFetching = isFetchingRecommendations;
+  // ── Loading & Fetching States ───────────────────────────────────────────
+  const loading = isSoloMode
+    ? isLoadingLocation || isLoadingPreferences || isDeckLoading
+    : isLoadingLocation || isLoadingPreferences || isLoadingRecommendations || isLoadingCuratedSolo;
 
-  // Reset mode transitioning and mark fetch as complete when query finishes
+  // isFetching covers ALL data pipelines — not just recommendations
+  const isFetching = isSoloMode
+    ? isDeckFetching || isRefreshingAfterPrefChange
+    : isFetchingRecommendations || isRefreshingAfterPrefChange;
+
+  // ── Mark Fetch Complete ─────────────────────────────────────────────────
   useEffect(() => {
-    // Don't mark as complete if we're waiting for session resolution or query is disabled
-    const queryEnabled = Boolean(
-      userLocation &&
-        !isWaitingForSessionResolution &&
-        (currentMode === "solo" || !!resolvedSessionId) &&
-        Boolean(cardsCache.isCacheLoaded)
-    );
+    const queryEnabled = isSoloMode
+      ? Boolean(userLocation && !isWaitingForSessionResolution)
+      : Boolean(
+          userLocation &&
+          !isWaitingForSessionResolution &&
+          !!resolvedSessionId &&
+          Boolean(cardsCache.isCacheLoaded)
+        );
 
-    // Clear timeout if we're marking as complete
     if (hasCompletedFetchForCurrentMode && completionTimeoutRef.current) {
       clearTimeout(completionTimeoutRef.current);
       completionTimeoutRef.current = null;
     }
 
-    // Only process if we're currently transitioning or haven't completed fetch for this mode
     if (isModeTransitioning || !hasCompletedFetchForCurrentMode) {
-      // Check if query has finished (either with data, empty array, or error)
-      const queryFinished =
-        !isLoadingRecommendations && !isFetchingRecommendations;
+      const queryFinished = isSoloMode
+        ? isDeckBatchLoaded
+        : !isLoadingRecommendations && !isFetchingRecommendations;
 
-      // CRITICAL: During mode transitions, we MUST wait for the query to actually run
-      // and return data for the new mode before marking as complete.
-      // We cannot mark complete if:
-      // 1. We're transitioning AND the query hasn't returned data yet (recommendationsData is undefined)
-      // 2. We're transitioning AND we don't have recommendations in state yet
-      //
-      // Mark as complete ONLY if:
-      // 1. Query was enabled AND it has finished AND we have data (even if empty array)
-      //    - This ensures the query actually ran and returned a result for the current mode
-      // 2. OR we already have recommendations in state (from cache or previous fetch) AND not transitioning
-      // 3. OR the query had an error AND finished AND we're not transitioning (error is valid result)
-      //
-      // CRITICAL: During transitions, we MUST wait for recommendationsData to be defined
-      // This ensures we don't mark complete before the new mode's query runs
-      const isInTransition = isModeTransitioning;
-      const hasQueryResult = recommendationsData !== undefined;
+      const hasQueryResult = isSoloMode
+        ? deckCards.length > 0 || isDeckBatchLoaded
+        : recommendationsData !== undefined;
+
       const hasRecommendationsInState = recommendations.length > 0;
 
       const shouldMarkComplete =
-        // Case 1: Query ran and finished (enabled + finished + has data)
         (queryEnabled && queryFinished && hasQueryResult) ||
-        // Case 2: We have recommendations AND we're not transitioning (from cache/previous)
-        (hasRecommendationsInState &&
-          !isInTransition &&
-          !isLoadingRecommendations) ||
-        // Case 3: Query had an error AND finished (error is a valid completion even without data)
+        (hasRecommendationsInState && !isModeTransitioning && !loading) ||
         (!!recommendationsError && queryFinished);
 
       if (shouldMarkComplete) {
-        // Mark fetch as completed
         setHasCompletedFetchForCurrentMode(true);
-        // Reset transitioning flag
         if (isModeTransitioning) {
           setIsModeTransitioning(false);
         }
-        // Clear timeout since we completed
         if (completionTimeoutRef.current) {
           clearTimeout(completionTimeoutRef.current);
           completionTimeoutRef.current = null;
@@ -879,6 +594,8 @@ export const RecommendationsProvider: React.FC<
   }, [
     isModeTransitioning,
     hasCompletedFetchForCurrentMode,
+    isDeckBatchLoaded,
+    deckCards.length,
     isLoadingRecommendations,
     isFetchingRecommendations,
     recommendationsData,
@@ -891,23 +608,20 @@ export const RecommendationsProvider: React.FC<
     cardsCache.isCacheLoaded,
     sessionsLoading,
     loading,
-    isFetching,
+    isSoloMode,
   ]);
 
+  // ── Update Card Stroll Data ─────────────────────────────────────────────
   const updateCardStrollData = useCallback(
     (cardId: string, strollData: Recommendation["strollData"]) => {
-      // Update the recommendation in state
       setRecommendations((prev) =>
         prev.map((card) =>
           card.id === cardId ? { ...card, strollData } : card
         )
       );
 
-      // Update the cache if we have a cache key
       if (currentCacheKeyRef.current) {
-        const cachedEntry = cardsCache.getCachedCards(
-          currentCacheKeyRef.current
-        );
+        const cachedEntry = cardsCache.getCachedCards(currentCacheKeyRef.current);
         if (cachedEntry) {
           const updatedCards = cachedEntry.cards.map((card) =>
             card.id === cardId ? { ...card, strollData } : card
@@ -926,6 +640,7 @@ export const RecommendationsProvider: React.FC<
     [cardsCache]
   );
 
+  // ── Error Computation ───────────────────────────────────────────────────
   const error = recommendationsError
     ? (recommendationsError as Error).message === "no_matches"
       ? "no_matches"
@@ -934,16 +649,14 @@ export const RecommendationsProvider: React.FC<
     ? "Failed to load location"
     : null;
 
-  // Compute hasCompletedInitialFetch - must not be transitioning and must have completed fetch for current mode
-  // Mark as complete if we've successfully finished our initial work for this mode
   const hasCompletedInitialFetch =
     !isModeTransitioning &&
     !isWaitingForSessionResolution &&
     hasCompletedFetchForCurrentMode &&
-    !isLoadingRecommendations;
+    (isSoloMode ? !isDeckLoading : !isLoadingRecommendations);
 
   const refreshRecommendations = useCallback(() => {
-    // Invalidate queries to trigger refetch
+    queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
     queryClient.invalidateQueries({ queryKey: ["recommendations"] });
     queryClient.invalidateQueries({ queryKey: ["userLocation"] });
     queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
@@ -951,9 +664,11 @@ export const RecommendationsProvider: React.FC<
 
   const clearRecommendations = useCallback(() => {
     setRecommendations([]);
+    queryClient.removeQueries({ queryKey: ["deck-cards"] });
     queryClient.removeQueries({ queryKey: ["recommendations"] });
   }, [queryClient]);
 
+  // ── Context Value ───────────────────────────────────────────────────────
   const value: RecommendationsContextType = {
     recommendations,
     loading,
@@ -963,6 +678,7 @@ export const RecommendationsProvider: React.FC<
     isModeTransitioning,
     isBatchTransitioning,
     isWaitingForSessionResolution,
+    isRefreshingAfterPrefChange,
     hasCompletedInitialFetch,
     refreshRecommendations,
     clearRecommendations,
@@ -970,6 +686,11 @@ export const RecommendationsProvider: React.FC<
     batchSeed,
     generateNextBatch,
     restorePreviousBatch,
+    natureCardBatches,
+    currentNatureBatchIndex,
+    navigateToNatureBatch,
+    totalNatureCardsViewed: natureCardBatches.reduce((sum, b) => sum + b.cards.length, 0),
+    handleNatureCardProgress,
   };
 
   return (

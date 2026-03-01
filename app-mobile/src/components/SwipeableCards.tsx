@@ -193,10 +193,15 @@ export default function SwipeableCards({
     isModeTransitioning,
     isBatchTransitioning,
     isWaitingForSessionResolution,
+    isRefreshingAfterPrefChange,
     hasCompletedInitialFetch,
     refreshRecommendations,
     generateNextBatch,
     restorePreviousBatch,
+    natureCardBatches,
+    currentNatureBatchIndex,
+    navigateToNatureBatch,
+    handleNatureCardProgress,
   } = useRecommendations();
 
   // Combine all loading states for UI consistency and to prevent animation freezing
@@ -383,6 +388,7 @@ export default function SwipeableCards({
 
     if (
       !isFetching &&
+      !isRefreshingAfterPrefChange &&
       !isModeTransitioning &&
       !isWaitingForSessionResolution
     ) {
@@ -392,6 +398,7 @@ export default function SwipeableCards({
   }, [
     showNextBatchLoader,
     isFetching,
+    isRefreshingAfterPrefChange,
     isModeTransitioning,
     isWaitingForSessionResolution,
   ]);
@@ -724,6 +731,11 @@ export default function SwipeableCards({
 
             // Handle swipe logic (tracking, saving, etc.) in background
             handleSwipe(direction, cardToRemove);
+
+            // Report card progress for nature pre-fetch at 75%
+            const viewedCount = removedCardsRef.current.size + 1;
+            const totalCount = recommendationsRef.current.length;
+            handleNatureCardProgress?.(viewedCount, totalCount);
 
             // Wait for React to render the next card before resetting position
             // This prevents the flash/flicker
@@ -1136,17 +1148,48 @@ export default function SwipeableCards({
             <Text style={styles.generateNextButtonText}>Generate Another 20</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.reviewBatchButton}
-            onPress={() => {
-              restorePreviousBatch();
-              handleViewCardsAgain();
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-undo-outline" size={16} color="#eb7825" />
-            <Text style={styles.reviewBatchButtonText}>Review Previous Batch</Text>
-          </TouchableOpacity>
+          {/* Multi-batch review section */}
+          {natureCardBatches.length > 1 ? (
+            <View style={styles.batchHistorySection}>
+              <Text style={styles.batchHistoryTitle}>
+                Review History ({natureCardBatches.length} batches,{' '}
+                {natureCardBatches.reduce((s, b) => s + b.cards.length, 0)} cards total)
+              </Text>
+              {natureCardBatches.map((batch, index) => (
+                <TouchableOpacity
+                  key={batch.batchSeed}
+                  style={[
+                    styles.batchHistoryItem,
+                    index === currentNatureBatchIndex && styles.batchHistoryItemActive,
+                  ]}
+                  onPress={() => {
+                    navigateToNatureBatch(index);
+                    handleViewCardsAgain();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.batchHistoryItemText,
+                    index === currentNatureBatchIndex && styles.batchHistoryItemTextActive,
+                  ]}>
+                    Batch {index + 1} — {batch.cards.length} cards
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.reviewBatchButton}
+              onPress={() => {
+                restorePreviousBatch();
+                handleViewCardsAgain();
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-undo-outline" size={16} color="#eb7825" />
+              <Text style={styles.reviewBatchButtonText}>Review Previous Batch</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             onPress={handleOpenPreferences}
@@ -2037,5 +2080,35 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.4)",
     fontSize: 13,
     textDecorationLine: "underline",
+  },
+  batchHistorySection: {
+    marginTop: 16,
+    width: "100%",
+  },
+  batchHistoryTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.6)",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  batchHistoryItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    marginBottom: 6,
+  },
+  batchHistoryItemActive: {
+    backgroundColor: "#10B981",
+  },
+  batchHistoryItemText: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.8)",
+    textAlign: "center",
+  },
+  batchHistoryItemTextActive: {
+    color: "#ffffff",
+    fontWeight: "600",
   },
 });

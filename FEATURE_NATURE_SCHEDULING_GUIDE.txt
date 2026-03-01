@@ -1,0 +1,219 @@
+================================================================================
+ IMPLEMENTATION GUIDE: Nature Card Schedule-First Flow with Opening Hours
+================================================================================
+
+OVERVIEW
+--------
+Fix the opening hours data pipeline for Nature cards so availability checks
+actually work, and redirect the save button to the scheduling flow for Nature
+cards. Total changes: 2 files, ~20 lines modified.
+
+
+================================================================================
+STEP 1: Fix Opening Hours Mapping in natureToRecommendation()
+================================================================================
+
+FILE: app-mobile/src/contexts/RecommendationsContext.tsx
+FUNCTION: natureToRecommendation() (around line 204)
+
+WHAT TO CHANGE:
+Find this block inside the return object:
+
+    openingHours: card.isOpenNow != null
+      ? { open_now: card.isOpenNow }
+      : null,
+
+Replace it with:
+
+    openingHours: Object.keys(card.openingHours).length > 0
+      ? {
+          open_now: card.isOpenNow,
+          weekday_text: Object.entries(card.openingHours).map(
+            ([day, hours]) =>
+              `${day.charAt(0).toUpperCase() + day.slice(1)}: ${hours}`
+          ),
+        }
+      : card.isOpenNow != null
+        ? { open_now: card.isOpenNow }
+        : null,
+
+WHY:
+- The discover-nature edge function returns opening hours as:
+  { monday: "9:00 AM – 5:00 PM", tuesday: "9:00 AM – 5:00 PM", ... }
+- ActionButtons.checkPlaceAvailability() expects:
+  { weekday_text: ["Monday: 9:00 AM – 5:00 PM", ...], open_now: true }
+- This conversion bridges the format gap.
+- Falls back gracefully when no hours exist (empty object = most parks/trails).
+
+HOW TO TEST:
+1. Open the app with Nature category selected
+2. Tap any Nature card to expand it
+3. If the place has opening hours (zoos, botanical gardens), you should see the
+   "Opening Hours" section in ActionButtons with today highlighted
+4. Places without hours (parks, trails, beaches) should show no hours section
+   — this is correct behavior since Google doesn't return hours for them
+
+
+================================================================================
+STEP 2: Redirect Save Button to Schedule Flow for Nature Cards
+================================================================================
+
+FILE: app-mobile/src/components/expandedCard/ActionButtons.tsx
+FUNCTION: handleSave() (around line 339)
+
+WHAT TO CHANGE:
+Find the handleSave function:
+
+    const handleSave = async () => {
+      if (isSaving) return; // Prevent multiple saves
+
+      setIsSaving(true);
+      try {
+        // onSave will handle saving, moving to next card, and closing modal
+        await onSave(card);
+      } catch (error: any) {
+        // Error saving - show alert but don't close modal
+        // (onSave already handles 23505 "already saved" case and closes modal)
+        Alert.alert("Error", "Failed to save the card. Please try again.");
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+Replace it with:
+
+    const handleSave = async () => {
+      // For Nature cards, redirect to the scheduling flow instead of just saving
+      if (card.category === "Nature") {
+        handleSchedule();
+        return;
+      }
+
+      if (isSaving) return; // Prevent multiple saves
+
+      setIsSaving(true);
+      try {
+        await onSave(card);
+      } catch (error: any) {
+        Alert.alert("Error", "Failed to save the card. Please try again.");
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+WHY:
+- User wants both "Schedule and Save" AND the bookmark button to ask for
+  date/time for Nature cards
+- handleSchedule() already handles: date picker → time picker → availability
+  check → schedule to calendar → add to device calendar → remove from deck
+- Non-Nature cards are unaffected — their save button works as before
+
+
+================================================================================
+STEP 3 (OPTIONAL): Update Bookmark Icon for Nature Cards
+================================================================================
+
+FILE: app-mobile/src/components/expandedCard/ActionButtons.tsx
+SECTION: Bookmark button render (around line 787)
+
+WHAT TO CHANGE:
+Find:
+
+    <Ionicons
+      name={isSaved ? "bookmark" : "bookmark-outline"}
+      size={18}
+      color={isSaved ? "#eb7825" : "#6b7280"}
+    />
+
+Replace with:
+
+    <Ionicons
+      name={
+        isSaved
+          ? "bookmark"
+          : card.category === "Nature"
+            ? "calendar-outline"
+            : "bookmark-outline"
+      }
+      size={18}
+      color={isSaved ? "#eb7825" : "#6b7280"}
+    />
+
+WHY:
+- Visual hint to the user that tapping "save" on Nature cards will trigger
+  scheduling, not a plain save
+- Calendar icon makes the intent clear
+
+
+================================================================================
+COMMON MISTAKES TO AVOID
+================================================================================
+
+1. DON'T change the edge function's parseOpeningHours() — the Record<string, string>
+   format is fine, we just need to convert it in the client mapping function.
+
+2. DON'T remove the ALWAYS_OPEN_TYPES set in discover-nature — that set controls
+   server-side filtering (which places to skip when filtering by "open now").
+   The client-side availability check is a separate concern.
+
+3. DON'T make the save button redirect for ALL categories — only Nature.
+   Other categories (Casual Eats, Fine Dining, etc.) should keep their
+   existing save-to-bookmarks behavior.
+
+4. DON'T change the Recommendation interface — the openingHours field already
+   supports the { open_now, weekday_text } shape.
+
+5. DON'T change the ExpandedCardData interface — it already supports the same
+   shape via its union type.
+
+6. WATCH THE DAY NAME CASING — The edge function returns lowercase keys
+   ("monday"), but checkPlaceAvailability() matches with capitalized day names
+   ("Monday"). The conversion in step 1 handles this with charAt(0).toUpperCase().
+
+
+================================================================================
+HOW TO VERIFY END-TO-END
+================================================================================
+
+Test Case 1: Nature card WITH opening hours (zoo / botanical garden)
+  1. Select Nature category, generate cards
+  2. Find a zoo or botanical garden card (these usually have opening hours)
+  3. Expand the card → verify "Opening Hours" section shows with today highlighted
+  4. Tap the bookmark/save button → date/time picker should appear
+  5. Select a date/time during opening hours → card should schedule to calendar
+  6. Check "Locked In" tab → card should appear there
+  7. Check phone calendar → event should appear
+
+Test Case 2: Nature card, select closed time
+  1. Expand a zoo/botanical garden card with opening hours
+  2. Tap "Schedule and Save"
+  3. Select a date/time when the place is closed (e.g., 3:00 AM)
+  4. "Place Closed" alert should appear
+  5. Tap "Choose Another Time" → picker reopens
+  6. Select a valid time → card schedules successfully
+
+Test Case 3: Nature card WITHOUT opening hours (park / trail / beach)
+  1. Find a park or trail card (these often lack opening hours)
+  2. Expand → no "Opening Hours" section (expected)
+  3. Tap save or schedule → date/time picker appears
+  4. Select any time → schedules successfully (assumes open)
+
+Test Case 4: Non-Nature card (regression check)
+  1. Select Casual Eats or Drink category
+  2. Expand a card → tap the bookmark/save button
+  3. Card should save to bookmarks normally (NO date/time picker)
+  4. Tap "Schedule and Save" → date/time picker appears (existing behavior)
+
+
+================================================================================
+DONE WHEN
+================================================================================
+
+✓ Nature cards with opening hours data show the "Opening Hours" section in
+  the expanded card view
+✓ Tapping the save/bookmark button on any Nature card opens the date/time
+  picker instead of saving to bookmarks
+✓ Selecting a closed time shows the "Place Closed" alert with re-selection
+✓ Selecting an open time schedules the card to calendar + device calendar
+✓ Parks/trails without hours data still schedule successfully at any time
+✓ Non-Nature cards' save button behavior is completely unchanged

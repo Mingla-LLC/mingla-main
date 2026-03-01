@@ -28,13 +28,15 @@ export interface NatureCard {
   matchScore: number;
 }
 
-interface DiscoverNatureParams {
+export interface DiscoverNatureParams {
   location: { lat: number; lng: number };
   budgetMax: number;
   travelMode: string;
   travelConstraintType: 'time' | 'distance';
   travelConstraintValue: number;
   datetimePref?: string;
+  dateOption?: string;
+  timeSlot?: string | null;
   batchSeed?: number;
   limit?: number;
 }
@@ -46,6 +48,17 @@ class NatureCardsService {
     });
     if (error) throw error;
     return (data?.cards ?? []) as NatureCard[];
+  }
+
+  /** Pre-warm the nature card pool in the background (fire-and-forget) */
+  async warmNaturePool(params: Omit<DiscoverNatureParams, 'limit' | 'batchSeed'>): Promise<void> {
+    try {
+      await supabase.functions.invoke('discover-nature', {
+        body: { ...params, warmPool: true, limit: 40 },
+      });
+    } catch {
+      // Silent — non-critical background operation
+    }
   }
 }
 

@@ -837,81 +837,63 @@ export default function PreferencesSheet({
 
     setIsSaving(true);
     try {
-      if (isCollaborationMode) {
-        const dbPrefs: any = {
-          categories: [...selectedIntents, ...selectedCategories],
-          budget_min: typeof budgetMin === "number" ? budgetMin : 0,
-          budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
-          travel_mode: travelMode,
-          travel_constraint_type: constraintType,
-          travel_constraint_value:
-            typeof constraintValue === "number" ? constraintValue : 20,
-          time_of_day: selectedTimeSlot || null,
-          datetime_pref: selectedDate ? selectedDate.toISOString() : null,
-        };
+      // === CRITICAL PATH: Save to DB with 10s timeout ===
+      const savePromise = (async () => {
+        if (isCollaborationMode) {
+          const dbPrefs: any = {
+            categories: [...selectedIntents, ...selectedCategories],
+            budget_min: typeof budgetMin === "number" ? budgetMin : 0,
+            budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
+            travel_mode: travelMode,
+            travel_constraint_type: constraintType,
+            travel_constraint_value:
+              typeof constraintValue === "number" ? constraintValue : 20,
+            time_of_day: selectedTimeSlot || null,
+            datetime_pref: selectedDate ? selectedDate.toISOString() : null,
+          };
 
-        if (searchLocation) {
-          dbPrefs.location = searchLocation;
-        }
-
-        await updateBoardPreferences(dbPrefs);
-
-        try {
-          if (user?.id && searchLocation) {
-            const updatedPrefs = await PreferencesService.getUserPreferences(
-              user.id
-            );
-            if (updatedPrefs) {
-              await offlineService.cacheUserPreferences(updatedPrefs);
-            }
+          if (searchLocation) {
+            dbPrefs.location = searchLocation;
           }
-        } catch (error) {
-          console.error("Error updating offline cache:", error);
-        }
 
-        queryClient.invalidateQueries({ queryKey: ["recommendations"] });
-        queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
-        queryClient.invalidateQueries({ queryKey: ["userLocation"] });
-
-        if (onSave) {
-          await Promise.resolve(onSave(preferences));
-        }
-
-        if (onClose) onClose();
-      } else {
-        if (!onSave) {
-          if (onClose) onClose();
-          return;
-        }
-
-        const saveResult = await Promise.resolve(onSave(preferences));
-
-        try {
-          if (user?.id) {
-            const updatedPrefs = await PreferencesService.getUserPreferences(
-              user.id
-            );
-            if (updatedPrefs) {
-              await offlineService.cacheUserPreferences(updatedPrefs);
-            }
+          await updateBoardPreferences(dbPrefs);
+        } else {
+          if (onSave) {
+            const saveResult = await Promise.resolve(onSave(preferences));
+            if (saveResult === false) throw new Error('Save rejected');
           }
-        } catch (error) {
-          console.error("Error updating offline cache:", error);
         }
+      })();
 
-        queryClient.invalidateQueries({ queryKey: ["recommendations"] });
-        queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
-        queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
-        queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Save timeout after 10s')), 10000)
+      );
 
-        if (saveResult === true || saveResult === undefined) {
-          if (onClose) onClose();
-        }
+      await Promise.race([savePromise, timeoutPromise]);
+
+      // === SUCCESS: Non-blocking cache invalidation ===
+      queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
+      queryClient.invalidateQueries({ queryKey: ["nature-cards"] });
+      queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
+      queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+
+      // === CLOSE SHEET IMMEDIATELY ===
+      onClose?.();
+
+      // === FIRE-AND-FORGET: Non-critical post-save operations ===
+      if (user?.id) {
+        PreferencesService.getUserPreferences(user.id)
+          .then(prefs => {
+            if (prefs) offlineService.cacheUserPreferences(prefs);
+          })
+          .catch(() => {}); // Silent — non-critical
       }
+
     } catch (error) {
-      console.error("Error saving preferences:", error);
+      console.error("[PreferencesSheet] Save failed:", error);
     } finally {
-      setIsSaving(false);
+      setIsSaving(false); // ALWAYS resets, even on timeout/error
     }
   }, [
     isSaving,

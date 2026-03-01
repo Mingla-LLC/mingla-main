@@ -9,6 +9,13 @@ import {
   CollaborationInvite,
   Board,
 } from "../types";
+import type { NatureCard } from "../services/natureCardsService";
+
+export interface NatureCardBatch {
+  batchSeed: number;
+  cards: NatureCard[];
+  timestamp: number;
+}
 
 interface AppState {
   // Auth state
@@ -29,6 +36,11 @@ interface AppState {
 
   // Recommendations state
   currentCardIndex: number;
+
+  // Nature card history
+  natureCardBatches: NatureCardBatch[];
+  currentNatureBatchIndex: number;
+  naturePrefsHash: string;
 
   // UI overlay state (not persisted)
   showAccountSettings: boolean;
@@ -56,6 +68,11 @@ interface AppState {
   setCurrentCardIndex: (index: number) => void;
   setShowAccountSettings: (show: boolean) => void;
 
+  // Nature card history actions
+  addNatureBatch: (batch: NatureCardBatch) => void;
+  navigateToNatureBatch: (index: number) => void;
+  resetNatureHistory: (newPrefsHash: string) => void;
+
   // Utilities
   clearUserData: () => void;
 }
@@ -75,6 +92,9 @@ export const useAppStore = create<AppState>()(
       pendingInvites: [],
       isInSolo: true,
       currentCardIndex: 0,
+      natureCardBatches: [],
+      currentNatureBatchIndex: -1,
+      naturePrefsHash: '',
       showAccountSettings: false,
       blockedUsers: [],
 
@@ -144,6 +164,24 @@ export const useAppStore = create<AppState>()(
       setShowAccountSettings: (showAccountSettings) =>
         set({ showAccountSettings }),
 
+      // Nature card history actions
+      addNatureBatch: (batch) => set((state) => {
+        const exists = state.natureCardBatches.some(b => b.batchSeed === batch.batchSeed);
+        if (exists) return state;
+        return {
+          natureCardBatches: [...state.natureCardBatches, batch],
+          currentNatureBatchIndex: state.natureCardBatches.length,
+        };
+      }),
+
+      navigateToNatureBatch: (index) => set({ currentNatureBatchIndex: index }),
+
+      resetNatureHistory: (newPrefsHash) => set({
+        natureCardBatches: [],
+        currentNatureBatchIndex: -1,
+        naturePrefsHash: newPrefsHash,
+      }),
+
       // Utilities
       clearUserData: () =>
         set({
@@ -158,6 +196,9 @@ export const useAppStore = create<AppState>()(
           pendingInvites: [],
           isInSolo: true,
           currentCardIndex: 0,
+          natureCardBatches: [],
+          currentNatureBatchIndex: -1,
+          naturePrefsHash: '',
         }),
     }),
     {
@@ -172,6 +213,10 @@ export const useAppStore = create<AppState>()(
         boards: state.boards,
         // Don't persist currentSession and isInSolo - always fetch from database
         currentCardIndex: state.currentCardIndex,
+        // Nature card history — persisted across sessions
+        natureCardBatches: state.natureCardBatches,
+        currentNatureBatchIndex: state.currentNatureBatchIndex,
+        naturePrefsHash: state.naturePrefsHash,
       }),
     }
   )

@@ -1,6 +1,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import {
+  serveCardsFromPipeline,
+  upsertPlaceToPool,
+  insertCardToPool,
+  recordImpressions,
+} from '../_shared/cardPoolService.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-nature  –  Standalone Nature Card System
@@ -42,6 +48,14 @@ const NATURE_TYPES = [
 const ALWAYS_OPEN_TYPES = new Set([
   'park', 'hiking_area', 'national_park', 'state_park', 'beach',
 ]);
+
+// ── Time Slot Ranges ────────────────────────────────────────────────────────
+const TIME_SLOT_RANGES: Record<string, { start: number; end: number }> = {
+  brunch:    { start: 9,  end: 13 },
+  afternoon: { start: 12, end: 17 },
+  dinner:    { start: 17, end: 21 },
+  lateNight: { start: 21, end: 24 },
+};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const SPEED_KMH: Record<string, number> = {
@@ -120,6 +134,52 @@ function parseOpeningHours(place: any): { hours: Record<string, string>; isOpenN
 
 function formatPlaceType(type: string): string {
   return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+// ── DateTime Filter ─────────────────────────────────────────────────────────
+/** Filter places by datetime preference: opening hours + day-of-week + time slot */
+function filterByDateTime(
+  places: any[],
+  datetimePref: string | undefined,
+  dateOption: string,
+  timeSlot: string | null
+): any[] {
+  // "Now" → use isOpenNow from Google response
+  if (dateOption === 'now' || !datetimePref) {
+    return places.filter(p => p.isOpenNow !== false);
+    // isOpenNow === undefined → include (no hours data = likely always open)
+  }
+
+  const targetDate = new Date(datetimePref);
+  const targetDay = targetDate.getDay(); // 0=Sun, 6=Sat
+
+  let targetHourStart: number;
+
+  if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
+    targetHourStart = TIME_SLOT_RANGES[timeSlot].start;
+  } else {
+    // Use the actual hour from datetimePref
+    targetHourStart = targetDate.getHours();
+  }
+
+  return places.filter(place => {
+    const periods = place.regularOpeningHours?.periods;
+
+    // No opening hours data → assume always open (parks, trails, beaches)
+    if (!periods || periods.length === 0) return true;
+
+    // Check if any period covers the target day + hour
+    return periods.some((period: any) => {
+      if (period.open?.day !== targetDay) return false;
+      const openHour = period.open?.hour ?? 0;
+      const closeHour = period.close?.hour ?? 24;
+
+      // Handle close=0 meaning midnight (end of day)
+      const effectiveClose = closeHour === 0 ? 24 : closeHour;
+
+      return targetHourStart >= openHour && targetHourStart < effectiveClose;
+    });
+  });
 }
 
 /** Simple deterministic shuffle using seed for stable batch ordering */
@@ -253,6 +313,8 @@ serve(async (req: Request) => {
       travelConstraintType = 'time',
       travelConstraintValue = 30,
       datetimePref,
+      dateOption = 'now',
+      timeSlot = null,
       batchSeed = 0,
       limit = 20,
     } = body;
@@ -274,6 +336,46 @@ serve(async (req: Request) => {
         ? (travelConstraintValue / 60) * (SPEED_KMH[travelMode] || 4.5) * 1.3
         : travelConstraintValue;
     const radiusMeters = Math.min(Math.round(maxDistKm * 1000), 50000);
+
+    // ── Pool-first serving ──────────────────────────────────────────────
+    const userId = (await supabaseAdmin.auth.getUser(
+      req.headers.get('Authorization')?.replace('Bearer ', '') ?? ''
+    ))?.data?.user?.id;
+
+    if (userId && batchSeed === 0 && !body.warmPool) {
+      try {
+        const poolResult = await serveCardsFromPipeline(
+          {
+            supabaseAdmin,
+            userId,
+            lat: location.lat,
+            lng: location.lng,
+            radiusMeters,
+            categories: ['Nature'],
+            budgetMin: 0,
+            budgetMax,
+            limit,
+            cardType: 'single',
+          },
+          GOOGLE_PLACES_API_KEY,
+        );
+
+        if (poolResult.cards.length >= Math.ceil(limit * 0.75)) {
+          console.log(`[discover-nature] Served ${poolResult.cards.length} from pool (0 API calls)`);
+          return new Response(JSON.stringify({
+            cards: poolResult.cards,
+            source: 'pool',
+            total: poolResult.totalPoolSize,
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+      } catch (poolErr) {
+        console.warn('[discover-nature] Pool serve failed, falling back to API:', poolErr);
+      }
+    }
+
+    // ── Handle warmPool request ─────────────────────────────────────────
+    // warmPool fetches and stores results in the pool but returns empty
+    const isWarmPool = !!body.warmPool;
 
     // ── Search all 8 nature types using shared cache ────────────────────
     // batchSearchPlaces runs all 8 in parallel and uses per-type caching.
@@ -321,6 +423,11 @@ serve(async (req: Request) => {
       const range = priceLevelToRange(p.priceLevel);
       return range.min <= budgetMax;
     });
+
+    // ── Filter by datetime preference ───────────────────────────────────
+    allPlaces = filterByDateTime(allPlaces, datetimePref, dateOption, timeSlot);
+
+    console.log(`[discover-nature] ${allPlaces.length} places after datetime filter (dateOption=${dateOption}, timeSlot=${timeSlot})`);
 
     // ── Stable sort: rating desc, then review count desc ────────────────
     allPlaces.sort((a, b) => {
@@ -383,8 +490,54 @@ serve(async (req: Request) => {
       };
     });
 
+    // ── Store results in card pool (fire-and-forget) ───────────────────
+    if (userId) {
+      (async () => {
+        try {
+          for (const card of cards) {
+            const placePoolId = await upsertPlaceToPool(
+              supabaseAdmin,
+              batch.find((p: any) => p.id === card.placeId) || { id: card.placeId, displayName: { text: card.title } },
+              GOOGLE_PLACES_API_KEY,
+              'nature_discover'
+            );
+            await insertCardToPool(supabaseAdmin, {
+              placePoolId: placePoolId || undefined,
+              googlePlaceId: card.placeId,
+              cardType: 'single',
+              title: card.title,
+              category: 'Nature',
+              categories: ['Nature'],
+              description: card.description,
+              imageUrl: card.image,
+              images: card.images,
+              address: card.address,
+              lat: card.lat,
+              lng: card.lng,
+              rating: card.rating,
+              reviewCount: card.reviewCount,
+              priceMin: card.priceMin,
+              priceMax: card.priceMax,
+              openingHours: card.openingHours,
+            });
+          }
+          await recordImpressions(supabaseAdmin, userId, cards.map((c: any) => c.id));
+        } catch (e) {
+          console.warn('[discover-nature] Pool store failed (non-critical):', e);
+        }
+      })();
+    }
+
     const elapsed = Date.now() - t0;
     console.log(`[discover-nature] Done in ${elapsed}ms: ${cards.length} cards, ${apiCallsMade} API calls`);
+
+    // ── warmPool: return empty response after storing ────────────────────
+    if (isWarmPool) {
+      return new Response(
+        JSON.stringify({ cards: [], total: totalAvailable, source: 'warm' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     return new Response(
       JSON.stringify({ cards, total: totalAvailable }),
