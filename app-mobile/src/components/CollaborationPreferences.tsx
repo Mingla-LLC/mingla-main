@@ -44,8 +44,9 @@ interface CollaborationPreferencesProps {
   };
 }
 
-// Experience Types for collaboration (no Solo Adventure)
+// Experience Types for collaboration (matching PreferencesSheet)
 const experienceTypes = [
+  { id: "solo-adventure", label: "Adventurous", icon: "compass-outline" },
   { id: "first-dates", label: "First Date", icon: "heart-outline" },
   { id: "romantic", label: "Romantic", icon: "heart-outline" },
   { id: "friendly", label: "Friendly", icon: "people-outline" },
@@ -56,9 +57,9 @@ const experienceTypes = [
 // Budget presets (USD base values)
 const budgetPresetsUSD = [
   { min: 0, max: 25 },
-  { min: 25, max: 75 },
-  { min: 75, max: 150 },
-  { min: 150, max: 1000 },
+  { min: 0, max: 50 },
+  { min: 0, max: 100 },
+  { min: 0, max: 150 },
 ];
 
 // Categories
@@ -184,10 +185,7 @@ export default function CollaborationPreferences({
     return budgetPresetsUSD.map((preset) => {
       const convertedMin = Math.round(preset.min * rate);
       const convertedMax = Math.round(preset.max * rate);
-      const label =
-        preset.max >= 1000
-          ? `${currencySymbol}${formatNumberWithCommas(convertedMin)}+`
-          : `${currencySymbol}${formatNumberWithCommas(convertedMin)}-${formatNumberWithCommas(convertedMax)}`;
+      const label = `Up to ${currencySymbol}${formatNumberWithCommas(convertedMax)}`;
       return { label, min: convertedMin, max: convertedMax };
     });
   }, [currencyCode, currencySymbol]);
@@ -253,11 +251,23 @@ export default function CollaborationPreferences({
   useEffect(() => {
     if (isOpen && dbPreferences) {
       // Map database preferences to component state
-      if (dbPreferences.experience_types) {
+      if (dbPreferences.categories && Array.isArray(dbPreferences.categories)) {
+        // Split categories array into intents and pure categories
+        // (matches how PreferencesSheet saves: [...intents, ...categories])
+        const INTENT_IDS = new Set([
+          "solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business",
+        ]);
+        const loadedIntents: string[] = [];
+        const loadedCategories: string[] = [];
+        dbPreferences.categories.forEach((item: string) => {
+          if (INTENT_IDS.has(item)) loadedIntents.push(item);
+          else loadedCategories.push(item);
+        });
+        setSelectedIntents(loadedIntents);
+        setSelectedCategories(loadedCategories);
+      } else if (dbPreferences.experience_types) {
+        // Fallback for older data that still uses experience_types column
         setSelectedIntents(dbPreferences.experience_types);
-      }
-      if (dbPreferences.categories) {
-        setSelectedCategories(dbPreferences.categories);
       }
       if (dbPreferences.budget_min !== undefined) {
         setBudgetMin(dbPreferences.budget_min);
@@ -508,7 +518,7 @@ export default function CollaborationPreferences({
       // Transform preferences to database format
    
       const dbPreferences: any = {
-        categories: selectedCategories,
+        categories: [...selectedIntents, ...selectedCategories],
         budget_min: typeof budgetMin === "number" ? budgetMin : 0,
         budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
         // Note: group_size column doesn't exist in board_session_preferences table
@@ -551,6 +561,7 @@ export default function CollaborationPreferences({
       // Invalidate TanStack Query caches to trigger refetch
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
       queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+      queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
 
       // Also call the onSave callback for backward compatibility
       const preferences = {

@@ -64,7 +64,7 @@ interface PreferencesSheetProps {
 
 // Experience Types matching the image - using exact icons from IntentSelectionStep
 const experienceTypes = [
-  { id: "solo-adventure", label: "Solo Adventure", icon: "star-outline" },
+  { id: "solo-adventure", label: "Adventurous", icon: "compass-outline" },
   { id: "first-dates", label: "First Date", icon: "heart-outline" },
   { id: "romantic", label: "Romantic", icon: "heart-outline" },
   { id: "friendly", label: "Friendly", icon: "people-outline" },

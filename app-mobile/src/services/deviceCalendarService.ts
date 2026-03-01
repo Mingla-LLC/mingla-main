@@ -180,6 +180,43 @@ export class DeviceCalendarService {
   }
 
   /**
+   * Create a device calendar event from a curated multi-stop plan
+   */
+  static createEventFromCuratedCard(
+    card: any,
+    startDate: Date,
+    totalDurationMinutes: number
+  ): DeviceCalendarEvent {
+    const stops = card.stops || [];
+    const stopNames = stops.map((s: any) => s.placeName).join(' → ');
+    const stopDetails = stops
+      .map((s: any, i: number) => `Stop ${i + 1}: ${s.placeName}\nAddress: ${s.address}\nRating: ${s.rating}⭐`)
+      .join('\n\n');
+
+    return {
+      title: `Mingla Plan: ${stopNames}`,
+      startDate,
+      endDate: new Date(startDate.getTime() + totalDurationMinutes * 60000),
+      notes: [
+        card.tagline || '',
+        '',
+        `Total estimated time: ${totalDurationMinutes} minutes`,
+        `Estimated cost: $${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
+        '',
+        '--- Stops ---',
+        stopDetails,
+      ].join('\n'),
+      location: stops[0]?.address || '',
+      alarms: [
+        {
+          relativeOffset: -30,
+          method: Calendar.AlarmMethod.ALERT,
+        },
+      ],
+    };
+  }
+
+  /**
    * Remove an event from the device calendar by ID
    */
   static async removeEventFromDeviceCalendar(

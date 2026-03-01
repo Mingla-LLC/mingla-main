@@ -908,6 +908,17 @@ export function useAppHandlers(state: any) {
           matchFactors: card.matchFactors,
           lat: card.lat,
           lng: card.lng,
+          // Preserve curated card fields if this is a curated experience
+          ...((card as any).cardType === 'curated' ? {
+            cardType: (card as any).cardType,
+            stops: (card as any).stops,
+            tagline: (card as any).tagline,
+            totalPriceMin: (card as any).totalPriceMin,
+            totalPriceMax: (card as any).totalPriceMax,
+            estimatedDurationMinutes: (card as any).estimatedDurationMinutes,
+            pairingKey: (card as any).pairingKey,
+            experienceType: (card as any).experienceType,
+          } : {}),
         };
 
       

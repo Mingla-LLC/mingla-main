@@ -26,8 +26,9 @@ import { CalendarService } from "../../services/calendarService";
 import { savedCardsService } from "../../services/savedCardsService";
 import { toastManager } from "../ui/Toast";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
-import ProposeDateTimeModal from "./ProposeDateTimeModal";
+import ProposeDateTimeModal from "./ProposeDateTimeModal"; // dark bottom sheet
 import { formatPriceRange } from "../utils/formatters";
+import type { CuratedStop } from "../../types/curatedExperience";
 
 interface SavedCard {
   id: string;
@@ -847,6 +848,147 @@ const SavedTab = ({
     },
   });
 
+  const curatedSavedStyles = StyleSheet.create({
+    card: {
+      backgroundColor: '#1C1C1E',
+      borderRadius: 16,
+      marginBottom: 12,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+    },
+    imageStrip: {
+      flexDirection: 'row',
+      height: 100,
+    },
+    imageContainer: {
+      flex: 1,
+      position: 'relative',
+    },
+    stopImage: {
+      width: '100%',
+      height: '100%',
+    },
+    stopBadge: {
+      position: 'absolute',
+      bottom: 6,
+      left: 6,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: '#F59E0B',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stopBadgeText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#1C1C1E',
+    },
+    content: {
+      padding: 14,
+    },
+    badgeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 8,
+    },
+    typeBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(245,158,11,0.12)',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+    },
+    typeBadgeText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: '#F59E0B',
+      textTransform: 'uppercase',
+      letterSpacing: 0.3,
+    },
+    stopCountBadge: {
+      backgroundColor: 'rgba(255,255,255,0.08)',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+    },
+    stopCountText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: 'rgba(255,255,255,0.5)',
+    },
+    title: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: '#ffffff',
+      marginBottom: 4,
+      lineHeight: 22,
+    },
+    tagline: {
+      fontSize: 13,
+      color: 'rgba(255,255,255,0.5)',
+      fontStyle: 'italic',
+      marginBottom: 10,
+    },
+    statsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    statItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    statText: {
+      fontSize: 12,
+      color: 'rgba(255,255,255,0.6)',
+      fontWeight: '500',
+    },
+    statDot: {
+      color: 'rgba(255,255,255,0.3)',
+      marginHorizontal: 6,
+      fontSize: 12,
+    },
+    actions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingBottom: 14,
+      gap: 10,
+    },
+    scheduleButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: '#F59E0B',
+      paddingVertical: 10,
+      borderRadius: 10,
+    },
+    scheduleButtonDisabled: {
+      backgroundColor: 'rgba(245,158,11,0.4)',
+    },
+    scheduleButtonText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: '#1C1C1E',
+    },
+    iconButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      backgroundColor: 'rgba(255,255,255,0.06)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });
+
   const getIconComponent = (iconName: any) => {
     if (typeof iconName === "function") {
       return iconName;
@@ -915,9 +1057,7 @@ const SavedTab = ({
   };
 
   const handleSchedule = (card: SavedCard) => {
-    /*     console.log("card", card.lat);
-    console.log("card", card.lng); */
-    if (scheduledCardIdsSet.has(card.id)) {
+    if (scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id)) {
       return;
     }
 
@@ -939,7 +1079,134 @@ const SavedTab = ({
       return;
     }
 
+    // Close expanded card modal if open (prevents Modal stacking conflicts)
+    if (isModalVisible) {
+      setIsModalVisible(false);
+      setSelectedCardForModal(null);
+    }
+
     // Show the propose date/time modal
+    setCardToSchedule(card);
+    setShowProposeDateTimeModal(true);
+  };
+
+  // ---- Opening Hours Validation for Curated Plans ----
+
+  interface StopAvailability {
+    stopName: string;
+    isOpen: boolean;
+    reason?: string;
+  }
+
+  const to24Hour = (hour: number, ampm: string): number => {
+    const isPM = ampm.toUpperCase() === 'PM';
+    if (hour === 12) return isPM ? 12 : 0;
+    return isPM ? hour + 12 : hour;
+  };
+
+  const checkSingleStopOpen = (
+    stop: CuratedStop,
+    arrivalTime: Date
+  ): StopAvailability => {
+    const dayName = arrivalTime.toLocaleDateString('en-US', { weekday: 'long' });
+    const hoursString = stop.openingHours?.[dayName];
+
+    // No hours data — assume open
+    if (!hoursString) {
+      return { stopName: stop.placeName, isOpen: true };
+    }
+
+    // Explicitly closed
+    if (hoursString.toLowerCase().includes('closed')) {
+      return {
+        stopName: stop.placeName,
+        isOpen: false,
+        reason: `Closed on ${dayName}s`,
+      };
+    }
+
+    // Open 24 hours
+    if (hoursString.toLowerCase().includes('24 hours') || hoursString.toLowerCase().includes('open 24')) {
+      return { stopName: stop.placeName, isOpen: true };
+    }
+
+    // Parse "9:00 AM – 5:00 PM" or "9 AM – 5 PM" format
+    const match = hoursString.match(
+      /(\d{1,2}):?(\d{2})?\s*(AM|PM)\s*[–\-]\s*(\d{1,2}):?(\d{2})?\s*(AM|PM)/i
+    );
+    if (!match) {
+      // Can't parse — assume open
+      return { stopName: stop.placeName, isOpen: true };
+    }
+
+    const openHour = to24Hour(parseInt(match[1]), match[3]);
+    const openMinute = parseInt(match[2] || '0');
+    const closeHour = to24Hour(parseInt(match[4]), match[6]);
+    const closeMinute = parseInt(match[5] || '0');
+
+    const arrivalHour = arrivalTime.getHours();
+    const arrivalMinute = arrivalTime.getMinutes();
+    const arrivalTotal = arrivalHour * 60 + arrivalMinute;
+    const openTotal = openHour * 60 + openMinute;
+    const closeTotal = closeHour * 60 + closeMinute;
+
+    if (arrivalTotal < openTotal) {
+      const openTimeStr = `${match[1]}:${match[2] || '00'} ${match[3]}`;
+      return {
+        stopName: stop.placeName,
+        isOpen: false,
+        reason: `Opens at ${openTimeStr}`,
+      };
+    }
+
+    if (arrivalTotal >= closeTotal && closeTotal > openTotal) {
+      const closeTimeStr = `${match[4]}:${match[5] || '00'} ${match[6]}`;
+      return {
+        stopName: stop.placeName,
+        isOpen: false,
+        reason: `Closes at ${closeTimeStr}`,
+      };
+    }
+
+    return { stopName: stop.placeName, isOpen: true };
+  };
+
+  const checkAllStopsOpen = (
+    stops: CuratedStop[],
+    startTime: Date
+  ): { allOpen: boolean; results: StopAvailability[] } => {
+    let cumulativeMinutes = 0;
+
+    const results: StopAvailability[] = stops.map((stop, idx) => {
+      // Calculate estimated arrival time at this stop
+      const arrivalTime = new Date(startTime.getTime() + cumulativeMinutes * 60000);
+      const availability = checkSingleStopOpen(stop, arrivalTime);
+
+      // Add this stop's duration + next stop's travel time
+      cumulativeMinutes += (stop.estimatedDurationMinutes ?? 45);
+      if (idx < stops.length - 1 && stops[idx + 1]?.travelTimeFromPreviousStopMin) {
+        cumulativeMinutes += stops[idx + 1].travelTimeFromPreviousStopMin!;
+      }
+
+      return availability;
+    });
+
+    return {
+      allOpen: results.every(r => r.isOpen),
+      results,
+    };
+  };
+
+  const handleScheduleCurated = (card: SavedCard) => {
+    if (scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id)) return;
+
+    // Close expanded card modal if open (prevents Modal stacking conflicts)
+    if (isModalVisible) {
+      setIsModalVisible(false);
+      setSelectedCardForModal(null);
+    }
+
+    // Open the date/time picker modal
     setCardToSchedule(card);
     setShowProposeDateTimeModal(true);
   };
@@ -964,14 +1231,66 @@ const SavedTab = ({
     dateOption: "now" | "today" | "weekend" | "custom"
   ) => {
     setShowProposeDateTimeModal(false);
-    // For now, immediately proceed with scheduling
-    // In the future, this could trigger AI compatibility check
-    proceedWithScheduling(date);
+
+    // Check if this is a curated card with stops
+    const isCurated = cardToSchedule
+      && Array.isArray((cardToSchedule as any).stops)
+      && (cardToSchedule as any).stops.length > 0;
+
+    if (isCurated) {
+      const stops = (cardToSchedule as any).stops as CuratedStop[];
+      const { allOpen, results } = checkAllStopsOpen(stops, date);
+
+      if (allOpen) {
+        // All stops are open — ask for confirmation
+        const timeStr = date.toLocaleString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        });
+        Alert.alert(
+          'All Stops Are Open!',
+          `All ${stops.length} stops are open at ${timeStr}.\n\nWould you like to schedule this plan and add it to your calendar?`,
+          [
+            { text: 'Not Now', style: 'cancel', onPress: () => setCardToSchedule(null) },
+            { text: 'Schedule', onPress: () => proceedWithScheduling(date) },
+          ]
+        );
+      } else {
+        // Some stops are closed — show which ones and why
+        const closedStops = results.filter(r => !r.isOpen);
+        const closedList = closedStops
+          .map(s => `  \u2022 ${s.stopName} \u2014 ${s.reason}`)
+          .join('\n');
+
+        Alert.alert(
+          'Some Stops Are Closed',
+          `Not all activities are open at the time you selected:\n\n${closedList}\n\nPlease choose a different time when all stops are available.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => setCardToSchedule(null) },
+            {
+              text: 'Choose New Time',
+              onPress: () => {
+                // Reopen the date/time picker
+                setShowProposeDateTimeModal(true);
+              },
+            },
+          ]
+        );
+      }
+    } else {
+      // Regular card — proceed immediately (existing behavior)
+      proceedWithScheduling(date);
+    }
   };
 
   const proceedWithScheduling = async (scheduledDateTime: Date) => {
     if (!cardToSchedule || !user?.id) {
       Alert.alert("Error", "You must be logged in to schedule cards.");
+      setSchedulingCardId(null);
       setCardToSchedule(null);
       return;
     }
@@ -1004,6 +1323,8 @@ const SavedTab = ({
       }
 
       // Transform card to ExpandedCardData format for calendar entry
+      const isCurated = Array.isArray((cardToSchedule as any).stops)
+        && (cardToSchedule as any).stops.length > 0;
 
       const cardData: ExpandedCardData = {
         id: cardToSchedule.id,
@@ -1047,6 +1368,17 @@ const SavedTab = ({
         ...(source === "collaboration" && cardToSchedule.sessionName
           ? { sessionName: cardToSchedule.sessionName }
           : {}),
+        // Curated fields — pass through if present
+        ...(isCurated && {
+          cardType: 'curated' as const,
+          stops: (cardToSchedule as any).stops,
+          tagline: (cardToSchedule as any).tagline,
+          pairingKey: (cardToSchedule as any).pairingKey,
+          totalPriceMin: (cardToSchedule as any).totalPriceMin,
+          totalPriceMax: (cardToSchedule as any).totalPriceMax,
+          estimatedDurationMinutes: (cardToSchedule as any).estimatedDurationMinutes,
+          experienceType: (cardToSchedule as any).experienceType,
+        }),
       };
 
       const cardWithSource = {
@@ -1066,11 +1398,20 @@ const SavedTab = ({
 
       // Add to device calendar
       try {
-        const deviceEvent = DeviceCalendarService.createEventFromCard(
-          cardData,
-          scheduledDateTime,
-          record.duration_minutes || 120
-        );
+        let deviceEvent;
+        if (isCurated) {
+          deviceEvent = DeviceCalendarService.createEventFromCuratedCard(
+            cardToSchedule,
+            scheduledDateTime,
+            (cardToSchedule as any).estimatedDurationMinutes || 120
+          );
+        } else {
+          deviceEvent = DeviceCalendarService.createEventFromCard(
+            cardData,
+            scheduledDateTime,
+            record.duration_minutes || 120
+          );
+        }
         await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
       } catch (deviceCalendarError) {
         console.warn("Failed to add to device calendar:", deviceCalendarError);
@@ -1097,7 +1438,9 @@ const SavedTab = ({
 
   const handleCardPress = (card: SavedCard) => {
     const matchScore = getMatchScore(card);
-    // Transform saved card to ExpandedCardData format
+
+    // Detect if this is a curated multi-stop card
+    const isCurated = Array.isArray((card as any).stops) && (card as any).stops.length > 0;
 
     const expandedCardData: ExpandedCardData = {
       id: card.id,
@@ -1131,7 +1474,6 @@ const SavedTab = ({
         saves: card.socialStats?.saves || 0,
         shares: (card.socialStats as any)?.shares || 0,
       },
-      // Handle location - could be in card.location object or card.lat/lng properties
       location:
         (card as any).location ||
         ((card as any).lat && (card as any).lng
@@ -1140,9 +1482,19 @@ const SavedTab = ({
       selectedDateTime: (card as any)?.dateAdded
         ? new Date((card as any).dateAdded)
         : "N/A",
-      // Include strollData and picnicData if available from saved card
       strollData: (card as any).strollData,
-      picnicData: (card as any).picnicData, // Include picnicData from saved card
+      picnicData: (card as any).picnicData,
+      // Curated fields — pass through if present
+      ...(isCurated && {
+        cardType: 'curated' as const,
+        stops: (card as any).stops,
+        tagline: (card as any).tagline,
+        pairingKey: (card as any).pairingKey,
+        totalPriceMin: (card as any).totalPriceMin,
+        totalPriceMax: (card as any).totalPriceMax,
+        estimatedDurationMinutes: (card as any).estimatedDurationMinutes,
+        experienceType: (card as any).experienceType,
+      }),
     };
 
     setSelectedCardForModal(expandedCardData);
@@ -1272,8 +1624,155 @@ const SavedTab = ({
     }
   };
 
+  const renderCuratedCard = (card: SavedCard) => {
+    const stops = (card as any).stops as CuratedStop[];
+    const isScheduled = scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
+    const isRemoving = removingCardIds.has(card.id);
+
+    // Computed display values
+    const avgRating = stops.length > 0
+      ? (stops.reduce((sum, st) => sum + st.rating, 0) / stops.length).toFixed(1)
+      : '–';
+    const totalPriceMin = (card as any).totalPriceMin ?? 0;
+    const totalPriceMax = (card as any).totalPriceMax ?? 0;
+    const totalPrice = totalPriceMin === 0 && totalPriceMax === 0
+      ? 'Free'
+      : `$${totalPriceMin}–$${totalPriceMax}`;
+    const totalMin = (card as any).estimatedDurationMinutes ?? 0;
+    const hrs = Math.floor(totalMin / 60);
+    const mins = totalMin % 60;
+    const durationLabel = hrs > 0
+      ? `${hrs}h ${mins > 0 ? `${mins}min` : ''}`
+      : `${mins}min`;
+    const EXPERIENCE_LABELS: Record<string, string> = {
+      'solo-adventure': 'Adventurous',
+      'first-dates': 'First Date',
+      'romantic': 'Romantic',
+      'friendly': 'Friendly',
+      'group-fun': 'Group Fun',
+    };
+    const rawType = (card as any).experienceType || 'solo-adventure';
+    const experienceLabel = EXPERIENCE_LABELS[rawType] ?? rawType.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+    return (
+      <View style={curatedSavedStyles.card}>
+        {/* 3-image strip with numbered badges */}
+        <View style={curatedSavedStyles.imageStrip}>
+          {stops.slice(0, 3).map((stop, idx) => (
+            <View key={stop.placeId} style={curatedSavedStyles.imageContainer}>
+              <ImageWithFallback
+                source={{ uri: stop.imageUrl }}
+                alt={stop.placeName}
+                style={curatedSavedStyles.stopImage}
+              />
+              <View style={curatedSavedStyles.stopBadge}>
+                <Text style={curatedSavedStyles.stopBadgeText}>{idx + 1}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* Tappable content area */}
+        <TouchableOpacity
+          onPress={() => handleCardPress(card)}
+          activeOpacity={0.7}
+          style={curatedSavedStyles.content}
+        >
+          {/* Experience type + stop count badges */}
+          <View style={curatedSavedStyles.badgeRow}>
+            <View style={curatedSavedStyles.typeBadge}>
+              <Ionicons name="map-outline" size={12} color="#F59E0B" />
+              <Text style={curatedSavedStyles.typeBadgeText}>{experienceLabel}</Text>
+            </View>
+            <View style={curatedSavedStyles.stopCountBadge}>
+              <Text style={curatedSavedStyles.stopCountText}>{stops.length} Stops</Text>
+            </View>
+          </View>
+
+          {/* Title: stop names joined with arrows */}
+          <Text style={curatedSavedStyles.title} numberOfLines={2}>
+            {stops.map(s => s.placeName).join(' → ')}
+          </Text>
+
+          {/* Tagline */}
+          {(card as any).tagline ? (
+            <Text style={curatedSavedStyles.tagline} numberOfLines={1}>
+              {(card as any).tagline}
+            </Text>
+          ) : null}
+
+          {/* Stats row: avg rating, duration, price */}
+          <View style={curatedSavedStyles.statsRow}>
+            <View style={curatedSavedStyles.statItem}>
+              <Ionicons name="star" size={13} color="#F59E0B" />
+              <Text style={curatedSavedStyles.statText}>{avgRating} avg</Text>
+            </View>
+            <Text style={curatedSavedStyles.statDot}>·</Text>
+            <View style={curatedSavedStyles.statItem}>
+              <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.6)" />
+              <Text style={curatedSavedStyles.statText}>{durationLabel}</Text>
+            </View>
+            <Text style={curatedSavedStyles.statDot}>·</Text>
+            <View style={curatedSavedStyles.statItem}>
+              <Ionicons name="cash-outline" size={13} color="rgba(255,255,255,0.6)" />
+              <Text style={curatedSavedStyles.statText}>{totalPrice}</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* Action buttons */}
+        <View style={curatedSavedStyles.actions}>
+          <TouchableOpacity
+            onPress={() => handleScheduleCurated(card)}
+            style={[
+              curatedSavedStyles.scheduleButton,
+              (isScheduled || schedulingCardId === card.id) && curatedSavedStyles.scheduleButtonDisabled,
+            ]}
+            disabled={isScheduled || schedulingCardId === card.id}
+          >
+            {schedulingCardId === card.id ? (
+              <ActivityIndicator size="small" color="#1C1C1E" />
+            ) : (
+              <>
+                <Ionicons name="calendar" size={16} color="#1C1C1E" />
+                <Text style={curatedSavedStyles.scheduleButtonText}>
+                  {isScheduled ? 'Scheduled' : 'Schedule Plan'}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => onShareCard(card)}
+            style={curatedSavedStyles.iconButton}
+          >
+            <Ionicons name="share-social-outline" size={18} color="rgba(255,255,255,0.7)" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => handleRemoveSaved(card)}
+            style={curatedSavedStyles.iconButton}
+            disabled={isRemoving}
+          >
+            {isRemoving ? (
+              <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
+            ) : (
+              <Ionicons name="trash-outline" size={18} color="rgba(255,255,255,0.7)" />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   const renderCard = ({ item: card }: { item: SavedCard }) => {
-    const isScheduled = scheduledCardIdsSet.has(card.id);
+    // Curated multi-stop cards get a premium layout
+    const isCuratedCard = Array.isArray((card as any).stops) && (card as any).stops.length > 0;
+    if (isCuratedCard) {
+      return renderCuratedCard(card);
+    }
+
+    const isScheduled = scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
     const isRemoving = removingCardIds.has(card.id);
 
     // Check if place is currently open - handle both object and string (legacy) formats
@@ -1489,6 +1988,13 @@ const SavedTab = ({
         card={cardToSchedule}
         currentScheduledDate={cardToSchedule?.dateAdded}
         onProposeDateTime={handleProposeDateTime}
+        isCurated={
+          !!(
+            cardToSchedule &&
+            Array.isArray((cardToSchedule as any).stops) &&
+            (cardToSchedule as any).stops.length > 0
+          )
+        }
       />
 
       <ScrollView 

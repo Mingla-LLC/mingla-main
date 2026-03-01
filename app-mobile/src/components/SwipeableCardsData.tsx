@@ -75,7 +75,7 @@ export const allMockRecommendations: Recommendation[] = [
     ],
     travelTime: '8m',
     distance: '2.1 km',
-    experienceType: 'Solo Adventure',
+    experienceType: 'Adventurous',
     priceRange: 'Free',
     highlights: ['City Views', 'Dog Friendly', 'Food Trucks', 'Live Music'],
     fullDescription: 'A beloved San Francisco park perfect for picnics, sports, and enjoying panoramic city views.',

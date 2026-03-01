@@ -26,7 +26,7 @@ export const ExperienceTypesSection = memo(
     <View style={[styles.section, { marginTop: 20 }]}>
       <Text style={styles.sectionTitle}>Curated Experiences</Text>
       <Text style={styles.sectionSubtitle}>
-        Date Idea / Friends / Romantic / Solo Adventure
+        Date Idea / Friends / Romantic / Adventurous
       </Text>
       <View style={styles.experienceTypesContainer}>
         {experienceTypes.map((type) => {

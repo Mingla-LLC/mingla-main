@@ -130,7 +130,7 @@ function curatedToRecommendation(card: any): Recommendation {
     tagline: card.tagline,
     id: card.id,
     title: card.title,
-    category: card.experienceType ?? 'solo-adventure',
+    category: 'Adventurous',
     categoryIcon: 'compass',
     lat: firstStop?.lat,
     lng: firstStop?.lng,
@@ -382,38 +382,55 @@ export const RecommendationsProvider: React.FC<
     travelConstraintType:
       (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
     travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
+    datetimePref: userPrefs?.datetime_pref ?? new Date().toISOString(),
     batchSeed,
   };
   const isSoloMode = currentMode === 'solo';
+  const curatedSessionId = isCollaborationMode ? resolvedSessionId : undefined;
 
-  // Always enable solo-adventure as default curated type in solo mode
+  // In solo mode: hooks fire based on user's selected experience types
+  // In collaboration mode: ALL hooks fire; the edge function returns empty []
+  // for experience types not selected by any participant (fast, no API cost)
   const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo } = useCuratedExperiences({
     experienceType: 'solo-adventure',
     ...baseParams,
-    enabled: isSoloMode && (experienceTypes.length === 0 || experienceTypes.includes('solo-adventure')),
+    sessionId: curatedSessionId ?? undefined,
+    enabled: isSoloMode
+      ? (experienceTypes.length === 0 || experienceTypes.includes('solo-adventure'))
+      : isCollaborationMode,
   });
   const { cards: curatedDateCards, isLoading: isLoadingCuratedDate } = useCuratedExperiences({
     experienceType: 'first-dates',
     ...baseParams,
-    enabled: isSoloMode && experienceTypes.includes('first-dates'),
+    sessionId: curatedSessionId ?? undefined,
+    enabled: isSoloMode
+      ? experienceTypes.includes('first-dates')
+      : isCollaborationMode,
   });
   const { cards: curatedRomCards, isLoading: isLoadingCuratedRom } = useCuratedExperiences({
     experienceType: 'romantic',
     ...baseParams,
-    enabled: isSoloMode && experienceTypes.includes('romantic'),
+    sessionId: curatedSessionId ?? undefined,
+    enabled: isSoloMode
+      ? experienceTypes.includes('romantic')
+      : isCollaborationMode,
   });
   const { cards: curatedFriendCards, isLoading: isLoadingCuratedFriend } = useCuratedExperiences({
     experienceType: 'friendly',
     ...baseParams,
-    enabled: isSoloMode && experienceTypes.includes('friendly'),
+    sessionId: curatedSessionId ?? undefined,
+    enabled: isSoloMode
+      ? experienceTypes.includes('friendly')
+      : isCollaborationMode,
   });
   const { cards: curatedGroupCards, isLoading: isLoadingCuratedGroup } = useCuratedExperiences({
     experienceType: 'group-fun',
     ...baseParams,
-    enabled: isSoloMode && experienceTypes.includes('group-fun'),
+    sessionId: curatedSessionId ?? undefined,
+    enabled: isSoloMode
+      ? experienceTypes.includes('group-fun')
+      : isCollaborationMode,
   });
-
-  const isLoadingAnyCurated = isLoadingCuratedSolo || isLoadingCuratedDate || isLoadingCuratedRom || isLoadingCuratedFriend || isLoadingCuratedGroup;
 
   const allCuratedCards = [
     ...curatedSoloCards,
@@ -582,6 +599,7 @@ export const RecommendationsProvider: React.FC<
       // Since query keys include currentMode, different modes get separate cache entries
       // This prevents stale data from previous mode while allowing in-flight queries to complete gracefully
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
     }
 
     previousModeRef.current = currentMode;
@@ -596,7 +614,7 @@ export const RecommendationsProvider: React.FC<
 
   // Compute loading and error states from TanStack Query (moved up for use in effect)
   const loading =
-    isLoadingLocation || isLoadingPreferences || isLoadingRecommendations || isLoadingAnyCurated;
+    isLoadingLocation || isLoadingPreferences || isLoadingRecommendations || isLoadingCuratedSolo;
   const isFetching = isFetchingRecommendations;
 
   // Reset mode transitioning and mark fetch as complete when query finishes

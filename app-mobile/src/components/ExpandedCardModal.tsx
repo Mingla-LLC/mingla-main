@@ -90,7 +90,7 @@ const curatedStyles = StyleSheet.create({
   travelConnector: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 8,
+    marginVertical: 6,
     gap: 8,
   },
   travelLine: {
@@ -117,7 +117,7 @@ const curatedStyles = StyleSheet.create({
   stopCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
-    padding: 14,
+    padding: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
@@ -129,6 +129,12 @@ const curatedStyles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
     gap: 8,
+    flex: 1,
+    overflow: 'hidden',
+  },
+  stopLabelTextWrap: {
+    flex: 1,
+    flexShrink: 1,
   },
   stopNumberBadge: {
     width: 24,
@@ -155,9 +161,10 @@ const curatedStyles = StyleSheet.create({
     height: 140,
     borderRadius: 8,
     marginBottom: 10,
+    overflow: 'hidden',
   },
   placeName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
     color: '#111827',
     marginBottom: 2,
@@ -170,6 +177,7 @@ const curatedStyles = StyleSheet.create({
   stopMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 4,
     marginBottom: 8,
   },
@@ -244,6 +252,7 @@ const curatedStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+    gap: 8,
   },
   openBadge: {
     paddingHorizontal: 8,
@@ -258,64 +267,68 @@ const curatedStyles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopColor: '#e5e7eb',
   },
   aiDescription: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.75)',
+    color: '#4b5563',
     lineHeight: 20,
     marginBottom: 10,
   },
   hoursSection: {
-    marginBottom: 10,
+    marginTop: 8,
+    marginBottom: 8,
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    padding: 10,
   },
   hoursSectionLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.4)',
-    fontWeight: '600',
+    fontSize: 11,
+    color: '#6b7280',
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   hoursRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 2,
+    paddingVertical: 2,
   },
   hoursDay: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.45)',
-    width: 36,
+    fontSize: 12,
+    color: '#9ca3af',
+    width: 40,
   },
   hoursDayToday: {
     color: '#eb7825',
     fontWeight: '700',
   },
   hoursTime: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.45)',
+    fontSize: 12,
+    color: '#6b7280',
     flex: 1,
     textAlign: 'right',
   },
   hoursTimeToday: {
-    color: '#ffffff',
+    color: '#111827',
     fontWeight: '600',
   },
-  reserveButton: {
+  policiesButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#7C3AED',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    backgroundColor: '#333338',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
     marginTop: 4,
+    gap: 6,
   },
-  reserveButtonText: {
+  policiesButtonText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    marginLeft: 6,
   },
   totalTimeCard: {
     flexDirection: 'row',
@@ -324,8 +337,8 @@ const curatedStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(235,120,37,0.3)',
     borderRadius: 14,
-    padding: 16,
-    marginTop: 16,
+    padding: 12,
+    marginTop: 12,
   },
   totalTimeTextBlock: {
     flex: 1,
@@ -333,7 +346,7 @@ const curatedStyles = StyleSheet.create({
   },
   totalTimeLabel: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.5)',
+    color: '#9ca3af',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     fontWeight: '600',
@@ -341,25 +354,15 @@ const curatedStyles = StyleSheet.create({
   totalTimeValue: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#111827',
     marginTop: 2,
   },
   totalTimeBreakdown: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.45)',
+    color: '#6b7280',
     marginTop: 2,
   },
 });
-
-const FINE_DINING_TYPES = new Set([
-  'fine_dining_restaurant',
-  'steak_house',
-  'french_restaurant',
-  'greek_restaurant',
-  'italian_restaurant',
-  'chef_led_restaurant',
-  'upscale_restaurant',
-]);
 
 /** Private component — renders the multi-stop plan for a curated experience */
 function CuratedPlanView({
@@ -442,7 +445,7 @@ function CuratedPlanView({
     <View style={curatedStyles.container}>
       {/* Header */}
       <View style={curatedStyles.header}>
-        <Text style={curatedStyles.title}>{card.title}</Text>
+        <Text style={curatedStyles.title} numberOfLines={2}>{card.title}</Text>
         <Text style={curatedStyles.tagline}>{card.tagline}</Text>
         <View style={curatedStyles.summaryRow}>
           <View style={curatedStyles.summaryItem}>
@@ -466,7 +469,6 @@ function CuratedPlanView({
       <View style={curatedStyles.stopsContainer}>
         {card.stops.map((stop, idx) => {
           const isExpanded = expandedStops.has(stop.stopNumber);
-          const isFineDining = FINE_DINING_TYPES.has(stop.placeType) && stop.website;
           const anim = stopAnims[idx];
           return (
             <Animated.View
@@ -508,15 +510,15 @@ function CuratedPlanView({
                     <View style={curatedStyles.stopNumberBadge}>
                       <Text style={curatedStyles.stopNumberText}>{stop.stopNumber}</Text>
                     </View>
-                    <View>
+                    <View style={curatedStyles.stopLabelTextWrap}>
                       <Text style={curatedStyles.stopLabel}>{stop.stopLabel}</Text>
-                      <Text style={curatedStyles.placeName}>{stop.placeName}</Text>
+                      <Text style={curatedStyles.placeName} numberOfLines={2}>{stop.placeName}</Text>
                     </View>
                   </View>
                   <Ionicons
                     name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
                     size={18}
-                    color="rgba(255,255,255,0.5)"
+                    color="#9ca3af"
                   />
                 </TouchableOpacity>
 
@@ -529,7 +531,7 @@ function CuratedPlanView({
                   />
                 ) : null}
 
-                <Text style={curatedStyles.placeType}>
+                <Text style={curatedStyles.placeType} numberOfLines={1}>
                   {stop.placeType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 </Text>
 
@@ -560,39 +562,54 @@ function CuratedPlanView({
                   </View>
                 </View>
 
+                {/* Policies & Reservations — always visible */}
+                {stop.website && (
+                  <TouchableOpacity
+                    style={curatedStyles.policiesButton}
+                    onPress={() => {
+                      setBrowserTitle(stop.placeName);
+                      setBrowserUrl(stop.website!);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="globe-outline" size={15} color="#ffffff" />
+                    <Text style={curatedStyles.policiesButtonText}>Policies & Reservations</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Opening Hours — visible when expanded */}
+                {isExpanded && Object.keys(stop.openingHours).length > 0 && (
+                  <View style={curatedStyles.hoursSection}>
+                    <Text style={curatedStyles.hoursSectionLabel}>Weekly Hours</Text>
+                    {Object.entries(stop.openingHours).map(([day, hours]) => {
+                      const isToday = day.toLowerCase() === todayName.toLowerCase();
+                      return (
+                        <View key={day} style={curatedStyles.hoursRow}>
+                          <Text style={[
+                            curatedStyles.hoursDay,
+                            isToday && curatedStyles.hoursDayToday,
+                          ]}>
+                            {day.slice(0, 3)}
+                          </Text>
+                          <Text style={[
+                            curatedStyles.hoursTime,
+                            isToday && curatedStyles.hoursTimeToday,
+                          ]} numberOfLines={1}>
+                            {hours}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
                 {/* Expanded detail section */}
                 {isExpanded && (
                   <View style={curatedStyles.expandedSection}>
                     {/* AI Description */}
                     {stop.aiDescription ? (
-                      <Text style={curatedStyles.aiDescription}>{stop.aiDescription}</Text>
+                      <Text style={curatedStyles.aiDescription} numberOfLines={4} ellipsizeMode="tail">{stop.aiDescription}</Text>
                     ) : null}
-
-                    {/* Opening Hours */}
-                    {Object.keys(stop.openingHours).length > 0 && (
-                      <View style={curatedStyles.hoursSection}>
-                        <Text style={curatedStyles.hoursSectionLabel}>Hours</Text>
-                        {Object.entries(stop.openingHours).map(([day, hours]) => {
-                          const isToday = day === todayName;
-                          return (
-                            <View key={day} style={curatedStyles.hoursRow}>
-                              <Text style={[
-                                curatedStyles.hoursDay,
-                                isToday && curatedStyles.hoursDayToday,
-                              ]}>
-                                {day.slice(0, 3)}
-                              </Text>
-                              <Text style={[
-                                curatedStyles.hoursTime,
-                                isToday && curatedStyles.hoursTimeToday,
-                              ]}>
-                                {hours}
-                              </Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    )}
 
                     {/* Address + Directions */}
                     <View style={curatedStyles.stopAddressRow}>
@@ -609,21 +626,6 @@ function CuratedPlanView({
                       <Ionicons name="navigate-outline" size={14} color="#eb7825" />
                       <Text style={curatedStyles.directionsText}>Get Directions</Text>
                     </TouchableOpacity>
-
-                    {/* Reserve button — fine dining only */}
-                    {isFineDining && (
-                      <TouchableOpacity
-                        style={curatedStyles.reserveButton}
-                        onPress={() => {
-                          setBrowserTitle(stop.placeName);
-                          setBrowserUrl(stop.website!);
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <Ionicons name="calendar-outline" size={15} color="#ffffff" />
-                        <Text style={curatedStyles.reserveButtonText}>Reserve a Table</Text>
-                      </TouchableOpacity>
-                    )}
                   </View>
                 )}
               </View>

@@ -1,0 +1,546 @@
+================================================================================
+  IMPLEMENTATION GUIDE — Collaboration Curated Card Parity
+  Date: 2026-03-01
+================================================================================
+
+GOAL: Make collaboration mode show the same curated multi-stop itinerary cards
+that solo mode shows, using aggregated preferences from all session participants.
+Also align CollaborationPreferences.tsx with PreferencesSheet.tsx behavior.
+
+DONE WHEN:
+  - Collaboration swipe deck shows curated multi-stop itinerary cards
+  - Expanding a curated card in collaboration shows CuratedPlanView (stops timeline)
+  - CollaborationPreferences has "Adventure" experience type
+  - CollaborationPreferences saves intents into categories array
+  - Solo mode is completely unchanged
+
+================================================================================
+  FILES TO MODIFY (5 files, ordered by implementation dependency)
+================================================================================
+
+1. supabase/functions/generate-curated-experiences/index.ts   (edge function)
+2. app-mobile/src/services/curatedExperiencesService.ts       (service layer)
+3. app-mobile/src/hooks/useCuratedExperiences.ts              (React Query hook)
+4. app-mobile/src/contexts/RecommendationsContext.tsx          (orchestrator)
+5. app-mobile/src/components/CollaborationPreferences.tsx      (preferences UI)
+
+================================================================================
+  STEP 1 — Edge Function: Add session_id Support
+  File: supabase/functions/generate-curated-experiences/index.ts
+================================================================================
+
+The goal is: when a `session_id` is passed in the request body, the edge function
+fetches ALL board_session_preferences for that session, aggregates them, calculates
+a central location, and uses THOSE values instead of the individual params.
+
+A. At the top of the file (after line 13 where supabaseAdmin is created),
+   add the aggregation helpers. You can copy the aggregatePreferences() and
+   findCentralLocation() functions from generate-session-experiences/index.ts
+   (lines 369-555). They are self-contained.
+
+   Alternatively, write lightweight versions:
+
+   ```typescript
+   // ---- Session preference aggregation ----
+   const INTENT_IDS = new Set([
+     'solo-adventure', 'first-dates', 'romantic', 'friendly', 'group-fun', 'business',
+   ]);
+
+   async function aggregateSessionPreferences(sessionId: string): Promise<{
+     budgetMin: number;
+     budgetMax: number;
+     categories: string[];
+     experienceTypes: string[];
+     travelMode: string;
+     travelConstraintType: string;
+     travelConstraintValue: number;
+     datetimePref?: string;
+     location: { lat: number; lng: number } | null;
+   }> {
+     const { data: allPrefs, error } = await supabaseAdmin
+       .from('board_session_preferences')
+       .select('*')
+       .eq('session_id', sessionId);
+
+     if (error || !allPrefs || allPrefs.length === 0) {
+       throw new Error(`No preferences found for session ${sessionId}`);
+     }
+
+     // Budget: widest range
+     const budgetMin = Math.min(...allPrefs.map(p => p.budget_min ?? 0));
+     const budgetMax = Math.max(...allPrefs.map(p => p.budget_max ?? 1000));
+
+     // Categories + experience types: union, then split
+     const allCats = new Set<string>();
+     allPrefs.forEach(p => {
+       if (Array.isArray(p.categories)) p.categories.forEach((c: string) => allCats.add(c));
+     });
+     const categories = [...allCats].filter(c => !INTENT_IDS.has(c));
+     const experienceTypes = [...allCats].filter(c => INTENT_IDS.has(c));
+
+     // Travel mode: majority vote
+     const modeCounts: Record<string, number> = {};
+     allPrefs.forEach(p => {
+       const m = p.travel_mode || 'walking';
+       modeCounts[m] = (modeCounts[m] || 0) + 1;
+     });
+     const travelMode = Object.entries(modeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'walking';
+
+     // Travel constraint: most restrictive
+     const constraintTypes: Record<string, number> = {};
+     allPrefs.forEach(p => {
+       const t = p.travel_constraint_type || 'time';
+       constraintTypes[t] = (constraintTypes[t] || 0) + 1;
+     });
+     const travelConstraintType = Object.entries(constraintTypes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'time';
+     const travelConstraintValue = Math.min(
+       ...allPrefs.map(p => p.travel_constraint_value ?? 30)
+     );
+
+     // Datetime: earliest
+     const datetimes = allPrefs.map(p => p.datetime_pref).filter(Boolean).sort();
+     const datetimePref = datetimes[0] || undefined;
+
+     // Central location: centroid of all participant locations
+     const locations: { lat: number; lng: number }[] = [];
+     for (const pref of allPrefs) {
+       if (!pref.location) continue;
+       const coordMatch = pref.location.trim().match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+       if (coordMatch) {
+         const lat = parseFloat(coordMatch[1]);
+         const lng = parseFloat(coordMatch[2]);
+         if (!isNaN(lat) && !isNaN(lng)) locations.push({ lat, lng });
+       }
+       // NOTE: for city-name locations, you may want to add geocoding here
+       // (copy the geocodeLocation helper from generate-session-experiences)
+     }
+     let location: { lat: number; lng: number } | null = null;
+     if (locations.length > 0) {
+       location = {
+         lat: locations.reduce((s, l) => s + l.lat, 0) / locations.length,
+         lng: locations.reduce((s, l) => s + l.lng, 0) / locations.length,
+       };
+     }
+
+     return {
+       budgetMin, budgetMax, categories, experienceTypes,
+       travelMode, travelConstraintType, travelConstraintValue,
+       datetimePref, location,
+     };
+   }
+   ```
+
+B. In the serve() handler (line 773), extract the new `session_id` param:
+
+   CURRENT (line 774):
+     const { experienceType = 'solo-adventure', location, budgetMin = 0, budgetMax = 200,
+       travelMode = 'walking', travelConstraintType = 'time', travelConstraintValue = 30,
+       datetimePref, skipDescriptions = false, limit = 20 } = body;
+
+   CHANGE TO:
+     let { experienceType = 'solo-adventure', location, budgetMin = 0, budgetMax = 200,
+       travelMode = 'walking', travelConstraintType = 'time', travelConstraintValue = 30,
+       datetimePref, skipDescriptions = false, limit = 20, session_id } = body;
+
+     // If session_id is provided, aggregate preferences from all participants
+     if (session_id) {
+       try {
+         const agg = await aggregateSessionPreferences(session_id);
+         budgetMin = agg.budgetMin;
+         budgetMax = agg.budgetMax;
+         travelMode = agg.travelMode;
+         travelConstraintType = agg.travelConstraintType;
+         travelConstraintValue = agg.travelConstraintValue;
+         if (agg.datetimePref) datetimePref = agg.datetimePref;
+         if (agg.location) location = agg.location;
+         // Use aggregated experience types if the caller didn't specify one
+         // that's actually selected by the session participants
+         if (!agg.experienceTypes.includes(experienceType)) {
+           // This experience type wasn't selected by any participant — return empty
+           return new Response(
+             JSON.stringify({ cards: [], meta: { totalResults: 0, reason: 'experience_type_not_selected' } }),
+             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+           );
+         }
+       } catch (err) {
+         console.error('[curated] Session aggregation failed:', err);
+         return new Response(
+           JSON.stringify({ error: 'Failed to aggregate session preferences', cards: [] }),
+           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+         );
+       }
+     }
+
+   IMPORTANT: Change `const` to `let` for the destructured variables since they
+   may be overwritten by session aggregation.
+
+C. The location validation check (line 776) stays as-is — after aggregation,
+   `location` will have lat/lng if any participants set a location.
+
+TEST STEP 1:
+  Deploy the edge function locally:  npx supabase functions serve
+  Call it with a valid session_id in the body to verify it fetches and aggregates.
+
+================================================================================
+  STEP 2 — Service Layer: Pass sessionId
+  File: app-mobile/src/services/curatedExperiencesService.ts
+================================================================================
+
+A. Add `sessionId` to the GenerateCuratedParams interface (line 4):
+
+   CURRENT:
+     interface GenerateCuratedParams {
+       experienceType: 'solo-adventure' | 'first-dates' | 'romantic' | 'friendly' | 'group-fun';
+       location: { lat: number; lng: number };
+       budgetMin: number;
+       budgetMax: number;
+       travelMode: string;
+       travelConstraintType: 'time' | 'distance';
+       travelConstraintValue: number;
+       datetimePref?: string;
+       limit?: number;
+       skipDescriptions?: boolean;
+     }
+
+   ADD after `skipDescriptions`:
+       sessionId?: string;
+
+B. Pass it in the edge function body (line 19-21):
+
+   CURRENT:
+     const { data, error } = await supabase.functions.invoke('generate-curated-experiences', {
+       body: params,
+     });
+
+   CHANGE TO:
+     const { sessionId, ...edgeParams } = params;
+     const { data, error } = await supabase.functions.invoke('generate-curated-experiences', {
+       body: { ...edgeParams, session_id: sessionId },
+     });
+
+   This maps the camelCase `sessionId` to the snake_case `session_id` the edge
+   function expects and strips it from the other params.
+
+================================================================================
+  STEP 3 — Hook: Accept sessionId
+  File: app-mobile/src/hooks/useCuratedExperiences.ts
+================================================================================
+
+A. Add `sessionId` to UseCuratedExperiencesParams (line 18-29):
+
+   ADD after `batchSeed?: number;`:
+     sessionId?: string;
+
+B. Include `sessionId` in the query key for cache separation (line 49-61):
+
+   CURRENT:
+     const baseQueryKey = [
+       'curated-experiences',
+       params.experienceType,
+       location?.lat,
+       location?.lng,
+       ...
+     ];
+
+   ADD `params.sessionId ?? 'solo'` to the query key array (after experienceType):
+     const baseQueryKey = [
+       'curated-experiences',
+       params.experienceType,
+       params.sessionId ?? 'solo',
+       location?.lat,
+       ...
+     ];
+
+C. Pass `sessionId` through to the service call.
+
+   In the `restParams` destructure (line 47), `sessionId` is already captured
+   since we only extract `location` and `enabled`. But verify that `restParams`
+   includes `sessionId` — it should since it's part of the spread.
+
+   The service calls at lines 67-71 and 83-87 use `...restParams`, so `sessionId`
+   will flow through automatically.
+
+================================================================================
+  STEP 4 — RecommendationsContext: Enable curated in collaboration mode
+  File: app-mobile/src/contexts/RecommendationsContext.tsx
+================================================================================
+
+This is the core change. Currently lines 388-415 gate all curated hooks on
+`isSoloMode`. We need to also enable them in collaboration mode.
+
+A. Determine the sessionId for curated hooks (add after line 388):
+
+   CURRENT (line 388):
+     const isSoloMode = currentMode === 'solo';
+
+   ADD AFTER:
+     const curatedSessionId = isCollaborationMode ? resolvedSessionId : undefined;
+
+B. Change each hook's `enabled` condition to also fire in collaboration mode.
+   Replace `isSoloMode &&` with `(isSoloMode || isCollaborationMode) &&`.
+   Add `sessionId: curatedSessionId` to each hook call.
+
+   CURRENT (lines 391-415):
+     const { cards: curatedSoloCards, ... } = useCuratedExperiences({
+       experienceType: 'solo-adventure',
+       ...baseParams,
+       enabled: isSoloMode && (experienceTypes.length === 0 || experienceTypes.includes('solo-adventure')),
+     });
+     const { cards: curatedDateCards, ... } = useCuratedExperiences({
+       experienceType: 'first-dates',
+       ...baseParams,
+       enabled: isSoloMode && experienceTypes.includes('first-dates'),
+     });
+     // ... etc for all 5
+
+   CHANGE TO:
+     const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo } = useCuratedExperiences({
+       experienceType: 'solo-adventure',
+       ...baseParams,
+       sessionId: curatedSessionId,
+       enabled: (isSoloMode || isCollaborationMode) && (experienceTypes.length === 0 || experienceTypes.includes('solo-adventure')),
+     });
+     const { cards: curatedDateCards, isLoading: isLoadingCuratedDate } = useCuratedExperiences({
+       experienceType: 'first-dates',
+       ...baseParams,
+       sessionId: curatedSessionId,
+       enabled: (isSoloMode || isCollaborationMode) && experienceTypes.includes('first-dates'),
+     });
+     const { cards: curatedRomCards, isLoading: isLoadingCuratedRom } = useCuratedExperiences({
+       experienceType: 'romantic',
+       ...baseParams,
+       sessionId: curatedSessionId,
+       enabled: (isSoloMode || isCollaborationMode) && experienceTypes.includes('romantic'),
+     });
+     const { cards: curatedFriendCards, isLoading: isLoadingCuratedFriend } = useCuratedExperiences({
+       experienceType: 'friendly',
+       ...baseParams,
+       sessionId: curatedSessionId,
+       enabled: (isSoloMode || isCollaborationMode) && experienceTypes.includes('friendly'),
+     });
+     const { cards: curatedGroupCards, isLoading: isLoadingCuratedGroup } = useCuratedExperiences({
+       experienceType: 'group-fun',
+       ...baseParams,
+       sessionId: curatedSessionId,
+       enabled: (isSoloMode || isCollaborationMode) && experienceTypes.includes('group-fun'),
+     });
+
+   NOTE: In collaboration mode, `baseParams` still uses the local user's prefs
+   for the query key — but the actual card generation is done server-side using
+   session-aggregated preferences (the edge function ignores individual params
+   when session_id is present). The query key ensures React Query caches
+   correctly, and the `sessionId` in the key keeps solo and collab caches separate.
+
+C. For the `experienceTypes` derivation (line 375), we need collaboration mode
+   to also have access to intents. Currently it reads from `userPrefs?.categories`
+   which is the SOLO preferences table.
+
+   In collaboration mode, we want intents from the current user's SESSION
+   preferences. However, since we're using Option A (always enable all hooks in
+   collab, let edge function decide), we can simplify:
+
+   CHANGE the `enabled` conditions for collaboration mode to always be `true`
+   (the edge function returns empty if that experience type isn't in aggregated
+   prefs):
+
+     // For collaboration mode: always enable all curated hooks.
+     // The edge function checks aggregated experience types and returns empty
+     // if the type wasn't selected by any session participant.
+     const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo } = useCuratedExperiences({
+       experienceType: 'solo-adventure',
+       ...baseParams,
+       sessionId: curatedSessionId,
+       enabled: isSoloMode
+         ? (experienceTypes.length === 0 || experienceTypes.includes('solo-adventure'))
+         : isCollaborationMode,
+     });
+     const { cards: curatedDateCards, isLoading: isLoadingCuratedDate } = useCuratedExperiences({
+       experienceType: 'first-dates',
+       ...baseParams,
+       sessionId: curatedSessionId,
+       enabled: isSoloMode
+         ? experienceTypes.includes('first-dates')
+         : isCollaborationMode,
+     });
+     // ... same pattern for romantic, friendly, group-fun
+
+   This way:
+   - In solo mode: hooks fire based on user's selected experience types (unchanged)
+   - In collaboration mode: ALL 5 hooks fire; the edge function returns empty []
+     for experience types not selected by any participant (fast, no API cost)
+
+D. Also invalidate curated caches when switching modes.
+
+   In the existing query cache invalidation (line 552), add:
+     queryClient.invalidateQueries({ queryKey: ['curated-experiences'] });
+
+   This is already handled by the query key containing `sessionId`, but
+   explicit invalidation ensures fresh data when preferences change.
+
+================================================================================
+  STEP 5 — CollaborationPreferences: Align with PreferencesSheet
+  File: app-mobile/src/components/CollaborationPreferences.tsx
+================================================================================
+
+A. Add "solo-adventure" (Adventure) to experience types (line 48-54):
+
+   CURRENT:
+     const experienceTypes = [
+       { id: "first-dates", label: "First Date", icon: "heart-outline" },
+       { id: "romantic", label: "Romantic", icon: "heart-outline" },
+       { id: "friendly", label: "Friendly", icon: "people-outline" },
+       { id: "group-fun", label: "Group Fun", icon: "people-outline" },
+       { id: "business", label: "Business", icon: "briefcase-outline" },
+     ];
+
+   CHANGE TO:
+     const experienceTypes = [
+       { id: "solo-adventure", label: "Adventure", icon: "compass-outline" },
+       { id: "first-dates", label: "First Date", icon: "heart-outline" },
+       { id: "romantic", label: "Romantic", icon: "heart-outline" },
+       { id: "friendly", label: "Friendly", icon: "people-outline" },
+       { id: "group-fun", label: "Group Fun", icon: "people-outline" },
+       { id: "business", label: "Business", icon: "briefcase-outline" },
+     ];
+
+B. Match budget presets to solo (line 57-62):
+
+   CURRENT:
+     const budgetPresetsUSD = [
+       { min: 0, max: 25 },
+       { min: 25, max: 75 },
+       { min: 75, max: 150 },
+       { min: 150, max: 1000 },
+     ];
+
+   CHANGE TO:
+     const budgetPresetsUSD = [
+       { min: 0, max: 25 },
+       { min: 0, max: 50 },
+       { min: 0, max: 100 },
+       { min: 0, max: 150 },
+     ];
+
+C. Fix the budget label format in the useMemo (lines 182-193):
+
+   CURRENT (lines 187-190):
+     const label =
+       preset.max >= 1000
+         ? `${currencySymbol}${formatNumberWithCommas(convertedMin)}+`
+         : `${currencySymbol}${formatNumberWithCommas(convertedMin)}-${formatNumberWithCommas(convertedMax)}`;
+
+   CHANGE TO:
+     const label = `Up to ${currencySymbol}${formatNumberWithCommas(convertedMax)}`;
+
+D. Save intents merged into categories (line 510-511):
+
+   CURRENT:
+     const dbPreferences: any = {
+       categories: selectedCategories,
+
+   CHANGE TO:
+     const dbPreferences: any = {
+       categories: [...selectedIntents, ...selectedCategories],
+
+   This matches the PreferencesSheet pattern where intents and categories are
+   stored together in the categories array.
+
+E. Load intents back from categories on mount (lines 253-261):
+
+   CURRENT:
+     if (dbPreferences.experience_types) {
+       setSelectedIntents(dbPreferences.experience_types);
+     }
+     if (dbPreferences.categories) {
+       setSelectedCategories(dbPreferences.categories);
+     }
+
+   CHANGE TO:
+     if (dbPreferences.categories && Array.isArray(dbPreferences.categories)) {
+       // Split categories array into intents and pure categories
+       // (matches how PreferencesSheet saves: [...intents, ...categories])
+       const INTENT_IDS = new Set([
+         "solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business",
+       ]);
+       const loadedIntents: string[] = [];
+       const loadedCategories: string[] = [];
+       dbPreferences.categories.forEach((item: string) => {
+         if (INTENT_IDS.has(item)) loadedIntents.push(item);
+         else loadedCategories.push(item);
+       });
+       setSelectedIntents(loadedIntents);
+       setSelectedCategories(loadedCategories);
+     } else if (dbPreferences.experience_types) {
+       // Fallback for older data that still uses experience_types column
+       setSelectedIntents(dbPreferences.experience_types);
+     }
+
+   NOTE: Keep the fallback for `experience_types` so existing saved preferences
+   from before this change still load correctly.
+
+F. Also add curated-experiences cache invalidation in handleApplyPreferences
+   (after line 552):
+
+   CURRENT (lines 552-553):
+     queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+     queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+
+   ADD:
+     queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
+
+================================================================================
+  COMMON MISTAKES TO AVOID
+================================================================================
+
+1. DO NOT remove the solo-mode experience types derivation (line 375).
+   That logic still works for solo mode. Collaboration mode just ignores it
+   and always enables all hooks.
+
+2. DO NOT change `const` destructuring to `let` in the curated edge function
+   serve() handler if you forget to also handle the session_id path — the
+   variables MUST be `let` for the session aggregation override to work.
+
+3. DO NOT aggregate preferences client-side. The edge function does it. The
+   client just passes `session_id` and the edge function handles the rest.
+
+4. DO NOT forget to include `sessionId` in the React Query key. Without it,
+   solo and collaboration curated cards share the same cache and you'll see
+   stale/wrong data when switching modes.
+
+5. DO NOT change how curated cards are interleaved or rendered. The existing
+   `interleaveCards()`, `curatedToRecommendation()`, `CuratedExperienceSwipeCard`,
+   `CuratedPlanView`, and ExpandedCardModal handling all work mode-agnostically.
+   No changes needed in those components.
+
+================================================================================
+  VERIFICATION CHECKLIST
+================================================================================
+
+[ ] 1. Solo mode — open solo preferences, select Adventure + other intents,
+       swipe deck shows curated multi-stop cards. NO regression.
+
+[ ] 2. Collaboration mode — create session, open collab preferences, verify
+       "Adventure" appears in experience types list.
+
+[ ] 3. Collaboration mode — select Adventure + Romantic, save preferences.
+       Reopen preferences — verify Adventure and Romantic are still selected.
+
+[ ] 4. Collaboration mode — swipe deck shows curated multi-stop itinerary cards
+       with the CuratedExperienceSwipeCard UI (gradient, "Multi-Stop Adventure").
+
+[ ] 5. Collaboration mode — tap to expand a curated card — CuratedPlanView
+       renders with stops timeline.
+
+[ ] 6. Collaboration mode — swipe right on curated card — card appears on
+       the board. Tap it on the board — CuratedPlanView renders.
+
+[ ] 7. Two-user session — User A selects Adventure + $50 budget + Nature.
+       User B selects Romantic + $100 budget + Drink. Cards reflect merged
+       preferences (budget up to $100, curated for both Adventure and Romantic).
+
+[ ] 8. Budget presets in CollaborationPreferences show "Up to $25", "Up to $50",
+       "Up to $100", "Up to $150" (matching solo).
+
+================================================================================
+  END OF GUIDE
+================================================================================

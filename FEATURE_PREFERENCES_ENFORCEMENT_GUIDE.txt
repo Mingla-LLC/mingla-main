@@ -1,0 +1,480 @@
+================================================================================
+  IMPLEMENTATION GUIDE — Preferences-Driven Card Personalization & UI Polish
+  Date: 2026-02-28
+================================================================================
+
+OVERVIEW
+--------
+Seven changes, ordered by dependency. Start with the edge function (backend),
+then the mobile data plumbing, then UI. Each step has a "verify before moving on"
+checkpoint.
+
+================================================================================
+STEP 1 — Edge Function: Mode-Aware Radius Calculation
+================================================================================
+FILE: supabase/functions/generate-curated-experiences/index.ts
+
+FIND the radius calculation near the top of the serve() handler (around line 740):
+
+    const radiusMeters = travelConstraintType === 'time'
+      ? travelConstraintValue * 80
+      : travelConstraintValue;
+
+REPLACE with:
+
+    const TRAVEL_SPEEDS_KMH: Record<string, number> = {
+      walking: 4.5,
+      biking: 14,
+      transit: 20,
+      driving: 35,
+    };
+    const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
+    const radiusMeters = travelConstraintType === 'time'
+      ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
+      : travelConstraintValue * 1000;
+
+KEEP the existing clampedRadius line, but lower the floor:
+    const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
+
+WHY: Walking 30 min → 2,250 m. Driving 30 min → 17,500 m. Previously both got 2,400 m.
+
+VERIFY: Deploy locally. Call with travelMode: "driving", travelConstraintValue: 30.
+Check the radius used in fetchPlacesByCategoryWithCache is ~17,500 m.
+
+
+================================================================================
+STEP 2 — Edge Function: Strict Budget Enforcement
+================================================================================
+FILE: supabase/functions/generate-curated-experiences/index.ts
+
+FIND the `resolvePairingFromCategories()` function (around line 523-652).
+
+A) ADD pre-filtering when picking places from each category bucket (around line 538-553).
+   When selecting places for each category, add a budget filter:
+
+    // Before randomly picking from available places for this category:
+    let availablePlaces = categoryBucket.filter(p => !usedPlaceIds.has(p.id));
+
+    // NEW — pre-filter by individual place affordability:
+    if (budgetMax > 0) {
+      const perStopBudget = Math.ceil(budgetMax / 3);  // 3 stops per card
+      availablePlaces = availablePlaces.filter(p => (p.priceMin ?? 0) <= perStopBudget);
+    }
+
+B) FIND the existing soft budget check (around line 595-615) where it checks
+   totalPriceMin > budgetMax and sometimes allows it on last retry.
+
+   REPLACE with a hard gate:
+
+    const totalPriceMin = stops.reduce((sum, s) => sum + s.priceMin, 0);
+    if (budgetMax > 0 && totalPriceMin > budgetMax) {
+      return null;  // Hard reject — never show cards above budget
+    }
+
+   Remove the retry-based fallback that allowed over-budget cards.
+
+VERIFY: Call edge function with budgetMax: 25. Every returned card should have
+totalPriceMin <= 25. If zero cards come back, that's correct — user's budget is
+too low for that area.
+
+
+================================================================================
+STEP 3 — Edge Function: Exclude Gyms from Solo Adventures
+================================================================================
+FILE: supabase/functions/generate-curated-experiences/index.ts
+
+FIND where categoryPlaces are used after fetching from cache (around line 748-755).
+
+ADD a gym/fitness filter right after the fetch:
+
+    const SOLO_EXCLUDED_TYPES = new Set([
+      'gym',
+      'fitness_center',
+      'athletic_field',
+      'sports_club',
+      'health_club',
+    ]);
+
+    if (experienceType === 'solo-adventure') {
+      for (const [catKey, places] of Object.entries(categoryPlaces)) {
+        categoryPlaces[catKey] = places.filter(p => {
+          const primaryType = p.primaryType || p.primaryTypeDisplayName || '';
+          const allTypes = p.types || [];
+          return !SOLO_EXCLUDED_TYPES.has(primaryType) &&
+                 !allTypes.some((t: string) => SOLO_EXCLUDED_TYPES.has(t));
+        });
+      }
+    }
+
+VERIFY: Generate solo-adventure cards. Search results for "gym" or "fitness" —
+should be zero. Planet Fitness specifically should never appear.
+
+
+================================================================================
+STEP 4 — Edge Function: DateTime / Opening Hours Filtering
+================================================================================
+FILE: supabase/functions/generate-curated-experiences/index.ts
+
+A) UPDATE the request body destructuring (around line 736) to accept datetimePref:
+
+    const {
+      experienceType = 'solo-adventure',
+      location,
+      budgetMin = 0,
+      budgetMax = 200,
+      travelMode = 'walking',
+      travelConstraintType = 'time',
+      travelConstraintValue = 30,
+      datetimePref,                          // NEW
+      limit = 20
+    } = body;
+
+    const targetDatetime = datetimePref ? new Date(datetimePref) : new Date();
+
+B) ADD the Google Places field mask for opening hours. Find where the field mask
+   is defined in the Places API calls inside fetchPlacesByCategoryWithCache() or
+   wherever the Nearby Search request is built.
+
+   ADD to the X-Goog-FieldMask header string:
+     places.regularOpeningHours
+
+   So the mask becomes something like:
+     places.id,places.displayName,places.location,places.rating,places.priceLevel,places.types,places.primaryType,places.photos,places.websiteUri,places.regularOpeningHours
+
+C) ADD an isPlaceOpenAt helper function near the top of the file:
+
+    function isPlaceOpenAt(place: any, target: Date): boolean {
+      const periods = place.regularOpeningHours?.periods;
+      if (!periods || periods.length === 0) return true; // No data → assume open
+
+      const dayOfWeek = target.getDay(); // 0=Sunday
+      const timeMinutes = target.getHours() * 60 + target.getMinutes();
+
+      for (const period of periods) {
+        if (period.open?.day === dayOfWeek) {
+          const openMin = (period.open.hour ?? 0) * 60 + (period.open.minute ?? 0);
+          let closeMin: number;
+          if (period.close) {
+            closeMin = (period.close.hour ?? 0) * 60 + (period.close.minute ?? 0);
+            // Handle overnight (close < open means closes next day)
+            if (closeMin <= openMin) closeMin = 24 * 60;
+          } else {
+            closeMin = 24 * 60; // No close = open 24h
+          }
+
+          if (timeMinutes >= openMin && timeMinutes < closeMin) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+D) FILTER places by opening hours BEFORE building cards. In the place selection
+   logic inside resolvePairingFromCategories(), after picking a place, check:
+
+    // After selecting candidate place:
+    if (!isPlaceOpenAt(place, targetDatetime)) {
+      continue; // Skip — this place is closed at the target time
+    }
+
+   Pass `targetDatetime` to `resolvePairingFromCategories()` as a new parameter.
+
+E) ALSO validate after building all 3 stops — double-check ALL are open:
+
+    const allStopsOpen = stops.every(s => isPlaceOpenAt(s._rawPlace, targetDatetime));
+    if (!allStopsOpen) return null;
+
+   This means you need to keep a `_rawPlace` reference on each stop temporarily
+   (just for validation, strip it before returning).
+
+VERIFY: Call with datetimePref set to 3:00 AM. Most cards should be rejected.
+Call with 12:00 PM noon. Cards should return normally. Check that every stop
+in every returned card is actually open at the specified time.
+
+
+================================================================================
+STEP 5 — Edge Function: Travel Time Constraint Validation
+================================================================================
+FILE: supabase/functions/generate-curated-experiences/index.ts
+
+In `resolvePairingFromCategories()`, AFTER building all stops and calculating
+inter-stop travel times, ADD a total travel time check:
+
+    // After travel time calculation for all stops:
+    const totalTravelMinutes = stops.reduce((sum, s) => {
+      return sum + (s.travelTimeFromPreviousStopMin ?? s.travelTimeFromUserMin);
+    }, 0);
+
+    if (travelConstraintType === 'time' && totalTravelMinutes > travelConstraintValue * 1.5) {
+      return null; // Total travel exceeds 1.5× user's limit — reject
+    }
+    if (travelConstraintType === 'distance') {
+      const totalDistanceKm = stops.reduce((sum, s) => sum + s.distanceFromUserKm, 0);
+      if (totalDistanceKm > travelConstraintValue * 1.5) {
+        return null;
+      }
+    }
+
+Pass `travelConstraintType` and `travelConstraintValue` to the function
+(these are already available in the serve() handler scope).
+
+VERIFY: Set walking + 15 min constraint. All returned cards should have
+totalTravelMinutes <= 22.5 min (15 × 1.5).
+
+
+================================================================================
+STEP 6 — Mobile: Thread datetimePref Through the Data Pipeline
+================================================================================
+
+FILE 1: app-mobile/src/contexts/RecommendationsContext.tsx
+
+FIND the baseParams object (around line 377-386):
+
+    const baseParams = {
+      location: userLocation,
+      budgetMin: userPrefs?.budget_min ?? 0,
+      budgetMax: userPrefs?.budget_max ?? 1000,
+      travelMode: userPrefs?.travel_mode ?? 'walking',
+      travelConstraintType: ...,
+      travelConstraintValue: ...,
+      batchSeed,
+    };
+
+ADD datetimePref:
+
+    const baseParams = {
+      location: userLocation,
+      budgetMin: userPrefs?.budget_min ?? 0,
+      budgetMax: userPrefs?.budget_max ?? 1000,
+      travelMode: userPrefs?.travel_mode ?? 'walking',
+      travelConstraintType: (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
+      travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
+      datetimePref: userPrefs?.datetime_pref ?? new Date().toISOString(),  // NEW
+      batchSeed,
+    };
+
+-----
+
+FILE 2: app-mobile/src/hooks/useCuratedExperiences.ts
+
+FIND the params type/interface. ADD datetimePref:
+
+    datetimePref?: string;
+
+ENSURE it's forwarded to the service call (around line 65):
+
+    curatedExperiencesService.generateCuratedExperiences({
+      ...restParams,
+      location: location!,
+      limit: PRIORITY_LIMIT,
+      datetimePref: restParams.datetimePref,  // Ensure this is included
+    }),
+
+Also ADD datetimePref to the React Query key array so cards regenerate when
+the user changes their datetime:
+
+    const baseQueryKey = ['curatedExperiences', experienceType, location?.lat, location?.lng,
+      budgetMin, budgetMax, travelMode, travelConstraintType, travelConstraintValue,
+      datetimePref];  // ADD datetimePref here
+
+-----
+
+FILE 3: app-mobile/src/services/curatedExperiencesService.ts
+
+FIND the GenerateCuratedParams type. ADD:
+
+    datetimePref?: string;
+
+No other changes needed — the service already passes the full params object
+to the edge function via `body: params`.
+
+VERIFY: Set a time in PreferencesSheet. Confirm the edge function receives
+the datetimePref in the request body (check logs). Cards should respect the time.
+
+
+================================================================================
+STEP 7 — UI: "Policies & Reservations" Button on All Stops
+================================================================================
+FILE: app-mobile/src/components/ExpandedCardModal.tsx
+
+FIND the section inside CuratedPlanView that renders the "Reserve a Table"
+button (around line 614-626). It's gated by `isFineDining`:
+
+    {isFineDining && (
+      <TouchableOpacity
+        style={curatedStyles.reserveButton}
+        onPress={() => {
+          setBrowserTitle(stop.placeName);
+          setBrowserUrl(stop.website!);
+        }}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="calendar-outline" size={15} color="#ffffff" />
+        <Text style={curatedStyles.reserveButtonText}>Reserve a Table</Text>
+      </TouchableOpacity>
+    )}
+
+REPLACE with (universal — all stops with a website):
+
+    {stop.website && (
+      <TouchableOpacity
+        style={curatedStyles.policiesButton}
+        onPress={() => {
+          setBrowserTitle(stop.placeName);
+          setBrowserUrl(stop.website!);
+        }}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="globe-outline" size={15} color="#ffffff" />
+        <Text style={curatedStyles.policiesButtonText}>Policies & Reservations</Text>
+      </TouchableOpacity>
+    )}
+
+ADD these styles to curatedStyles StyleSheet (or update existing reserveButton):
+
+    policiesButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#333338',
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 8,
+      marginTop: 4,
+      gap: 6,
+    },
+    policiesButtonText: {
+      color: '#ffffff',
+      fontSize: 13,
+      fontWeight: '600',
+    },
+
+You can REMOVE the old `reserveButton` and `reserveButtonText` styles, and
+remove the `FINE_DINING_TYPES` set and `isFineDining` variable IF they are not
+used anywhere else. Check first.
+
+VERIFY: Expand a curated card. Every stop with a website should show
+"Policies & Reservations" button. Tap it. InAppBrowserModal should open
+with the venue's website. Close button works.
+
+
+================================================================================
+STEP 8 — UI: Compact Premium Layout (CuratedPlanView)
+================================================================================
+FILE: app-mobile/src/components/ExpandedCardModal.tsx
+
+Make these targeted style changes in the `curatedStyles` StyleSheet:
+
+A) STOP CARD — tighten padding:
+   FIND: stopCard style (likely has padding: 16)
+   CHANGE to: padding: 12
+
+B) TEXT OVERFLOW — add numberOfLines to all unbounded text:
+   - Stop name: ensure numberOfLines={1} ellipsizeMode="tail"
+   - AI description: numberOfLines={4} ellipsizeMode="tail"
+   - Address: numberOfLines={1} ellipsizeMode="tail"
+   - Place type text: numberOfLines={1}
+   - Opening hours individual lines: numberOfLines={1}
+   - Title (top of plan): numberOfLines={2}
+
+C) TRAVEL CONNECTOR — reduce spacing:
+   FIND: the connector/travel line between stops
+   Reduce vertical paddingVertical from whatever it is to 6
+   Reduce overall height of the travel connector section
+
+D) INFO SECTION on swipe card (CuratedExperienceSwipeCard.tsx):
+   FIND: infoSection style with padding: 16, gap: 8
+   CHANGE to: padding: 12, gap: 6
+
+E) SUMMARY FOOTER — reduce padding:
+   FIND: summaryCard or totalTimeCard style
+   CHANGE padding: 16 → padding: 12
+
+F) OPENING HOURS LIST — compact:
+   Reduce font size from 13 → 12
+   Reduce gap between rows from 6 → 4 (if applicable)
+   Reduce marginTop on the hours container
+
+G) EXPANDED STOP CONTENT — control max height:
+   If there's an expanded section wrapper, consider adding:
+     maxHeight: 300 (with overflow: 'hidden' and ScrollView inside if needed)
+
+H) IMAGE CONTAINERS — ensure no bleed:
+   Add overflow: 'hidden' to any image container that doesn't have it
+
+VERIFY: Expand a curated card with 3 stops. Visually confirm:
+  - No excessive white space between stops
+  - No text overflows its container
+  - Feels tight, modern, premium
+  - All interactive elements are still easily tappable (min 44px touch target)
+
+
+================================================================================
+ORDER OF OPERATIONS SUMMARY
+================================================================================
+1. Edge function: mode-aware radius           (deploy & test)
+2. Edge function: strict budget               (deploy & test)
+3. Edge function: exclude gyms                (deploy & test)
+4. Edge function: datetime + opening hours    (deploy & test)
+5. Edge function: travel constraint validation (deploy & test)
+6. Mobile: thread datetimePref                 (build & test)
+7. Mobile: Policies & Reservations button      (build & test)
+8. Mobile: UI compactness polish              (build & test visual)
+
+Steps 1-5 are all in the same edge function file — you can do them as one
+deployment. Steps 6-8 are all mobile-side and can be done together.
+
+
+================================================================================
+COMMON MISTAKES TO AVOID
+================================================================================
+1. DON'T make opening hours filtering too strict — if a place has no
+   regularOpeningHours data, assume it's open. Many outdoor/nature venues
+   don't report hours.
+
+2. DON'T forget to add regularOpeningHours to the Google Places field mask.
+   Without it, the data won't be returned and every place will pass the
+   "no data → assume open" check, making the filter useless.
+
+3. DON'T change the `_rawPlace` approach after validation — strip it from
+   the returned card. The CuratedStop type doesn't include raw place data.
+
+4. DON'T break the existing "Reserve a Table" functionality for fine dining.
+   The new "Policies & Reservations" button replaces it entirely for ALL stops.
+   Fine dining stops still get it — just with the new label.
+
+5. DON'T add per-stop budget to the query key — only the overall budgetMin
+   and budgetMax should be in the key. The per-stop budget is internal logic.
+
+6. DON'T forget to pass targetDatetime to resolvePairingFromCategories().
+   It's currently not a parameter — add it.
+
+
+================================================================================
+DONE WHEN
+================================================================================
+□ Set travel mode to walking → see ~15 min between stops 2 km apart.
+  Switch to driving → same stops show ~3 min. (Change 1)
+
+□ Set budget to $25 → zero cards show totalPriceMin > $25.
+  Set to $100 → all cards under $100 minimum. (Change 2)
+
+□ Generate 50+ solo adventure cards → zero contain "gym", "fitness",
+  "Planet Fitness", "LA Fitness", or similar. (Change 3)
+
+□ Set time to 3:00 AM → very few or zero cards returned.
+  Set to 12:00 PM → full card set, all stops open at noon. (Change 4)
+
+□ Set walking + 15 min limit → no card has > 22 min total travel.
+  Set driving + 30 min → cards can be further out. (Change 5)
+
+□ datetimePref appears in edge function request body.
+  Changing date in PreferencesSheet triggers re-fetch. (Change 6)
+
+□ Every stop with a website shows "Policies & Reservations" button.
+  Tapping opens InAppBrowserModal. Close dismisses. (Change 7)
+
+□ No text bleeds outside boxes. No excessive white space.
+  Cards feel tight, modern, premium. (Change 8)
+================================================================================

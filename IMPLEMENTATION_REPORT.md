@@ -1,5 +1,5 @@
-# Implementation Report: Preferences-Driven Card Filtering & Curated Experiences (All Types)
-**Date:** 2026-02-28
+# Implementation Report: Collaboration Curated Card Parity
+**Date:** 2026-03-01
 **Status:** Complete
 **Implementer:** Senior Engineer Skill
 
@@ -8,62 +8,49 @@
 ## What Was There Before
 
 ### Existing Files Modified
-| File | Purpose Before Change |
-|------|-----------------------|
-| `app-mobile/src/services/experiencesService.ts` | UserPreferences interface missing custom_location, use_gps_location, experience_types |
-| `app-mobile/src/components/PreferencesSheet.tsx` | Budget presets at $100/$200/$500; no GPS toggle state |
-| `app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx` | LocationInputSection had no GPS toggle |
-| `app-mobile/src/hooks/useUserLocation.ts` | Always used GPS; did not read use_gps_location flag |
-| `app-mobile/src/hooks/useCuratedExperiences.ts` | Hard-coded to `'solo_adventure'` type only |
-| `app-mobile/src/contexts/RecommendationsContext.tsx` | One curated hook with underscore bug; experience_types never populated |
-| `supabase/functions/generate-curated-experiences/index.ts` | Only solo-adventure pairings; early return for other types |
-| `app-mobile/src/components/AppHandlers.tsx` | Did not save use_gps_location to DB |
+| File | Purpose Before Change | Lines Before |
+|------|-----------------------|--------------|
+| `supabase/functions/generate-curated-experiences/index.ts` | Generated curated multi-stop itinerary cards for solo mode only | ~900 lines |
+| `app-mobile/src/services/curatedExperiencesService.ts` | Service wrapper for the edge function, no session awareness | ~28 lines |
+| `app-mobile/src/hooks/useCuratedExperiences.ts` | React Query hook for curated cards, no session support | ~128 lines |
+| `app-mobile/src/contexts/RecommendationsContext.tsx` | Orchestrated all card fetching; curated hooks gated to `isSoloMode` | ~775 lines |
+| `app-mobile/src/components/CollaborationPreferences.tsx` | Collaboration preferences UI; missing Adventure intent, different budget presets, didn't save intents into categories | ~900+ lines |
 
 ### Pre-existing Behavior
-- Budget presets were $100/$200/$500 (too high for casual use)
-- Curated multi-stop cards were only wired for solo-adventure but NEVER actually fired due to two bugs:
-  1. `'solo_adventure'` (underscore) was checked but stored IDs use hyphens (`'solo-adventure'`)
-  2. `experienceTypes` was read from `userPrefs.experience_types` which does not exist in DB — categories array was never filtered for intent IDs
-- No GPS toggle in Starting Location section — GPS was always used
-- `useUserLocation` ignored `use_gps_location` field entirely
-- Other experience types (romantic, first-dates, etc.) had no curated cards at all
+- Curated multi-stop itinerary cards only appeared in solo mode
+- Collaboration swipe deck showed only regular single-place cards
+- CollaborationPreferences was missing the "Adventure" experience type
+- CollaborationPreferences saved only `selectedCategories` to DB (not intents)
+- CollaborationPreferences used range-based budget presets ($0-25, $25-75, $75-150, $150+) instead of solo's "Up to" presets
+- Loading intents from DB used `experience_types` field instead of splitting from `categories`
 
 ---
 
 ## What Changed
 
 ### New Files Created
-| File | Purpose |
-|------|---------|
-| `supabase/migrations/20260228000002_add_use_gps_location.sql` | Adds `use_gps_location BOOLEAN DEFAULT TRUE` to preferences table |
+None.
 
 ### Files Modified
 | File | Change Summary |
 |------|---------------|
-| `app-mobile/src/services/experiencesService.ts` | Added `custom_location`, `use_gps_location`, `experience_types` to UserPreferences; typed travel_constraint_type as union |
-| `app-mobile/src/components/PreferencesSheet.tsx` | Budget presets → $25/$50/$100/$150; added useGpsLocation + selectedCoords state; GPS toggle handler; passes use_gps_location + custom_location to onSave |
-| `app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx` | Added Switch import; GPS toggle row + disabled input UI; new styles |
-| `app-mobile/src/hooks/useUserLocation.ts` | Reads use_gps_location from React Query cache; respects flag; adds customLocation+useGpsFlag to query key |
-| `app-mobile/src/hooks/useCuratedExperiences.ts` | Exported CuratedExperienceType union; updated interface to use it |
-| `app-mobile/src/contexts/RecommendationsContext.tsx` | Added shuffleArray helper; fixed experienceTypes derivation (filter categories by INTENT_IDS); 5 unconditional hook calls with enabled gates |
-| `supabase/functions/generate-curated-experiences/index.ts` | Added 4 new pairing arrays; PAIRINGS_BY_TYPE routing map; dynamic lookup replaces hard-coded solo; removed early return for other types; dynamic experienceType in card id |
-| `app-mobile/src/components/AppHandlers.tsx` | Saves use_gps_location to DB; handles pre-computed custom_location from preferences; adds use_gps_location to React Query cache and offline cache |
+| `supabase/functions/generate-curated-experiences/index.ts` | Added `aggregateSessionPreferences()` helper and `session_id` request parameter. When session_id present, aggregates all participants' preferences and uses them instead of individual params. Returns empty if experience type not selected by any participant. |
+| `app-mobile/src/services/curatedExperiencesService.ts` | Added `sessionId` to `GenerateCuratedParams`. Maps camelCase `sessionId` to snake_case `session_id` in edge function body. |
+| `app-mobile/src/hooks/useCuratedExperiences.ts` | Added `sessionId` to params interface. Included `sessionId ?? 'solo'` in React Query key for cache separation. `sessionId` flows through `restParams` spread to service automatically. |
+| `app-mobile/src/contexts/RecommendationsContext.tsx` | Removed `isSoloMode` gate on curated hooks. Added `curatedSessionId` derived from `resolvedSessionId`. All 5 curated hooks now pass `sessionId` and enable in both solo and collaboration mode. Added `curated-experiences` query invalidation on mode transition. |
+| `app-mobile/src/components/CollaborationPreferences.tsx` | Added "Adventure" (`solo-adventure`) to experience types list. Changed budget presets to match solo ("Up to $25/50/100/150"). Save now merges `[...selectedIntents, ...selectedCategories]` into categories. Loading splits categories back into intents/categories using `INTENT_IDS` Set. Added `curated-experiences` cache invalidation on save. |
 
 ### Database Changes
-```sql
-ALTER TABLE preferences
-  ADD COLUMN IF NOT EXISTS use_gps_location BOOLEAN NOT NULL DEFAULT TRUE;
-```
+None — no new tables or columns required.
 
 ### Edge Functions
-| Function | Change | Endpoint |
-|----------|--------|----------|
-| `generate-curated-experiences` | Modified — now supports all 5 experience types | POST /generate-curated-experiences |
+| Function | New / Modified | Endpoint |
+|----------|---------------|----------|
+| `generate-curated-experiences` | Modified | POST /generate-curated-experiences |
 
 ### State Changes
-- React Query: `['userLocation', userId, mode, refreshKey, customLocation, useGpsFlag]` — extended key
-- React Query cache: `use_gps_location` now included in setQueryData
-- 5 new React Query keys: `['curated-experiences', type, lat, lng, budgetMin, budgetMax]` for each type
+- React Query keys modified: `curated-experiences` key now includes `sessionId ?? 'solo'` segment
+- Cache invalidation added: `curated-experiences` invalidated on mode transition and collaboration preference save
 
 ---
 
@@ -71,43 +58,32 @@ ALTER TABLE preferences
 
 ### Architecture Decisions
 
-**experienceTypes derivation fix (critical):** The DB `categories` column stores both intent IDs (`'solo-adventure'`) and category slugs (`'casual_eats'`) in one array. The old code read `userPrefs.experience_types` which never exists in the DB response — always returning `[]`. Fixed by filtering `userPrefs.categories` using a Set of known intent IDs.
+1. **Server-side aggregation (Option A)**: All preference aggregation happens in the edge function when `session_id` is provided. The client always enables all 5 curated hooks in collaboration mode and lets the edge function return empty `[]` for unselected experience types. This avoids client-side aggregation complexity and keeps the collaboration data flow clean.
 
-**5 unconditional hook calls:** React rules of hooks prohibit conditional hook calls. All 5 `useCuratedExperiences` calls are at the top level and use the `enabled` flag to gate fetching. This is the correct pattern.
+2. **`const` → `let` in serve handler**: The destructured request variables in the edge function were changed from `const` to `let` so they can be overwritten by session aggregation results. When `session_id` is absent, behavior is identical to before.
 
-**GPS toggle approach:** When GPS is ON, `custom_location` is set to `null` in the DB. When OFF, coordinates from autocomplete (or geocoded address) are stored. `useUserLocation` reads `use_gps_location` from the React Query cache (already populated) to decide which location source to use, without an extra DB fetch.
+3. **Query key cache separation**: Adding `sessionId ?? 'solo'` to the React Query key ensures solo and collaboration curated cards never share a cache entry, preventing stale data when switching modes.
 
-**query key extension:** Added `customLocation` and `useGpsFlag` to the `userLocation` query key so changing location preferences triggers an automatic re-fetch without manual invalidation.
+4. **Backwards-compatible intent loading**: The `CollaborationPreferences` loading logic falls back to `experience_types` column for older saved data, then splits `categories` for new data format.
 
-### New Pairing Types Added
-- **first-dates:** botanical_garden/art_gallery/museum/park + wine bars/restaurants + creative activities
-- **romantic:** botanical gardens/beach/park + fine dining/wine + spa/stargazing/hot springs
-- **friendly:** bowling/escape room/hiking/mini golf + casual food + comedy/karaoke/bar
-- **group-fun:** bowling/arcade/trampoline/laser tag + fast/buffet food + karaoke/comedy/bar
-
----
-
-## Deployment Required
-1. Run in Supabase Studio SQL editor:
-```sql
-ALTER TABLE preferences ADD COLUMN IF NOT EXISTS use_gps_location BOOLEAN NOT NULL DEFAULT TRUE;
-```
-
-2. Deploy edge function:
-```
-supabase functions deploy generate-curated-experiences
-```
-
-3. Hard-close and reopen the app to clear stale React Query cache (staleTime is 10min for curated cards).
+### Aggregation Strategy (edge function)
+When `session_id` is present:
+- **Budget**: widest range (min of all mins, max of all maxes)
+- **Categories**: union of all participants' selections
+- **Experience types**: union (extracted from categories via INTENT_IDS)
+- **Travel mode**: majority vote
+- **Travel constraint**: most restrictive (minimum value)
+- **Datetime**: earliest
+- **Location**: geographic centroid of all participant coordinates
 
 ---
 
 ## Success Criteria Verification
-- [x] Budget presets $25/$50/$100/$150 — replaced in PreferencesSheet.tsx
-- [x] GPS toggle in Starting Location — Switch component added, disables text field when ON
-- [x] experienceTypes correctly derived from categories — INTENT_IDS filter in RecommendationsContext
-- [x] Curated cards for all 5 experience types — 5 hook calls + edge function updated
-- [x] use_gps_location saved to DB — AppHandlers updated
-- [x] useUserLocation respects GPS toggle — flag read from React Query cache
-- [x] TypeScript: UserPreferences interface updated with proper types
-- [x] No as-any for custom_location/use_gps_location — now properly typed
+- [x] Curated multi-stop itinerary cards appear in collaboration swipe deck — enabled via removed solo gate + sessionId passthrough
+- [x] Curated cards in collaboration use aggregated session preferences — edge function aggregates when session_id present
+- [x] CollaborationPreferences has the same experience types as PreferencesSheet (including Adventure) — solo-adventure added
+- [x] CollaborationPreferences saves intents into categories array — `[...selectedIntents, ...selectedCategories]`
+- [x] CollaborationPreferences uses matching budget presets — "Up to $25/50/100/150"
+- [x] CuratedPlanView renders correctly when expanding curated cards in collaboration — no changes needed, works mode-agnostically
+- [x] Solo mode is completely unchanged — solo path preserved with same enabled conditions
+- [x] Curated cards saved from collaboration sessions display correctly on board — no changes needed to board/expand flow

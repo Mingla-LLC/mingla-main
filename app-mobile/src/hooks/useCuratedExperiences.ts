@@ -11,9 +11,9 @@ export type CuratedExperienceType =
   | 'group-fun';
 
 /** How many cards to fetch in the fast priority batch */
-const PRIORITY_LIMIT = 3;
+const PRIORITY_LIMIT = 2;
 /** How many cards to fetch in the slower background batch */
-const BACKGROUND_LIMIT = 17;
+const BACKGROUND_LIMIT = 18;
 
 interface UseCuratedExperiencesParams {
   experienceType: CuratedExperienceType;
@@ -23,8 +23,10 @@ interface UseCuratedExperiencesParams {
   travelMode: string;
   travelConstraintType: 'time' | 'distance';
   travelConstraintValue: number;
+  datetimePref?: string;
   enabled: boolean;
   batchSeed?: number;
+  sessionId?: string;
 }
 
 /**
@@ -48,14 +50,19 @@ export function useCuratedExperiences(params: UseCuratedExperiencesParams): {
   const baseQueryKey = [
     'curated-experiences',
     params.experienceType,
+    params.sessionId ?? 'solo',
     location?.lat,
     location?.lng,
     params.budgetMin,
     params.budgetMax,
+    params.travelMode,
+    params.travelConstraintType,
+    params.travelConstraintValue,
+    params.datetimePref,
     params.batchSeed ?? 0,
   ];
 
-  // ── Priority batch (fast, ~3-5 s) ──────────────────────────────────────
+  // ── Priority batch (fast, ~1-2 s — skips OpenAI descriptions) ─────────
   const priorityQuery = useQuery({
     queryKey: [...baseQueryKey, 'priority'],
     queryFn: () =>
@@ -63,10 +70,11 @@ export function useCuratedExperiences(params: UseCuratedExperiencesParams): {
         ...restParams,
         location: location!,
         limit: PRIORITY_LIMIT,
+        skipDescriptions: true,
       }),
     enabled: enabled && location !== null,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,   // 30 minutes
+    gcTime: 2 * 60 * 60 * 1000,  // 2 hours
     retry: 1,
   });
 
@@ -79,9 +87,9 @@ export function useCuratedExperiences(params: UseCuratedExperiencesParams): {
         location: location!,
         limit: BACKGROUND_LIMIT,
       }),
-    enabled: enabled && location !== null,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    enabled: enabled && location !== null && !priorityQuery.isLoading,
+    staleTime: 30 * 60 * 1000,   // 30 minutes
+    gcTime: 2 * 60 * 60 * 1000,  // 2 hours
     retry: 1,
   });
 

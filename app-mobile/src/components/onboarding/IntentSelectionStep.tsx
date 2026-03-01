@@ -189,10 +189,10 @@ const IntentSelectionStep = ({
   const intentOptions = [
     {
       id: "solo-adventure",
-      title: "Solo Adventure",
-      icon: "globe-outline",
-      description: "Explore new things on your own",
-      experienceType: "Solo adventure",
+      title: "Adventurous",
+      icon: "compass-outline",
+      description: "Explore your city — great for adventurous souls",
+      experienceType: "Adventurous",
     },
     {
       id: "first-dates",

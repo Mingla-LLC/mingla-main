@@ -27,7 +27,7 @@ const experienceTypes = [
   { id: 'romantic', label: 'Romantic', icon: 'heart' },
   { id: 'friendly', label: 'Friendly', icon: 'people-outline' },
   { id: 'group_fun', label: 'Group Fun', icon: 'people' },
-  { id: 'solo_adventure', label: 'Solo Adventure', icon: 'star-outline' },
+  { id: 'solo_adventure', label: 'Adventurous', icon: 'compass-outline' },
   { id: 'business', label: 'Business', icon: 'briefcase-outline' },
 ];
 

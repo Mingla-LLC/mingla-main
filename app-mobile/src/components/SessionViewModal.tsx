@@ -788,6 +788,17 @@ export default function SessionViewModal({
       selectedDateTime: cardData.selectedDateTime || new Date(),
       strollData: cardData.strollData,
       picnicData: cardData.picnicData,
+      // Curated card fields
+      ...(cardData.cardType === 'curated' ? {
+        cardType: cardData.cardType,
+        stops: cardData.stops,
+        tagline: cardData.tagline,
+        totalPriceMin: cardData.totalPriceMin,
+        totalPriceMax: cardData.totalPriceMax,
+        estimatedDurationMinutes: cardData.estimatedDurationMinutes,
+        pairingKey: cardData.pairingKey,
+        experienceType: cardData.experienceType,
+      } : {}),
     };
 
     setSelectedCardForExpansion(expandedCardData);

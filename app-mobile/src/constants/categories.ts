@@ -1234,10 +1234,10 @@ export const getMapPinPreview = (location: any, constraintType: string, constrai
 export const CURATED_EXPERIENCES = [
   {
     id: 'solo_adventure',
-    displayName: 'Solo Adventure',
+    displayName: 'Adventurous',
     icon: 'compass-outline',
     color: '#F59E0B',
-    description: 'A full day out, perfectly sequenced',
+    description: 'Explore your city — great for adventurous souls',
     isImplemented: true,
   },
   {

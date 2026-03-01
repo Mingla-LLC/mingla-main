@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,6 +8,95 @@ const corsHeaders = {
 
 const GOOGLE_PLACES_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') ?? '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+// ---- Session preference aggregation (for collaboration mode) ----
+const SESSION_INTENT_IDS = new Set([
+  'solo-adventure', 'first-dates', 'romantic', 'friendly', 'group-fun', 'business',
+]);
+
+async function aggregateSessionPreferences(sessionId: string): Promise<{
+  budgetMin: number;
+  budgetMax: number;
+  categories: string[];
+  experienceTypes: string[];
+  travelMode: string;
+  travelConstraintType: string;
+  travelConstraintValue: number;
+  datetimePref?: string;
+  location: { lat: number; lng: number } | null;
+}> {
+  const { data: allPrefs, error } = await supabaseAdmin
+    .from('board_session_preferences')
+    .select('*')
+    .eq('session_id', sessionId);
+
+  if (error || !allPrefs || allPrefs.length === 0) {
+    throw new Error(`No preferences found for session ${sessionId}`);
+  }
+
+  // Budget: widest range
+  const budgetMin = Math.min(...allPrefs.map(p => p.budget_min ?? 0));
+  const budgetMax = Math.max(...allPrefs.map(p => p.budget_max ?? 1000));
+
+  // Categories + experience types: union, then split
+  const allCats = new Set<string>();
+  allPrefs.forEach(p => {
+    if (Array.isArray(p.categories)) p.categories.forEach((c: string) => allCats.add(c));
+  });
+  const categories = [...allCats].filter(c => !SESSION_INTENT_IDS.has(c));
+  const experienceTypes = [...allCats].filter(c => SESSION_INTENT_IDS.has(c));
+
+  // Travel mode: majority vote
+  const modeCounts: Record<string, number> = {};
+  allPrefs.forEach(p => {
+    const m = p.travel_mode || 'walking';
+    modeCounts[m] = (modeCounts[m] || 0) + 1;
+  });
+  const travelMode = Object.entries(modeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'walking';
+
+  // Travel constraint: most restrictive
+  const constraintTypes: Record<string, number> = {};
+  allPrefs.forEach(p => {
+    const t = p.travel_constraint_type || 'time';
+    constraintTypes[t] = (constraintTypes[t] || 0) + 1;
+  });
+  const travelConstraintType = Object.entries(constraintTypes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'time';
+  const travelConstraintValue = Math.min(
+    ...allPrefs.map(p => p.travel_constraint_value ?? 30)
+  );
+
+  // Datetime: earliest
+  const datetimes = allPrefs.map(p => p.datetime_pref).filter(Boolean).sort();
+  const datetimePref = datetimes[0] || undefined;
+
+  // Central location: centroid of all participant locations
+  const locations: { lat: number; lng: number }[] = [];
+  for (const pref of allPrefs) {
+    if (!pref.location) continue;
+    const coordMatch = pref.location.trim().match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+    if (coordMatch) {
+      const lat = parseFloat(coordMatch[1]);
+      const lng = parseFloat(coordMatch[2]);
+      if (!isNaN(lat) && !isNaN(lng)) locations.push({ lat, lng });
+    }
+  }
+  let location: { lat: number; lng: number } | null = null;
+  if (locations.length > 0) {
+    location = {
+      lat: locations.reduce((s, l) => s + l.lat, 0) / locations.length,
+      lng: locations.reduce((s, l) => s + l.lng, 0) / locations.length,
+    };
+  }
+
+  return {
+    budgetMin, budgetMax, categories, experienceTypes,
+    travelMode, travelConstraintType, travelConstraintValue,
+    datetimePref, location,
+  };
+}
 
 const STOP_DURATION_MINUTES: Record<string, number> = {
   park: 60, botanical_garden: 60, hiking_area: 90, beach: 90,
@@ -140,6 +230,47 @@ const PAIRINGS_BY_TYPE: Record<string, [string, string, string][]> = {
   'group-fun':      GROUP_FUN_PAIRINGS,
 };
 
+const TAGLINES_BY_TYPE: Record<string, string[]> = {
+  'solo-adventure': [
+    'Explore the unexpected — your next discovery awaits',
+    'Three stops, endless possibilities',
+    'Chart your own path through the city',
+    'For the curious soul who loves to wander',
+  ],
+  'first-dates': [
+    'A thoughtful route for a great first impression',
+    'Three stops to break the ice',
+    'An effortless plan for getting to know someone',
+    'Low pressure, high adventure',
+  ],
+  'romantic': [
+    'A curated route for two',
+    'Three stops to make the night unforgettable',
+    'Romance awaits around every corner',
+    'Set the mood with a plan worth sharing',
+  ],
+  'friendly': [
+    'A day out worth catching up over',
+    'Three stops, good company, great vibes',
+    'The kind of plan friends remember',
+    'Explore together, no planning needed',
+  ],
+  'group-fun': [
+    'Rally the crew — adventure is calling',
+    'Three stops of pure group energy',
+    'Good times are better together',
+    'A plan the whole squad will love',
+  ],
+  'business': [
+    'A polished route for professional connections',
+    'Three stops to impress and connect',
+    'Networking meets exploration',
+    'A curated outing for business minds',
+  ],
+};
+
+const DEFAULT_TAGLINES = TAGLINES_BY_TYPE['solo-adventure'];
+
 type PlaceSearchConfig =
   | { strategy: 'nearby'; includedType: string }
   | { strategy: 'text'; textQuery: string };
@@ -271,6 +402,7 @@ function shuffle<T>(array: T[]): T[] {
 const PLACES_FIELD_MASK =
   'places.id,places.displayName,places.formattedAddress,places.location,' +
   'places.rating,places.userRatingCount,places.priceLevel,' +
+  'places.types,places.primaryType,' +
   'places.regularOpeningHours,places.websiteUri,places.photos';
 
 async function searchNearby(includedType: string, lat: number, lng: number, radiusMeters: number): Promise<any[]> {
@@ -355,19 +487,58 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function isPlaceOpenAt(place: any, target: Date): boolean {
+  const periods = place.regularOpeningHours?.periods;
+  if (!periods || periods.length === 0) return true; // No data → assume open
+
+  const dayOfWeek = target.getDay(); // 0=Sunday
+  const timeMinutes = target.getHours() * 60 + target.getMinutes();
+
+  for (const period of periods) {
+    if (period.open?.day === dayOfWeek) {
+      const openMin = (period.open.hour ?? 0) * 60 + (period.open.minute ?? 0);
+      let closeMin: number;
+      if (period.close) {
+        closeMin = (period.close.hour ?? 0) * 60 + (period.close.minute ?? 0);
+        // Handle overnight (close < open means closes next day)
+        if (closeMin <= openMin) closeMin = 24 * 60;
+      } else {
+        closeMin = 24 * 60; // No close = open 24h
+      }
+
+      if (timeMinutes >= openMin && timeMinutes < closeMin) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function estimateTravelMinutes(distKm: number, travelMode: string): number {
+  const config: Record<string, { speed: number; factor: number }> = {
+    walking:   { speed: 4.5, factor: 1.3 },
+    driving:   { speed: 35,  factor: 1.4 },
+    transit:   { speed: 20,  factor: 1.3 },
+    biking:    { speed: 14,  factor: 1.3 },
+    bicycling: { speed: 14,  factor: 1.3 },
+  };
+  const { speed, factor } = config[travelMode] ?? config.walking;
+  return Math.max(3, Math.round((distKm * factor / speed) * 60));
+}
+
 async function generateStopDescriptions(
   stops: any[],
-  experienceType: string
 ): Promise<string[]> {
   if (!OPENAI_API_KEY) {
-    return stops.map(s => `A wonderful stop at ${s.placeName} — perfect for your ${experienceType} day.`);
+    return stops.map(s => `A wonderful stop at ${s.placeName} — high in adventure and full of discovery.`);
   }
   try {
     const stopList = stops
       .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${s.placeType.replace(/_/g, ' ')}), rated ${s.rating.toFixed(1)}/5`)
       .join('\n');
-    const prompt = `You are a travel writer creating short descriptions for a "${experienceType}" day out.
+    const prompt = `You are a travel writer creating short descriptions for an adventurous day out.
 Write exactly 3 short paragraphs (one per stop, 2-3 sentences each), telling the visitor what to do and the vibe.
+Emphasize the sense of adventure, discovery, and excitement. Never describe it as a solo or single-person activity — write for anyone (friends, couples, groups, or solo).
 Be specific, warm, and fun. Address the reader directly as "you".
 Output ONLY a JSON array of 3 strings with no markdown and no extra keys.
 
@@ -410,7 +581,8 @@ async function fetchPlacesByCategory(
 
   await Promise.all(
     CATEGORY_NAMES.map(async (categoryName) => {
-      const placeTypes = PLACE_CATEGORIES[categoryName] || [];
+      const allTypes = PLACE_CATEGORIES[categoryName] || [];
+      const placeTypes = shuffle(allTypes).slice(0, 5);
       const allPlaces: any[] = [];
 
       // Fetch from all place types in this category
@@ -447,6 +619,60 @@ async function fetchPlacesByCategory(
   return categoryPlaces;
 }
 
+async function fetchPlacesByCategoryWithCache(
+  userLat: number,
+  userLng: number,
+  radiusMeters: number,
+  excludedPlaceIds?: Set<string>
+): Promise<Record<string, any[]>> {
+  const locationKey = `${userLat.toFixed(2)},${userLng.toFixed(2)}`;
+  const radiusBucket = Math.round(radiusMeters / 1000) * 1000;
+
+  try {
+    const { data: cached } = await supabaseAdmin
+      .from('curated_places_cache')
+      .select('category_places')
+      .eq('location_key', locationKey)
+      .eq('radius_m', radiusBucket)
+      .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .maybeSingle();
+
+    if (cached?.category_places) {
+      console.log('[cache] HIT for', locationKey, radiusBucket);
+      const categoryPlaces = cached.category_places as Record<string, any[]>;
+      if (excludedPlaceIds && excludedPlaceIds.size > 0) {
+        for (const cat of Object.keys(categoryPlaces)) {
+          categoryPlaces[cat] = categoryPlaces[cat].filter(
+            (p: any) => !excludedPlaceIds.has(p.id ?? '')
+          );
+        }
+      }
+      return categoryPlaces;
+    }
+  } catch (err) {
+    console.warn('[cache] Read failed, falling through to API:', err);
+  }
+
+  console.log('[cache] MISS for', locationKey, radiusBucket);
+  const categoryPlaces = await fetchPlacesByCategory(
+    userLat, userLng, radiusMeters, excludedPlaceIds
+  );
+
+  // Write to cache (fire-and-forget — don't block response)
+  supabaseAdmin
+    .from('curated_places_cache')
+    .upsert({
+      location_key: locationKey,
+      radius_m: radiusBucket,
+      category_places: categoryPlaces,
+      created_at: new Date().toISOString(),
+    })
+    .then(() => console.log('[cache] Written for', locationKey))
+    .catch((err: any) => console.warn('[cache] Write failed:', err));
+
+  return categoryPlaces;
+}
+
 // Build a card from 3 categories by picking one place from each
 // Implements: global deduplication (tracks usedPlaceIds), smarter budget matching, retry logic
 async function resolvePairingFromCategories(
@@ -458,18 +684,21 @@ async function resolvePairingFromCategories(
   budgetMax: number,
   usedPlaceIds: Set<string>,
   experienceType: string = 'solo-adventure',
-  retryCount: number = 0
+  targetDatetime: Date = new Date(),
+  travelConstraintType: string = 'time',
+  travelConstraintValue: number = 30,
+  skipDescriptions: boolean = false,
 ): Promise<any | null> {
   const [cat1, cat2, cat3] = categoryNames;
-  const MAX_RETRIES = 3; // Try up to 3 different random place combinations
-  
+
   // Get places, filtering out already-used ones (GLOBAL DEDUPLICATION)
-  const places1 = (categoryPlaces[cat1] || [])
-    .filter(p => !usedPlaceIds.has(p.id ?? ''));
-  const places2 = (categoryPlaces[cat2] || [])
-    .filter(p => !usedPlaceIds.has(p.id ?? ''));
-  const places3 = (categoryPlaces[cat3] || [])
-    .filter(p => !usedPlaceIds.has(p.id ?? ''));
+  // Also pre-filter by per-stop budget affordability
+  const perStopBudget = budgetMax > 0 ? Math.ceil(budgetMax / 3) : Infinity;
+  const isAffordable = (p: any) => priceLevelToRange(p.priceLevel).min <= perStopBudget;
+  const isAvailable = (p: any) => !usedPlaceIds.has(p.id ?? '') && isAffordable(p) && isPlaceOpenAt(p, targetDatetime);
+  const places1 = (categoryPlaces[cat1] || []).filter(isAvailable);
+  const places2 = (categoryPlaces[cat2] || []).filter(isAvailable);
+  const places3 = (categoryPlaces[cat3] || []).filter(isAvailable);
 
   // If any category has no available places, this pairing can't be made
   if (places1.length === 0 || places2.length === 0 || places3.length === 0) {
@@ -481,7 +710,7 @@ async function resolvePairingFromCategories(
   const place2 = places2[Math.floor(Math.random() * places2.length)];
   const place3 = places3[Math.floor(Math.random() * places3.length)];
 
-  const stops = [];
+  const stops: any[] = [];
 
   // Build stop info
   for (let idx = 0; idx < 3; idx++) {
@@ -493,7 +722,7 @@ async function resolvePairingFromCategories(
     const lat = placeLocation.latitude ?? userLat;
     const lng = placeLocation.longitude ?? userLng;
     const distKm = haversineKm(userLat, userLng, lat, lng);
-    const travelTimeFromUser = await getTravelTime(userLat, userLng, lat, lng, travelMode);
+    const travelTimeFromUser = estimateTravelMinutes(distKm, travelMode);
     const stopLabels: Array<'Start Here' | 'Then' | 'End With'> = ['Start Here', 'Then', 'End With'];
 
     stops.push({
@@ -521,40 +750,47 @@ async function resolvePairingFromCategories(
     });
   }
 
-  // IMPROVED BUDGET MATCHING: Check minimum total price (more realistic than maximum prices)
-  // Focus on the minimum cost users would realistically pay
+  // STRICT BUDGET ENFORCEMENT: Hard reject if minimum total price exceeds budget
   const totalPriceMin = stops.reduce((sum: number, s: any) => sum + s.priceMin, 0);
-  
+
   if (budgetMax > 0 && totalPriceMin > budgetMax) {
-    // If minimum price exceeds budget AND retries remain, try different places
-    if (retryCount < MAX_RETRIES) {
-      return resolvePairingFromCategories(
-        categoryNames,
-        categoryPlaces,
-        userLat,
-        userLng,
-        travelMode,
-        budgetMax,
-        usedPlaceIds,
-        experienceType,
-        retryCount + 1
-      );
-    }
-    // If out of retries, still allow card (prioritize diversity over strict budget filtering)
+    return null; // Hard reject — never show cards above budget
   }
 
-  // Calculate travel times between stops
+  // Estimate inter-stop travel using Haversine (no API call)
   for (let i = 1; i < stops.length; i++) {
-    const travelMin = await getTravelTime(stops[i - 1].lat, stops[i - 1].lng, stops[i].lat, stops[i].lng, travelMode);
-    stops[i].travelTimeFromPreviousStopMin = travelMin;
+    const interStopDist = haversineKm(stops[i - 1].lat, stops[i - 1].lng, stops[i].lat, stops[i].lng);
+    stops[i].travelTimeFromPreviousStopMin = estimateTravelMinutes(interStopDist, travelMode);
     stops[i].travelModeFromPreviousStop = travelMode;
   }
 
-  // Generate AI descriptions
-  const descriptions = await generateStopDescriptions(stops, experienceType);
-  for (let i = 0; i < stops.length; i++) {
-    stops[i].aiDescription = descriptions[i];
-    stops[i].estimatedDurationMinutes = STOP_DURATION_MINUTES[stops[i].placeType] ?? DEFAULT_STOP_DURATION;
+  // TRAVEL CONSTRAINT VALIDATION: reject if total travel exceeds 1.5× user's limit
+  const totalTravelMinutes = stops.reduce((sum: number, s: any) => {
+    return sum + (s.travelTimeFromPreviousStopMin ?? s.travelTimeFromUserMin);
+  }, 0);
+
+  if (travelConstraintType === 'time' && totalTravelMinutes > travelConstraintValue * 1.5) {
+    return null;
+  }
+  if (travelConstraintType === 'distance') {
+    const totalDistanceKm = stops.reduce((sum: number, s: any) => sum + s.distanceFromUserKm, 0);
+    if (totalDistanceKm > travelConstraintValue * 1.5) {
+      return null;
+    }
+  }
+
+  // Generate AI descriptions (skip for priority batch to cut ~2-3s)
+  if (skipDescriptions) {
+    for (let i = 0; i < stops.length; i++) {
+      stops[i].aiDescription = `${stops[i].placeName} — a great ${stops[i].placeType.replace(/_/g, ' ')} spot, high in adventure and full of discovery.`;
+      stops[i].estimatedDurationMinutes = STOP_DURATION_MINUTES[stops[i].placeType] ?? DEFAULT_STOP_DURATION;
+    }
+  } else {
+    const descriptions = await generateStopDescriptions(stops);
+    for (let i = 0; i < stops.length; i++) {
+      stops[i].aiDescription = descriptions[i];
+      stops[i].estimatedDurationMinutes = STOP_DURATION_MINUTES[stops[i].placeType] ?? DEFAULT_STOP_DURATION;
+    }
   }
 
   // totalPriceMin already calculated above for budget check — reuse it
@@ -563,7 +799,7 @@ async function resolvePairingFromCategories(
   const pairingKey = categoryNames.join('+');
   const travelTotal = stops.slice(1).reduce((s: number, st: any) => s + (st.travelTimeFromPreviousStopMin ?? 15), 0);
   const shortNames = stops.map((s: any) => s.placeName.split(' ').slice(0, 2).join(' '));
-  const taglines = ['A full solo day out', 'Three stops, zero plans needed', 'Discover your city, one stop at a time', 'The perfect day for one'];
+  const taglines = TAGLINES_BY_TYPE[experienceType] ?? DEFAULT_TAGLINES;
 
   return {
     id: `curated_${pairingKey}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -596,7 +832,7 @@ async function resolvePairing(pairing: [string, string, string], userLat: number
       const lat = placeLocation.latitude ?? userLat;
       const lng = placeLocation.longitude ?? userLng;
       const distKm = haversineKm(userLat, userLng, lat, lng);
-      const travelTimeFromUser = await getTravelTime(userLat, userLng, lat, lng, travelMode);
+      const travelTimeFromUser = estimateTravelMinutes(distKm, travelMode);
       const stopLabels: Array<'Start Here' | 'Then' | 'End With'> = ['Start Here', 'Then', 'End With'];
       return {
         stopNumber: index + 1,
@@ -625,12 +861,12 @@ async function resolvePairing(pairing: [string, string, string], userLat: number
   if (stopResults.some(s => s === null)) return null;
   const stops = stopResults as any[];
   for (let i = 1; i < stops.length; i++) {
-    const travelMin = await getTravelTime(stops[i - 1].lat, stops[i - 1].lng, stops[i].lat, stops[i].lng, travelMode);
-    stops[i].travelTimeFromPreviousStopMin = travelMin;
+    const interStopDist = haversineKm(stops[i - 1].lat, stops[i - 1].lng, stops[i].lat, stops[i].lng);
+    stops[i].travelTimeFromPreviousStopMin = estimateTravelMinutes(interStopDist, travelMode);
     stops[i].travelModeFromPreviousStop = travelMode;
   }
   // Generate AI descriptions for all stops in one OpenAI call
-  const descriptions = await generateStopDescriptions(stops, experienceType);
+  const descriptions = await generateStopDescriptions(stops);
   for (let i = 0; i < stops.length; i++) {
     stops[i].aiDescription = descriptions[i];
     stops[i].estimatedDurationMinutes = STOP_DURATION_MINUTES[stops[i].placeType] ?? DEFAULT_STOP_DURATION;
@@ -642,7 +878,7 @@ async function resolvePairing(pairing: [string, string, string], userLat: number
   const pairingKey = pairing.join('+');
   const travelTotal = stops.slice(1).reduce((s: number, st: any) => s + (st.travelTimeFromPreviousStopMin ?? 15), 0);
   const shortNames = stops.map((s: any) => s.placeName.split(' ').slice(0, 2).join(' '));
-  const taglines = ['A full solo day out', 'Three stops, zero plans needed', 'Discover your city, one stop at a time', 'The perfect day for one'];
+  const taglines = TAGLINES_BY_TYPE[experienceType] ?? DEFAULT_TAGLINES;
   return {
     id: `curated_${pairingKey}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     cardType: 'curated',
@@ -662,26 +898,85 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
     const body = await req.json();
-    const { experienceType = 'solo-adventure', location, budgetMin = 0, budgetMax = 200, travelMode = 'walking', travelConstraintType = 'time', travelConstraintValue = 30, limit = 20 } = body;
+    let { experienceType = 'solo-adventure', location, budgetMin = 0, budgetMax = 200, travelMode = 'walking', travelConstraintType = 'time', travelConstraintValue = 30, datetimePref, skipDescriptions = false, limit = 20, session_id } = body;
+
+    // If session_id is provided, aggregate preferences from all participants
+    if (session_id) {
+      try {
+        const agg = await aggregateSessionPreferences(session_id);
+        budgetMin = agg.budgetMin;
+        budgetMax = agg.budgetMax;
+        travelMode = agg.travelMode;
+        travelConstraintType = agg.travelConstraintType;
+        travelConstraintValue = agg.travelConstraintValue;
+        if (agg.datetimePref) datetimePref = agg.datetimePref;
+        if (agg.location) location = agg.location;
+        // If this experience type wasn't selected by any participant, return empty
+        if (!agg.experienceTypes.includes(experienceType)) {
+          return new Response(
+            JSON.stringify({ cards: [], meta: { totalResults: 0, reason: 'experience_type_not_selected' } }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } catch (err) {
+        console.error('[curated] Session aggregation failed:', err);
+        return new Response(
+          JSON.stringify({ error: 'Failed to aggregate session preferences', cards: [] }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    const targetDatetime = datetimePref ? new Date(datetimePref) : new Date();
     if (!location?.lat || !location?.lng) {
       return new Response(JSON.stringify({ error: 'location.lat and location.lng are required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    const radiusMeters = travelConstraintType === 'time' ? travelConstraintValue * 80 : travelConstraintValue;
-    const clampedRadius = Math.min(Math.max(radiusMeters, 1000), 50000);
+    const TRAVEL_SPEEDS_KMH: Record<string, number> = {
+      walking: 4.5,
+      biking: 14,
+      transit: 20,
+      driving: 35,
+    };
+    const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
+    const radiusMeters = travelConstraintType === 'time'
+      ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
+      : travelConstraintValue * 1000;
+    const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
     // NEW: Category-based generation for solo adventures with GLOBAL DEDUPLICATION
     if (experienceType === 'solo-adventure') {
       console.log('[solo-adventure] Fetching 20 places from each of 9 categories...');
       
       // Fetch 20 places from all 9 categories in parallel
-      let categoryPlaces = await fetchPlacesByCategory(location.lat, location.lng, clampedRadius);
+      let categoryPlaces = await fetchPlacesByCategoryWithCache(location.lat, location.lng, clampedRadius);
       
       // Log what we got
       let categorySummary = Object.entries(categoryPlaces)
         .map(([cat, places]) => `${cat}: ${places.length} places`)
         .join('; ');
       console.log(`[solo-adventure] Fetched places: ${categorySummary}`);
-      
+
+      // Filter out gyms/fitness centers from solo adventure results
+      const SOLO_EXCLUDED_TYPES = new Set([
+        'gym',
+        'fitness_center',
+        'athletic_field',
+        'sports_club',
+        'health_club',
+      ]);
+      const SOLO_EXCLUDED_NAME_PATTERN = /\b(gym|fitness|planet fitness|crossfit|anytime fitness|gold'?s gym|24 hour fitness|la fitness|orangetheory|equinox)\b/i;
+      for (const [catKey, places] of Object.entries(categoryPlaces)) {
+        categoryPlaces[catKey] = places.filter((p: any) => {
+          const primaryType = p.primaryType || p.placeType || '';
+          const allTypes = p.types || [];
+          const name = p.displayName?.text || p.placeName || '';
+          const typeExcluded = SOLO_EXCLUDED_TYPES.has(primaryType) ||
+                 allTypes.some((t: string) => SOLO_EXCLUDED_TYPES.has(t));
+          const nameExcluded = SOLO_EXCLUDED_NAME_PATTERN.test(name);
+          return !typeExcluded && !nameExcluded;
+        });
+      }
+
       // Generate all 84 category combinations
       const categoryCombinations = generateCategoryCombinations();
       console.log(`[solo-adventure] Generated ${categoryCombinations.length} category combinations`);
@@ -693,32 +988,46 @@ serve(async (req) => {
       // Shuffle combinations for variety
       const shuffledCombos = shuffle(categoryCombinations);
       
-      // Attempt combinations sequentially to build diversity and track deduplication
-      for (const combo of shuffledCombos) {
-        if (cards.length >= limit) break; // Stop when we have enough cards
-        
-        try {
-          const card = await resolvePairingFromCategories(
-            combo as [string, string, string],
-            categoryPlaces,
-            location.lat,
-            location.lng,
-            travelMode,
-            budgetMax,
-            usedPlaceIds,
-            experienceType
-          );
-          
-          if (card) {
-            // Track all place IDs in this card to prevent future duplicates
-            card.stops.forEach((stop: any) => {
-              usedPlaceIds.add(stop.placeId);
-            });
-            cards.push(card);
+      // Build cards in parallel batches for speed, then dedup post-hoc
+      const PARALLEL_BATCH = Math.min(limit + 2, 6);
+      let comboIdx = 0;
+
+      while (cards.length < limit && comboIdx < shuffledCombos.length) {
+        const batch = shuffledCombos.slice(comboIdx, comboIdx + PARALLEL_BATCH);
+        comboIdx += PARALLEL_BATCH;
+
+        const results = await Promise.allSettled(
+          batch.map(combo =>
+            resolvePairingFromCategories(
+              combo as [string, string, string],
+              categoryPlaces,
+              location.lat,
+              location.lng,
+              travelMode,
+              budgetMax,
+              usedPlaceIds,
+              experienceType,
+              targetDatetime,
+              travelConstraintType,
+              travelConstraintValue,
+              skipDescriptions,
+            )
+          )
+        );
+
+        for (const result of results) {
+          if (cards.length >= limit) break;
+          if (result.status === 'fulfilled' && result.value) {
+            const card = result.value;
+            // Post-hoc dedup: reject cards sharing stops with already-accepted cards
+            const hasOverlap = card.stops.some(
+              (stop: any) => usedPlaceIds.has(stop.placeId)
+            );
+            if (!hasOverlap) {
+              card.stops.forEach((stop: any) => usedPlaceIds.add(stop.placeId));
+              cards.push(card);
+            }
           }
-        } catch (err) {
-          // Log but continue on individual card failures
-          console.warn(`[solo-adventure] Failed to generate card for combo ${combo.join('+')}: ${err}`);
         }
       }
       

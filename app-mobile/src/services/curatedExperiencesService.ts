@@ -9,13 +9,17 @@ interface GenerateCuratedParams {
   travelMode: string;
   travelConstraintType: 'time' | 'distance';
   travelConstraintValue: number;
+  datetimePref?: string;
   limit?: number;
+  skipDescriptions?: boolean;
+  sessionId?: string;
 }
 
 class CuratedExperiencesService {
   async generateCuratedExperiences(params: GenerateCuratedParams): Promise<CuratedExperienceCard[]> {
+    const { sessionId, ...edgeParams } = params;
     const { data, error } = await supabase.functions.invoke('generate-curated-experiences', {
-      body: params,
+      body: { ...edgeParams, session_id: sessionId },
     });
     if (error) throw error;
     return (data?.cards ?? []) as CuratedExperienceCard[];

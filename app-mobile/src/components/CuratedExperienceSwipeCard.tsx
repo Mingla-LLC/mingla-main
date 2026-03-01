@@ -43,7 +43,7 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
         {/* Category badge */}
         <View style={styles.categoryBadge}>
           <Ionicons name="compass-outline" size={12} color="#fff" />
-          <Text style={styles.categoryText}>Solo Adventure</Text>
+          <Text style={styles.categoryText}>Adventurous</Text>
           <Text style={styles.stopCountText}> · {card.stops.length} stops</Text>
         </View>
 
@@ -112,8 +112,8 @@ const styles = StyleSheet.create({
   },
   infoSection: {
     flex: 0.45,
-    padding: 16,
-    gap: 8,
+    padding: 12,
+    gap: 6,
     justifyContent: 'center',
   },
   categoryBadge: {
