@@ -1413,6 +1413,10 @@ export default function ExpandedCardModal({
                     // the scheduled experience when the user returns to the app.
                     onClose();
                   }}
+                  onOpenBrowser={(url, title) => {
+                    setBrowserUrl(url);
+                    setBrowserTitle(title);
+                  }}
                 />
               </>
             ))}

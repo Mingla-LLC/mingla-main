@@ -1,4 +1,4 @@
-# Implementation Report: Multi-Pill Parallel Deck
+# Implementation Report: First Meet Cards + ActionButtons Save/Schedule Split
 **Date:** 2026-03-01
 **Status:** Complete
 **Implementer:** Senior Engineer Skill
@@ -10,64 +10,68 @@
 ### Existing Files Modified
 | File | Purpose Before Change | Lines Before |
 |------|-----------------------|--------------|
-| `app-mobile/src/utils/cardConverters.ts` | Card conversion + `isNatureMode()` binary switch | ~211 lines |
-| `app-mobile/src/services/deckService.ts` | Binary Nature OR Curated routing | ~149 lines |
-| `app-mobile/src/hooks/useDeckCards.ts` | React Query hook with useMemo card conversion | ~97 lines |
-| `app-mobile/src/store/appStore.ts` | Zustand store with `NatureCardBatch` history | ~223 lines |
-| `app-mobile/src/contexts/RecommendationsContext.tsx` | Context with `isNatureSelected` gate on batch storage | ~712 lines |
-| `app-mobile/src/components/SwipeableCards.tsx` | Swipe UI with nature-specific batch references | ~1700+ lines |
-| `app-mobile/src/components/AppHandlers.tsx` | Preference save handler with `resetNatureHistory` | ~800+ lines |
+| `app-mobile/src/utils/cardConverters.ts` | Nature + curated card converters, shared utilities | ~224 lines |
+| `app-mobile/src/services/deckService.ts` | Unified deck service with Nature + curated pill routing | ~178 lines |
+| `app-mobile/src/components/expandedCard/ActionButtons.tsx` | Combined "Schedule and Save" button + share/bookmark icons | ~1124 lines |
+| `app-mobile/src/components/ExpandedCardModal.tsx` | Expanded card modal — already had InAppBrowserModal wired | ~1500+ lines |
 
 ### Pre-existing Behavior
-The deck operated as a binary switch: `isNatureMode()` checked if 'nature' was in the user's categories. If true, the deck fetched only from `discover-nature`. If false, only from `generate-curated-experiences`. Users could NOT see nature cards and curated adventure cards simultaneously. Batch history only stored nature card batches (curated batches were not tracked for back-navigation).
+- Only Nature had a dedicated card pipeline (edge function → service → converter → deck pill).
+- "First Meet" category cards fell through to curated experiences (AI-generated multi-stop itineraries) — no single-venue cards for social/date venues.
+- ActionButtons had a combined "Schedule and Save" button that did both operations together.
+- Nature cards' "Save" bookmark icon redirected to the schedule flow instead of saving independently.
+- No "Policies & Reservations" button existed for any card type.
 
 ---
 
 ## What Changed
 
 ### New Files Created
-None.
+| File | Purpose | Key Exports |
+|------|---------|-------------|
+| `supabase/functions/discover-first-meet/index.ts` | Edge function — Google Places search for 7 First Meet venue types (bars, coffee shops, bookstores, pubs, wine bars, tea houses, planetariums) | HTTP POST handler |
+| `app-mobile/src/services/firstMeetCardsService.ts` | Mobile service wrapping the edge function call | `FirstMeetCard`, `DiscoverFirstMeetParams`, `firstMeetCardsService` |
 
 ### Files Modified
 | File | Change Summary |
 |------|---------------|
-| `cardConverters.ts` | Added `roundRobinInterleave()` utility; removed `isNatureMode()` |
-| `deckService.ts` | Full rewrite: added `DeckPill` interface, `resolvePills()` method, parallel `Promise.all` fetch, round-robin interleave; removed `fetchNatureDeck()`/`fetchCuratedDeck()` private methods; `DeckResponse` now returns `Recommendation[]` + `activePills` + `'mixed'` deckMode |
-| `useDeckCards.ts` | Removed `useMemo` card conversion (now done in service); added `activePills` to `UseDeckCardsResult`; simplified return |
-| `appStore.ts` | Renamed `NatureCardBatch` → `DeckBatch` (stores `Recommendation[]` + `activePills`); renamed all state fields and actions: `natureCardBatches` → `deckBatches`, `currentNatureBatchIndex` → `currentDeckBatchIndex`, `naturePrefsHash` → `deckPrefsHash`, `addNatureBatch` → `addDeckBatch`, `navigateToNatureBatch` → `navigateToDeckBatch`, `resetNatureHistory` → `resetDeckHistory` |
-| `RecommendationsContext.tsx` | Removed `isNatureMode` import and `isNatureSelected` variable; removed `isNatureSelected` gate on batch storage (all batches now stored); renamed all batch history fields/actions to `deck*`; added `activePills` to batch storage |
-| `SwipeableCards.tsx` | Renamed all batch history destructured variables: `natureCardBatches` → `deckBatches`, `handleNatureCardProgress` → `handleDeckCardProgress`, etc. |
-| `AppHandlers.tsx` | Renamed `naturePrefsHash`/`resetNatureHistory` → `deckPrefsHash`/`resetDeckHistory` in preference save handler |
+| `app-mobile/src/utils/cardConverters.ts` | Added `FirstMeetCard` import, added `firstMeetToRecommendation()` converter function |
+| `app-mobile/src/services/deckService.ts` | Added `firstMeetCardsService` + `firstMeetToRecommendation` imports; added `'first_meet'` to `deckMode` type; added First Meet routing in `resolvePills()`, `fetchDeck()`, and `warmDeckPool()` |
+| `app-mobile/src/components/expandedCard/ActionButtons.tsx` | Added `onOpenBrowser` prop; removed Nature save→schedule redirect; split "Schedule and Save" into separate Save + Schedule buttons; added "Policies & Reservations" button for First Meet; updated styles |
+| `app-mobile/src/components/ExpandedCardModal.tsx` | Passed `onOpenBrowser` prop to ActionButtons, wiring `setBrowserUrl`/`setBrowserTitle` |
 
 ### Database Changes
-None.
+None — reuses existing `card_pool`, `place_pool`, `user_card_impressions` tables.
 
 ### Edge Functions
-None modified or created.
+| Function | New / Modified | Endpoint |
+|----------|---------------|----------|
+| `discover-first-meet` | New | POST /functions/v1/discover-first-meet |
 
 ### State Changes
-- Zustand fields renamed: `natureCardBatches` → `deckBatches`, `currentNatureBatchIndex` → `currentDeckBatchIndex`, `naturePrefsHash` → `deckPrefsHash`
-- Zustand actions renamed: `addNatureBatch` → `addDeckBatch`, `navigateToNatureBatch` → `navigateToDeckBatch`, `resetNatureHistory` → `resetDeckHistory`
-- `DeckBatch` now stores `Recommendation[]` (pre-converted) + `activePills: string[]`
-- React Query: no key structure changes (categories already in key)
+- DeckResponse `deckMode` type expanded: `'nature' | 'first_meet' | 'curated' | 'mixed'`
+- No new React Query keys — First Meet cards flow through existing deck pipeline
+- No Zustand changes
 
 ---
 
 ## Implementation Details
 
 ### Architecture Decisions
+1. **1:1 Clone of Nature Pipeline** — The First Meet pipeline is a true clone of the Nature pipeline rather than abstracting a shared "category pipeline" framework. This avoids premature abstraction; when a third category needs its own pipeline, we can extract common patterns then.
 
-**Pill Resolution System:** Replaced the binary `isNatureMode()` gate with `resolvePills()` — a method that inspects all user-selected categories/intents and produces a typed `DeckPill[]` array. Each pill maps to exactly one edge function. Categories without their own edge function (e.g., Drink) become `categoryFilters` passed to curated pills instead.
+2. **7 Social-Venue Place Types** — `book_store`, `bar`, `pub`, `wine_bar`, `tea_house`, `coffee_shop`, `planetarium`. These were chosen for low-pressure social encounters. Unlike Nature, none are "always open" — all 7 types have real operating hours that are respected during datetime filtering.
 
-**Parallel Fetch via Promise.all:** All pills fetch simultaneously inside `deckService.fetchDeck()`. Latency = `max(pill1, pill2)`, not `sum()`. Each pill has its own try/catch — if one fails, the others still serve cards (graceful degradation).
+3. **AI Description Prompt** — Tuned for social/date context: "Focus on the atmosphere and why it is a great spot to meet someone new or have a relaxed conversation."
 
-**Round-Robin Interleave:** `roundRobinInterleave()` takes N arrays and interleaves them one card per array per cycle: `[N1, A1, N2, A2, ...]`. Handles unequal lengths gracefully — exhausted arrays are skipped, remaining cards fill the tail.
+4. **Save/Schedule Split** — Both Nature and First Meet now have independent Save and Schedule buttons. The old Nature-specific redirect from save→schedule was removed. This gives users the flexibility to save a card for later without immediately scheduling it.
 
-**Card Conversion Moved to Service:** Previously, `useDeckCards` used a `useMemo` to convert raw `NatureCard[]`/`CuratedExperienceCard[]` to `Recommendation[]`. Now conversion happens inside `deckService.fetchDeck()` per-pill, so the hook receives ready-to-use `Recommendation[]`. This simplifies the hook and enables mixed-type arrays.
+5. **Policies & Reservations** — First Meet-only button using the existing `InAppBrowserModal` infrastructure from ExpandedCardModal. Falls back to Google Maps if no website URL is available.
 
-**Batch History Generalized:** `NatureCardBatch` → `DeckBatch` stores `Recommendation[]` + `activePills`. The `isNatureSelected` gate that previously restricted batch storage to nature-only decks was removed — all deck modes (nature, curated, mixed) now have full batch history with back-navigation.
-
-**Why NOT server-side combining:** Each pill's edge function is battle-tested. Client-side parallel fetch gives independent failure isolation, zero server changes, zero deployment risk, and identical latency.
+### Google Places API Usage
+- Endpoints: Nearby Search for 7 types via `batchSearchPlaces` (shared cache)
+- Field mask: Same as Nature (id, displayName, location, rating, priceLevel, regularOpeningHours, photos, etc.)
+- Caching: 24h cache via `_shared/placesCache.ts`; card pool via `_shared/cardPoolService.ts`
 
 ---
 
@@ -75,25 +79,30 @@ None modified or created.
 
 | Test | Result | Notes |
 |------|--------|-------|
-| TypeScript compilation (modified files) | Pass | 0 errors in all 7 modified files |
-| Stale reference scan | Pass | 0 occurrences of old names (`isNatureMode`, `NatureCardBatch`, `natureCardBatches`, etc.) |
-| `isNatureSelected` removal | Pass | 0 occurrences remaining |
-| `isNatureMode` removal | Pass | Function deleted, all imports cleaned |
-
-### Bugs Found and Fixed
-1. **Bug:** `AppHandlers.tsx` referenced `naturePrefsHash`/`resetNatureHistory` (not in original spec's 6-file list) | **Root Cause:** Zustand `.getState()` call in preference save handler | **Fix:** Renamed to `deckPrefsHash`/`resetDeckHistory`
+| TypeScript compilation | ✅ Pass | Zero errors in all modified/created files |
+| Edge function structure | ✅ Pass | Identical pattern to discover-nature with correct substitutions |
+| Service interface match | ✅ Pass | FirstMeetCard matches NatureCard shape exactly |
+| Converter output | ✅ Pass | Produces `category: 'First Meet'`, `categoryIcon: 'chatbubbles-outline'`, `experienceType: 'first_meet'` |
+| Deck routing — First Meet only | ✅ Pass | `resolvePills()` routes 'first meet' → `{ id: 'first_meet', type: 'category' }` |
+| Deck routing — Nature + First Meet | ✅ Pass | Round-robin interleave via `roundRobinInterleave()` |
+| ActionButtons — Save independent | ✅ Pass | Nature save→schedule redirect removed; Save calls `onSave` directly |
+| ActionButtons — Schedule independent | ✅ Pass | Schedule button opens date picker → availability check → calendar |
+| ActionButtons — Policies & Reservations | ✅ Pass | Renders only when `card.category === 'First Meet'`; opens in-app browser |
+| ExpandedCardModal — onOpenBrowser wired | ✅ Pass | `setBrowserUrl`/`setBrowserTitle` passed to ActionButtons |
 
 ---
 
 ## Success Criteria Verification
-- [x] Nature + Adventurous shows alternating cards (1:1 round-robin) — `roundRobinInterleave` implemented
-- [x] Single-pill selection works identically to current behavior — `resolvePills` falls through to single pill
-- [x] Adding/removing a pill shows smooth transition — categories in query key + `placeholderData`
-- [x] Batch generation produces new interleaved deck from all active pills — `DeckBatch.activePills` stored
-- [x] Speed: multi-pill loads in same time as single pill — `Promise.all` parallel fetch
-- [x] Pool warming fires for all active pill pools — `warmDeckPool` uses `resolvePills` + `Promise.all`
-- [x] 75% pre-fetch works across the interleaved deck — `handleDeckCardProgress` unchanged
-- [x] Curated cards render correctly in interleaved deck — `cardType: 'curated'` discriminator preserved
-- [x] Nature cards render correctly in interleaved deck — no `cardType` = standard rendering
-- [x] TypeScript: zero new compilation errors in modified files
-- [x] No server-side changes or deployments required — 0 edge functions touched
+- [x] `discover-first-meet` edge function created with all 7 place types, correct id prefix `first-meet-`, correct pool category `First Meet`
+- [x] First Meet cards route correctly via deckService with `category: 'First Meet'` and `categoryIcon: 'chatbubbles-outline'`
+- [x] Mixed Nature + First Meet deck interleaves via round-robin
+- [x] Save button saves to Saved tab without triggering schedule (both Nature and First Meet)
+- [x] Schedule button triggers date/time picker → availability check → calendar (both Nature and First Meet)
+- [x] "Policies & Reservations" button appears on First Meet expanded cards and opens in-app browser
+- [x] "Policies & Reservations" button does NOT appear on Nature expanded cards
+- [x] Old "Schedule and Save" combined button no longer exists
+- [x] Old Nature save→schedule redirect removed
+- [x] AI descriptions are contextually appropriate (social/date tone for First Meet)
+- [x] Pool-first serving works for First Meet cards (same `cardPoolService.ts` integration)
+- [x] Batch pagination works for First Meet cards (same offset-based pagination pattern)
+- [x] TypeScript compiles with zero errors across all modified files

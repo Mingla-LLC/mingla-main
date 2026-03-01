@@ -7,6 +7,7 @@
  */
 import type { Recommendation } from '../types/recommendation';
 import type { NatureCard } from '../services/natureCardsService';
+import type { FirstMeetCard } from '../services/firstMeetCardsService';
 
 export function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -146,6 +147,60 @@ export function natureToRecommendation(card: NatureCard): Recommendation {
     distance: `${card.distanceKm} km`,
     travelTime: `${card.travelTimeMin} min`,
     experienceType: 'nature',
+    highlights: [card.placeTypeLabel],
+    fullDescription: card.description,
+    address: card.address,
+    openingHours: Object.keys(card.openingHours).length > 0
+      ? {
+          open_now: card.isOpenNow,
+          weekday_text: Object.entries(card.openingHours).map(
+            ([day, hours]) =>
+              `${day.charAt(0).toUpperCase() + day.slice(1)}: ${hours}`
+          ),
+        }
+      : card.isOpenNow != null
+        ? { open_now: card.isOpenNow }
+        : null,
+    tags: [card.placeType, card.placeTypeLabel],
+    matchScore: card.matchScore,
+    reviewCount: card.reviewCount,
+    website: card.website,
+    placeId: card.placeId,
+    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+    matchFactors: {
+      location: 0.5,
+      budget: 0.5,
+      category: 1.0,
+      time: 0.5,
+      popularity: card.rating > 4 ? 0.8 : 0.5,
+    },
+  };
+}
+
+/** Converts a FirstMeetCard from the discover-first-meet edge function into a Recommendation */
+export function firstMeetToRecommendation(card: FirstMeetCard): Recommendation {
+  const priceText =
+    card.priceMin === 0 && card.priceMax === 0
+      ? 'Free'
+      : `$${card.priceMin}–$${card.priceMax}`;
+
+  return {
+    id: card.id,
+    title: card.title,
+    category: 'First Meet',
+    categoryIcon: 'chatbubbles-outline',
+    lat: card.lat,
+    lng: card.lng,
+    timeAway: `${card.travelTimeMin} min`,
+    description: card.description,
+    budget: priceText,
+    rating: card.rating,
+    image: card.image,
+    images: card.images.length > 0 ? card.images : [card.image].filter(Boolean),
+    priceRange: priceText,
+    distance: `${card.distanceKm} km`,
+    travelTime: `${card.travelTimeMin} min`,
+    experienceType: 'first_meet',
     highlights: [card.placeTypeLabel],
     fullDescription: card.description,
     address: card.address,

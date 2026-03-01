@@ -9,10 +9,12 @@
  * if one pill fails, the others still serve cards.
  */
 import { natureCardsService } from './natureCardsService';
+import { firstMeetCardsService } from './firstMeetCardsService';
 import { curatedExperiencesService } from './curatedExperiencesService';
 import {
   separateIntentsAndCategories,
   natureToRecommendation,
+  firstMeetToRecommendation,
   curatedToRecommendation,
   roundRobinInterleave,
 } from '../utils/cardConverters';
@@ -35,7 +37,7 @@ export interface DeckParams {
 
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'first_meet' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
 }
@@ -54,10 +56,12 @@ class DeckService {
     const pills: DeckPill[] = [];
     const categoryFilters: string[] = [];
 
-    // Category pills — currently only Nature has its own edge function
+    // Category pills — Nature and First Meet have dedicated edge functions
     for (const cat of cats) {
       if (cat.toLowerCase() === 'nature') {
         pills.push({ id: 'nature', type: 'category' });
+      } else if (cat.toLowerCase() === 'first meet') {
+        pills.push({ id: 'first_meet', type: 'category' });
       } else {
         // No dedicated edge function yet — pass as filter to curated pills
         categoryFilters.push(cat);
@@ -87,6 +91,22 @@ class DeckService {
       pills.map(async (pill): Promise<Recommendation[]> => {
         try {
           if (pill.type === 'category') {
+            if (pill.id === 'first_meet') {
+              const cards = await firstMeetCardsService.discoverFirstMeet({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: perPillLimit,
+              });
+              return cards.map(firstMeetToRecommendation);
+            }
+            // Default: Nature
             const cards = await natureCardsService.discoverNature({
               location: params.location,
               budgetMax: params.budgetMax,
@@ -128,7 +148,9 @@ class DeckService {
 
     const deckMode: DeckResponse['deckMode'] =
       pills.length === 1
-        ? (pills[0].type === 'category' ? 'nature' : 'curated')
+        ? (pills[0].type === 'category'
+            ? (pills[0].id === 'first_meet' ? 'first_meet' : 'nature')
+            : 'curated')
         : 'mixed';
 
     return {
@@ -147,16 +169,29 @@ class DeckService {
       pills.map(async (pill) => {
         try {
           if (pill.type === 'category') {
-            await natureCardsService.warmNaturePool({
-              location: params.location,
-              budgetMax: params.budgetMax,
-              travelMode: params.travelMode,
-              travelConstraintType: params.travelConstraintType,
-              travelConstraintValue: params.travelConstraintValue,
-              datetimePref: params.datetimePref,
-              dateOption: params.dateOption,
-              timeSlot: params.timeSlot,
-            });
+            if (pill.id === 'first_meet') {
+              await firstMeetCardsService.warmFirstMeetPool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            } else {
+              await natureCardsService.warmNaturePool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            }
           } else {
             await curatedExperiencesService.warmPool({
               experienceType: pill.id as any,
