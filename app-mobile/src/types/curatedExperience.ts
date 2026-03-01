@@ -1,6 +1,6 @@
 export interface CuratedStop {
   stopNumber: number;
-  stopLabel: 'Start Here' | 'Then' | 'End With';
+  stopLabel: 'Start Here' | 'Then' | 'End With' | 'Explore';
   placeId: string;
   placeName: string;
   placeType: string;
@@ -31,6 +31,7 @@ export interface CuratedExperienceCard {
   pairingKey: string;
   title: string;
   tagline: string;
+  categoryLabel?: string;
   stops: CuratedStop[];
   totalPriceMin: number;
   totalPriceMax: number;

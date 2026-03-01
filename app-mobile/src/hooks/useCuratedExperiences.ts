@@ -21,6 +21,7 @@ interface UseCuratedExperiencesParams {
   enabled: boolean;
   batchSeed?: number;
   sessionId?: string;
+  selectedCategories?: string[];
 }
 
 /**
@@ -53,6 +54,7 @@ export function useCuratedExperiences(params: UseCuratedExperiencesParams): {
       params.travelConstraintValue,
       params.datetimePref,
       params.batchSeed ?? 0,
+      params.selectedCategories?.sort().join(',') ?? '',
     ],
     queryFn: () =>
       curatedExperiencesService.generateCuratedExperiences({

@@ -141,7 +141,7 @@ const ADVENTURE_SUPER_CATEGORIES: Record<string, {
   label: string;
 }> = {
   'outdoor-nature': {
-    includedTypes: ['park', 'botanical_garden', 'hiking_area', 'beach', 'national_park', 'state_park'],
+    includedTypes: ['park', 'botanical_garden', 'hiking_area', 'beach', 'national_park', 'state_park', 'wildlife_park'],
     label: 'outdoor-nature',
   },
   'active-recreation': {
@@ -167,6 +167,33 @@ const ADVENTURE_SUPER_CATEGORIES: Record<string, {
 };
 
 const CATEGORY_NAMES = Object.keys(PLACE_CATEGORIES);
+
+// ── Mapping from user-preference category IDs to allowed Google Place types ──
+// When users select categories in Preferences (e.g. nature, drink, play), this
+// map translates those IDs into the concrete Place types we should search for.
+const USER_CATEGORY_TO_PLACE_TYPES: Record<string, string[]> = {
+  'nature':       ['park', 'botanical_garden', 'hiking_area', 'national_park', 'state_park', 'beach', 'zoo', 'wildlife_park'],
+  'first_meet':   ['coffee_shop', 'tea_house', 'bar', 'wine_bar', 'ice_cream_shop', 'bakery_workshop'],
+  'picnic':       ['park', 'botanical_garden', 'beach', 'national_park', 'state_park'],
+  'drink':        ['bar', 'wine_bar', 'pub', 'coffee_shop', 'tea_house', 'night_club', 'rooftop_bar', 'whiskey_bar', 'craft_brewery', 'distillery', 'winery'],
+  'casual_eats':  ['restaurant', 'pizza_restaurant', 'ramen_restaurant', 'fast_food_restaurant', 'hamburger_restaurant', 'diner', 'food_court', 'sandwich_shop', 'food_truck', 'brunch_restaurant', 'breakfast_restaurant', 'mexican_restaurant', 'chinese_restaurant', 'thai_restaurant', 'vietnamese_restaurant', 'korean_restaurant', 'japanese_restaurant', 'indian_restaurant', 'mediterranean_restaurant', 'american_restaurant', 'italian_restaurant', 'asian_restaurant', 'buffet_restaurant', 'barbecue_restaurant', 'seafood_restaurant', 'vegan_restaurant', 'vegetarian_restaurant', 'sushi_restaurant', 'greek_restaurant', 'turkish_restaurant', 'lebanese_restaurant', 'middle_eastern_restaurant', 'indonesian_restaurant', 'brazilian_restaurant', 'african_restaurant', 'afghani_restaurant', 'spanish_restaurant', 'french_restaurant', 'steak_house', 'cafe', 'bakery'],
+  'fine_dining':  ['fine_dining_restaurant', 'steak_house', 'french_restaurant', 'seafood_restaurant'],
+  'watch':        ['movie_theater', 'comedy_club', 'live_music_venue', 'jazz_club', 'performing_arts_theater'],
+  'creative_arts':['art_gallery', 'museum', 'sip_and_paint', 'pottery_studio', 'cooking_class', 'glass_blowing_studio', 'planetarium', 'library'],
+  'play':         ['bowling_alley', 'mini_golf_course', 'video_arcade', 'escape_room', 'trampoline_park', 'laser_tag_center', 'go_kart_track', 'amusement_park', 'theme_park', 'axe_throwing', 'rock_climbing_gym', 'ice_skating_rink', 'karaoke', 'board_game_cafe', 'paintball_center', 'virtual_reality_center', 'swimming_pool', 'skate_park', 'batting_cage', 'driving_range'],
+  'wellness':     ['spa', 'massage', 'sauna', 'hot_spring', 'yoga_studio'],
+};
+
+/** Build a Set of allowed Place types from user-selected categories. Returns null if no filtering needed. */
+function buildAllowedPlaceTypes(selectedCategories?: string[]): Set<string> | null {
+  if (!selectedCategories || selectedCategories.length === 0) return null;
+  const allowed = new Set<string>();
+  for (const cat of selectedCategories) {
+    const types = USER_CATEGORY_TO_PLACE_TYPES[cat];
+    if (types) types.forEach(t => allowed.add(t));
+  }
+  return allowed.size > 0 ? allowed : null;
+}
 
 // Generate all 3-category combinations (C(9,3) = 84 combinations)
 function generateCategoryCombinations(): string[][] {
@@ -743,6 +770,127 @@ function buildTriadsFromSuperCategories(
   return triads;
 }
 
+// ── Single-stop cards: For category-filtered queries with < 3 super-categories ──
+// When a user selects a specific category (e.g. Nature), filtered places may only
+// land in 1-2 super-categories, which is too few for 3-stop triads.  Instead we
+// build one card per place — still using `cardType: 'curated'` so the front-end
+// renders them with the same design (image, description, policies & reservations).
+function buildSingleStopCards(
+  superCatPlaces: Record<string, any[]>,
+  limit: number,
+  budgetMax: number,
+  travelMode: string,
+  userLat: number,
+  userLng: number,
+  travelConstraintType: string,
+  travelConstraintValue: number,
+  targetDatetime: Date,
+  experienceType: string,
+  categoryLabel: string,
+  batchSeed: number = 0,
+): any[] {
+  // Flatten and dedup all places across super-categories
+  const seen = new Set<string>();
+  const allPlaces: any[] = [];
+  for (const places of Object.values(superCatPlaces)) {
+    for (const p of places) {
+      if (p.id && !seen.has(p.id)) {
+        seen.add(p.id);
+        allPlaces.push(p);
+      }
+    }
+  }
+
+  // Speed config for travel constraint
+  const speedKmh: Record<string, number> = {
+    walking: 4.5, driving: 35, transit: 20, biking: 14, bicycling: 14,
+  };
+  const maxDistKm = travelConstraintType === 'time'
+    ? (travelConstraintValue / 60) * (speedKmh[travelMode] || 4.5) * 1.3
+    : travelConstraintValue;
+
+  // Filter: budget, open-at-time, travel constraint
+  const filtered = allPlaces.filter(p => {
+    const priceRange = priceLevelToRange(p.priceLevel);
+    if (budgetMax > 0 && priceRange.min > budgetMax) return false;
+    if (!isPlaceOpenAt(p, targetDatetime)) return false;
+    const lat = p.location?.latitude ?? userLat;
+    const lng = p.location?.longitude ?? userLng;
+    if (haversineKm(userLat, userLng, lat, lng) > maxDistKm) return false;
+    return true;
+  });
+
+  // Seeded shuffle so each batchSeed produces a different ordering
+  const seededShuffle = <T,>(arr: T[]): T[] => {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const hash = ((batchSeed * 2654435761 + i * 40503) >>> 0);
+      const j = hash % (i + 1);
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  };
+
+  const shuffled = seededShuffle(filtered);
+  const selected = shuffled.slice(0, limit);
+
+  const taglines = TAGLINES_BY_TYPE[experienceType] || DEFAULT_TAGLINES;
+
+  const cards = selected.map((place, idx) => {
+    const placeType = place.placeType || place.primaryType || '';
+    const priceRange = priceLevelToRange(place.priceLevel);
+    const { hours, isOpenNow } = parseOpeningHours(place);
+    const lat = place.location?.latitude ?? userLat;
+    const lng = place.location?.longitude ?? userLng;
+    const distKm = haversineKm(userLat, userLng, lat, lng);
+    const travelTime = estimateTravelMinutes(distKm, travelMode);
+
+    const stop = {
+      stopNumber: 1,
+      stopLabel: 'Explore' as const,
+      placeId: place.id ?? '',
+      placeName: place.displayName?.text ?? '',
+      placeType,
+      address: place.formattedAddress ?? '',
+      rating: place.rating ?? 0,
+      reviewCount: place.userRatingCount ?? 0,
+      imageUrl: getPhotoUrl(place),
+      priceLevelLabel: priceLevelToLabel(place.priceLevel),
+      priceMin: priceRange.min,
+      priceMax: priceRange.max,
+      openingHours: hours,
+      isOpenNow,
+      website: place.websiteUri ?? null,
+      lat,
+      lng,
+      distanceFromUserKm: Math.round(distKm * 10) / 10,
+      travelTimeFromUserMin: travelTime,
+      travelTimeFromPreviousStopMin: null,
+      travelModeFromPreviousStop: null,
+      aiDescription: `A great ${placeType.replace(/_/g, ' ')} spot to explore.`,
+      estimatedDurationMinutes: STOP_DURATION_MINUTES[placeType] || DEFAULT_STOP_DURATION,
+    };
+
+    return {
+      id: `curated-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 8)}`,
+      cardType: 'curated',
+      experienceType,
+      pairingKey: placeType,
+      title: place.displayName?.text ?? 'Nature Spot',
+      tagline: taglines[Math.floor(Math.random() * taglines.length)],
+      categoryLabel,
+      stops: [stop],
+      totalPriceMin: priceRange.min,
+      totalPriceMax: priceRange.max,
+      estimatedDurationMinutes: stop.estimatedDurationMinutes,
+      matchScore: Math.round((place.rating ?? 3.5) * 20),
+    };
+  });
+
+  console.log(`[turbo-single] Built ${cards.length} single-stop cards from ${filtered.length} filtered places (${allPlaces.length} total, batchSeed=${batchSeed})`);
+  return cards;
+}
+
 // ── Turbo Pipeline: Background niche enrichment for richer future batches ──
 async function enrichPoolWithNicheTypes(
   lat: number, lng: number, radiusMeters: number
@@ -1238,6 +1386,8 @@ serve(async (req) => {
   try {
     const body = await req.json();
     let { experienceType = 'solo-adventure', location, budgetMin = 0, budgetMax = 200, travelMode = 'walking', travelConstraintType = 'time', travelConstraintValue = 30, datetimePref, skipDescriptions = false, limit = 20, session_id, batchSeed = 0 } = body;
+    const selectedCategories: string[] | undefined = body.selectedCategories;
+    const allowedPlaceTypes = buildAllowedPlaceTypes(selectedCategories);
 
     // If session_id is provided, aggregate preferences from all participants
     if (session_id) {
@@ -1336,9 +1486,10 @@ serve(async (req) => {
     }
     // ── End warmPool support ────────────────────────────────────────
 
-    // Pool-first: only for batch 0 (first load). Subsequent batches (batchSeed > 0)
+    // Pool-first: only for batch 0 (first load) WITHOUT category filters.
+    // Subsequent batches (batchSeed > 0) or category-filtered requests
     // must always generate fresh cards via Turbo/Fallback pipeline.
-    if (poolAdmin && poolUserId !== 'anonymous' && batchSeed === 0) {
+    if (poolAdmin && poolUserId !== 'anonymous' && batchSeed === 0 && !allowedPlaceTypes) {
       try {
         const poolResult = await serveCuratedCardsFromPool({
           supabaseAdmin: poolAdmin,
@@ -1378,36 +1529,74 @@ serve(async (req) => {
       }
     } else if (batchSeed > 0) {
       console.log(`[pool-skip] batchSeed=${batchSeed}, skipping pool-first to generate fresh cards`);
+    } else if (allowedPlaceTypes) {
+      console.log(`[pool-skip] selectedCategories provided, skipping pool-first to respect category filter`);
     }
     // ── End pool-first pipeline ─────────────────────────────────────
 
     // ── TURBO PIPELINE: 4 super-category calls instead of 45 individual calls ──
     if (experienceType === 'solo-adventure') {
-      console.log('[turbo] Starting Adventurous Turbo Pipeline...');
+      console.log('[turbo] Starting Adventurous Turbo Pipeline...', allowedPlaceTypes ? `filtering to ${allowedPlaceTypes.size} place types from ${selectedCategories?.join(',')}` : 'no category filter');
 
       // TURBO: 4 super-category calls instead of 45 individual calls
       const superCatPlaces = await fetchPlacesBySuperCategory(
         location.lat, location.lng, clampedRadius
       );
 
-      // Over-populate: build 40+ triads for free batch 2
-      const buildLimit = warmPool ? 50 : Math.max(limit, 40);
-      const allTriads = buildTriadsFromSuperCategories(
-        superCatPlaces, buildLimit, budgetMax, travelMode,
-        location.lat, location.lng,
-        travelConstraintType, travelConstraintValue,
-        targetDatetime, experienceType, skipDescriptions,
-        batchSeed,
-      );
+      // Filter places by user-selected categories if provided
+      if (allowedPlaceTypes) {
+        for (const key of Object.keys(superCatPlaces)) {
+          superCatPlaces[key] = superCatPlaces[key].filter((p: any) => {
+            const type = p.placeType || p.primaryType || '';
+            return allowedPlaceTypes.has(type);
+          });
+        }
+        const remaining = Object.values(superCatPlaces).reduce((s, arr) => s + arr.length, 0);
+        console.log(`[turbo] After category filter: ${remaining} places remain`);
+      }
 
-      console.log(`[turbo] Built ${allTriads.length} triads, serving ${Math.min(allTriads.length, limit)}`);
+      // Check how many super-categories have results after filtering
+      const nonEmptySuperCats = Object.keys(superCatPlaces).filter(
+        k => superCatPlaces[k].length > 0
+      ).length;
 
-      // Store ALL triads in pool (fire-and-forget)
-      if (poolAdmin && allTriads.length > 0) {
+      let allCards: any[];
+
+      if (nonEmptySuperCats < 3 && allowedPlaceTypes) {
+        // Too few super-categories for 3-stop triads (e.g. nature-only).
+        // Build single-stop cards instead — same curated card format.
+        const categoryLabel = selectedCategories?.[0]
+          ? selectedCategories[0].replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+          : 'Explore';
+        const buildLimit = warmPool ? 50 : Math.max(limit, 40);
+        allCards = buildSingleStopCards(
+          superCatPlaces, buildLimit, budgetMax, travelMode,
+          location.lat, location.lng,
+          travelConstraintType, travelConstraintValue,
+          targetDatetime, experienceType, categoryLabel,
+          batchSeed,
+        );
+        console.log(`[turbo] Category-filtered → ${nonEmptySuperCats} super-cats → built ${allCards.length} single-stop cards`);
+      } else {
+        // Normal path: enough super-categories for 3-stop triads
+        const buildLimit = warmPool ? 50 : Math.max(limit, 40);
+        allCards = buildTriadsFromSuperCategories(
+          superCatPlaces, buildLimit, budgetMax, travelMode,
+          location.lat, location.lng,
+          travelConstraintType, travelConstraintValue,
+          targetDatetime, experienceType, skipDescriptions,
+          batchSeed,
+        );
+      }
+
+      console.log(`[turbo] Built ${allCards.length} cards, serving ${Math.min(allCards.length, limit)}`);
+
+      // Store ALL cards in pool (fire-and-forget)
+      if (poolAdmin && allCards.length > 0) {
         (async () => {
           try {
             const poolIds: string[] = [];
-            for (const card of allTriads) {
+            for (const card of allCards) {
               const stopPlacePoolIds: string[] = [];
               const stopGooglePlaceIds: string[] = [];
               for (const stop of card.stops || []) {
@@ -1469,7 +1658,7 @@ serve(async (req) => {
         enrichPoolWithNicheTypes(location.lat, location.lng, clampedRadius);
       }
 
-      const cards = allTriads.slice(0, warmPool ? allTriads.length : limit);
+      const cards = allCards.slice(0, warmPool ? allCards.length : limit);
       return new Response(
         JSON.stringify({
           cards: warmPool ? [] : cards,  // warmPool returns empty (just populates)
@@ -1477,11 +1666,11 @@ serve(async (req) => {
             totalResults: cards.length,
             fromPool: 0,
             fromApi: cards.length,
-            pipeline: 'turbo',
+            pipeline: nonEmptySuperCats < 3 && allowedPlaceTypes ? 'turbo-single' : 'turbo',
             superCategoriesFetched: Object.keys(superCatPlaces).length,
-            totalTriadsBuilt: allTriads.length,
+            totalCardsBuilt: allCards.length,
           },
-          ...(warmPool ? { success: true, poolSize: allTriads.length } : {}),
+          ...(warmPool ? { success: true, poolSize: allCards.length } : {}),
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -1490,7 +1679,17 @@ serve(async (req) => {
 
     // FALLBACK: Original pairing-based generation for other experience types
     const pairingSet = PAIRINGS_BY_TYPE[experienceType] ?? SOLO_ADVENTURE_PAIRINGS;
-    const pairings = shuffle(pairingSet).slice(0, Math.min(limit, 50));
+    // Filter pairings by user-selected categories if provided
+    let filteredPairings = pairingSet;
+    if (allowedPlaceTypes) {
+      filteredPairings = pairingSet.filter((pairing: [string, string, string]) =>
+        pairing.some(placeType => allowedPlaceTypes.has(placeType))
+      );
+      console.log(`[fallback] Filtered pairings: ${filteredPairings.length}/${pairingSet.length} match selected categories`);
+      // If no pairings match, fall back to all pairings to avoid empty results
+      if (filteredPairings.length === 0) filteredPairings = pairingSet;
+    }
+    const pairings = shuffle(filteredPairings).slice(0, Math.min(limit, 50));
     const results = await Promise.allSettled(pairings.map(pairing => resolvePairing(pairing as [string, string, string], location.lat, location.lng, clampedRadius, travelMode, budgetMax, experienceType)));
     const cards = results.filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value !== null).map(r => r.value);
 

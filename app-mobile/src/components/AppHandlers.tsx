@@ -712,6 +712,7 @@ export function useAppHandlers(state: any) {
           }
 
           queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+          queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
           queryClient.invalidateQueries({ queryKey: ["userLocation"] });
 
           // Trigger refresh of experiences by updating refresh key

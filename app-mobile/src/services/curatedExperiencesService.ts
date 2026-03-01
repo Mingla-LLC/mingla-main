@@ -14,6 +14,7 @@ interface GenerateCuratedParams {
   skipDescriptions?: boolean;
   sessionId?: string;
   batchSeed?: number;
+  selectedCategories?: string[];
 }
 
 class CuratedExperiencesService {

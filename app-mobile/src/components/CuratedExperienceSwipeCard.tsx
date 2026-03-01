@@ -16,9 +16,14 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
       ? 'Free'
       : `$${card.totalPriceMin}–${card.totalPriceMax}`;
 
+  const isSingleStop = card.stops.length === 1;
+  const categoryLabel = card.categoryLabel || 'Adventurous';
+  const categoryIcon = categoryLabel.toLowerCase() === 'nature' ? 'leaf-outline' : 'compass-outline';
+  const ctaText = isSingleStop ? 'See Details' : 'See Full Plan';
+
   return (
     <View style={styles.card}>
-      {/* 3-image horizontal strip */}
+      {/* Image strip — adapts to any number of stops */}
       <View style={styles.imageStrip}>
         {card.stops.map((stop, idx) => (
           <View key={stop.placeId} style={styles.imageWrapper}>
@@ -31,9 +36,11 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
             ) : (
               <View style={[styles.stopImage, styles.imagePlaceholder]} />
             )}
-            <View style={styles.stopBadge}>
-              <Text style={styles.stopBadgeText}>{idx + 1}</Text>
-            </View>
+            {!isSingleStop && (
+              <View style={styles.stopBadge}>
+                <Text style={styles.stopBadgeText}>{idx + 1}</Text>
+              </View>
+            )}
           </View>
         ))}
       </View>
@@ -42,9 +49,9 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
       <View style={styles.infoSection}>
         {/* Category badge */}
         <View style={styles.categoryBadge}>
-          <Ionicons name="compass-outline" size={12} color="#fff" />
-          <Text style={styles.categoryText}>Adventurous</Text>
-          <Text style={styles.stopCountText}> · {card.stops.length} stops</Text>
+          <Ionicons name={categoryIcon as any} size={12} color="#fff" />
+          <Text style={styles.categoryText}>{categoryLabel}</Text>
+          <Text style={styles.stopCountText}> · {card.stops.length} {card.stops.length === 1 ? 'spot' : 'stops'}</Text>
         </View>
 
         {/* Title */}
@@ -56,7 +63,7 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
         <View style={styles.metaRow}>
           <Text style={styles.metaText}>{priceText}</Text>
           <Text style={styles.metaDot}> · </Text>
-          <Text style={styles.metaText}>~{durationHrs} hrs</Text>
+          <Text style={styles.metaText}>~{isSingleStop ? `${card.estimatedDurationMinutes} min` : `${durationHrs} hrs`}</Text>
           <Text style={styles.metaDot}> · </Text>
           <Ionicons name="star" size={11} color="#F59E0B" />
           <Text style={styles.metaText}> {avgRating} avg</Text>
@@ -64,7 +71,7 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
 
         {/* CTA */}
         <TouchableOpacity style={styles.ctaButton} onPress={onSeePlan} activeOpacity={0.85}>
-          <Text style={styles.ctaText}>See Full Plan</Text>
+          <Text style={styles.ctaText}>{ctaText}</Text>
           <Ionicons name="arrow-forward" size={16} color="#fff" />
         </TouchableOpacity>
       </View>

@@ -445,6 +445,7 @@ export const RecommendationsProvider: React.FC<
   // Derive experience types from the categories array (which stores both intents and categories)
   const INTENT_IDS = new Set(['solo-adventure', 'first-dates', 'romantic', 'friendly', 'group-fun', 'business']);
   const experienceTypes: string[] = (userPrefs?.categories ?? []).filter(c => INTENT_IDS.has(c));
+  const userSelectedCategories: string[] = (userPrefs?.categories ?? []).filter(c => !INTENT_IDS.has(c));
 
   const baseParams = {
     location: userLocation,
@@ -456,6 +457,7 @@ export const RecommendationsProvider: React.FC<
     travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
     datetimePref: userPrefs?.datetime_pref ?? new Date().toISOString(),
     batchSeed,
+    selectedCategories: userSelectedCategories.length > 0 ? userSelectedCategories : undefined,
   };
   const isSoloMode = currentMode === 'solo';
   const curatedSessionId = isCollaborationMode ? resolvedSessionId : undefined;
