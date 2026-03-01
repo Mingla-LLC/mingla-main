@@ -74,9 +74,10 @@ const experienceTypes = [
 
 // Budget presets
 const budgetPresets = [
+  { label: "Up to $25",  max: 25  },
+  { label: "Up to $50",  max: 50  },
   { label: "Up to $100", max: 100 },
-  { label: "Up to $200", max: 200 },
-  { label: "Up to $500", max: 500 },
+  { label: "Up to $150", max: 150 },
 ];
 
 // Categories with exact icons from image
@@ -236,6 +237,8 @@ export default function PreferencesSheet({
   // Starting Location
   const [useLocation, setUseLocation] = useState<"gps" | "search">("gps");
   const [searchLocation, setSearchLocation] = useState<string>("");
+  const [useGpsLocation, setUseGpsLocation] = useState<boolean>(true);
+  const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
 
   // Location autocomplete suggestions
@@ -466,7 +469,10 @@ export default function PreferencesSheet({
         }
       }
 
-      if ((loadedPreferences as any).custom_location) {
+      const gpsFlag = (loadedPreferences as any).use_gps_location ?? true;
+      setUseGpsLocation(gpsFlag);
+
+      if (!gpsFlag && (loadedPreferences as any).custom_location) {
         const savedLocation = (loadedPreferences as any).custom_location;
         setSearchLocation(savedLocation);
         const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(savedLocation);
@@ -635,6 +641,7 @@ export default function PreferencesSheet({
 
   const handleLocationInputChange = useCallback((text: string) => {
     setSearchLocation(text);
+    setSelectedCoords(null);
 
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
@@ -664,6 +671,7 @@ export default function PreferencesSheet({
   const handleSuggestionSelect = useCallback((suggestion: AutocompleteSuggestion) => {
     isSelectingSuggestion.current = true;
     setSearchLocation(suggestion.displayName);
+    setSelectedCoords(suggestion.location ?? null);
     setShowSuggestions(false);
     setIsInputFocused(false);
 
@@ -679,6 +687,14 @@ export default function PreferencesSheet({
         setShowSuggestions(false);
       }
     }, 200);
+  }, []);
+
+  const handleGpsToggle = useCallback((value: boolean) => {
+    setUseGpsLocation(value);
+    if (value) {
+      setSearchLocation('');
+      setSelectedCoords(null);
+    }
   }, []);
 
   const countChanges = useCallback((): number => {
@@ -752,6 +768,12 @@ export default function PreferencesSheet({
   const handleApplyPreferences = useCallback(async () => {
     if (isSaving) return;
 
+    const customLocationValue = useGpsLocation
+      ? null
+      : selectedCoords
+        ? `${selectedCoords.lat},${selectedCoords.lng}`
+        : searchLocation || null;
+
     const preferences = {
       selectedIntents,
       budgetMin,
@@ -766,6 +788,8 @@ export default function PreferencesSheet({
       constraintValue,
       useLocation,
       searchLocation,
+      useGpsLocation,
+      custom_location: customLocationValue,
     };
 
     const nextUserPreferences = {
@@ -885,6 +909,8 @@ export default function PreferencesSheet({
     constraintValue,
     useLocation,
     searchLocation,
+    useGpsLocation,
+    selectedCoords,
     isCollaborationMode,
     updateBoardPreferences,
     user?.id,
@@ -994,7 +1020,9 @@ export default function PreferencesSheet({
           >
             <Text style={styles.sectionTitle}>Starting Location</Text>
             <Text style={styles.sectionSubtitle}>
-              We're using your current location. Search below to change it.
+              {useGpsLocation
+                ? "Using your current GPS location."
+                : "Using your custom location. Toggle on to use GPS."}
             </Text>
 
             <LocationInputSection
@@ -1013,6 +1041,8 @@ export default function PreferencesSheet({
               isLoadingSuggestions={isLoadingSuggestions}
               onSuggestionSelect={handleSuggestionSelect}
               isInputFocused={isInputFocused}
+              useGpsLocation={useGpsLocation}
+              onToggleGps={handleGpsToggle}
             />
           </View>
 

@@ -1,0 +1,678 @@
+==============================================================================
+IMPLEMENTATION GUIDE — Preferences-Driven Card Filtering & Curated Experiences
+==============================================================================
+Branch: Seth-Features
+Spec:   FEATURE_PREFERENCES_DRIVEN_CARDS_SPEC.md
+Date:   2026-02-28
+
+----------------------------------------------------------------------
+START HERE — DEPENDENCY ORDER
+----------------------------------------------------------------------
+Do these steps IN ORDER. Each step depends on the one before it.
+
+1.  DB migration (add use_gps_location column)
+2.  Update UserPreferences TypeScript type
+3.  Fix experience-type ID bug in RecommendationsContext
+4.  Change budget presets ($100/$200/$500 → $25/$50/$100/$150)
+5.  Update useUserLocation to respect use_gps_location + fix query key
+6.  Add GPS toggle UI to LocationInputSection
+7.  Wire GPS toggle in PreferencesSheet.tsx
+8.  Extend useCuratedExperiences hook to all experience types
+9.  Extend generate-curated-experiences edge function
+10. Extend RecommendationsContext to enable curated cards for all types
+11. Test each filter end-to-end
+
+----------------------------------------------------------------------
+STEP 1 — DB MIGRATION
+----------------------------------------------------------------------
+File to CREATE:
+  supabase/migrations/20260228000002_add_use_gps_location.sql
+
+Content:
+─────────────────────────────────────────────────────────
+ALTER TABLE user_preferences
+  ADD COLUMN IF NOT EXISTS use_gps_location BOOLEAN NOT NULL DEFAULT TRUE;
+
+COMMENT ON COLUMN user_preferences.use_gps_location IS
+  'true = always use device GPS; false = use custom_location field';
+─────────────────────────────────────────────────────────
+
+Run it:
+  supabase db push   (or apply via Supabase Studio SQL editor)
+
+Verify:
+  In Supabase Studio → Table Editor → user_preferences → check column
+  "use_gps_location" exists with default TRUE.
+
+----------------------------------------------------------------------
+STEP 2 — UPDATE UserPreferences INTERFACE
+----------------------------------------------------------------------
+File: app-mobile/src/services/experiencesService.ts
+
+Find the `UserPreferences` interface (around line 20). Replace it with:
+
+─────────────────────────────────────────────────────────
+export interface UserPreferences {
+  mode: string;
+  budget_min: number;
+  budget_max: number;
+  people_count: number;
+  categories: string[];
+  travel_mode: string;
+  travel_constraint_type: 'time' | 'distance';
+  travel_constraint_value: number;
+  datetime_pref: string;
+  custom_location?: string;
+  use_gps_location?: boolean;
+  experience_types?: string[];
+}
+─────────────────────────────────────────────────────────
+
+This removes the need for `(prefs as any).custom_location` and
+`(prefs as any).experience_types` casts — they're now properly typed.
+Clean up any `as any` casts in files that access these fields once this
+is done (useUserLocation.ts, PreferencesSheet.tsx, RecommendationsContext.tsx).
+
+Verify: TypeScript compiler shows no new errors from this change.
+
+----------------------------------------------------------------------
+STEP 3 — FIX EXPERIENCE TYPE ID BUG (CRITICAL)
+----------------------------------------------------------------------
+File: app-mobile/src/contexts/RecommendationsContext.tsx
+
+Find line ~288:
+  enabled: currentMode === 'solo' && experienceTypes.includes('solo_adventure'),
+
+Change to:
+  enabled: currentMode === 'solo' && experienceTypes.includes('solo-adventure'),
+
+Rationale: The experience type IDs stored in preferences use HYPHENS
+('solo-adventure', 'first-dates', 'group-fun') but the check used
+underscores — meaning curated cards NEVER fired before this fix.
+
+Verify: After this fix alone, with Solo Adventure selected in preferences,
+curated cards should appear in the swipe deck (check console logs from
+useCuratedExperiences).
+
+----------------------------------------------------------------------
+STEP 4 — CHANGE BUDGET PRESETS
+----------------------------------------------------------------------
+File: app-mobile/src/components/PreferencesSheet.tsx
+
+Find (around line 76):
+  const budgetPresets = [
+    { label: "Up to $100", max: 100 },
+    { label: "Up to $200", max: 200 },
+    { label: "Up to $500", max: 500 },
+  ];
+
+Replace with:
+  const budgetPresets = [
+    { label: "Up to $25",  max: 25  },
+    { label: "Up to $50",  max: 50  },
+    { label: "Up to $100", max: 100 },
+    { label: "Up to $150", max: 150 },
+  ];
+
+No other changes needed — BudgetSection already renders these correctly
+and applies currency conversion from the rate service.
+
+Verify: Open Preferences Sheet → Budget section shows four chips:
+"Up to $25", "Up to $50", "Up to $100", "Up to $150".
+
+----------------------------------------------------------------------
+STEP 5 — UPDATE useUserLocation HOOK
+----------------------------------------------------------------------
+File: app-mobile/src/hooks/useUserLocation.ts
+
+CHANGE 1: Update the fetchUserLocation function to respect use_gps_location.
+
+Find the section (around lines 62–97) that checks custom_location.
+Replace the entire logic block with:
+
+─────────────────────────────────────────────────────────
+  // Determine whether to use GPS or custom location
+  const useGps = (prefs?.use_gps_location !== false); // default true
+
+  if (!useGps && prefs?.custom_location) {
+    const savedLocation = prefs.custom_location;
+    const coordinatesMatch = savedLocation.match(
+      /^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/
+    );
+
+    if (coordinatesMatch) {
+      const lat = parseFloat(coordinatesMatch[1]);
+      const lng = parseFloat(coordinatesMatch[2]);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        return { lat, lng };
+      }
+    } else {
+      // Geocode address string
+      try {
+        const geocoded = await Location.geocodeAsync(savedLocation);
+        if (geocoded && geocoded.length > 0) {
+          return { lat: geocoded[0].latitude, lng: geocoded[0].longitude };
+        }
+      } catch {
+        // fall through to GPS
+      }
+    }
+  }
+
+  // Fall back to GPS
+  const location = await enhancedLocationService.getCurrentLocation();
+  if (location) return { lat: location.latitude, lng: location.longitude };
+  const lastKnown = await enhancedLocationService.getLastKnownLocation();
+  if (lastKnown) return { lat: lastKnown.latitude, lng: lastKnown.longitude };
+  return { lat: 37.7749, lng: -122.4194 };
+─────────────────────────────────────────────────────────
+
+CHANGE 2: Add custom_location and use_gps_location to the query key
+so the query re-runs whenever location preferences change.
+
+In the `fetchUserLocation` async function signature, add two params:
+  customLocation: string | undefined,
+  useGpsFlag: boolean | undefined
+
+And load these in the `useUserLocation` hook before passing them:
+
+─────────────────────────────────────────────────────────
+export const useUserLocation = (
+  userId: string | undefined,
+  currentMode: string,
+  refreshKey: number | string | undefined
+) => {
+  // Read current preferences from React Query cache to get location fields
+  // This is safe — we only read, not subscribe
+  const cachedPrefs = useQueryClient().getQueryData<UserPreferences>(
+    ['userPreferences', userId]
+  );
+  const customLocation = cachedPrefs?.custom_location;
+  const useGpsFlag = cachedPrefs?.use_gps_location;
+
+  return useQuery({
+    queryKey: ['userLocation', userId, currentMode, refreshKey, customLocation, useGpsFlag],
+    queryFn: () => fetchUserLocation(userId, currentMode, refreshKey, customLocation, useGpsFlag),
+    ...
+  });
+};
+─────────────────────────────────────────────────────────
+
+NOTE: You need to add `import { useQueryClient } from '@tanstack/react-query';`
+at the top of this file.
+
+Verify: Set a custom location in prefs → apply → the deck should now
+use that location (check network tab in Supabase edge function logs,
+look for different lat/lng in request body).
+
+----------------------------------------------------------------------
+STEP 6 — ADD GPS TOGGLE TO LocationInputSection
+----------------------------------------------------------------------
+File: app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx
+
+Add two new props to LocationInputSection:
+  useGpsLocation: boolean;
+  onToggleGps: (value: boolean) => void;
+
+Add `Switch` to the import from react-native:
+  import { ..., Switch } from "react-native";
+
+BEFORE the existing `locationInputContainer` View, add the toggle row:
+
+─────────────────────────────────────────────────────────
+      <View style={styles.gpsSwitchRow}>
+        <Ionicons name="locate-outline" size={16} color="#6b7280" />
+        <Text style={styles.gpsSwitchLabel}>Use my current GPS location</Text>
+        <Switch
+          value={useGpsLocation}
+          onValueChange={onToggleGps}
+          trackColor={{ false: '#d1d5db', true: '#eb7825' }}
+          thumbColor="#ffffff"
+        />
+      </View>
+─────────────────────────────────────────────────────────
+
+Modify the TextInput to be disabled when GPS is on:
+
+─────────────────────────────────────────────────────────
+        <TextInput
+          style={[
+            styles.locationTextInput,
+            useGpsLocation && styles.locationTextInputDisabled,
+          ]}
+          placeholder={
+            useGpsLocation
+              ? "Using your current GPS location"
+              : "Search to change your starting location..."
+          }
+          placeholderTextColor={useGpsLocation ? "#9ca3af" : "#9ca3af"}
+          value={useGpsLocation ? "" : searchLocation}
+          onChangeText={useGpsLocation ? undefined : onLocationInputChange}
+          onFocus={useGpsLocation ? undefined : onFocus}
+          onBlur={useGpsLocation ? undefined : onBlur}
+          editable={!useGpsLocation}
+          autoCapitalize="words"
+          returnKeyType="done"
+        />
+─────────────────────────────────────────────────────────
+
+Add new styles:
+─────────────────────────────────────────────────────────
+  gpsSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  gpsSwitchLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  locationTextInputDisabled: {
+    backgroundColor: '#f3f4f6',
+    color: '#9ca3af',
+  },
+─────────────────────────────────────────────────────────
+
+Verify: In Simulator/device, open Preferences Sheet → Starting Location
+section shows the toggle switch above the text field. Toggle ON → field
+is grey and non-editable.
+
+----------------------------------------------------------------------
+STEP 7 — WIRE GPS TOGGLE IN PreferencesSheet.tsx
+----------------------------------------------------------------------
+File: app-mobile/src/components/PreferencesSheet.tsx
+
+CHANGE 1: Add state (near other useState declarations, ~line 200):
+  const [useGpsLocation, setUseGpsLocation] = useState<boolean>(true);
+
+CHANGE 2: Load from preferences on open.
+  Find where `searchLocation` is set from `loadedPreferences` (~line 518):
+  Add below it:
+    setUseGpsLocation((loadedPreferences as any).use_gps_location ?? true);
+
+CHANGE 3: Add handleGpsToggle callback (near other handlers):
+─────────────────────────────────────────────────────────
+  const handleGpsToggle = useCallback((value: boolean) => {
+    setUseGpsLocation(value);
+    if (value) {
+      setSearchLocation('');
+      // Clear coordinates so custom_location is null on save
+    }
+  }, []);
+─────────────────────────────────────────────────────────
+
+CHANGE 4: In handleApply (where preferences are built for saving),
+  add use_gps_location to the saved preferences object:
+
+  Find where the preferences payload is assembled. Add:
+─────────────────────────────────────────────────────────
+    use_gps_location: useGpsLocation,
+    custom_location: useGpsLocation
+      ? null
+      : selectedCoords
+        ? `${selectedCoords.lat},${selectedCoords.lng}`
+        : searchLocation || null,
+─────────────────────────────────────────────────────────
+
+CHANGE 5: After saving preferences, invalidate the location query
+  so the deck re-fetches from the new origin.
+  Find where queryClient is used after saving (~where it invalidates other keys):
+─────────────────────────────────────────────────────────
+    queryClient.invalidateQueries({ queryKey: ['userLocation'] });
+─────────────────────────────────────────────────────────
+
+CHANGE 6: Pass new props to LocationInputSection.
+  Find where LocationInputSection is rendered and add:
+─────────────────────────────────────────────────────────
+    useGpsLocation={useGpsLocation}
+    onToggleGps={handleGpsToggle}
+─────────────────────────────────────────────────────────
+
+Verify: Toggle GPS off → type "Brooklyn, New York" → apply → check that
+the recommendations request in Supabase logs shows Brooklyn coordinates,
+not device GPS coordinates.
+
+----------------------------------------------------------------------
+STEP 8 — EXTEND useCuratedExperiences HOOK
+----------------------------------------------------------------------
+File: app-mobile/src/hooks/useCuratedExperiences.ts
+
+Replace the hard-coded type literal with the union type:
+
+─────────────────────────────────────────────────────────
+export type CuratedExperienceType =
+  | 'solo-adventure'
+  | 'first-dates'
+  | 'romantic'
+  | 'friendly'
+  | 'group-fun';
+
+interface UseCuratedExperiencesParams {
+  experienceType: CuratedExperienceType;
+  location: { lat: number; lng: number } | null;
+  budgetMin: number;
+  budgetMax: number;
+  travelMode: string;
+  travelConstraintType: 'time' | 'distance';
+  travelConstraintValue: number;
+  enabled: boolean;
+}
+─────────────────────────────────────────────────────────
+
+No other changes to this file — the query key already includes
+`experienceType`, so different types cache separately.
+
+Verify: TypeScript compiles without errors.
+
+----------------------------------------------------------------------
+STEP 9 — EXTEND generate-curated-experiences EDGE FUNCTION
+----------------------------------------------------------------------
+File: supabase/functions/generate-curated-experiences/index.ts
+
+CHANGE 1: Add the four new pairing arrays after the existing
+SOLO_ADVENTURE_PAIRINGS constant. Paste these in full:
+
+─────────────────────────────────────────────────────────
+const FIRST_DATES_PAIRINGS: [string, string, string][] = [
+  ["botanical_garden", "wine_bar", "sip_and_paint"],
+  ["art_gallery", "french_restaurant", "comedy_club"],
+  ["museum", "coffee_shop", "sip_and_paint"],
+  ["botanical_garden", "brunch_restaurant", "pottery"],
+  ["tea_house", "japanese_restaurant", "board_game_cafe"],
+  ["park", "wine_bar", "pottery"],
+  ["art_gallery", "brunch_restaurant", "comedy_club"],
+  ["botanical_garden", "italian_restaurant", "sip_and_paint"],
+  ["museum", "wine_bar", "comedy_club"],
+  ["park", "coffee_shop", "board_game_cafe"],
+  ["botanical_garden", "french_restaurant", "comedy_club"],
+  ["art_gallery", "tea_house", "pottery"],
+  ["museum", "brunch_restaurant", "sip_and_paint"],
+  ["park", "japanese_restaurant", "comedy_club"],
+  ["botanical_garden", "coffee_shop", "pottery"],
+];
+
+const ROMANTIC_PAIRINGS: [string, string, string][] = [
+  ["botanical_garden", "fine_dining_restaurant", "stargazing_spot"],
+  ["beach", "wine_bar", "spa"],
+  ["park", "french_restaurant", "sip_and_paint"],
+  ["botanical_garden", "italian_restaurant", "hot_spring"],
+  ["beach", "fine_dining_restaurant", "stargazing_spot"],
+  ["botanical_garden", "wine_bar", "spa"],
+  ["park", "fine_dining_restaurant", "sip_and_paint"],
+  ["beach", "italian_restaurant", "stargazing_spot"],
+  ["botanical_garden", "french_restaurant", "hot_spring"],
+  ["park", "wine_bar", "pottery"],
+  ["botanical_garden", "steak_house", "stargazing_spot"],
+  ["beach", "wine_bar", "sip_and_paint"],
+  ["park", "italian_restaurant", "spa"],
+  ["botanical_garden", "seafood_restaurant", "stargazing_spot"],
+  ["beach", "french_restaurant", "hot_spring"],
+];
+
+const FRIENDLY_PAIRINGS: [string, string, string][] = [
+  ["bowling_alley", "pizza_restaurant", "bar"],
+  ["escape_room", "american_restaurant", "comedy_club"],
+  ["hiking_area", "sandwich_shop", "bar"],
+  ["mini_golf_course", "hamburger_restaurant", "bar"],
+  ["bowling_alley", "american_restaurant", "karaoke"],
+  ["escape_room", "pizza_restaurant", "bar"],
+  ["hiking_area", "diner", "comedy_club"],
+  ["mini_golf_course", "pizza_restaurant", "karaoke"],
+  ["bowling_alley", "hamburger_restaurant", "comedy_club"],
+  ["escape_room", "sandwich_shop", "karaoke"],
+  ["hiking_area", "american_restaurant", "bar"],
+  ["mini_golf_course", "diner", "bar"],
+  ["bowling_alley", "fast_food_restaurant", "karaoke"],
+  ["escape_room", "hamburger_restaurant", "comedy_club"],
+  ["hiking_area", "pizza_restaurant", "karaoke"],
+];
+
+const GROUP_FUN_PAIRINGS: [string, string, string][] = [
+  ["bowling_alley", "fast_food_restaurant", "karaoke"],
+  ["video_arcade", "pizza_restaurant", "bar"],
+  ["trampoline_park", "buffet_restaurant", "comedy_club"],
+  ["laser_tag_center", "food_court", "karaoke"],
+  ["bowling_alley", "pizza_restaurant", "comedy_club"],
+  ["video_arcade", "hamburger_restaurant", "karaoke"],
+  ["trampoline_park", "fast_food_restaurant", "bar"],
+  ["laser_tag_center", "pizza_restaurant", "bar"],
+  ["bowling_alley", "food_court", "comedy_club"],
+  ["video_arcade", "buffet_restaurant", "karaoke"],
+  ["trampoline_park", "pizza_restaurant", "comedy_club"],
+  ["laser_tag_center", "hamburger_restaurant", "bar"],
+  ["bowling_alley", "buffet_restaurant", "karaoke"],
+  ["video_arcade", "food_court", "comedy_club"],
+  ["trampoline_park", "hamburger_restaurant", "karaoke"],
+];
+─────────────────────────────────────────────────────────
+
+CHANGE 2: Add the routing map after those arrays:
+
+─────────────────────────────────────────────────────────
+const PAIRINGS_BY_TYPE: Record<string, [string, string, string][]> = {
+  'solo-adventure': SOLO_ADVENTURE_PAIRINGS,
+  'first-dates':    FIRST_DATES_PAIRINGS,
+  'romantic':       ROMANTIC_PAIRINGS,
+  'friendly':       FRIENDLY_PAIRINGS,
+  'group-fun':      GROUP_FUN_PAIRINGS,
+};
+─────────────────────────────────────────────────────────
+
+CHANGE 3: In the serve() handler, read experienceType from the request
+body and use PAIRINGS_BY_TYPE to select the pairing set.
+
+Find where the request body is parsed (look for `req.json()`).
+The current body fields are: experienceType, location, budgetMin,
+budgetMax, travelMode, travelConstraintType, travelConstraintValue.
+
+Find where SOLO_ADVENTURE_PAIRINGS is used (the shuffle + slice call).
+Replace the hard reference with the dynamic lookup:
+
+─────────────────────────────────────────────────────────
+  const pairingSet = PAIRINGS_BY_TYPE[experienceType] ?? SOLO_ADVENTURE_PAIRINGS;
+  const selectedPairings = shuffle(pairingSet).slice(0, 5);
+─────────────────────────────────────────────────────────
+
+CHANGE 4: Add total pairing budget filter.
+After `resolvePairing` returns a result (in the map/filter chain),
+add a budget check using the PRICE_LEVEL_RANGES that already exist:
+
+Find where resolvePairing results are collected (the Promise.all that
+resolves multiple pairings). After filtering out nulls, add:
+
+─────────────────────────────────────────────────────────
+  // Filter pairings whose total estimated cost exceeds budget
+  .filter((card) => {
+    if (!budgetMax || budgetMax <= 0) return true;
+    const totalCost = card.stops.reduce((sum: number, stop: any) => {
+      const range = PRICE_LEVEL_RANGES[stop.priceLevel ?? ''] ?? { min: 10, max: 30 };
+      return sum + range.min;
+    }, 0);
+    return totalCost <= budgetMax;
+  })
+─────────────────────────────────────────────────────────
+
+Deploy the function:
+  supabase functions deploy generate-curated-experiences
+
+Verify: Call the edge function directly with experienceType='romantic'
+and confirm you get romantic-themed pairings back (botanical_garden +
+fine_dining + stargazing type combos).
+
+----------------------------------------------------------------------
+STEP 10 — EXTEND RecommendationsContext FOR ALL EXPERIENCE TYPES
+----------------------------------------------------------------------
+File: app-mobile/src/contexts/RecommendationsContext.tsx
+
+CHANGE 1: Replace the single useCuratedExperiences call with five calls,
+one per experience type. React hooks MUST be called at the top level
+(not in a loop), so call all five unconditionally — use `enabled` to
+gate each one.
+
+Find:
+─────────────────────────────────────────────────────────
+  const { cards: curatedCards } = useCuratedExperiences({
+    experienceType: 'solo_adventure',      // ← this is the bug (underscore)
+    ...
+    enabled: currentMode === 'solo' && experienceTypes.includes('solo_adventure'),
+  });
+─────────────────────────────────────────────────────────
+
+Replace with:
+─────────────────────────────────────────────────────────
+  const baseParams = {
+    location: userLocation,
+    budgetMin: userPrefs?.budget_min ?? 0,
+    budgetMax: userPrefs?.budget_max ?? 1000,
+    travelMode: userPrefs?.travel_mode ?? 'walking',
+    travelConstraintType:
+      (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
+    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
+  };
+  const isSoloMode = currentMode === 'solo';
+
+  const { cards: curatedSoloCards } = useCuratedExperiences({
+    experienceType: 'solo-adventure',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('solo-adventure'),
+  });
+  const { cards: curatedDateCards } = useCuratedExperiences({
+    experienceType: 'first-dates',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('first-dates'),
+  });
+  const { cards: curatedRomCards } = useCuratedExperiences({
+    experienceType: 'romantic',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('romantic'),
+  });
+  const { cards: curatedFriendCards } = useCuratedExperiences({
+    experienceType: 'friendly',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('friendly'),
+  });
+  const { cards: curatedGroupCards } = useCuratedExperiences({
+    experienceType: 'group-fun',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('group-fun'),
+  });
+
+  const allCuratedCards = [
+    ...curatedSoloCards,
+    ...curatedDateCards,
+    ...curatedRomCards,
+    ...curatedFriendCards,
+    ...curatedGroupCards,
+  ];
+  const curatedRecommendations = shuffle(allCuratedCards) as unknown as Recommendation[];
+─────────────────────────────────────────────────────────
+
+CHANGE 2: Update the interleaveCards call to use `curatedRecommendations`
+(which it probably already does — just make sure the variable name matches).
+
+CHANGE 3: Add the shuffle helper at the top of the file (or import from
+a utility). It's already defined in the edge function; add a client-side
+copy:
+─────────────────────────────────────────────────────────
+  function shuffle<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+─────────────────────────────────────────────────────────
+
+Verify: Select "Romantic" in Preferences Sheet, apply. In the swipe deck
+you should see curated multi-stop cards (cards with multiple place names
+and a timeline) interleaved. Check the console for logs from each of the
+five useCuratedExperiences calls.
+
+----------------------------------------------------------------------
+STEP 11 — END-TO-END TESTING
+----------------------------------------------------------------------
+Test each filter individually before combining:
+
+TEST A — Categories filter
+  1. Open Preferences Sheet
+  2. Deselect all categories, select only "Wellness"
+  3. Tap Apply
+  4. Swipe through cards — every card should be a spa, sauna, or hot spring
+  5. None should be restaurants, parks, or bars
+  Expected: ✅ 100% wellness venues in deck
+
+TEST B — Budget filter
+  1. Set budget to $25 (tap "Up to $25" chip)
+  2. Tap Apply
+  3. Check cards — no EXPENSIVE ($$$) or VERY_EXPENSIVE ($$$$) venues
+  Expected: ✅ Only Free, $ and $$ venues
+
+TEST C — GPS toggle
+  1. Toggle GPS OFF
+  2. Type "Times Square, New York" in the location field, select from autocomplete
+  3. Apply
+  4. Cards should show venues in Manhattan, not your current city
+  5. Toggle GPS ON, apply again → cards return to your location
+  Expected: ✅ Deck origin changes with location
+
+TEST D — Travel limit filter
+  1. Set travel mode to Walking, travel limit to 10 minutes
+  2. Apply
+  3. Cards should all show ≤ 10 min walk in the distance/time field
+  Expected: ✅ No card shows "25 min walk"
+
+TEST E — Curated cards for all types
+  1. Select "Romantic" experience type, apply
+  2. Check deck for curated cards (multi-stop itineraries with stop timeline)
+  3. Repeat with "Group Fun", "First Date", "Friendly"
+  Expected: ✅ Curated cards appear for each selected type
+
+TEST F — Persistence
+  1. Apply a specific set of preferences
+  2. Kill the app completely
+  3. Reopen — deck should still reflect the applied preferences
+  Expected: ✅ React Query AsyncStorage persistence keeps prefs
+
+----------------------------------------------------------------------
+COMMON MISTAKES TO AVOID
+----------------------------------------------------------------------
+1. Do NOT use 'solo_adventure' (underscore) anywhere — the stored ID is
+   'solo-adventure' (hyphen). This was the existing bug.
+
+2. Do NOT call useCuratedExperiences inside a conditional or loop —
+   React's rules of hooks require unconditional calls. Use `enabled`
+   to gate fetching instead.
+
+3. When invalidating the location query after saving preferences, use
+   `queryClient.invalidateQueries({ queryKey: ['userLocation'] })`
+   NOT `removeQueries` — you want to refetch, not delete the cache.
+
+4. The budget presets in BudgetSection receive already-converted values
+   (via getRate). Do NOT apply currency conversion again in the preset
+   array definition — just use raw USD values (25, 50, 100, 150).
+
+5. The generate-curated-experiences edge function uses
+   GOOGLE_PLACES_API_KEY (not GOOGLE_MAPS_API_KEY). Don't mix them up.
+
+6. After deploying the edge function, hard-close and reopen the app
+   to clear the React Query curated experiences cache (staleTime is
+   10 minutes — or call refetch() from the hook).
+
+----------------------------------------------------------------------
+DONE WHEN
+----------------------------------------------------------------------
+✓ Preferences Sheet shows $25/$50/$100/$150 budget chips
+✓ GPS toggle in Starting Location section — ON disables text field
+✓ Selecting only "Drink" category → deck shows only bars and wine bars
+✓ Setting budget $25 → no $$$ venues appear
+✓ Selecting "Romantic" → curated multi-stop date cards appear in deck
+✓ Curated cards from all active experience types appear (not just solo)
+✓ Travel limit 10 min walking → no card shows >10 min travel time
+✓ Custom location → deck generated from typed address not GPS
+✓ All TypeScript compiles with zero errors
+✓ No `as any` casts remain for use_gps_location / custom_location /
+  experience_types (they're now properly typed in UserPreferences)

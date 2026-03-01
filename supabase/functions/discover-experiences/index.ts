@@ -148,6 +148,7 @@ const EXCLUDED_TYPES = new Set([
 interface DiscoverRequest {
   location: { lat: number; lng: number };
   radius?: number; // Optional radius in meters, default 10km
+  selectedCategories?: string[]; // Optional: only fetch these categories (IDs or labels)
 }
 
 interface DiscoverPlace {
@@ -183,8 +184,57 @@ serve(async (req) => {
 
   try {
     const request: DiscoverRequest = await req.json();
-    const { location, radius = 10000 } = request;
+    const { location, radius = 10000, selectedCategories } = request;
     const usDateKey = getUsDateKey();
+
+    // Map from preference IDs (snake_case) to discover category labels
+    const PREF_ID_TO_DISCOVER_CATEGORY: Record<string, string> = {
+      nature: "Nature",
+      first_meet: "First Meet",
+      picnic: "Picnic",
+      drink: "Drink",
+      casual_eats: "Casual Eats",
+      fine_dining: "Fine Dining",
+      watch: "Watch",
+      creative_arts: "Creative & Arts",
+      play: "Play",
+      wellness: "Wellness",
+    };
+
+    // Resolve which categories to fetch: filter DISCOVER_CATEGORIES by user selection
+    let categoriesToFetch = DISCOVER_CATEGORIES;
+    if (selectedCategories && selectedCategories.length > 0) {
+      // Build a set of valid discover-category labels from whatever format the client sends
+      const resolvedLabels = new Set<string>();
+      for (const cat of selectedCategories) {
+        // Direct label match (e.g. "Nature")
+        if (DISCOVER_CATEGORIES.includes(cat)) {
+          resolvedLabels.add(cat);
+          continue;
+        }
+        // Preference ID match (e.g. "nature", "fine_dining")
+        const mapped = PREF_ID_TO_DISCOVER_CATEGORY[cat];
+        if (mapped) {
+          resolvedLabels.add(mapped);
+          continue;
+        }
+        // Case-insensitive fallback
+        const lowerCat = cat.toLowerCase();
+        const found = DISCOVER_CATEGORIES.find((dc) => dc.toLowerCase() === lowerCat);
+        if (found) resolvedLabels.add(found);
+      }
+      if (resolvedLabels.size > 0) {
+        categoriesToFetch = DISCOVER_CATEGORIES.filter((c) => resolvedLabels.has(c));
+      }
+      console.log(`Filtered categories: ${categoriesToFetch.join(", ")} (from ${selectedCategories.length} requested)`);
+    } else {
+      console.log("No category filter provided – fetching all categories");
+    }
+
+    // Build a stable hash of selected categories to partition the cache
+    const categoryHash = selectedCategories && selectedCategories.length > 0
+      ? [...selectedCategories].sort().join(",")
+      : "all";
 
     let userId: string | null = null;
     let adminClient: ReturnType<typeof createClient> | null = null;
@@ -207,34 +257,42 @@ serve(async (req) => {
         if (userId) {
           adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-          const { data: cachedRow, error: cacheReadError } = await adminClient
+          // Include category hash in cache lookup so different preference sets get separate caches
+          const cacheQuery = adminClient
             .from("discover_daily_cache")
-            .select("cards, featured_card")
+            .select("cards, featured_card, generated_location")
             .eq("user_id", userId)
-            .eq("us_date_key", usDateKey)
-            .maybeSingle<DiscoverDailyCacheRow>();
+            .eq("us_date_key", usDateKey);
+
+          const { data: cachedRows, error: cacheReadError } = await cacheQuery;
 
           if (cacheReadError) {
             console.warn("Discover daily cache read warning:", cacheReadError.message);
-          } else if (cachedRow?.cards && cachedRow.cards.length > 0) {
-            console.log(`Cache hit for user ${userId} on ${usDateKey}. Returning persisted discover cards.`);
-            return new Response(
-              JSON.stringify({
-                cards: cachedRow.cards,
-                featuredCard: cachedRow.featured_card,
-                meta: {
-                  totalResults: cachedRow.cards.length,
-                  categories: DISCOVER_CATEGORIES,
-                  successfulCategories: [],
-                  failedCategories: [],
-                  cacheHit: true,
-                  usDateKey,
-                },
-              }),
-              {
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-              }
+          } else if (cachedRows && cachedRows.length > 0) {
+            // Find a row whose generated_location.categoryHash matches the current request
+            const matchingRow = cachedRows.find((row: any) =>
+              row.generated_location?.categoryHash === categoryHash
             );
+            if (matchingRow?.cards && matchingRow.cards.length > 0) {
+              console.log(`Cache hit for user ${userId} on ${usDateKey} (hash=${categoryHash}). Returning persisted discover cards.`);
+              return new Response(
+                JSON.stringify({
+                  cards: matchingRow.cards,
+                  featuredCard: matchingRow.featured_card,
+                  meta: {
+                    totalResults: matchingRow.cards.length,
+                    categories: categoriesToFetch,
+                    successfulCategories: [],
+                    failedCategories: [],
+                    cacheHit: true,
+                    usDateKey,
+                  },
+                }),
+                {
+                  headers: { ...corsHeaders, "Content-Type": "application/json" },
+                }
+              );
+            }
           }
         }
       }
@@ -268,10 +326,10 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Fetching discover experiences for location: ${location.lat}, ${location.lng}`);
+    console.log(`Fetching discover experiences for location: ${location.lat}, ${location.lng} | categories: ${categoriesToFetch.join(", ")}`);
 
-    // Fetch candidate places for all categories in parallel
-    const categoryPromises = DISCOVER_CATEGORIES.map((category) =>
+    // Fetch candidate places for filtered categories in parallel
+    const categoryPromises = categoriesToFetch.map((category) =>
       fetchCandidatesForCategory(category, location, radius)
     );
 
@@ -283,8 +341,8 @@ serve(async (req) => {
     const successfulCategories: string[] = [];
     const failedCategories: string[] = [];
 
-    for (let i = 0; i < DISCOVER_CATEGORIES.length; i++) {
-      const category = DISCOVER_CATEGORIES[i];
+    for (let i = 0; i < categoriesToFetch.length; i++) {
+      const category = categoriesToFetch[i];
       const candidates = allCategoryCandidates[i];
 
       if (!candidates || candidates.length === 0) {
@@ -316,7 +374,7 @@ serve(async (req) => {
 
     console.log(`Successful categories (${successfulCategories.length}):`, successfulCategories);
     console.log(`Failed categories (${failedCategories.length}):`, failedCategories);
-    console.log(`Found ${places.length} unique places across ${DISCOVER_CATEGORIES.length} categories`);
+    console.log(`Found ${places.length} unique places across ${categoriesToFetch.length} categories`);
 
     // Select an 11th unique card as the featured card - MUST be a dining experience
     // Collect all unused candidates across all categories
@@ -407,22 +465,28 @@ serve(async (req) => {
     const featuredCard = enrichedFeaturedPlace ? convertToCard(enrichedFeaturedPlace) : null;
 
     if (adminClient && userId && cards.length > 0) {
+      // Delete any existing cache row for this user+date (since we can't use
+      // upsert with the categoryHash stored inside a JSONB column).
+      await adminClient
+        .from("discover_daily_cache")
+        .delete()
+        .eq("user_id", userId)
+        .eq("us_date_key", usDateKey);
+
       const { error: cacheWriteError } = await adminClient
         .from("discover_daily_cache")
-        .upsert(
-          {
-            user_id: userId,
-            us_date_key: usDateKey,
-            cards,
-            featured_card: featuredCard,
-            generated_location: {
-              lat: location.lat,
-              lng: location.lng,
-              radius,
-            },
+        .insert({
+          user_id: userId,
+          us_date_key: usDateKey,
+          cards,
+          featured_card: featuredCard,
+          generated_location: {
+            lat: location.lat,
+            lng: location.lng,
+            radius,
+            categoryHash,
           },
-          { onConflict: "user_id,us_date_key" }
-        );
+        });
 
       if (cacheWriteError) {
         console.warn("Discover daily cache write warning:", cacheWriteError.message);
@@ -439,7 +503,7 @@ serve(async (req) => {
         featuredCard, // 11th unique card for featured display (NOT in cards array)
         meta: {
           totalResults: cards.length,
-          categories: DISCOVER_CATEGORIES,
+          categories: categoriesToFetch,
           successfulCategories,
           failedCategories,
         },

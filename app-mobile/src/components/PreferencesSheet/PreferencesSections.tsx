@@ -24,7 +24,7 @@ export const ExperienceTypesSection = memo(
     onIntentToggle: (id: string) => void;
   }) => (
     <View style={[styles.section, { marginTop: 20 }]}>
-      <Text style={styles.sectionTitle}>Experience Type</Text>
+      <Text style={styles.sectionTitle}>Curated Experiences</Text>
       <Text style={styles.sectionSubtitle}>
         Date Idea / Friends / Romantic / Solo Adventure
       </Text>

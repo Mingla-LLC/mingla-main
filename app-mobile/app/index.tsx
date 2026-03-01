@@ -1567,6 +1567,7 @@ function AppContent() {
                   | "Metric"
                   | "Imperial") || "Imperial",
             }}
+            preferencesRefreshKey={preferencesRefreshKey}
           />
         );
       case "saved":

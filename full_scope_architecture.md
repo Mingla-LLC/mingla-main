@@ -4,6 +4,14 @@
 
 ---
 
+## Changelog
+
+| Date | Feature | Status | Files Changed |
+|------|---------|--------|---------------|
+| 2026-02-28 | Category System Overhaul v2 — replaced 9 old categories with 10 new categories (Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness) | Implemented | `constants/categories.ts`, `utils/categoryUtils.ts`, `PreferencesSheet.tsx`, `CollaborationPreferences.tsx`, `generate-experiences/index.ts`, `generate-session-experiences/index.ts`, `discover-experiences/index.ts`, `recommendations-enhanced/index.ts`, `migrations/20260228000001_update_categories.sql` |
+
+---
+
 ## Table of Contents
 
 1. [System Overview](#1-system-overview)
@@ -347,8 +355,8 @@ Full-screen detail view opened on card tap. This is where the user gets deep inf
 | Busyness | `busynessService` → BestTime.app | Live foot traffic: "Moderately busy" with percentage bar |
 | Practical Details | Card data | Opening hours, parking availability, accessibility |
 | Match Factors | Computed | Why this was recommended: budget fit, distance score, category match, rating |
-| Timeline | `timelineGenerator.ts` | Step-by-step plan (e.g., for Stroll: Arrive → Walk → Pause at café → Wrap up) |
-| Companion Stops | `get-companion-stops` edge function | For stroll cards: nearby cafés/bakeries along the route |
+| Timeline | `timelineGenerator.ts` | Step-by-step plan (e.g., for Nature: Arrive → Walk → Pause at café → Wrap up) |
+| Companion Stops | `get-companion-stops` edge function | For nature/picnic cards: nearby cafés/bakeries along the route |
 | Picnic Grocery | `get-picnic-grocery` edge function | For picnic cards: nearest grocery store with route |
 | Night Out Layout | Card data variant | For night-out cards: event name, DJ, music genre, entry fee, people going |
 | Purchase Options | Card data | Multi-tier packages (Standard, VIP, etc.) with prices |
@@ -390,15 +398,15 @@ A content-rich discovery screen that goes beyond the swipe paradigm. Two main ta
 │ ┌──────────────────────────┐ │
 │ │ Sarah (Birthday: Mar 15) │ │
 │ │ ▸ Valentine's Day (Feb 14)│ │
-│ │   └─ Dining: Rose Café   │ │
-│ │   └─ Stroll: Sunset Walk │ │
+│ │   └─ Fine Dining: Rose Café│ │
+│ │   └─ Nature: Sunset Walk  │ │
 │ │ ▸ Birthday (Mar 15)      │ │
 │ │   └─ Casual: Bowling     │ │
 │ └──────────────────────────┘ │
 └──────────────────────────────┘
 ```
 
-**Featured Card:** The 11th card from the discover edge function, typically a Dining Experience, rendered as a large hero card at the top.
+**Featured Card:** The 11th card from the discover edge function, typically a Fine Dining experience, rendered as a large hero card at the top.
 
 **Grid Cards:** 10 cards, one per category, displayed in a 2-column grid. Each card shows: image, title, price, distance, category badge.
 
@@ -410,7 +418,7 @@ DiscoverScreen
       → Edge Function: discover-experiences
         → Google Places API: 10 categories × nearby search
         → 1 unique place per category (randomized from top 5)
-        → 11th featured card (prefers Dining)
+        → 11th featured card (prefers Fine Dining)
         → Google Distance Matrix: travel times
         → OpenAI GPT-4o-mini: descriptions + highlights
         → Cached in discover_daily_cache (24h, US Eastern timezone)
@@ -447,11 +455,11 @@ User adds person with birthday March 15, gender: female
 **Category-Holiday Mapping:**
 | Holiday | Auto-Assigned Categories |
 |---------|------------------------|
-| Valentine's Day | Dining, Stroll, Wellness |
-| Halloween | Screen & Relax, Creative |
-| Mother's/Father's Day | Dining, Wellness, Stroll |
-| Birthday | Casual Eats, Play & Move, Creative |
-| Christmas | Dining, Stroll, Creative |
+| Valentine's Day | Fine Dining, Nature, Wellness |
+| Halloween | Watch, Creative & Arts |
+| Mother's/Father's Day | Fine Dining, Wellness, Nature |
+| Birthday | Casual Eats, Play, Creative & Arts |
+| Christmas | Fine Dining, Nature, Creative & Arts |
 | New Year's Eve | Night Out specific |
 
 ### Night Out Tab
@@ -751,20 +759,21 @@ The preferences engine is the **central nervous system** of Mingla. Every recomm
 
 ### The 10 Experience Categories
 
-Defined in `constants/categories.ts` (1,220 lines). Each category is a rich object:
+Defined in `constants/categories.ts`. Each category is a rich object.
+**Last updated: 2026-02-28 (Category System Overhaul v2)**
 
-| Category | Slug | Google Places Types | Typical Activities |
-|----------|------|-------------------|-------------------|
-| **Stroll** | `stroll` | park, hiking_trail, scenic_point | Walking trails, garden walks, viewpoint visits |
-| **Sip & Chill** | `sip_and_chill` | cafe, coffee_shop, tea_room, juice_bar | Coffee dates, tea houses, smoothie bars |
-| **Casual Eats** | `casual_eats` | restaurant, fast_food, food_truck | Burger joints, taco stands, pizza places |
-| **Screen & Relax** | `screen_and_relax` | movie_theater, entertainment_center | Cinema, drive-ins, gaming lounges |
-| **Creative & Hands-On** | `creative` | art_studio, pottery, craft_workshop | Pottery classes, painting nights, cooking workshops |
-| **Picnics** | `picnics` | park, garden, beach | Park picnics with grocery stop integration |
-| **Play & Move** | `play_and_move` | bowling, mini_golf, gym, sports | Bowling, mini golf, rock climbing, kayaking |
-| **Dining Experiences** | `dining` | fine_dining, restaurant | Upscale restaurants, tasting menus, chef's tables |
-| **Wellness Dates** | `wellness` | spa, yoga_studio, massage | Spa treatments, couples yoga, meditation |
-| **Freestyle** | `freestyle` | tourist_attraction, museum, landmark | Museums, landmarks, festivals, anything unique |
+| Category | Slug | Google Places API (New) Types | Typical Activities |
+|----------|------|------------------------------|-------------------|
+| **Nature** | `nature` | park, botanical_garden, hiking_area, national_park, state_park, beach, zoo, wildlife_park | Parks, trails, beaches, botanical gardens, zoos |
+| **First Meet** | `first_meet` | bookstore, bar, pub, wine_bar, tea_house, coffee_shop, planetarium | Coffee shops, bookstores, wine bars, pubs |
+| **Picnic** | `picnic` | picnic_ground, park, beach, botanical_garden | Outdoor open spaces for a bring-your-own picnic |
+| **Drink** | `drink` | bar, pub, wine_bar, tea_house, coffee_shop | Cocktail bars, pubs, wine bars, tea houses, cafés |
+| **Casual Eats** | `casual_eats` | diner, fast_food_restaurant, pizza_restaurant, ramen_restaurant, hamburger_restaurant, sushi_restaurant, food_court, brunch_restaurant, + 25 cuisine types | Low-key restaurants across all casual cuisines |
+| **Fine Dining** | `fine_dining` | fine_dining_restaurant, steak_house, french_restaurant, greek_restaurant, italian_restaurant | Upscale sit-down dining, tasting menus |
+| **Watch** | `watch` | movie_theater, comedy_club | Cinemas, comedy clubs, stand-up shows |
+| **Creative & Arts** | `creative_arts` | art_gallery, museum, planetarium, karaoke, coffee_roastery | Galleries, museums, karaoke, roasteries |
+| **Play** | `play` | bowling_alley, amusement_park, water_park, video_arcade, karaoke, casino, trampoline_park, mini_golf_course, ice_skating_rink, skate_park, escape_room, adventure_park | Arcades, bowling, escape rooms, mini golf |
+| **Wellness** | `wellness` | spa, sauna, hot_spring | Spas, saunas, hot springs |
 
 Each category definition includes:
 - **Core anchor types** (primary Google Places types to search)
@@ -782,18 +791,18 @@ Each category definition includes:
 
 | Experience Type | Compatible Categories |
 |----------------|----------------------|
-| Romantic | Sip & Chill, Stroll, Picnics, Dining, Wellness |
-| First Date | Sip & Chill, Casual Eats, Stroll, Creative, Play & Move |
-| Group Fun | Casual Eats, Play & Move, Creative, Screen & Relax, Freestyle |
-| Solo Adventure | Stroll, Sip & Chill, Wellness, Freestyle, Creative |
-| Business | Sip & Chill, Dining, Casual Eats |
+| Romantic | First Meet, Drink, Picnic, Fine Dining, Wellness, Nature |
+| First Date | Nature, First Meet, Drink, Watch, Creative & Arts, Picnic |
+| Group Fun | Play, Creative & Arts, Casual Eats, Watch, Drink |
+| Solo Adventure | All categories |
+| Business | First Meet, Drink, Fine Dining |
 | Friendly | All categories |
 
 ### Preference Flow: User → Edge Function → Cards
 
 ```
 PreferencesSheet (UI)
-  │ categories: ["Stroll", "Dining"]
+  │ categories: ["Nature", "Fine Dining"]
   │ budget: $20-80
   │ travel: walking, 30 min
   │ datetime: "this weekend"
@@ -917,9 +926,9 @@ Each place is scored against the selected experience type using a recipe of feat
 - Noise tolerance weight: 0.2 (okay for groups to be loud)
 - Price/person weight: 0.25 (budget-friendly per person)
 
-### Stroll Companion Stops
+### Nature & Picnic Companion Stops
 
-For "Stroll" category cards, an additional edge function enriches the experience:
+For **Nature** and **Picnic** category cards, an additional edge function enriches the experience:
 
 ```
 get-companion-stops
@@ -927,7 +936,7 @@ get-companion-stops
   → Google Places API: searches within 500m for:
     supermarket, food_store, bakery, ice_cream_shop, deli
   → Takes top-rated result
-  → Generates stroll timeline:
+  → Generates nature/picnic timeline:
     1. "Arrive at [park name]" (0 min)
     2. "Walk through the scenic trail" (+10 min)
     3. "Pause at [bakery name] for a treat" (+20 min)
@@ -1463,7 +1472,7 @@ Every card interaction is recorded with rich context:
   },
   session_id: "uuid or null",   // if in collaboration mode
   recommendation_context: {
-    categories: ["dining", "stroll"],
+    categories: ["fine_dining", "nature"],
     budget_range: "$20-80",
     weather: "sunny",
     time_of_day: "evening",
@@ -1497,7 +1506,7 @@ PersonalizedRecommendationContext = {
   profile: { display_name, currency, measurement_system },
   gamifiedData: {
     monthlyExperiences: 12,
-    topCategories: ["Stroll", "Dining"],
+    topCategories: ["Nature", "Fine Dining"],
     badges: ["Explorer Level 3", "Social Butterfly"],
     vibes: "Adventurous & Romantic"
   },
@@ -1505,7 +1514,7 @@ PersonalizedRecommendationContext = {
   activityPatterns: {
     most_active_times: ["evening", "weekend_afternoon"],
     avg_session_duration: 340,  // seconds
-    category_engagement: { "Stroll": 0.85, "Dining": 0.72 }
+    category_engagement: { "nature": 0.85, "fine_dining": 0.72 }
   },
   locationPatterns: {
     home: { lat: 47.6, lng: -122.3 },
@@ -1640,7 +1649,7 @@ Persisted to AsyncStorage:
 | 6 | `gen-exp-new-keywords` | 2,992 | **Primary** experience generation (keyword search) | Google Places, Distance Matrix, OpenAI |
 | 7 | `generate-experiences` | 3,098 | Experience generation with pagination | Google Places, Distance Matrix, OpenAI |
 | 8 | `generate-session-experiences` | 3,310 | **Collaboration** experience generation | Google Places, Distance Matrix, OpenAI, Supabase |
-| 9 | `get-companion-stops` | 244 | Stroll companion stops (café/bakery) | Google Places |
+| 9 | `get-companion-stops` | 244 | Nature walk companion stops (café/bakery) | Google Places |
 | 10 | `get-google-maps-key` | 36 | Returns Maps API key to client | — |
 | 11 | `get-picnic-grocery` | 372 | Nearest grocery store for picnics | Google Places |
 | 12 | `holiday-experiences` | 813 | Holiday-specific experiences | Google Places |
@@ -2235,7 +2244,7 @@ Step 1: Open app → Explore tab (HomePage)
 Step 2: Tap ⚙ Preferences (top-left)
   └── PreferencesSheet opens
   └── Select experience type: "Romantic"
-  │   → Auto-filtered categories: Sip & Chill, Stroll, Dining, Wellness
+  │   → Auto-filtered categories: Drink, Nature, Fine Dining, Wellness
   └── Set date: "This Weekend" → Friday evening
   └── Set budget: $30-80
   └── Travel: walking, 20 minutes
@@ -2270,7 +2279,7 @@ Step 6: After the date
   └── "Leave a Review ⭐" prompt appears
   └── Rate 5 stars + "Amazing pasta!"
     → experience_feedback table updated
-    → Preference learning: boosted weight for "Dining", "$30-80", "Italian"
+    → Preference learning: boosted weight for "Fine Dining", "$30-80", "Italian"
 ```
 
 ### Journey 2: "Planning a group outing with friends"
@@ -2285,13 +2294,13 @@ Step 2: Name session "Weekend Fun"
 
 Step 3: Friends accept invitations
   └── Each friend gets pushed to set their preferences
-  └── Sarah: budget $20-40, Casual Eats + Play & Move, driving
-  └── Mike: budget $30-60, Stroll + Sip & Chill, walking
-  └── Alex: budget $25-50, Creative + Freestyle, transit
+  └── Sarah: budget $20-40, Casual Eats + Play, driving
+  └── Mike: budget $30-60, Nature + Drink, walking
+  └── Alex: budget $25-50, Creative & Arts + Watch, transit
 
 Step 4: System aggregates preferences
   └── Budget: AVG → $25-50
-  └── Categories: UNION → Casual, Play, Stroll, Sip, Creative, Freestyle
+  └── Categories: UNION → Casual Eats, Play, Nature, Drink, Creative & Arts, Watch
   └── Location: midpoint between all participants
   └── Travel: most common mode
 
@@ -2330,16 +2339,16 @@ Step 2: Tap "Add Person"
   └── Saved to AsyncStorage
 
 Step 3: System auto-detects upcoming holidays for her:
-  └── Valentine's Day (Feb 14) → Dining, Stroll, Wellness experiences
+  └── Valentine's Day (Feb 14) → Fine Dining, Nature, Wellness experiences
   └── International Women's Day (Mar 8) → filtered by gender
-  └── Birthday (Jun 15) → Casual, Creative, Play experiences
-  └── Mother's Day (May) → Dining, Wellness experiences
+  └── Birthday (Jun 15) → Casual Eats, Creative & Arts, Play experiences
+  └── Mother's Day (May) → Fine Dining, Wellness experiences
 
 Step 4: Expand "Valentine's Day" dropdown
   └── System calls holiday-experiences edge function
   └── Shows 2-3 unique nearby experiences for Valentine's:
-    └── "Romantic Dinner at The Terrace" (Dining)
-    └── "Sunset Garden Walk" (Stroll)
+    └── "Romantic Dinner at The Terrace" (Fine Dining)
+    └── "Sunset Garden Walk" (Nature)
     └── "Couples Spa Treatment" (Wellness)
 
 Step 5: Tap any experience → ExpandedCardModal
@@ -2348,7 +2357,7 @@ Step 5: Tap any experience → ExpandedCardModal
 
 Step 6: Add custom holiday
   └── Tap "+" on the person's card
-  └── "Our Anniversary", June 1, Categories: Dining + Stroll
+  └── "Our Anniversary", June 1, Categories: Fine Dining + Nature
   └── System generates anniversary-specific experiences
 ```
 

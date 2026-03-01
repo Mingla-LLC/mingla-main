@@ -615,11 +615,16 @@ export function useAppHandlers(state: any) {
           : new Date().toISOString(),
       };
 
-      // Add custom_location if searchLocation is provided (for both search and GPS)
-      // When useLocation is "gps", searchLocation contains the city name or coordinates
-      if (preferences.searchLocation) {
+      // Handle GPS toggle and custom_location (new approach takes priority)
+      if (preferences.custom_location !== undefined) {
+        // New GPS-toggle approach: custom_location is pre-computed (null when GPS is on)
+        dbPreferences.custom_location = preferences.custom_location;
+      } else if (preferences.searchLocation) {
+        // Legacy fallback: store searchLocation as custom_location
         dbPreferences.custom_location = preferences.searchLocation;
       }
+      // Save GPS toggle flag
+      dbPreferences.use_gps_location = preferences.useGpsLocation ?? true;
 
       try {
         const success = await PreferencesService.updateUserPreferences(
@@ -645,6 +650,7 @@ export function useAppHandlers(state: any) {
             time_slot: dbPreferences.time_slot,
             exact_time: dbPreferences.exact_time,
             custom_location: dbPreferences.custom_location,
+            use_gps_location: dbPreferences.use_gps_location,
           });
 
           try {
@@ -663,6 +669,7 @@ export function useAppHandlers(state: any) {
               time_slot: dbPreferences.time_slot,
               exact_time: dbPreferences.exact_time,
               custom_location: dbPreferences.custom_location,
+              use_gps_location: dbPreferences.use_gps_location,
             } as any);
           } catch (cacheError) {
             console.error("Error updating offline cache:", cacheError);

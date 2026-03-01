@@ -30,6 +30,7 @@ import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
+import { PreferencesService } from "../services/preferencesService";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
@@ -347,6 +348,7 @@ interface DiscoverScreenProps {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
   };
+  preferencesRefreshKey?: number; // Incremented when user saves preferences
 }
 
 // Tabs component similar to BoardTabs
@@ -578,6 +580,7 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
 export default function DiscoverScreen({
   onAddFriend,
   accountPreferences,
+  preferencesRefreshKey,
 }: DiscoverScreenProps) {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
@@ -839,6 +842,51 @@ export default function DiscoverScreen({
 
   // Get auth for custom Discover fetch
   const { user } = useAuthSimple();
+
+  // ── User preference categories (drives which categories the Discover API fetches) ──
+  const [userSelectedCategories, setUserSelectedCategories] = useState<string[] | null>(null);
+  const prevRefreshKeyRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    const loadUserCategories = async () => {
+      if (!user?.id) return;
+      try {
+        const prefs = await PreferencesService.getUserPreferences(user.id);
+        if (prefs?.categories && prefs.categories.length > 0) {
+          // Filter out intent IDs – keep only actual category names/IDs
+          const intentIds = new Set([
+            "solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business",
+          ]);
+          const categories = prefs.categories.filter((c: string) => !intentIds.has(c));
+          setUserSelectedCategories(categories.length > 0 ? categories : null);
+          console.log("[Discover] Loaded user categories:", categories);
+        } else {
+          setUserSelectedCategories(null);
+        }
+      } catch (err) {
+        console.warn("[Discover] Failed to load user categories:", err);
+        setUserSelectedCategories(null);
+      }
+    };
+    loadUserCategories();
+  }, [user?.id, preferencesRefreshKey]);
+
+  // When preferences change (refreshKey bumps), invalidate local caches so discover re-fetches
+  useEffect(() => {
+    if (prevRefreshKeyRef.current !== undefined && prevRefreshKeyRef.current !== preferencesRefreshKey) {
+      console.log("[Discover] Preferences changed – invalidating discover cache");
+      hasFetchedRef.current = false;
+      discoverSessionCache.clear();
+      // Clear async-storage discover caches for this user
+      if (user?.id) {
+        const exactCacheKey = getDiscoverExactCacheKey(user.id, deviceGpsLat, deviceGpsLng);
+        const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+        AsyncStorage.multiRemove([exactCacheKey, dailyCacheKey]).catch(() => {});
+      }
+    }
+    prevRefreshKeyRef.current = preferencesRefreshKey;
+  }, [preferencesRefreshKey]);
+
   // Fallback: saved location preference (only used if device GPS is unavailable)
   const { data: userLocationData } = useUserLocation(user?.id, "solo", undefined);
   const fallbackLat = userLocationData?.lat;
@@ -1364,10 +1412,11 @@ export default function DiscoverScreen({
         hasFetchedRef.current = true;
 
         // Use new discoverExperiences method that calls discover-experiences edge function
-        // Returns { cards: 10 category cards, featuredCard: 11th unique card }
+        // Returns category cards (filtered by user prefs) + a featured card
         const { cards: generatedCards, featuredCard } = await ExperienceGenerationService.discoverExperiences(
           { lat: locationLat, lng: locationLng },
-          10000 // 10km radius
+          10000, // 10km radius
+          userSelectedCategories || undefined // pass user-selected categories (or undefined for all)
         );
 
         if (!generatedCards || generatedCards.length === 0) {
@@ -1535,7 +1584,7 @@ export default function DiscoverScreen({
     };
 
     fetchDiscoverRecommendations();
-  }, [locationLat, locationLng, user?.id, isDiscoverCacheMigrationReady]);
+  }, [locationLat, locationLng, user?.id, isDiscoverCacheMigrationReady, userSelectedCategories, preferencesRefreshKey]);
 
   // Use Discover-specific recommendations
   const recommendations = discoverRecommendations;

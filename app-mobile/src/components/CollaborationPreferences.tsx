@@ -610,7 +610,7 @@ export default function CollaborationPreferences({
         >
           {/* Experience Type Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Experience Type</Text>
+            <Text style={styles.sectionTitle}>Curated Experiences</Text>
             <Text style={styles.sectionSubtitle}>
               Date Idea / Friends / Romantic / Group Fun
             </Text>

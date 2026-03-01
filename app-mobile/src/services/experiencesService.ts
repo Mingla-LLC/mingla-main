@@ -24,9 +24,12 @@ export interface UserPreferences {
   people_count: number;
   categories: string[];
   travel_mode: string;
-  travel_constraint_type: string;
+  travel_constraint_type: 'time' | 'distance';
   travel_constraint_value: number;
   datetime_pref: string;
+  custom_location?: string | null;
+  use_gps_location?: boolean;
+  experience_types?: string[];
 }
 
 export interface SaveData {

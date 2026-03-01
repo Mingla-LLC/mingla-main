@@ -1225,8 +1225,67 @@ export const getMapPinPreview = (location: any, constraintType: string, constrai
     },
     radius: constraintType === 'distance' ? constraintValue * 1609.34 : null, // Convert miles to meters
     title: getHumanFriendlyLocation(location),
-    description: constraintType === 'time' 
+    description: constraintType === 'time'
       ? `Within ${constraintValue} minutes travel time`
       : `Within ${constraintValue} miles radius`
   };
 };
+
+export const CURATED_EXPERIENCES = [
+  {
+    id: 'solo_adventure',
+    displayName: 'Solo Adventure',
+    icon: 'compass-outline',
+    color: '#F59E0B',
+    description: 'A full day out, perfectly sequenced',
+    isImplemented: true,
+  },
+  {
+    id: 'romantic',
+    displayName: 'Romantic',
+    icon: 'heart-outline',
+    color: '#EC4899',
+    description: 'A curated romantic evening',
+    isImplemented: false,
+  },
+  {
+    id: 'first_date',
+    displayName: 'First Date',
+    icon: 'people-outline',
+    color: '#6366F1',
+    description: 'Low-pressure, memorable first impressions',
+    isImplemented: false,
+  },
+  {
+    id: 'picnic_dates',
+    displayName: 'Picnic Dates',
+    icon: 'basket-outline',
+    color: '#84CC16',
+    description: 'Pack a basket, find the perfect spot',
+    isImplemented: false,
+  },
+  {
+    id: 'take_a_stroll',
+    displayName: 'Take a Stroll',
+    icon: 'walk-outline',
+    color: '#10B981',
+    description: 'A scenic walk with a perfect pitstop',
+    isImplemented: false,
+  },
+  {
+    id: 'group_fun',
+    displayName: 'Group Fun',
+    icon: 'people-circle-outline',
+    color: '#EF4444',
+    description: 'Activities everyone will enjoy',
+    isImplemented: false,
+  },
+  {
+    id: 'business',
+    displayName: 'Business',
+    icon: 'briefcase-outline',
+    color: '#6B7280',
+    description: 'Professional settings that impress',
+    isImplemented: false,
+  },
+] as const;

@@ -28,6 +28,8 @@ import {
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
+import { CuratedExperienceSwipeCard } from "./CuratedExperienceSwipeCard";
+import type { CuratedExperienceCard } from "../types/curatedExperience";
 import { BoardCardService } from "../services/boardCardService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -729,6 +731,12 @@ export default function SwipeableCards({
     if (!currentRec) return;
     setIsExpandedModalVisible(true);
 
+    // Curated cards have their own shape — pass through directly
+    if ((currentRec as any).cardType === 'curated') {
+      setSelectedCardForExpansion(currentRec as unknown as ExpandedCardData);
+      return;
+    }
+
     // Transform Recommendation to ExpandedCardData
     const expandedCardData: ExpandedCardData = {
       id: currentRec.id,
@@ -781,6 +789,15 @@ export default function SwipeableCards({
     try {
       // Track interaction in Supabase (only if user is authenticated)
       if (user?.id) {
+        // Curated cards don't have a single place_id — skip Supabase operations
+        if ((card as any).cardType === 'curated') {
+          if (direction === 'right') {
+            onCardLike(card);
+          }
+          position.setValue({ x: 0, y: 0 });
+          return;
+        }
+
         const interactionType =
           direction === "right" ? "swipe_right" : "swipe_left";
 
@@ -1259,88 +1276,97 @@ export default function SwipeableCards({
               onPress={handleCardTap}
               style={StyleSheet.absoluteFill}
             >
-              {/* Hero Image Section - 60-65% of card */}
-              <View style={styles.imageContainer}>
-                <Image
-                  source={{ uri: currentRec.image }}
-                  style={styles.cardImage}
-                  resizeMode="cover"
+              {(currentRec as any).cardType === 'curated' ? (
+                <CuratedExperienceSwipeCard
+                  card={currentRec as unknown as CuratedExperienceCard}
+                  onSeePlan={handleCardExpand}
                 />
+              ) : (
+                <>
+                  {/* Hero Image Section - 60-65% of card */}
+                  <View style={styles.imageContainer}>
+                    <Image
+                      source={{ uri: currentRec.image }}
+                      style={styles.cardImage}
+                      resizeMode="cover"
+                    />
 
-                {/* Gallery Indicator if multiple images */}
-                {currentRec.images && currentRec.images.length > 1 && (
-                  <View style={styles.galleryIndicator}>
-                    <Ionicons name="images" size={16} color="white" />
-                    <Text style={styles.galleryText}>
-                      {currentRec.images.length}
-                    </Text>
+                    {/* Gallery Indicator if multiple images */}
+                    {currentRec.images && currentRec.images.length > 1 && (
+                      <View style={styles.galleryIndicator}>
+                        <Ionicons name="images" size={16} color="white" />
+                        <Text style={styles.galleryText}>
+                          {currentRec.images.length}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Title and Details Overlay - Bottom Left of Image */}
+                    <Animated.View style={[
+                      styles.titleOverlay,
+                      {
+                        opacity: cardContentOpacity,
+                        transform: [{ translateY: titleOverlaySlide }],
+                      },
+                    ]}>
+                      <Text style={styles.cardTitle}>{currentRec.title}</Text>
+
+                      {/* Info badges: distance, rating, price, category */}
+                      <View style={styles.detailsBadges}>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="location" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
+                          </Text>
+                        </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="star" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {currentRec.rating.toFixed(1)}
+                          </Text>
+                        </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="pricetag" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {formatPriceRange(currentRec.priceRange, accountPreferences?.currency)}
+                          </Text>
+                        </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name={CategoryIcon as any} size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {currentRec.category}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* View more badge */}
+                      <View style={styles.viewMoreRow}>
+                        <View style={styles.viewMoreBadge}>
+                          <Ionicons name="eye" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>View more</Text>
+                        </View>
+                      </View>
+                    </Animated.View>
                   </View>
-                )}
 
-                {/* Title and Details Overlay - Bottom Left of Image */}
-                <Animated.View style={[
-                  styles.titleOverlay,
-                  {
-                    opacity: cardContentOpacity,
-                    transform: [{ translateY: titleOverlaySlide }],
-                  },
-                ]}>
-                  <Text style={styles.cardTitle}>{currentRec.title}</Text>
-
-                  {/* Info badges: distance, rating, price, category */}
-                  <View style={styles.detailsBadges}>
-                    <View style={styles.detailBadge}>
-                      <Ionicons name="location" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>
-                        {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
-                      </Text>
-                    </View>
-                    <View style={styles.detailBadge}>
-                      <Ionicons name="star" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>
-                        {currentRec.rating.toFixed(1)}
-                      </Text>
-                    </View>
-                    <View style={styles.detailBadge}>
-                      <Ionicons name="pricetag" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>
-                        {formatPriceRange(currentRec.priceRange, accountPreferences?.currency)}
-                      </Text>
-                    </View>
-                    <View style={styles.detailBadge}>
-                      <Ionicons name={CategoryIcon as any} size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>
-                        {currentRec.category}
-                      </Text>
-                    </View>
+                  {/* White Details Section - Share button only */}
+                  <View style={styles.cardDetails}>
+                    {/* Share Button - Centered at bottom */}
+                    <TouchableOpacity
+                      style={styles.shareButton}
+                      onPress={handleShare}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="share-social-outline"
+                        size={18}
+                        color="#6b7280"
+                      />
+                      <Text style={styles.shareButtonText}>Share</Text>
+                    </TouchableOpacity>
                   </View>
-
-                  {/* View more badge */}
-                  <View style={styles.viewMoreRow}>
-                    <View style={styles.viewMoreBadge}>
-                      <Ionicons name="eye" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>View more</Text>
-                    </View>
-                  </View>
-                </Animated.View>
-              </View>
-
-              {/* White Details Section - Share button only */}
-              <View style={styles.cardDetails}>
-                {/* Share Button - Centered at bottom */}
-                <TouchableOpacity
-                  style={styles.shareButton}
-                  onPress={handleShare}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name="share-social-outline"
-                    size={18}
-                    color="#6b7280"
-                  />
-                  <Text style={styles.shareButtonText}>Share</Text>
-                </TouchableOpacity>
-              </View>
+                </>
+              )}
             </TouchableOpacity>
           </Animated.View>
         </View>

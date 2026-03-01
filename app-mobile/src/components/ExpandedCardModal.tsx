@@ -13,7 +13,8 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
-import { ExpandedCardModalProps } from "../types/expandedCardTypes";
+import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
+import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatDistanceFromMeters, formatPriceRange } from "./utils/formatters";
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
@@ -37,6 +38,378 @@ import ShareModal from "./ShareModal";
 import { colors } from "../constants/colors";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+const curatedStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 16,
+    backgroundColor: '#1C1C1E',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginBottom: 4,
+  },
+  tagline: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: 12,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  summaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  summaryText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  summaryDot: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 13,
+  },
+  stopsContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    gap: 0,
+  },
+  travelConnector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+    gap: 8,
+  },
+  travelLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e5e7eb',
+  },
+  travelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  travelText: {
+    fontSize: 11,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  stopCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  stopLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  stopNumberBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#eb7825',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopNumberText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  stopLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#eb7825',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  stopImage: {
+    width: '100%',
+    height: 140,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  placeName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  placeType: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 8,
+  },
+  stopMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 8,
+  },
+  stopMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  stopMetaText: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  stopMetaDot: {
+    color: '#d1d5db',
+    fontSize: 12,
+  },
+  stopAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 10,
+  },
+  stopAddress: {
+    fontSize: 12,
+    color: '#9ca3af',
+    flex: 1,
+  },
+  directionsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eb7825',
+  },
+  directionsText: {
+    fontSize: 12,
+    color: '#eb7825',
+    fontWeight: '600',
+  },
+  actionRow: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  saveButton: {
+    backgroundColor: '#eb7825',
+    borderRadius: 12,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  saveButtonSaved: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1.5,
+    borderColor: '#eb7825',
+  },
+  saveButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  saveButtonTextSaved: {
+    color: '#eb7825',
+  },
+});
+
+/** Private component — renders the multi-stop plan for a curated experience */
+function CuratedPlanView({
+  card,
+  isSaved,
+  onSave,
+  onClose,
+}: {
+  card: CuratedExperienceCard;
+  isSaved?: boolean;
+  onSave: (card: ExpandedCardData) => Promise<void> | void;
+  onClose: () => void;
+}) {
+  const avgRating =
+    card.stops.length > 0
+      ? (card.stops.reduce((s, st) => s + st.rating, 0) / card.stops.length).toFixed(1)
+      : '–';
+  const durationHrs = (card.estimatedDurationMinutes / 60).toFixed(1);
+  const priceText =
+    card.totalPriceMin === 0 && card.totalPriceMax === 0
+      ? 'Free'
+      : `$${card.totalPriceMin}–$${card.totalPriceMax}`;
+
+  const openDirectionsForStop = (stop: CuratedStop) => {
+    const url = Platform.select({
+      ios: `maps:0,0?q=${encodeURIComponent(stop.address)}`,
+      android: `geo:0,0?q=${encodeURIComponent(stop.address)}`,
+    });
+    if (url) Linking.openURL(url);
+  };
+
+  const travelIcon = (mode: string | null): any => {
+    if (mode === 'driving') return 'car-outline';
+    if (mode === 'walking') return 'walk-outline';
+    if (mode === 'bicycling') return 'bicycle-outline';
+    return 'navigate-outline';
+  };
+
+  return (
+    <View style={curatedStyles.container}>
+      {/* Header */}
+      <View style={curatedStyles.header}>
+        <Text style={curatedStyles.title}>{card.title}</Text>
+        <Text style={curatedStyles.tagline}>{card.tagline}</Text>
+        <View style={curatedStyles.summaryRow}>
+          <View style={curatedStyles.summaryItem}>
+            <Ionicons name="cash-outline" size={14} color="rgba(255,255,255,0.7)" />
+            <Text style={curatedStyles.summaryText}>{priceText}</Text>
+          </View>
+          <Text style={curatedStyles.summaryDot}>·</Text>
+          <View style={curatedStyles.summaryItem}>
+            <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.7)" />
+            <Text style={curatedStyles.summaryText}>~{durationHrs} hrs</Text>
+          </View>
+          <Text style={curatedStyles.summaryDot}>·</Text>
+          <View style={curatedStyles.summaryItem}>
+            <Ionicons name="star" size={14} color="#F59E0B" />
+            <Text style={curatedStyles.summaryText}>{avgRating} avg</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Stops */}
+      <View style={curatedStyles.stopsContainer}>
+        {card.stops.map((stop, idx) => (
+          <View key={stop.placeId}>
+            {/* Travel connector from previous stop */}
+            {idx > 0 && stop.travelTimeFromPreviousStopMin != null && (
+              <View style={curatedStyles.travelConnector}>
+                <View style={curatedStyles.travelLine} />
+                <View style={curatedStyles.travelBadge}>
+                  <Ionicons
+                    name={travelIcon(stop.travelModeFromPreviousStop)}
+                    size={12}
+                    color="#6b7280"
+                  />
+                  <Text style={curatedStyles.travelText}>
+                    {stop.travelTimeFromPreviousStopMin} min
+                  </Text>
+                </View>
+                <View style={curatedStyles.travelLine} />
+              </View>
+            )}
+
+            {/* Stop card */}
+            <View style={curatedStyles.stopCard}>
+              <View style={curatedStyles.stopLabelRow}>
+                <View style={curatedStyles.stopNumberBadge}>
+                  <Text style={curatedStyles.stopNumberText}>{stop.stopNumber}</Text>
+                </View>
+                <Text style={curatedStyles.stopLabel}>{stop.stopLabel}</Text>
+              </View>
+
+              {stop.imageUrl ? (
+                <Image
+                  source={{ uri: stop.imageUrl }}
+                  style={curatedStyles.stopImage}
+                  resizeMode="cover"
+                />
+              ) : null}
+
+              <Text style={curatedStyles.placeName}>{stop.placeName}</Text>
+              <Text style={curatedStyles.placeType}>
+                {stop.placeType.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+              </Text>
+
+              <View style={curatedStyles.stopMetaRow}>
+                {stop.rating > 0 && (
+                  <View style={curatedStyles.stopMetaItem}>
+                    <Ionicons name="star" size={12} color="#F59E0B" />
+                    <Text style={curatedStyles.stopMetaText}>{stop.rating.toFixed(1)}</Text>
+                  </View>
+                )}
+                {stop.priceLevelLabel ? (
+                  <>
+                    <Text style={curatedStyles.stopMetaDot}>·</Text>
+                    <Text style={curatedStyles.stopMetaText}>{stop.priceLevelLabel}</Text>
+                  </>
+                ) : null}
+                {stop.isOpenNow !== undefined && (
+                  <>
+                    <Text style={curatedStyles.stopMetaDot}>·</Text>
+                    <Text
+                      style={[
+                        curatedStyles.stopMetaText,
+                        { color: stop.isOpenNow ? '#10b981' : '#ef4444' },
+                      ]}
+                    >
+                      {stop.isOpenNow ? 'Open' : 'Closed'}
+                    </Text>
+                  </>
+                )}
+              </View>
+
+              <View style={curatedStyles.stopAddressRow}>
+                <Ionicons name="location-outline" size={13} color="#9ca3af" />
+                <Text style={curatedStyles.stopAddress} numberOfLines={1}>
+                  {stop.address}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={curatedStyles.directionsButton}
+                onPress={() => openDirectionsForStop(stop)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="navigate-outline" size={14} color="#eb7825" />
+                <Text style={curatedStyles.directionsText}>Get Directions</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Save */}
+      <View style={curatedStyles.actionRow}>
+        <TouchableOpacity
+          style={[curatedStyles.saveButton, isSaved && curatedStyles.saveButtonSaved]}
+          onPress={() => onSave(card as unknown as ExpandedCardData)}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name={isSaved ? 'bookmark' : 'bookmark-outline'}
+            size={18}
+            color={isSaved ? '#eb7825' : '#ffffff'}
+          />
+          <Text style={[curatedStyles.saveButtonText, isSaved && curatedStyles.saveButtonTextSaved]}>
+            {isSaved ? 'Saved' : 'Save Plan'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
 export default function ExpandedCardModal({
   visible,
@@ -73,8 +446,10 @@ export default function ExpandedCardModal({
   useEffect(() => {
     if (visible && card) {
       fetchAdditionalData();
-      setStrollData(card.strollData);
-      setPicnicData(card.picnicData);
+      if ((card as any).cardType !== 'curated') {
+        setStrollData(card.strollData);
+        setPicnicData(card.picnicData);
+      }
     } else {
       // Reset state when modal closes
       setWeatherData(null);
@@ -87,6 +462,7 @@ export default function ExpandedCardModal({
 
   const fetchAdditionalData = async () => {
     if (!card) return;
+    if ((card as any).cardType === 'curated') return;
 
     // Fetch weather data
     if (card.location) {
@@ -262,16 +638,21 @@ export default function ExpandedCardModal({
     );
   }
 
+  const isCuratedCard = (card as any).cardType === 'curated';
+  const curatedCard = isCuratedCard ? (card as unknown as CuratedExperienceCard) : null;
+
   const isStrollCard =
-    card.category === "Take a Stroll" ||
-    card.category?.toLowerCase().includes("stroll");
+    !isCuratedCard &&
+    (card.category === "Take a Stroll" ||
+      card.category?.toLowerCase().includes("stroll"));
 
   const isPicnicCard =
-    card.category?.toLowerCase().includes("picnic") ||
-    card.category?.toLowerCase() === "picnics";
+    !isCuratedCard &&
+    (card.category?.toLowerCase().includes("picnic") ||
+      card.category?.toLowerCase() === "picnics");
 
-  const isNightOut = !!card.nightOutData;
-  const nightOut = card.nightOutData;
+  const isNightOut = !isCuratedCard && !!card.nightOutData;
+  const nightOut = isCuratedCard ? null : card.nightOutData;
 
   // Helper to open directions in maps app
   const openDirections = () => {
@@ -317,8 +698,18 @@ export default function ExpandedCardModal({
             showsVerticalScrollIndicator={true}
             nestedScrollEnabled={true}
           >
-            {/* Image Gallery */}
-            {card.images && card.images.length > 0 ? (
+            {/* ===== Curated Experience Plan ===== */}
+            {isCuratedCard && curatedCard && (
+              <CuratedPlanView
+                card={curatedCard}
+                isSaved={isSaved}
+                onSave={onSave}
+                onClose={onClose}
+              />
+            )}
+
+            {/* Image Gallery (non-curated only) */}
+            {!isCuratedCard && (card.images && card.images.length > 0 ? (
               <ImageGallery images={card.images} initialImage={card.image} />
             ) : (
               <View
@@ -331,10 +722,10 @@ export default function ExpandedCardModal({
               >
                 <Text>No images available</Text>
               </View>
-            )}
+            ))}
 
-            {/* ===== Night Out Detail Layout ===== */}
-            {isNightOut && nightOut ? (
+            {/* ===== Night Out / Regular Layout (non-curated only) ===== */}
+            {!isCuratedCard && (isNightOut && nightOut ? (
               <View style={nightOutStyles.container}>
                 {/* Event Title */}
                 <Text style={nightOutStyles.title}>{card.title}</Text>
@@ -700,7 +1091,7 @@ export default function ExpandedCardModal({
                   }}
                 />
               </>
-            )}
+            ))}
           </ScrollView>
 
           {/* Sticky Get Tickets + Share Button for Night Out */}

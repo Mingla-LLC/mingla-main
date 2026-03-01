@@ -7,6 +7,7 @@ import {
   TextInput,
   ScrollView,
   ActivityIndicator,
+  Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { getCurrencySymbol, formatNumberWithCommas } from "../../utils/currency";
@@ -217,6 +218,8 @@ export const LocationInputSection = memo(
     isLoadingSuggestions,
     onSuggestionSelect,
     isInputFocused,
+    useGpsLocation,
+    onToggleGps,
   }: {
     searchLocation: string;
     onLocationInputChange: (text: string) => void;
@@ -227,12 +230,24 @@ export const LocationInputSection = memo(
     isLoadingSuggestions: boolean;
     onSuggestionSelect: (suggestion: any) => void;
     isInputFocused: boolean;
+    useGpsLocation: boolean;
+    onToggleGps: (value: boolean) => void;
   }) => (
     <View>
+      <View style={styles.gpsSwitchRow}>
+        <Ionicons name="locate-outline" size={16} color="#6b7280" />
+        <Text style={styles.gpsSwitchLabel}>Use my current GPS location</Text>
+        <Switch
+          value={useGpsLocation}
+          onValueChange={onToggleGps}
+          trackColor={{ false: '#d1d5db', true: '#eb7825' }}
+          thumbColor="#ffffff"
+        />
+      </View>
       <View
         style={[
           styles.locationInputContainer,
-          isInputFocused && styles.locationInputContainerFocused,
+          isInputFocused && !useGpsLocation && styles.locationInputContainerFocused,
         ]}
       >
         <Ionicons
@@ -242,13 +257,21 @@ export const LocationInputSection = memo(
           style={styles.locationInputIcon}
         />
         <TextInput
-          style={styles.locationTextInput}
-          placeholder="Search to change your starting location..."
+          style={[
+            styles.locationTextInput,
+            useGpsLocation && styles.locationTextInputDisabled,
+          ]}
+          placeholder={
+            useGpsLocation
+              ? "Using your current GPS location"
+              : "Search to change your starting location..."
+          }
           placeholderTextColor="#9ca3af"
-          value={searchLocation}
-          onChangeText={onLocationInputChange}
-          onFocus={onFocus}
-          onBlur={onBlur}
+          value={useGpsLocation ? "" : searchLocation}
+          onChangeText={useGpsLocation ? undefined : onLocationInputChange}
+          onFocus={useGpsLocation ? undefined : onFocus}
+          onBlur={useGpsLocation ? undefined : onBlur}
+          editable={!useGpsLocation}
           autoCapitalize="words"
           returnKeyType="done"
         />
@@ -469,6 +492,18 @@ const styles = StyleSheet.create({
     color: "#111827",
     padding: 0,
   },
+  gpsSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  gpsSwitchLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+  },
   locationInputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -492,6 +527,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#111827",
     padding: 0,
+  },
+  locationTextInputDisabled: {
+    backgroundColor: 'transparent',
+    color: '#9ca3af',
   },
   locationHelperContainer: {
     flexDirection: "row",

@@ -18,6 +18,7 @@ import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useRecommendationsQuery } from "../hooks/useRecommendationsQuery";
+import { useCuratedExperiences } from "../hooks/useCuratedExperiences";
 import { useQueryClient } from "@tanstack/react-query";
 
 export interface Recommendation {
@@ -95,6 +96,32 @@ export interface Recommendation {
       duration: number;
     }>;
   };
+}
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Inserts one curated card after every 3rd regular card */
+function interleaveCards(
+  regular: Recommendation[],
+  curated: Recommendation[]
+): Recommendation[] {
+  if (curated.length === 0) return regular;
+  const result: Recommendation[] = [];
+  let curatedIdx = 0;
+  regular.forEach((card, idx) => {
+    result.push(card);
+    if ((idx + 1) % 3 === 0 && curatedIdx < curated.length) {
+      result.push(curated[curatedIdx++]);
+    }
+  });
+  return result;
 }
 
 const getDefaultPreferences = (): UserPreferences => ({
@@ -255,6 +282,57 @@ export const RecommendationsProvider: React.FC<
     ),
   });
 
+  // Curated Experiences — interleaved into solo swipe stack
+  // Derive experience types from the categories array (which stores both intents and categories)
+  const INTENT_IDS = new Set(['solo-adventure', 'first-dates', 'romantic', 'friendly', 'group-fun', 'business']);
+  const experienceTypes: string[] = (userPrefs?.categories ?? []).filter(c => INTENT_IDS.has(c));
+
+  const baseParams = {
+    location: userLocation,
+    budgetMin: userPrefs?.budget_min ?? 0,
+    budgetMax: userPrefs?.budget_max ?? 1000,
+    travelMode: userPrefs?.travel_mode ?? 'walking',
+    travelConstraintType:
+      (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
+    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
+  };
+  const isSoloMode = currentMode === 'solo';
+
+  const { cards: curatedSoloCards } = useCuratedExperiences({
+    experienceType: 'solo-adventure',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('solo-adventure'),
+  });
+  const { cards: curatedDateCards } = useCuratedExperiences({
+    experienceType: 'first-dates',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('first-dates'),
+  });
+  const { cards: curatedRomCards } = useCuratedExperiences({
+    experienceType: 'romantic',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('romantic'),
+  });
+  const { cards: curatedFriendCards } = useCuratedExperiences({
+    experienceType: 'friendly',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('friendly'),
+  });
+  const { cards: curatedGroupCards } = useCuratedExperiences({
+    experienceType: 'group-fun',
+    ...baseParams,
+    enabled: isSoloMode && experienceTypes.includes('group-fun'),
+  });
+
+  const allCuratedCards = [
+    ...curatedSoloCards,
+    ...curatedDateCards,
+    ...curatedRomCards,
+    ...curatedFriendCards,
+    ...curatedGroupCards,
+  ];
+  const curatedRecommendations = shuffleArray(allCuratedCards) as unknown as Recommendation[];
+
   // Get stable references to cache methods to avoid dependency issues
   const generateCacheKey = cardsCache.generateCacheKey;
   const getCachedCards = cardsCache.getCachedCards;
@@ -264,6 +342,7 @@ export const RecommendationsProvider: React.FC<
   const previousRecommendationsRef = useRef<Recommendation[] | undefined>(
     undefined
   );
+  const previousCuratedLengthRef = useRef<number>(0);
 
   // Sync recommendations from TanStack Query to local state and CardsCache
   useEffect(() => {
@@ -272,9 +351,12 @@ export const RecommendationsProvider: React.FC<
       return; // Don't update state if data is still loading
     }
 
-    // Check if recommendations have actually changed
+    // Check if recommendations have actually changed (including curated)
     const prevRecs = previousRecommendationsRef.current;
+    const curatedChanged =
+      previousCuratedLengthRef.current !== curatedRecommendations.length;
     const hasChanged =
+      curatedChanged ||
       !prevRecs ||
       prevRecs.length !== recommendationsData.length ||
       prevRecs.some((prev, idx) => prev.id !== recommendationsData[idx]?.id);
@@ -284,9 +366,12 @@ export const RecommendationsProvider: React.FC<
     }
 
     previousRecommendationsRef.current = recommendationsData;
+    previousCuratedLengthRef.current = curatedRecommendations.length;
 
     if (recommendationsData.length > 0) {
-      setRecommendations(recommendationsData);
+      setRecommendations(
+        interleaveCards(recommendationsData, curatedRecommendations)
+      );
 
       // Also cache in CardsCacheContext for card state management
       if (userLocation && userPrefs) {
@@ -358,6 +443,7 @@ export const RecommendationsProvider: React.FC<
     }
   }, [
     recommendationsData,
+    curatedRecommendations,
     userLocation,
     userPrefs,
     currentMode,

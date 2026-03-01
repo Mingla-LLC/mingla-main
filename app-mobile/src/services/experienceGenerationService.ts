@@ -154,27 +154,31 @@ export class ExperienceGenerationService {
 
   /**
    * Generate experiences for the Discover screen "For You" tab
-   * Fetches one experience per category based on user location only (no preferences)
-   * Returns both the 10 category cards AND a featured card
+   * Fetches one experience per category based on user location and selected categories
+   * Returns both the category cards AND a featured card
    */
   static async discoverExperiences(
     location: { lat: number; lng: number },
-    radius?: number
+    radius?: number,
+    selectedCategories?: string[]
   ): Promise<{
     cards: GeneratedExperience[];
     featuredCard: GeneratedExperience | null;
   }> {
     try {
-      console.log("Fetching discover experiences for location:", location);
+      console.log("Fetching discover experiences for location:", location, "categories:", selectedCategories);
+
+      const body: any = {
+        location,
+        radius: radius || 10000, // Default 10km radius
+      };
+      if (selectedCategories && selectedCategories.length > 0) {
+        body.selectedCategories = selectedCategories;
+      }
 
       const { data, error } = await supabase.functions.invoke(
         "discover-experiences",
-        {
-          body: {
-            location,
-            radius: radius || 10000, // Default 10km radius
-          },
-        }
+        { body }
       );
 
       if (error) {
