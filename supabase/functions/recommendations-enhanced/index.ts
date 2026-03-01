@@ -275,6 +275,26 @@ const CATEGORY_MAPPINGS = {
     ],
     activities: ["spa", "sauna", "massage", "yoga", "meditation"],
   },
+  groceries_flowers: {
+    places: ["grocery_store", "supermarket"],
+    keywords: [
+      "grocery",
+      "supermarket",
+      "flowers",
+      "florist",
+      "produce",
+      "fresh",
+      "market",
+      "organic",
+      "bouquet",
+    ],
+    activities: [
+      "grocery shopping",
+      "flower shopping",
+      "market visit",
+      "fresh produce",
+    ],
+  },
 };
 
 interface RecommendationsRequest {

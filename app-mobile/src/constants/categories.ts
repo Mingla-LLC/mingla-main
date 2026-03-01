@@ -217,7 +217,8 @@ export const categories: Category[] = [
           'indonesian_restaurant', 'japanese_restaurant', 'korean_restaurant', 'lebanese_restaurant',
           'mediterranean_restaurant', 'mexican_restaurant', 'middle_eastern_restaurant', 'seafood_restaurant',
           'spanish_restaurant', 'thai_restaurant', 'turkish_restaurant', 'vegan_restaurant',
-          'vegetarian_restaurant', 'vietnamese_restaurant', 'chinese_restaurant'
+          'vegetarian_restaurant', 'vietnamese_restaurant', 'chinese_restaurant', 'steak_house',
+          'french_restaurant', 'greek_restaurant', 'italian_restaurant'
         ],
         attributes: ['affordable', 'casual', 'informal'],
         excludedAttributes: ['fine_dining_restaurant', 'bar', 'night_club', 'spa']
@@ -257,7 +258,7 @@ export const categories: Category[] = [
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['fine_dining_restaurant', 'steak_house', 'french_restaurant', 'greek_restaurant', 'italian_restaurant'],
+        coreAnchors: ['fine_dining_restaurant', 'chef_led_restaurant', 'upscale_restaurant'],
         attributes: ['upscale', 'refined', 'reservation_recommended'],
         excludedAttributes: ['fast_food_restaurant', 'food_court', 'bar', 'bowling_alley', 'amusement_park']
       },
@@ -295,7 +296,7 @@ export const categories: Category[] = [
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['movie_theater', 'comedy_club'],
+        coreAnchors: ['movie_theater', 'cinema', 'comedy_club'],
         attributes: ['entertainment', 'indoor', 'seated'],
         excludedAttributes: ['spa', 'botanical_garden', 'park', 'restaurant']
       },
@@ -335,7 +336,7 @@ export const categories: Category[] = [
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['art_gallery', 'museum', 'planetarium', 'karaoke', 'coffee_roastery'],
+        coreAnchors: ['art_gallery', 'museum', 'planetarium', 'karaoke', 'pottery', 'sip_and_paint', 'cooking_classes', 'woodworking_class', 'jewelry_making_studio', 'sewing_class', 'glass_blowing_studio', 'diy_workshop', 'perfume_lab', 'flower_arranging_studio', 'bakery_workshop', 'coffee_roastery'],
         attributes: ['creative', 'cultural', 'inspiring'],
         excludedAttributes: ['fast_food_restaurant', 'bar', 'bowling_alley', 'spa']
       },
@@ -376,8 +377,11 @@ export const categories: Category[] = [
     apiMapping: {
       googleMaps: {
         coreAnchors: [
-          'bowling_alley', 'amusement_park', 'water_park', 'video_arcade', 'karaoke', 'casino',
-          'trampoline_park', 'mini_golf_course', 'ice_skating_rink', 'skate_park', 'escape_room', 'adventure_park'
+          'bowling_alley', 'amusement_park', 'water_park', 'planetarium', 'video_arcade', 'karaoke', 'casino',
+          'roller_coaster', 'ferris_wheel', 'trampoline_park', 'rock_climbing_gym', 'mini_golf_course',
+          'ice_skating_rink', 'skate_park', 'batting_cages', 'laser_tag_center', 'paintball_center',
+          'escape_room', 'billiards_hall', 'dart_bar', 'board_game_cafe', 'virtual_reality_center',
+          'adventure_park', 'go_kart_track'
         ],
         attributes: ['active', 'fun', 'group_friendly'],
         excludedAttributes: ['spa', 'massage', 'botanical_garden', 'fine_dining_restaurant']
@@ -417,7 +421,7 @@ export const categories: Category[] = [
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['spa', 'sauna', 'hot_spring'],
+        coreAnchors: ['spa', 'massage', 'sauna', 'hot_spring', 'turkish_bath', 'float_tank_center', 'public_bath', 'cold_plunge_facility'],
         attributes: ['relaxing', 'restorative', 'mindful'],
         excludedAttributes: ['bar', 'night_club', 'casino', 'bowling_alley', 'amusement_park', 'fast_food_restaurant']
       },
@@ -442,6 +446,47 @@ export const categories: Category[] = [
     duration: 'long',
     compatibleWith: ['nature'],
     incompatibleWith: ['play', 'drink', 'watch', 'casual_eats', 'fine_dining']
+  },
+  {
+    slug: 'groceries_flowers',
+    name: 'Groceries & Flowers',
+    icon: '🛒',
+    description: 'Grocery stores, supermarkets, and flower shops for everyday errands or special occasions.',
+    detailedDescription: 'Discover nearby grocery stores, supermarkets, and florists. Perfect for picking up ingredients for a home-cooked meal, grabbing fresh flowers for a date, or stocking up on essentials.',
+    expectedActivities: [
+      'Grocery shopping',
+      'Flower shopping',
+      'Fresh produce browsing',
+      'Market visits',
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['grocery_store', 'supermarket'],
+        attributes: ['wheelchair_accessible_entrance'],
+        excludedAttributes: [],
+      },
+      eventbrite: {
+        eventTypes: [],
+        tags: [],
+      },
+    },
+    logic: {
+      hardFilter: 'Must be a grocery store, supermarket, or florist',
+      hierarchy: {
+        broad: 'Shopping & Errands',
+        niche: ['Grocery Stores', 'Supermarkets', 'Florists'],
+      },
+      fallbackBehavior: 'Show nearest supermarkets within expanded radius',
+    },
+    ux: {
+      activeColor: '#22C55E',
+      subcategories: ['Grocery Stores', 'Supermarkets', 'Flower Shops'],
+      contextualPreview: 'Fresh groceries and flowers nearby',
+    },
+    compatibleWith: ['nature', 'picnic', 'casual_eats'],
+    incompatibleWith: ['fine_dining', 'play', 'watch', 'wellness'],
+    activityType: 'stationary',
+    duration: 'short',
   }
 ];
 

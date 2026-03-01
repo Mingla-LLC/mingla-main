@@ -111,6 +111,12 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   // Wellness variations
   wellness: ["spa", "sauna", "hot_spring"],
   "Wellness": ["spa", "sauna", "hot_spring"],
+  // Groceries & Flowers variations
+  groceries_flowers: ["grocery_store", "supermarket"],
+  "groceries & flowers": ["grocery_store", "supermarket"],
+  "Groceries & Flowers": ["grocery_store", "supermarket"],
+  "groceries-flowers": ["grocery_store", "supermarket"],
+  groceriesflowers: ["grocery_store", "supermarket"],
 };
 
 // Excluded types for specific categories
@@ -224,6 +230,22 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bar", "night_club", "casino", "bowling_alley", "amusement_park",
     "water_park", "video_arcade", "fast_food_restaurant", "food_court",
     "atm", "bank", "parking", "gas_station", "government_office", "airport",
+  ],
+  groceries_flowers: [
+    "bar", "night_club", "casino", "movie_theater", "video_arcade",
+    "bowling_alley", "fine_dining_restaurant", "fast_food_restaurant",
+    "food_court", "atm", "bank", "parking", "gas_station", "airport",
+    "car_repair", "car_dealer", "storage", "post_office",
+    "government_office", "courthouse", "police", "fire_station",
+    "city_hall", "apartment_building", "housing_complex",
+  ],
+  "Groceries & Flowers": [
+    "bar", "night_club", "casino", "movie_theater", "video_arcade",
+    "bowling_alley", "fine_dining_restaurant", "fast_food_restaurant",
+    "food_court", "atm", "bank", "parking", "gas_station", "airport",
+    "car_repair", "car_dealer", "storage", "post_office",
+    "government_office", "courthouse", "police", "fire_station",
+    "city_hall", "apartment_building", "housing_complex",
   ],
 };
 

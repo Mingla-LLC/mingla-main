@@ -63,6 +63,12 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   // Wellness
   wellness: ["spa", "sauna", "hot_spring"],
   Wellness: ["spa", "sauna", "hot_spring"],
+  // Groceries & Flowers
+  groceries_flowers: ["grocery_store", "supermarket"],
+  "groceries & flowers": ["grocery_store", "supermarket"],
+  "Groceries & Flowers": ["grocery_store", "supermarket"],
+  "groceries-flowers": ["grocery_store", "supermarket"],
+  groceriesflowers: ["grocery_store", "supermarket"],
 };
 
 // Excluded types for specific categories
@@ -77,6 +83,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
   creative_arts: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "bus_stop", "bus_station", "bar", "night_club", "casino", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station"],
   play: ["dog_park", "cycling_park", "park_and_ride", "bus_stop", "bus_station", "bar", "night_club", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station"],
   wellness: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "bus_stop", "bus_station", "bar", "night_club", "casino", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station"],
+  groceries_flowers: ["bar", "night_club", "casino", "movie_theater", "video_arcade", "bowling_alley", "fine_dining_restaurant", "fast_food_restaurant", "food_court", "atm", "bank", "parking", "gas_station", "airport", "car_repair", "car_dealer", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "apartment_building", "housing_complex"],
 };
 
 interface UserPreferences {

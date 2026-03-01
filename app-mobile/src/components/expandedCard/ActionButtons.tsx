@@ -624,7 +624,7 @@ export default function ActionButtons({
     }
   };
 
-  const isFirstMeet = card.category === 'First Meet';
+  const showPoliciesButton = Boolean(card.website || (card as any).placeId);
 
   const hasBookingOptions =
     bookingOptions.length > 0 || card.website || card.phone;
@@ -812,8 +812,8 @@ export default function ActionButtons({
         </TouchableOpacity>
       </View>
 
-      {/* Policies & Reservations — First Meet only */}
-      {isFirstMeet && (
+      {/* Policies & Reservations — all categories with website/placeId */}
+      {showPoliciesButton && (
         <TouchableOpacity
           style={styles.policiesButton}
           onPress={handlePoliciesAndReservations}

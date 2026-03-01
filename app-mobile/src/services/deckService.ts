@@ -12,6 +12,13 @@ import { natureCardsService } from './natureCardsService';
 import { firstMeetCardsService } from './firstMeetCardsService';
 import { picnicParkCardsService } from './picnicParkCardsService';
 import { curatedExperiencesService } from './curatedExperiencesService';
+import { drinkCardsService } from './drinkCardsService';
+import { casualEatsCardsService } from './casualEatsCardsService';
+import { fineDiningCardsService } from './fineDiningCardsService';
+import { watchCardsService } from './watchCardsService';
+import { creativeArtsCardsService } from './creativeArtsCardsService';
+import { playCardsService } from './playCardsService';
+import { wellnessCardsService } from './wellnessCardsService';
 import {
   separateIntentsAndCategories,
   natureToRecommendation,
@@ -19,6 +26,13 @@ import {
   picnicParkToRecommendation,
   curatedToRecommendation,
   roundRobinInterleave,
+  drinkToRecommendation,
+  casualEatsToRecommendation,
+  fineDiningToRecommendation,
+  watchToRecommendation,
+  creativeArtsToRecommendation,
+  playToRecommendation,
+  wellnessToRecommendation,
 } from '../utils/cardConverters';
 import type { Recommendation } from '../types/recommendation';
 
@@ -39,7 +53,7 @@ export interface DeckParams {
 
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'drink' | 'casual_eats' | 'fine_dining' | 'watch' | 'creative_arts' | 'play' | 'wellness' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
 }
@@ -67,6 +81,20 @@ class DeckService {
         pills.push({ id: 'first_meet', type: 'category' });
       } else if (normalized === 'picnic park') {
         pills.push({ id: 'picnic_park', type: 'category' });
+      } else if (normalized === 'drink') {
+        pills.push({ id: 'drink', type: 'category' });
+      } else if (normalized === 'casual eats') {
+        pills.push({ id: 'casual_eats', type: 'category' });
+      } else if (normalized === 'fine dining') {
+        pills.push({ id: 'fine_dining', type: 'category' });
+      } else if (normalized === 'watch') {
+        pills.push({ id: 'watch', type: 'category' });
+      } else if (normalized === 'creative & arts' || normalized === 'creative arts') {
+        pills.push({ id: 'creative_arts', type: 'category' });
+      } else if (normalized === 'play') {
+        pills.push({ id: 'play', type: 'category' });
+      } else if (normalized === 'wellness') {
+        pills.push({ id: 'wellness', type: 'category' });
       } else {
         // No dedicated edge function yet — pass as filter to curated pills
         categoryFilters.push(cat);
@@ -124,6 +152,104 @@ class DeckService {
                 limit: perPillLimit,
               });
               return cards.map(picnicParkToRecommendation);
+            } else if (pill.id === 'drink') {
+              const cards = await drinkCardsService.discoverDrink({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: perPillLimit,
+              });
+              return cards.map(drinkToRecommendation);
+            } else if (pill.id === 'casual_eats') {
+              const cards = await casualEatsCardsService.discoverCasualEats({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: perPillLimit,
+              });
+              return cards.map(casualEatsToRecommendation);
+            } else if (pill.id === 'fine_dining') {
+              const cards = await fineDiningCardsService.discoverFineDining({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: perPillLimit,
+              });
+              return cards.map(fineDiningToRecommendation);
+            } else if (pill.id === 'watch') {
+              const cards = await watchCardsService.discoverWatch({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: perPillLimit,
+              });
+              return cards.map(watchToRecommendation);
+            } else if (pill.id === 'creative_arts') {
+              const cards = await creativeArtsCardsService.discoverCreativeArts({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: perPillLimit,
+              });
+              return cards.map(creativeArtsToRecommendation);
+            } else if (pill.id === 'play') {
+              const cards = await playCardsService.discoverPlay({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: perPillLimit,
+              });
+              return cards.map(playToRecommendation);
+            } else if (pill.id === 'wellness') {
+              const cards = await wellnessCardsService.discoverWellness({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: perPillLimit,
+              });
+              return cards.map(wellnessToRecommendation);
             }
             // Default: Nature
             const cards = await natureCardsService.discoverNature({
@@ -201,6 +327,83 @@ class DeckService {
               });
             } else if (pill.id === 'picnic_park') {
               await picnicParkCardsService.warmPicnicParkPool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            } else if (pill.id === 'drink') {
+              await drinkCardsService.warmDrinkPool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            } else if (pill.id === 'casual_eats') {
+              await casualEatsCardsService.warmCasualEatsPool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            } else if (pill.id === 'fine_dining') {
+              await fineDiningCardsService.warmFineDiningPool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            } else if (pill.id === 'watch') {
+              await watchCardsService.warmWatchPool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            } else if (pill.id === 'creative_arts') {
+              await creativeArtsCardsService.warmCreativeArtsPool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            } else if (pill.id === 'play') {
+              await playCardsService.warmPlayPool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            } else if (pill.id === 'wellness') {
+              await wellnessCardsService.warmWellnessPool({
                 location: params.location,
                 budgetMax: params.budgetMax,
                 travelMode: params.travelMode,

@@ -20,6 +20,9 @@ export const getReadableCategoryName = (categoryKey: string): string => {
     'creative_arts': 'Creative & Arts',
     'play': 'Play',
     'wellness': 'Wellness',
+    'groceries_flowers': 'Groceries & Flowers',
+    'groceries & flowers': 'Groceries & Flowers',
+    'Groceries & Flowers': 'Groceries & Flowers',
     // Legacy translation keys -> new names
     'category.screen_nature': 'Nature',
     'category.screen_drink': 'Drink',
@@ -111,6 +114,7 @@ export const getCategorySlug = (categoryKey: string): string => {
     'Creative & Arts': 'creative_arts',
     'Play': 'play',
     'Wellness': 'wellness',
+    'Groceries & Flowers': 'groceries_flowers',
     // Legacy names
     'Take a Stroll': 'nature',
     'Sip & Chill': 'drink',
@@ -143,7 +147,8 @@ export const getCategoryIcon = (categoryKey: string): string => {
     'watch': 'film-outline',
     'creative_arts': 'color-palette-outline',
     'play': 'game-controller-outline',
-    'wellness': 'body-outline'
+    'wellness': 'body-outline',
+    'groceries_flowers': 'cart-outline'
   };
   
   return iconMap[slug] || 'location';
@@ -165,7 +170,8 @@ export const getCategoryColor = (categoryKey: string): string => {
     'watch': '#3B82F6',        // blue
     'creative_arts': '#EC4899', // pink
     'play': '#EF4444',         // red
-    'wellness': '#14B8A6'      // teal
+    'wellness': '#14B8A6',      // teal
+    'groceries_flowers': '#22C55E' // green-500
   };
   
   return colorMap[slug] || '#6B7280'; // gray fallback

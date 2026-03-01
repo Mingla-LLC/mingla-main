@@ -78,6 +78,7 @@ const categories = [
   },
   { id: "play", label: "Play", icon: "game-controller-outline" },
   { id: "wellness", label: "Wellness", icon: "body-outline" },
+  { id: "groceries_flowers", label: "Groceries & Flowers", icon: "cart-outline" },
 ];
 
 // Travel modes

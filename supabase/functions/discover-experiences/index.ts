@@ -40,6 +40,7 @@ const DISCOVER_CATEGORIES = [
   "Creative & Arts",
   "Play",
   "Wellness",
+  "Groceries & Flowers",
 ];
 
 // Category to Google Places type mapping (using CONFIRMED valid Google Places API New types)
@@ -116,6 +117,10 @@ const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
     "spa",
     "sauna",
     "hot_spring",
+  ],
+  "Groceries & Flowers": [
+    "grocery_store",
+    "supermarket",
   ],
 };
 
@@ -202,6 +207,7 @@ serve(async (req) => {
       creative_arts: "Creative & Arts",
       play: "Play",
       wellness: "Wellness",
+      groceries_flowers: "Groceries & Flowers",
     };
 
     // Resolve which categories to fetch: filter DISCOVER_CATEGORIES by user selection
@@ -1016,6 +1022,7 @@ function generateFallbackDescription(place: any): string {
     "Creative & Arts": "Engage your creativity in an inspiring artistic environment.",
     "Play": "Fun and active entertainment for an exciting time out.",
     "Wellness": "Relax and rejuvenate in a peaceful wellness setting.",
+    "Groceries & Flowers": "Fresh groceries, produce, and flowers for every occasion.",
   };
   return descriptions[place.category] || "An amazing experience waiting for you.";
 }
@@ -1032,6 +1039,7 @@ function generateFallbackHighlights(place: any): string[] {
     "Creative & Arts": ["Artistic", "Interactive"],
     "Play": ["Fun Activities", "Exciting"],
     "Wellness": ["Relaxing", "Rejuvenating"],
+    "Groceries & Flowers": ["Fresh Produce", "Convenient"],
   };
   return highlights[place.category] || ["Great Experience", "Highly Rated"];
 }
