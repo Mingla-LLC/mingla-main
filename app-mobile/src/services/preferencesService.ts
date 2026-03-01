@@ -141,7 +141,7 @@ export class PreferencesService {
         budget_min: 0,
         budget_max: 1000,
         people_count: 1,
-        categories: ["Stroll", "Sip & Chill"],
+        categories: ["Nature", "Casual Eats", "Drink"],
         travel_mode: "walking",
         travel_constraint_type: "time",
         travel_constraint_value: 30,

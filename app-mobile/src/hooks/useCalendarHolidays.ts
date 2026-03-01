@@ -3,30 +3,30 @@ import { DeviceCalendarService } from "../services/deviceCalendarService";
 
 // Holiday category mapping - determines which experience category to show for each holiday
 const HOLIDAY_CATEGORY_MAP: { [key: string]: string } = {
-  // Common holiday keywords -> experience categories
-  "new year": "Wellness Dates",
-  "valentine": "Dining Experiences",
-  "women's day": "Dining Experiences",
-  "spring": "Stroll",
-  "mother's day": "Casual Eats",
-  "father's day": "Play & Move",
-  "summer": "Freestyle",
-  "juneteenth": "Freestyle",
-  "peace": "Picnics",
-  "sweetest": "Sip & Chill",
-  "halloween": "Screen & Relax",
-  "men's day": "Play & Move",
-  "thanksgiving": "Play & Move",
-  "christmas eve": "Creative & Hands-On",
-  "christmas": "Freestyle",
-  "hanukkah": "Dining Experiences",
-  "kwanzaa": "Dining Experiences",
+  // Common holiday keywords -> experience categories (v2)
+  "new year": "Wellness",
+  "valentine": "Fine Dining",
+  "women's day": "Fine Dining",
+  "spring": "Nature",
+  "mother's day": "Fine Dining",
+  "father's day": "Play",
+  "summer": "Nature",
+  "juneteenth": "Nature",
+  "peace": "Picnic",
+  "sweetest": "Drink",
+  "halloween": "Watch",
+  "men's day": "Play",
+  "thanksgiving": "Fine Dining",
+  "christmas eve": "Creative & Arts",
+  "christmas": "Nature",
+  "hanukkah": "Fine Dining",
+  "kwanzaa": "Fine Dining",
   "easter": "Casual Eats",
-  "memorial": "Picnics",
-  "labor day": "Picnics",
-  "independence": "Freestyle",
-  "fourth of july": "Freestyle",
-  "july 4": "Freestyle",
+  "memorial": "Picnic",
+  "labor day": "Picnic",
+  "independence": "Nature",
+  "fourth of july": "Nature",
+  "july 4": "Nature",
 };
 
 // Holiday descriptions for display
@@ -34,14 +34,14 @@ const HOLIDAY_DESCRIPTIONS: { [key: string]: string } = {
   "new year": 'The "Fresh Start" date',
   "valentine": "The biggest high-pressure day",
   "women's day": "Celebrate the women in your life",
-  "spring": 'Great for "Take a Stroll" dates',
+  "spring": "Great for nature dates",
   "mother's day": "Crucial if they have kids or to remind about partner's mom",
   "father's day": "Honor the father figures in your life",
   "summer": "Summer celebration",
   "juneteenth": "Summer celebration",
   "peace": 'A "Relationship Reset" day',
   "sweetest": 'A popular "second Valentine\'s"',
-  "halloween": 'Perfect for "Freestyle" or horror movies',
+  "halloween": "Perfect for a spooky movie night or costumes",
   "men's day": "Celebrate the men in your life",
   "thanksgiving": 'Focus on "Gratitude"',
   "christmas eve": "High gift-giving expectation",
@@ -77,21 +77,21 @@ const FALLBACK_HOLIDAYS: Array<{
   categories: string[];
   gender?: "male" | "female" | null;
 }> = [
-  { date: "2026-01-01", name: "New Year's Day", description: 'The "Fresh Start" date', categories: ["Wellness Dates", "Dining Experiences"], gender: null },
-  { date: "2026-02-14", name: "Valentine's Day", description: "The biggest high-pressure day", categories: ["Dining Experiences"], gender: null },
-  { date: "2026-03-08", name: "International Women's Day", description: "Celebrate the women in your life", categories: ["Dining Experiences"], gender: "female" },
-  { date: "2026-03-20", name: "First Day of Spring", description: 'Great for "Take a Stroll" dates', categories: ["Stroll", "Dining Experiences"], gender: null },
-  { date: "2026-05-10", name: "Mother's Day", description: "Crucial if they have kids or to remind about partner's mom", categories: ["Dining Experiences"], gender: "female" },
-  { date: "2026-06-15", name: "Father's Day", description: "Honor the father figures in your life", categories: ["Dining Experiences"], gender: "male" },
-  { date: "2026-06-19", name: "Juneteenth / Start of Summer", description: "Summer celebration", categories: ["Freestyle", "Dining Experiences"], gender: null },
-  { date: "2026-09-21", name: "International Day of Peace", description: 'A "Relationship Reset" day', categories: ["Picnics", "Dining Experiences"], gender: null },
-  { date: "2026-10-17", name: "Sweetest Day", description: 'A popular "second Valentine\'s"', categories: ["Sip & Chill", "Dining Experiences"], gender: null },
-  { date: "2026-10-31", name: "Halloween", description: 'Perfect for "Screen & Relax" or horror movies', categories: ["Screen & Relax", "Dining Experiences"], gender: null },
-  { date: "2026-11-19", name: "International Men's Day", description: "Celebrate the men in your life", categories: ["Play & Move", "Dining Experiences"], gender: "male" },
-  { date: "2026-11-26", name: "Thanksgiving", description: 'Focus on "Gratitude"', categories: ["Play & Move", "Dining Experiences"], gender: null },
-  { date: "2026-12-24", name: "Christmas Eve", description: "High gift-giving expectation", categories: ["Creative & Hands-On", "Dining Experiences"], gender: null },
-  { date: "2026-12-25", name: "Christmas Day", description: "Holiday celebration", categories: ["Freestyle", "Dining Experiences"], gender: null },
-  { date: "2026-12-31", name: "New Year's Eve", description: 'The "Big Night Out"', categories: ["Dining Experiences"], gender: null },
+  { date: "2026-01-01", name: "New Year's Day", description: 'The "Fresh Start" date', categories: ["Wellness", "Fine Dining"], gender: null },
+  { date: "2026-02-14", name: "Valentine's Day", description: "The biggest high-pressure day", categories: ["Fine Dining", "Drink"], gender: null },
+  { date: "2026-03-08", name: "International Women's Day", description: "Celebrate the women in your life", categories: ["Fine Dining", "Wellness"], gender: "female" },
+  { date: "2026-03-20", name: "First Day of Spring", description: "Great for nature dates", categories: ["Nature", "Picnic"], gender: null },
+  { date: "2026-05-10", name: "Mother's Day", description: "Crucial if they have kids or to remind about partner's mom", categories: ["Fine Dining", "Wellness"], gender: "female" },
+  { date: "2026-06-15", name: "Father's Day", description: "Honor the father figures in your life", categories: ["Play", "Fine Dining"], gender: "male" },
+  { date: "2026-06-19", name: "Juneteenth / Start of Summer", description: "Summer celebration", categories: ["Nature", "Picnic"], gender: null },
+  { date: "2026-09-21", name: "International Day of Peace", description: 'A "Relationship Reset" day', categories: ["Picnic", "Wellness"], gender: null },
+  { date: "2026-10-17", name: "Sweetest Day", description: 'A popular "second Valentine\'s"', categories: ["Drink", "Fine Dining"], gender: null },
+  { date: "2026-10-31", name: "Halloween", description: "Perfect for a spooky movie night or costumes", categories: ["Watch", "Creative & Arts"], gender: null },
+  { date: "2026-11-19", name: "International Men's Day", description: "Celebrate the men in your life", categories: ["Play", "Fine Dining"], gender: "male" },
+  { date: "2026-11-26", name: "Thanksgiving", description: 'Focus on "Gratitude"', categories: ["Fine Dining", "Casual Eats"], gender: null },
+  { date: "2026-12-24", name: "Christmas Eve", description: "High gift-giving expectation", categories: ["Creative & Arts", "Fine Dining"], gender: null },
+  { date: "2026-12-25", name: "Christmas Day", description: "Holiday celebration", categories: ["Nature", "Fine Dining"], gender: null },
+  { date: "2026-12-31", name: "New Year's Eve", description: 'The "Big Night Out"', categories: ["Fine Dining", "Drink"], gender: null },
 ];
 
 /**
@@ -106,8 +106,8 @@ const getCategoryForHoliday = (holidayName: string): string => {
     }
   }
   
-  // Default to Freestyle for unknown holidays
-  return "Freestyle";
+  // Default to Fine Dining for unknown holidays
+  return "Fine Dining";
 };
 
 /**
@@ -116,12 +116,12 @@ const getCategoryForHoliday = (holidayName: string): string => {
 const getCategoriesForHoliday = (holidayName: string): string[] => {
   const primaryCategory = getCategoryForHoliday(holidayName);
   
-  // Most holidays should also include Dining Experiences
-  if (primaryCategory === "Dining Experiences") {
-    return ["Dining Experiences"];
+  // Most holidays should also include Fine Dining
+  if (primaryCategory === "Fine Dining") {
+    return ["Fine Dining"];
   }
-  
-  return [primaryCategory, "Dining Experiences"];
+
+  return [primaryCategory, "Fine Dining"];
 };
 
 /**

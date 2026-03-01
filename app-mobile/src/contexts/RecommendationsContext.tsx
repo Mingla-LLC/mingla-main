@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
 } from "react";
 import {
   ExperiencesService,
@@ -208,7 +209,7 @@ const getDefaultPreferences = (): UserPreferences => ({
   budget_min: 0,
   budget_max: 1000,
   people_count: 1,
-  categories: ["Sip & Chill", "Stroll"],
+  categories: ["Nature", "Casual Eats", "Drink"],
   travel_mode: "walking",
   travel_constraint_type: "time",
   travel_constraint_value: 30,
@@ -439,7 +440,12 @@ export const RecommendationsProvider: React.FC<
     ...curatedFriendCards,
     ...curatedGroupCards,
   ];
-  const curatedRecommendations = shuffleArray(allCuratedCards).map(curatedToRecommendation);
+  // Stabilize with useMemo keyed on card IDs to prevent re-shuffle every render
+  const curatedRecommendations = useMemo(() => {
+    if (allCuratedCards.length === 0) return [];
+    return shuffleArray(allCuratedCards).map(curatedToRecommendation);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCuratedCards.map(c => c.id).sort().join(',')]);
 
   // Get stable references to cache methods to avoid dependency issues
   const generateCacheKey = cardsCache.generateCacheKey;

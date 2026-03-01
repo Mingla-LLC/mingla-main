@@ -486,6 +486,18 @@ export class ExperienceGenerationService {
 
     // Check for related categories
     const categoryRelations: { [key: string]: string[] } = {
+      // v2 categories
+      Nature: ["park", "hiking_area", "tourist_attraction", "point_of_interest"],
+      "First Meet": ["cafe", "coffee_shop", "bar"],
+      Drink: ["bar", "cafe", "coffee_shop", "wine_bar", "brewery"],
+      "Casual Eats": ["restaurant", "cafe", "fast_food_restaurant"],
+      "Fine Dining": ["restaurant", "fine_dining_restaurant"],
+      Watch: ["movie_theater", "performing_arts_theater"],
+      "Creative & Arts": ["art_gallery", "museum"],
+      Play: ["bowling_alley", "amusement_park", "gym"],
+      Wellness: ["spa", "gym", "yoga_studio"],
+      Picnic: ["park", "beach", "marina"],
+      // v1 backwards compat
       "Sip & Chill": ["bar", "cafe", "coffee_shop", "wine_bar", "brewery"],
       Stroll: ["park", "tourist_attraction", "point_of_interest"],
       Dining: ["restaurant", "fine_dining_restaurant"],
@@ -741,6 +753,17 @@ export class ExperienceGenerationService {
 
     // Core category keywords that map to icons
     const categoryKeywords: { [key: string]: string } = {
+      // v2 categories
+      nature: "leaf-outline",
+      "first meet": "chatbubbles-outline",
+      first_meet: "chatbubbles-outline",
+      drink: "wine-outline",
+      "casual eats": "fast-food-outline",
+      "fine dining": "restaurant-outline",
+      watch: "film-outline",
+      "creative & arts": "color-palette-outline",
+      wellness: "body-outline",
+      // v1 backwards compat
       stroll: "walk",
       sip: "cafe",
       chill: "cafe",
@@ -749,13 +772,13 @@ export class ExperienceGenerationService {
       screen: "film",
       relax: "film",
       creative: "brush",
-      play: "basketball",
+      play: "game-controller-outline",
       move: "basketball",
       dining: "wine",
       experience: "wine",
       freestyle: "sparkles",
-      picnic: "basket",
-      picnics: "basket",
+      picnic: "basket-outline",
+      picnics: "basket-outline",
     };
 
     // Check for exact normalized matches first
@@ -772,16 +795,26 @@ export class ExperienceGenerationService {
 
     // Fallback to original exact match (case-sensitive) for backward compatibility
     const exactMap: { [key: string]: string } = {
+      // v2 categories
+      Nature: "leaf-outline",
+      "First Meet": "chatbubbles-outline",
+      Drink: "wine-outline",
+      "Casual Eats": "fast-food-outline",
+      "Fine Dining": "restaurant-outline",
+      Watch: "film-outline",
+      "Creative & Arts": "color-palette-outline",
+      Play: "game-controller-outline",
+      Wellness: "body-outline",
+      Picnic: "basket-outline",
+      // v1 backwards compat
       Stroll: "walk",
       "Sip & Chill": "cafe",
-      "Casual Eats": "restaurant",
       "Screen & Relax": "film",
       Creative: "brush",
       "Play & Move": "basketball",
       "Dining experience": "wine",
       Freestyle: "sparkles",
-      Picnic: "basket",
-      Picnics: "basket",
+      Picnics: "basket-outline",
     };
 
     return exactMap[category] || "location";

@@ -8,32 +8,32 @@ const corsHeaders = {
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 
-// Experience categories available in Mingla
+// Experience categories available in Mingla (v2)
 const DISCOVER_CATEGORIES = [
-  "Dining Experiences",
+  "Nature",
+  "First Meet",
+  "Picnic",
+  "Drink",
   "Casual Eats",
-  "Sip & Chill",
-  "Stroll",
-  "Picnics",
-  "Screen & Relax",
-  "Wellness Dates",
-  "Creative & Hands-On",
-  "Play & Move",
-  "Freestyle",
+  "Fine Dining",
+  "Watch",
+  "Creative & Arts",
+  "Play",
+  "Wellness",
 ] as const;
 
 // Map categories to Google Places types (validated for Google Places API New)
 const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
-  "Dining Experiences": ["bakery", "ice_cream_shop"],
-  "Casual Eats": ["restaurant", "cafe"],
-  "Sip & Chill": ["bar", "cafe"],
-  "Stroll": ["park", "hiking_area"],
-  "Picnics": ["park", "beach", "marina"],
-  "Screen & Relax": ["movie_theater"],
-  "Wellness Dates": ["spa", "gym"],
-  "Creative & Hands-On": ["art_gallery", "museum"],
-  "Play & Move": ["bowling_alley", "amusement_park"],
-  "Freestyle": ["tourist_attraction", "night_club", "aquarium", "zoo"],
+  "Nature": ["park", "hiking_area", "national_park"],
+  "First Meet": ["cafe", "coffee_shop", "bar"],
+  "Picnic": ["park", "beach", "marina"],
+  "Drink": ["bar", "cafe", "wine_bar"],
+  "Casual Eats": ["restaurant", "cafe", "fast_food_restaurant"],
+  "Fine Dining": ["restaurant", "fine_dining_restaurant"],
+  "Watch": ["movie_theater", "performing_arts_theater"],
+  "Creative & Arts": ["art_gallery", "museum"],
+  "Play": ["bowling_alley", "amusement_park", "gym"],
+  "Wellness": ["spa", "gym", "yoga_studio"],
 };
 
 // Excluded place types
@@ -73,25 +73,25 @@ interface HolidayDefinition {
 }
 
 const HOLIDAYS: HolidayDefinition[] = [
-  { date: "01-01", name: "New Year's Day", description: 'The "Fresh Start" date', categories: ["Wellness Dates", "Dining Experiences"], gender: null },
-  { date: "02-14", name: "Valentine's Day", description: "The biggest high-pressure day", categories: ["Dining Experiences", "Sip & Chill"], gender: null },
-  { date: "03-08", name: "International Women's Day", description: "Celebrate the women in your life", categories: ["Dining Experiences", "Wellness Dates"], gender: "female" },
-  { date: "03-20", name: "First Day of Spring", description: 'Great for "Take a Stroll" dates', categories: ["Stroll", "Picnics"], gender: null },
-  { date: "04-20", name: "Easter", description: "Spring celebration", categories: ["Casual Eats", "Dining Experiences"], gender: null },
-  { date: "05-11", name: "Mother's Day", description: "Crucial if they have kids or to remind about partner's mom", categories: ["Dining Experiences", "Wellness Dates"], gender: "female" },
-  { date: "05-26", name: "Memorial Day", description: "Honor and remember", categories: ["Picnics", "Freestyle"], gender: null },
-  { date: "06-15", name: "Father's Day", description: "Honor the father figures in your life", categories: ["Play & Move", "Dining Experiences"], gender: "male" },
-  { date: "06-19", name: "Juneteenth / Start of Summer", description: "Summer celebration", categories: ["Freestyle", "Picnics"], gender: null },
-  { date: "07-04", name: "Independence Day", description: 'The "Big Night Out"', categories: ["Freestyle", "Picnics"], gender: null },
-  { date: "09-01", name: "Labor Day", description: "End of summer celebration", categories: ["Picnics", "Casual Eats"], gender: null },
-  { date: "09-21", name: "International Day of Peace", description: 'A "Relationship Reset" day', categories: ["Picnics", "Wellness Dates"], gender: null },
-  { date: "10-17", name: "Sweetest Day", description: 'A popular "second Valentine\'s"', categories: ["Sip & Chill", "Dining Experiences"], gender: null },
-  { date: "10-31", name: "Halloween", description: 'Perfect for "Screen & Relax" or costumes', categories: ["Screen & Relax", "Freestyle"], gender: null },
-  { date: "11-19", name: "International Men's Day", description: "Celebrate the men in your life", categories: ["Play & Move", "Dining Experiences"], gender: "male" },
-  { date: "11-27", name: "Thanksgiving", description: 'Focus on "Gratitude"', categories: ["Dining Experiences", "Casual Eats"], gender: null },
-  { date: "12-24", name: "Christmas Eve", description: "High gift-giving expectation", categories: ["Creative & Hands-On", "Dining Experiences"], gender: null },
-  { date: "12-25", name: "Christmas Day", description: "Holiday celebration", categories: ["Freestyle", "Dining Experiences"], gender: null },
-  { date: "12-31", name: "New Year's Eve", description: 'The "Big Night Out"', categories: ["Dining Experiences", "Sip & Chill"], gender: null },
+  { date: "01-01", name: "New Year's Day", description: 'The "Fresh Start" date', categories: ["Wellness", "Fine Dining"], gender: null },
+  { date: "02-14", name: "Valentine's Day", description: "The biggest high-pressure day", categories: ["Fine Dining", "Drink"], gender: null },
+  { date: "03-08", name: "International Women's Day", description: "Celebrate the women in your life", categories: ["Fine Dining", "Wellness"], gender: "female" },
+  { date: "03-20", name: "First Day of Spring", description: "Great for nature dates", categories: ["Nature", "Picnic"], gender: null },
+  { date: "04-20", name: "Easter", description: "Spring celebration", categories: ["Casual Eats", "Fine Dining"], gender: null },
+  { date: "05-11", name: "Mother's Day", description: "Crucial if they have kids or to remind about partner's mom", categories: ["Fine Dining", "Wellness"], gender: "female" },
+  { date: "05-26", name: "Memorial Day", description: "Honor and remember", categories: ["Picnic", "Nature"], gender: null },
+  { date: "06-15", name: "Father's Day", description: "Honor the father figures in your life", categories: ["Play", "Fine Dining"], gender: "male" },
+  { date: "06-19", name: "Juneteenth / Start of Summer", description: "Summer celebration", categories: ["Nature", "Picnic"], gender: null },
+  { date: "07-04", name: "Independence Day", description: 'The "Big Night Out"', categories: ["Nature", "Picnic"], gender: null },
+  { date: "09-01", name: "Labor Day", description: "End of summer celebration", categories: ["Picnic", "Casual Eats"], gender: null },
+  { date: "09-21", name: "International Day of Peace", description: 'A "Relationship Reset" day', categories: ["Picnic", "Wellness"], gender: null },
+  { date: "10-17", name: "Sweetest Day", description: 'A popular "second Valentine\'s"', categories: ["Drink", "Fine Dining"], gender: null },
+  { date: "10-31", name: "Halloween", description: "Perfect for a spooky movie night or costumes", categories: ["Watch", "Creative & Arts"], gender: null },
+  { date: "11-19", name: "International Men's Day", description: "Celebrate the men in your life", categories: ["Play", "Fine Dining"], gender: "male" },
+  { date: "11-27", name: "Thanksgiving", description: 'Focus on "Gratitude"', categories: ["Fine Dining", "Casual Eats"], gender: null },
+  { date: "12-24", name: "Christmas Eve", description: "High gift-giving expectation", categories: ["Creative & Arts", "Fine Dining"], gender: null },
+  { date: "12-25", name: "Christmas Day", description: "Holiday celebration", categories: ["Nature", "Fine Dining"], gender: null },
+  { date: "12-31", name: "New Year's Eve", description: 'The "Big Night Out"', categories: ["Fine Dining", "Drink"], gender: null },
 ];
 
 interface HolidayExperienceRequest {

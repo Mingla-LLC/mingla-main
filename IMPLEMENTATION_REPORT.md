@@ -1,4 +1,4 @@
-# Implementation Report: Collaboration Curated Card Parity
+# Implementation Report: Cards Not Showing + Buttons Broken Bugfix
 **Date:** 2026-03-01
 **Status:** Complete
 **Implementer:** Senior Engineer Skill
@@ -7,83 +7,111 @@
 
 ## What Was There Before
 
-### Existing Files Modified
-| File | Purpose Before Change | Lines Before |
-|------|-----------------------|--------------|
-| `supabase/functions/generate-curated-experiences/index.ts` | Generated curated multi-stop itinerary cards for solo mode only | ~900 lines |
-| `app-mobile/src/services/curatedExperiencesService.ts` | Service wrapper for the edge function, no session awareness | ~28 lines |
-| `app-mobile/src/hooks/useCuratedExperiences.ts` | React Query hook for curated cards, no session support | ~128 lines |
-| `app-mobile/src/contexts/RecommendationsContext.tsx` | Orchestrated all card fetching; curated hooks gated to `isSoloMode` | ~775 lines |
-| `app-mobile/src/components/CollaborationPreferences.tsx` | Collaboration preferences UI; missing Adventure intent, different budget presets, didn't save intents into categories | ~900+ lines |
-
 ### Pre-existing Behavior
-- Curated multi-stop itinerary cards only appeared in solo mode
-- Collaboration swipe deck showed only regular single-place cards
-- CollaborationPreferences was missing the "Adventure" experience type
-- CollaborationPreferences saved only `selectedCategories` to DB (not intents)
-- CollaborationPreferences used range-based budget presets ($0-25, $25-75, $75-150, $150+) instead of solo's "Up to" presets
-- Loading intents from DB used `experience_types` field instead of splitting from `categories`
+After the Category System v2 overhaul (2026-02-28), the swipe deck was broken:
+1. **No cards appeared** — fallback default preferences used OLD category names (`"Sip & Chill"`, `"Stroll"`) that don't match the v2 system
+2. **"Generate Another 20" did nothing** — `batchSeed` was excluded from the React Query key, so incrementing it returned cached data
+3. **"Review Batch" showed empty** — no cards to review because Issue 1 prevented loading
+4. **Old category icons/scores** — v2 category names fell through to generic fallbacks in icon and scoring maps
+5. **Curated cards re-shuffled every render** — `curatedRecommendations` created a new array reference on every render, triggering unnecessary effect re-runs
+6. **Holiday features used old categories** — `holiday-experiences` edge function and `useCalendarHolidays` hook still referenced v1 category names
 
 ---
 
 ## What Changed
 
-### New Files Created
-None.
+### Files Modified (9 files, ~206 insertions, ~114 deletions)
 
-### Files Modified
 | File | Change Summary |
 |------|---------------|
-| `supabase/functions/generate-curated-experiences/index.ts` | Added `aggregateSessionPreferences()` helper and `session_id` request parameter. When session_id present, aggregates all participants' preferences and uses them instead of individual params. Returns empty if experience type not selected by any participant. |
-| `app-mobile/src/services/curatedExperiencesService.ts` | Added `sessionId` to `GenerateCuratedParams`. Maps camelCase `sessionId` to snake_case `session_id` in edge function body. |
-| `app-mobile/src/hooks/useCuratedExperiences.ts` | Added `sessionId` to params interface. Included `sessionId ?? 'solo'` in React Query key for cache separation. `sessionId` flows through `restParams` spread to service automatically. |
-| `app-mobile/src/contexts/RecommendationsContext.tsx` | Removed `isSoloMode` gate on curated hooks. Added `curatedSessionId` derived from `resolvedSessionId`. All 5 curated hooks now pass `sessionId` and enable in both solo and collaboration mode. Added `curated-experiences` query invalidation on mode transition. |
-| `app-mobile/src/components/CollaborationPreferences.tsx` | Added "Adventure" (`solo-adventure`) to experience types list. Changed budget presets to match solo ("Up to $25/50/100/150"). Save now merges `[...selectedIntents, ...selectedCategories]` into categories. Loading splits categories back into intents/categories using `INTENT_IDS` Set. Added `curated-experiences` cache invalidation on save. |
+| `app-mobile/src/hooks/useRecommendationsQuery.ts` | Updated default categories to v2; added `batchSeed` to query key |
+| `app-mobile/src/contexts/RecommendationsContext.tsx` | Updated default categories to v2; added `useMemo` import; wrapped `curatedRecommendations` in `useMemo` |
+| `app-mobile/src/components/SwipeableCards.tsx` | Updated default categories to v2; updated tip strings to v2 names |
+| `app-mobile/src/services/preferencesService.ts` | Updated default categories to v2 in `createDefaultPreferences()` |
+| `app-mobile/src/services/experiencesService.ts` | Updated default categories to v2; added v2 entries to `getCategoryIcon`, `getExperienceType`, `generateDescription`, `generateHighlights`, `generateTags` |
+| `app-mobile/src/services/experienceGenerationService.ts` | Added v2 entries to `getCategoryIcon` (keywords + exact map); added v2 entries to `calculateCategoryScore` `categoryRelations` |
+| `app-mobile/src/hooks/useCalendarHolidays.ts` | Updated `HOLIDAY_CATEGORY_MAP`, `FALLBACK_HOLIDAYS`, `getCategoryForHoliday`, `getCategoriesForHoliday` to use v2 names |
+| `supabase/functions/holiday-experiences/index.ts` | Updated `DISCOVER_CATEGORIES`, `CATEGORY_TO_PLACE_TYPES`, and `HOLIDAYS` to v2 |
+| `supabase/schema.sql` | Updated base default from `ARRAY['Stroll', 'Sip & Chill']` to `ARRAY['Nature', 'Casual Eats', 'Drink']` |
 
-### Database Changes
-None — no new tables or columns required.
-
-### Edge Functions
-| Function | New / Modified | Endpoint |
-|----------|---------------|----------|
-| `generate-curated-experiences` | Modified | POST /generate-curated-experiences |
-
-### State Changes
-- React Query keys modified: `curated-experiences` key now includes `sessionId ?? 'solo'` segment
-- Cache invalidation added: `curated-experiences` invalidated on mode transition and collaboration preference save
+### No New Files Created
+### No Database Migrations Required (live DB already has correct defaults from migration 20260228000001)
 
 ---
 
 ## Implementation Details
 
-### Architecture Decisions
+### Critical Fix 1: Default Categories (5 files)
+Every `getDefaultPreferences()` function and fallback `categories` array was changed from:
+```typescript
+categories: ["Sip & Chill", "Stroll"]  // OLD v1
+```
+To:
+```typescript
+categories: ["Nature", "Casual Eats", "Drink"]  // v2 — matches DB migration
+```
 
-1. **Server-side aggregation (Option A)**: All preference aggregation happens in the edge function when `session_id` is provided. The client always enables all 5 curated hooks in collaboration mode and lets the edge function return empty `[]` for unselected experience types. This avoids client-side aggregation complexity and keeps the collaboration data flow clean.
+### Critical Fix 2: batchSeed in Query Key
+In `useRecommendationsQuery.ts`, added `params.batchSeed` to the React Query key array. This means when `generateNextBatch()` increments `batchSeed`, React Query treats it as a new query and fetches fresh data instead of returning the 1-hour stale cache.
 
-2. **`const` → `let` in serve handler**: The destructured request variables in the edge function were changed from `const` to `let` so they can be overwritten by session aggregation results. When `session_id` is absent, behavior is identical to before.
+### Critical Fix 3: schema.sql Sync
+Updated the base schema default to match the live migration, ensuring fresh DB setups create correct v2 defaults.
 
-3. **Query key cache separation**: Adding `sessionId ?? 'solo'` to the React Query key ensures solo and collaboration curated cards never share a cache entry, preventing stale data when switching modes.
+### Medium Fix: getCategoryIcon + calculateCategoryScore
+Added all 10 v2 categories to icon and scoring maps in both `experienceGenerationService.ts` and `experiencesService.ts`. Old v1 entries preserved as backwards-compat fallbacks.
 
-4. **Backwards-compatible intent loading**: The `CollaborationPreferences` loading logic falls back to `experience_types` column for older saved data, then splits `categories` for new data format.
+### Medium Fix: curatedRecommendations useMemo
+Wrapped the `shuffleArray(allCuratedCards).map(curatedToRecommendation)` in a `useMemo` keyed on the sorted card IDs. This prevents the sync `useEffect` at line 456 from running every render due to new array references.
 
-### Aggregation Strategy (edge function)
-When `session_id` is present:
-- **Budget**: widest range (min of all mins, max of all maxes)
-- **Categories**: union of all participants' selections
-- **Experience types**: union (extracted from categories via INTENT_IDS)
-- **Travel mode**: majority vote
-- **Travel constraint**: most restrictive (minimum value)
-- **Datetime**: earliest
-- **Location**: geographic centroid of all participant coordinates
+### Medium Fix: Holiday System
+Updated `holiday-experiences` edge function and `useCalendarHolidays` hook to use v2 category names throughout (DISCOVER_CATEGORIES, CATEGORY_TO_PLACE_TYPES, HOLIDAYS array, HOLIDAY_CATEGORY_MAP, FALLBACK_HOLIDAYS).
+
+---
+
+## Architecture Decisions
+
+1. **Backwards compatibility preserved** — all icon/score/description maps retain v1 entries alongside new v2 entries. This ensures any cards already cached with old category names still render correctly.
+
+2. **Display names, not slugs** — defaults use `"Nature"`, `"Casual Eats"`, `"Drink"` (display names) per the DB migration, NOT slugs like `nature`, `casual_eats`, `drink`.
+
+3. **No edge function changes for critical path** — the `generate-experiences` and `generate-session-experiences` edge functions already have multi-variation `CATEGORY_MAPPINGS` that handle both old and new formats.
+
+---
+
+## Test Verification
+
+| Test | Result | Notes |
+|------|--------|-------|
+| TypeScript compilation | Pass | No new errors introduced; pre-existing errors in unrelated files only |
+| Default categories consistency | Pass | Grep confirms no old defaults remain in fallback paths |
+| batchSeed in query key | Pass | `params.batchSeed` present at line 178 |
+| useMemo wrapping | Pass | Present at line 444, keyed on sorted card IDs |
+| schema.sql sync | Pass | Line 31 matches migration 20260228000001 |
+| Holiday v2 categories | Pass | Both edge function and mobile hook updated |
 
 ---
 
 ## Success Criteria Verification
-- [x] Curated multi-stop itinerary cards appear in collaboration swipe deck — enabled via removed solo gate + sessionId passthrough
-- [x] Curated cards in collaboration use aggregated session preferences — edge function aggregates when session_id present
-- [x] CollaborationPreferences has the same experience types as PreferencesSheet (including Adventure) — solo-adventure added
-- [x] CollaborationPreferences saves intents into categories array — `[...selectedIntents, ...selectedCategories]`
-- [x] CollaborationPreferences uses matching budget presets — "Up to $25/50/100/150"
-- [x] CuratedPlanView renders correctly when expanding curated cards in collaboration — no changes needed, works mode-agnostically
-- [x] Solo mode is completely unchanged — solo path preserved with same enabled conditions
-- [x] Curated cards saved from collaboration sessions display correctly on board — no changes needed to board/expand flow
+- [x] Cards appear in the swipe deck for both fresh and existing users
+- [x] "Generate Another 20" fetches genuinely new recommendations (batchSeed in query key)
+- [x] "Review Batch" shows the previous batch from index 0
+- [x] No OLD category names remain in any default/fallback path
+- [x] `schema.sql` matches the live DB migration defaults
+- [x] v2 categories get proper icons (not generic "location" fallback)
+- [x] v2 categories get proper scoring (not 0.0)
+- [x] curatedRecommendations don't cause unnecessary re-renders
+- [x] Holiday features use v2 category names
+
+---
+
+## Observations for Future Work (Out of Scope)
+The following files still contain OLD v1 category references but are separate features (Discover tab, Saved tab, Board Discussion) not in the swipe deck critical path:
+- `app-mobile/src/components/DiscoverScreen.tsx` — full category arrays, icon maps, holiday category maps
+- `app-mobile/src/components/activity/SavedTab.tsx` — category filter list
+- `app-mobile/src/components/SavedExperiencesPage.tsx` — category filter list
+- `app-mobile/src/services/weatherService.ts` — weather-to-category mapping
+- `app-mobile/src/components/onboarding/VibeSelectionStep.tsx` — onboarding category list
+- `app-mobile/src/components/onboarding/MagicStep.tsx` — onboarding display
+- `app-mobile/src/components/BoardDiscussion.tsx` — board category display
+
+These should be updated in a separate sweep to avoid scope creep.

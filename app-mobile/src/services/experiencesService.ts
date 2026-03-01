@@ -275,7 +275,7 @@ export class ExperiencesService {
             budget_min: 0,
             budget_max: 1000,
             people_count: 1,
-            categories: ['Stroll', 'Sip & Chill'],
+            categories: ['Nature', 'Casual Eats', 'Drink'],
             travel_mode: 'walking',
             travel_constraint_type: 'time',
             travel_constraint_value: 30,
@@ -482,9 +482,20 @@ export class ExperiencesService {
 
   private static getCategoryIcon(category: string): string {
     const iconMap: { [key: string]: string } = {
+      // v2 categories
+      'Nature': 'leaf-outline',
+      'First Meet': 'chatbubbles-outline',
+      'Drink': 'wine-outline',
+      'Casual Eats': 'fast-food-outline',
+      'Fine Dining': 'restaurant-outline',
+      'Watch': 'film-outline',
+      'Creative & Arts': 'color-palette-outline',
+      'Play': 'game-controller-outline',
+      'Wellness': 'body-outline',
+      'Picnic': 'basket-outline',
+      // v1 backwards compat
       'Stroll': 'walk',
       'Sip & Chill': 'cafe',
-      'Casual Eats': 'restaurant',
       'Screen & Relax': 'film',
       'Creative': 'brush',
       'Play & Move': 'basketball',
@@ -503,9 +514,20 @@ export class ExperiencesService {
 
   private static generateDescription(exp: Experience): string {
     const descriptions: { [key: string]: string[] } = {
+      // v2 categories
+      'Nature': ['Scenic outdoor adventure for nature lovers', 'Peaceful time in beautiful surroundings', 'Relaxing experience in a serene environment'],
+      'First Meet': ['Perfect spot for a first meeting', 'Casual atmosphere for getting to know someone', 'Great place for a relaxed introduction'],
+      'Drink': ['Perfect spot for drinks and conversation', 'Cozy atmosphere for relaxation', 'Great place to unwind and chat'],
+      'Casual Eats': ['Delicious food in a relaxed setting', 'Comfortable dining experience', 'Tasty meals in a casual atmosphere'],
+      'Fine Dining': ['Exceptional culinary journey', 'Fine dining with outstanding service', 'Memorable gastronomic experience'],
+      'Watch': ['Entertaining viewing experience', 'Great entertainment in comfortable seating', 'Perfect for a relaxing evening'],
+      'Creative & Arts': ['Inspiring artistic experience', 'Creative exploration and discovery', 'Artistic journey of self-expression'],
+      'Play': ['Active and fun experience', 'Energetic activity for all ages', 'Great way to stay active and have fun'],
+      'Wellness': ['Rejuvenating wellness experience', 'Perfect for mind and body relaxation', 'Restore your energy and find balance'],
+      'Picnic': ['Delightful outdoor dining experience', 'Perfect for a sunny afternoon', 'Relaxed picnic in a beautiful setting'],
+      // v1 backwards compat
       'Stroll': ['Scenic walking adventure for nature lovers', 'Peaceful walk through beautiful surroundings', 'Relaxing stroll in a serene environment'],
       'Sip & Chill': ['Perfect spot for coffee and conversation', 'Cozy atmosphere for relaxation', 'Great place to unwind and chat'],
-      'Casual Eats': ['Delicious food in a relaxed setting', 'Comfortable dining experience', 'Tasty meals in a casual atmosphere'],
       'Screen & Relax': ['Entertaining movie experience', 'Great films in comfortable seating', 'Perfect for a relaxing evening'],
       'Creative': ['Inspiring artistic experience', 'Creative exploration and discovery', 'Artistic journey of self-expression'],
       'Play & Move': ['Active and fun experience', 'Energetic activity for all ages', 'Great way to stay active and have fun'],
@@ -543,9 +565,20 @@ export class ExperiencesService {
 
   private static getExperienceType(category: string): string {
     const typeMap: { [key: string]: string } = {
+      // v2 categories
+      'Nature': 'Outdoor',
+      'First Meet': 'Indoor',
+      'Drink': 'Indoor',
+      'Casual Eats': 'Indoor',
+      'Fine Dining': 'Indoor',
+      'Watch': 'Indoor',
+      'Creative & Arts': 'Indoor',
+      'Play': 'Active',
+      'Wellness': 'Indoor',
+      'Picnic': 'Outdoor',
+      // v1 backwards compat
       'Stroll': 'Outdoor',
       'Sip & Chill': 'Indoor',
-      'Casual Eats': 'Indoor',
       'Screen & Relax': 'Indoor',
       'Creative': 'Indoor',
       'Play & Move': 'Active',
@@ -557,9 +590,20 @@ export class ExperiencesService {
 
   private static generateHighlights(exp: Experience): string[] {
     const highlights: { [key: string]: string[] } = {
+      // v2 categories
+      'Nature': ['Scenic Views', 'Nature Trail', 'Peaceful Atmosphere'],
+      'First Meet': ['Relaxed Vibe', 'Easy Conversation', 'Comfortable Setting'],
+      'Drink': ['Great Drinks', 'Cozy Atmosphere', 'Social Vibe'],
+      'Casual Eats': ['Fresh Ingredients', 'Friendly Service', 'Comfortable Seating'],
+      'Fine Dining': ['Fine Cuisine', 'Excellent Service', 'Elegant Atmosphere'],
+      'Watch': ['Comfortable Seating', 'Great Sound', 'Snack Bar'],
+      'Creative & Arts': ['Inspiring Art', 'Interactive Exhibits', 'Educational'],
+      'Play': ['Fun Activities', 'Great Equipment', 'Friendly Staff'],
+      'Wellness': ['Relaxation', 'Professional Service', 'Rejuvenating'],
+      'Picnic': ['Outdoor Setting', 'Fresh Air', 'Scenic Views'],
+      // v1 backwards compat
       'Stroll': ['Scenic Views', 'Nature Trail', 'Peaceful Atmosphere'],
       'Sip & Chill': ['Great Coffee', 'Cozy Atmosphere', 'Free WiFi'],
-      'Casual Eats': ['Fresh Ingredients', 'Friendly Service', 'Comfortable Seating'],
       'Screen & Relax': ['Comfortable Seating', 'Great Sound', 'Snack Bar'],
       'Creative': ['Inspiring Art', 'Interactive Exhibits', 'Educational'],
       'Play & Move': ['Fun Activities', 'Great Equipment', 'Friendly Staff'],
@@ -595,9 +639,20 @@ export class ExperiencesService {
 
   private static generateTags(exp: Experience): string[] {
     const tags: { [key: string]: string[] } = {
+      // v2 categories
+      'Nature': ['Outdoor', 'Nature', 'Scenic'],
+      'First Meet': ['Social', 'Casual', 'Relaxed'],
+      'Drink': ['Drinks', 'Social', 'Relaxed'],
+      'Casual Eats': ['Food', 'Casual', 'Friendly'],
+      'Fine Dining': ['Fine Dining', 'Elegant', 'Cuisine'],
+      'Watch': ['Movies', 'Entertainment', 'Comfort'],
+      'Creative & Arts': ['Art', 'Culture', 'Learning'],
+      'Play': ['Active', 'Fun', 'Games'],
+      'Wellness': ['Wellness', 'Relaxation', 'Health'],
+      'Picnic': ['Outdoor', 'Picnic', 'Nature'],
+      // v1 backwards compat
       'Stroll': ['Outdoor', 'Nature', 'Walking'],
       'Sip & Chill': ['Coffee', 'Relax', 'WiFi'],
-      'Casual Eats': ['Food', 'Casual', 'Friendly'],
       'Screen & Relax': ['Movies', 'Entertainment', 'Comfort'],
       'Creative': ['Art', 'Culture', 'Learning'],
       'Play & Move': ['Active', 'Fun', 'Sports'],
