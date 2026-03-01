@@ -20,6 +20,7 @@ import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useRecommendationsQuery } from "../hooks/useRecommendationsQuery";
 import { useCuratedExperiences } from "../hooks/useCuratedExperiences";
+import { curatedExperiencesService } from "../services/curatedExperiencesService";
 import { useQueryClient } from "@tanstack/react-query";
 
 export interface Recommendation {
@@ -267,6 +268,7 @@ export const RecommendationsProvider: React.FC<
   const refreshKey = propRefreshKey;
   const previousRefreshKeyRef = useRef(propRefreshKey);
   const currentCacheKeyRef = useRef<string | null>(null);
+  const warmPoolFired = useRef(false);
   const queryClient = useQueryClient();
 
   const { user } = useAuthSimple();
@@ -344,6 +346,21 @@ export const RecommendationsProvider: React.FC<
   const { data: userPrefs, isLoading: isLoadingPreferences } =
     useUserPreferences(user?.id);
 
+  // ── Turbo Pipeline: Pre-warm curated pool on app load ──────────
+  useEffect(() => {
+    if (userLocation && userPrefs && !warmPoolFired.current) {
+      warmPoolFired.current = true;
+      curatedExperiencesService.warmPool({
+        experienceType: 'solo-adventure',
+        location: userLocation,
+        budgetMax: userPrefs.budget_max ?? 1000,
+        travelMode: userPrefs.travel_mode ?? 'walking',
+        travelConstraintType: (userPrefs.travel_constraint_type as string) ?? 'time',
+        travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
+      }).catch(() => {}); // Fire and forget
+    }
+  }, [userLocation, userPrefs]);
+
   // Use TanStack Query for recommendations
   const isCollaborationMode: boolean = Boolean(
     currentMode !== "solo" && resolvedSessionId
@@ -354,7 +371,18 @@ export const RecommendationsProvider: React.FC<
     previousBatchRef.current = recommendations;
     setIsBatchTransitioning(true);
     setBatchSeed(prev => prev + 1);
-  }, [recommendations]);
+    // Pre-warm for the next-next batch (fire-and-forget)
+    if (userLocation && userPrefs) {
+      curatedExperiencesService.warmPool({
+        experienceType: 'solo-adventure',
+        location: userLocation,
+        budgetMax: userPrefs.budget_max ?? 1000,
+        travelMode: userPrefs.travel_mode ?? 'walking',
+        travelConstraintType: (userPrefs.travel_constraint_type as string) ?? 'time',
+        travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
+      }).catch(() => {});
+    }
+  }, [recommendations, userLocation, userPrefs]);
 
   // Safety timeout: if isBatchTransitioning stays true for >15 s, clear it
   // so the user isn't stuck on a spinner if the background query hangs.
@@ -381,6 +409,7 @@ export const RecommendationsProvider: React.FC<
     if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
       setBatchSeed(0);
       setIsBatchTransitioning(false);
+      warmPoolFired.current = false; // Allow re-warm after pref change
       // Invalidate curated-experiences so they refetch with fresh params
       queryClient.invalidateQueries({ queryKey: ['curated-experiences'] });
     }
@@ -474,8 +503,8 @@ export const RecommendationsProvider: React.FC<
       : isCollaborationMode,
   });
 
-  // True when ALL enabled curated hooks have finished loading both priority
-  // and background batches (success or error). Used to gate isBatchTransitioning.
+  // True when ALL enabled curated hooks have finished loading (success or error).
+  // Used to gate isBatchTransitioning.
   const allCuratedBatchesLoaded =
     isSoloBatchLoaded && isDateBatchLoaded && isRomBatchLoaded &&
     isFriendBatchLoaded && isGroupBatchLoaded;
@@ -534,11 +563,7 @@ export const RecommendationsProvider: React.FC<
     if (regularCards.length > 0 || curatedRecommendations.length > 0) {
       const merged = interleaveCards(regularCards, curatedRecommendations);
       setRecommendations(merged);
-      // Clear batch-transitioning flag only once the FULL curated batch
-      // (priority + background) has settled. Previously this cleared as
-      // soon as priority data arrived, which dropped the spinner while
-      // background was still in-flight. If background then errored, the
-      // card count regressed from ~20 to PRIORITY_LIMIT (2).
+      // Clear batch-transitioning flag once all curated batches have settled.
       if (isBatchTransitioning && allCuratedBatchesLoaded) {
         setIsBatchTransitioning(false);
       }

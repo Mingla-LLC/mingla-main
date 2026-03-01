@@ -1,0 +1,782 @@
+================================================================================
+  IMPLEMENTATION GUIDE: Adventurous Turbo Pipeline
+  Optimized 20-Card Curated Delivery for Solo Adventure
+================================================================================
+
+READ THE SPEC FIRST: FEATURE_ADVENTUROUS_TURBO_PIPELINE_SPEC.md
+This guide tells you HOW to build it. The spec tells you WHY.
+
+TARGET: 20 curated 3-stop itinerary cards in <3s (cold) / <500ms (warm).
+SCOPE: solo-adventure experience type only (Adventurous pill).
+
+================================================================================
+STEP 0: UNDERSTAND WHAT YOU'RE CHANGING (DO NOT SKIP)
+================================================================================
+
+Files you will MODIFY (read them fully before touching):
+
+  1. supabase/functions/generate-curated-experiences/index.ts
+     - This is the main edge function (~1200 lines)
+     - You are replacing the solo-adventure code path (lines 1006-1165)
+     - You are NOT touching the other-experience-type fallback (lines 1167+)
+     - You are adding warmPool support near the top (after body parsing)
+
+  2. app-mobile/src/hooks/useCuratedExperiences.ts
+     - Currently ~170 lines with dual-batch (priority + background)
+     - You are replacing with a single-shot hook (~40 lines)
+
+  3. app-mobile/src/services/curatedExperiencesService.ts
+     - Adding a warmPool() method
+     - NOT changing the existing generateCuratedExperiences() method
+
+  4. app-mobile/src/contexts/RecommendationsContext.tsx
+     - Adding a pre-warming useEffect
+     - Simplifying batch-loading state management
+     - NOT changing interleaving logic or other hooks
+
+Files you will NOT change:
+  - cardPoolService.ts (pool query, upsert, impressions — all work as-is)
+  - categoryPlaceTypes.ts (not used by curated pipeline directly)
+  - SwipeableCards.tsx (rendering logic unchanged)
+  - CuratedExperienceSwipeCard.tsx (unchanged)
+  - Any other edge function
+
+================================================================================
+STEP 1: DATABASE (OPTIONAL — DO THIS IF YOU WANT FASTER POOL QUERIES)
+================================================================================
+
+Create migration: supabase/migrations/20260302000001_turbo_pipeline.sql
+
+Contents:
+
+  -- Composite index for faster curated pool lookups
+  CREATE INDEX IF NOT EXISTS idx_card_pool_curated_geo
+    ON card_pool (experience_type, is_active, lat, lng, total_price_max)
+    WHERE card_type = 'curated';
+
+  -- Optional: RPC function for single-query pool serve with anti-join
+  -- (Replaces the current 2-query approach in cardPoolService.ts)
+  CREATE OR REPLACE FUNCTION serve_curated_from_pool(
+    p_user_id UUID,
+    p_experience_type TEXT,
+    p_lat DOUBLE PRECISION,
+    p_lng DOUBLE PRECISION,
+    p_radius_meters DOUBLE PRECISION,
+    p_budget_max INTEGER,
+    p_pref_updated_at TIMESTAMPTZ,
+    p_limit INTEGER DEFAULT 20
+  )
+  RETURNS SETOF card_pool
+  LANGUAGE plpgsql STABLE
+  AS $$
+  DECLARE
+    v_lat_delta DOUBLE PRECISION := p_radius_meters / 111320.0;
+    v_lng_delta DOUBLE PRECISION := p_radius_meters / (111320.0 * cos(radians(p_lat)));
+  BEGIN
+    RETURN QUERY
+    SELECT cp.*
+    FROM card_pool cp
+    WHERE cp.is_active = true
+      AND cp.card_type = 'curated'
+      AND cp.experience_type = p_experience_type
+      AND cp.lat BETWEEN p_lat - v_lat_delta AND p_lat + v_lat_delta
+      AND cp.lng BETWEEN p_lng - v_lng_delta AND p_lng + v_lng_delta
+      AND cp.total_price_max <= p_budget_max
+      AND NOT EXISTS (
+        SELECT 1 FROM user_card_impressions uci
+        WHERE uci.card_pool_id = cp.id
+          AND uci.user_id = p_user_id
+          AND uci.created_at >= p_pref_updated_at
+      )
+    ORDER BY cp.popularity_score DESC
+    LIMIT p_limit;
+  END;
+  $$;
+
+TEST: Run the migration locally. Verify index exists. If you created the RPC,
+test with: SELECT * FROM serve_curated_from_pool('some-uuid', 'solo-adventure', 40.7, -74.0, 10000, 100, '2020-01-01', 20);
+
+================================================================================
+STEP 2: EDGE FUNCTION — ADD SUPER-CATEGORY FETCHING
+================================================================================
+
+Open: supabase/functions/generate-curated-experiences/index.ts
+
+2A. ADD the ADVENTURE_SUPER_CATEGORIES constant (after PLACE_CATEGORIES, ~line 137):
+
+  const ADVENTURE_SUPER_CATEGORIES: Record<string, {
+    includedTypes: string[];
+    label: string;
+  }> = {
+    'outdoor-nature': {
+      includedTypes: ['park', 'botanical_garden', 'hiking_area', 'beach', 'zoo', 'national_park', 'state_park'],
+      label: 'outdoor-nature',
+    },
+    'food-dining': {
+      includedTypes: ['restaurant', 'cafe', 'bakery', 'ice_cream_shop', 'pizza_restaurant', 'ramen_restaurant', 'seafood_restaurant'],
+      label: 'food-restaurants',
+    },
+    'drink-social': {
+      includedTypes: ['bar', 'wine_bar', 'pub', 'coffee_shop', 'tea_house', 'night_club'],
+      label: 'cafes-bars-casual',
+    },
+    'culture-active': {
+      includedTypes: ['art_gallery', 'museum', 'movie_theater', 'bowling_alley', 'amusement_park', 'spa', 'performing_arts_theater'],
+      label: 'arts-culture',
+    },
+  };
+
+2B. ADD the fetchPlacesBySuperCategory function (after searchByText, ~line 440):
+
+  async function fetchPlacesBySuperCategory(
+    lat: number, lng: number, radiusMeters: number
+  ): Promise<Record<string, any[]>> {
+    const results: Record<string, any[]> = {};
+
+    // Check curated_places_cache first (reuse existing cache mechanism)
+    const locationKey = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+    const radiusBucket = Math.round(radiusMeters / 1000) * 1000;
+    const cacheKey = `turbo_${locationKey}_${radiusBucket}`;
+
+    try {
+      const { data: cached } = await supabaseAdmin
+        .from('curated_places_cache')
+        .select('category_places')
+        .eq('location_key', cacheKey)
+        .eq('radius_m', radiusBucket)
+        .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .maybeSingle();
+
+      if (cached?.category_places) {
+        console.log('[turbo] Cache HIT for', cacheKey);
+        return cached.category_places as Record<string, any[]>;
+      }
+    } catch (err) {
+      console.warn('[turbo] Cache read failed:', err);
+    }
+
+    console.log('[turbo] Cache MISS — firing 4 super-category API calls');
+
+    // Fire 4 parallel Nearby Search calls with combined includedTypes
+    await Promise.all(
+      Object.entries(ADVENTURE_SUPER_CATEGORIES).map(async ([superCat, config]) => {
+        try {
+          const response = await fetch(
+            'https://places.googleapis.com/v1/places:searchNearby',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
+                'X-Goog-FieldMask': PLACES_FIELD_MASK,
+              },
+              body: JSON.stringify({
+                includedTypes: config.includedTypes,
+                maxResultCount: 20,
+                locationRestriction: {
+                  circle: {
+                    center: { latitude: lat, longitude: lng },
+                    radius: Math.min(radiusMeters, 50000),
+                  },
+                },
+                rankPreference: 'POPULARITY',
+              }),
+            }
+          );
+          const data = await response.json();
+          results[superCat] = (data.places || [])
+            .filter((p: any) => {
+              // Filter out gyms/fitness from active results
+              const name = p.displayName?.text || '';
+              const primary = p.primaryType || '';
+              const excluded = /\b(gym|fitness|crossfit)\b/i;
+              return !excluded.test(name) && !excluded.test(primary);
+            })
+            .map((p: any) => ({
+              ...p,
+              placeType: p.primaryType || config.includedTypes[0],
+              superCategory: superCat,
+            }));
+        } catch (err) {
+          console.warn(`[turbo] Failed to fetch ${superCat}:`, err);
+          results[superCat] = [];
+        }
+      })
+    );
+
+    const summary = Object.entries(results)
+      .map(([cat, places]) => `${cat}: ${places.length}`)
+      .join(', ');
+    console.log(`[turbo] Fetched: ${summary}`);
+
+    // Cache results (fire-and-forget)
+    supabaseAdmin
+      .from('curated_places_cache')
+      .upsert({
+        location_key: cacheKey,
+        radius_m: radiusBucket,
+        category_places: results,
+        created_at: new Date().toISOString(),
+      })
+      .then(() => console.log('[turbo] Cached for', cacheKey))
+      .catch((err: any) => console.warn('[turbo] Cache write failed:', err));
+
+    return results;
+  }
+
+2C. ADD the buildTriadsFromSuperCategories function (after the new fetch function):
+
+  function buildTriadsFromSuperCategories(
+    superCatPlaces: Record<string, any[]>,
+    limit: number,
+    budgetMax: number,
+    travelMode: string,
+    userLat: number,
+    userLng: number,
+    travelConstraintType: string,
+    travelConstraintValue: number,
+    targetDatetime: Date,
+    experienceType: string,
+    skipDescriptions: boolean,
+  ): any[] {
+    const superCatNames = Object.keys(superCatPlaces).filter(
+      k => superCatPlaces[k].length > 0
+    );
+    if (superCatNames.length < 3) {
+      console.warn('[turbo] Only', superCatNames.length, 'super-categories have results');
+      return [];
+    }
+
+    // Generate all C(n,3) triad patterns
+    const patterns: [string, string, string][] = [];
+    for (let i = 0; i < superCatNames.length; i++)
+      for (let j = i + 1; j < superCatNames.length; j++)
+        for (let k = j + 1; k < superCatNames.length; k++)
+          patterns.push([superCatNames[i], superCatNames[j], superCatNames[k]]);
+
+    const shuffledPatterns = shuffle(patterns);
+    const triads: any[] = [];
+    const usedPlaceIds = new Set<string>();
+    const perStopBudget = budgetMax > 0 ? Math.ceil(budgetMax / 3) : Infinity;
+
+    // Speed config for travel constraint
+    const speedKmh: Record<string, number> = {
+      walking: 4.5, driving: 35, transit: 20, biking: 14, bicycling: 14
+    };
+    const maxDistKm = travelConstraintType === 'time'
+      ? (travelConstraintValue / 60) * (speedKmh[travelMode] || 4.5) * 1.3
+      : travelConstraintValue;
+
+    let patternIdx = 0;
+    let totalAttempts = 0;
+    const MAX_ATTEMPTS = limit * 8;
+
+    while (triads.length < limit && totalAttempts < MAX_ATTEMPTS) {
+      const pattern = shuffledPatterns[patternIdx % shuffledPatterns.length];
+      patternIdx++;
+      totalAttempts++;
+
+      const [cat1, cat2, cat3] = pattern;
+
+      // Filter available places (not used, affordable)
+      const isUsable = (p: any) =>
+        p.id && !usedPlaceIds.has(p.id) &&
+        priceLevelToRange(p.priceLevel).min <= perStopBudget;
+
+      const pool1 = superCatPlaces[cat1].filter(isUsable);
+      const pool2 = superCatPlaces[cat2].filter(isUsable);
+      const pool3 = superCatPlaces[cat3].filter(isUsable);
+
+      if (!pool1.length || !pool2.length || !pool3.length) continue;
+
+      // Pick random place from each super-category
+      const p1 = pool1[Math.floor(Math.random() * Math.min(pool1.length, 5))];
+      const p2 = pool2[Math.floor(Math.random() * Math.min(pool2.length, 5))];
+      const p3 = pool3[Math.floor(Math.random() * Math.min(pool3.length, 5))];
+
+      // Travel constraint: first stop must be reachable
+      const p1Lat = p1.location?.latitude ?? userLat;
+      const p1Lng = p1.location?.longitude ?? userLng;
+      const distToFirst = haversineKm(userLat, userLng, p1Lat, p1Lng);
+      if (distToFirst > maxDistKm) continue;
+
+      // Opening hours check (if we have the data)
+      if (!isPlaceOpenAt(p1, targetDatetime) ||
+          !isPlaceOpenAt(p2, targetDatetime) ||
+          !isPlaceOpenAt(p3, targetDatetime)) continue;
+
+      // Mark as used (global dedup)
+      usedPlaceIds.add(p1.id);
+      usedPlaceIds.add(p2.id);
+      usedPlaceIds.add(p3.id);
+
+      // Build the curated card (reuse existing buildStop/card logic)
+      // ... (same card building as existing resolvePairingFromCategories
+      //      but using the 3 selected places)
+      // Important: use the SAME card structure so pool storage works identically
+
+      const stops = [p1, p2, p3].map((place, idx) => {
+        const placeType = place.placeType || place.primaryType || '';
+        const priceRange = priceLevelToRange(place.priceLevel);
+        const { hours, isOpenNow } = parseOpeningHours(place);
+        const lat = place.location?.latitude ?? userLat;
+        const lng = place.location?.longitude ?? userLng;
+        const distKm = haversineKm(userLat, userLng, lat, lng);
+        const travelTimeFromUser = estimateTravelMinutes(distKm, travelMode);
+        const stopLabels = ['Start Here', 'Then', 'End With'] as const;
+        const prevLat = idx > 0 ? ([p1, p2, p3][idx - 1].location?.latitude ?? userLat) : null;
+        const prevLng = idx > 0 ? ([p1, p2, p3][idx - 1].location?.longitude ?? userLng) : null;
+        const interStopDist = prevLat !== null
+          ? haversineKm(prevLat!, prevLng!, lat, lng)
+          : null;
+        const interStopTime = interStopDist !== null
+          ? estimateTravelMinutes(interStopDist, travelMode)
+          : null;
+
+        return {
+          stopNumber: idx + 1,
+          stopLabel: stopLabels[idx],
+          placeId: place.id ?? '',
+          placeName: place.displayName?.text ?? '',
+          placeType,
+          address: place.formattedAddress ?? '',
+          rating: place.rating ?? 0,
+          reviewCount: place.userRatingCount ?? 0,
+          imageUrl: getPhotoUrl(place),
+          priceLevelLabel: priceLevelToLabel(place.priceLevel),
+          priceMin: priceRange.min,
+          priceMax: priceRange.max,
+          openingHours: hours,
+          isOpenNow,
+          website: place.websiteUri ?? null,
+          lat,
+          lng,
+          distanceFromUserKm: Math.round(distKm * 10) / 10,
+          travelTimeFromUserMin: travelTimeFromUser,
+          travelTimeFromPreviousStopMin: interStopTime,
+          travelModeFromPreviousStop: idx > 0 ? travelMode : null,
+          aiDescription: `A great ${placeType.replace(/_/g, ' ')} spot for your adventure.`,
+          estimatedDurationMinutes: STOP_DURATION_MINUTES[placeType] || DEFAULT_STOP_DURATION,
+        };
+      });
+
+      const totalPriceMin = stops.reduce((s, st) => s + st.priceMin, 0);
+      const totalPriceMax = stops.reduce((s, st) => s + st.priceMax, 0);
+      const totalDuration = stops.reduce((s, st) => s + st.estimatedDurationMinutes, 0)
+        + (stops[1]?.travelTimeFromPreviousStopMin ?? 0)
+        + (stops[2]?.travelTimeFromPreviousStopMin ?? 0);
+      const avgRating = stops.reduce((s, st) => s + st.rating, 0) / 3;
+
+      const pairingKey = [cat1, cat2, cat3].sort().join('+');
+      const taglines = TAGLINES_BY_TYPE[experienceType] || DEFAULT_TAGLINES;
+
+      triads.push({
+        id: `curated-${Date.now()}-${triads.length}-${Math.random().toString(36).slice(2, 8)}`,
+        cardType: 'curated',
+        experienceType,
+        pairingKey,
+        title: stops.map(s => s.placeName).join(' → '),
+        tagline: taglines[Math.floor(Math.random() * taglines.length)],
+        stops,
+        totalPriceMin,
+        totalPriceMax,
+        estimatedDurationMinutes: totalDuration,
+        matchScore: Math.round(avgRating * 20),
+      });
+    }
+
+    console.log(`[turbo] Built ${triads.length} triads from ${usedPlaceIds.size} unique places (${totalAttempts} attempts)`);
+    return triads;
+  }
+
+2D. ADD warmPool support. Near the top of the serve handler (after parsing the
+    request body, around line ~940), add:
+
+  const warmPool = body.warmPool ?? false;
+
+  if (warmPool) {
+    // Check if pool is already sufficiently populated
+    try {
+      const poolResult = await serveCuratedCardsFromPool({
+        supabaseAdmin: poolAdmin,
+        userId: poolUserId,
+        lat: location.lat,
+        lng: location.lng,
+        radiusMeters: clampedRadius,
+        categories: [],
+        budgetMin: 0,
+        budgetMax: budgetMax,
+        limit: 40,
+        cardType: 'curated',
+        experienceType,
+      }, GOOGLE_PLACES_API_KEY);
+
+      if (poolResult.totalPoolSize >= 40) {
+        console.log('[warm-pool] Pool already warm:', poolResult.totalPoolSize, 'cards');
+        return new Response(JSON.stringify({
+          success: true, message: 'Pool already warm',
+          poolSize: poolResult.totalPoolSize,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      console.log('[warm-pool] Pool has', poolResult.totalPoolSize, 'cards, needs warming');
+    } catch (err) {
+      console.warn('[warm-pool] Pool check failed, proceeding to warm:', err);
+    }
+    // Fall through to the normal pipeline (which will over-populate)
+  }
+
+2E. REPLACE the solo-adventure block (lines 1006-1165). Replace this:
+
+  if (experienceType === 'solo-adventure') {
+    console.log('[solo-adventure] Fetching 20 places from each of 9 categories...');
+    let categoryPlaces = await fetchPlacesByCategoryWithCache(...);
+    // ... all 160 lines of old category-based generation ...
+  }
+
+  With:
+
+  if (experienceType === 'solo-adventure') {
+    console.log('[turbo] Starting Adventurous Turbo Pipeline...');
+
+    // TURBO: 4 super-category calls instead of 45 individual calls
+    const superCatPlaces = await fetchPlacesBySuperCategory(
+      location.lat, location.lng, clampedRadius
+    );
+
+    // Over-populate: build 40+ triads for free batch 2
+    const buildLimit = warmPool ? 50 : Math.max(limit, 40);
+    const allTriads = buildTriadsFromSuperCategories(
+      superCatPlaces, buildLimit, budgetMax, travelMode,
+      location.lat, location.lng,
+      travelConstraintType, travelConstraintValue,
+      targetDatetime, experienceType, skipDescriptions,
+    );
+
+    console.log(`[turbo] Built ${allTriads.length} triads, serving ${Math.min(allTriads.length, limit)}`);
+
+    // Store ALL triads in pool (fire-and-forget)
+    if (poolAdmin && allTriads.length > 0) {
+      (async () => {
+        try {
+          const poolIds: string[] = [];
+          for (const card of allTriads) {
+            // ... same pool storage logic as existing (lines 1097-1153)
+            // Copy the existing storeTriadInPool logic verbatim
+          }
+          // Only record impressions for SERVED cards (not pre-warmed)
+          if (!warmPool && poolUserId !== 'anonymous' && poolIds.length > 0) {
+            const servedIds = poolIds.slice(0, limit);
+            await recordImpressions(poolAdmin, poolUserId, servedIds);
+          }
+          console.log(`[turbo] Stored ${poolIds.length} triads in pool`);
+        } catch (storeError) {
+          console.warn('[turbo] Pool store error:', storeError);
+        }
+      })();
+    }
+
+    // Background niche enrichment (fire-and-forget, doesn't block)
+    if (!warmPool) {
+      enrichPoolWithNicheTypes(location.lat, location.lng, clampedRadius);
+    }
+
+    const cards = allTriads.slice(0, warmPool ? allTriads.length : limit);
+    return new Response(
+      JSON.stringify({
+        cards: warmPool ? [] : cards,  // warmPool returns empty (just populates)
+        meta: {
+          totalResults: cards.length,
+          fromPool: 0,
+          fromApi: cards.length,
+          pipeline: 'turbo',
+          superCategoriesFetched: Object.keys(superCatPlaces).length,
+          totalTriadsBuilt: allTriads.length,
+        },
+        ...(warmPool ? { success: true, poolSize: allTriads.length } : {}),
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+2F. ADD background niche enrichment function (optional, for richer future batches):
+
+  async function enrichPoolWithNicheTypes(
+    lat: number, lng: number, radiusMeters: number
+  ) {
+    const nicheQueries = [
+      'escape room',
+      'pottery class studio',
+      'karaoke bar',
+      'comedy club',
+      'rock climbing',
+    ];
+
+    try {
+      // Fire 2-3 text search calls in background
+      const nicheResults = await Promise.allSettled(
+        nicheQueries.slice(0, 3).map(query =>
+          searchByText(query, lat, lng, radiusMeters)
+        )
+      );
+
+      const allNiche: any[] = [];
+      for (const result of nicheResults) {
+        if (result.status === 'fulfilled') {
+          allNiche.push(...result.value);
+        }
+      }
+
+      // Store in place_pool for future use
+      for (const place of allNiche) {
+        await upsertPlaceToPool(poolAdmin, place, GOOGLE_PLACES_API_KEY, 'text_search');
+      }
+
+      console.log(`[turbo-niche] Stored ${allNiche.length} niche places in pool`);
+    } catch (err) {
+      console.warn('[turbo-niche] Niche enrichment failed:', err);
+    }
+  }
+
+TEST STEP 2:
+  - Deploy the edge function locally: supabase functions serve generate-curated-experiences
+  - Call with: curl -X POST ... -d '{"experienceType":"solo-adventure","location":{"lat":40.7128,"lng":-74.006},"limit":20}'
+  - Verify in logs: "[turbo] Starting Adventurous Turbo Pipeline..."
+  - Verify EXACTLY 4 Google API calls (check for 4x "places:searchNearby" in logs)
+  - Verify 20+ cards returned
+  - Verify response time < 3 seconds
+
+================================================================================
+STEP 3: MOBILE — SIMPLIFY useCuratedExperiences HOOK
+================================================================================
+
+Open: app-mobile/src/hooks/useCuratedExperiences.ts
+
+Replace the ENTIRE file contents with the simplified single-shot version.
+
+KEY CHANGES:
+  - Remove PRIORITY_LIMIT, BACKGROUND_LIMIT constants
+  - Remove the priority query and background query
+  - Remove bestCardsRef regression prevention
+  - Remove isFullBatchLoaded race condition logic
+  - Replace with a single useQuery call
+
+The hook should now be ~40-50 lines instead of ~170.
+
+Keep the same export interface:
+  { cards, isLoading, isFullBatchLoaded, error, refetch }
+
+But isFullBatchLoaded simply becomes: !isLoading && !isFetching
+
+TEST STEP 3:
+  - Run the app in Expo
+  - Navigate to solo mode, tap Adventurous
+  - Verify cards load (may take 2-3s on cold, <1s on warm)
+  - Verify no TypeScript errors
+  - Verify isFullBatchLoaded works (no stuck spinners)
+
+================================================================================
+STEP 4: MOBILE — ADD warmPool SERVICE METHOD
+================================================================================
+
+Open: app-mobile/src/services/curatedExperiencesService.ts
+
+Add a warmPool method to the service:
+
+  async warmPool(params: {
+    experienceType: string;
+    location: { lat: number; lng: number };
+    budgetMax: number;
+    travelMode: string;
+    travelConstraintType: string;
+    travelConstraintValue: number;
+  }): Promise<void> {
+    try {
+      await supabase.functions.invoke('generate-curated-experiences', {
+        body: {
+          experienceType: params.experienceType,
+          location: params.location,
+          budgetMax: params.budgetMax,
+          travelMode: params.travelMode,
+          travelConstraintType: params.travelConstraintType,
+          travelConstraintValue: params.travelConstraintValue,
+          warmPool: true,
+          limit: 40,
+        },
+      });
+    } catch (err) {
+      // Fire and forget — don't throw
+      console.warn('[warmPool] Failed:', err);
+    }
+  }
+
+TEST STEP 4:
+  - Import and call warmPool manually from the console or a test component
+  - Verify edge function logs show "[warm-pool]" messages
+  - Verify pool gets populated (check card_pool table)
+
+================================================================================
+STEP 5: MOBILE — ADD PRE-WARMING TO RecommendationsContext
+================================================================================
+
+Open: app-mobile/src/contexts/RecommendationsContext.tsx
+
+5A. Import the service method (if not already imported)
+
+5B. Add the pre-warming effect. Place it near the other useEffects, after
+    location and preferences are available:
+
+  const warmPoolFired = useRef(false);
+
+  useEffect(() => {
+    if (userLocation && userPrefs && !warmPoolFired.current) {
+      warmPoolFired.current = true;
+      curatedExperiencesService.warmPool({
+        experienceType: 'solo-adventure',
+        location: userLocation,
+        budgetMax: userPrefs.budget_max ?? 1000,
+        travelMode: userPrefs.travel_mode ?? 'walking',
+        travelConstraintType: (userPrefs.travel_constraint_type as string) ?? 'time',
+        travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
+      }).catch(() => {}); // Intentionally fire-and-forget
+    }
+  }, [userLocation, userPrefs]);
+
+5C. Reset warmPoolFired when preferences change:
+
+  // In the existing refreshKey/preference change handler:
+  useEffect(() => {
+    if (refreshKey) {
+      warmPoolFired.current = false; // Allow re-warm after pref change
+    }
+  }, [refreshKey]);
+
+5D. Add post-batch pre-warming to generateNextBatch():
+
+  Find the existing generateNextBatch function and add after batchSeed increment:
+
+    // Pre-warm for the next-next batch
+    if (userLocation && userPrefs) {
+      curatedExperiencesService.warmPool({
+        experienceType: 'solo-adventure',
+        location: userLocation,
+        budgetMax: userPrefs.budget_max ?? 1000,
+        travelMode: userPrefs.travel_mode ?? 'walking',
+        travelConstraintType: (userPrefs.travel_constraint_type as string) ?? 'time',
+        travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
+      }).catch(() => {});
+    }
+
+5E. Simplify batch-loading states:
+
+  The old code had complex logic for allCuratedBatchesLoaded that waited for
+  ALL 5 hooks' isFullBatchLoaded. With the single-shot hook, each hook reports
+  isFullBatchLoaded = !isLoading && !isFetching, which is simpler and reliable.
+
+  Review the existing allCuratedBatchesLoaded computation and ensure it still
+  works with the simplified hook output. It should, since the interface hasn't
+  changed.
+
+TEST STEP 5:
+  - Open the app
+  - Watch edge function logs for "[warm-pool]" call on app load
+  - Navigate to Adventurous — cards should appear instantly (<500ms)
+  - Swipe all 20, tap "Generate Another 20" — new cards instantly
+  - Change preferences — verify warmPool fires again
+
+================================================================================
+STEP 6: VERIFY END-TO-END
+================================================================================
+
+Full test sequence:
+
+1. Clear your card_pool table (for clean test):
+   DELETE FROM card_pool WHERE card_type = 'curated' AND experience_type = 'solo-adventure';
+
+2. Open the app. Wait 5 seconds (let pre-warm run).
+
+3. Tap Adventurous.
+   EXPECTED: 20 cards appear. Check:
+   - All 20 have 3 stops each
+   - Stop images load
+   - Variety of categories across cards (outdoor, food, drink, culture)
+   - No duplicate stops within any single card
+   - No duplicate cards (different titles)
+
+4. Swipe all 20 cards.
+   EXPECTED: "Batch complete!" screen appears.
+
+5. Tap "Generate Another 20".
+   EXPECTED: 20 NEW cards appear in <1s (from over-populated pool).
+   Check: No cards repeat from batch 1.
+
+6. Tap "Review Previous Batch".
+   EXPECTED: Original 20 cards reappear.
+
+7. Change budget from $100 to $25.
+   EXPECTED: New cards appear with lower price ranges.
+
+8. Check edge function logs:
+   - First load: Should see "[warm-pool]" then "[turbo]" messages
+   - Batch 2: Should see pool-first serve (NO Google API calls)
+   - Total Google API calls for entire session: 4 (from initial warm)
+
+================================================================================
+COMMON MISTAKES TO AVOID
+================================================================================
+
+1. DO NOT remove the existing fetchPlacesByCategory / fetchPlacesByCategoryWithCache
+   functions. Other experience types (first-dates, romantic, etc.) still use them.
+   The turbo pipeline is ONLY for solo-adventure.
+
+2. DO NOT change the card structure output. The pool storage, impression tracking,
+   and mobile rendering all depend on the exact same CuratedExperienceCard shape.
+   Use the same field names (stops, placeId, placeName, etc.).
+
+3. DO NOT remove the existing pool-first check at the top of the handler
+   (lines 944-1002). The turbo pipeline should only run AFTER the pool-first
+   check fails. If the pool already has 20+ cards, serve from pool.
+
+4. DO NOT await the pool storage or niche enrichment. Both must be fire-and-forget
+   to avoid blocking the response.
+
+5. DO NOT forget the gym/fitness filter on the super-category results. The
+   culture-active super-category may return gyms which should be excluded.
+
+6. DO NOT change the warmPool response to return cards. warmPool should either
+   return { success: true, poolSize } (if pool already warm) or populate the pool
+   and return the same. The mobile side ignores the response.
+
+7. When building triads, pick from the TOP 5 places in each super-category
+   (not completely random). This ensures higher-quality cards. The randomization
+   comes from which 5 places happen to be top-rated in different areas.
+
+================================================================================
+DONE WHEN
+================================================================================
+
+You know it's working when:
+
+[ ] Tapping Adventurous shows 20 cards (not 2, not 3, not 10 — exactly 20)
+[ ] Cold miss serves in under 3 seconds
+[ ] Warm pool serves in under 500ms
+[ ] Edge function logs show exactly 4 Google API calls on cold miss
+[ ] "Generate Another 20" returns different cards with 0 API calls
+[ ] "Review Previous Batch" works
+[ ] Preference changes trigger new cards
+[ ] No TypeScript errors
+[ ] No console errors or warnings (besides fire-and-forget catches)
+[ ] useCuratedExperiences hook is ~40-50 lines (no dual-batch)
+[ ] Pre-warming fires on app load (visible in edge function logs)
+
+================================================================================
+FUTURE: SCALING TO OTHER EXPERIENCE TYPES
+================================================================================
+
+Once verified for solo-adventure:
+1. Create ROMANTIC_SUPER_CATEGORIES, FIRST_DATE_SUPER_CATEGORIES, etc.
+2. Each maps to different type mixes (e.g., romantic skips bowling, adds gardens)
+3. Same 4-call pattern applies to all types
+4. Set isImplemented: true in CURATED_EXPERIENCES constant for each type
+5. Pre-warming can warm multiple types in parallel (fire 5 warmPool calls)
+
+================================================================================
