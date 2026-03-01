@@ -195,6 +195,25 @@ function buildAllowedPlaceTypes(selectedCategories?: string[]): Set<string> | nu
   return allowed.size > 0 ? allowed : null;
 }
 
+/**
+ * Check whether a Google Places result matches the allowed place types.
+ * Checks primaryType first, then falls back to the full `types[]` array.
+ * This ensures we don't miss places whose primaryType is a Google sub-type
+ * (e.g. `city_park`) but whose `types[]` includes our canonical type (`park`).
+ */
+function placeMatchesAllowedTypes(place: any, allowed: Set<string>): boolean {
+  const primary = place.primaryType || '';
+  if (primary && allowed.has(primary)) return true;
+  const types: string[] = place.types || [];
+  return types.some(t => allowed.has(t));
+}
+
+// Outdoor place types that are typically always-open (no regular hours data)
+const ALWAYS_OPEN_TYPES = new Set([
+  'park', 'national_park', 'state_park', 'hiking_area', 'beach',
+  'wildlife_park', 'botanical_garden', 'dog_park', 'city_park',
+]);
+
 // Generate all 3-category combinations (C(9,3) = 84 combinations)
 function generateCategoryCombinations(): string[][] {
   const combinations: string[][] = [];
@@ -787,6 +806,7 @@ function buildSingleStopCards(
   targetDatetime: Date,
   experienceType: string,
   categoryLabel: string,
+  allowedPlaceTypes: Set<string> | null,
   batchSeed: number = 0,
 ): any[] {
   // Flatten and dedup all places across super-categories
@@ -809,35 +829,66 @@ function buildSingleStopCards(
     ? (travelConstraintValue / 60) * (speedKmh[travelMode] || 4.5) * 1.3
     : travelConstraintValue;
 
-  // Filter: budget, open-at-time, travel constraint
+  // Filter: strict type match, budget, travel constraint.
+  // SKIP open-hours check for outdoor/nature places (parks, beaches, trails 
+  // rarely have regularOpeningHours and would be wrongly excluded).
   const filtered = allPlaces.filter(p => {
+    // Strict type enforcement: place must match one of the allowed types
+    if (allowedPlaceTypes && !placeMatchesAllowedTypes(p, allowedPlaceTypes)) return false;
     const priceRange = priceLevelToRange(p.priceLevel);
     if (budgetMax > 0 && priceRange.min > budgetMax) return false;
-    if (!isPlaceOpenAt(p, targetDatetime)) return false;
+    const primaryType = p.primaryType || '';
+    const isOutdoor = ALWAYS_OPEN_TYPES.has(primaryType) ||
+      (p.types || []).some((t: string) => ALWAYS_OPEN_TYPES.has(t));
+    if (!isOutdoor && !isPlaceOpenAt(p, targetDatetime)) return false;
     const lat = p.location?.latitude ?? userLat;
     const lng = p.location?.longitude ?? userLng;
     if (haversineKm(userLat, userLng, lat, lng) > maxDistKm) return false;
     return true;
   });
 
-  // Seeded shuffle so each batchSeed produces a different ordering
-  const seededShuffle = <T,>(arr: T[]): T[] => {
-    const copy = [...arr];
+  // Deterministic shuffle (seed=0 always gives same base ordering)
+  // Then use offset-based pagination so each batchSeed gets a unique slice.
+  const baseShuffled = (() => {
+    const copy = [...filtered];
     for (let i = copy.length - 1; i > 0; i--) {
-      const hash = ((batchSeed * 2654435761 + i * 40503) >>> 0);
+      // Use a fixed seed (42) combined with index for stable base ordering
+      const hash = ((42 * 2654435761 + i * 40503) >>> 0);
       const j = hash % (i + 1);
       [copy[i], copy[j]] = [copy[j], copy[i]];
     }
     return copy;
-  };
+  })();
 
-  const shuffled = seededShuffle(filtered);
-  const selected = shuffled.slice(0, limit);
+  // Offset into the shuffled pool: batch 0 = items 0..limit-1, batch 1 = limit..2*limit-1, etc.
+  const offset = batchSeed * limit;
+  let selected: any[];
+  if (offset < baseShuffled.length) {
+    selected = baseShuffled.slice(offset, offset + limit);
+  } else {
+    // Pool exhausted — do a re-shuffle with batchSeed so we still get variety
+    const reShuffled = [...filtered];
+    for (let i = reShuffled.length - 1; i > 0; i--) {
+      const hash = ((batchSeed * 2654435761 + i * 40503) >>> 0);
+      const j = hash % (i + 1);
+      [reShuffled[i], reShuffled[j]] = [reShuffled[j], reShuffled[i]];
+    }
+    selected = reShuffled.slice(0, limit);
+  }
+
+  console.log(`[turbo-single] Pool: ${allPlaces.length} total → ${filtered.length} after filter → offset=${offset}, selected ${selected.length} (batchSeed=${batchSeed})`);
 
   const taglines = TAGLINES_BY_TYPE[experienceType] || DEFAULT_TAGLINES;
 
   const cards = selected.map((place, idx) => {
-    const placeType = place.placeType || place.primaryType || '';
+    // Resolve placeType: prefer a type that matches our allowed list over Google's primaryType.
+    // Google may return primaryType='city_park' but types[] contains 'park' which is what we want.
+    let placeType = place.primaryType || '';
+    if (allowedPlaceTypes && !allowedPlaceTypes.has(placeType)) {
+      const matchingType = (place.types || []).find((t: string) => allowedPlaceTypes.has(t));
+      if (matchingType) placeType = matchingType;
+    }
+    if (!placeType) placeType = place.placeType || '';
     const priceRange = priceLevelToRange(place.priceLevel);
     const { hours, isOpenNow } = parseOpeningHours(place);
     const lat = place.location?.latitude ?? userLat;
@@ -1546,10 +1597,9 @@ serve(async (req) => {
       // Filter places by user-selected categories if provided
       if (allowedPlaceTypes) {
         for (const key of Object.keys(superCatPlaces)) {
-          superCatPlaces[key] = superCatPlaces[key].filter((p: any) => {
-            const type = p.placeType || p.primaryType || '';
-            return allowedPlaceTypes.has(type);
-          });
+          superCatPlaces[key] = superCatPlaces[key].filter((p: any) =>
+            placeMatchesAllowedTypes(p, allowedPlaceTypes)
+          );
         }
         const remaining = Object.values(superCatPlaces).reduce((s, arr) => s + arr.length, 0);
         console.log(`[turbo] After category filter: ${remaining} places remain`);
@@ -1574,6 +1624,7 @@ serve(async (req) => {
           location.lat, location.lng,
           travelConstraintType, travelConstraintValue,
           targetDatetime, experienceType, categoryLabel,
+          allowedPlaceTypes,
           batchSeed,
         );
         console.log(`[turbo] Category-filtered → ${nonEmptySuperCats} super-cats → built ${allCards.length} single-stop cards`);

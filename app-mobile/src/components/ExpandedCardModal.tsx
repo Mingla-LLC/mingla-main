@@ -377,6 +377,28 @@ function CuratedPlanView({
   onSave: (card: ExpandedCardData) => Promise<void> | void;
   onClose: () => void;
 }) {
+  return (
+    <MultiStopPlanView
+      card={card}
+      isSaved={isSaved}
+      onSave={onSave}
+      onClose={onClose}
+    />
+  );
+}
+
+// ── Multi-stop expanded card (Adventurous curated cards) ──
+function MultiStopPlanView({
+  card,
+  isSaved,
+  onSave,
+  onClose,
+}: {
+  card: CuratedExperienceCard;
+  isSaved?: boolean;
+  onSave: (card: ExpandedCardData) => Promise<void> | void;
+  onClose: () => void;
+}) {
   const avgRating =
     card.stops.length > 0
       ? (card.stops.reduce((s, st) => s + st.rating, 0) / card.stops.length).toFixed(1)
@@ -709,6 +731,8 @@ export default function ExpandedCardModal({
   const [loadingPicnicData, setLoadingPicnicData] = useState(false);
   const [isNightOutShareOpen, setIsNightOutShareOpen] = useState(false);
   const [ticketBrowserUrl, setTicketBrowserUrl] = useState<string | null>(null);
+  const [browserUrl, setBrowserUrl] = useState<string | null>(null);
+  const [browserTitle, setBrowserTitle] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackCardId, setFeedbackCardId] = useState("");
   const [feedbackTitle, setFeedbackTitle] = useState("");
@@ -1385,10 +1409,9 @@ export default function ExpandedCardModal({
                   currentMode={currentMode}
                   onCardRemoved={onCardRemoved}
                   onScheduleSuccess={(scheduledCard) => {
-                    setFeedbackCardId(scheduledCard.id);
-                    setFeedbackTitle(scheduledCard.title);
-                    onClose(); // Close the expanded card modal first
-                    setTimeout(() => setShowFeedback(true), 350); // Show feedback after close animation
+                    // Don't show feedback immediately — reviews are shown the day after
+                    // the scheduled experience when the user returns to the app.
+                    onClose();
                   }}
                 />
               </>
@@ -1438,6 +1461,14 @@ export default function ExpandedCardModal({
               onClose={() => setTicketBrowserUrl(null)}
             />
           )}
+
+          {/* In-app browser for Policies & Reservations (Nature cards) */}
+          <InAppBrowserModal
+            visible={browserUrl !== null}
+            url={browserUrl ?? ''}
+            title={browserTitle}
+            onClose={() => setBrowserUrl(null)}
+          />
 
           {isNightOut && nightOut && (
             <ShareModal

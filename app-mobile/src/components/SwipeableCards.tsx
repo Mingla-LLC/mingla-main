@@ -796,6 +796,9 @@ export default function SwipeableCards({
         : new Date(),
       // Include strollData if it already exists on the card
       strollData: currentRec.strollData,
+      // Pass through website/phone for nature cards' Policies & Reservations
+      website: (currentRec as any).website ?? undefined,
+      phone: (currentRec as any).phone ?? undefined,
     };
 
     setSelectedCardForExpansion(expandedCardData);

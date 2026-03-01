@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppStore } from "../../store/appStore";
@@ -34,6 +35,7 @@ export default function FeedbackModal({
   const [rating, setRating] = useState(0);
   const [feedbackText, setFeedbackText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [didNotGo, setDidNotGo] = useState(false);
   const { user } = useAppStore();
 
   const MAX_CHARS = 500;
@@ -42,6 +44,7 @@ export default function FeedbackModal({
     setRating(0);
     setFeedbackText("");
     setIsSubmitting(false);
+    setDidNotGo(false);
   }, []);
 
   const handleSkip = () => {
@@ -50,7 +53,8 @@ export default function FeedbackModal({
   };
 
   const handleSubmit = async () => {
-    if (rating === 0) return;
+    // If "did not go", allow submit without rating
+    if (!didNotGo && rating === 0) return;
     if (!user?.id) {
       onClose();
       return;
@@ -61,13 +65,16 @@ export default function FeedbackModal({
       await experienceFeedbackService.submitFeedback(user.id, {
         card_id: cardId,
         experience_title: experienceTitle,
-        rating,
+        rating: didNotGo ? 0 : rating,
         feedback_text: feedbackText.trim() || undefined,
+        did_not_attend: didNotGo,
       });
-      toastManager.success("Thanks for your feedback!", 2000);
+      toastManager.success(
+        didNotGo ? "Got it — no worries!" : "Thanks for your feedback!",
+        2000,
+      );
     } catch (error) {
       console.error("Error submitting feedback:", error);
-      // Don't block — still close the modal
     } finally {
       resetState();
       onClose();
@@ -94,6 +101,9 @@ export default function FeedbackModal({
     }
     return stars;
   };
+
+  // Whether the submit button should be enabled
+  const canSubmit = didNotGo || rating > 0;
 
   return (
     <Modal
@@ -122,28 +132,43 @@ export default function FeedbackModal({
 
           {/* Content */}
           <View style={styles.content}>
-            {/* Star Rating */}
-            <View style={styles.starsContainer}>{renderStars()}</View>
-
-            {/* Text Input */}
-            <Text style={styles.inputLabel}>
-              Share your thoughts (optional)
-            </Text>
-            <View style={styles.textInputContainer}>
-              <TextInput
-                style={styles.textInput}
-                placeholder="What did you like or dislike about this experience?"
-                placeholderTextColor="#9CA3AF"
-                multiline
-                maxLength={MAX_CHARS}
-                value={feedbackText}
-                onChangeText={setFeedbackText}
-                textAlignVertical="top"
+            {/* "I did not go" toggle */}
+            <View style={styles.didNotGoRow}>
+              <Text style={styles.didNotGoLabel}>I didn't go</Text>
+              <Switch
+                value={didNotGo}
+                onValueChange={setDidNotGo}
+                trackColor={{ false: "#D1D5DB", true: "#FDBA74" }}
+                thumbColor={didNotGo ? "#EA580C" : "#f4f3f4"}
               />
-              <Text style={styles.charCount}>
-                {feedbackText.length}/{MAX_CHARS}
-              </Text>
             </View>
+
+            {/* Star Rating — hidden when "didn't go" */}
+            {!didNotGo && (
+              <>
+                <View style={styles.starsContainer}>{renderStars()}</View>
+
+                {/* Text Input */}
+                <Text style={styles.inputLabel}>
+                  Share your thoughts (optional)
+                </Text>
+                <View style={styles.textInputContainer}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="What did you like or dislike about this experience?"
+                    placeholderTextColor="#9CA3AF"
+                    multiline
+                    maxLength={MAX_CHARS}
+                    value={feedbackText}
+                    onChangeText={setFeedbackText}
+                    textAlignVertical="top"
+                  />
+                  <Text style={styles.charCount}>
+                    {feedbackText.length}/{MAX_CHARS}
+                  </Text>
+                </View>
+              </>
+            )}
 
             {/* Buttons */}
             <View style={styles.buttonsRow}>
@@ -158,11 +183,11 @@ export default function FeedbackModal({
               <TouchableOpacity
                 style={[
                   styles.submitButton,
-                  rating === 0 && styles.submitButtonDisabled,
+                  !canSubmit && styles.submitButtonDisabled,
                 ]}
                 onPress={handleSubmit}
                 activeOpacity={0.7}
-                disabled={rating === 0 || isSubmitting}
+                disabled={!canSubmit || isSubmitting}
               >
                 {isSubmitting ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
@@ -213,6 +238,18 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 24,
+  },
+  didNotGoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+    paddingVertical: 4,
+  },
+  didNotGoLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#374151",
   },
   starsContainer: {
     flexDirection: "row",

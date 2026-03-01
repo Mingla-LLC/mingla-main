@@ -14,7 +14,6 @@ export default function BusynessSection({
   loading,
   travelTime,
 }: BusynessSectionProps) {
-  // Get busyness level percentage range
   const getBusynessRange = (popularity: number): string => {
     if (popularity < 30) return "0-30%";
     if (popularity < 50) return "30-50%";
@@ -23,146 +22,92 @@ export default function BusynessSection({
     return "85-100%";
   };
 
-  // Get traffic condition text
   const getTrafficCondition = (
     condition?: "Light" | "Moderate" | "Heavy"
   ): string => {
     if (!condition) return "Clear Roads";
     switch (condition) {
       case "Light":
-        return "Clear Roads";
+        return "Clear";
       case "Moderate":
-        return "Moderate Traffic";
+        return "Moderate";
       case "Heavy":
-        return "Heavy Traffic";
+        return "Heavy";
       default:
-        return "Clear Roads";
+        return "Clear";
     }
-  };
-
-  // Get delay text
-  const getDelayText = (condition?: "Light" | "Moderate" | "Heavy"): string => {
-    if (!condition || condition === "Light") return "No delays";
-    if (condition === "Moderate") return "Minor delays";
-    return "Expect delays";
   };
 
   if (loading) {
     return (
       <View style={styles.container}>
-        {/* Traffic Conditions Loading */}
-        <View style={styles.card}>
-          <View style={styles.header}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="car" size={20} color="#fed7aa" />
-            </View>
-            <Text style={styles.title}>Traffic Conditions</Text>
+        <View style={styles.row}>
+          <View style={styles.iconBadge}>
+            <Ionicons name="car" size={14} color="#ea580c" />
           </View>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#ea580c" />
-            <Text style={styles.loadingText}>Loading traffic data...</Text>
-          </View>
+          <Text style={styles.label}>Traffic</Text>
+          <ActivityIndicator size="small" color="#ea580c" />
         </View>
-
-        {/* Busy Level Loading */}
-        <View style={[styles.card, styles.busyCard]}>
-          <View style={styles.header}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="stats-chart" size={20} color="#fed7aa" />
-            </View>
-            <Text style={styles.title}>Busy Level</Text>
+        <View style={styles.row}>
+          <View style={styles.iconBadge}>
+            <Ionicons name="stats-chart" size={14} color="#ea580c" />
           </View>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#ea580c" />
-            <Text style={styles.loadingText}>Loading busyness data...</Text>
-          </View>
+          <Text style={styles.label}>Busy Level</Text>
+          <ActivityIndicator size="small" color="#ea580c" />
         </View>
       </View>
     );
   }
 
-  if (!busynessData) {
-    return null;
-  }
+  if (!busynessData) return null;
 
   const trafficCondition =
     busynessData.trafficInfo?.trafficCondition || "Light";
   const currentTravelTime =
     busynessData.trafficInfo?.currentTravelTime || travelTime || "N/A";
-  const busynessRange = getBusynessRange(busynessData.currentPopularity);
 
   return (
     <View style={styles.container}>
-      {/* Traffic Conditions Card */}
+      {/* Traffic Row */}
       {(busynessData.trafficInfo || travelTime) && (
-        <View style={styles.card}>
-          <View style={styles.header}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="car" size={20} color="#d6691f" />
-            </View>
-            <View style={styles.headerTextContainer}>
-              <Text style={styles.title}>Traffic Conditions</Text>
-              <Text style={styles.condition}>
-                {busynessData.trafficInfo
-                  ? getTrafficCondition(trafficCondition)
-                  : "Clear Roads"}
-              </Text>
-            </View>
-            <View style={styles.metrics}>
-              <Text style={styles.time}>{currentTravelTime}</Text>
-              {busynessData.trafficInfo && (
-                <Text style={styles.delay}>
-                  {getDelayText(trafficCondition)}
-                </Text>
-              )}
-            </View>
+        <View style={styles.row}>
+          <View style={styles.iconBadge}>
+            <Ionicons name="car" size={14} color="#ea580c" />
           </View>
-
-          <View style={styles.recommendationBox}>
-            <Text style={styles.recommendationText}>
-              Recommendation:{" "}
-              {busynessData.trafficInfo
-                ? trafficCondition === "Light"
-                  ? "Excellent driving conditions - smooth journey ahead!"
-                  : trafficCondition === "Moderate"
-                  ? "Moderate traffic expected - plan for slight delays."
-                  : "Heavy traffic conditions - consider alternative routes or timing."
-                : "Good conditions for travel."}
+          <Text style={styles.label}>Traffic</Text>
+          <View style={styles.conditionBadge}>
+            <Text style={styles.conditionText}>
+              {getTrafficCondition(trafficCondition)}
             </Text>
           </View>
+          <View style={styles.spacer} />
+          <Text style={styles.value}>{currentTravelTime}</Text>
         </View>
       )}
 
-      {/* Busy Level Card */}
-      <View style={[styles.card, styles.busyCard]}>
-        <View style={styles.header}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="stats-chart" size={20} color="#d6691f" />
-          </View>
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.title}>Busy Level</Text>
-            <Text style={styles.busyLevel}>{busynessData.busynessLevel}</Text>
-          </View>
-          <View style={styles.metric}>
-            <Text style={styles.occupancy}>{busynessRange} occupancy</Text>
-          </View>
+      {/* Busy Level Row */}
+      <View style={styles.row}>
+        <View style={styles.iconBadge}>
+          <Ionicons name="stats-chart" size={14} color="#ea580c" />
         </View>
-
-        {/* Progress Bar */}
-        <View style={styles.progressBarContainer}>
-          <View style={styles.progressBarTrack}>
+        <Text style={styles.label}>Busy</Text>
+        <View style={styles.conditionBadge}>
+          <Text style={styles.conditionText}>
+            {busynessData.busynessLevel}
+          </Text>
+        </View>
+        <View style={styles.spacer} />
+        <View style={styles.miniBarContainer}>
+          <View style={styles.miniBarTrack}>
             <View
               style={[
-                styles.progressBarFill,
+                styles.miniBarFill,
                 { width: `${busynessData.currentPopularity}%` },
               ]}
             />
           </View>
-        </View>
-
-        <View style={styles.recommendationBox}>
-          <Text style={styles.recommendationText}>
-            Recommendation: {busynessData.message}
+          <Text style={styles.occupancy}>
+            {getBusynessRange(busynessData.currentPopularity)}
           </Text>
         </View>
       </View>
@@ -173,106 +118,73 @@ export default function BusynessSection({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
+    paddingVertical: 2,
+    gap: 6,
   },
-  card: {
-    backgroundColor: "#eb78251a",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#eb782566",
-  },
-  busyCard: {
-    marginTop: 0,
-  },
-  header: {
+  row: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 12,
+    alignItems: "center",
+    backgroundColor: "#fef7f0",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#eb782533",
     gap: 8,
   },
-  iconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#ffffff",
+  iconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#eb782544",
     justifyContent: "center",
     alignItems: "center",
   },
-  headerTextContainer: {
+  label: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#78350f",
+  },
+  conditionBadge: {
+    backgroundColor: "#eb78251a",
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  conditionText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#c2410c",
+  },
+  spacer: {
     flex: 1,
   },
-  title: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#d6691f",
-    marginBottom: 4,
-  },
-  condition: {
-    fontSize: 12,
-    color: "#4a5565",
-  },
-  busyLevel: {
-    fontSize: 12,
-    color: "#4a5565",
-  },
-  loadingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 20,
-    gap: 8,
-  },
-  loadingText: {
+  value: {
     fontSize: 14,
+    fontWeight: "700",
     color: "#ea580c",
   },
-  metrics: {
+  miniBarContainer: {
     alignItems: "flex-end",
+    gap: 3,
   },
-  metric: {
-    alignItems: "flex-end",
-  },
-  time: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#ea580c",
-    marginBottom: 4,
-  },
-  delay: {
-    fontSize: 14,
-    color: "#ea580c",
-  },
-  occupancy: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#ea580c",
-  },
-  progressBarContainer: {
-    marginBottom: 12,
-  },
-  progressBarTrack: {
-    height: 8,
+  miniBarTrack: {
+    width: 48,
+    height: 5,
     backgroundColor: "#ebe6e7",
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: "hidden",
   },
-  progressBarFill: {
+  miniBarFill: {
     height: "100%",
     backgroundColor: "#eb7825",
-    borderRadius: 4,
+    borderRadius: 3,
   },
-  recommendationBox: {
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#0a0a0a33",
-  },
-  recommendationText: {
-    fontSize: 14,
-    color: "#ea580c",
-    lineHeight: 20,
+  occupancy: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#c2410c",
   },
 });

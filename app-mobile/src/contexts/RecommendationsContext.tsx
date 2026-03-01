@@ -21,6 +21,8 @@ import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useRecommendationsQuery } from "../hooks/useRecommendationsQuery";
 import { useCuratedExperiences } from "../hooks/useCuratedExperiences";
 import { curatedExperiencesService } from "../services/curatedExperiencesService";
+import { useNatureCards } from "../hooks/useNatureCards";
+import type { NatureCard } from "../services/natureCardsService";
 import { useQueryClient } from "@tanstack/react-query";
 
 export interface Recommendation {
@@ -53,6 +55,9 @@ export interface Recommendation {
   tags: string[];
   matchScore: number;
   reviewCount: number;
+  website?: string | null;
+  phone?: string | null;
+  placeId?: string;
   socialStats: {
     views: number;
     likes: number;
@@ -130,10 +135,11 @@ function curatedToRecommendation(card: any): Recommendation {
     estimatedDurationMinutes: card.estimatedDurationMinutes,
     pairingKey: card.pairingKey,
     tagline: card.tagline,
+    categoryLabel: card.categoryLabel,
     id: card.id,
     title: card.title,
-    category: 'Adventurous',
-    categoryIcon: 'compass',
+    category: card.categoryLabel || 'Adventurous',
+    categoryIcon: card.categoryLabel?.toLowerCase() === 'nature' ? 'leaf' : 'compass',
     lat: firstStop?.lat,
     lng: firstStop?.lng,
     timeAway: `${card.estimatedDurationMinutes ?? 0} min`,
@@ -194,14 +200,62 @@ function curatedToRecommendation(card: any): Recommendation {
   } as Recommendation;
 }
 
-/** When curated cards exist, show ONLY curated cards — no legacy regular cards.
- *  Legacy cards use a different single-place format and look "weird" mixed in.
- *  If curated cards failed to load / returned empty, fall back to regular cards
- *  so the user still sees something rather than an empty state.  */
+/** Converts a NatureCard from the discover-nature edge function into a Recommendation */
+function natureToRecommendation(card: NatureCard): Recommendation {
+  const priceText =
+    card.priceMin === 0 && card.priceMax === 0
+      ? 'Free'
+      : `$${card.priceMin}–$${card.priceMax}`;
+
+  return {
+    id: card.id,
+    title: card.title,
+    category: 'Nature',
+    categoryIcon: 'leaf',
+    lat: card.lat,
+    lng: card.lng,
+    timeAway: `${card.travelTimeMin} min`,
+    description: card.description,
+    budget: priceText,
+    rating: card.rating,
+    image: card.image,
+    images: card.images.length > 0 ? card.images : [card.image].filter(Boolean),
+    priceRange: priceText,
+    distance: `${card.distanceKm} km`,
+    travelTime: `${card.travelTimeMin} min`,
+    experienceType: 'nature',
+    highlights: [card.placeTypeLabel],
+    fullDescription: card.description,
+    address: card.address,
+    openingHours: card.isOpenNow != null
+      ? { open_now: card.isOpenNow }
+      : null,
+    tags: [card.placeType, card.placeTypeLabel],
+    matchScore: card.matchScore,
+    reviewCount: card.reviewCount,
+    website: card.website,
+    placeId: card.placeId,
+    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+    matchFactors: {
+      location: 0.5,
+      budget: 0.5,
+      category: 1.0,
+      time: 0.5,
+      popularity: card.rating > 4 ? 0.8 : 0.5,
+    },
+  };
+}
+
+/** Priority: nature cards → curated cards → regular cards.
+ *  When nature is selected, show nature cards exclusively.
+ *  When curated cards exist, show ONLY curated — no legacy regular cards.
+ *  If none available, fall back to regular cards.  */
 function interleaveCards(
   regular: Recommendation[],
-  curated: Recommendation[]
+  curated: Recommendation[],
+  nature: Recommendation[] = []
 ): Recommendation[] {
+  if (nature.length > 0) return nature;
   if (curated.length > 0) return curated;
   return regular;
 }
@@ -397,13 +451,19 @@ export const RecommendationsProvider: React.FC<
   }, [isBatchTransitioning]);
 
   // Restore the previous batch (used by "Review Previous Batch")
+  // Decrement batchSeed so TanStack Query re-fetches the previous batch from
+  // its cache (staleTime = 30 min), giving the user the actual last 20 cards
+  // they swiped through rather than a stale snapshot.
   const restorePreviousBatch = useCallback(() => {
-    if (previousBatchRef.current.length > 0) {
+    if (batchSeed > 0) {
+      setIsBatchTransitioning(true);
+      setBatchSeed(prev => prev - 1);
+    } else if (previousBatchRef.current.length > 0) {
+      // Already at seed 0, fall back to ref snapshot
       setRecommendations(previousBatchRef.current);
-      // Ensure the spinner is cleared when restoring
       setIsBatchTransitioning(false);
     }
-  }, []);
+  }, [batchSeed]);
 
   // Reset batchSeed when preferences change (refreshKey changes)
   useEffect(() => {
@@ -467,12 +527,13 @@ export const RecommendationsProvider: React.FC<
   // Other experience types use the legacy fallback pipeline which produces
   // non-curated-format cards — these get mixed in and look wrong.
   // The session edge function handles location aggregation server-side.
+  // When nature is selected, skip curated hooks — nature has its own system.
   const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo, isFullBatchLoaded: isSoloBatchLoaded } = useCuratedExperiences({
     experienceType: 'solo-adventure',
     ...baseParams,
     sessionId: curatedSessionId ?? undefined,
     enabled: isSoloMode
-      ? (experienceTypes.length === 0 || experienceTypes.includes('solo-adventure'))
+      ? !isNatureSelected && (experienceTypes.length === 0 || experienceTypes.includes('solo-adventure'))
       : isCollaborationMode,
   });
   const { cards: curatedDateCards, isLoading: isLoadingCuratedDate, isFullBatchLoaded: isDateBatchLoaded } = useCuratedExperiences({
@@ -514,6 +575,34 @@ export const RecommendationsProvider: React.FC<
     isSoloBatchLoaded && isDateBatchLoaded && isRomBatchLoaded &&
     isFriendBatchLoaded && isGroupBatchLoaded;
 
+  // ── Standalone Nature Card System ──────────────────────────────────────────
+  // When user selects "Nature" category, fire the dedicated discover-nature
+  // edge function instead of funneling through the curated pipeline.
+  const isNatureSelected = userSelectedCategories.some(
+    c => c.toLowerCase() === 'nature'
+  );
+
+  const { cards: natureCards, isLoading: isLoadingNature, isFullBatchLoaded: isNatureBatchLoaded } = useNatureCards({
+    location: userLocation,
+    budgetMax: userPrefs?.budget_max ?? 1000,
+    travelMode: userPrefs?.travel_mode ?? 'walking',
+    travelConstraintType:
+      (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
+    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
+    datetimePref: userPrefs?.datetime_pref ?? new Date().toISOString(),
+    batchSeed,
+    enabled: isSoloMode && isNatureSelected,
+  });
+
+  const natureRecommendations = useMemo(() => {
+    if (natureCards.length === 0) return [];
+    return natureCards.map(natureToRecommendation);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [natureCards.map(c => c.id).sort().join(',')]);
+
+  // Include nature batch status in the "all loaded" gate
+  const allBatchesLoaded = allCuratedBatchesLoaded && (isNatureSelected ? isNatureBatchLoaded : true);
+
   const allCuratedCards = [
     ...curatedSoloCards,
     ...curatedDateCards,
@@ -538,22 +627,26 @@ export const RecommendationsProvider: React.FC<
     undefined
   );
   const previousCuratedIdsRef = useRef<string>('');
+  const previousNatureIdsRef = useRef<string>('');
 
   // Sync recommendations from TanStack Query to local state and CardsCache
   useEffect(() => {
     // Handle undefined or empty recommendations
-    // Allow curated cards to surface even when regular fetch errors/returns undefined
-    if (!recommendationsData && curatedRecommendations.length === 0) {
-      return; // Don't update state if data is still loading and no curated cards
+    // Allow curated/nature cards to surface even when regular fetch errors/returns undefined
+    if (!recommendationsData && curatedRecommendations.length === 0 && natureRecommendations.length === 0) {
+      return; // Don't update state if data is still loading and no curated/nature cards
     }
     const regularCards = recommendationsData ?? [];
 
-    // Check if recommendations have actually changed (including curated)
+    // Check if recommendations have actually changed (including curated and nature)
     const prevRecs = previousRecommendationsRef.current;
     const curatedIdsKey = curatedRecommendations.map(c => c.id).sort().join(',');
+    const natureIdsKey = natureRecommendations.map(c => c.id).sort().join(',');
     const curatedChanged = previousCuratedIdsRef.current !== curatedIdsKey;
+    const natureChanged = previousNatureIdsRef.current !== natureIdsKey;
     const hasChanged =
       curatedChanged ||
+      natureChanged ||
       !prevRecs ||
       prevRecs.length !== regularCards.length ||
       prevRecs.some((prev, idx) => prev.id !== regularCards[idx]?.id);
@@ -564,12 +657,13 @@ export const RecommendationsProvider: React.FC<
 
     previousRecommendationsRef.current = regularCards;
     previousCuratedIdsRef.current = curatedIdsKey;
+    previousNatureIdsRef.current = natureIdsKey;
 
-    if (regularCards.length > 0 || curatedRecommendations.length > 0) {
-      const merged = interleaveCards(regularCards, curatedRecommendations);
+    if (regularCards.length > 0 || curatedRecommendations.length > 0 || natureRecommendations.length > 0) {
+      const merged = interleaveCards(regularCards, curatedRecommendations, natureRecommendations);
       setRecommendations(merged);
-      // Clear batch-transitioning flag once all curated batches have settled.
-      if (isBatchTransitioning && allCuratedBatchesLoaded) {
+      // Clear batch-transitioning flag once all batches have settled.
+      if (isBatchTransitioning && allBatchesLoaded) {
         setIsBatchTransitioning(false);
       }
 
@@ -660,7 +754,8 @@ export const RecommendationsProvider: React.FC<
     getCachedCards,
     setCachedCards,
     isBatchTransitioning,
-    allCuratedBatchesLoaded,
+    allBatchesLoaded,
+    natureRecommendations,
   ]);
 
   // Handle mode transitions
@@ -699,6 +794,7 @@ export const RecommendationsProvider: React.FC<
       // This prevents stale data from previous mode while allowing in-flight queries to complete gracefully
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
       queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
+      queryClient.invalidateQueries({ queryKey: ["nature-cards"] });
     }
 
     previousModeRef.current = currentMode;
@@ -713,7 +809,7 @@ export const RecommendationsProvider: React.FC<
 
   // Compute loading and error states from TanStack Query (moved up for use in effect)
   const loading =
-    isLoadingLocation || isLoadingPreferences || isLoadingRecommendations || isLoadingCuratedSolo;
+    isLoadingLocation || isLoadingPreferences || isLoadingRecommendations || isLoadingCuratedSolo || (isNatureSelected && isLoadingNature);
   const isFetching = isFetchingRecommendations;
 
   // Reset mode transitioning and mark fetch as complete when query finishes

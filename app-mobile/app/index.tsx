@@ -48,6 +48,8 @@ import { BoardMessageService } from "../src/services/boardMessageService";
 import { muteService } from "../src/services/muteService";
 import ShareModal from "../src/components/ShareModal";
 import FeedbackModal from "../src/components/FeedbackModal";
+import ExperienceReviewModal from "../src/components/expandedCard/FeedbackModal";
+import { usePendingReviews } from "../src/hooks/usePendingReviews";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
 import { SessionService } from "../src/services/sessionService";
@@ -79,6 +81,9 @@ function AppContent() {
   const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
   const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
   const helpButtonDismissedRef = useRef<boolean>(false);
+
+  // Pending experience reviews — shows review modal after scheduled experiences
+  const { pendingReview, showReviewModal, dismissReview } = usePendingReviews();
   const viewShotRef = useRef<any>(null);
   const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
 
@@ -2249,6 +2254,16 @@ function AppContent() {
                       onClose={handleFeedbackClose}
                       onSubmitFeedback={handleFeedbackSubmit}
                     />
+
+                    {/* Experience Review Modal — shown day-after for past scheduled experiences */}
+                    {pendingReview && (
+                      <ExperienceReviewModal
+                        visible={showReviewModal}
+                        experienceTitle={pendingReview.experienceTitle}
+                        cardId={pendingReview.cardId}
+                        onClose={dismissReview}
+                      />
+                    )}
 
                     {/* Floating Help Button */}
                     {showHelpButton && !showCoachMap && (
