@@ -239,7 +239,7 @@ class DeckService {
         const categoryNames = categoryPills.map(p =>
           PILL_TO_CATEGORY_NAME[p.id] || p.id
         );
-        const categoryLimit = Math.ceil(limit * (categoryPills.length / pills.length));
+        const categoryLimit = limit;
 
         try {
           // supabase.functions.invoke() does not accept an AbortSignal.

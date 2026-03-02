@@ -161,8 +161,17 @@ async function queryPoolCards(
   // Filter out seen cards
   const unseen = allMatching.filter((card: any) => !seenIds.has(card.id));
 
+  // Dedup by google_place_id — keep highest popularity_score (already sorted desc)
+  const seenPlaces = new Set<string>();
+  const dedupedUnseen = unseen.filter((card: any) => {
+    const placeKey = card.google_place_id || card.id;
+    if (seenPlaces.has(placeKey)) return false;
+    seenPlaces.add(placeKey);
+    return true;
+  });
+
   return {
-    poolCards: unseen.slice(0, limit),
+    poolCards: dedupedUnseen.slice(0, limit),
     totalPoolSize,
   };
 }

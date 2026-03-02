@@ -208,7 +208,7 @@ User Request → Edge Function (Deno)
 | **Busyness Forecast** | Crowd level predictions by time of day |
 | **Match Score Breakdown** | Visual breakdown of recommendation factors: location, budget, category, time, popularity |
 | **Experience Feedback Modal** | Post-interaction feedback ("too expensive", "too far", etc.) stored in `experience_feedback` |
-| **Deck Batch Navigation** | Navigate forward/backward through batch history. Pre-fetch triggers at 75% card consumption. Batches persisted to Zustand/AsyncStorage |
+| **Deck Batch Navigation** | Navigate forward/backward through batch history. Pre-fetch triggers at 75% card consumption. Batches persisted to Zustand/AsyncStorage. Replace-not-append batch transitions: each new batch fully replaces the old one, preventing unbounded array growth and dedup deadlocks. 10-second batch transition timeout auto-detects exhaustion |
 | **Solo vs. Collaboration Mode** | Toggle between personal recommendations and session-scoped cards via CollaborationSessions pill bar |
 | **Skeleton Loading** | Shimmer placeholder cards while deck generates |
 
@@ -560,9 +560,9 @@ The card pool pipeline replaces direct Google API calls with pool-first serving.
 
 ### Serving Logic (`cardPoolService.ts`)
 
-1. **Query pool**: `card_pool` filtered by categories (array overlap), geo bounds (lat/lng ± delta), budget (price range overlap), excluding user's impressions since last preference change
-2. **If pool ≥ requested limit**: Serve directly (0 API calls). For Discover "For You", a 3-pass category-diverse selection algorithm extracts 2 hero cards (Fine Dining + Play), then round-robins one card per remaining category, then fills leftover slots. Cards enriched with real distance/travel time via haversine + estimateTravelMin
-3. **If pool < limit**: Gap analysis identifies missing categories, then batch Google Places searches fill gaps
+1. **Query pool**: `card_pool` filtered by categories (array overlap), geo bounds (lat/lng ± delta), budget (price range overlap), excluding user's impressions since last preference change. **Server-side dedup** by `google_place_id` ensures the same physical place listed under multiple categories only appears once (highest popularity score wins)
+2. **If pool ≥ 80% of requested limit**: Serve directly (0 API calls). For Discover "For You", a 3-pass category-diverse selection algorithm extracts 2 hero cards (Fine Dining + Play), then round-robins one card per remaining category, then fills leftover slots. Cards enriched with real distance/travel time via haversine + estimateTravelMin
+3. **If pool < 80% of limit**: Gap analysis identifies missing categories, then batch Google Places searches fill gaps. The 80% threshold ensures full batches survive downstream dedup
 4. **Upsert results**: New places → `place_pool` (opening hours parsed at ingestion), new cards → `card_pool`
 5. **Card format**: All output paths produce API-compatible fields: `priceMin`/`priceMax` (numeric), `distanceKm` (haversine from user), `travelTimeMin` (mode-aware estimate), `isOpenNow` (boolean), `openingHours` (parsed `Record<string, string>`)
 6. **Record impressions**: Log `user_card_impressions` with batch number
@@ -1786,9 +1786,10 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-02)
 
+- **Deck Reliability Fix:** Five compounding bugs fixed in the solo swipe deck — category limit formula now requests full 20 cards (was proportionally starved to 10), server-side dedup by `google_place_id` in card pool eliminates cross-category duplicates, query params stabilized via `useMemo` to guarantee one fetch per param change (was 4), batch transition uses replace-not-append (eliminates infinite spinner and dedup deadlock), and pool threshold raised to 80% (was 50%) for full batches.
+- **Brand-Consistent Loading UI:** "Loading more" spinner and exhausted-state icons changed from purple (#6366F1) to brand orange (#eb7825). Spinner now includes "This should only take a moment" subtitle. 10-second timeout auto-detects exhaustion when batch transition stalls.
 - **Discover For You — All 12 Categories:** The For You tab now always requests all 12 categories from the edge function, ignoring user preferences. For You is a discovery surface — user preferences only filter the main swipe deck.
 - **Policies & Reservations Button Fix:** `placeId` is now carried through the full transformation chain (`FeaturedCardData` → `GridCardData` → `ExpandedCardData`), so the "Policies & Reservations" button in expanded cards correctly opens Google Maps for the venue.
-- **Cache Version Bump:** `DISCOVER_CACHE_MIGRATION_VERSION` bumped to `"2026-03-02-discover-all-categories"`, forcing all users to re-fetch fresh all-category results on next app open.
 
 ---
 

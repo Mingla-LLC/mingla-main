@@ -1266,7 +1266,7 @@ export default function SwipeableCards({
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
           <View style={styles.sparklesContainer}>
-            <Ionicons name="earth-outline" size={48} color="#6366F1" />
+            <Ionicons name="earth-outline" size={48} color="#eb7825" />
           </View>
           <Text style={styles.noCardsTitle}>You've explored everything nearby</Text>
           <Text style={styles.noCardsSubtitle}>
@@ -1279,7 +1279,7 @@ export default function SwipeableCards({
               onPress={() => setHistoryVisible(true)}
               activeOpacity={0.7}
             >
-              <Ionicons name="refresh-outline" size={18} color="#6366F1" />
+              <Ionicons name="refresh-outline" size={18} color="#eb7825" />
               <Text style={styles.reviewDismissedText}>
                 Review {dismissedCards.length} dismissed card{dismissedCards.length !== 1 ? "s" : ""}
               </Text>
@@ -1310,8 +1310,11 @@ export default function SwipeableCards({
   ) {
     return (
       <View style={styles.noCardsContainer}>
-        <ActivityIndicator size="large" color="#6366F1" />
+        <ActivityIndicator size="large" color="#eb7825" />
         <Text style={styles.loadingNextBatch}>Loading more experiences...</Text>
+        <Text style={styles.loadingNextBatchSubtitle}>
+          This should only take a moment
+        </Text>
       </View>
     );
   }
@@ -2258,13 +2261,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#6366F1",
+    borderColor: "#eb7825",
     marginBottom: 12,
   },
   reviewDismissedText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#6366F1",
+    color: "#eb7825",
   },
   changePreferencesButton: {
     flexDirection: "row",
@@ -2273,7 +2276,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 12,
-    backgroundColor: "#6366F1",
+    backgroundColor: "#eb7825",
   },
   changePreferencesText: {
     fontSize: 14,
@@ -2284,6 +2287,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#9CA3AF",
     marginTop: 12,
+  },
+  loadingNextBatchSubtitle: {
+    fontSize: 13,
+    color: "#999",
+    marginTop: 4,
   },
   batchHistorySection: {
     marginTop: 16,

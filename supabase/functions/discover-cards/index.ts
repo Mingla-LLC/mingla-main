@@ -20,7 +20,7 @@ import {
  *
  * Pipeline:
  *   1. Pool-first: query card_pool for ALL requested categories at once
- *   2. Gap fill: if pool < 50% of limit, fetch missing from Google API
+ *   2. Gap fill: if pool < 80% of limit, fetch missing from Google API
  *   3. AI descriptions OFF critical path: return immediately with fallbacks,
  *      then fire-and-forget OpenAI enrichment to card_pool
  *   4. Batch upsert results to place_pool + card_pool
@@ -382,7 +382,7 @@ serve(async (req: Request) => {
 
     // ── Pool-first serving (ALL categories in ONE query) ──────────────────
     // No batchSeed === 0 restriction; serve from pool for ANY batchSeed.
-    // Threshold lowered to 50% of limit.
+    // Threshold raised to 80% of limit to ensure full batches after dedup.
     if (userId && !body.warmPool) {
       try {
         const poolResult = await serveCardsFromPipeline(
@@ -402,8 +402,8 @@ serve(async (req: Request) => {
           { travelMode },
         );
 
-        // Lowered threshold: serve if pool has >= 50% of limit
-        if (poolResult.cards.length >= Math.ceil(limit * 0.5)) {
+        // Serve if pool has >= 80% of limit to ensure full batches
+        if (poolResult.cards.length >= Math.ceil(limit * 0.8)) {
           const elapsed = Date.now() - t0;
           console.log(`[discover-cards] Served ${poolResult.cards.length} from pool in ${elapsed}ms (0 API calls)`);
 
@@ -417,7 +417,7 @@ serve(async (req: Request) => {
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        console.log(`[discover-cards] Pool had ${poolResult.cards.length}/${limit} (below 50%), falling through to API`);
+        console.log(`[discover-cards] Pool had ${poolResult.cards.length}/${limit} (below 80%), falling through to API`);
       } catch (poolErr) {
         console.warn('[discover-cards] Pool serve failed, falling back to API:', poolErr);
       }
