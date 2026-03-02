@@ -163,7 +163,9 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
             const cardData = card.card_data || card.experience_data || {};
             const voteCount = voteCounts[card.id] || { yes: 0, no: 0, userVote: null };
             const rsvpCount = rsvpCounts[card.id] || { responded: 0, total: 0, userRSVP: null };
-            const categoryIcon = getIconComponent(cardData.categoryIcon || "star");
+            const isCurated = cardData.cardType === 'curated';
+            const categoryIcon = getIconComponent(isCurated ? "compass" : (cardData.categoryIcon || "star"));
+            const categoryLabel = isCurated ? "Adventurous" : (cardData.category || "Experience");
 
             return (
               <TouchableOpacity
@@ -219,7 +221,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                   {/* Category */}
                   <View style={styles.categoryRow}>
                     <Ionicons name={categoryIcon as any} size={14} color="#eb7825" />
-                    <Text style={styles.categoryText}>{cardData.category || "Experience"}</Text>
+                    <Text style={styles.categoryText}>{categoryLabel}</Text>
                   </View>
 
                   {/* Description */}

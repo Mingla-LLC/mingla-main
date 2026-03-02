@@ -41,7 +41,7 @@ const ALL_CATEGORIES = [
 
 // All available experience types in the app
 const ALL_EXPERIENCE_TYPES = [
-  "Solo Adventure",
+  "Adventurous",
   "First Date",
   "Romantic",
   "Friendly",

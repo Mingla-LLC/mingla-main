@@ -474,7 +474,31 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   "wellness dates": ["spa", "massage", "sauna"],
   wellness_dates: ["spa", "massage", "sauna"],
   "wellness-dates": ["spa", "massage", "sauna"],
-  wellness: ["spa", "massage", "sauna"],
+  wellness: ["spa", "sauna", "hot_spring", "massage"],
+  // ── New PreferencesSheet category IDs ──
+  nature: ["park", "botanical_garden", "hiking_area", "national_park", "state_park", "beach", "zoo", "wildlife_park"],
+  first_meet: ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
+  "first-meet": ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
+  drink: ["bar", "pub", "wine_bar", "tea_house", "coffee_shop", "juice_shop"],
+  casual_eats: [
+    "buffet_restaurant", "brunch_restaurant", "diner", "fast_food_restaurant", "food_court",
+    "hamburger_restaurant", "pizza_restaurant", "ramen_restaurant", "sandwich_shop", "sushi_restaurant",
+    "afghani_restaurant", "african_restaurant", "american_restaurant", "asian_restaurant",
+    "barbecue_restaurant", "brazilian_restaurant", "breakfast_restaurant", "indian_restaurant",
+    "indonesian_restaurant", "japanese_restaurant", "korean_restaurant", "lebanese_restaurant",
+    "mediterranean_restaurant", "mexican_restaurant", "middle_eastern_restaurant", "seafood_restaurant",
+    "spanish_restaurant", "thai_restaurant", "turkish_restaurant", "vegan_restaurant",
+    "vegetarian_restaurant", "vietnamese_restaurant", "chinese_restaurant",
+  ],
+  fine_dining: ["fine_dining_restaurant", "steak_house", "french_restaurant", "greek_restaurant", "italian_restaurant"],
+  "fine-dining": ["fine_dining_restaurant", "steak_house", "french_restaurant", "greek_restaurant", "italian_restaurant"],
+  watch: ["movie_theater", "comedy_club", "performing_arts_theater", "opera_house"],
+  creative_arts: ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
+  "creative-arts": ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
+  play: [
+    "bowling_alley", "amusement_park", "water_park", "video_arcade", "karaoke", "casino",
+    "trampoline_park", "mini_golf_course", "ice_skating_rink", "skate_park", "escape_room", "adventure_park",
+  ],
   // Freestyle variations
   freestyle: [
     "tourist_attraction",
@@ -1964,6 +1988,45 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "train_station",
     "transit_station",
   ],
+  // ── New PreferencesSheet excluded types ──
+  nature: [
+    "bar", "night_club", "casino", "movie_theater", "video_arcade",
+    "bowling_alley", "fine_dining_restaurant", "fast_food_restaurant",
+    "food_court", "atm", "bank", "parking", "gas_station", "airport",
+    "car_repair", "car_dealer", "storage", "post_office", "government_office",
+    "courthouse", "police", "fire_station", "city_hall",
+    "apartment_building", "housing_complex",
+  ],
+  first_meet: [
+    "amusement_park", "water_park", "bowling_alley", "spa", "sauna",
+    "fine_dining_restaurant", "fast_food_restaurant", "food_court",
+    "night_club", "casino", "parking", "atm", "bank", "gas_station",
+    "airport", "bus_station", "train_station", "transit_station",
+  ],
+  drink: [
+    "fine_dining_restaurant", "spa", "sauna", "amusement_park",
+    "water_park", "bowling_alley", "atm", "bank", "parking", "gas_station",
+    "airport", "car_repair",
+  ],
+  fine_dining: [
+    "fast_food_restaurant", "food_court", "bar", "bowling_alley",
+    "amusement_park", "water_park", "video_arcade", "night_club",
+    "atm", "bank", "parking", "gas_station", "car_repair",
+  ],
+  watch: [
+    "spa", "sauna", "botanical_garden", "park", "beach", "restaurant",
+    "atm", "bank", "parking", "gas_station", "government_office",
+  ],
+  creative_arts: [
+    "fast_food_restaurant", "food_court", "bar", "bowling_alley",
+    "amusement_park", "water_park", "spa", "sauna", "night_club",
+    "atm", "bank", "parking", "gas_station", "government_office",
+  ],
+  play: [
+    "spa", "sauna", "botanical_garden", "fine_dining_restaurant",
+    "atm", "bank", "parking", "gas_station", "airport", "car_repair",
+    "government_office", "courthouse", "police", "fire_station", "city_hall",
+  ],
   freestyle: [
     "gas_station",
     "parking",
@@ -2940,6 +3003,16 @@ function generateFallbackDescription(place: any): string {
       "Exceptional culinary journey with outstanding service and fine cuisine.",
       "Memorable gastronomic experience in an elegant atmosphere.",
     ],
+    nature: ["Enjoy the beauty of the outdoors surrounded by nature."],
+    first_meet: ["A relaxed and welcoming spot perfect for meeting someone new."],
+    drink: ["Unwind with a perfectly crafted drink in a vibrant atmosphere."],
+    casual_eats: ["Delicious, laid-back food to satisfy any craving."],
+    fine_dining: ["Exceptional culinary journey with outstanding service and fine cuisine."],
+    watch: ["Sit back and enjoy a great show or film."],
+    creative_arts: ["Explore your creative side in an inspiring setting."],
+    play: ["Fun and active experience for all ages."],
+    wellness: ["Relax, recharge and take care of yourself."],
+    picnic: ["A perfect open-air spot for a laid-back picnic."],
   };
 
   const categoryDescriptions = descriptions[place.category] || [
@@ -2953,6 +3026,16 @@ function generateFallbackHighlights(place: any): string[] {
     "Sip & Chill": ["Expert Sommeliers", "Sunset Views"],
     Stroll: ["Scenic Views", "Nature Trail"],
     Dining: ["Fine Cuisine", "Excellent Service"],
+    nature: ["Scenic Views", "Nature Trail"],
+    first_meet: ["Cozy Atmosphere", "Great Conversation Spot"],
+    drink: ["Craft Drinks", "Relaxing Vibe"],
+    casual_eats: ["Tasty Eats", "Friendly Atmosphere"],
+    fine_dining: ["Fine Cuisine", "Excellent Service"],
+    watch: ["Great Entertainment", "Comfortable Seating"],
+    creative_arts: ["Artistic Experience", "Inspiring Setting"],
+    play: ["Fun Activities", "Active Fun"],
+    wellness: ["Deep Relaxation", "Self Care"],
+    picnic: ["Outdoor Bliss", "Scenic Spot"],
   };
 
   return highlights[place.category] || ["Great Experience", "Highly Rated"];

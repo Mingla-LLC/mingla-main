@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import {
   Text,
   View,
@@ -52,7 +52,7 @@ import {
 interface PreferencesSheetProps {
   visible?: boolean;
   onClose?: () => void;
-  onSave?: (preferences: any) => Promise<boolean> | boolean | void;
+  onSave?: (preferences: any) => Promise<boolean | void> | boolean | void;
   accountPreferences?: {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
@@ -62,51 +62,51 @@ interface PreferencesSheetProps {
   sessionName?: string;
 }
 
-// Experience Types matching the image - using exact icons from IntentSelectionStep
+// Experience Types — 7 curated types (kebab-case IDs match edge function)
 const experienceTypes = [
-  { id: "solo-adventure", label: "Solo Adventure", icon: "star-outline" },
-  { id: "first-dates", label: "First Date", icon: "heart-outline" },
-  { id: "romantic", label: "Romantic", icon: "heart-outline" },
-  { id: "friendly", label: "Friendly", icon: "people-outline" },
-  { id: "group-fun", label: "Group Fun", icon: "people-outline" },
-  { id: "business", label: "Business", icon: "briefcase-outline" },
+  { id: "adventurous",   label: "Adventurous",   icon: "compass-outline" },
+  { id: "first-date",    label: "First Date",    icon: "people-outline" },
+  { id: "romantic",      label: "Romantic",       icon: "heart-outline" },
+  { id: "friendly",      label: "Friendly",       icon: "people-outline" },
+  { id: "group-fun",     label: "Group Fun",      icon: "people-circle-outline" },
+  { id: "picnic-dates",  label: "Picnic Dates",   icon: "basket-outline" },
+  { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
 // Budget presets
 const budgetPresets = [
+  { label: "Up to $25",  max: 25  },
+  { label: "Up to $50",  max: 50  },
   { label: "Up to $100", max: 100 },
-  { label: "Up to $200", max: 200 },
-  { label: "Up to $500", max: 500 },
+  { label: "Up to $150", max: 150 },
 ];
 
 // Categories with exact icons from image
 const categories = [
-  { id: "Stroll", label: "Take a Stroll", icon: "eye-outline" },
-  { id: "Sip & Chill", label: "Sip & Chill", icon: "cafe-outline" },
-  { id: "Casual Eats", label: "Casual Eats", icon: "restaurant-outline" },
-  { id: "screenRelax", label: "Screen & Relax", icon: "desktop-outline" },
+  { id: "nature", label: "Nature", icon: "leaf-outline" },
+  { id: "first_meet", label: "First Meet", icon: "chatbubbles-outline" },
+  { id: "picnic_park", label: "Picnic Park", icon: "basket-outline" },
+  { id: "drink", label: "Drink", icon: "wine-outline" },
+  { id: "casual_eats", label: "Casual Eats", icon: "fast-food-outline" },
+  { id: "fine_dining", label: "Fine Dining", icon: "restaurant-outline" },
+  { id: "watch", label: "Watch", icon: "film-outline" },
   {
-    id: "Creative & Hands-On",
-    label: "Creative & Hands-On",
+    id: "creative_arts",
+    label: "Creative & Arts",
     icon: "color-palette-outline",
   },
-  { id: "Picnics", label: "Picnics", icon: "basket-outline" },
-  { id: "Play & Move", label: "Play & Move", icon: "game-controller-outline" },
-  {
-    id: "Dining Experiences",
-    label: "Dining Experiences",
-    icon: "restaurant-outline",
-  },
-  { id: "Wellness Dates", label: "Wellness Dates", icon: "leaf-outline" },
-  { id: "Freestyle", label: "Freestyle", icon: "sparkles-outline" },
+  { id: "play", label: "Play", icon: "game-controller-outline" },
+  { id: "wellness", label: "Wellness", icon: "body-outline" },
+  { id: "groceries_flowers", label: "Groceries & Flowers", icon: "cart-outline" },
+  { id: "work_business", label: "Work & Business", icon: "briefcase-outline" },
 ];
 
 // Travel modes matching database constraint
 const travelModes = [
-  { id: "walking", label: "Walking", icon: "walk-outline" },
-  { id: "biking", label: "Biking", icon: "bicycle-outline" },
-  { id: "transit", label: "Public Transit", icon: "bus-outline" },
-  { id: "driving", label: "Driving", icon: "car-outline" },
+  { id: "walking", label: "Walk", icon: "walk-outline" },
+  { id: "biking", label: "Bike", icon: "bicycle-outline" },
+  { id: "transit", label: "Bus", icon: "bus-outline" },
+  { id: "driving", label: "Drive", icon: "car-outline" },
 ];
 
 // Date options
@@ -127,62 +127,6 @@ const timeSlots = [
 
 type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
 type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
-
-// Compatibility matrix: maps intent IDs to allowed category IDs
-// null means all categories are allowed
-const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
-  "solo-adventure": null, // All categories
-  "first-dates": [
-    "Stroll",
-    "Sip & Chill",
-    "Picnics",
-    "screenRelax",
-    "Creative & Hands-On",
-    "Play & Move",
-    "Dining Experiences",
-  ],
-  romantic: ["Sip & Chill", "Picnics", "Dining Experiences", "Wellness Dates"],
-  friendly: null, // All categories
-  "group-fun": [
-    "Play & Move",
-    "Creative & Hands-On",
-    "Casual Eats",
-    "screenRelax",
-    "Freestyle",
-  ],
-  business: ["Stroll", "Sip & Chill", "Dining Experiences"],
-};
-
-// Get allowed category IDs based on selected intents
-const getAllowedCategoryIds = (
-  selectedIntents: string[]
-): Set<string> | null => {
-  if (selectedIntents.length === 0) {
-    // If no intents selected, show all categories
-    return null;
-  }
-
-  const allowedSets: Set<string>[] = [];
-
-  for (const intent of selectedIntents) {
-    const allowed = INTENT_CATEGORY_COMPATIBILITY[intent];
-    if (allowed === null) {
-      // This intent allows all categories, so return null (all allowed)
-      return null;
-    }
-    allowedSets.push(new Set(allowed));
-  }
-
-  // Union of all allowed categories
-  const union = new Set<string>();
-  for (const allowedSet of allowedSets) {
-    for (const categoryId of allowedSet) {
-      union.add(categoryId);
-    }
-  }
-
-  return union;
-};
 
 export default function PreferencesSheet({
   visible,
@@ -241,6 +185,8 @@ export default function PreferencesSheet({
   // Starting Location
   const [useLocation, setUseLocation] = useState<"gps" | "search">("gps");
   const [searchLocation, setSearchLocation] = useState<string>("");
+  const [useGpsLocation, setUseGpsLocation] = useState<boolean>(true);
+  const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
 
   // Location autocomplete suggestions
@@ -336,11 +282,24 @@ export default function PreferencesSheet({
 
     if (isCollaborationMode) {
       // Load from board session preferences
-      if (loadedPreferences.experience_types) {
-        setSelectedIntents(loadedPreferences.experience_types);
-      }
-      if (loadedPreferences.categories) {
-        setSelectedCategories(loadedPreferences.categories);
+      // Intents and categories are both stored in the `categories` column —
+      // split them the same way solo mode does.
+      const intentIds = new Set([
+        "adventurous", "first-date", "romantic",
+        "friendly", "group-fun", "picnic-dates", "take-a-stroll",
+      ]);
+      if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
+        const loadedIntents: string[] = [];
+        const loadedCats: string[] = [];
+        loadedPreferences.categories.forEach((item: string) => {
+          if (intentIds.has(item)) {
+            loadedIntents.push(item);
+          } else {
+            loadedCats.push(item);
+          }
+        });
+        setSelectedIntents(loadedIntents);
+        setSelectedCategories(loadedCats);
       }
       if ((loadedPreferences as any).budget_min !== undefined) {
         setBudgetMin((loadedPreferences as any).budget_min);
@@ -379,10 +338,14 @@ export default function PreferencesSheet({
       }
 
       setInitialPreferences({
-        selectedIntents: loadedPreferences.experience_types || [],
+        selectedIntents: (loadedPreferences.categories || []).filter((item: string) =>
+          ["adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"].includes(item)
+        ),
         budgetMin: (loadedPreferences as any).budget_min || 0,
         budgetMax: (loadedPreferences as any).budget_max || 200,
-        selectedCategories: loadedPreferences.categories || [],
+        selectedCategories: (loadedPreferences.categories || []).filter((item: string) =>
+          !["adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"].includes(item)
+        ),
         selectedDateOption: "Now",
         selectedTimeSlot: (loadedPreferences as any).time_of_day || null,
         selectedDate: (loadedPreferences as any).datetime_pref
@@ -400,12 +363,13 @@ export default function PreferencesSheet({
       // Load from solo preferences
       if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
         const intentIds = new Set([
-          "solo-adventure",
-          "first-dates",
+          "adventurous",
+          "first-date",
           "romantic",
           "friendly",
           "group-fun",
-          "business",
+          "picnic-dates",
+          "take-a-stroll",
         ]);
 
         const loadedIntents: string[] = [];
@@ -471,7 +435,10 @@ export default function PreferencesSheet({
         }
       }
 
-      if ((loadedPreferences as any).custom_location) {
+      const gpsFlag = (loadedPreferences as any).use_gps_location ?? true;
+      setUseGpsLocation(gpsFlag);
+
+      if (!gpsFlag && (loadedPreferences as any).custom_location) {
         const savedLocation = (loadedPreferences as any).custom_location;
         setSearchLocation(savedLocation);
         const isCoordinates = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/.test(savedLocation);
@@ -481,12 +448,13 @@ export default function PreferencesSheet({
       setInitialPreferences({
         selectedIntents: (loadedPreferences.categories || []).filter((item: string) =>
           [
-            "solo-adventure",
-            "first-dates",
+            "adventurous",
+            "first-date",
             "romantic",
             "friendly",
             "group-fun",
-            "business",
+            "picnic-dates",
+            "take-a-stroll",
           ].includes(item)
         ),
         budgetMin: loadedPreferences.budget_min || 0,
@@ -494,12 +462,13 @@ export default function PreferencesSheet({
         selectedCategories: (loadedPreferences.categories || []).filter(
           (item: string) =>
             ![
-              "solo-adventure",
-              "first-dates",
+              "adventurous",
+              "first-date",
               "romantic",
               "friendly",
               "group-fun",
-              "business",
+              "picnic-dates",
+              "take-a-stroll",
             ].includes(item)
         ),
         selectedDateOption: loadedPreferences.date_option
@@ -525,25 +494,8 @@ export default function PreferencesSheet({
     }
   }, [loadedPreferences, preferencesLoading, visible, isCollaborationMode]);
 
-  // Filter categories based on selected intents
-  const filteredCategories = useMemo(() => {
-    const allowedIds = getAllowedCategoryIds(selectedIntents);
-    if (allowedIds === null) {
-      return categories;
-    }
-    return categories.filter((category) => allowedIds.has(category.id));
-  }, [selectedIntents]);
-
-  // Filter out invalid selectedCategories when intents change
-  useEffect(() => {
-    const allowedIds = getAllowedCategoryIds(selectedIntents);
-    if (allowedIds !== null) {
-      setSelectedCategories((prev) => {
-        const validCategories = prev.filter((catId) => allowedIds.has(catId));
-        return validCategories.length !== prev.length ? validCategories : prev;
-      });
-    }
-  }, [selectedIntents]);
+  // All categories always visible — curated pills are independent of category pills
+  const filteredCategories = categories;
 
   // Memoized callbacks
   const handleIntentToggle = useCallback((id: string) => {
@@ -640,6 +592,7 @@ export default function PreferencesSheet({
 
   const handleLocationInputChange = useCallback((text: string) => {
     setSearchLocation(text);
+    setSelectedCoords(null);
 
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
@@ -669,6 +622,7 @@ export default function PreferencesSheet({
   const handleSuggestionSelect = useCallback((suggestion: AutocompleteSuggestion) => {
     isSelectingSuggestion.current = true;
     setSearchLocation(suggestion.displayName);
+    setSelectedCoords(suggestion.location ?? null);
     setShowSuggestions(false);
     setIsInputFocused(false);
 
@@ -684,6 +638,14 @@ export default function PreferencesSheet({
         setShowSuggestions(false);
       }
     }, 200);
+  }, []);
+
+  const handleGpsToggle = useCallback((value: boolean) => {
+    setUseGpsLocation(value);
+    if (value) {
+      setSearchLocation('');
+      setSelectedCoords(null);
+    }
   }, []);
 
   const countChanges = useCallback((): number => {
@@ -757,6 +719,12 @@ export default function PreferencesSheet({
   const handleApplyPreferences = useCallback(async () => {
     if (isSaving) return;
 
+    const customLocationValue = useGpsLocation
+      ? null
+      : selectedCoords
+        ? `${selectedCoords.lat},${selectedCoords.lng}`
+        : searchLocation || null;
+
     const preferences = {
       selectedIntents,
       budgetMin,
@@ -771,14 +739,23 @@ export default function PreferencesSheet({
       constraintValue,
       useLocation,
       searchLocation,
+      useGpsLocation,
+      custom_location: customLocationValue,
     };
+
+    // Enforce at least one category pill alongside any intents.
+    // Prevents the case where DB has only intents (e.g., ['adventurous']) → 0 cards.
+    const finalCategories = selectedCategories.length > 0
+      ? selectedCategories
+      : ['Nature', 'Casual Eats', 'Drink'];
 
     const nextUserPreferences = {
       mode: "explore",
       budget_min: typeof budgetMin === "number" ? budgetMin : 0,
       budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
       people_count: 1,
-      categories: selectedCategories,
+      categories: finalCategories,
+      intents: selectedIntents,
       travel_mode: travelMode,
       travel_constraint_type: constraintType,
       travel_constraint_value:
@@ -795,85 +772,83 @@ export default function PreferencesSheet({
       exact_time: exactTime || null,
     } as any;
 
+    const previousPrefs = user?.id
+      ? queryClient.getQueryData(["userPreferences", user.id])
+      : undefined;
+
     if (user?.id) {
       queryClient.setQueryData(["userPreferences", user.id], nextUserPreferences);
     }
 
     setIsSaving(true);
     try {
-      if (isCollaborationMode) {
-        const dbPrefs: any = {
-          categories: selectedCategories,
-          budget_min: typeof budgetMin === "number" ? budgetMin : 0,
-          budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
-          travel_mode: travelMode,
-          travel_constraint_type: constraintType,
-          travel_constraint_value:
-            typeof constraintValue === "number" ? constraintValue : 20,
-          time_of_day: selectedTimeSlot || null,
-          datetime_pref: selectedDate ? selectedDate.toISOString() : null,
-        };
+      // === CRITICAL PATH: Save to DB with 30s timeout ===
+      const savePromise = (async () => {
+        if (isCollaborationMode) {
+          const dbPrefs: any = {
+            categories: finalCategories,
+            intents: selectedIntents,
+            budget_min: typeof budgetMin === "number" ? budgetMin : 0,
+            budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
+            travel_mode: travelMode,
+            travel_constraint_type: constraintType,
+            travel_constraint_value:
+              typeof constraintValue === "number" ? constraintValue : 20,
+            time_of_day: selectedTimeSlot || null,
+            datetime_pref: selectedDate ? selectedDate.toISOString() : null,
+          };
 
-        if (searchLocation) {
-          dbPrefs.location = searchLocation;
-        }
-
-        await updateBoardPreferences(dbPrefs);
-
-        try {
-          if (user?.id && searchLocation) {
-            const updatedPrefs = await PreferencesService.getUserPreferences(
-              user.id
-            );
-            if (updatedPrefs) {
-              await offlineService.cacheUserPreferences(updatedPrefs);
-            }
+          if (searchLocation) {
+            dbPrefs.location = searchLocation;
           }
-        } catch (error) {
-          console.error("Error updating offline cache:", error);
-        }
 
-        queryClient.invalidateQueries({ queryKey: ["recommendations"] });
-        queryClient.invalidateQueries({ queryKey: ["userLocation"] });
-
-        if (onSave) {
-          await Promise.resolve(onSave(preferences));
-        }
-
-        if (onClose) onClose();
-      } else {
-        if (!onSave) {
-          if (onClose) onClose();
-          return;
-        }
-
-        const saveResult = await Promise.resolve(onSave(preferences));
-
-        try {
-          if (user?.id) {
-            const updatedPrefs = await PreferencesService.getUserPreferences(
-              user.id
-            );
-            if (updatedPrefs) {
-              await offlineService.cacheUserPreferences(updatedPrefs);
-            }
+          await updateBoardPreferences(dbPrefs);
+        } else {
+          if (onSave) {
+            const saveResult = await Promise.resolve(onSave(preferences));
+            if (saveResult === false) throw new Error('Save rejected');
           }
-        } catch (error) {
-          console.error("Error updating offline cache:", error);
         }
+      })();
 
-        queryClient.invalidateQueries({ queryKey: ["recommendations"] });
-        queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
-        queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Save timeout after 30s')), 30000)
+      );
 
-        if (saveResult === true || saveResult === undefined) {
-          if (onClose) onClose();
-        }
+      await Promise.race([savePromise, timeoutPromise]);
+
+      // === SUCCESS: Non-blocking cache invalidation ===
+      queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
+      queryClient.invalidateQueries({ queryKey: ["nature-cards"] });
+      queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
+      queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+
+      // === CLOSE SHEET IMMEDIATELY ===
+      onClose?.();
+
+      // === FIRE-AND-FORGET: Non-critical post-save operations ===
+      if (user?.id) {
+        PreferencesService.getUserPreferences(user.id)
+          .then(prefs => {
+            if (prefs) offlineService.cacheUserPreferences(prefs);
+          })
+          .catch(() => {}); // Silent — non-critical
       }
+
     } catch (error) {
-      console.error("Error saving preferences:", error);
+      // Rollback optimistic update on failure
+      if (previousPrefs !== undefined && user?.id) {
+        queryClient.setQueryData(["userPreferences", user.id], previousPrefs);
+      }
+      console.error("[PreferencesSheet] Save failed:", error);
+      Alert.alert(
+        'Save Failed',
+        'Your preferences could not be saved. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
-      setIsSaving(false);
+      setIsSaving(false); // ALWAYS resets, even on timeout/error
     }
   }, [
     isSaving,
@@ -890,6 +865,8 @@ export default function PreferencesSheet({
     constraintValue,
     useLocation,
     searchLocation,
+    useGpsLocation,
+    selectedCoords,
     isCollaborationMode,
     updateBoardPreferences,
     user?.id,
@@ -950,7 +927,7 @@ export default function PreferencesSheet({
             onBudgetPresetClick={setBudgetPreset}
             onFocus={() => scrollToField(budgetInputContainerRef)}
             accountPreferences={accountPreferences}
-            shouldHide={selectedCategories.length === 1 && selectedCategories[0] === "Stroll"}
+            shouldHide={selectedCategories.length === 1 && selectedCategories[0] === "nature"}
           />
 
           {/* Date & Time Section */}
@@ -999,7 +976,9 @@ export default function PreferencesSheet({
           >
             <Text style={styles.sectionTitle}>Starting Location</Text>
             <Text style={styles.sectionSubtitle}>
-              We're using your current location. Search below to change it.
+              {useGpsLocation
+                ? "Using your current GPS location."
+                : "Using your custom location. Toggle on to use GPS."}
             </Text>
 
             <LocationInputSection
@@ -1018,6 +997,8 @@ export default function PreferencesSheet({
               isLoadingSuggestions={isLoadingSuggestions}
               onSuggestionSelect={handleSuggestionSelect}
               isInputFocused={isInputFocused}
+              useGpsLocation={useGpsLocation}
+              onToggleGps={handleGpsToggle}
             />
           </View>
 
@@ -1401,35 +1382,31 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   categoriesContainer: {
-    flexDirection: "column",
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   categoryButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
     backgroundColor: "white",
-    minWidth: "47%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 3,
+    width: "31%",
   },
   categoryButtonSelected: {
-    backgroundColor: "#fef3e2",
-    shadowColor: "#eb7825",
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
+    backgroundColor: "#fff7ed",
+    borderColor: "#eb7825",
   },
   categoryText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "500",
     color: "#374151",
-    flex: 1,
   },
   categoryTextSelected: {
     color: "#eb7825",
@@ -1437,43 +1414,32 @@ const styles = StyleSheet.create({
   dateOptionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: 8,
     marginBottom: 12,
   },
-  dateOptionCard: {
-    width: "47.5%",
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    backgroundColor: "#f9fafb",
-    borderColor: "#e5e7eb",
-    minHeight: 60,
-    justifyContent: "center",
-  },
-  dateOptionCardSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-    borderWidth: 2,
-  },
-  dateOptionContent: {
+  dateOptionPill: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
-  dateOptionLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
+  dateOptionPillSelected: {
+    backgroundColor: "#fff7ed",
+    borderColor: "#eb7825",
   },
-  dateOptionLabelSelected: {
-    color: "#ffffff",
-  },
-  dateOptionDescription: {
+  dateOptionPillLabel: {
     fontSize: 11,
-    color: "#6b7280",
+    fontWeight: "500",
+    color: "#374151",
   },
-  dateOptionDescriptionSelected: {
-    color: "#ffffff",
-    opacity: 0.9,
+  dateOptionPillLabelSelected: {
+    color: "#eb7825",
+    fontWeight: "600",
   },
   weekendInfoCard: {
     flexDirection: "row",
@@ -1609,33 +1575,32 @@ const styles = StyleSheet.create({
   },
   travelModesGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
+    gap: 6,
   },
   travelModeCard: {
-    width: "47%",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    backgroundColor: "white",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
   travelModeCardSelected: {
-    backgroundColor: "#eb7825",
+    backgroundColor: "#fff7ed",
     borderColor: "#eb7825",
   },
   travelModeLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#111827",
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#374151",
   },
   travelModeLabelSelected: {
-    color: "#ffffff",
+    color: "#eb7825",
+    fontWeight: "600",
   },
   constraintTypeContainer: {
     flexDirection: "row",

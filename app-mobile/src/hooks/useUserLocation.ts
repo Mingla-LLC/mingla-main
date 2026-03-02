@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
-import { ExperiencesService, UserPreferences } from '../services/experiencesService';
-import { offlineService } from '../services/offlineService';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { UserPreferences } from '../services/experiencesService';
 import { enhancedLocationService } from '../services/enhancedLocationService';
 import * as Location from 'expo-location';
 
@@ -9,10 +10,25 @@ export interface LocationData {
   lng: number;
 }
 
+const LOCATION_CACHE_KEY = '@mingla/lastLocation';
+
+// Module-level cached location — populated asynchronously from AsyncStorage on import
+let cachedLocationSync: LocationData | null = null;
+AsyncStorage.getItem(LOCATION_CACHE_KEY).then(raw => {
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.lat && parsed.lng) cachedLocationSync = { lat: parsed.lat, lng: parsed.lng };
+    } catch {}
+  }
+}).catch(() => {});
+
 const fetchUserLocation = async (
   userId: string | undefined,
   currentMode: string,
-  refreshKey: number | string | undefined
+  refreshKey: number | string | undefined,
+  customLocation: string | null | undefined,
+  useGpsFlag: boolean | undefined
 ): Promise<LocationData> => {
   if (!userId) {
     // Fallback to GPS for anonymous users
@@ -27,77 +43,37 @@ const fetchUserLocation = async (
     return { lat: 37.7749, lng: -122.4194 }; // Default San Francisco
   }
 
-  let prefs: UserPreferences | null = null;
-  let locationFromPrefs = false;
+  // Determine whether to use GPS or custom location
+  const useGps = (useGpsFlag !== false); // default true
 
-  // First, try to get preferences from cache
-  try {
-    const cachedPrefs = await offlineService.getOfflineUserPreferences();
-    if (cachedPrefs && (cachedPrefs as any).custom_location) {
-      console.log('Using cached preferences for location');
-      prefs = cachedPrefs as UserPreferences;
-      locationFromPrefs = true;
-    }
-  } catch (error) {
-    console.log('No cached preferences found, fetching from database');
-  }
-
-  // If not found in cache, fetch from database
-  if (!prefs) {
-    try {
-      prefs = await ExperiencesService.getUserPreferences(userId);
-      // Cache the preferences for next time
-      if (prefs) {
-        await offlineService.cacheUserPreferences(prefs);
-      }
-    } catch (prefsError) {
-      console.log(
-        'Error loading preferences from database, falling back to GPS:',
-        prefsError
-      );
-    }
-  }
-
-  // Use location from preferences (cached or from DB)
-  if (prefs && (prefs as any).custom_location) {
-    const savedLocation = (prefs as any).custom_location;
-    const coordinatesMatch = savedLocation.match(
+  if (!useGps && customLocation) {
+    const coordinatesMatch = customLocation.match(
       /^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/
     );
-    
+
     if (coordinatesMatch) {
       const lat = parseFloat(coordinatesMatch[1]);
       const lng = parseFloat(coordinatesMatch[2]);
       if (!isNaN(lat) && !isNaN(lng)) {
-        console.log(
-          `Using saved coordinates from ${locationFromPrefs ? 'cache' : 'database'}:`,
-          { lat, lng }
-        );
+        console.log('Using saved coordinates from preferences:', { lat, lng });
         return { lat, lng };
       }
     } else {
-      // Geocode address
+      // Geocode address string
       try {
-        const geocoded = await Location.geocodeAsync(savedLocation);
+        const geocoded = await Location.geocodeAsync(customLocation);
         if (geocoded && geocoded.length > 0) {
-          const { latitude, longitude } = geocoded[0];
-          console.log(
-            `Using geocoded location from ${locationFromPrefs ? 'cache' : 'database'}:`,
-            { latitude, longitude }
-          );
-          return { lat: latitude, lng: longitude };
+          console.log('Using geocoded location from preferences:', customLocation);
+          return { lat: geocoded[0].latitude, lng: geocoded[0].longitude };
         }
-      } catch (geocodeError) {
-        console.log(
-          'Could not geocode saved location, falling back to GPS:',
-          geocodeError
-        );
+      } catch {
+        // fall through to GPS
       }
     }
   }
 
-  // Fallback to GPS
-  console.log('No saved location in DB, using current GPS location');
+  // Fall back to GPS
+  console.log('Using current GPS location');
   const location = await enhancedLocationService.getCurrentLocation();
   if (location) {
     return { lat: location.latitude, lng: location.longitude };
@@ -114,14 +90,32 @@ export const useUserLocation = (
   currentMode: string,
   refreshKey: number | string | undefined
 ) => {
-  return useQuery({
-    queryKey: ['userLocation', userId, currentMode, refreshKey],
-    queryFn: () => fetchUserLocation(userId, currentMode, refreshKey),
-    enabled: true, // Always enabled, handles userId check internally
-    staleTime: Infinity, // Location doesn't go stale unless mode/refreshKey changes (handled by query key)
-    gcTime: 24 * 60 * 60 * 1000, // Keep in cache for 24 hours
-    // Show cached data immediately while fresh data loads
-    placeholderData: (previousData) => previousData,
-  });
-};
+  // Read current preferences from React Query cache to get location fields
+  const cachedPrefs = useQueryClient().getQueryData<UserPreferences>(
+    ['userPreferences', userId]
+  );
+  const customLocation = cachedPrefs?.custom_location;
+  const useGpsFlag = cachedPrefs?.use_gps_location;
 
+  const query = useQuery({
+    queryKey: ['userLocation', userId, currentMode, refreshKey, customLocation, useGpsFlag],
+    queryFn: () => fetchUserLocation(userId, currentMode, refreshKey, customLocation, useGpsFlag),
+    enabled: true, // Always enabled, handles userId check internally
+    staleTime: Infinity, // Location doesn't go stale unless mode/refreshKey/location prefs change
+    gcTime: 24 * 60 * 60 * 1000, // Keep in cache for 24 hours
+    placeholderData: (previousData) => previousData,
+    initialData: cachedLocationSync ?? undefined,
+  });
+
+  // Persist resolved location to AsyncStorage for instant startup on next launch
+  useEffect(() => {
+    if (query.data?.lat && query.data?.lng) {
+      AsyncStorage.setItem(
+        LOCATION_CACHE_KEY,
+        JSON.stringify({ lat: query.data.lat, lng: query.data.lng, ts: Date.now() })
+      ).catch(() => {});
+    }
+  }, [query.data?.lat, query.data?.lng]);
+
+  return query;
+};

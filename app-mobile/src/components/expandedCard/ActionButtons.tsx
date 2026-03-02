@@ -34,6 +34,7 @@ interface ActionButtonsProps {
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
   onScheduleSuccess?: (card: ExpandedCardData) => void; // Callback after successful scheduling
+  onOpenBrowser?: (url: string, title: string) => void; // Opens in-app browser (for Policies & Reservations)
 }
 
 export default function ActionButtons({
@@ -48,6 +49,7 @@ export default function ActionButtons({
   currentMode = "solo",
   onCardRemoved,
   onScheduleSuccess,
+  onOpenBrowser,
 }: ActionButtonsProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
@@ -341,11 +343,8 @@ export default function ActionButtons({
 
     setIsSaving(true);
     try {
-      // onSave will handle saving, moving to next card, and closing modal
       await onSave(card);
     } catch (error: any) {
-      // Error saving - show alert but don't close modal
-      // (onSave already handles 23505 "already saved" case and closes modal)
       Alert.alert("Error", "Failed to save the card. Please try again.");
     } finally {
       setIsSaving(false);
@@ -355,53 +354,11 @@ export default function ActionButtons({
   const handleSchedule = () => {
     if (isScheduling || isScheduled || !user?.id) return;
 
-    // If availability has been checked and place is open, proceed with scheduling
-    if (
-      hasCheckedAvailability &&
-      availabilityCheck?.isOpen &&
-      selectedDateTime
-    ) {
-      proceedWithScheduling(selectedDateTime);
-      return;
-    }
-
-    // If place is not available, don't allow scheduling
-    if (
-      hasCheckedAvailability &&
-      availabilityCheck &&
-      !availabilityCheck.isOpen
-    ) {
-      Alert.alert(
-        "Place Not Available",
-        "This place is closed at the selected date and time. Please choose a different time.",
-        [
-          {
-            text: "Reschedule",
-            onPress: () => {
-              // Reset to allow selecting a new time
-              setSelectedDateTime(null);
-              setAvailabilityCheck(null);
-              setHasCheckedAvailability(false);
-              const now = new Date();
-              setSelectedDate(now);
-              setSelectedTime(now);
-              setPickerMode("date");
-              setShowDateTimePicker(true);
-            },
-          },
-          { text: "Cancel", style: "cancel" },
-        ],
-      );
-      return;
-    }
-
-    // Reset availability check when showing picker
+    // Always reset and show date/time picker
     setAvailabilityCheck(null);
     setHasCheckedAvailability(false);
     setSelectedDateTime(null);
 
-    // Show date/time picker
-    // Initialize with current date and time
     const now = new Date();
     setSelectedDate(now);
     setSelectedTime(now);
@@ -432,12 +389,35 @@ export default function ActionButtons({
           setSelectedDateTime(combinedDateTime);
           setShowDateTimePicker(false);
 
-          // Check availability
+          // Check availability and auto-schedule if open
           const availability = checkPlaceAvailability(combinedDateTime);
           setAvailabilityCheck(availability);
           setHasCheckedAvailability(true);
 
-          // Don't auto-schedule - let user click Schedule button after checking
+          if (availability.isOpen) {
+            proceedWithScheduling(combinedDateTime);
+          } else {
+            Alert.alert(
+              "Place Closed",
+              "This place is closed at the selected date and time. Please choose a different time.",
+              [
+                {
+                  text: "Choose Another Time",
+                  onPress: () => {
+                    setAvailabilityCheck(null);
+                    setHasCheckedAvailability(false);
+                    setSelectedDateTime(null);
+                    const now = new Date();
+                    setSelectedDate(now);
+                    setSelectedTime(now);
+                    setPickerMode("date");
+                    setShowDateTimePicker(true);
+                  },
+                },
+                { text: "Cancel", style: "cancel" },
+              ],
+            );
+          }
         }
       }
     } else {
@@ -465,12 +445,35 @@ export default function ActionButtons({
     setSelectedDateTime(combinedDateTime);
     setShowDateTimePicker(false);
 
-    // Check availability
+    // Check availability and auto-schedule if open
     const availability = checkPlaceAvailability(combinedDateTime);
     setAvailabilityCheck(availability);
     setHasCheckedAvailability(true);
 
-    // Don't auto-schedule - let user click Schedule button after checking
+    if (availability.isOpen) {
+      proceedWithScheduling(combinedDateTime);
+    } else {
+      Alert.alert(
+        "Place Closed",
+        "This place is closed at the selected date and time. Please choose a different time.",
+        [
+          {
+            text: "Choose Another Time",
+            onPress: () => {
+              setAvailabilityCheck(null);
+              setHasCheckedAvailability(false);
+              setSelectedDateTime(null);
+              const now = new Date();
+              setSelectedDate(now);
+              setSelectedTime(now);
+              setPickerMode("date");
+              setShowDateTimePicker(true);
+            },
+          },
+          { text: "Cancel", style: "cancel" },
+        ],
+      );
+    }
   };
 
   const proceedWithScheduling = async (scheduledDateTime: Date) => {
@@ -606,84 +609,22 @@ export default function ActionButtons({
     }
   };
 
-  const handleNavigateFullRoute = () => {
-    // Check if this is a stroll card with route data
-    if (card.strollData?.timeline && card.strollData.timeline.length > 0) {
-      const timeline = card.strollData.timeline;
-
-      // Collect all waypoints with valid locations
-      const waypoints: string[] = [];
-
-      timeline.forEach((step) => {
-        if (step.location) {
-          if (step.location.lat && step.location.lng) {
-            waypoints.push(`${step.location.lat},${step.location.lng}`);
-          } else if (step.location.address) {
-            // Use address if coordinates not available
-            waypoints.push(encodeURIComponent(step.location.address));
-          } else if (step.location.name) {
-            // Use name as fallback
-            waypoints.push(encodeURIComponent(step.location.name));
-          }
+  const handlePoliciesAndReservations = () => {
+    if (onOpenBrowser) {
+      if (card.website) {
+        let url = card.website;
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = `https://${url}`;
         }
-      });
-
-      // If we have waypoints, create a Google Maps directions URL
-      if (waypoints.length > 0) {
-        // Use the first waypoint as origin and last as destination
-        const origin = waypoints[0];
-        const destination = waypoints[waypoints.length - 1];
-        const intermediateWaypoints = waypoints.slice(1, -1);
-
-        // Build Google Maps directions URL
-        let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
-
-        if (intermediateWaypoints.length > 0) {
-          // Google Maps supports up to 25 waypoints
-          const waypointStr = intermediateWaypoints.join("|");
-          url += `&waypoints=${waypointStr}`;
-        }
-
-        Linking.openURL(url).catch((err) => {
-          console.error("Error opening maps:", err);
-          Alert.alert("Error", "Could not open maps application");
-        });
-      } else {
-        // Fallback to main card location
-        if (card.location) {
-          const url = `https://www.google.com/maps/search/?api=1&query=${card.location.lat},${card.location.lng}`;
-          Linking.openURL(url).catch((err) => {
-            console.error("Error opening maps:", err);
-            Alert.alert("Error", "Could not open maps application");
-          });
-        } else {
-          Alert.alert(
-            "Navigation",
-            "Location data not available for this route",
-          );
-        }
-      }
-    } else {
-      // For non-stroll cards, navigate to the address
-      if (card.address) {
-        const encodedAddress = encodeURIComponent(card.address);
-        const url = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
-        Linking.openURL(url).catch((err) => {
-          console.error("Error opening maps:", err);
-          Alert.alert("Error", "Could not open maps application");
-        });
-      } else if (card.location) {
-        // Fallback to coordinates if address not available
-        const url = `https://www.google.com/maps/search/?api=1&query=${card.location.lat},${card.location.lng}`;
-        Linking.openURL(url).catch((err) => {
-          console.error("Error opening maps:", err);
-          Alert.alert("Error", "Could not open maps application");
-        });
-      } else {
-        Alert.alert("Navigation", "Location data not available");
+        onOpenBrowser(url, card.title);
+      } else if (card.placeId) {
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=Google+Maps&query_place_id=${card.placeId}`;
+        onOpenBrowser(mapsUrl, card.title);
       }
     }
   };
+
+  const showPoliciesButton = card.category !== "Nature" && card.category !== "Picnic";
 
   const hasBookingOptions =
     bookingOptions.length > 0 || card.website || card.phone;
@@ -807,71 +748,81 @@ export default function ActionButtons({
         </View>
       )}
 
+      {/* Action Buttons Row: Save + Schedule + Share */}
       <View style={styles.topRow}>
-        <View style={styles.scheduleButtonContainer}>
-          <TouchableOpacity
-            style={[
-              styles.scheduleButton,
-              (isScheduling || isScheduled) && styles.scheduleButtonDisabled,
-            ]}
-            onPress={handleSchedule}
-            activeOpacity={0.7}
-            disabled={isScheduling || isScheduled}
-          >
-            {isScheduling ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <>
-                <Ionicons
-                  name={
-                    isScheduled
-                      ? "checkmark-circle"
-                      : hasCheckedAvailability && availabilityCheck?.isOpen
-                      ? "calendar"
-                      : "time-outline"
-                  }
-                  size={20}
-                  color="#ffffff"
-                />
-                <Text style={styles.scheduleButtonText}>
-                  {isScheduled
-                    ? "Scheduled"
-                    : hasCheckedAvailability && availabilityCheck?.isOpen
-                    ? "Schedule"
-                    : "Check Availability"}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Share and Bookmark Button */}
-        <View style={styles.iconButtonsContainer}>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={handleShare}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="share-outline" size={18} color="#6b7280" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.iconButton, isSaved && styles.iconButtonSaved]}
-            onPress={handleSave}
-            activeOpacity={0.7}
-            disabled={isSaving || isSaved}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#eb7825" />
-            ) : (
+        {/* Save Button */}
+        <TouchableOpacity
+          style={[
+            styles.saveButton,
+            (isSaving || isSaved) && styles.actionButtonDisabled,
+          ]}
+          onPress={handleSave}
+          activeOpacity={0.7}
+          disabled={isSaving || isSaved}
+        >
+          {isSaving ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <>
               <Ionicons
                 name={isSaved ? "bookmark" : "bookmark-outline"}
-                size={18}
-                color={isSaved ? "#eb7825" : "#6b7280"}
+                size={20}
+                color="#ffffff"
               />
-            )}
-          </TouchableOpacity>
-        </View>
+              <Text style={styles.saveButtonText}>
+                {isSaved ? "Saved" : "Save"}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Schedule Button */}
+        <TouchableOpacity
+          style={[
+            styles.scheduleButton,
+            (isScheduling || isScheduled) && styles.scheduleButtonDisabled,
+          ]}
+          onPress={handleSchedule}
+          activeOpacity={0.7}
+          disabled={isScheduling || isScheduled}
+        >
+          {isScheduling ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <>
+              <Ionicons
+                name={isScheduled ? "checkmark-circle" : "calendar-outline"}
+                size={20}
+                color="#ffffff"
+              />
+              <Text style={styles.scheduleButtonText}>
+                {isScheduled ? "Scheduled" : "Schedule"}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Share Button */}
+        <TouchableOpacity
+          style={styles.shareIconButton}
+          onPress={handleShare}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="share-outline" size={20} color="#6b7280" />
+        </TouchableOpacity>
       </View>
+
+      {/* Policies & Reservations — all categories with website/placeId */}
+      {showPoliciesButton && (
+        <TouchableOpacity
+          style={styles.policiesButton}
+          onPress={handlePoliciesAndReservations}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="globe-outline" size={18} color="#ffffff" />
+          <Text style={styles.policiesButtonText}>Policies & Reservations</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Availability Messages */}
       {hasCheckedAvailability &&
@@ -881,33 +832,10 @@ export default function ActionButtons({
           <View style={styles.closedMessageContainer}>
             <Ionicons name="alert-circle" size={16} color="#9a3412" />
             <Text style={styles.closedMessage}>
-              This place is closed at the selected date and time. Tap "Check Availability" to choose a different time.
+              This place is closed at the selected date and time. Tap "Schedule" to choose a different time.
             </Text>
           </View>
         )}
-      {hasCheckedAvailability &&
-        availabilityCheck &&
-        availabilityCheck.isAssumption && (
-          <View style={styles.warningMessageContainer}>
-            <Ionicons name="information-circle" size={16} color="#9a3412" />
-            <Text style={styles.warningMessage}>
-              {availabilityCheck.reason ||
-                "Opening hours data not available - schedule at your own risk"}
-            </Text>
-          </View>
-        )}
-
-      {/* Navigate Full Route Button - Available for all cards */}
-      <TouchableOpacity
-        style={styles.navigateButton}
-        onPress={handleNavigateFullRoute}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="paper-plane" size={20} color="#ffffff" />
-        <Text style={styles.navigateButtonText}>Navigate Full Route</Text>
-        <Ionicons name="open-outline" size={16} color="#ffffff" />
-      </TouchableOpacity>
-
       {/* Buy Now Button - Full Width */}
       {hasBookingOptions && (
         <TouchableOpacity
@@ -950,9 +878,23 @@ const styles = StyleSheet.create({
     gap: 12,
     alignItems: "flex-start",
   },
-  scheduleButtonContainer: {
+  saveButton: {
     flex: 1,
-    gap: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#6366F1",
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#ffffff",
+  },
+  actionButtonDisabled: {
+    opacity: 0.6,
   },
   scheduleButton: {
     flex: 1,
@@ -973,11 +915,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#ffffff",
   },
-  iconButtonsContainer: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  iconButton: {
+  shareIconButton: {
     width: 48,
     height: 48,
     backgroundColor: "#ffffff",
@@ -987,20 +925,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  iconButtonSaved: {
-    opacity: 0.6,
-  },
-  navigateButton: {
+  policiesButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#eb7825",
+    backgroundColor: "#1f2937",
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
   },
-  navigateButtonText: {
-    fontSize: 16,
+  policiesButtonText: {
+    fontSize: 15,
     fontWeight: "600",
     color: "#ffffff",
   },

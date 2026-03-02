@@ -19,6 +19,14 @@ class GeocodingService {
   private cache: Map<string, GeocodingResult> = new Map();
   private readonly CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
+  // Autocomplete result cache — 5min TTL, max 50 entries
+  private autocompleteCache = new Map<
+    string,
+    { results: AutocompleteSuggestion[]; ts: number }
+  >();
+  private readonly AUTOCOMPLETE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly AUTOCOMPLETE_CACHE_MAX = 50;
+
   async reverseGeocode(
     latitude: number,
     longitude: number
@@ -273,8 +281,15 @@ class GeocodingService {
 
   // Autocomplete location suggestions
   async autocomplete(query: string): Promise<AutocompleteSuggestion[]> {
-    if (!query || query.length < 4) {
+    if (!query || query.length < 3) {
       return [];
+    }
+
+    // Check autocomplete cache first
+    const cacheKey = query.toLowerCase().trim();
+    const cached = this.autocompleteCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < this.AUTOCOMPLETE_CACHE_TTL) {
+      return cached.results;
     }
 
     try {
@@ -312,6 +327,7 @@ class GeocodingService {
               }));
 
             if (suggestions.length > 0) {
+              this.cacheAutocompleteResult(cacheKey, suggestions);
               return suggestions;
             }
           }
@@ -342,7 +358,7 @@ class GeocodingService {
 
       const data = await response.json();
 
-      return (data || []).map((item: any) => {
+      const results = (data || []).map((item: any) => {
         const address = item.address || {};
         const city = address.city || address.town || address.village || "";
         const state = address.state || address.province || "";
@@ -369,9 +385,33 @@ class GeocodingService {
           },
         };
       });
+
+      if (results.length > 0) {
+        this.cacheAutocompleteResult(cacheKey, results);
+      }
+
+      return results;
     } catch (error) {
       console.error("Autocomplete error:", error);
       return [];
+    }
+  }
+
+  // Store autocomplete result in cache with LRU eviction
+  private cacheAutocompleteResult(
+    key: string,
+    results: AutocompleteSuggestion[]
+  ): void {
+    this.autocompleteCache.set(key, { results, ts: Date.now() });
+
+    // Evict oldest entry if over limit
+    if (this.autocompleteCache.size > this.AUTOCOMPLETE_CACHE_MAX) {
+      const oldest = [...this.autocompleteCache.entries()].sort(
+        (a, b) => a[1].ts - b[1].ts
+      )[0];
+      if (oldest) {
+        this.autocompleteCache.delete(oldest[0]);
+      }
     }
   }
 }

@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from "react";
+import React, { memo, useCallback, useState } from "react";
 import {
   View,
   TouchableOpacity,
@@ -7,6 +7,7 @@ import {
   TextInput,
   ScrollView,
   ActivityIndicator,
+  Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { getCurrencySymbol, formatNumberWithCommas } from "../../utils/currency";
@@ -35,26 +36,15 @@ export const BudgetSection = memo(
   }) => {
     if (shouldHide) return null;
 
+    const [showCustom, setShowCustom] = useState(false);
+    const isPresetSelected = (max: number) => budgetMax === max;
+
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Maximum Budget per Person</Text>
         <Text style={styles.sectionSubtitle}>
           What's the most you want to spend?
         </Text>
-        <View style={styles.budgetInputContainer}>
-          <Text style={styles.dollarSign}>
-            {getCurrencySymbol(accountPreferences?.currency || "USD")}
-          </Text>
-          <TextInput
-            value={budgetMax?.toString() || ""}
-            onChangeText={onBudgetChange}
-            onFocus={onFocus}
-            keyboardType="numeric"
-            style={styles.budgetInput}
-            placeholder="Enter maximum amount"
-            placeholderTextColor="#9ca3af"
-          />
-        </View>
         <View style={styles.budgetPresetsContainer}>
           {budgetPresets.map((preset) => {
             const currencyCode = accountPreferences?.currency || "USD";
@@ -62,17 +52,55 @@ export const BudgetSection = memo(
             const rate = getRate(currencyCode);
             const convertedMax = Math.round(preset.max * rate);
             const label = `Up to ${symbol}${formatNumberWithCommas(convertedMax)}`;
+            const selected = isPresetSelected(convertedMax);
             return (
               <TouchableOpacity
                 key={preset.label}
-                onPress={() => onBudgetPresetClick(convertedMax)}
-                style={styles.budgetPresetButton}
+                onPress={() => {
+                  setShowCustom(false);
+                  onBudgetPresetClick(convertedMax);
+                }}
+                style={[
+                  styles.budgetPresetPill,
+                  selected && styles.budgetPresetPillSelected,
+                ]}
               >
-                <Text style={styles.budgetPresetText}>{label}</Text>
+                <Text style={[
+                  styles.budgetPresetPillText,
+                  selected && styles.budgetPresetPillTextSelected,
+                ]}>{label}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
+        <View style={styles.customBudgetToggleRow}>
+          <Text style={styles.customBudgetToggleLabel}>Custom amount</Text>
+          <Switch
+            value={showCustom}
+            onValueChange={(val) => {
+              setShowCustom(val);
+              if (!val) onBudgetChange("");
+            }}
+            trackColor={{ false: "#d1d5db", true: "#fdba74" }}
+            thumbColor={showCustom ? "#eb7825" : "#f4f3f4"}
+          />
+        </View>
+        {showCustom && (
+          <View style={styles.budgetInputContainer}>
+            <Text style={styles.dollarSign}>
+              {getCurrencySymbol(accountPreferences?.currency || "USD")}
+            </Text>
+            <TextInput
+              value={budgetMax?.toString() || ""}
+              onChangeText={onBudgetChange}
+              onFocus={onFocus}
+              keyboardType="numeric"
+              style={styles.budgetInput}
+              placeholder="Enter maximum amount"
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
+        )}
       </View>
     );
   },
@@ -217,6 +245,8 @@ export const LocationInputSection = memo(
     isLoadingSuggestions,
     onSuggestionSelect,
     isInputFocused,
+    useGpsLocation,
+    onToggleGps,
   }: {
     searchLocation: string;
     onLocationInputChange: (text: string) => void;
@@ -227,12 +257,24 @@ export const LocationInputSection = memo(
     isLoadingSuggestions: boolean;
     onSuggestionSelect: (suggestion: any) => void;
     isInputFocused: boolean;
+    useGpsLocation: boolean;
+    onToggleGps: (value: boolean) => void;
   }) => (
     <View>
+      <View style={styles.gpsSwitchRow}>
+        <Ionicons name="locate-outline" size={16} color="#6b7280" />
+        <Text style={styles.gpsSwitchLabel}>Use my current GPS location</Text>
+        <Switch
+          value={useGpsLocation}
+          onValueChange={onToggleGps}
+          trackColor={{ false: '#d1d5db', true: '#eb7825' }}
+          thumbColor="#ffffff"
+        />
+      </View>
       <View
         style={[
           styles.locationInputContainer,
-          isInputFocused && styles.locationInputContainerFocused,
+          isInputFocused && !useGpsLocation && styles.locationInputContainerFocused,
         ]}
       >
         <Ionicons
@@ -242,13 +284,21 @@ export const LocationInputSection = memo(
           style={styles.locationInputIcon}
         />
         <TextInput
-          style={styles.locationTextInput}
-          placeholder="Search to change your starting location..."
+          style={[
+            styles.locationTextInput,
+            useGpsLocation && styles.locationTextInputDisabled,
+          ]}
+          placeholder={
+            useGpsLocation
+              ? "Using your current GPS location"
+              : "Search to change your starting location..."
+          }
           placeholderTextColor="#9ca3af"
-          value={searchLocation}
-          onChangeText={onLocationInputChange}
-          onFocus={onFocus}
-          onBlur={onBlur}
+          value={useGpsLocation ? "" : searchLocation}
+          onChangeText={useGpsLocation ? undefined : onLocationInputChange}
+          onFocus={useGpsLocation ? undefined : onFocus}
+          onBlur={useGpsLocation ? undefined : onBlur}
+          editable={!useGpsLocation}
           autoCapitalize="words"
           returnKeyType="done"
         />
@@ -388,28 +438,43 @@ const styles = StyleSheet.create({
   },
   budgetPresetsContainer: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 6,
-    marginTop: 4,
+    marginBottom: 12,
   },
-  budgetPresetButton: {
-    flex: 1,
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: "white",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 3,
+  budgetPresetPill: {
+    flexDirection: "row",
     alignItems: "center",
-    overflow: "visible",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
-  budgetPresetText: {
-    fontSize: 10,
-    color: "#374151",
+  budgetPresetPillSelected: {
+    backgroundColor: "#fff7ed",
+    borderColor: "#eb7825",
+  },
+  budgetPresetPillText: {
+    fontSize: 11,
     fontWeight: "500",
+    color: "#374151",
+  },
+  budgetPresetPillTextSelected: {
+    color: "#eb7825",
+    fontWeight: "600",
+  },
+  customBudgetToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  customBudgetToggleLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#6b7280",
   },
   constraintTypeContainer: {
     flexDirection: "row",
@@ -469,6 +534,18 @@ const styles = StyleSheet.create({
     color: "#111827",
     padding: 0,
   },
+  gpsSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  gpsSwitchLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+  },
   locationInputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -492,6 +569,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#111827",
     padding: 0,
+  },
+  locationTextInputDisabled: {
+    backgroundColor: 'transparent',
+    color: '#9ca3af',
   },
   locationHelperContainer: {
     flexDirection: "row",

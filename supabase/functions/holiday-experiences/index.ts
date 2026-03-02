@@ -1,4 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,33 +11,35 @@ const corsHeaders = {
 };
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-// Experience categories available in Mingla
+// Experience categories available in Mingla (v2)
 const DISCOVER_CATEGORIES = [
-  "Dining Experiences",
+  "Nature",
+  "First Meet",
+  "Picnic",
+  "Drink",
   "Casual Eats",
-  "Sip & Chill",
-  "Stroll",
-  "Picnics",
-  "Screen & Relax",
-  "Wellness Dates",
-  "Creative & Hands-On",
-  "Play & Move",
-  "Freestyle",
+  "Fine Dining",
+  "Watch",
+  "Creative & Arts",
+  "Play",
+  "Wellness",
 ] as const;
 
 // Map categories to Google Places types (validated for Google Places API New)
 const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
-  "Dining Experiences": ["bakery", "ice_cream_shop"],
-  "Casual Eats": ["restaurant", "cafe"],
-  "Sip & Chill": ["bar", "cafe"],
-  "Stroll": ["park", "hiking_area"],
-  "Picnics": ["park", "beach", "marina"],
-  "Screen & Relax": ["movie_theater"],
-  "Wellness Dates": ["spa", "gym"],
-  "Creative & Hands-On": ["art_gallery", "museum"],
-  "Play & Move": ["bowling_alley", "amusement_park"],
-  "Freestyle": ["tourist_attraction", "night_club", "aquarium", "zoo"],
+  "Nature": ["park", "hiking_area", "national_park"],
+  "First Meet": ["cafe", "coffee_shop", "bar"],
+  "Picnic": ["park", "beach", "marina"],
+  "Drink": ["bar", "cafe", "wine_bar"],
+  "Casual Eats": ["restaurant", "cafe", "fast_food_restaurant"],
+  "Fine Dining": ["restaurant", "fine_dining_restaurant"],
+  "Watch": ["movie_theater", "performing_arts_theater"],
+  "Creative & Arts": ["art_gallery", "museum"],
+  "Play": ["bowling_alley", "amusement_park", "gym"],
+  "Wellness": ["spa", "gym", "yoga_studio"],
 };
 
 // Excluded place types
@@ -73,25 +79,25 @@ interface HolidayDefinition {
 }
 
 const HOLIDAYS: HolidayDefinition[] = [
-  { date: "01-01", name: "New Year's Day", description: 'The "Fresh Start" date', categories: ["Wellness Dates", "Dining Experiences"], gender: null },
-  { date: "02-14", name: "Valentine's Day", description: "The biggest high-pressure day", categories: ["Dining Experiences", "Sip & Chill"], gender: null },
-  { date: "03-08", name: "International Women's Day", description: "Celebrate the women in your life", categories: ["Dining Experiences", "Wellness Dates"], gender: "female" },
-  { date: "03-20", name: "First Day of Spring", description: 'Great for "Take a Stroll" dates', categories: ["Stroll", "Picnics"], gender: null },
-  { date: "04-20", name: "Easter", description: "Spring celebration", categories: ["Casual Eats", "Dining Experiences"], gender: null },
-  { date: "05-11", name: "Mother's Day", description: "Crucial if they have kids or to remind about partner's mom", categories: ["Dining Experiences", "Wellness Dates"], gender: "female" },
-  { date: "05-26", name: "Memorial Day", description: "Honor and remember", categories: ["Picnics", "Freestyle"], gender: null },
-  { date: "06-15", name: "Father's Day", description: "Honor the father figures in your life", categories: ["Play & Move", "Dining Experiences"], gender: "male" },
-  { date: "06-19", name: "Juneteenth / Start of Summer", description: "Summer celebration", categories: ["Freestyle", "Picnics"], gender: null },
-  { date: "07-04", name: "Independence Day", description: 'The "Big Night Out"', categories: ["Freestyle", "Picnics"], gender: null },
-  { date: "09-01", name: "Labor Day", description: "End of summer celebration", categories: ["Picnics", "Casual Eats"], gender: null },
-  { date: "09-21", name: "International Day of Peace", description: 'A "Relationship Reset" day', categories: ["Picnics", "Wellness Dates"], gender: null },
-  { date: "10-17", name: "Sweetest Day", description: 'A popular "second Valentine\'s"', categories: ["Sip & Chill", "Dining Experiences"], gender: null },
-  { date: "10-31", name: "Halloween", description: 'Perfect for "Screen & Relax" or costumes', categories: ["Screen & Relax", "Freestyle"], gender: null },
-  { date: "11-19", name: "International Men's Day", description: "Celebrate the men in your life", categories: ["Play & Move", "Dining Experiences"], gender: "male" },
-  { date: "11-27", name: "Thanksgiving", description: 'Focus on "Gratitude"', categories: ["Dining Experiences", "Casual Eats"], gender: null },
-  { date: "12-24", name: "Christmas Eve", description: "High gift-giving expectation", categories: ["Creative & Hands-On", "Dining Experiences"], gender: null },
-  { date: "12-25", name: "Christmas Day", description: "Holiday celebration", categories: ["Freestyle", "Dining Experiences"], gender: null },
-  { date: "12-31", name: "New Year's Eve", description: 'The "Big Night Out"', categories: ["Dining Experiences", "Sip & Chill"], gender: null },
+  { date: "01-01", name: "New Year's Day", description: 'The "Fresh Start" date', categories: ["Wellness", "Fine Dining"], gender: null },
+  { date: "02-14", name: "Valentine's Day", description: "The biggest high-pressure day", categories: ["Fine Dining", "Drink"], gender: null },
+  { date: "03-08", name: "International Women's Day", description: "Celebrate the women in your life", categories: ["Fine Dining", "Wellness"], gender: "female" },
+  { date: "03-20", name: "First Day of Spring", description: "Great for nature dates", categories: ["Nature", "Picnic"], gender: null },
+  { date: "04-20", name: "Easter", description: "Spring celebration", categories: ["Casual Eats", "Fine Dining"], gender: null },
+  { date: "05-11", name: "Mother's Day", description: "Crucial if they have kids or to remind about partner's mom", categories: ["Fine Dining", "Wellness"], gender: "female" },
+  { date: "05-26", name: "Memorial Day", description: "Honor and remember", categories: ["Picnic", "Nature"], gender: null },
+  { date: "06-15", name: "Father's Day", description: "Honor the father figures in your life", categories: ["Play", "Fine Dining"], gender: "male" },
+  { date: "06-19", name: "Juneteenth / Start of Summer", description: "Summer celebration", categories: ["Nature", "Picnic"], gender: null },
+  { date: "07-04", name: "Independence Day", description: 'The "Big Night Out"', categories: ["Nature", "Picnic"], gender: null },
+  { date: "09-01", name: "Labor Day", description: "End of summer celebration", categories: ["Picnic", "Casual Eats"], gender: null },
+  { date: "09-21", name: "International Day of Peace", description: 'A "Relationship Reset" day', categories: ["Picnic", "Wellness"], gender: null },
+  { date: "10-17", name: "Sweetest Day", description: 'A popular "second Valentine\'s"', categories: ["Drink", "Fine Dining"], gender: null },
+  { date: "10-31", name: "Halloween", description: "Perfect for a spooky movie night or costumes", categories: ["Watch", "Creative & Arts"], gender: null },
+  { date: "11-19", name: "International Men's Day", description: "Celebrate the men in your life", categories: ["Play", "Fine Dining"], gender: "male" },
+  { date: "11-27", name: "Thanksgiving", description: 'Focus on "Gratitude"', categories: ["Fine Dining", "Casual Eats"], gender: null },
+  { date: "12-24", name: "Christmas Eve", description: "High gift-giving expectation", categories: ["Creative & Arts", "Fine Dining"], gender: null },
+  { date: "12-25", name: "Christmas Day", description: "Holiday celebration", categories: ["Nature", "Fine Dining"], gender: null },
+  { date: "12-31", name: "New Year's Eve", description: 'The "Big Night Out"', categories: ["Fine Dining", "Drink"], gender: null },
 ];
 
 interface HolidayExperienceRequest {
@@ -295,12 +301,165 @@ serve(async (req) => {
     const globalUsedPlaceIds = new Set<string>();
     const MIN_EXPERIENCES_PER_HOLIDAY = 2;
     const MAX_EXPERIENCES_PER_HOLIDAY = 3;
-    
+
+    // ── Pool-first pipeline: try to serve from card_pool before hitting Google ──
+    const allHolidayCategories = [...new Set(upcomingHolidays.flatMap(h => h.definition.categories))];
+    const poolAdminClient = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+      ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+      : null;
+
+    if (poolAdminClient && GOOGLE_API_KEY && allHolidayCategories.length > 0) {
+      try {
+        const totalNeeded = upcomingHolidays.length * MAX_EXPERIENCES_PER_HOLIDAY;
+        const poolResult = await serveCardsFromPipeline(
+          {
+            supabaseAdmin: poolAdminClient,
+            userId: 'anonymous',
+            lat: location.lat,
+            lng: location.lng,
+            radiusMeters: radius,
+            categories: allHolidayCategories,
+            budgetMin: 0,
+            budgetMax: 500,
+            limit: totalNeeded + 20, // extra buffer
+            cardType: 'single',
+          },
+          GOOGLE_API_KEY,
+        );
+
+        // Check if pool has enough cards per holiday (>= 10 per holiday in the pool)
+        const poolCardsPerHoliday = upcomingHolidays.length > 0
+          ? Math.floor(poolResult.totalPoolSize / upcomingHolidays.length)
+          : 0;
+
+        if (poolCardsPerHoliday >= 10 && poolResult.cards.length >= totalNeeded) {
+          console.log(`[pool-first] Serving holiday experiences from pool (${poolResult.fromPool} pool, ${poolResult.fromApi} API, ${poolCardsPerHoliday} per holiday)`);
+
+          // Distribute pool cards across holidays
+          let poolCardIndex = 0;
+          const poolHolidaysWithExperiences: HolidayWithExperiences[] = [];
+
+          for (const holiday of upcomingHolidays) {
+            const experiences: ExperienceCard[] = [];
+            for (let i = 0; i < MAX_EXPERIENCES_PER_HOLIDAY && poolCardIndex < poolResult.cards.length; i++) {
+              const poolCard = poolResult.cards[poolCardIndex++];
+              experiences.push({
+                id: poolCard.placeId || poolCard.id,
+                name: poolCard.title,
+                category: poolCard.category,
+                location: { lat: poolCard.lat, lng: poolCard.lng },
+                address: poolCard.address || '',
+                rating: poolCard.rating || 0,
+                reviewCount: poolCard.reviewCount || 0,
+                imageUrl: poolCard.image || null,
+                images: poolCard.images || [],
+                placeId: poolCard.placeId || poolCard.id,
+                priceLevel: 0,
+                openingHours: poolCard.openingHours || null,
+              });
+            }
+
+            poolHolidaysWithExperiences.push({
+              id: `holiday-${holiday.definition.date}-${holiday.definition.name.replace(/\s+/g, "-").toLowerCase()}`,
+              name: holiday.definition.name,
+              description: holiday.definition.description,
+              date: holiday.date.toISOString(),
+              daysAway: holiday.daysAway,
+              primaryCategory: holiday.definition.categories[0],
+              categories: holiday.definition.categories,
+              gender: holiday.definition.gender,
+              experiences,
+            });
+          }
+
+          // Also handle custom holidays from pool
+          let poolCustomHolidays: HolidayWithExperiences[] = [];
+          if (customHolidays && customHolidays.length > 0) {
+            for (const customHoliday of customHolidays) {
+              const experiences: ExperienceCard[] = [];
+              for (let i = 0; i < MAX_EXPERIENCES_PER_HOLIDAY && poolCardIndex < poolResult.cards.length; i++) {
+                const poolCard = poolResult.cards[poolCardIndex++];
+                experiences.push({
+                  id: poolCard.placeId || poolCard.id,
+                  name: poolCard.title,
+                  category: poolCard.category,
+                  location: { lat: poolCard.lat, lng: poolCard.lng },
+                  address: poolCard.address || '',
+                  rating: poolCard.rating || 0,
+                  reviewCount: poolCard.reviewCount || 0,
+                  imageUrl: poolCard.image || null,
+                  images: poolCard.images || [],
+                  placeId: poolCard.placeId || poolCard.id,
+                  priceLevel: 0,
+                  openingHours: poolCard.openingHours || null,
+                });
+              }
+
+              const today2 = new Date();
+              today2.setHours(0, 0, 0, 0);
+              let customDate: Date;
+              if (/^\d{2}-\d{2}$/.test(customHoliday.date)) {
+                const [month, day] = customHoliday.date.split("-").map(Number);
+                customDate = new Date(today2.getFullYear(), month - 1, day);
+                if (customDate < today2) customDate.setFullYear(customDate.getFullYear() + 1);
+              } else {
+                const legacyDate = new Date(customHoliday.date);
+                customDate = new Date(today2.getFullYear(), legacyDate.getMonth(), legacyDate.getDate());
+                if (customDate < today2) customDate.setFullYear(customDate.getFullYear() + 1);
+              }
+              customDate.setHours(0, 0, 0, 0);
+              const daysAway = Math.ceil((customDate.getTime() - today2.getTime()) / (1000 * 60 * 60 * 24));
+
+              poolCustomHolidays.push({
+                id: customHoliday.id,
+                name: customHoliday.name,
+                description: customHoliday.description,
+                date: customDate.toISOString(),
+                daysAway,
+                primaryCategory: customHoliday.category,
+                categories: [customHoliday.category],
+                gender: null,
+                experiences,
+                isCustom: true,
+              });
+            }
+          }
+
+          return new Response(
+            JSON.stringify({
+              holidays: poolHolidaysWithExperiences,
+              customHolidays: poolCustomHolidays,
+              meta: {
+                totalHolidays: poolHolidaysWithExperiences.length,
+                totalCustomHolidays: poolCustomHolidays.length,
+                daysAhead: days,
+                gender,
+                poolFirst: true,
+                fromPool: poolResult.fromPool,
+                fromApi: poolResult.fromApi,
+              },
+            }),
+            {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+        console.log(`[pool-first] Pool has ${poolCardsPerHoliday} cards/holiday (need >= 10). Falling back to Google API.`);
+      } catch (poolError) {
+        console.warn("[pool-first] Pool query failed, falling back to Google API:", poolError);
+      }
+    }
+
     // Pre-fetch a large pool of experiences from ALL categories
     // Use a shared set to prevent the same place appearing in multiple category pools
     console.log("Pre-fetching experience pool from all categories...");
     const experiencePool: Map<string, ExperienceCard[]> = new Map();
     const poolPlaceIds = new Set<string>(); // Track ALL place IDs in the entire pool
+
+    // Create admin client for cache operations
+    const supabaseAdmin = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+      ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+      : null;
     
     for (const category of DISCOVER_CATEGORIES) {
       try {
@@ -309,7 +468,8 @@ serve(async (req) => {
           location,
           radius,
           15, // Fetch plenty per category
-          poolPlaceIds // Pass shared set to avoid duplicates across categories
+          poolPlaceIds, // Pass shared set to avoid duplicates across categories
+          supabaseAdmin
         );
         experiencePool.set(category, experiences);
         console.log(`Pool: ${experiences.length} experiences for ${category}`);
@@ -450,6 +610,62 @@ serve(async (req) => {
       console.log(`Processed ${customHolidaysWithExperiences.length} custom holidays with experiences`);
     }
 
+    // ── Pool storage: store generated experience cards in card_pool (fire-and-forget) ──
+    const storageAdmin = supabaseAdmin || poolAdminClient;
+    if (storageAdmin && GOOGLE_API_KEY) {
+      const allExperiences = [
+        ...holidaysWithExperiences.flatMap(h => h.experiences),
+        ...customHolidaysWithExperiences.flatMap(h => h.experiences),
+      ];
+      (async () => {
+        try {
+          for (const exp of allExperiences) {
+            const placePoolId = await upsertPlaceToPool(
+              storageAdmin,
+              {
+                id: exp.placeId,
+                placeId: exp.placeId,
+                displayName: { text: exp.name },
+                name: exp.name,
+                formattedAddress: exp.address,
+                location: { latitude: exp.location.lat, longitude: exp.location.lng },
+                rating: exp.rating,
+                userRatingCount: exp.reviewCount,
+                types: [],
+                photos: [],
+                priceLevel: exp.priceLevel,
+                regularOpeningHours: exp.openingHours,
+              },
+              GOOGLE_API_KEY!,
+              'holiday_experiences'
+            );
+
+            await insertCardToPool(storageAdmin, {
+              placePoolId: placePoolId || undefined,
+              googlePlaceId: exp.placeId,
+              cardType: 'single',
+              title: exp.name,
+              category: exp.category,
+              categories: [exp.category],
+              imageUrl: exp.imageUrl,
+              images: exp.images,
+              address: exp.address,
+              lat: exp.location.lat,
+              lng: exp.location.lng,
+              rating: exp.rating,
+              reviewCount: exp.reviewCount,
+              priceMin: 0,
+              priceMax: 0,
+              openingHours: exp.openingHours,
+            });
+          }
+          console.log(`[pool-storage] Stored ${allExperiences.length} holiday experience cards in pool`);
+        } catch (e) {
+          console.warn('[pool-storage] Error storing holiday experience cards:', e);
+        }
+      })();
+    }
+
     return new Response(
       JSON.stringify({
         holidays: holidaysWithExperiences,
@@ -488,7 +704,8 @@ async function fetchExperiencesForCategory(
   location: { lat: number; lng: number },
   radius: number,
   maxResults: number,
-  sharedUsedPlaceIds: Set<string>
+  sharedUsedPlaceIds: Set<string>,
+  supabaseAdmin: any
 ): Promise<ExperienceCard[]> {
   const experiences: ExperienceCard[] = [];
   
@@ -499,61 +716,78 @@ async function fetchExperiencesForCategory(
   }
 
   try {
-    const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
-    
-    const fieldMask = [
-      "places.id",
-      "places.displayName",
-      "places.location",
-      "places.formattedAddress",
-      "places.priceLevel",
-      "places.rating",
-      "places.userRatingCount",
-      "places.photos",
-      "places.types",
-      "places.regularOpeningHours",
-    ].join(",");
+    let allRawPlaces: any[] = [];
 
-    const requestBody = {
-      includedTypes: placeTypes,
-      maxResultCount: 20, // Fetch more to account for duplicates
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: location.lat,
-            longitude: location.lng,
+    if (supabaseAdmin) {
+      // Use batch cache for all place types in this category
+      const { results: typeResults } = await batchSearchPlaces(
+        supabaseAdmin,
+        GOOGLE_API_KEY!,
+        placeTypes,
+        location.lat,
+        location.lng,
+        radius,
+        { maxResultsPerType: 10, rankPreference: 'POPULARITY', ttlHours: 24 }
+      );
+
+      // Merge all results from typeResults, deduplicating by place.id
+      const seenIds = new Set<string>();
+      for (const places of Object.values(typeResults)) {
+        for (const place of places) {
+          if (!seenIds.has(place.id)) {
+            seenIds.add(place.id);
+            allRawPlaces.push(place);
+          }
+        }
+      }
+    } else {
+      // Fallback: direct API call
+      const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
+      const fieldMask = [
+        "places.id","places.displayName","places.location","places.formattedAddress",
+        "places.priceLevel","places.rating","places.userRatingCount",
+        "places.photos","places.types","places.regularOpeningHours",
+      ].join(",");
+
+      const requestBody = {
+        includedTypes: placeTypes,
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: {
+            center: { latitude: location.lat, longitude: location.lng },
+            radius: radius,
           },
-          radius: radius,
         },
-      },
-      rankPreference: "POPULARITY",
-    };
+        rankPreference: "POPULARITY",
+      };
 
-    const response = await fetch(baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY!,
-        "X-Goog-FieldMask": fieldMask,
-      },
-      body: JSON.stringify(requestBody),
-    });
+      const response = await fetch(baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_API_KEY!,
+          "X-Goog-FieldMask": fieldMask,
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Google Places API error for ${category}:`, response.status, errorText);
-      return experiences;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Google Places API error for ${category}:`, response.status, errorText);
+        return experiences;
+      }
+
+      const data = await response.json();
+      allRawPlaces = data.places || [];
     }
 
-    const data = await response.json();
-
-    if (!data.places || data.places.length === 0) {
+    if (allRawPlaces.length === 0) {
       console.log(`No places found for category: ${category}`);
       return experiences;
     }
 
     // Filter out excluded types
-    const validPlaces = data.places.filter((place: any) => {
+    const validPlaces = allRawPlaces.filter((place: any) => {
       const placeTypeSet = new Set(place.types || []);
       return !Array.from(EXCLUDED_TYPES).some((excluded) => placeTypeSet.has(excluded));
     });
@@ -583,185 +817,6 @@ async function fetchExperiencesForCategory(
   }
 
   return experiences;
-}
-
-/**
- * Fetch up to maxResults experiences for the given categories
- */
-async function fetchExperiencesForCategories(
-  categories: string[],
-  location: { lat: number; lng: number },
-  radius: number,
-  maxResults: number = 8
-): Promise<ExperienceCard[]> {
-  const allExperiences: ExperienceCard[] = [];
-  const usedPlaceIds = new Set<string>();
-
-  // Fetch from each category, spreading the maxResults cards across categories
-  const cardsPerCategory = Math.max(2, Math.ceil(maxResults / categories.length));
-  
-  for (const category of categories) {
-    const placeTypes = CATEGORY_TO_PLACE_TYPES[category];
-    if (!placeTypes || placeTypes.length === 0) {
-      console.warn(`No place types defined for category: ${category}`);
-      continue;
-    }
-
-    try {
-      const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
-      
-      const fieldMask = [
-        "places.id",
-        "places.displayName",
-        "places.location",
-        "places.formattedAddress",
-        "places.priceLevel",
-        "places.rating",
-        "places.userRatingCount",
-        "places.photos",
-        "places.types",
-        "places.regularOpeningHours",
-      ].join(",");
-
-      const requestBody = {
-        includedTypes: placeTypes,
-        maxResultCount: 10,
-        locationRestriction: {
-          circle: {
-            center: {
-              latitude: location.lat,
-              longitude: location.lng,
-            },
-            radius: radius,
-          },
-        },
-        rankPreference: "POPULARITY",
-      };
-
-      const response = await fetch(baseUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": GOOGLE_API_KEY!,
-          "X-Goog-FieldMask": fieldMask,
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Google Places API error for ${category}:`, response.status, errorText);
-        continue;
-      }
-
-      const data = await response.json();
-
-      if (!data.places || data.places.length === 0) {
-        console.log(`No places found for category: ${category}`);
-        continue;
-      }
-
-      // Filter out excluded types
-      const validPlaces = data.places.filter((place: any) => {
-        const placeTypeSet = new Set(place.types || []);
-        return !Array.from(EXCLUDED_TYPES).some((excluded) => placeTypeSet.has(excluded));
-      });
-
-      // Sort by rating
-      const sortedPlaces = validPlaces.sort((a: any, b: any) => {
-        const aScore = (a.rating || 0) * Math.min(1, (a.userRatingCount || 0) / 100);
-        const bScore = (b.rating || 0) * Math.min(1, (b.userRatingCount || 0) / 100);
-        return bScore - aScore;
-      });
-
-      // Add unique places up to the limit for this category
-      let addedCount = 0;
-      for (const place of sortedPlaces) {
-        if (addedCount >= cardsPerCategory) break;
-        if (usedPlaceIds.has(place.id)) continue;
-
-        usedPlaceIds.add(place.id);
-        allExperiences.push(transformToExperienceCard(place, category));
-        addedCount++;
-      }
-
-      console.log(`Added ${addedCount} experiences from ${category}`);
-    } catch (error) {
-      console.error(`Error fetching places for category ${category}:`, error);
-    }
-
-    // Stop if we have enough
-    if (allExperiences.length >= maxResults) break;
-  }
-
-  // If we still need more, fill from remaining categories
-  if (allExperiences.length < maxResults) {
-    console.log(`Only ${allExperiences.length} experiences, trying to fetch more...`);
-    // Try to get more from any available category
-    for (const category of DISCOVER_CATEGORIES) {
-      if (allExperiences.length >= maxResults) break;
-      
-      const placeTypes = CATEGORY_TO_PLACE_TYPES[category];
-      if (!placeTypes) continue;
-
-      try {
-        const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
-        const fieldMask = [
-          "places.id",
-          "places.displayName",
-          "places.location",
-          "places.formattedAddress",
-          "places.priceLevel",
-          "places.rating",
-          "places.userRatingCount",
-          "places.photos",
-          "places.types",
-        ].join(",");
-
-        const requestBody = {
-          includedTypes: placeTypes,
-          maxResultCount: 5,
-          locationRestriction: {
-            circle: {
-              center: {
-                latitude: location.lat,
-                longitude: location.lng,
-              },
-              radius: radius,
-            },
-          },
-          rankPreference: "POPULARITY",
-        };
-
-        const response = await fetch(baseUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": GOOGLE_API_KEY!,
-            "X-Goog-FieldMask": fieldMask,
-          },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!response.ok) continue;
-
-        const data = await response.json();
-        if (!data.places) continue;
-
-        for (const place of data.places) {
-          if (allExperiences.length >= maxResults) break;
-          if (usedPlaceIds.has(place.id)) continue;
-
-          usedPlaceIds.add(place.id);
-          allExperiences.push(transformToExperienceCard(place, category));
-        }
-      } catch (_error) {
-        // Continue to next category
-      }
-    }
-  }
-
-  return allExperiences.slice(0, maxResults);
 }
 
 /**

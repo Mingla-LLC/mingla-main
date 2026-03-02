@@ -66,7 +66,18 @@ const groupFunVibes = [
   "Play & Move",
   "Freestyle",
 ];
-const businessVibes = ["Take a Stroll", "Sip & Chill", "Dining Experiences"];
+const picnicDatesVibes = [
+  "Take a Stroll",
+  "Picnics",
+  "Casual Eats",
+  "Wellness Dates",
+];
+const takeAStrollVibes = [
+  "Take a Stroll",
+  "Sip & Chill",
+  "Picnics",
+  "Wellness Dates",
+];
 
 const VibeSelectionStep = ({
   onNext,
@@ -293,10 +304,10 @@ const VibeSelectionStep = ({
     let vibeNames: string[] = [];
 
     switch (intentId) {
-      case "solo-adventure":
+      case "adventurous":
         vibeNames = soloAdventureVibes;
         break;
-      case "first-dates":
+      case "first-date":
         vibeNames = firstDatesVibes;
         break;
       case "romantic":
@@ -308,8 +319,11 @@ const VibeSelectionStep = ({
       case "group-fun":
         vibeNames = groupFunVibes;
         break;
-      case "business":
-        vibeNames = businessVibes;
+      case "picnic-dates":
+        vibeNames = picnicDatesVibes;
+        break;
+      case "take-a-stroll":
+        vibeNames = takeAStrollVibes;
         break;
       default:
         // Default: show all vibes
@@ -383,7 +397,7 @@ const VibeSelectionStep = ({
     const availableVibeIds = new Set<string>();
 
     intents.forEach((intent: any) => {
-      // Handle both object format {id: "first-dates"} and string format "first-dates"
+      // Handle both object format {id: "first-date"} and string format "first-date"
       let intentId: string;
       if (typeof intent === "string") {
         intentId = intent;

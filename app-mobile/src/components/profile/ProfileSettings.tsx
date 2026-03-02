@@ -24,8 +24,8 @@ import { colors } from "@/src/constants/colors";
 import { useAppState } from "../AppStateManager";
 // import profileImage from '../../../assets/16b1d70844c656f5fea042714a1a4d861495a60b.png';
 
-interface ProfileSettingsProps {
-  onUpdateIdentity: (identity: any) => void;
+export interface ProfileSettingsProps {
+  onUpdateIdentity?: (identity: any) => void;
   onNavigateBack: () => void;
 }
 

@@ -16,6 +16,7 @@ interface FetchRecommendationsParams {
   boardPreferences: any;
   isCollaborationMode: boolean;
   isWaitingForSessionResolution?: boolean;
+  batchSeed?: number;
 }
 
 const getDefaultPreferences = (): UserPreferences => ({
@@ -23,7 +24,7 @@ const getDefaultPreferences = (): UserPreferences => ({
   budget_min: 0,
   budget_max: 1000,
   people_count: 1,
-  categories: ["Sip & Chill", "Stroll"],
+  categories: ["Nature", "Casual Eats", "Drink"],
   travel_mode: "walking",
   travel_constraint_type: "time",
   travel_constraint_value: 30,
@@ -174,6 +175,9 @@ export const useRecommendationsQuery = (
     boardPreferences?.budget_min,
     boardPreferences?.budget_max,
     boardPreferences?.group_size,
+    // Note: batchSeed intentionally excluded — regular recommendations don't
+    // use it on the backend.  Re-fetching them wastes time; only curated cards
+    // change per batch.
   ];
 
   return useQuery({

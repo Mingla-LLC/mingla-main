@@ -44,13 +44,18 @@ import CoachMarkTour from "../src/components/coachmark/CoachMarkTour";
 import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
-import { useBoardSession } from "../hooks/useBoardSession";
+import { useBoardSession } from "../src/hooks/useBoardSession";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
 import { muteService } from "../src/services/muteService";
 import ShareModal from "../src/components/ShareModal";
 import FeedbackModal from "../src/components/FeedbackModal";
+
+import ExperienceReviewModal from "../src/components/expandedCard/FeedbackModal";
+import { usePendingReviews } from "../src/hooks/usePendingReviews";
+
 import GiveFeedbackModal from "../src/components/coachmark/GiveFeedbackModal";
+
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
 import { SessionService } from "../src/services/sessionService";
@@ -83,6 +88,9 @@ function AppContent() {
   const [showGiveFeedbackModal, setShowGiveFeedbackModal] = useState<boolean>(false);
   const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
   const helpButtonDismissedRef = useRef<boolean>(false);
+
+  // Pending experience reviews — shows review modal after scheduled experiences
+  const { pendingReview, showReviewModal, dismissReview } = usePendingReviews();
   const viewShotRef = useRef<any>(null);
   const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
 
@@ -296,6 +304,22 @@ function AppContent() {
       }
     });
   }, [friendRequests]);
+
+  // Check if user needs onboarding (for authenticated users)
+  const isGoogleUser = (user as any)?.app_metadata?.provider === "google";
+  const isAppleUser = (user as any)?.app_metadata?.provider === "apple";
+  const needsOnboarding =
+    isAuthenticated &&
+    user &&
+    profile &&
+    (profile as any).has_completed_onboarding === false;
+  const needsEmailVerification =
+    isAuthenticated &&
+    user &&
+    profile &&
+    (profile as any).email_verified === false &&
+    !isGoogleUser &&
+    !isAppleUser;
 
   // Log current page for debugging
   useEffect(() => {
@@ -1378,27 +1402,6 @@ function AppContent() {
   }
   // jsieidjdj
 
-  // Check if user needs onboarding (for authenticated users)
-  // Show onboarding if user is authenticated but hasn't completed onboarding
-  const needsOnboarding =
-    isAuthenticated &&
-    user &&
-    profile &&
-    profile.has_completed_onboarding === false;
-
-  // Check if user needs email verification before onboarding
-  // Block onboarding if user is authenticated but email is not verified
-  // Skip email verification for Google and Apple sign-in users (they already verify emails)
-  const isGoogleUser = user?.app_metadata?.provider === "google";
-  const isAppleUser = user?.app_metadata?.provider === "apple";
-  const needsEmailVerification =
-    isAuthenticated &&
-    user &&
-    profile &&
-    profile.email_verified === false &&
-    !isGoogleUser &&
-    !isAppleUser; // Skip verification for Google and Apple users
-
   // Show email verification screen if needed (before onboarding)
   if (needsEmailVerification && !showSignUpForm) {
     return (
@@ -1492,14 +1495,14 @@ function AppContent() {
             handleSignIn(credentials, "explorer")
           }
           onSignUpRegular={(userData) => {
-            const accountType = userData.account_type || "explorer";
+            const accountType = (userData.account_type || "explorer") as "explorer" | "curator";
             handleSignUp(userData, accountType);
           }}
           onSignInCurator={(credentials) =>
             handleSignIn(credentials, "curator")
           }
           onSignUpCurator={(userData) => {
-            const accountType = userData.account_type || "curator";
+            const accountType = (userData.account_type || "curator") as "explorer" | "curator";
             handleSignUp(userData, accountType);
           }}
           onStartOnboarding={(accountType) => {
@@ -1578,6 +1581,7 @@ function AppContent() {
                   | "Metric"
                   | "Imperial") || "Imperial",
             }}
+            preferencesRefreshKey={preferencesRefreshKey}
           />
         );
       case "saved":
@@ -2278,12 +2282,24 @@ function AppContent() {
                       onSubmitFeedback={handleFeedbackSubmit}
                     />
 
+
+                    {/* Experience Review Modal — shown day-after for past scheduled experiences */}
+                    {pendingReview && (
+                      <ExperienceReviewModal
+                        visible={showReviewModal}
+                        experienceTitle={pendingReview.experienceTitle}
+                        cardId={pendingReview.cardId}
+                        onClose={dismissReview}
+                      />
+                    )}
+
                     {/* Give Feedback Modal (from coach mark welcome) */}
                     <GiveFeedbackModal
                       visible={showGiveFeedbackModal}
                       onClose={() => setShowGiveFeedbackModal(false)}
                       userId={user?.id}
                     />
+
 
                     {/* Floating Help Button */}
                     {showHelpButton && !showCoachMap && (
@@ -2383,8 +2399,8 @@ const styles = StyleSheet.create({
     borderTopColor: "#e5e7eb",
     paddingBottom: 8,
     paddingTop: 8,
-    zIndex: -1, // Low z-index so it doesn't overlay the Modal
-    elevation: -1,
+    zIndex: 1,
+    elevation: 1,
   },
   navigationContainer: {
     flexDirection: "row",
@@ -2471,6 +2487,20 @@ const styles = StyleSheet.create({
 });
 
 export default function App() {
+  // Gate: clear corrupted/oversized React Query persisted cache BEFORE provider mounts
+  // PersistQueryClientProvider crashes on mount if the cache exceeds Android's 2MB CursorWindow
+  const [cacheReady, setCacheReady] = React.useState(false);
+
+  React.useEffect(() => {
+    AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE')
+      .catch(() => {})
+      .finally(() => setCacheReady(true));
+  }, []);
+
+  if (!cacheReady) {
+    return null; // Brief blank frame while clearing corrupted cache
+  }
+
   return (
     <PersistQueryClientProvider
       client={queryClient}
@@ -2479,18 +2509,27 @@ export default function App() {
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
 
         dehydrateOptions: {
-          // Exclude savedCards and calendarEntries queries from persistence
+          // Exclude large/transient queries from persistence to prevent
+          // Android CursorWindow overflow (2MB SQLite row limit)
           shouldDehydrateQuery: (query) => {
             const queryKey = query.queryKey;
 
-            // Don't persist queries with queryKey starting with "savedCards" or "calendarEntries"
             if (Array.isArray(queryKey)) {
               const firstKey = queryKey[0];
-              if (firstKey === "savedCards" || firstKey === "calendarEntries") {
+              // Never persist these heavy/transient queries:
+              // - savedCards, calendarEntries: refetched on mount
+              // - curated-experiences: very large payload (20 cards × 3 stops)
+              // - recommendations: large + stale quickly
+              if (
+                firstKey === "savedCards" ||
+                firstKey === "calendarEntries" ||
+                firstKey === "curated-experiences" ||
+                firstKey === "recommendations"
+              ) {
                 return false;
               }
             }
-            // Persist all other queries
+            // Persist lightweight queries (preferences, location, etc.)
             return true;
           },
         },

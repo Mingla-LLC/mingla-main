@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useState } from "react";
 import {
   View,
   TouchableOpacity,
@@ -13,6 +13,17 @@ import { Ionicons } from "@expo/vector-icons";
  * Memoized Experience Types Section
  * Prevents unnecessary re-renders of category buttons
  */
+// Helper descriptions for curated experience types
+const EXPERIENCE_TYPE_DESCRIPTIONS: Record<string, string> = {
+  "adventurous":   "Bold outings and unique experiences to push your comfort zone",
+  "first-date":    "Relaxed, low-pressure settings ideal for getting to know someone",
+  "romantic":      "Intimate and memorable experiences for you and your partner",
+  "friendly":      "Casual hangouts and fun activities with close friends",
+  "group-fun":     "Exciting group activities everyone will enjoy together",
+  "picnic-dates":  "Grab supplies at the store and enjoy a curated picnic",
+  "take-a-stroll": "A scenic walk with a great food spot to start and end at",
+};
+
 export const ExperienceTypesSection = memo(
   ({
     experienceTypes,
@@ -22,43 +33,65 @@ export const ExperienceTypesSection = memo(
     experienceTypes: any[];
     selectedIntents: string[];
     onIntentToggle: (id: string) => void;
-  }) => (
-    <View style={[styles.section, { marginTop: 20 }]}>
-      <Text style={styles.sectionTitle}>Experience Type</Text>
-      <Text style={styles.sectionSubtitle}>
-        Date Idea / Friends / Romantic / Solo Adventure
-      </Text>
-      <View style={styles.experienceTypesContainer}>
-        {experienceTypes.map((type) => {
-          const isSelected = selectedIntents.includes(type.id);
-          return (
-            <TouchableOpacity
-              key={type.id}
-              onPress={() => onIntentToggle(type.id)}
-              style={[
-                styles.experienceTypeButton,
-                isSelected && styles.experienceTypeButtonSelected,
-              ]}
-            >
-              <Ionicons
-                name={type.icon as any}
-                size={14}
-                color={isSelected ? "#ffffff" : "#6b7280"}
-              />
-              <Text
+  }) => {
+    const [lastTappedIntent, setLastTappedIntent] = useState<string | null>(null);
+
+    const handlePress = (id: string) => {
+      setLastTappedIntent(id);
+      onIntentToggle(id);
+    };
+
+    const helperIntent = lastTappedIntent && selectedIntents.includes(lastTappedIntent)
+      ? experienceTypes.find((t: any) => t.id === lastTappedIntent)
+      : null;
+
+    return (
+      <View style={[styles.section, { marginTop: 20 }]}>
+        <Text style={styles.sectionTitle}>Curated Experiences</Text>
+        <Text style={styles.sectionSubtitle}>
+          Date Idea / Friends / Romantic / Adventurous
+        </Text>
+        <View style={styles.experienceTypesContainer}>
+          {experienceTypes.map((type) => {
+            const isSelected = selectedIntents.includes(type.id);
+            return (
+              <TouchableOpacity
+                key={type.id}
+                onPress={() => handlePress(type.id)}
                 style={[
-                  styles.experienceTypeText,
-                  isSelected && styles.experienceTypeTextSelected,
+                  styles.experienceTypeButton,
+                  isSelected && styles.experienceTypeButtonSelected,
                 ]}
               >
-                {type.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+                <Ionicons
+                  name={type.icon as any}
+                  size={14}
+                  color={isSelected ? "#ffffff" : "#6b7280"}
+                />
+                <Text
+                  style={[
+                    styles.experienceTypeText,
+                    isSelected && styles.experienceTypeTextSelected,
+                  ]}
+                >
+                  {type.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {helperIntent && EXPERIENCE_TYPE_DESCRIPTIONS[helperIntent.id] && (
+          <View style={styles.helperTextContainer}>
+            <Ionicons name="information-circle-outline" size={14} color="#eb7825" style={{ marginRight: 6, marginTop: 1 }} />
+            <Text style={styles.helperText}>
+              <Text style={styles.helperTextBold}>{helperIntent.label}:</Text>{" "}
+              {EXPERIENCE_TYPE_DESCRIPTIONS[helperIntent.id]}
+            </Text>
+          </View>
+        )}
       </View>
-    </View>
-  ),
+    );
+  },
   (prev, next) =>
     prev.selectedIntents.length === next.selectedIntents.length &&
     prev.selectedIntents.every((id: string) =>
@@ -67,6 +100,24 @@ export const ExperienceTypesSection = memo(
 );
 
 ExperienceTypesSection.displayName = "ExperienceTypesSection";
+
+// Helper descriptions for each category
+const CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  nature: "Outdoor trails, parks, gardens, and scenic walks",
+  first_meet: "Low-pressure spots perfect for a first date or meeting someone new",
+  picnic_park: "Great parks and picnic-friendly locations nearby",
+  drink: "Bars, pubs, cocktail lounges, and cozy cafés",
+  casual_eats: "Relaxed restaurants, street food, and quick bites",
+  fine_dining: "Upscale restaurants and refined dining experiences",
+  watch: "Movies, live shows, theatre, and sports events",
+  creative_arts: "Art galleries, workshops, museums, and creative studios",
+  play: "Games, arcades, bowling, escape rooms, and fun activities",
+  wellness: "Spas, yoga, meditation, and wellness retreats",
+  groceries_flowers: "Grocery stores, flower shops, and market finds",
+};
+
+// IDs of categories that need wider pills due to long labels
+const WIDE_CATEGORY_IDS = new Set(["groceries_flowers", "creative_arts"]);
 
 /**
  * Memoized Categories Section
@@ -81,40 +132,66 @@ export const CategoriesSection = memo(
     filteredCategories: any[];
     selectedCategories: string[];
     onCategoryToggle: (id: string) => void;
-  }) => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Categories</Text>
-      <View style={styles.categoriesContainer}>
-        {filteredCategories.map((category) => {
-          const isSelected = selectedCategories.includes(category.id);
-          return (
-            <TouchableOpacity
-              key={category.id}
-              onPress={() => onCategoryToggle(category.id)}
-              style={[
-                styles.categoryButton,
-                isSelected && styles.categoryButtonSelected,
-              ]}
-            >
-              <Ionicons
-                name={category.icon as any}
-                size={16}
-                color={isSelected ? "#eb7825" : "#6b7280"}
-              />
-              <Text
+  }) => {
+    const [lastTappedCategory, setLastTappedCategory] = useState<string | null>(null);
+
+    const handlePress = (id: string) => {
+      setLastTappedCategory(id);
+      onCategoryToggle(id);
+    };
+
+    // Show description for last tapped category (only if it's currently selected)
+    const helperCategory = lastTappedCategory && selectedCategories.includes(lastTappedCategory)
+      ? filteredCategories.find((c: any) => c.id === lastTappedCategory)
+      : null;
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Categories</Text>
+        <View style={styles.categoriesContainer}>
+          {filteredCategories.map((category) => {
+            const isSelected = selectedCategories.includes(category.id);
+            const isWide = WIDE_CATEGORY_IDS.has(category.id);
+            return (
+              <TouchableOpacity
+                key={category.id}
+                onPress={() => handlePress(category.id)}
                 style={[
-                  styles.categoryText,
-                  isSelected && styles.categoryTextSelected,
+                  styles.categoryButton,
+                  isWide && styles.categoryButtonWide,
+                  isSelected && styles.categoryButtonSelected,
                 ]}
               >
-                {category.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+                <Ionicons
+                  name={category.icon as any}
+                  size={14}
+                  color={isSelected ? "#eb7825" : "#6b7280"}
+                />
+                <Text
+                  style={[
+                    styles.categoryText,
+                    isSelected && styles.categoryTextSelected,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {category.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {helperCategory && CATEGORY_DESCRIPTIONS[helperCategory.id] && (
+          <View style={styles.helperTextContainer}>
+            <Ionicons name="information-circle-outline" size={14} color="#eb7825" style={{ marginRight: 6, marginTop: 1 }} />
+            <Text style={styles.helperText}>
+              <Text style={styles.helperTextBold}>{helperCategory.label}:</Text>{" "}
+              {CATEGORY_DESCRIPTIONS[helperCategory.id]}
+            </Text>
+          </View>
+        )}
       </View>
-    </View>
-  ),
+    );
+  },
   (prev, next) =>
     prev.filteredCategories.length === next.filteredCategories.length &&
     prev.selectedCategories.length === next.selectedCategories.length &&
@@ -153,28 +230,18 @@ export const DateTimeSection = memo(
               key={option.id}
               onPress={() => onDateOptionSelect(option.id)}
               style={[
-                styles.dateOptionCard,
-                isSelected && styles.dateOptionCardSelected,
+                styles.dateOptionPill,
+                isSelected && styles.dateOptionPillSelected,
               ]}
             >
-              <View style={styles.dateOptionContent}>
-                <Text
-                  style={[
-                    styles.dateOptionLabel,
-                    isSelected && styles.dateOptionLabelSelected,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.dateOptionDescription,
-                    isSelected && styles.dateOptionDescriptionSelected,
-                  ]}
-                >
-                  {option.description}
-                </Text>
-              </View>
+              <Text
+                style={[
+                  styles.dateOptionPillLabel,
+                  isSelected && styles.dateOptionPillLabelSelected,
+                ]}
+              >
+                {option.label}
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -269,8 +336,8 @@ export const TravelModeSection = memo(
             >
               <Ionicons
                 name={mode.icon as any}
-                size={20}
-                color={isSelected ? "#ffffff" : "#6b7280"}
+                size={14}
+                color={isSelected ? "#eb7825" : "#6b7280"}
               />
               <Text
                 style={[
@@ -353,7 +420,7 @@ const styles = StyleSheet.create({
     borderColor: "#eb7825",
   },
   experienceTypeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "500",
     color: "#374151",
   },
@@ -361,79 +428,88 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   categoriesContainer: {
-    flexDirection: "column",
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   categoryButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
     backgroundColor: "white",
-    minWidth: "47%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 3,
+    width: "31%",
   },
   categoryButtonSelected: {
-    backgroundColor: "#fef3e2",
-    shadowColor: "#eb7825",
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
+    backgroundColor: "#fff7ed",
+    borderColor: "#eb7825",
   },
   categoryText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "500",
     color: "#374151",
-    flex: 1,
   },
   categoryTextSelected: {
+    color: "#eb7825",
+  },
+  categoryButtonWide: {
+    width: "48%",
+  },
+  helperTextContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#fff7ed",
+    borderLeftWidth: 3,
+    borderLeftColor: "#eb7825",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 10,
+  },
+  helperText: {
+    fontSize: 12,
+    color: "#92400e",
+    flex: 1,
+    lineHeight: 17,
+  },
+  helperTextBold: {
+    fontWeight: "700",
     color: "#eb7825",
   },
   dateOptionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: 8,
     marginBottom: 12,
   },
-  dateOptionCard: {
-    width: "47.5%",
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    backgroundColor: "#f9fafb",
-    borderColor: "#e5e7eb",
-    minHeight: 60,
-    justifyContent: "center",
-  },
-  dateOptionCardSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-    borderWidth: 2,
-  },
-  dateOptionContent: {
+  dateOptionPill: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
-  dateOptionLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
+  dateOptionPillSelected: {
+    backgroundColor: "#fff7ed",
+    borderColor: "#eb7825",
   },
-  dateOptionLabelSelected: {
-    color: "#ffffff",
-  },
-  dateOptionDescription: {
+  dateOptionPillLabel: {
     fontSize: 11,
-    color: "#6b7280",
+    fontWeight: "500",
+    color: "#374151",
   },
-  dateOptionDescriptionSelected: {
-    color: "#ffffff",
-    opacity: 0.9,
+  dateOptionPillLabelSelected: {
+    color: "#eb7825",
+    fontWeight: "600",
   },
   weekendInfoCard: {
     flexDirection: "row",
@@ -518,33 +594,32 @@ const styles = StyleSheet.create({
   },
   travelModesGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
+    gap: 6,
   },
   travelModeCard: {
-    width: "47%",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    backgroundColor: "white",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
   travelModeCardSelected: {
-    backgroundColor: "#eb7825",
+    backgroundColor: "#fff7ed",
     borderColor: "#eb7825",
   },
   travelModeLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#111827",
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#374151",
   },
   travelModeLabelSelected: {
-    color: "#ffffff",
+    color: "#eb7825",
+    fontWeight: "600",
   },
   loadingContainer: {
     flex: 1,

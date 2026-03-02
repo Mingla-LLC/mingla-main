@@ -14,8 +14,9 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { formatCurrency, formatDistance, parseAndFormatDistance } from "./utils/formatters";
+import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange } from "./utils/formatters";
 import {
   ExperiencesService,
   Experience,
@@ -26,8 +27,11 @@ import {
   GeneratedExperience,
 } from "../services/experienceGenerationService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
+import { useUserPreferences } from "../hooks/useUserPreferences";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
+import { CuratedExperienceSwipeCard } from "./CuratedExperienceSwipeCard";
+import type { CuratedExperienceCard } from "../types/curatedExperience";
 import { BoardCardService } from "../services/boardCardService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -36,6 +40,8 @@ import {
   useRecommendations,
   Recommendation,
 } from "../contexts/RecommendationsContext";
+import { DeckHistorySheet } from "./DeckHistorySheet";
+import { getReadableCategoryName } from "../utils/categoryUtils";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 const CARD_HEIGHT = Math.min(screenHeight * 0.72, 800);
@@ -81,7 +87,7 @@ const getDefaultPreferences = (): UserPreferences => ({
   budget_min: 0,
   budget_max: 1000,
   people_count: 1,
-  categories: ["Sip & Chill", "Stroll"],
+  categories: ["Nature", "Casual Eats", "Drink"],
   travel_mode: "walking",
   travel_constraint_type: "time",
   travel_constraint_value: 30,
@@ -189,15 +195,29 @@ export default function SwipeableCards({
     error,
     userLocation,
     isModeTransitioning,
+    isBatchTransitioning,
     isWaitingForSessionResolution,
+    isRefreshingAfterPrefChange,
     hasCompletedInitialFetch,
     refreshRecommendations,
+    generateNextBatch,
+    restorePreviousBatch,
+    deckBatches,
+    currentDeckBatchIndex,
+    navigateToDeckBatch,
+    handleDeckCardProgress,
+    totalDeckCardsViewed,
+    hasMoreCards,
+    dismissedCards,
+    addDismissedCard,
+    isExhausted,
   } = useRecommendations();
 
   // Combine all loading states for UI consistency and to prevent animation freezing
   // Note: We only block the UI for initial loading (loading), not background refetches (isFetching)
+  // Include isBatchTransitioning so the spinner shows while curated batch is loading
   const isAnyLoading =
-    loading || isModeTransitioning || isWaitingForSessionResolution;
+    loading || isModeTransitioning || isWaitingForSessionResolution || isBatchTransitioning;
 
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -216,6 +236,7 @@ export default function SwipeableCards({
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
+  const [historyVisible, setHistoryVisible] = useState(false);
   const batchSpinValue = useRef(new Animated.Value(0)).current;
   const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
     refreshKey
@@ -229,6 +250,8 @@ export default function SwipeableCards({
     loading: sessionsLoading,
   } = useSessionManagement();
   const { user } = useAuthSimple();
+  const { data: cachedPreferences } = useUserPreferences(user?.id);
+  const [reverseGeocodedAddress, setReverseGeocodedAddress] = useState<string | null>(null);
 
   // Storage keys for persisting card state
   const getStorageKeys = () => {
@@ -238,6 +261,29 @@ export default function SwipeableCards({
       removedCards: `${baseKey}_removed`,
     };
   };
+
+  // Reverse geocode user location for "no matches" display
+  useEffect(() => {
+    if (!userLocation) return;
+    const fetchAddress = async () => {
+      try {
+        const results = await Location.reverseGeocodeAsync({
+          latitude: userLocation.lat,
+          longitude: userLocation.lng,
+        });
+        if (results?.[0]) {
+          const r = results[0];
+          const parts = [r.streetNumber, r.street, r.city].filter(Boolean);
+          if (parts.length > 0) {
+            setReverseGeocodedAddress(parts.join(" "));
+          }
+        }
+      } catch {
+        // Silently fail — will show coordinates as fallback
+      }
+    };
+    fetchAddress();
+  }, [userLocation?.lat, userLocation?.lng]);
 
   // Resolve session ID from currentMode if currentSession is not available
   // currentMode can be either "solo", a session name, or a session ID
@@ -271,6 +317,7 @@ export default function SwipeableCards({
   const recommendationsRef = useRef<Recommendation[]>([]);
   const removedCardsRef = useRef<Set<string>>(new Set());
   const currentCardIndexRef = useRef(0);
+  const previousBatchIdsRef = useRef<string>('');
 
   // Update refs when state changes
   useEffect(() => {
@@ -304,13 +351,13 @@ export default function SwipeableCards({
     "🌟 First dates? Try cozy cafes or scenic walks for a relaxed atmosphere",
     "💕 Romantic vibes? Look for intimate dining experiences or sunset spots",
     "👥 Group fun works best with interactive activities like escape rooms or game nights",
-    "☕ Sip & Chill spots are great for casual meetups and work sessions",
-    "🚶‍♀️ Take a Stroll through local parks and neighborhoods to discover new areas",
-    "🍽️ Dining Experiences offer unique culinary adventures beyond the ordinary",
-    "🎨 Creative & Hands-On activities like pottery or painting classes spark creativity",
-    "🧘‍♀️ Wellness Dates combine relaxation with meaningful connection",
-    "🎬 Screen & Relax options are perfect for rainy days or cozy evenings",
-    "🏃‍♀️ Play & Move activities keep you active while having fun",
+    "☕ Drink spots are great for casual meetups and conversation",
+    "🌿 Nature experiences let you explore parks and scenic trails",
+    "🍽️ Fine Dining offers unique culinary adventures beyond the ordinary",
+    "🎨 Creative & Arts activities like pottery or painting classes spark creativity",
+    "🧘‍♀️ Wellness experiences combine relaxation with meaningful connection",
+    "🎬 Watch options are perfect for rainy days or cozy evenings",
+    "🎮 Play activities keep you active while having fun",
     "🧺 Picnics are budget-friendly and perfect for sunny afternoons",
     "✨ Freestyle experiences let you discover something completely unexpected",
     "🍔 Casual Eats offer great food without the formal atmosphere",
@@ -376,6 +423,7 @@ export default function SwipeableCards({
 
     if (
       !isFetching &&
+      !isRefreshingAfterPrefChange &&
       !isModeTransitioning &&
       !isWaitingForSessionResolution
     ) {
@@ -385,6 +433,7 @@ export default function SwipeableCards({
   }, [
     showNextBatchLoader,
     isFetching,
+    isRefreshingAfterPrefChange,
     isModeTransitioning,
     isWaitingForSessionResolution,
   ]);
@@ -623,6 +672,27 @@ export default function SwipeableCards({
     refreshKey,
   ]);
 
+  // Clear removedCards when the batch changes (Generate Another 20)
+  useEffect(() => {
+    if (!recommendations || recommendations.length === 0) return;
+
+    const batchKey = recommendations
+      .slice(0, 5)
+      .map((r) => r.id)
+      .sort()
+      .join(",");
+
+    if (
+      previousBatchIdsRef.current !== "" &&
+      previousBatchIdsRef.current !== batchKey
+    ) {
+      setRemovedCards(new Set());
+      setCurrentCardIndex(0);
+    }
+
+    previousBatchIdsRef.current = batchKey;
+  }, [recommendations]);
+
   // PanResponder for swipe gestures
   const panResponder = useRef(
     PanResponder.create({
@@ -729,9 +799,16 @@ export default function SwipeableCards({
     if (!currentRec) return;
     setIsExpandedModalVisible(true);
 
+    // Curated cards have their own shape — pass through directly
+    if ((currentRec as any).cardType === 'curated') {
+      setSelectedCardForExpansion(currentRec as unknown as ExpandedCardData);
+      return;
+    }
+
     // Transform Recommendation to ExpandedCardData
     const expandedCardData: ExpandedCardData = {
       id: currentRec.id,
+      placeId: currentRec.placeId ?? currentRec.id,
       title: currentRec.title,
       category: currentRec.category,
       categoryIcon: currentRec.categoryIcon,
@@ -762,6 +839,9 @@ export default function SwipeableCards({
         : new Date(),
       // Include strollData if it already exists on the card
       strollData: currentRec.strollData,
+      // Pass through website/phone for nature cards' Policies & Reservations
+      website: (currentRec as any).website ?? undefined,
+      phone: (currentRec as any).phone ?? undefined,
     };
 
     setSelectedCardForExpansion(expandedCardData);
@@ -781,6 +861,17 @@ export default function SwipeableCards({
     try {
       // Track interaction in Supabase (only if user is authenticated)
       if (user?.id) {
+        // Curated cards don't have a single place_id — skip Supabase operations
+        if ((card as any).cardType === 'curated') {
+          if (direction === 'right') {
+            onCardLike(card);
+          } else {
+            console.log('[SwipeableCards] Curated card left-swiped:', card.title || card.id);
+          }
+          position.setValue({ x: 0, y: 0 });
+          return;
+        }
+
         const interactionType =
           direction === "right" ? "swipe_right" : "swipe_left";
 
@@ -883,6 +974,19 @@ export default function SwipeableCards({
       console.error("Error handling swipe:", error);
     }
 
+    // Track dismissed cards (left-swiped) for review
+    if (direction === "left") {
+      addDismissedCard(card);
+    }
+
+    // Report progress for prefetch trigger
+    handleDeckCardProgress(currentCardIndex + 1, availableRecommendations.length);
+
+    // Auto-advance to next batch when current batch runs out
+    if (currentCardIndex >= availableRecommendations.length - 1 && hasMoreCards) {
+      generateNextBatch();
+    }
+
     // Reset card position for the next swipe
     position.setValue({ x: 0, y: 0 });
   };
@@ -960,6 +1064,42 @@ export default function SwipeableCards({
     );
   }
 
+  // Helper: format travel mode for display
+  const formatTravelMode = (mode: string): string => {
+    const modeMap: Record<string, string> = {
+      walking: "Walk",
+      biking: "Bike",
+      transit: "Transit",
+      driving: "Drive",
+    };
+    return modeMap[mode] ?? mode;
+  };
+
+  // Helper: format date/time for display
+  const formatDateTimeDisplay = (
+    dateOption: string | null,
+    timeSlot: string | null,
+    datetimePref: string | null
+  ): string => {
+    const parts: string[] = [];
+    if (dateOption) parts.push(dateOption);
+    if (timeSlot) {
+      const slotMap: Record<string, string> = {
+        brunch: "Morning",
+        afternoon: "Afternoon",
+        dinner: "Evening",
+        lateNight: "Late Night",
+      };
+      parts.push(slotMap[timeSlot] ?? timeSlot);
+    }
+    if (datetimePref && parts.length === 0) {
+      const d = new Date(datetimePref);
+      parts.push(d.toLocaleDateString());
+      parts.push(d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    }
+    return parts.join(" · ") || "Anytime";
+  };
+
   // Error state - No matches found
   // Only show error if we're NOT transitioning modes (to prevent showing error during transitions)
   if (
@@ -967,12 +1107,18 @@ export default function SwipeableCards({
     !isWaitingForSessionResolution &&
     (error === "no_matches" || (error && availableRecommendations.length === 0))
   ) {
-    const currentPrefs = userPreferences || {
-      budget_min: 0,
-      budget_max: 1000,
-      categories: [],
-      travel_constraint_value: 30,
-    };
+    const currentPrefs = cachedPreferences ?? {};
+    const displayBudgetMin = currentPrefs.budget_min ?? 0;
+    const displayBudgetMax = currentPrefs.budget_max ?? 100;
+    const displayCategories: string[] = currentPrefs.categories ?? [];
+    const displayIntents: string[] = currentPrefs.intents ?? [];
+    const displayTravelMode = currentPrefs.travel_mode ?? "walking";
+    const displayTravelConstraintValue = currentPrefs.travel_constraint_value ?? 30;
+    const displayTravelConstraintType = currentPrefs.travel_constraint_type ?? "time";
+    const displayDateOption = currentPrefs.date_option ?? null;
+    const displayTimeSlot = currentPrefs.time_slot ?? null;
+    const displayDatetimePref = currentPrefs.datetime_pref ?? null;
+    const displayUseGps = currentPrefs.use_gps_location ?? false;
 
     return (
       <View style={styles.noCardsContainer}>
@@ -985,28 +1131,79 @@ export default function SwipeableCards({
 
           {/* Filter Summary */}
           <View style={styles.filterSummary}>
-            <Text style={styles.filterSummaryTitle}>Current Filters:</Text>
-            <View style={styles.filterTags}>
-              {currentPrefs.categories &&
-                currentPrefs.categories.length > 0 && (
-                  <View style={styles.filterTag}>
-                    <Text style={styles.filterTagText}>
-                      Categories: {currentPrefs.categories.join(", ")}
-                    </Text>
-                  </View>
-                )}
-              <View style={styles.filterTag}>
-                <Text style={styles.filterTagText}>
-                  Budget: ${currentPrefs.budget_min || 0}-$
-                  {currentPrefs.budget_max || 1000}
-                </Text>
+            <Text style={styles.filterSummaryTitle}>Your Filters:</Text>
+
+            {/* Intent pills */}
+            {displayIntents.length > 0 && (
+              <View style={styles.filterRow}>
+                <Text style={styles.filterLabel}>Intents:</Text>
+                <View style={styles.filterPillRow}>
+                  {displayIntents.map((intent: string) => (
+                    <View key={intent} style={styles.filterPill}>
+                      <Text style={styles.filterPillText}>{intent}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
+            )}
+
+            {/* Category pills */}
+            {displayCategories.length > 0 && (
+              <View style={styles.filterRow}>
+                <Text style={styles.filterLabel}>Categories:</Text>
+                <View style={styles.filterPillRow}>
+                  {displayCategories.map((cat: string) => (
+                    <View key={cat} style={styles.filterPill}>
+                      <Text style={styles.filterPillText}>{getReadableCategoryName(cat)}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Budget */}
+            <View style={styles.filterRow}>
+              <Text style={styles.filterLabel}>Budget:</Text>
               <View style={styles.filterTag}>
                 <Text style={styles.filterTagText}>
-                  Travel: {currentPrefs.travel_constraint_value || 30} min
+                  Up to ${displayBudgetMax}
                 </Text>
               </View>
             </View>
+
+            {/* Date/Time */}
+            {(displayDateOption || displayTimeSlot || displayDatetimePref) && (
+              <View style={styles.filterRow}>
+                <Text style={styles.filterLabel}>When:</Text>
+                <View style={styles.filterTag}>
+                  <Text style={styles.filterTagText}>
+                    {formatDateTimeDisplay(displayDateOption, displayTimeSlot, displayDatetimePref)}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Travel mode */}
+            <View style={styles.filterRow}>
+              <Text style={styles.filterLabel}>Travel:</Text>
+              <View style={styles.filterTag}>
+                <Text style={styles.filterTagText}>
+                  {formatTravelMode(displayTravelMode)} · {displayTravelConstraintValue} {displayTravelConstraintType === "time" ? "min" : "km"}
+                </Text>
+              </View>
+            </View>
+
+            {/* GPS location */}
+            {displayUseGps && userLocation && (
+              <View style={styles.filterRow}>
+                <Text style={styles.filterLabel}>Location:</Text>
+                <View style={styles.filterTag}>
+                  <Text style={styles.filterTagText}>
+                    {reverseGeocodedAddress ?? `${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`}
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
 
           <Text style={styles.suggestionsTitle}>Suggestions:</Text>
@@ -1056,11 +1253,9 @@ export default function SwipeableCards({
     );
   }
 
-  // Only show "all caught up" if:
-  // 1. We've completed an initial fetch attempt (to distinguish from "not yet loaded")
-  // 2. We're NOT loading, NOT transitioning, and truly have no recommendations
-  // This prevents showing the empty state during initial load or mode transitions
+  // End of deck — exhausted (no more Google results)
   if (
+    isExhausted &&
     hasCompletedInitialFetch &&
     availableRecommendations.length === 0 &&
     !loading &&
@@ -1071,27 +1266,52 @@ export default function SwipeableCards({
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
           <View style={styles.sparklesContainer}>
-            <Ionicons name="sparkles" size={40} color="#eb7825" />
+            <Ionicons name="earth-outline" size={48} color="#6366F1" />
           </View>
-          <Text style={styles.noCardsTitle}>You're all caught up!</Text>
+          <Text style={styles.noCardsTitle}>You've explored everything nearby</Text>
           <Text style={styles.noCardsSubtitle}>
-            You've reviewed all available recommendations. You can{" "}
-            <Text
-              style={styles.actionButtonText}
-              onPress={handleOpenPreferences}
-            >
-              update your preferences
-            </Text>{" "}
-            to see new suggestions or{" "}
-            <Text
-              style={styles.actionButtonText}
-              onPress={handleViewCardsAgain}
-            >
-              view your cards again
-            </Text>
-            .
+            No more places match your current filters in this area.
           </Text>
+
+          {dismissedCards.length > 0 && (
+            <TouchableOpacity
+              style={styles.reviewDismissedButton}
+              onPress={() => setHistoryVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="refresh-outline" size={18} color="#6366F1" />
+              <Text style={styles.reviewDismissedText}>
+                Review {dismissedCards.length} dismissed card{dismissedCards.length !== 1 ? "s" : ""}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.changePreferencesButton}
+            onPress={handleOpenPreferences}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="options-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.changePreferencesText}>Change Preferences</Text>
+          </TouchableOpacity>
         </View>
+      </View>
+    );
+  }
+
+  // End of current batch — more available, seamless transition (safety fallback)
+  if (
+    !isExhausted &&
+    hasCompletedInitialFetch &&
+    availableRecommendations.length === 0 &&
+    !loading &&
+    !isModeTransitioning &&
+    !isWaitingForSessionResolution
+  ) {
+    return (
+      <View style={styles.noCardsContainer}>
+        <ActivityIndicator size="large" color="#6366F1" />
+        <Text style={styles.loadingNextBatch}>Loading more experiences...</Text>
       </View>
     );
   }
@@ -1106,6 +1326,22 @@ export default function SwipeableCards({
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
+        {/* Deck header with History button */}
+        {deckBatches.length > 0 && (
+          <View style={styles.deckHeader}>
+            <TouchableOpacity
+              style={styles.historyButton}
+              onPress={() => setHistoryVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="time-outline" size={18} color="#6b7280" />
+              <Text style={styles.historyButtonText}>
+                Batch {currentDeckBatchIndex + 1}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={styles.cardContainer}>
           {showNextBatchLoader && (
             <View style={styles.nextBatchOverlay} pointerEvents="none">
@@ -1159,7 +1395,7 @@ export default function SwipeableCards({
                     <View style={styles.titleOverlay}>
                       <Text style={styles.cardTitle}>{nextCard.title}</Text>
 
-                      {/* Info badges: distance, rating, category */}
+                      {/* Info badges: distance, rating, price, category */}
                       <View style={styles.detailsBadges}>
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
@@ -1171,6 +1407,12 @@ export default function SwipeableCards({
                           <Ionicons name="star" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
                             {nextCard.rating.toFixed(1)}
+                          </Text>
+                        </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="pricetag" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {formatPriceRange(nextCard.priceRange, accountPreferences?.currency)}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
@@ -1253,82 +1495,97 @@ export default function SwipeableCards({
               onPress={handleCardTap}
               style={StyleSheet.absoluteFill}
             >
-              {/* Hero Image Section - 60-65% of card */}
-              <View style={styles.imageContainer}>
-                <Image
-                  source={{ uri: currentRec.image }}
-                  style={styles.cardImage}
-                  resizeMode="cover"
+              {(currentRec as any).cardType === 'curated' ? (
+                <CuratedExperienceSwipeCard
+                  card={currentRec as unknown as CuratedExperienceCard}
+                  onSeePlan={handleCardExpand}
                 />
+              ) : (
+                <>
+                  {/* Hero Image Section - 60-65% of card */}
+                  <View style={styles.imageContainer}>
+                    <Image
+                      source={{ uri: currentRec.image }}
+                      style={styles.cardImage}
+                      resizeMode="cover"
+                    />
 
-                {/* Gallery Indicator if multiple images */}
-                {currentRec.images && currentRec.images.length > 1 && (
-                  <View style={styles.galleryIndicator}>
-                    <Ionicons name="images" size={16} color="white" />
-                    <Text style={styles.galleryText}>
-                      {currentRec.images.length}
-                    </Text>
+                    {/* Gallery Indicator if multiple images */}
+                    {currentRec.images && currentRec.images.length > 1 && (
+                      <View style={styles.galleryIndicator}>
+                        <Ionicons name="images" size={16} color="white" />
+                        <Text style={styles.galleryText}>
+                          {currentRec.images.length}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Title and Details Overlay - Bottom Left of Image */}
+                    <Animated.View style={[
+                      styles.titleOverlay,
+                      {
+                        opacity: cardContentOpacity,
+                        transform: [{ translateY: titleOverlaySlide }],
+                      },
+                    ]}>
+                      <Text style={styles.cardTitle}>{currentRec.title}</Text>
+
+                      {/* Info badges: distance, rating, price, category */}
+                      <View style={styles.detailsBadges}>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="location" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
+                          </Text>
+                        </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="star" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {currentRec.rating.toFixed(1)}
+                          </Text>
+                        </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name="pricetag" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {formatPriceRange(currentRec.priceRange, accountPreferences?.currency)}
+                          </Text>
+                        </View>
+                        <View style={styles.detailBadge}>
+                          <Ionicons name={CategoryIcon as any} size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>
+                            {currentRec.category}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* View more badge */}
+                      <View style={styles.viewMoreRow}>
+                        <View style={styles.viewMoreBadge}>
+                          <Ionicons name="eye" size={12} color="white" />
+                          <Text style={styles.detailBadgeText}>View more</Text>
+                        </View>
+                      </View>
+                    </Animated.View>
                   </View>
-                )}
 
-                {/* Title and Details Overlay - Bottom Left of Image */}
-                <Animated.View style={[
-                  styles.titleOverlay,
-                  {
-                    opacity: cardContentOpacity,
-                    transform: [{ translateY: titleOverlaySlide }],
-                  },
-                ]}>
-                  <Text style={styles.cardTitle}>{currentRec.title}</Text>
-
-                  {/* Info badges: distance, rating, category */}
-                  <View style={styles.detailsBadges}>
-                    <View style={styles.detailBadge}>
-                      <Ionicons name="location" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>
-                        {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
-                      </Text>
-                    </View>
-                    <View style={styles.detailBadge}>
-                      <Ionicons name="star" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>
-                        {currentRec.rating.toFixed(1)}
-                      </Text>
-                    </View>
-                    <View style={styles.detailBadge}>
-                      <Ionicons name={CategoryIcon as any} size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>
-                        {currentRec.category}
-                      </Text>
-                    </View>
+                  {/* White Details Section - Share button only */}
+                  <View style={styles.cardDetails}>
+                    {/* Share Button - Centered at bottom */}
+                    <TouchableOpacity
+                      style={styles.shareButton}
+                      onPress={handleShare}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="share-social-outline"
+                        size={18}
+                        color="#6b7280"
+                      />
+                      <Text style={styles.shareButtonText}>Share</Text>
+                    </TouchableOpacity>
                   </View>
-
-                  {/* View more badge */}
-                  <View style={styles.viewMoreRow}>
-                    <View style={styles.viewMoreBadge}>
-                      <Ionicons name="eye" size={12} color="white" />
-                      <Text style={styles.detailBadgeText}>View more</Text>
-                    </View>
-                  </View>
-                </Animated.View>
-              </View>
-
-              {/* White Details Section - Share button only */}
-              <View style={styles.cardDetails}>
-                {/* Share Button - Centered at bottom */}
-                <TouchableOpacity
-                  style={styles.shareButton}
-                  onPress={handleShare}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name="share-social-outline"
-                    size={18}
-                    color="#6b7280"
-                  />
-                  <Text style={styles.shareButtonText}>Share</Text>
-                </TouchableOpacity>
-              </View>
+                </>
+              )}
             </TouchableOpacity>
           </Animated.View>
         </View>
@@ -1400,6 +1657,15 @@ export default function SwipeableCards({
         }}
         userPreferences={userPreferences}
         accountPreferences={accountPreferences}
+      />
+
+      <DeckHistorySheet
+        visible={historyVisible}
+        onClose={() => setHistoryVisible(false)}
+        deckBatches={deckBatches}
+        currentDeckBatchIndex={currentDeckBatchIndex}
+        navigateToDeckBatch={navigateToDeckBatch}
+        totalDeckCardsViewed={totalDeckCardsViewed}
       />
     </View>
   );
@@ -1751,6 +2017,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
+    paddingBottom: 120,
   },
   noCardsContent: {
     alignItems: "center",
@@ -1804,6 +2071,36 @@ const styles = StyleSheet.create({
   },
   filterTags: {
     gap: 8,
+  },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 8,
+    gap: 8,
+  },
+  filterLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    minWidth: 75,
+    marginTop: 4,
+  },
+  filterPillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    flex: 1,
+  },
+  filterPill: {
+    backgroundColor: "rgba(99, 102, 241, 0.15)",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  filterPillText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#6366F1",
   },
   filterTag: {
     backgroundColor: "white",
@@ -1909,5 +2206,135 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6b7280",
     fontWeight: "500",
+  },
+  generateNextButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#eb7825",
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+    marginTop: 20,
+    width: "100%",
+    justifyContent: "center",
+  },
+  generateNextButtonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "700",
+    marginLeft: 8,
+  },
+  reviewBatchButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#eb7825",
+    marginTop: 10,
+    width: "100%",
+    justifyContent: "center",
+  },
+  reviewBatchButtonText: {
+    color: "#eb7825",
+    fontSize: 15,
+    fontWeight: "600",
+    marginLeft: 6,
+  },
+  changePrefsLink: {
+    marginTop: 16,
+  },
+  changePrefsLinkText: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 13,
+    textDecorationLine: "underline",
+  },
+  reviewDismissedButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#6366F1",
+    marginBottom: 12,
+  },
+  reviewDismissedText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#6366F1",
+  },
+  changePreferencesButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: "#6366F1",
+  },
+  changePreferencesText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  loadingNextBatch: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    marginTop: 12,
+  },
+  batchHistorySection: {
+    marginTop: 16,
+    width: "100%",
+  },
+  batchHistoryTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.6)",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  batchHistoryItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    marginBottom: 6,
+  },
+  batchHistoryItemActive: {
+    backgroundColor: "#10B981",
+  },
+  batchHistoryItemText: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.8)",
+    textAlign: "center",
+  },
+  batchHistoryItemTextActive: {
+    color: "#ffffff",
+    fontWeight: "600",
+  },
+  deckHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    width: "100%",
+    paddingHorizontal: 20,
+    paddingBottom: 4,
+  },
+  historyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: "#f3f4f6",
+  },
+  historyButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6b7280",
   },
 });

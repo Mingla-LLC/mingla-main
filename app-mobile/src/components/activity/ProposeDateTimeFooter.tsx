@@ -17,6 +17,9 @@ interface ProposeDateTimeFooterProps {
   onCheckAvailability: () => void;
   onSchedule: () => void;
   isScheduling?: boolean;
+  isCurated?: boolean;
+  customTime?: Date | null;
+  dark?: boolean;
 }
 
 export default function ProposeDateTimeFooter({
@@ -28,15 +31,69 @@ export default function ProposeDateTimeFooter({
   onCheckAvailability,
   onSchedule,
   isScheduling = false,
+  isCurated = false,
+  customTime,
+  dark = false,
 }: ProposeDateTimeFooterProps) {
-  // Show Schedule button only if availability is checked and place is open
-  if (isAvailabilityChecked && isPlaceOpen) {
+  const footerBg = dark ? "#1C1C1E" : "white";
+
+  // ---------- CURATED FLOW ----------
+  // Curated cards skip "Check Availability" entirely inside the modal.
+  // The user picks a date/time then taps "Schedule Plan" directly.
+  // Validation of all stop opening hours happens externally in SavedTab.handleProposeDateTime.
+  if (isCurated) {
+    const needsTime =
+      selectedDateOption === "today" ||
+      selectedDateOption === "weekend" ||
+      selectedDateOption === "custom";
+    const isReady =
+      selectedDateOption === "now" ||
+      (selectedDateOption === "today" && customTime) ||
+      (selectedDateOption === "weekend" && selectedWeekendDay && customTime) ||
+      (selectedDateOption === "custom" && customTime);
+
     return (
-      <View style={styles.footer}>
+      <View style={[styles.footer, { backgroundColor: footerBg }]}>
         <TouchableOpacity
           style={[
-            styles.scheduleButton,
-            isScheduling && styles.scheduleButtonDisabled,
+            styles.button,
+            dark && styles.buttonDark,
+            (!isReady || isScheduling) && styles.buttonDisabled,
+          ]}
+          onPress={onSchedule}
+          disabled={!isReady || isScheduling}
+          activeOpacity={0.7}
+        >
+          {isScheduling ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Ionicons name="map" size={20} color="white" />
+          )}
+          <Text style={styles.buttonText}>
+            {isScheduling
+              ? "Scheduling..."
+              : !selectedDateOption
+                ? "Pick a date first"
+                : needsTime && !customTime
+                  ? "Pick a time"
+                  : "Schedule Plan"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // ---------- REGULAR FLOW ----------
+  // Step 1: Check Availability  →  Step 2: Schedule (only if place is open)
+
+  if (isAvailabilityChecked && isPlaceOpen) {
+    return (
+      <View style={[styles.footer, { backgroundColor: footerBg }]}>
+        <TouchableOpacity
+          style={[
+            styles.button,
+            dark && styles.buttonDark,
+            isScheduling && styles.buttonDisabled,
           ]}
           onPress={onSchedule}
           disabled={isScheduling}
@@ -47,7 +104,7 @@ export default function ProposeDateTimeFooter({
           ) : (
             <Ionicons name="calendar" size={20} color="white" />
           )}
-          <Text style={styles.scheduleButtonText}>
+          <Text style={styles.buttonText}>
             {isScheduling ? "Scheduling..." : "Schedule"}
           </Text>
         </TouchableOpacity>
@@ -55,18 +112,19 @@ export default function ProposeDateTimeFooter({
     );
   }
 
-  // Show Check Availability button
+  // Check Availability button
   const isButtonDisabled =
     !selectedDateOption ||
     isCheckingAvailability ||
     (selectedDateOption === "weekend" && !selectedWeekendDay);
 
   return (
-    <View style={styles.footer}>
+    <View style={[styles.footer, { backgroundColor: footerBg }]}>
       <TouchableOpacity
         style={[
-          styles.checkCompatibilityButton,
-          isButtonDisabled && styles.checkCompatibilityButtonDisabled,
+          styles.button,
+          dark && styles.buttonDark,
+          isButtonDisabled && styles.buttonDisabled,
         ]}
         onPress={onCheckAvailability}
         disabled={isButtonDisabled}
@@ -77,7 +135,7 @@ export default function ProposeDateTimeFooter({
         ) : (
           <Ionicons name="sparkles" size={20} color="white" />
         )}
-        <Text style={styles.checkCompatibilityText}>
+        <Text style={styles.buttonText}>
           {isCheckingAvailability ? "Checking..." : "Check Availability"}
         </Text>
       </TouchableOpacity>
@@ -87,42 +145,30 @@ export default function ProposeDateTimeFooter({
 
 const styles = StyleSheet.create({
   footer: {
-    padding: 20,
-    paddingTop: 0,
-    backgroundColor: "white",
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.06)",
   },
-  checkCompatibilityButton: {
+  button: {
     backgroundColor: "#ea580c",
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
   },
-  checkCompatibilityButtonDisabled: {
-    opacity: 0.5,
+  buttonDark: {
+    backgroundColor: "#F59E0B",
   },
-  checkCompatibilityText: {
+  buttonDisabled: {
+    opacity: 0.4,
+  },
+  buttonText: {
     color: "white",
     fontSize: 16,
-    fontWeight: "600",
-  },
-  scheduleButton: {
-    backgroundColor: "#ea580c",
-    borderRadius: 12,
-    paddingVertical: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  scheduleButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  scheduleButtonDisabled: {
-    opacity: 0.7,
+    fontWeight: "700",
   },
 });

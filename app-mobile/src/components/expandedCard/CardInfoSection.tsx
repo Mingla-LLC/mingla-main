@@ -65,6 +65,12 @@ export default function CardInfoSection({
     return "star";
   };
 
+  // Format a raw tag into a user-friendly label (e.g. "state_park" → "State Park")
+  const formatTag = (tag: string): string =>
+    tag
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
   // Find "Romantic" tag or use first tag
   const romanticTag =
     tags.find((tag) => tag.toLowerCase().includes("romantic")) || tags[0];
@@ -78,12 +84,12 @@ export default function CardInfoSection({
       <View style={styles.tagsRow}>
         <View style={styles.categoryTag}>
           <Ionicons name={getCategoryIcon() as any} size={14} color="#d97706" />
-          <Text style={styles.categoryText}>{category}</Text>
+          <Text style={styles.categoryText}>{formatTag(category)}</Text>
         </View>
         {romanticTag && (
           <>
             <Text style={styles.bullet}>•</Text>
-            <Text style={styles.tagText}>{romanticTag}</Text>
+            <Text style={styles.tagText}>{formatTag(romanticTag)}</Text>
           </>
         )}
       </View>

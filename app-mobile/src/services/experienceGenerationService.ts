@@ -85,14 +85,15 @@ export class ExperienceGenerationService {
   ): Promise<GeneratedExperience[]> {
     try {
       // Filter out experience types from categories array
-      // Experience types are: "solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business"
+      // Experience types are: "adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"
       const experienceTypeIds = new Set([
-        "solo-adventure",
-        "first-dates",
+        "adventurous",
+        "first-date",
         "romantic",
         "friendly",
         "group-fun",
-        "business",
+        "picnic-dates",
+        "take-a-stroll",
       ]);
 
       const filteredCategories = request.preferences.categories
@@ -154,27 +155,32 @@ export class ExperienceGenerationService {
 
   /**
    * Generate experiences for the Discover screen "For You" tab
-   * Fetches one experience per category based on user location only (no preferences)
-   * Returns both the 10 category cards AND a featured card
+   * Fetches one experience per category based on user location and selected categories
+   * Returns both the category cards AND a featured card
    */
   static async discoverExperiences(
     location: { lat: number; lng: number },
-    radius?: number
+    radius?: number,
+    selectedCategories?: string[]
   ): Promise<{
     cards: GeneratedExperience[];
+    heroCards: GeneratedExperience[];
     featuredCard: GeneratedExperience | null;
   }> {
     try {
-      console.log("Fetching discover experiences for location:", location);
+      console.log("Fetching discover experiences for location:", location, "categories:", selectedCategories);
+
+      const body: any = {
+        location,
+        radius: radius || 10000, // Default 10km radius
+      };
+      if (selectedCategories && selectedCategories.length > 0) {
+        body.selectedCategories = selectedCategories;
+      }
 
       const { data, error } = await supabase.functions.invoke(
         "discover-experiences",
-        {
-          body: {
-            location,
-            radius: radius || 10000, // Default 10km radius
-          },
-        }
+        { body }
       );
 
       if (error) {
@@ -189,7 +195,7 @@ export class ExperienceGenerationService {
 
       if (!data || !data.cards || data.cards.length === 0) {
         console.log("No discover experiences found");
-        return { cards: [], featuredCard: null };
+        return { cards: [], heroCards: [], featuredCard: null };
       }
 
       console.log(`Found ${data.cards.length} discover experiences`);
@@ -199,12 +205,17 @@ export class ExperienceGenerationService {
         this.transformToGeneratedExperience(card)
       );
 
-      // Transform featured card if present
-      const featuredCard = data.featuredCard
-        ? this.transformToGeneratedExperience(data.featuredCard)
-        : null;
+      // Transform hero cards (new 2-hero layout)
+      const heroCards = (data.heroCards || []).map((card: any) =>
+        this.transformToGeneratedExperience(card)
+      );
 
-      return { cards, featuredCard };
+      // Backward compat: featuredCard = first hero or legacy field
+      const featuredCard = heroCards[0] || (data.featuredCard
+        ? this.transformToGeneratedExperience(data.featuredCard)
+        : null);
+
+      return { cards, heroCards, featuredCard };
     } catch (error) {
       console.error("Failed to fetch discover experiences:", error);
       throw error;
@@ -482,6 +493,18 @@ export class ExperienceGenerationService {
 
     // Check for related categories
     const categoryRelations: { [key: string]: string[] } = {
+      // v2 categories
+      Nature: ["park", "hiking_area", "tourist_attraction", "point_of_interest"],
+      "First Meet": ["cafe", "coffee_shop", "bar"],
+      Drink: ["bar", "cafe", "coffee_shop", "wine_bar", "brewery"],
+      "Casual Eats": ["restaurant", "cafe", "fast_food_restaurant"],
+      "Fine Dining": ["restaurant", "fine_dining_restaurant"],
+      Watch: ["movie_theater", "performing_arts_theater"],
+      "Creative & Arts": ["art_gallery", "museum"],
+      Play: ["bowling_alley", "amusement_park", "gym"],
+      Wellness: ["spa", "gym", "yoga_studio"],
+      Picnic: ["park", "beach", "marina"],
+      // v1 backwards compat
       "Sip & Chill": ["bar", "cafe", "coffee_shop", "wine_bar", "brewery"],
       Stroll: ["park", "tourist_attraction", "point_of_interest"],
       Dining: ["restaurant", "fine_dining_restaurant"],
@@ -737,6 +760,17 @@ export class ExperienceGenerationService {
 
     // Core category keywords that map to icons
     const categoryKeywords: { [key: string]: string } = {
+      // v2 categories
+      nature: "leaf-outline",
+      "first meet": "chatbubbles-outline",
+      first_meet: "chatbubbles-outline",
+      drink: "wine-outline",
+      "casual eats": "fast-food-outline",
+      "fine dining": "restaurant-outline",
+      watch: "film-outline",
+      "creative & arts": "color-palette-outline",
+      wellness: "body-outline",
+      // v1 backwards compat
       stroll: "walk",
       sip: "cafe",
       chill: "cafe",
@@ -745,13 +779,13 @@ export class ExperienceGenerationService {
       screen: "film",
       relax: "film",
       creative: "brush",
-      play: "basketball",
+      play: "game-controller-outline",
       move: "basketball",
       dining: "wine",
       experience: "wine",
       freestyle: "sparkles",
-      picnic: "basket",
-      picnics: "basket",
+      picnic: "basket-outline",
+      picnics: "basket-outline",
     };
 
     // Check for exact normalized matches first
@@ -768,16 +802,26 @@ export class ExperienceGenerationService {
 
     // Fallback to original exact match (case-sensitive) for backward compatibility
     const exactMap: { [key: string]: string } = {
+      // v2 categories
+      Nature: "leaf-outline",
+      "First Meet": "chatbubbles-outline",
+      Drink: "wine-outline",
+      "Casual Eats": "fast-food-outline",
+      "Fine Dining": "restaurant-outline",
+      Watch: "film-outline",
+      "Creative & Arts": "color-palette-outline",
+      Play: "game-controller-outline",
+      Wellness: "body-outline",
+      Picnic: "basket-outline",
+      // v1 backwards compat
       Stroll: "walk",
       "Sip & Chill": "cafe",
-      "Casual Eats": "restaurant",
       "Screen & Relax": "film",
       Creative: "brush",
       "Play & Move": "basketball",
       "Dining experience": "wine",
       Freestyle: "sparkles",
-      Picnic: "basket",
-      Picnics: "basket",
+      Picnics: "basket-outline",
     };
 
     return exactMap[category] || "location";

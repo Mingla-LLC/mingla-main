@@ -17,7 +17,6 @@ export default function WeatherSection({
   loading,
   measurementSystem = 'Imperial',
 }: WeatherSectionProps) {
-  // Get weather icon name from OpenWeatherMap icon code
   const getWeatherIcon = (iconCode: string): string => {
     const iconMap: { [key: string]: string } = {
       "01d": "sunny",
@@ -42,7 +41,6 @@ export default function WeatherSection({
     return iconMap[iconCode] || "cloudy";
   };
 
-  // Get simplified condition text
   const getConditionText = (description: string): string => {
     const desc = description.toLowerCase();
     if (desc.includes("clear") || desc.includes("sunny")) return "Clear";
@@ -56,54 +54,36 @@ export default function WeatherSection({
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.card}>
-          <View style={styles.header}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="cloudy" size={20} color="#fed7aa" />
-            </View>
-            <Text style={styles.title}>Weather Forecast</Text>
+        <View style={styles.row}>
+          <View style={styles.iconBadge}>
+            <Ionicons name="cloudy" size={14} color="#ea580c" />
           </View>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#ea580c" />
-            <Text style={styles.loadingText}>Loading weather...</Text>
-          </View>
+          <Text style={styles.label}>Weather</Text>
+          <ActivityIndicator size="small" color="#ea580c" />
         </View>
       </View>
     );
   }
 
-  if (!weatherData) {
-    return null;
-  }
+  if (!weatherData) return null;
 
   const weatherIcon = getWeatherIcon(weatherData.icon);
   const conditionText = getConditionText(weatherData.description);
 
   return (
     <View style={styles.container}>
-      <View style={styles.card}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.iconCircle}>
-            <Ionicons name={weatherIcon as any} size={20} color="#d6691f" />
-          </View>
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.title}>Weather Forecast</Text>
-            <Text style={styles.condition}>{conditionText}</Text>
-          </View>
-          <View style={styles.metric}>
-            <Text style={styles.temperature}>
-              {formatTemperature(weatherData.temperature, measurementSystem)}
-            </Text>
-          </View>
+      <View style={styles.row}>
+        <View style={styles.iconBadge}>
+          <Ionicons name={weatherIcon as any} size={14} color="#ea580c" />
         </View>
-
-        {/* Recommendation Box */}
-        <View style={styles.recommendationBox}>
-          <Text style={styles.recommendationText}>
-            Recommendation: {weatherData.recommendation}
-          </Text>
+        <Text style={styles.label}>Weather</Text>
+        <View style={styles.conditionBadge}>
+          <Text style={styles.conditionText}>{conditionText}</Text>
         </View>
+        <View style={styles.spacer} />
+        <Text style={styles.temp}>
+          {formatTemperature(weatherData.temperature, measurementSystem)}
+        </Text>
       </View>
     </View>
   );
@@ -112,73 +92,51 @@ export default function WeatherSection({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 6,
   },
-  card: {
-    backgroundColor: "#eb78251a",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#eb782566",
-  },
-  header: {
+  row: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 12,
+    alignItems: "center",
+    backgroundColor: "#fef7f0",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#eb782533",
     gap: 8,
   },
-  iconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#ffffff",
+  iconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#eb782544",
     justifyContent: "center",
     alignItems: "center",
   },
-  headerTextContainer: {
+  label: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#78350f",
+  },
+  conditionBadge: {
+    backgroundColor: "#eb78251a",
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  conditionText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#c2410c",
+  },
+  spacer: {
     flex: 1,
   },
-  title: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#d6691f",
-    marginBottom: 4,
-  },
-  condition: {
-    fontSize: 12,
-    color: "#4a5565",
-  },
-  loadingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 20,
-    gap: 8,
-  },
-  loadingText: {
-    fontSize: 14,
+  temp: {
+    fontSize: 15,
+    fontWeight: "700",
     color: "#ea580c",
-  },
-  metric: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  temperature: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#ea580c",
-  },
-  recommendationBox: {
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#0a0a0a33",
-  },
-  recommendationText: {
-    fontSize: 14,
-    color: "#ea580c",
-    lineHeight: 20,
   },
 });

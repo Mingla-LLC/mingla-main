@@ -52,61 +52,7 @@ export default function PracticalDetailsSection({
     }
   };
 
-  // Parse opening hours - handles both string and object formats
-  const formatOpeningHours = (
-    hours:
-      | string
-      | { open_now?: boolean; weekday_text?: string[] }
-      | null
-      | undefined
-  ): string[] => {
-    if (!hours) return [];
-
-    // If it's an object with weekday_text array, use that
-    if (typeof hours === "object" && !Array.isArray(hours) && hours !== null) {
-      if (hours.weekday_text && Array.isArray(hours.weekday_text)) {
-        return hours.weekday_text;
-      }
-      return [];
-    }
-
-    // If it's already formatted as an array of strings, return as is
-    if (Array.isArray(hours)) {
-      return hours;
-    }
-
-    // If it's a string, try to parse it
-    if (typeof hours === "string") {
-      // Try to parse different formats
-      try {
-        // If it's JSON string, parse it
-        const parsed = JSON.parse(hours);
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
-        // If parsed is an object with weekday_text
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          parsed.weekday_text &&
-          Array.isArray(parsed.weekday_text)
-        ) {
-          return parsed.weekday_text;
-        }
-      } catch {
-        // Not JSON, treat as plain string
-      }
-
-      // Split by newlines or commas
-      return hours.split(/\n|, /).filter((h) => h.trim().length > 0);
-    }
-
-    return [];
-  };
-
-  const hoursArray = formatOpeningHours(openingHours);
-
-  const hasAnyDetails = address || openingHours || phone || website;
+  const hasAnyDetails = address || phone || website;
 
   if (!hasAnyDetails) {
     return null;
@@ -114,138 +60,109 @@ export default function PracticalDetailsSection({
 
   return (
     <View style={styles.container}>
-      {/* <View style={styles.header}>
-        <Ionicons name="information-circle" size={20} color="#eb7825" />
-        <Text style={styles.title}>Practical Details</Text>
-      </View> */}
+      {/* Address */}
+      {address && (
+        <TouchableOpacity
+          style={styles.addressRow}
+          onPress={handleAddressPress}
+          activeOpacity={0.7}
+        >
+          <View style={styles.iconBadge}>
+            <Ionicons name="location" size={14} color="#ea580c" />
+          </View>
+          <Text style={styles.addressText} numberOfLines={2}>{address}</Text>
+          <Ionicons name="open-outline" size={13} color="#9ca3af" />
+        </TouchableOpacity>
+      )}
 
-      <View style={styles.detailsContainer}>
-        {/* Address */}
-        {address && (
-          <TouchableOpacity
-            style={styles.detailRow}
-            onPress={handleAddressPress}
-            activeOpacity={0.7}
-          >
-            <View style={styles.iconContainer}>
-              <Ionicons name="location" size={20} color="#6b7280" />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Address</Text>
-              <Text style={styles.detailValue}>{address}</Text>
-              <Text style={styles.detailAction}>Tap to open in Maps</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-          </TouchableOpacity>
-        )}
-
-        {/* Opening Hours - displayed in ActionButtons section instead */}
-        {/* Phone */}
-        {phone && (
-          <TouchableOpacity
-            style={styles.detailRow}
-            onPress={handlePhonePress}
-            activeOpacity={0.7}
-          >
-            <View style={styles.iconContainer}>
-              <Ionicons name="call" size={20} color="#6b7280" />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Phone</Text>
-              <Text style={styles.detailValue}>{phone}</Text>
-              <Text style={styles.detailAction}>Tap to call</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-          </TouchableOpacity>
-        )}
-
-        {/* Website */}
-        {website && (
-          <TouchableOpacity
-            style={styles.detailRow}
-            onPress={handleWebsitePress}
-            activeOpacity={0.7}
-          >
-            <View style={styles.iconContainer}>
-              <Ionicons name="globe" size={20} color="#6b7280" />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Website</Text>
-              <Text style={[styles.detailValue, styles.websiteText]}>
+      {/* Phone & Website inline row */}
+      {(phone || website) && (
+        <View style={styles.contactRow}>
+          {phone && (
+            <TouchableOpacity
+              style={styles.contactChip}
+              onPress={handlePhonePress}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="call" size={13} color="#ea580c" />
+              <Text style={styles.contactText} numberOfLines={1}>{phone}</Text>
+            </TouchableOpacity>
+          )}
+          {website && (
+            <TouchableOpacity
+              style={[styles.contactChip, styles.websiteChip]}
+              onPress={handleWebsitePress}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="globe" size={13} color="#3b82f6" />
+              <Text style={[styles.contactText, styles.websiteText]} numberOfLines={1}>
                 {website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
               </Text>
-              <Text style={styles.detailAction}>Tap to visit</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-          </TouchableOpacity>
-        )}
-      </View>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#ffffff",
-    paddingVertical: 20,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
     paddingHorizontal: 16,
-    marginBottom: 16,
+    paddingVertical: 8,
     gap: 8,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  detailsContainer: {
-    paddingHorizontal: 16,
-    gap: 0,
-  },
-  detailRow: {
+  addressRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-    gap: 12,
+    alignItems: "center",
+    backgroundColor: "#fef7f0",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#eb782533",
+    gap: 8,
   },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#f9fafb",
+  iconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#eb782544",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 2,
   },
-  detailContent: {
+  addressText: {
     flex: 1,
+    fontSize: 13,
+    color: "#374151",
+    lineHeight: 18,
   },
-  detailLabel: {
+  contactRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  contactChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fef7f0",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#eb782533",
+    gap: 6,
+  },
+  websiteChip: {
+    borderColor: "#3b82f622",
+    backgroundColor: "#eff6ff",
+  },
+  contactText: {
+    flex: 1,
     fontSize: 12,
-    color: "#6b7280",
-    fontWeight: "500",
-    marginBottom: 4,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  detailValue: {
-    fontSize: 15,
-    color: "#111827",
-    lineHeight: 22,
-    marginBottom: 4,
-  },
-  detailAction: {
-    fontSize: 12,
-    color: "#eb7825",
-    fontWeight: "500",
-    marginTop: 2,
+    color: "#374151",
   },
   websiteText: {
     color: "#3b82f6",
