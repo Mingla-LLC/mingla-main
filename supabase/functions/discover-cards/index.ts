@@ -667,7 +667,7 @@ function storeResultsInPoolBatched(
       // Single batched insert for all cards
       const { data: insertedCards, error: cardError } = await supabaseAdmin
         .from('card_pool')
-        .upsert(cardRows, { onConflict: 'google_place_id' })
+        .upsert(cardRows, { ignoreDuplicates: true })
         .select('id, google_place_id');
 
       if (cardError) {

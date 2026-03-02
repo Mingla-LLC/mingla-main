@@ -539,8 +539,8 @@ export async function serveCardsFromPipeline(
 
     for (const cat of neededCategories) {
       const types = getPlaceTypesForCategory(cat);
-      // Use first 2 types per category for diversity
-      for (const type of types.slice(0, 2)) {
+      // Use first 4 types per category for diversity
+      for (const type of types.slice(0, 4)) {
         if (!typeMap[type]) {
           typeMap[type] = cat;
           allTypes.push(type);
