@@ -2401,8 +2401,8 @@ const styles = StyleSheet.create({
     borderTopColor: "#e5e7eb",
     paddingBottom: 8,
     paddingTop: 8,
-    zIndex: -1, // Low z-index so it doesn't overlay the Modal
-    elevation: -1,
+    zIndex: 1,
+    elevation: 1,
   },
   navigationContainer: {
     flexDirection: "row",

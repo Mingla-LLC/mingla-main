@@ -14,7 +14,7 @@ const DEFAULT_FIELD_MASK =
   'places.id,places.displayName,places.formattedAddress,places.location,' +
   'places.rating,places.userRatingCount,places.priceLevel,' +
   'places.types,places.primaryType,' +
-  'places.regularOpeningHours,places.photos';
+  'places.regularOpeningHours,places.photos,places.websiteUri';
 
 interface SearchParams {
   supabaseAdmin: SupabaseClient;
@@ -55,7 +55,7 @@ export async function searchPlacesWithCache(params: SearchParams): Promise<Cache
     radiusMeters,
     maxResults = 10,
     strategy = 'nearby',
-    textQuery = null,
+    textQuery = '',
     fieldMask = DEFAULT_FIELD_MASK,
     ttlHours = 24,
     rankPreference,
@@ -237,7 +237,7 @@ export async function batchSearchPlaces(
       radiusMeters,
       maxResults: options?.maxResultsPerType ?? 10,
       strategy,
-      textQuery: textQuery ?? undefined,
+      textQuery: textQuery || '',
       rankPreference: options?.rankPreference,
       excludedTypes: options?.excludedTypes,
       ttlHours: options?.ttlHours,

@@ -144,15 +144,15 @@ function getAllPhotoUrls(place: any, max = 5): string[] {
     .filter(Boolean);
 }
 
-function parseOpeningHours(place: any): { hours: Record<string, string>; isOpenNow: boolean } {
+function parseOpeningHours(place: any): { hours: Record<string, string>; isOpenNow: boolean | null } {
   const roh = place.regularOpeningHours;
-  if (!roh) return { hours: {}, isOpenNow: true };
+  if (!roh) return { hours: {}, isOpenNow: null };
   const hours: Record<string, string> = {};
   for (const desc of roh.weekdayDescriptions ?? []) {
     const [day, ...rest] = desc.split(': ');
     if (day) hours[day.toLowerCase()] = rest.join(': ');
   }
-  return { hours, isOpenNow: roh.openNow ?? true };
+  return { hours, isOpenNow: roh.openNow ?? null };
 }
 
 function formatPlaceType(type: string): string {
@@ -417,7 +417,7 @@ serve(async (req: Request) => {
 
     for (const cat of categories) {
       const types = getPlaceTypesForCategory(cat);
-      const selected = types.slice(0, 2);
+      const selected = types.slice(0, 4);
       for (const type of selected) {
         if (!typeToCategory[type]) {
           typeToCategory[type] = cat;
@@ -541,7 +541,7 @@ serve(async (req: Request) => {
     });
 
     const elapsed = Date.now() - t0;
-    const source: string = apiCallsMade > 0 ? (cacheHits > 0 ? 'mixed' : 'api') : 'api';
+    const source: string = apiCallsMade > 0 ? (cacheHits > 0 ? 'mixed' : 'api') : 'cache';
     console.log(`[discover-cards] Done in ${elapsed}ms: ${cards.length} cards, ${apiCallsMade} API calls`);
 
     // ── warmPool: return empty response after storing ─────────────────────
@@ -611,7 +611,7 @@ function storeResultsInPoolBatched(
           photos,
           website: p.websiteUri || null,
           raw_google_data: p,
-          fetched_via: 'discover_cards',
+          fetched_via: 'nearby_search',
           last_detail_refresh: new Date().toISOString(),
           refresh_failures: 0,
           is_active: true,
@@ -667,7 +667,7 @@ function storeResultsInPoolBatched(
       // Single batched insert for all cards
       const { data: insertedCards, error: cardError } = await supabaseAdmin
         .from('card_pool')
-        .insert(cardRows)
+        .upsert(cardRows, { onConflict: 'google_place_id' })
         .select('id, google_place_id');
 
       if (cardError) {

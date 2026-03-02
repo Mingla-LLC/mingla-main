@@ -119,8 +119,7 @@ async function queryPoolCards(
     .lte('lat', lat + latDelta)
     .gte('lng', lng - lngDelta)
     .lte('lng', lng + lngDelta)
-    .lte('price_max', budgetMax)
-    .gte('price_min', budgetMin)
+    .lte('price_min', budgetMax)
     .order('popularity_score', { ascending: false })
     .limit(limit + 20); // fetch extra to account for impression filtering
 
@@ -348,19 +347,12 @@ async function updateServedCounts(
   cardPoolIds: string[]
 ): Promise<void> {
   if (cardPoolIds.length === 0) return;
-
-  // Fire-and-forget update
-  supabaseAdmin.rpc('', {}).then(() => {}).catch(() => {});
-
-  // Use individual updates since we can't do served_count + 1 in bulk easily
-  for (const id of cardPoolIds) {
-    supabaseAdmin
-      .from('card_pool')
-      .update({ last_served_at: new Date().toISOString() })
-      .eq('id', id)
-      .then(() => {})
-      .catch(() => {});
-  }
+  supabaseAdmin
+    .from('card_pool')
+    .update({ last_served_at: new Date().toISOString() })
+    .in('id', cardPoolIds)
+    .then(() => {})
+    .catch(() => {});
 }
 
 // ── Step 7: Build a single card from a place_pool entry ─────────────────────
@@ -579,6 +571,7 @@ export async function serveCardsFromPipeline(
       for (const place of places) {
         const googlePlaceId = place.id;
         if (!googlePlaceId || servedPlaceIds.has(googlePlaceId)) continue;
+        if (!place.location?.latitude || !place.location?.longitude) continue;
         servedPlaceIds.add(googlePlaceId);
 
         // Upsert to place_pool (fire-and-forget for speed, but await the first few for data)
@@ -613,8 +606,8 @@ export async function serveCardsFromPipeline(
           imageUrl,
           images: images as string[],
           address: place.formattedAddress || '',
-          lat: place.location?.latitude || lat,
-          lng: place.location?.longitude || lng,
+          lat: place.location?.latitude || 0,
+          lng: place.location?.longitude || 0,
           rating,
           reviewCount,
           priceMin: priceRange.min,
@@ -638,8 +631,8 @@ export async function serveCardsFromPipeline(
           description: `A great ${category} spot to explore.`,
           highlights: ['Highly Rated', 'Popular Choice'],
           address: place.formattedAddress || '',
-          lat: place.location?.latitude || lat,
-          lng: place.location?.longitude || lng,
+          lat: place.location?.latitude || 0,
+          lng: place.location?.longitude || 0,
           placeId: googlePlaceId,
           matchFactors: {},
           openingHours: place.regularOpeningHours || null,

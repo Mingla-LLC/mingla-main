@@ -116,34 +116,36 @@ const getNextOccurrence = (dateStr: string): { date: Date; daysAway: number } =>
   return { date: holidayDate, daysAway };
 };
 
-// Category icons mapping (from PreferencesSheet categories)
+// Category icons mapping (v3 category system)
 const categoryIcons: { [key: string]: string } = {
-  "Stroll": "eye-outline",
-  "Take a Stroll": "eye-outline",
-  "Sip & Chill": "cafe-outline",
-  "Casual Eats": "restaurant-outline",
-  "screenRelax": "desktop-outline",
-  "Screen & Relax": "desktop-outline",
-  "Creative & Hands-On": "color-palette-outline",
-  "Picnics": "basket-outline",
-  "Play & Move": "game-controller-outline",
-  "Dining Experiences": "restaurant-outline",
-  "Wellness Dates": "leaf-outline",
-  "Freestyle": "sparkles-outline",
+  "Nature": "leaf-outline",
+  "First Meet": "chatbubbles-outline",
+  "Picnic": "basket-outline",
+  "Drink": "wine-outline",
+  "Casual Eats": "fast-food-outline",
+  "Fine Dining": "restaurant-outline",
+  "Watch": "film-outline",
+  "Creative & Arts": "color-palette-outline",
+  "Play": "game-controller-outline",
+  "Wellness": "body-outline",
+  "Groceries & Flowers": "cart-outline",
+  "Work & Business": "briefcase-outline",
 };
 
-// All experience categories (must match PreferencesSheet categories)
+// All experience categories (v3 category system — matches categoryPlaceTypes.ts)
 const ALL_CATEGORIES = [
-  "Stroll",
-  "Sip & Chill",
+  "Nature",
+  "First Meet",
+  "Picnic",
+  "Drink",
   "Casual Eats",
-  "Screen & Relax",
-  "Creative & Hands-On",
-  "Picnics",
-  "Play & Move",
-  "Dining Experiences",
-  "Wellness Dates",
-  "Freestyle",
+  "Fine Dining",
+  "Watch",
+  "Creative & Arts",
+  "Play",
+  "Wellness",
+  "Groceries & Flowers",
+  "Work & Business",
 ];
 
 interface DiscoverCache {
@@ -174,51 +176,50 @@ const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
 
 const getUsDateKey = (): string => usDateFormatter.format(new Date());
 
-// HARDCODED: Holiday name to experience categories mapping
+// HARDCODED: Holiday name to experience categories mapping (v3 category names)
 // This maps each holiday to the categories of experiences that should display in its dropdown
-// Note: "Dining Experiences" and "Casual Eats" are both dining-related categories
 const HOLIDAY_CATEGORY_MAP: { [holidayName: string]: string[] } = {
-  // New Year's Day -> Wellness Dates + Dining
-  "new year's day": ["Wellness Dates", "Dining Experiences", "Casual Eats"],
-  "new year": ["Wellness Dates", "Dining Experiences", "Casual Eats"],
-  // Valentine's Day -> Dining only
-  "valentine's day": ["Dining Experiences", "Casual Eats"],
-  "valentine": ["Dining Experiences", "Casual Eats"],
-  // International Women's Day -> Dining
-  "international women's day": ["Dining Experiences", "Casual Eats"],
-  "women's day": ["Dining Experiences", "Casual Eats"],
-  // First Day of Spring -> Stroll + Dining
-  "first day of spring": ["Stroll", "Dining Experiences", "Casual Eats"],
-  "spring": ["Stroll", "Dining Experiences", "Casual Eats"],
-  // Mother's Day -> Dining
-  "mother's day": ["Dining Experiences", "Casual Eats"],
-  // Father's Day -> Dining
-  "father's day": ["Dining Experiences", "Casual Eats"],
-  // Juneteenth / Summer -> Freestyle + Dining
-  "juneteenth": ["Freestyle", "Dining Experiences", "Casual Eats"],
-  "start of summer": ["Freestyle", "Dining Experiences", "Casual Eats"],
-  "summer": ["Freestyle", "Dining Experiences", "Casual Eats"],
-  // International Day of Peace -> Picnics + Dining
-  "international day of peace": ["Picnics", "Dining Experiences", "Casual Eats"],
-  "day of peace": ["Picnics", "Dining Experiences", "Casual Eats"],
-  "peace": ["Picnics", "Dining Experiences", "Casual Eats"],
-  // Sweetest Day -> Sip & Chill + Dining
-  "sweetest day": ["Sip & Chill", "Dining Experiences", "Casual Eats"],
-  "sweetest": ["Sip & Chill", "Dining Experiences", "Casual Eats"],
-  // Halloween -> Screen & Relax + Dining
-  "halloween": ["Screen & Relax", "Dining Experiences", "Casual Eats"],
-  // International Men's Day -> Play & Move + Dining
-  "international men's day": ["Play & Move", "Dining Experiences", "Casual Eats"],
-  "men's day": ["Play & Move", "Dining Experiences", "Casual Eats"],
-  // Thanksgiving -> Play & Move + Dining
-  "thanksgiving": ["Play & Move", "Dining Experiences", "Casual Eats"],
-  // Christmas Eve -> Creative & Hands-On + Dining
-  "christmas eve": ["Creative & Hands-On", "Dining Experiences", "Casual Eats"],
-  // Christmas Day -> Freestyle + Dining
-  "christmas day": ["Freestyle", "Dining Experiences", "Casual Eats"],
-  "christmas": ["Freestyle", "Dining Experiences", "Casual Eats"],
-  // New Year's Eve -> Dining
-  "new year's eve": ["Dining Experiences", "Casual Eats"],
+  // New Year's Day -> Wellness + Fine Dining
+  "new year's day": ["Wellness", "Fine Dining", "Casual Eats"],
+  "new year": ["Wellness", "Fine Dining", "Casual Eats"],
+  // Valentine's Day -> Fine Dining only
+  "valentine's day": ["Fine Dining", "Casual Eats"],
+  "valentine": ["Fine Dining", "Casual Eats"],
+  // International Women's Day -> Fine Dining
+  "international women's day": ["Fine Dining", "Casual Eats"],
+  "women's day": ["Fine Dining", "Casual Eats"],
+  // First Day of Spring -> Nature + Fine Dining
+  "first day of spring": ["Nature", "Fine Dining", "Casual Eats"],
+  "spring": ["Nature", "Fine Dining", "Casual Eats"],
+  // Mother's Day -> Fine Dining
+  "mother's day": ["Fine Dining", "Casual Eats"],
+  // Father's Day -> Fine Dining
+  "father's day": ["Fine Dining", "Casual Eats"],
+  // Juneteenth / Summer -> Nature + Fine Dining
+  "juneteenth": ["Nature", "Fine Dining", "Casual Eats"],
+  "start of summer": ["Nature", "Fine Dining", "Casual Eats"],
+  "summer": ["Nature", "Fine Dining", "Casual Eats"],
+  // International Day of Peace -> Picnic + Fine Dining
+  "international day of peace": ["Picnic", "Fine Dining", "Casual Eats"],
+  "day of peace": ["Picnic", "Fine Dining", "Casual Eats"],
+  "peace": ["Picnic", "Fine Dining", "Casual Eats"],
+  // Sweetest Day -> Drink + Fine Dining
+  "sweetest day": ["Drink", "Fine Dining", "Casual Eats"],
+  "sweetest": ["Drink", "Fine Dining", "Casual Eats"],
+  // Halloween -> Watch + Fine Dining
+  "halloween": ["Watch", "Fine Dining", "Casual Eats"],
+  // International Men's Day -> Play + Fine Dining
+  "international men's day": ["Play", "Fine Dining", "Casual Eats"],
+  "men's day": ["Play", "Fine Dining", "Casual Eats"],
+  // Thanksgiving -> Play + Fine Dining
+  "thanksgiving": ["Play", "Fine Dining", "Casual Eats"],
+  // Christmas Eve -> Creative & Arts + Fine Dining
+  "christmas eve": ["Creative & Arts", "Fine Dining", "Casual Eats"],
+  // Christmas Day -> Nature + Fine Dining
+  "christmas day": ["Nature", "Fine Dining", "Casual Eats"],
+  "christmas": ["Nature", "Fine Dining", "Casual Eats"],
+  // New Year's Eve -> Fine Dining
+  "new year's eve": ["Fine Dining", "Casual Eats"],
 };
 
 // Helper to get categories for a holiday by name
@@ -237,8 +238,8 @@ const getCategoriesForHolidayName = (holidayName: string): string[] => {
     }
   }
   
-  // Default fallback: Dining Experiences + Casual Eats (works for most holidays)
-  return ["Dining Experiences", "Casual Eats"];
+  // Default fallback: Fine Dining + Casual Eats (works for most holidays)
+  return ["Fine Dining", "Casual Eats"];
 };
 
 // Tab types for Discover screen
@@ -752,7 +753,7 @@ export default function DiscoverScreen({
   const [showCustomDayMonthPicker, setShowCustomDayMonthPicker] = useState(false);
   const [showCustomDayDayPicker, setShowCustomDayDayPicker] = useState(false);
   const [customDayDescription, setCustomDayDescription] = useState("");
-  const [customDayCategories, setCustomDayCategories] = useState<string[]>(["Dining Experiences"]);
+  const [customDayCategories, setCustomDayCategories] = useState<string[]>(["Fine Dining"]);
   const [customDayNameError, setCustomDayNameError] = useState<string | null>(null);
   const [customDayDateError, setCustomDayDateError] = useState<string | null>(null);
   const [customDayCategoryError, setCustomDayCategoryError] = useState<string | null>(null);
@@ -898,10 +899,10 @@ export default function DiscoverScreen({
     // Return categories that tend to resonate more with specific genders
     // null means no filter (show all)
     if (gender === "female") {
-      return ["Wellness Dates", "Sip & Chill", "Creative & Hands-On", "Dining Experiences", "Picnics"];
+      return ["Wellness", "Drink", "Creative & Arts", "Fine Dining", "Picnic"];
     }
     if (gender === "male") {
-      return ["Play & Move", "Casual Eats", "Dining Experiences", "Sip & Chill", "Screen & Relax"];
+      return ["Play", "Casual Eats", "Fine Dining", "Drink", "Watch"];
     }
     return null; // "other" - show all
   }, []);
@@ -2437,7 +2438,7 @@ export default function DiscoverScreen({
     setShowCustomDayMonthPicker(false);
     setShowCustomDayDayPicker(false);
     setCustomDayDescription("");
-    setCustomDayCategories(["Dining Experiences"]);
+    setCustomDayCategories(["Fine Dining"]);
     setCustomDayNameError(null);
     setCustomDayDateError(null);
     setCustomDayCategoryError(null);
@@ -2470,7 +2471,7 @@ export default function DiscoverScreen({
     const dateStr = `${String(customDayMonth).padStart(2, "0")}-${String(customDayDay).padStart(2, "0")}`;
     const normalizedCategories = customDayCategories.length > 0
       ? customDayCategories
-      : ["Dining Experiences"];
+      : ["Fine Dining"];
     
     // Create new custom holiday
     const newCustomHoliday: CustomHoliday = {
@@ -2608,10 +2609,10 @@ export default function DiscoverScreen({
 
       const selectedCategories = (h.categories && h.categories.length > 0)
         ? h.categories
-        : (h.category ? [h.category] : ["Dining Experiences"]);
+        : (h.category ? [h.category] : ["Fine Dining"]);
       
-      // Custom holidays show primary category + Dining Experiences
-      const categories = Array.from(new Set([...selectedCategories, "Dining Experiences"]));
+      // Custom holidays show primary category + Fine Dining
+      const categories = Array.from(new Set([...selectedCategories, "Fine Dining"]));
       
       return {
         id: h.id,
