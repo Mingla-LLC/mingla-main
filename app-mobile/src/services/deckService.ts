@@ -245,7 +245,11 @@ class DeckService {
           // supabase.functions.invoke() does not accept an AbortSignal.
           // Use Promise.race to enforce 15s timeout.
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new DOMException('Aborted', 'AbortError')), 15000)
+            setTimeout(() => {
+              const err = new Error('discover-cards timed out after 15s');
+              err.name = 'AbortError';
+              reject(err);
+            }, 15000)
           );
 
           const { data, error } = await Promise.race([
@@ -387,7 +391,11 @@ class DeckService {
         PILL_TO_CATEGORY_NAME[p.id] || p.id
       );
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new DOMException('Aborted', 'AbortError')), 15000)
+        setTimeout(() => {
+          const err = new Error('discover-cards timed out after 15s');
+          err.name = 'AbortError';
+          reject(err);
+        }, 15000)
       );
       warmPromises.push(
         Promise.race([

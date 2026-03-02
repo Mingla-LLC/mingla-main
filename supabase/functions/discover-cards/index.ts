@@ -399,6 +399,7 @@ serve(async (req: Request) => {
             cardType: 'single',
           },
           GOOGLE_PLACES_API_KEY,
+          { travelMode },
         );
 
         // Lowered threshold: serve if pool has >= 50% of limit
@@ -689,7 +690,9 @@ function storeResultsInPoolBatched(
           review_count: card.reviewCount,
           price_min: card.priceMin,
           price_max: card.priceMax,
-          opening_hours: card.openingHours,
+          opening_hours: card.openingHours
+            ? { ...card.openingHours, _isOpenNow: card.isOpenNow ?? null }
+            : null,
           popularity_score: popularityScore,
           is_active: true,
         };
