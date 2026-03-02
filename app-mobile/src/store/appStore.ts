@@ -11,6 +11,8 @@ import {
 } from "../types";
 import type { Recommendation } from "../types/recommendation";
 
+const DECK_SCHEMA_VERSION = 2; // Bump this to invalidate stale persisted deck data
+
 export interface DeckBatch {
   batchSeed: number;
   cards: Recommendation[];
@@ -42,6 +44,7 @@ interface AppState {
   deckBatches: DeckBatch[];
   currentDeckBatchIndex: number;
   deckPrefsHash: string;
+  deckSchemaVersion: number;
 
   // UI overlay state (not persisted)
   showAccountSettings: boolean;
@@ -96,6 +99,7 @@ export const useAppStore = create<AppState>()(
       deckBatches: [],
       currentDeckBatchIndex: -1,
       deckPrefsHash: '',
+      deckSchemaVersion: DECK_SCHEMA_VERSION,
       showAccountSettings: false,
       blockedUsers: [],
 
@@ -218,7 +222,15 @@ export const useAppStore = create<AppState>()(
         deckBatches: state.deckBatches,
         currentDeckBatchIndex: state.currentDeckBatchIndex,
         deckPrefsHash: state.deckPrefsHash,
+        deckSchemaVersion: state.deckSchemaVersion,
       }),
+      onRehydrateStorage: () => (state) => {
+        // Clear stale deck batches when schema version changes
+        if (state && state.deckSchemaVersion !== DECK_SCHEMA_VERSION) {
+          state.deckBatches = [];
+          state.deckSchemaVersion = DECK_SCHEMA_VERSION;
+        }
+      },
     }
   )
 );

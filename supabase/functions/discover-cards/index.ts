@@ -598,7 +598,7 @@ serve(async (req: Request) => {
     console.error('[discover-cards] Unhandled error:', err);
     return new Response(
       JSON.stringify({ error: (err as any)?.message || 'Internal error', cards: [] }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
@@ -701,7 +701,7 @@ function storeResultsInPoolBatched(
       // Single batched insert for all cards
       const { data: insertedCards, error: cardError } = await supabaseAdmin
         .from('card_pool')
-        .upsert(cardRows, { ignoreDuplicates: true })
+        .upsert(cardRows, { onConflict: 'google_place_id', ignoreDuplicates: true })
         .select('id, google_place_id');
 
       if (cardError) {

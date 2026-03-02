@@ -121,7 +121,7 @@ async function queryPoolCards(
     .lte('lng', lng + lngDelta)
     .lte('price_min', budgetMax)
     .order('popularity_score', { ascending: false })
-    .limit(limit + 20); // fetch extra to account for impression filtering
+    .limit(limit * 3); // fetch 3x to survive impression filtering + dedup
 
   if (experienceType) {
     query = query.eq('experience_type', experienceType);
@@ -552,7 +552,7 @@ function poolCardToApiCard(
 
   return {
     id: card.google_place_id || card.id,
-    placeId: card.google_place_id,
+    placeId: card.google_place_id || null,
     title: card.title,
     category: card.category,
     matchScore: card.base_match_score || 85,
