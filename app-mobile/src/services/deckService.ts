@@ -19,6 +19,7 @@ import { watchCardsService } from './watchCardsService';
 import { creativeArtsCardsService } from './creativeArtsCardsService';
 import { playCardsService } from './playCardsService';
 import { wellnessCardsService } from './wellnessCardsService';
+import { groceriesFlowersCardsService } from './groceriesFlowersCardsService';
 import {
   separateIntentsAndCategories,
   natureToRecommendation,
@@ -33,6 +34,7 @@ import {
   creativeArtsToRecommendation,
   playToRecommendation,
   wellnessToRecommendation,
+  groceriesFlowersToRecommendation,
 } from '../utils/cardConverters';
 import type { Recommendation } from '../types/recommendation';
 
@@ -53,7 +55,7 @@ export interface DeckParams {
 
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'drink' | 'casual_eats' | 'fine_dining' | 'watch' | 'creative_arts' | 'play' | 'wellness' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'drink' | 'casual_eats' | 'fine_dining' | 'watch' | 'creative_arts' | 'play' | 'wellness' | 'groceries_flowers' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
 }
@@ -72,31 +74,38 @@ class DeckService {
     const pills: DeckPill[] = [];
     const categoryFilters: string[] = [];
 
-    // Category pills — Nature and First Meet have dedicated edge functions
+    // Category pills — lookup map handles all format variations (display names,
+    // slugs, underscored slugs) so no category silently falls through.
+    const CATEGORY_PILL_MAP: Record<string, string> = {
+      'nature': 'nature',
+      'first meet': 'first_meet',
+      'first_meet': 'first_meet',
+      'picnic park': 'picnic_park',
+      'picnic_park': 'picnic_park',
+      'picnic': 'picnic_park',
+      'drink': 'drink',
+      'casual eats': 'casual_eats',
+      'casual_eats': 'casual_eats',
+      'fine dining': 'fine_dining',
+      'fine_dining': 'fine_dining',
+      'watch': 'watch',
+      'creative & arts': 'creative_arts',
+      'creative arts': 'creative_arts',
+      'creative_arts': 'creative_arts',
+      'play': 'play',
+      'wellness': 'wellness',
+      'groceries & flowers': 'groceries_flowers',
+      'groceries flowers': 'groceries_flowers',
+      'groceries_flowers': 'groceries_flowers',
+    };
+
     for (const cat of cats) {
       const normalized = cat.replace(/_/g, ' ').toLowerCase();
-      if (normalized === 'nature') {
-        pills.push({ id: 'nature', type: 'category' });
-      } else if (normalized === 'first meet') {
-        pills.push({ id: 'first_meet', type: 'category' });
-      } else if (normalized === 'picnic park') {
-        pills.push({ id: 'picnic_park', type: 'category' });
-      } else if (normalized === 'drink') {
-        pills.push({ id: 'drink', type: 'category' });
-      } else if (normalized === 'casual eats') {
-        pills.push({ id: 'casual_eats', type: 'category' });
-      } else if (normalized === 'fine dining') {
-        pills.push({ id: 'fine_dining', type: 'category' });
-      } else if (normalized === 'watch') {
-        pills.push({ id: 'watch', type: 'category' });
-      } else if (normalized === 'creative & arts' || normalized === 'creative arts') {
-        pills.push({ id: 'creative_arts', type: 'category' });
-      } else if (normalized === 'play') {
-        pills.push({ id: 'play', type: 'category' });
-      } else if (normalized === 'wellness') {
-        pills.push({ id: 'wellness', type: 'category' });
+      const pillId = CATEGORY_PILL_MAP[normalized] ?? CATEGORY_PILL_MAP[cat.toLowerCase()];
+      if (pillId) {
+        pills.push({ id: pillId, type: 'category' });
       } else {
-        // No dedicated edge function yet — pass as filter to curated pills
+        console.warn(`[DeckService] Unrecognized category: "${cat}" — adding as curated filter`);
         categoryFilters.push(cat);
       }
     }
@@ -120,6 +129,7 @@ class DeckService {
     const perPillLimit = Math.ceil(limit / pills.length);
 
     // Fetch ALL pills in parallel — latency = max(pill), not sum(pill)
+    const fetchStart = Date.now();
     const results = await Promise.all(
       pills.map(async (pill): Promise<Recommendation[]> => {
         try {
@@ -250,6 +260,20 @@ class DeckService {
                 limit: perPillLimit,
               });
               return cards.map(wellnessToRecommendation);
+            } else if (pill.id === 'groceries_flowers') {
+              const cards = await groceriesFlowersCardsService.discoverGroceriesFlowers({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: perPillLimit,
+              });
+              return cards.map(groceriesFlowersToRecommendation);
             }
             // Default: Nature
             const cards = await natureCardsService.discoverNature({
@@ -289,7 +313,14 @@ class DeckService {
       })
     );
 
-    const interleaved = roundRobinInterleave(results);
+    const interleaved = roundRobinInterleave(results).slice(0, limit);
+
+    if (__DEV__) {
+      console.log(
+        `[DeckService] Fetched ${pills.length} pills in ${Date.now() - fetchStart}ms, ` +
+        `${interleaved.length} cards total: ${pills.map(p => p.id).join(', ')}`
+      );
+    }
 
     const deckMode: DeckResponse['deckMode'] =
       pills.length === 1
@@ -404,6 +435,17 @@ class DeckService {
               });
             } else if (pill.id === 'wellness') {
               await wellnessCardsService.warmWellnessPool({
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+              });
+            } else if (pill.id === 'groceries_flowers') {
+              await groceriesFlowersCardsService.warmGroceriesFlowersPool({
                 location: params.location,
                 budgetMax: params.budgetMax,
                 travelMode: params.travelMode,

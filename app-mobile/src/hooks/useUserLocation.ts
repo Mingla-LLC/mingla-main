@@ -1,4 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserPreferences } from '../services/experiencesService';
 import { enhancedLocationService } from '../services/enhancedLocationService';
 import * as Location from 'expo-location';
@@ -7,6 +9,19 @@ export interface LocationData {
   lat: number;
   lng: number;
 }
+
+const LOCATION_CACHE_KEY = '@mingla/lastLocation';
+
+// Module-level cached location — populated asynchronously from AsyncStorage on import
+let cachedLocationSync: LocationData | null = null;
+AsyncStorage.getItem(LOCATION_CACHE_KEY).then(raw => {
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.lat && parsed.lng) cachedLocationSync = { lat: parsed.lat, lng: parsed.lng };
+    } catch {}
+  }
+}).catch(() => {});
 
 const fetchUserLocation = async (
   userId: string | undefined,
@@ -82,12 +97,25 @@ export const useUserLocation = (
   const customLocation = cachedPrefs?.custom_location;
   const useGpsFlag = cachedPrefs?.use_gps_location;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ['userLocation', userId, currentMode, refreshKey, customLocation, useGpsFlag],
     queryFn: () => fetchUserLocation(userId, currentMode, refreshKey, customLocation, useGpsFlag),
     enabled: true, // Always enabled, handles userId check internally
     staleTime: Infinity, // Location doesn't go stale unless mode/refreshKey/location prefs change
     gcTime: 24 * 60 * 60 * 1000, // Keep in cache for 24 hours
     placeholderData: (previousData) => previousData,
+    initialData: cachedLocationSync ?? undefined,
   });
+
+  // Persist resolved location to AsyncStorage for instant startup on next launch
+  useEffect(() => {
+    if (query.data?.lat && query.data?.lng) {
+      AsyncStorage.setItem(
+        LOCATION_CACHE_KEY,
+        JSON.stringify({ lat: query.data.lat, lng: query.data.lng, ts: Date.now() })
+      ).catch(() => {});
+    }
+  }, [query.data?.lat, query.data?.lng]);
+
+  return query;
 };

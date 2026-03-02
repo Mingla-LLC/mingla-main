@@ -9,6 +9,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { deckService, DeckResponse } from '../services/deckService';
+import { useAppStore } from '../store/appStore';
 import type { Recommendation } from '../types/recommendation';
 
 interface UseDeckCardsParams {
@@ -28,7 +29,7 @@ interface UseDeckCardsParams {
 
 export interface UseDeckCardsResult {
   cards: Recommendation[];
-  deckMode: 'nature' | 'curated' | 'mixed';
+  deckMode: DeckResponse['deckMode'];
   activePills: string[];
   isLoading: boolean;
   isFetching: boolean;
@@ -39,6 +40,11 @@ export interface UseDeckCardsResult {
 
 export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   const { location, enabled, ...restParams } = params;
+
+  // If this exact batch was already fetched, serve it as initialData for instant rendering
+  const latestBatch = useAppStore.getState().deckBatches.find(
+    b => b.batchSeed === params.batchSeed
+  );
 
   const query = useQuery<DeckResponse>({
     queryKey: [
@@ -67,6 +73,13 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     enabled: enabled && location !== null,
     retry: 2,
     placeholderData: (previousData) => previousData,
+    initialData: latestBatch ? {
+      cards: latestBatch.cards,
+      deckMode: 'mixed' as const,
+      activePills: latestBatch.activePills,
+      total: latestBatch.cards.length,
+    } : undefined,
+    initialDataUpdatedAt: latestBatch?.timestamp,
   });
 
   return {
@@ -75,7 +88,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     activePills: query.data?.activePills ?? [],
     isLoading: query.isLoading,
     isFetching: query.isFetching,
-    isFullBatchLoaded: (query.data?.total ?? 0) >= (20 * 0.5),
+    isFullBatchLoaded: !query.isLoading && !query.isFetching && query.data !== undefined,
     error: query.error as Error | null,
     refetch: query.refetch,
   };

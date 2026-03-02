@@ -1,0 +1,512 @@
+================================================================================
+  DECK POLISH — IMPLEMENTATION GUIDE
+  Bug Fixes, Round-Robin, Performance & History
+  Date: 2026-03-01
+================================================================================
+
+This guide walks you through every fix and enhancement in priority order.
+Each step is self-contained and testable before moving to the next.
+
+PREREQUISITE: Read FEATURE_DECK_POLISH_SPEC.md first for the full picture.
+
+================================================================================
+STEP 0: CLEAR STALE METRO CACHE (Do This First!)
+================================================================================
+
+The "SyntaxError at PreferencesSectionsAdvanced.tsx:624" is a phantom error.
+The file is syntactically valid (623 lines, properly closed).
+
+Run:
+  cd app-mobile
+  npx expo start --clear
+
+Verify: App bundles successfully. If the error persists after cache clear,
+check for any other files that may have been recently edited with unclosed
+brackets — but this file itself is clean.
+
+================================================================================
+STEP 1: FIX isFullBatchLoaded DEADLOCK (Critical — No Cards Bug)
+================================================================================
+
+FILE: app-mobile/src/hooks/useDeckCards.ts
+LINE: 78
+
+BEFORE:
+  isFullBatchLoaded: (query.data?.total ?? 0) >= (20 * 0.5),
+
+AFTER:
+  isFullBatchLoaded: !query.isLoading && !query.isFetching && query.data !== undefined,
+
+WHY: The old threshold required >= 10 cards. When a location yields 0-9
+cards, or when edge functions fail, the batch was NEVER marked loaded.
+This caused:
+  - RecommendationsContext sync effect (line 419-437) never cleared
+    isBatchTransitioning
+  - Completion effect (line 551-591) never marked fetch complete
+  - UI showed permanent loading spinner
+
+The new check simply means "the query has settled" — whether it returned
+20 cards or 0 cards. The existing empty-state handler at
+RecommendationsContext.tsx:428-434 correctly handles the 0-card case.
+
+TEST: Open app in a remote area with few Google Places results. Cards
+should appear (even if fewer than 20) or show "No matches" state.
+
+================================================================================
+STEP 2: ADD GROCERIES & FLOWERS PILL
+================================================================================
+
+This category exists in the UI but has no dedicated pill in deckService.
+When selected, it silently falls through to categoryFilters.
+
+--- Step 2a: Create the service ---
+
+FILE (NEW): app-mobile/src/services/groceriesFlowersCardsService.ts
+
+Pattern: Copy any existing category service (e.g., natureCardsService.ts)
+and adapt. The service calls the `discover-experiences` edge function with
+categories=["Groceries & Flowers"].
+
+Export type:
+  export interface GroceriesFlowersCard {
+    id: string;
+    title: string;
+    description: string;
+    lat: number;
+    lng: number;
+    rating: number;
+    reviewCount: number;
+    image: string;
+    images: string[];
+    placeId: string;
+    placeType: string;
+    placeTypeLabel: string;
+    address: string;
+    priceMin: number;
+    priceMax: number;
+    distanceKm: number;
+    travelTimeMin: number;
+    matchScore: number;
+    isOpenNow: boolean | null;
+    openingHours: Record<string, string>;
+    website?: string;
+  }
+
+Export two methods:
+  - discoverGroceriesFlowers(params) — calls edge fn, returns cards
+  - warmGroceriesFlowersPool(params) — same call with limit=1 for pool warming
+
+--- Step 2b: Add converter ---
+
+FILE: app-mobile/src/utils/cardConverters.ts
+
+Add AFTER the wellnessToRecommendation function (line 678):
+
+  import type { GroceriesFlowersCard } from '../services/groceriesFlowersCardsService';
+
+  export function groceriesFlowersToRecommendation(card: GroceriesFlowersCard): Recommendation {
+    // Identical pattern to natureToRecommendation but with:
+    //   category: 'Groceries & Flowers'
+    //   categoryIcon: 'cart-outline'
+    //   experienceType: 'groceries_flowers'
+    // Copy the full body from natureToRecommendation and change these 3 fields.
+  }
+
+--- Step 2c: Add pill resolution ---
+
+FILE: app-mobile/src/services/deckService.ts
+
+In the resolvePills() method, add a new case in the for-loop (after the
+'wellness' case, before the else/fallback):
+
+  } else if (normalized === 'groceries flowers' || normalized === 'groceries & flowers') {
+    pills.push({ id: 'groceries_flowers', type: 'category' });
+  }
+
+--- Step 2d: Add fetch handler ---
+
+FILE: app-mobile/src/services/deckService.ts
+
+At the top, add import:
+  import { groceriesFlowersCardsService } from './groceriesFlowersCardsService';
+  import { groceriesFlowersToRecommendation } from '../utils/cardConverters';
+
+In fetchDeck(), add a new else-if branch in the category pill handler
+(after the wellness branch, before the "Default: Nature" fallback):
+
+  } else if (pill.id === 'groceries_flowers') {
+    const cards = await groceriesFlowersCardsService.discoverGroceriesFlowers({
+      location: params.location,
+      budgetMax: params.budgetMax,
+      travelMode: params.travelMode,
+      travelConstraintType: params.travelConstraintType,
+      travelConstraintValue: params.travelConstraintValue,
+      datetimePref: params.datetimePref,
+      dateOption: params.dateOption,
+      timeSlot: params.timeSlot,
+      batchSeed: params.batchSeed,
+      limit: perPillLimit,
+    });
+    return cards.map(groceriesFlowersToRecommendation);
+  }
+
+--- Step 2e: Add warm handler ---
+
+In warmDeckPool(), add the same pattern (after wellness warm, before
+"Default: Nature" warm):
+
+  } else if (pill.id === 'groceries_flowers') {
+    await groceriesFlowersCardsService.warmGroceriesFlowersPool({
+      location: params.location,
+      budgetMax: params.budgetMax,
+      travelMode: params.travelMode,
+      travelConstraintType: params.travelConstraintType,
+      travelConstraintValue: params.travelConstraintValue,
+      datetimePref: params.datetimePref,
+      dateOption: params.dateOption,
+      timeSlot: params.timeSlot,
+    });
+  }
+
+--- Step 2f: Update DeckResponse type ---
+
+FILE: app-mobile/src/services/deckService.ts (line 56)
+
+Add 'groceries_flowers' to the deckMode union type.
+
+TEST: Select ONLY Groceries & Flowers in preferences. Swipe deck should
+show grocery stores and florist cards. If no results, "No matches" state
+should appear (not infinite spinner, thanks to Step 1 fix).
+
+================================================================================
+STEP 3: HARDEN PILL NORMALIZATION WITH LOOKUP MAP
+================================================================================
+
+FILE: app-mobile/src/services/deckService.ts
+
+Replace the entire for-loop in resolvePills() (lines 76-101) with:
+
+  const CATEGORY_PILL_MAP: Record<string, string> = {
+    'nature': 'nature',
+    'first meet': 'first_meet',
+    'first_meet': 'first_meet',
+    'picnic park': 'picnic_park',
+    'picnic_park': 'picnic_park',
+    'picnic': 'picnic_park',
+    'drink': 'drink',
+    'casual eats': 'casual_eats',
+    'casual_eats': 'casual_eats',
+    'fine dining': 'fine_dining',
+    'fine_dining': 'fine_dining',
+    'watch': 'watch',
+    'creative & arts': 'creative_arts',
+    'creative arts': 'creative_arts',
+    'creative_arts': 'creative_arts',
+    'play': 'play',
+    'wellness': 'wellness',
+    'groceries & flowers': 'groceries_flowers',
+    'groceries flowers': 'groceries_flowers',
+    'groceries_flowers': 'groceries_flowers',
+  };
+
+  for (const cat of cats) {
+    const normalized = cat.replace(/_/g, ' ').toLowerCase();
+    const pillId = CATEGORY_PILL_MAP[normalized] ?? CATEGORY_PILL_MAP[cat.toLowerCase()];
+    if (pillId) {
+      pills.push({ id: pillId, type: 'category' });
+    } else {
+      console.warn(`[DeckService] Unrecognized category: "${cat}" — adding as curated filter`);
+      categoryFilters.push(cat);
+    }
+  }
+
+WHY: The old if/else chain was fragile. A lookup map handles all
+format variations (DB defaults use display names like "Nature",
+PreferencesSheet saves IDs like "nature", underscored slugs like
+"first_meet" all work).
+
+TEST: In React Query devtools (or console), verify that all 11
+categories resolve to their correct pill IDs.
+
+================================================================================
+STEP 4: CAP ROUND-ROBIN OUTPUT AT EXACTLY 20
+================================================================================
+
+FILE: app-mobile/src/services/deckService.ts
+LINE: 292
+
+BEFORE:
+  const interleaved = roundRobinInterleave(results);
+
+AFTER:
+  const interleaved = roundRobinInterleave(results).slice(0, limit);
+
+WHY: With many pills (e.g., 7 pills, perPillLimit=3 each), the total
+could exceed 20. The slice caps it exactly. Harmless if already <= 20.
+
+TEST: Select all 7 intents + several categories. Verify exactly 20
+cards (not 21+) in the deck.
+
+================================================================================
+STEP 5: FIX CURATED CARD ICON (Minor Polish)
+================================================================================
+
+FILE: app-mobile/src/utils/cardConverters.ts
+LINE: 79
+
+BEFORE:
+  categoryIcon: card.categoryLabel?.toLowerCase() === 'nature' ? 'leaf' : 'compass',
+
+AFTER:
+  Import at top: import { getCategoryIcon } from '../utils/categoryUtils';
+
+  Then:
+  categoryIcon: getCategoryIcon(card.categoryLabel) || 'compass',
+
+  If getCategoryIcon doesn't exist or doesn't handle curated labels,
+  use a simple inline map instead:
+
+  const CURATED_ICONS: Record<string, string> = {
+    'adventurous': 'compass-outline',
+    'first-date': 'chatbubbles-outline',
+    'romantic': 'heart-outline',
+    'friendly': 'people-outline',
+    'group-fun': 'game-controller-outline',
+    'picnic-dates': 'basket-outline',
+    'take-a-stroll': 'walk-outline',
+  };
+  categoryIcon: CURATED_ICONS[card.experienceType] || 'compass',
+
+TEST: Generate curated cards. Each type should show its own icon,
+not all showing the generic compass.
+
+================================================================================
+STEP 6: PERFORMANCE — CACHE LAST-KNOWN LOCATION
+================================================================================
+
+FILE: app-mobile/src/hooks/useUserLocation.ts
+
+Add location caching to eliminate the 100-500ms wait for GPS/DB:
+
+--- At the top of the hook: ---
+
+  import AsyncStorage from '@react-native-async-storage/async-storage';
+
+  const LOCATION_CACHE_KEY = '@mingla/lastLocation';
+
+--- In the query config, add initialData: ---
+
+  // Outside the hook, create a sync reader:
+  let cachedLocationSync: { lat: number; lng: number } | null = null;
+  AsyncStorage.getItem(LOCATION_CACHE_KEY).then(raw => {
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.lat && parsed.lng) cachedLocationSync = parsed;
+      } catch {}
+    }
+  });
+
+  // Inside useQuery:
+  initialData: cachedLocationSync
+    ? { lat: cachedLocationSync.lat, lng: cachedLocationSync.lng }
+    : undefined,
+
+--- After successful location resolution: ---
+
+  // In the onSuccess or in an effect watching the data:
+  useEffect(() => {
+    if (data?.lat && data?.lng) {
+      AsyncStorage.setItem(
+        LOCATION_CACHE_KEY,
+        JSON.stringify({ lat: data.lat, lng: data.lng, ts: Date.now() })
+      ).catch(() => {});
+    }
+  }, [data?.lat, data?.lng]);
+
+WHY: On second+ app launches, the deck query fires instantly with cached
+location. Fresh GPS updates in background. If the user hasn't moved
+significantly, the same cards serve (cache hit). If they moved, deck
+invalidates when fresh location differs by > ~500m.
+
+TEST: Open app → see cards instantly. Kill app → reopen → cards appear
+in < 1 second (no location wait).
+
+================================================================================
+STEP 7: PERFORMANCE — BATCH HISTORY AS INITIAL DATA
+================================================================================
+
+FILE: app-mobile/src/hooks/useDeckCards.ts
+
+Add Zustand batch history as initialData for instant rendering:
+
+  import { useAppStore } from '../store/appStore';
+
+  // Inside the hook, before useQuery:
+  const latestBatch = useAppStore.getState().deckBatches.find(
+    b => b.batchSeed === params.batchSeed
+  );
+
+  // In useQuery config, add:
+  initialData: latestBatch ? {
+    cards: latestBatch.cards,
+    deckMode: 'mixed' as const,
+    activePills: latestBatch.activePills,
+    total: latestBatch.cards.length,
+  } : undefined,
+
+  // Also add initialDataUpdatedAt for proper stale detection:
+  initialDataUpdatedAt: latestBatch?.timestamp,
+
+WHY: If the user has already fetched this exact batch (same seed + same
+prefs), the cards render instantly from Zustand while React Query
+validates in background. Zero wait time for previously viewed batches.
+
+TEST: Load batch 0 → generate batch 1 → go back to batch 0 → cards
+appear instantly (no spinner).
+
+================================================================================
+STEP 8: UI — "GET MORE" BUTTON (End of Deck)
+================================================================================
+
+FILE: app-mobile/src/components/SwipeableCards.tsx
+
+When the user swipes through all cards in the current batch, show an
+end-of-deck card/overlay with:
+
+  "You've seen all 20 cards!"
+  [Generate 20 More]  (calls generateNextBatch from context)
+  [Review History]    (opens DeckHistorySheet)
+  Batch: 1            (shows current batch number = batchSeed + 1)
+
+Implementation:
+  1. When currentCardIndex >= recommendations.length - 1, show overlay
+  2. "Generate 20 More" calls context.generateNextBatch()
+  3. While loading next batch, show spinner on the button (isBatchTransitioning)
+  4. When new batch arrives, reset to first card
+
+The generateNextBatch() and restorePreviousBatch() functions are already
+exported from RecommendationsContext. Just wire them to UI.
+
+TEST: Swipe all 20 cards → end screen appears → tap "Get More" →
+new batch loads → swipe again.
+
+================================================================================
+STEP 9: UI — DECK HISTORY SHEET
+================================================================================
+
+FILE (NEW): app-mobile/src/components/DeckHistorySheet.tsx
+
+Simple bottom sheet showing batch history:
+
+  PROPS:
+    visible: boolean
+    onClose: () => void
+
+  READS FROM CONTEXT:
+    deckBatches, currentDeckBatchIndex, navigateToDeckBatch, totalDeckCardsViewed
+
+  RENDERS:
+    - Header: "Your Card History" + total cards viewed count
+    - List of batches, each showing:
+      - Batch number (1, 2, 3...)
+      - Card count and active pills
+      - Relative time ("2 min ago", "just now")
+      - Highlight current batch
+    - Tapping a batch calls navigateToDeckBatch(index) and closes sheet
+
+  STYLING:
+    - Use Modal + View (not a third-party sheet library)
+    - Match existing app styling (rounded corners, shadow, orange accent)
+    - StyleSheet at bottom of file
+
+FILE: app-mobile/src/components/SwipeableCards.tsx
+  - Add History button (clock-outline icon) to deck header
+  - State: const [historyVisible, setHistoryVisible] = useState(false)
+  - Render: <DeckHistorySheet visible={historyVisible} onClose={() => setHistoryVisible(false)} />
+
+TEST: Generate 3 batches → open history → see all 3 → tap batch 1 →
+deck shows batch 1 cards → tap batch 3 → deck shows batch 3 cards.
+
+================================================================================
+STEP 10: ADD DEV TIMING LOGS (Verify Performance)
+================================================================================
+
+FILE: app-mobile/src/services/deckService.ts
+
+In fetchDeck(), wrap the parallel fetch:
+
+  const fetchStart = Date.now();
+  const results = await Promise.all(pills.map(...));
+  if (__DEV__) {
+    console.log(
+      `[DeckService] Fetched ${pills.length} pills in ${Date.now() - fetchStart}ms, ` +
+      `${interleaved.length} cards total`
+    );
+  }
+
+FILE: app-mobile/src/contexts/RecommendationsContext.tsx
+
+In the warmDeckPool effect (~line 192):
+
+  const warmStart = Date.now();
+  deckService.warmDeckPool({...}).then(() => {
+    if (__DEV__) console.log(`[Deck] Pool warmed in ${Date.now() - warmStart}ms`);
+  }).catch(() => {});
+
+TEST: Watch console on app launch. Target:
+  - Pool warmed: < 2000ms
+  - Deck fetched: < 1000ms (pool hit) or < 2000ms (cold)
+  - Cards rendered: < 1500ms from app ready
+
+================================================================================
+STEP 11: FINAL VERIFICATION CHECKLIST
+================================================================================
+
+Run through ALL of these before declaring done:
+
+[ ] 1. `npx expo start --clear` — app bundles with 0 errors
+[ ] 2. Fresh launch (default prefs: Nature/Casual Eats/Drink):
+       Cards appear within 2 seconds
+[ ] 3. Select 1 curated + 2 categories → round-robin verified in deck
+[ ] 4. Select Groceries & Flowers → dedicated cards appear
+[ ] 5. Select ALL pills (7 intents + 11 categories) → 20 cards max
+[ ] 6. Remote/sparse location → cards render or "No matches" shows
+[ ] 7. "Get More" button → new batch, different cards
+[ ] 8. History sheet → shows batches, can navigate
+[ ] 9. Kill + reopen → cached location + instant cards
+[ ] 10. Console timing: deck fetch < 1500ms
+
+================================================================================
+COMMON MISTAKES TO AVOID
+================================================================================
+
+1. DO NOT change the round-robin algorithm — it's correct.
+   The bug is in pill RESOLUTION (not getting pills for some categories)
+   and BATCH LOADED detection (threshold too high).
+
+2. DO NOT add new edge functions for Groceries & Flowers.
+   Reuse `discover-experiences` with category filter.
+
+3. DO NOT change how categories are saved to DB.
+   The mixed intents+categories array format works correctly.
+   separateIntentsAndCategories() splits them properly.
+
+4. DO NOT modify the card pool tables or pipeline.
+   The pool infrastructure is correct. The fix is on the mobile side
+   (useDeckCards threshold, pill resolution).
+
+5. DO NOT change the RecommendationsContext sync effect logic
+   EXCEPT the isDeckBatchLoaded dependency (which is fixed by Step 1).
+
+================================================================================
+DONE WHEN
+================================================================================
+
+You know it's working when:
+  - App opens → cards visible in < 2 seconds (< 1s on warm cache)
+  - Selecting any combination of pills shows interleaved cards
+  - "Get More" gives a fresh batch every time
+  - History shows all previous batches and lets you go back
+  - No infinite spinners, no phantom errors, no empty decks
+  - Console shows timing metrics within target bounds

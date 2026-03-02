@@ -38,6 +38,7 @@ import {
   useRecommendations,
   Recommendation,
 } from "../contexts/RecommendationsContext";
+import { DeckHistorySheet } from "./DeckHistorySheet";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 const CARD_HEIGHT = Math.min(screenHeight * 0.72, 800);
@@ -202,6 +203,7 @@ export default function SwipeableCards({
     currentDeckBatchIndex,
     navigateToDeckBatch,
     handleDeckCardProgress,
+    totalDeckCardsViewed,
   } = useRecommendations();
 
   // Combine all loading states for UI consistency and to prevent animation freezing
@@ -227,6 +229,7 @@ export default function SwipeableCards({
   const [selectedCardForExpansion, setSelectedCardForExpansion] =
     useState<ExpandedCardData | null>(null);
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
+  const [historyVisible, setHistoryVisible] = useState(false);
   const batchSpinValue = useRef(new Animated.Value(0)).current;
   const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
     refreshKey
@@ -1213,6 +1216,22 @@ export default function SwipeableCards({
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
+        {/* Deck header with History button */}
+        {deckBatches.length > 0 && (
+          <View style={styles.deckHeader}>
+            <TouchableOpacity
+              style={styles.historyButton}
+              onPress={() => setHistoryVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="time-outline" size={18} color="#6b7280" />
+              <Text style={styles.historyButtonText}>
+                Batch {currentDeckBatchIndex + 1}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={styles.cardContainer}>
           {showNextBatchLoader && (
             <View style={styles.nextBatchOverlay} pointerEvents="none">
@@ -1528,6 +1547,15 @@ export default function SwipeableCards({
         }}
         userPreferences={userPreferences}
         accountPreferences={accountPreferences}
+      />
+
+      <DeckHistorySheet
+        visible={historyVisible}
+        onClose={() => setHistoryVisible(false)}
+        deckBatches={deckBatches}
+        currentDeckBatchIndex={currentDeckBatchIndex}
+        navigateToDeckBatch={navigateToDeckBatch}
+        totalDeckCardsViewed={totalDeckCardsViewed}
       />
     </View>
   );
@@ -2110,5 +2138,27 @@ const styles = StyleSheet.create({
   batchHistoryItemTextActive: {
     color: "#ffffff",
     fontWeight: "600",
+  },
+  deckHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    width: "100%",
+    paddingHorizontal: 20,
+    paddingBottom: 4,
+  },
+  historyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: "#f3f4f6",
+  },
+  historyButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6b7280",
   },
 });

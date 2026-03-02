@@ -191,6 +191,7 @@ export const RecommendationsProvider: React.FC<
   useEffect(() => {
     if (userLocation && userPrefs && !warmPoolFired.current) {
       warmPoolFired.current = true;
+      const warmStart = Date.now();
       deckService.warmDeckPool({
         location: userLocation,
         categories: userPrefs.categories ?? [],
@@ -202,6 +203,8 @@ export const RecommendationsProvider: React.FC<
         datetimePref: userPrefs.datetime_pref,
         dateOption: userPrefs.date_option ?? 'now',
         timeSlot: userPrefs.time_slot ?? null,
+      }).then(() => {
+        if (__DEV__) console.log(`[Deck] Pool warmed in ${Date.now() - warmStart}ms`);
       }).catch(() => {});
     }
   }, [userLocation, userPrefs]);
