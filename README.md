@@ -216,7 +216,7 @@ User Request → Edge Function (Deno)
 
 | Feature | Description |
 |---|---|
-| **Daily Curated Feed** | AI-generated grid of 2 hero cards (Fine Dining + Play) + 10 diverse grid cards (one per remaining category), cached in `discover_daily_cache` (24h TTL). Pool-first path enforces per-category round-robin diversity via a 3-pass selection algorithm (extract heroes → one-per-category → fill remaining). Client-side AsyncStorage cache persists hero cards across sessions |
+| **Daily Curated Feed** | AI-generated grid of 2 hero cards (Fine Dining + Play) + 10 diverse grid cards (one per remaining category), always fetching all 12 categories regardless of user preferences (For You is a discovery surface). Cached in `discover_daily_cache` (24h TTL). Pool-first path enforces per-category round-robin diversity via a 3-pass selection algorithm (extract heroes → one-per-category → fill remaining). Client-side AsyncStorage cache persists hero cards across sessions. "Policies & Reservations" button opens Google Maps for each venue via `placeId` |
 | **Category Browsing** | Horizontal category pills for all 12 categories with Ionicon icons and brand colors |
 | **Holiday Experiences** | Reads device calendar for upcoming holidays (falls back to 15 hardcoded holidays). Each holiday maps to primary + secondary categories. Gender-specific holidays (Mother's Day → feminine gifts, Father's Day → masculine activities) |
 | **Night-Out Section (Ticketmaster)** | Real live events from Ticketmaster Discovery API. Genre filter (server-side GENRE_TO_KEYWORDS map), date filter (getDateRange → startDate/endDate), price filter (client-side priceMin/priceMax). "Get Tickets" opens in-app browser via `expo-web-browser` |
@@ -1786,12 +1786,9 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-02)
 
-- **Discover Category Diversity Fix:** Pool-first path in `discover-experiences` now uses a 3-pass category-diverse selection algorithm (extract Fine Dining + Play as heroes → round-robin one card per remaining category → fill leftover slots) instead of naive `popularity_score DESC` slice that returned all Nature cards.
-- **Hero Cards in Pool Path:** Pool-first early return now includes `heroCards` in the API response and persists them to `discover_daily_cache` via `generated_location.heroCards`, matching the Google API fallback path.
-- **Client Cache Hero Persistence:** `DiscoverCache` interface gains `heroCards` field. `saveDiscoverCache` accepts and persists hero cards. `applyCachedDiscoverData` restores them on subsequent loads. Backward-compatible with old cache entries (defaults to `[]`).
-- **Re-randomization Guard:** The card selection `useEffect` now guards against overwriting API-set hero cards when `selectedHeroCards.length > 0`, preventing the random single-hero fallback from clobbering correct 2-hero state.
-- **Duplicate React Key Fix:** Grid card `key` changed from `card.id` to `` `${card.id}-${index}` `` to eliminate `Encountered two children with the same key` errors caused by duplicate `google_place_id` entries in `card_pool`.
-- **Client Cache Version Bump:** `DISCOVER_CACHE_KEY` bumped to v4, `DISCOVER_DAILY_CACHE_KEY` bumped to v3, invalidating all stale pre-fix AsyncStorage caches on next app load.
+- **Discover For You — All 12 Categories:** The For You tab now always requests all 12 categories from the edge function, ignoring user preferences. For You is a discovery surface — user preferences only filter the main swipe deck.
+- **Policies & Reservations Button Fix:** `placeId` is now carried through the full transformation chain (`FeaturedCardData` → `GridCardData` → `ExpandedCardData`), so the "Policies & Reservations" button in expanded cards correctly opens Google Maps for the venue.
+- **Cache Version Bump:** `DISCOVER_CACHE_MIGRATION_VERSION` bumped to `"2026-03-02-discover-all-categories"`, forcing all users to re-fetch fresh all-category results on next app open.
 
 ---
 
