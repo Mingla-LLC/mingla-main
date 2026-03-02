@@ -45,7 +45,7 @@ const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 const DISCOVER_CACHE_KEY = "mingla_discover_cache_v4";
 const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v3";
 const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
-const DISCOVER_CACHE_MIGRATION_VERSION = "2026-02-27-cache-reset-1";
+const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-discover-all-categories";
 
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
@@ -244,6 +244,7 @@ interface DiscoverTabsProps {
 // Featured card data interface
 interface FeaturedCardData {
   id: string;
+  placeId?: string;
   title: string;
   experienceType: string;
   description: string;
@@ -270,6 +271,7 @@ interface FeaturedCardProps {
 
 interface GridCardData {
   id: string;
+  placeId?: string;
   title: string;
   category: string;
   description: string;
@@ -1178,8 +1180,10 @@ export default function DiscoverScreen({
           const keysToRemove = allKeys.filter((key) =>
             key.startsWith(`mingla_discover_cache_v2_${user.id}_`) ||
             key.startsWith(`mingla_discover_cache_v3_${user.id}_`) ||
+            key.startsWith(`mingla_discover_cache_v4_${user.id}_`) ||
             key.startsWith(`mingla_discover_cache_daily_v1_${user.id}`) ||
-            key.startsWith(`mingla_discover_cache_daily_v2_${user.id}`)
+            key.startsWith(`mingla_discover_cache_daily_v2_${user.id}`) ||
+            key.startsWith(`mingla_discover_cache_daily_v3_${user.id}`)
           );
 
           if (keysToRemove.length > 0) {
@@ -1484,7 +1488,7 @@ export default function DiscoverScreen({
         const { cards: generatedCards, heroCards: heroCardsRaw, featuredCard } = await ExperienceGenerationService.discoverExperiences(
           { lat: locationLat, lng: locationLng },
           10000, // 10km radius
-          userSelectedCategories || undefined // pass user-selected categories (or undefined for all)
+          undefined // Always fetch all 12 categories — For You is a discovery surface
         );
 
         if (!generatedCards || generatedCards.length === 0) {
@@ -1546,6 +1550,7 @@ export default function DiscoverScreen({
         // Transform hero cards (2 heroes: Fine Dining + Play)
         const transformedHeroes: FeaturedCardData[] = (heroCardsRaw || []).map((hc: any) => ({
           id: hc.id,
+          placeId: hc.placeId || hc.id,
           title: hc.title,
           experienceType: hc.category,
           description: hc.description,
@@ -1568,6 +1573,7 @@ export default function DiscoverScreen({
         // Transform ALL 10 cards to grid cards (no removal)
         const gridCards: GridCardData[] = generatedCards.map((exp: any) => ({
           id: exp.id,
+          placeId: exp.placeId || exp.id,
           title: exp.title,
           category: exp.category,
           description: exp.description,
@@ -1939,6 +1945,7 @@ export default function DiscoverScreen({
     ) || null;
     const expandedCardData: ExpandedCardData = {
       id: card.id,
+      placeId: card.placeId || card.id,
       title: card.title,
       category: card.experienceType,
       categoryIcon: "walk",
@@ -1984,6 +1991,7 @@ export default function DiscoverScreen({
     ) || null;
     const expandedCardData: ExpandedCardData = {
       id: card.id,
+      placeId: card.placeId || card.id,
       title: card.title,
       category: card.category,
       categoryIcon: categoryIcons[card.category] || "ellipse-outline",
