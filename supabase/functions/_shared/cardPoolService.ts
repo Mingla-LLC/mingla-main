@@ -198,7 +198,7 @@ export async function upsertPlaceToPool(
     price_level: typeof place.priceLevel === 'string' ? place.priceLevel : null,
     price_min: priceRange.min,
     price_max: priceRange.max,
-    opening_hours: place.regularOpeningHours || place.openingHours || null,
+    opening_hours: parseGoogleOpeningHours(place.regularOpeningHours || place.openingHours).hours,
     photos: photos,
     website: place.websiteUri || place.website || null,
     raw_google_data: place,
@@ -362,7 +362,10 @@ function buildSingleCardFromPlace(
   category: string,
   apiKey: string,
   description?: string,
-  highlights?: string[]
+  highlights?: string[],
+  userLat?: number,
+  userLng?: number,
+  travelMode?: string,
 ): any {
   const primaryPhoto = place.photos?.[0];
   const imageUrl = primaryPhoto?.name
@@ -374,8 +377,18 @@ function buildSingleCardFromPlace(
     .map((p: any) => p.name ? buildPhotoUrl(p.name, apiKey) : null)
     .filter((img: string | null) => img !== null);
 
+  const { hours: parsedHours, isOpenNow } = parseGoogleOpeningHours(place.opening_hours);
+
+  let distanceKm = 0;
+  let travelTimeMin = 0;
+  if (userLat != null && userLng != null && place.lat && place.lng) {
+    distanceKm = Math.round(haversine(userLat, userLng, place.lat, place.lng) * 10) / 10;
+    travelTimeMin = estimateTravelMin(distanceKm, travelMode);
+  }
+
   return {
     id: place.google_place_id || place.id,
+    placeId: place.google_place_id,
     title: place.name,
     category,
     matchScore: 85,
@@ -383,17 +396,20 @@ function buildSingleCardFromPlace(
     images: images.length > 0 ? images : [imageUrl].filter(Boolean),
     rating: place.rating || 0,
     reviewCount: place.review_count || 0,
-    travelTime: '15 min',
-    distance: '3 km',
-    priceRange: formatPriceRange(place.price_min, place.price_max),
+    priceMin: place.price_min ?? 0,
+    priceMax: place.price_max ?? 0,
+    distanceKm,
+    travelTimeMin,
+    isOpenNow,
+    openingHours: parsedHours,
     description: description || `A great ${category} spot to explore.`,
     highlights: highlights || ['Highly Rated', 'Popular Choice'],
     address: place.address || '',
     lat: place.lat,
     lng: place.lng,
-    placeId: place.google_place_id,
+    placeType: place.primary_type || 'place',
+    placeTypeLabel: (place.primary_type || '').replace(/_/g, ' '),
     matchFactors: {},
-    openingHours: place.opening_hours || null,
   };
 }
 
@@ -403,9 +419,62 @@ function formatPriceRange(min: number, max: number): string {
   return `$${min}-$${max}`;
 }
 
+// ── Haversine distance (km) ─────────────────────────────────────────────────
+
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ── Travel time estimate (minutes) ──────────────────────────────────────────
+
+const SPEED_KMH: Record<string, number> = {
+  walking: 4.5,
+  driving: 35,
+  transit: 20,
+  bicycling: 14,
+  biking: 14,
+};
+
+function estimateTravelMin(distKm: number, mode: string = 'walking'): number {
+  const speed = SPEED_KMH[mode] || 4.5;
+  return Math.max(1, Math.round((distKm / speed) * 60 * 1.3));
+}
+
+// ── Parse raw Google regularOpeningHours into Record<string, string> ────────
+
+function parseGoogleOpeningHours(
+  roh: any
+): { hours: Record<string, string> | null; isOpenNow: boolean | null } {
+  if (!roh) return { hours: null, isOpenNow: null };
+  if (!roh.weekdayDescriptions && !roh.openNow) return { hours: null, isOpenNow: null };
+
+  const hours: Record<string, string> = {};
+  for (const desc of roh.weekdayDescriptions ?? []) {
+    const [day, ...rest] = desc.split(': ');
+    if (day) hours[day.toLowerCase()] = rest.join(': ');
+  }
+
+  return {
+    hours: Object.keys(hours).length > 0 ? hours : null,
+    isOpenNow: roh.openNow ?? null,
+  };
+}
+
 // ── Step 8: Convert a card_pool row to the API response format ──────────────
 
-function poolCardToApiCard(card: any): any {
+function poolCardToApiCard(
+  card: any,
+  userLat?: number,
+  userLng?: number,
+  travelMode?: string,
+): any {
   if (card.card_type === 'curated') {
     return {
       id: card.id,
@@ -429,14 +498,25 @@ function poolCardToApiCard(card: any): any {
       lng: card.lng,
       stops: card.stops || [],
       experienceType: card.experience_type || '',
-      openingHours: card.opening_hours || null,
+      openingHours: parseGoogleOpeningHours(card.opening_hours).hours,
       _poolCardId: card.id,
     };
   }
 
-  // Single card
+  // Single card — output must match discover-cards API format
+  const { hours: parsedHours, isOpenNow } = parseGoogleOpeningHours(card.opening_hours);
+
+  // Compute real distance if user location is available
+  let distanceKm = 0;
+  let travelTimeMin = 0;
+  if (userLat != null && userLng != null && card.lat && card.lng) {
+    distanceKm = Math.round(haversine(userLat, userLng, card.lat, card.lng) * 10) / 10;
+    travelTimeMin = estimateTravelMin(distanceKm, travelMode);
+  }
+
   return {
     id: card.google_place_id || card.id,
+    placeId: card.google_place_id,
     title: card.title,
     category: card.category,
     matchScore: card.base_match_score || 85,
@@ -444,17 +524,20 @@ function poolCardToApiCard(card: any): any {
     images: card.images || [],
     rating: card.rating || 0,
     reviewCount: card.review_count || 0,
-    travelTime: '15 min',
-    distance: '3 km',
-    priceRange: formatPriceRange(card.price_min, card.price_max),
+    priceMin: card.price_min ?? 0,
+    priceMax: card.price_max ?? 0,
+    distanceKm,
+    travelTimeMin,
+    isOpenNow,
+    openingHours: parsedHours,
     description: card.description || '',
     highlights: card.highlights || [],
     address: card.address || '',
     lat: card.lat,
     lng: card.lng,
-    placeId: card.google_place_id,
+    placeType: card.primary_type || 'place',
+    placeTypeLabel: card.primary_type ? card.primary_type.replace(/_/g, ' ') : '',
     matchFactors: {},
-    openingHours: card.opening_hours || null,
     _poolCardId: card.id,
   };
 }
@@ -497,7 +580,7 @@ export async function serveCardsFromPipeline(
   if (poolCards.length >= limit) {
     const served = poolCards.slice(0, limit);
     const servedIds = served.map((c: any) => c.id);
-    const apiCards = served.map(poolCardToApiCard);
+    const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
 
     // Record impressions + update counts (fire-and-forget)
     recordImpressions(supabaseAdmin, userId, servedIds).catch(() => {});
@@ -612,12 +695,24 @@ export async function serveCardsFromPipeline(
           reviewCount,
           priceMin: priceRange.min,
           priceMax: priceRange.max,
-          openingHours: place.regularOpeningHours || null,
+          openingHours: parseGoogleOpeningHours(place.regularOpeningHours).hours,
         });
+
+        // Compute real distance and travel time
+        const placeLat = place.location?.latitude || 0;
+        const placeLng = place.location?.longitude || 0;
+        const distKm = (placeLat && placeLng)
+          ? Math.round(haversine(lat, lng, placeLat, placeLng) * 10) / 10
+          : 0;
+        const travelMin = estimateTravelMin(distKm, options?.travelMode);
+
+        // Parse opening hours from raw Google format
+        const { hours: parsedHours, isOpenNow: placeIsOpenNow } = parseGoogleOpeningHours(place.regularOpeningHours);
 
         // Build API-format card
         gapCards.push({
           id: googlePlaceId,
+          placeId: googlePlaceId,
           title,
           category,
           matchScore: 85,
@@ -625,17 +720,20 @@ export async function serveCardsFromPipeline(
           images: images.length > 0 ? images : [imageUrl].filter(Boolean),
           rating,
           reviewCount,
-          travelTime: '15 min',
-          distance: '3 km',
-          priceRange: formatPriceRange(priceRange.min, priceRange.max),
+          priceMin: priceRange.min,
+          priceMax: priceRange.max,
+          distanceKm: distKm,
+          travelTimeMin: travelMin,
+          isOpenNow: placeIsOpenNow,
+          openingHours: parsedHours,
           description: `A great ${category} spot to explore.`,
           highlights: ['Highly Rated', 'Popular Choice'],
           address: place.formattedAddress || '',
-          lat: place.location?.latitude || 0,
-          lng: place.location?.longitude || 0,
-          placeId: googlePlaceId,
+          lat: placeLat,
+          lng: placeLng,
+          placeType: place.primaryType || place.types?.[0] || 'place',
+          placeTypeLabel: (place.primaryType || place.types?.[0] || '').replace(/_/g, ' '),
           matchFactors: {},
-          openingHours: place.regularOpeningHours || null,
           _poolCardId: cardPoolId,
         });
       }
@@ -643,7 +741,7 @@ export async function serveCardsFromPipeline(
   }
 
   // ── STEP 6: Combine pool + fresh cards ────────────────────────────────
-  const poolApiCards = poolCards.map(poolCardToApiCard);
+  const poolApiCards = poolCards.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
   const allCards = [...poolApiCards, ...gapCards].slice(0, limit);
 
   // Record impressions for all served cards

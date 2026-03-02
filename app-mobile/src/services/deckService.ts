@@ -241,28 +241,31 @@ class DeckService {
         );
         const categoryLimit = Math.ceil(limit * (categoryPills.length / pills.length));
 
-        // 15-second timeout for discover-cards specifically
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-
         try {
-          const { data, error } = await supabase.functions.invoke('discover-cards', {
-            body: {
-              categories: categoryNames,
-              location: params.location,
-              budgetMax: params.budgetMax,
-              travelMode: params.travelMode,
-              travelConstraintType: params.travelConstraintType,
-              travelConstraintValue: params.travelConstraintValue,
-              datetimePref: params.datetimePref,
-              dateOption: params.dateOption,
-              timeSlot: params.timeSlot,
-              batchSeed: params.batchSeed,
-              limit: categoryLimit,
-            },
-          });
+          // supabase.functions.invoke() does not accept an AbortSignal.
+          // Use Promise.race to enforce 15s timeout.
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new DOMException('Aborted', 'AbortError')), 15000)
+          );
 
-          clearTimeout(timeoutId);
+          const { data, error } = await Promise.race([
+            supabase.functions.invoke('discover-cards', {
+              body: {
+                categories: categoryNames,
+                location: params.location,
+                budgetMax: params.budgetMax,
+                travelMode: params.travelMode,
+                travelConstraintType: params.travelConstraintType,
+                travelConstraintValue: params.travelConstraintValue,
+                datetimePref: params.datetimePref,
+                dateOption: params.dateOption,
+                timeSlot: params.timeSlot,
+                batchSeed: params.batchSeed,
+                limit: categoryLimit,
+              },
+            }),
+            timeoutPromise,
+          ]);
 
           if (!error && data?.cards) {
             const cards = (data.cards as any[]).map(unifiedCardToRecommendation);
@@ -276,7 +279,6 @@ class DeckService {
             return [];
           }
         } catch (err) {
-          clearTimeout(timeoutId);
           if ((err as any)?.name === 'AbortError') {
             console.warn('[DeckService] discover-cards timed out after 15s');
           } else {
@@ -331,7 +333,16 @@ class DeckService {
     const results: Recommendation[][] = [];
 
     if (categoryResult.status === 'fulfilled' && categoryResult.value.length > 0) {
-      results.push(categoryResult.value);
+      // Group by category for per-category round-robin
+      const byCategory: Record<string, Recommendation[]> = {};
+      for (const card of categoryResult.value) {
+        const cat = card.category || 'Other';
+        if (!byCategory[cat]) byCategory[cat] = [];
+        byCategory[cat].push(card);
+      }
+      for (const group of Object.values(byCategory)) {
+        results.push(group);
+      }
     }
     if (curatedResult.status === 'fulfilled') {
       results.push(...curatedResult.value);
@@ -375,24 +386,28 @@ class DeckService {
       const categoryNames = categoryPills.map(p =>
         PILL_TO_CATEGORY_NAME[p.id] || p.id
       );
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new DOMException('Aborted', 'AbortError')), 15000)
+      );
       warmPromises.push(
-        supabase.functions.invoke('discover-cards', {
-          body: {
-            categories: categoryNames,
-            location: params.location,
-            budgetMax: params.budgetMax,
-            travelMode: params.travelMode,
-            travelConstraintType: params.travelConstraintType,
-            travelConstraintValue: params.travelConstraintValue,
-            datetimePref: params.datetimePref,
-            dateOption: params.dateOption,
-            timeSlot: params.timeSlot,
-            warmPool: true,
-            limit: 40,
-          },
-        }).then(() => { clearTimeout(timeoutId); }).catch(() => { clearTimeout(timeoutId); })
+        Promise.race([
+          supabase.functions.invoke('discover-cards', {
+            body: {
+              categories: categoryNames,
+              location: params.location,
+              budgetMax: params.budgetMax,
+              travelMode: params.travelMode,
+              travelConstraintType: params.travelConstraintType,
+              travelConstraintValue: params.travelConstraintValue,
+              datetimePref: params.datetimePref,
+              dateOption: params.dateOption,
+              timeSlot: params.timeSlot,
+              warmPool: true,
+              limit: 40,
+            },
+          }),
+          timeoutPromise,
+        ]).then(() => {}).catch(() => {})
       );
     }
 

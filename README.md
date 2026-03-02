@@ -11,7 +11,7 @@ Mingla is a full-stack, AI-driven experience discovery platform that recommends 
 3. [Tech Stack](#tech-stack)
 4. [Mobile App — Feature Inventory](#mobile-app--feature-inventory)
 5. [Navigation Architecture](#navigation-architecture)
-6. [Experience Categories (v2.1)](#experience-categories-v21)
+6. [Experience Categories (v3)](#experience-categories-v3)
 7. [Card Pool Data Pipeline](#card-pool-data-pipeline)
 8. [Supabase Backend](#supabase-backend)
 9. [Edge Functions — Complete Inventory](#edge-functions--complete-inventory)
@@ -44,11 +44,11 @@ Mingla combines **location-aware discovery**, **AI personalization**, **real-tim
 |---|---|
 | **Pool-First Card Pipeline** | Pre-built cards stored in `card_pool` are served with zero API calls. Only when the pool is exhausted does the system fall back to Google Places. This eliminates most per-request costs while keeping content fresh via daily `refresh-place-pool` maintenance. |
 | **AI-Generated Cards** | Every recommendation card is enriched by OpenAI GPT-4o-mini using real Google Maps Places data, Ticketmaster events, weather forecasts, and the user's learned preference profile. |
-| **11 Experience Categories** | Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness, Groceries & Flowers — each with dedicated Google Places type mappings, intent compatibility, and UX theming. |
+| **12 Experience Categories** | Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business — each with dedicated Google Places type mappings, intent compatibility, and UX theming. |
 | **Collaborative Sessions** | Users create named sessions, invite friends, swipe cards together in real time, vote/RSVP on a shared board, and chat within card-level discussion threads — all powered by Supabase Realtime. |
 | **Curated Multi-Stop Itineraries** | AI-generated 3-stop itinerary cards (e.g., "Solo Adventure") interleaved in the solo swipe deck with stop timelines, travel durations, and per-stop detail. |
 | **Ticketmaster Night Out** | The Night Out section shows real live events from the Ticketmaster Discovery API with genre/date/price filtering and in-app ticket purchasing. |
-| **Discover Tab** | A daily-refreshing, location-aware feed of curated experiences organized by all 11 categories, holidays, and night-out options with city-specific AI enrichment. |
+| **Discover Tab** | A daily-refreshing, location-aware feed of curated experiences organized by all 12 categories, holidays, and night-out options with city-specific AI enrichment. |
 | **Behavioral Learning** | Every swipe, view, save, and share is recorded via `user_interactions`. A trigger-driven `user_preference_learning` table continuously refines the user's affinity scores across categories, times, and price bands. |
 | **Deck Batch History** | Users can navigate back through previous swipe batches. History is persisted to Zustand/AsyncStorage and restored across sessions. |
 | **Custom Navigation** | Entirely custom state-driven navigation (no React Navigation library). Auth state gates screen selection; modals overlay on tab-based pages; collaboration sessions create a secondary "mode" layer. |
@@ -190,7 +190,7 @@ User Request → Edge Function (Deno)
 | **Google OAuth** | Google sign-in via WebView-based OAuth flow with `expo-web-browser` |
 | **Apple Sign-In** | Native Apple authentication on iOS (uses `expo-apple-authentication`) |
 | **Email OTP Verification** | Post-signup email verification screen (skipped for OAuth users) |
-| **11-Step Onboarding** | Welcome → Account Setup (name, username, photo) → Intent Selection (adventurous, romantic, business, etc.) → Vibe Selection (11 categories) → Location Setup (GPS permission) → Travel Mode (walking/driving/transit/cycling) → Travel Constraint (time or distance) → Budget Range ($25/$50/$100/$150 presets) → Date/Time Preference → Invite Friends → Magic (loading animation) |
+| **11-Step Onboarding** | Welcome → Account Setup (name, username, photo) → Intent Selection (adventurous, romantic, business, etc.) → Vibe Selection (12 categories) → Location Setup (GPS permission) → Travel Mode (walking/driving/transit/cycling) → Travel Constraint (time or distance) → Budget Range ($25/$50/$100/$150 presets) → Date/Time Preference → Invite Friends → Magic (loading animation) |
 | **Account Types** | Explorer (consumer) or Curator (content creator) — chosen during sign-up |
 | **Onboarding Persistence** | `has_completed_onboarding` flag in DB; step progress tracked via `onboarding_step` |
 
@@ -217,7 +217,7 @@ User Request → Edge Function (Deno)
 | Feature | Description |
 |---|---|
 | **Daily Curated Feed** | AI-generated grid of 10 category cards + 1 featured card, cached in `discover_daily_cache` (24h TTL) |
-| **Category Browsing** | Horizontal category pills for all 11 categories with Ionicon icons and brand colors |
+| **Category Browsing** | Horizontal category pills for all 12 categories with Ionicon icons and brand colors |
 | **Holiday Experiences** | Reads device calendar for upcoming holidays (falls back to 15 hardcoded holidays). Each holiday maps to primary + secondary categories. Gender-specific holidays (Mother's Day → feminine gifts, Father's Day → masculine activities) |
 | **Night-Out Section (Ticketmaster)** | Real live events from Ticketmaster Discovery API. Genre filter (server-side GENRE_TO_KEYWORDS map), date filter (getDateRange → startDate/endDate), price filter (client-side priceMin/priceMax). "Get Tickets" opens in-app browser via `expo-web-browser` |
 | **Saved People** | Add special people (partner, friends) and see personalized holiday gift / date ideas |
@@ -298,7 +298,7 @@ User Request → Edge Function (Deno)
 | Feature | Description |
 |---|---|
 | **Preferences Sheet** | Bottom sheet modal with collapsible sections |
-| **Categories** | 11 experience categories with Ionicon icons, brand colors, and intent compatibility matrix |
+| **Categories** | 12 experience categories with Ionicon icons and brand colors. All categories always visible regardless of intent selection — curated pills and category pills are fully independent selection layers |
 | **Experience Types** | Intent-based: adventurous, romantic, friendly, group-fun, business, first-dates, solo-adventure, picnic-dates |
 | **Budget Presets** | Quick-select: $25 / $50 / $100 / $150 (updated from old $100/$200/$500 presets) |
 | **Group Size** | People count selector |
@@ -451,23 +451,24 @@ PersistQueryClientProvider (React Query offline)
 
 ---
 
-## Experience Categories (v2.1)
+## Experience Categories (v3)
 
-Mingla supports **11 richly-defined experience categories**, each with Google Places type mappings, intent compatibility, and UX theming. Replaces the old 9-category system (Stroll, Sip & Chill, etc.) as of February 2026.
+Mingla supports **12 richly-defined experience categories**, each with verified Google Places API (New) type mappings (February 2026 taxonomy), intent compatibility, and UX theming. All invalid/fabricated types removed in v3 — every type has been verified against Google's Table A.
 
 | Slug | Display Name | Color | Ionicon | Google Places Types (Primary) |
 |------|-------------|-------|---------|-------------------------------|
-| `nature` | Nature | `#10B981` | `leaf-outline` | park, hiking_area, botanical_garden, national_park, beach, zoo |
-| `first_meet` | First Meet | `#6366F1` | `chatbubbles-outline` | cafe, coffee_shop, tea_house, bakery |
-| `picnic` | Picnic | `#84CC16` | `basket-outline` | park, picnic_ground, garden, campground |
-| `drink` | Drink | `#F59E0B` | `wine-outline` | bar, wine_bar, cocktail_bar, brewery, pub |
-| `casual_eats` | Casual Eats | `#F97316` | `fast-food-outline` | restaurant, fast_food, food_court, brunch |
-| `fine_dining` | Fine Dining | `#7C3AED` | `restaurant-outline` | fine_dining_restaurant, chef_led_restaurant, upscale_restaurant |
-| `watch` | Watch | `#3B82F6` | `film-outline` | movie_theater, performing_arts_theater, concert_hall |
-| `creative_arts` | Creative & Arts | `#EC4899` | `color-palette-outline` | art_gallery, museum, pottery_studio, craft_workshop |
-| `play` | Play | `#EF4444` | `game-controller-outline` | amusement_park, bowling_alley, escape_room, go_kart |
-| `wellness` | Wellness | `#14B8A6` | `body-outline` | spa, yoga_studio, gym, meditation_center, hot_spring |
-| `groceries_flowers` | Groceries & Flowers | `#22C55E` | `cart-outline` | grocery_store, florist, farmers_market, supermarket |
+| `nature` | Nature | `#10B981` | `leaf-outline` | park, national_park, hiking_area, botanical_garden, state_park, zoo |
+| `first_meet` | First Meet | `#6366F1` | `chatbubbles-outline` | cafe, coffee_shop, tea_house, ice_cream_shop, dessert_shop, bakery |
+| `picnic` | Picnic | `#84CC16` | `basket-outline` | park, picnic_ground, garden, botanical_garden, national_park |
+| `drink` | Drink | `#F59E0B` | `wine-outline` | bar, wine_bar, cocktail_bar, pub, coffee_shop, brewery, night_club |
+| `casual_eats` | Casual Eats | `#F97316` | `fast-food-outline` | restaurant, fast_food_restaurant, hamburger_restaurant, pizza_restaurant, ramen_restaurant |
+| `fine_dining` | Fine Dining | `#7C3AED` | `restaurant-outline` | fine_dining_restaurant, french_restaurant, italian_restaurant, steak_house, seafood_restaurant |
+| `watch` | Watch | `#3B82F6` | `film-outline` | movie_theater, performing_arts_theater, comedy_club, live_music_venue, concert_hall |
+| `creative_arts` | Creative & Arts | `#EC4899` | `color-palette-outline` | art_gallery, museum, art_studio, art_museum, performing_arts_theater, cultural_center |
+| `play` | Play | `#EF4444` | `game-controller-outline` | bowling_alley, amusement_park, water_park, video_arcade, amusement_center, miniature_golf_course |
+| `wellness` | Wellness | `#14B8A6` | `body-outline` | spa, massage, sauna, wellness_center, yoga_studio, massage_spa |
+| `groceries_flowers` | Groceries & Flowers | `#22C55E` | `cart-outline` | grocery_store, supermarket, farmers_market, garden_center |
+| `work_business` | Work & Business | `#64748B` | `briefcase-outline` | cafe, coffee_shop, tea_house |
 
 ### Category Definition Structure
 
@@ -505,16 +506,9 @@ Each category in `constants/categories.ts` includes:
 }
 ```
 
-### Intent → Category Compatibility Matrix
+### Intent → Category Relationship
 
-| Intent | Compatible Categories |
-|--------|---------------------|
-| `romantic` | First Meet, Drink, Picnic, Fine Dining, Wellness, Nature |
-| `first-dates` | Nature, First Meet, Drink, Watch, Creative & Arts, Picnic |
-| `group-fun` | Play, Creative & Arts, Casual Eats, Watch, Drink |
-| `business` | First Meet, Drink, Fine Dining |
-| `solo-adventure` | All categories |
-| `friendly` | All categories |
+As of the Deck Pipeline Overhaul (2026-03-02), curated intent pills and category pills are **fully independent selection layers** on the mobile client. There is no compatibility matrix restricting which categories are visible when intents are selected. Users can select any combination of intents (Romantic, Group Fun, First Date, etc.) AND any combination of categories simultaneously. The curated experience engine on the server side knows which place types to pair for each intent — the mobile client does not enforce restrictions.
 
 ### Database Default
 
@@ -567,11 +561,12 @@ The card pool pipeline replaces direct Google API calls with pool-first serving.
 ### Serving Logic (`cardPoolService.ts`)
 
 1. **Query pool**: `card_pool` filtered by categories (array overlap), geo bounds (lat/lng ± delta), budget (price range overlap), excluding user's impressions since last preference change
-2. **If pool ≥ requested limit**: Serve directly (0 API calls)
+2. **If pool ≥ requested limit**: Serve directly (0 API calls). Cards enriched with real distance/travel time via haversine + estimateTravelMin
 3. **If pool < limit**: Gap analysis identifies missing categories, then batch Google Places searches fill gaps
-4. **Upsert results**: New places → `place_pool`, new cards → `card_pool`
-5. **Record impressions**: Log `user_card_impressions` with batch number
-6. **Return cards**: With metadata: `fromPool` count, `fromApi` count, `totalPoolSize`
+4. **Upsert results**: New places → `place_pool` (opening hours parsed at ingestion), new cards → `card_pool`
+5. **Card format**: All output paths produce API-compatible fields: `priceMin`/`priceMax` (numeric), `distanceKm` (haversine from user), `travelTimeMin` (mode-aware estimate), `isOpenNow` (boolean), `openingHours` (parsed `Record<string, string>`)
+6. **Record impressions**: Log `user_card_impressions` with batch number
+7. **Return cards**: With metadata: `fromPool` count, `fromApi` count, `totalPoolSize`
 
 ### Curated Cards (Multi-Stop Itineraries)
 
@@ -619,6 +614,8 @@ Runs daily to keep `place_pool` data fresh:
 | `google_places_cache` | Google Places API response cache. Composite key: `(place_type, location_key, radius_bucket, search_strategy, text_query)`. 24h TTL |
 | `ticketmaster_events_cache` | Ticketmaster API response cache. Key: `cache_key` TEXT (geo+keywords+date). 2h TTL |
 | `discover_daily_cache` | Per-city daily discover feed cache. 24h TTL |
+| `saved_people` | Per-user saved people (with optional description for AI). RLS: owner-only. Cascade deletes to `person_experiences` |
+| `person_experiences` | AI-generated experiences per person per occasion (birthday, holiday). FK to `saved_people`. RLS: owner via join |
 
 ### Social & Messaging Tables
 
@@ -729,12 +726,15 @@ Every table has RLS enabled with policies enforcing:
 |------|-----------|---------|
 | 2025-01-26 | Initial | Core schema + RLS setup |
 | 2025-01-27+ | 80+ files | RLS policies, messaging, boards, avatars, collaboration |
-| 2026-02-28 | `20260228000001` | Category system v2 (9→11 categories) |
+| 2026-02-28 | `20260228000001` | Category system v2 (9→12 categories) |
 | 2026-02-28 | `20260228000002` | GPS toggle (`use_gps_location`) |
 | 2026-03-01 | `20260301000001` | Google Places cache table |
 | 2026-03-01 | `20260301000002` | Card pool pipeline (`place_pool`, `card_pool`, `user_card_impressions`) |
 | 2026-03-01 | `20260301000003` | Ticketmaster events cache |
 | 2026-03-02 | `20260302000001` | Turbo pipeline optimizations |
+| 2026-03-02 | `20260302000003` | Fix google_places_cache UNIQUE constraint (NULL text_query → NOT NULL DEFAULT '') |
+| 2026-03-02 | `20260302000004` | Card pool dedup (partial unique index on google_place_id for single cards) |
+| 2026-03-02 | `20260302000005` | Saved people + person experiences tables (Add Person → curated experiences) |
 
 ---
 
@@ -748,7 +748,9 @@ Every table has RLS enabled with policies enforcing:
 | `generate-experiences` | No | Google Places, OpenAI | `experiences`, `card_pool` | Legacy standalone experience generation (pre-pool era) |
 | `generate-session-experiences` | No | Google Places, OpenAI | `board_session_preferences`, `card_pool`, `place_pool` | Collaboration mode: aggregates all participants' preferences (widest budget, union categories, majority travel mode, centroid location) |
 | `generate-curated-experiences` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `user_card_impressions` | 3-stop itinerary builder. Generates stop routes with travel times, AI descriptions, duration estimates |
-| `discover-experiences` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool`, `place_pool` | General discovery for all 11 categories with 24h daily cache |
+| `discover-cards` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `google_places_cache`, `user_card_impressions` | Unified card discovery — pool-first serving for all 12 categories, 4 types/category, batch upsert to pool, fire-and-forget AI enrichment. Returns `hasMore` flag for swipe lifecycle exhaustion detection. **Always returns HTTP 200** with `{ cards: [] }` on failure (never 500) to prevent killing curated pipeline. |
+| `generate-person-experiences` | JWT | Google Places, OpenAI | `saved_people`, `person_experiences` | Parses person description via OpenAI into interests, finds matching Google Places for each occasion (birthday, holidays), stores curated per-person experiences |
+| `discover-experiences` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool`, `place_pool` | General discovery for all 12 categories with 24h daily cache |
 | `discover-casual-eats` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool` | Category-specific: Casual Eats |
 | `discover-creative-arts` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool` | Category-specific: Creative & Arts |
 | `discover-drink` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool` | Category-specific: Drink |
@@ -812,7 +814,7 @@ Every table has RLS enabled with policies enforcing:
 
 | Module | Purpose |
 |--------|---------|
-| `cardPoolService.ts` (2,473 lines) | Core pool-first serving engine. `serveCardsFromPipeline()`, `serveCuratedCardsFromPool()`, `upsertPlaceToPool()`, `insertCardToPool()`, `recordImpressions()` |
+| `cardPoolService.ts` | Core pool-first serving engine. `serveCardsFromPipeline()`, `serveCuratedCardsFromPool()`, `upsertPlaceToPool()`, `insertCardToPool()`, `recordImpressions()`. Includes `haversine()`, `estimateTravelMin()`, `parseGoogleOpeningHours()` for computing real distance/travel time and parsing opening hours from raw Google format. All card output paths produce API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`) |
 | `categoryPlaceTypes.ts` (210 lines) | Single source of truth: `MINGLA_CATEGORY_PLACE_TYPES` (display name → Google types), `CATEGORY_ALIASES` (all variations), `resolveCategory()`, `getPlaceTypesForCategory()`, `INTENT_IDS`, `filterOutIntents()` |
 | `placesCache.ts` (257 lines) | Google Places API caching: `searchPlacesWithCache()` (single type), `batchSearchPlaces()` (parallel multi-type). Location key precision: `lat.toFixed(2),lng.toFixed(2)` (~1.1km grid) |
 | `textSearchHelper.ts` (57 lines) | Fallback for non-standard place types (e.g., "sip and paint", "cooking classes"). `textSearchPlaces()` with keyword replacement |
@@ -921,7 +923,7 @@ defaultOptions: {
 
 | Hook | Purpose | Key Details |
 |------|---------|-------------|
-| `useDeckCards` | Unified deck cards (solo mode) | Wraps `deckService.fetchDeck()`. 30-min stale time. Returns `Recommendation[]` with `deckMode` and `activePills` |
+| `useDeckCards` | Unified deck cards (solo mode) | Wraps `deckService.fetchDeck()` (parallel category + curated pipelines via `Promise.allSettled`). 30-min stale time. Returns `Recommendation[]` with `deckMode`, `activePills`, and `hasMore` flag |
 | `useRecommendationsQuery` | Collaboration mode recommendations | Wraps `ExperienceGenerationService.generateExperiences()`. 1-hour stale time |
 | `useCuratedExperiences` | Multi-stop itinerary cards | Supports 7 types: adventurous, first-date, romantic, friendly, group-fun, picnic-dates, take-a-stroll. Background batch `skipDescriptions: true` |
 | `useNatureCards` | Nature category cards | Calls `discover-nature` edge function |
@@ -929,7 +931,8 @@ defaultOptions: {
 | `useSavedCards` | React Query saved cards | Wraps `savedCardsService.fetchSavedCards()` |
 | `useSaves` | Manual saves management | `addSave()`, `updateSave()`, `removeSave()`. Real-time Supabase subscriptions |
 | `useBoardSavedCards` | Board session cards | Wraps `BoardCardService.getSessionSavedCards()`. Transforms `card_data` to `SavedCard` |
-| `useDiscoverQuery` | Discover screen data | 10 grid cards + 1 featured. 1-hour stale, 24h cache |
+| `useDiscoverQuery` | Discover screen data | 10 grid cards + 2 hero cards (Fine Dining + Play). 1-hour stale, 24h cache |
+| `useSavedPeople` | Saved people (Supabase) | CRUD hooks for `saved_people` table. 5-min stale time. Includes `useCreatePerson`, `useDeletePerson`, `usePersonExperiences`, `useGeneratePersonExperiences` |
 
 ### Social & Friends (2)
 
@@ -989,17 +992,18 @@ defaultOptions: {
 | Service | Purpose |
 |---------|---------|
 | `authService.ts` | Profile CRUD: `loadUserProfile()`, `updateUserProfile()`, `uploadAvatar()` |
-| `supabase.ts` | Supabase client singleton with auth configuration |
+| `supabase.ts` | Supabase client singleton with auth configuration and 30-second global fetch timeout wrapper (prevents indefinite hangs when Supabase is unreachable) |
 
 ### Experience Generation & Cards (19)
 
 | Service | Purpose |
 |---------|---------|
 | `experienceGenerationService.ts` | Calls edge functions: `generateExperiences()` → new-generate-experience-, `generateSessionExperiences()` → generate-session-experiences, `discoverExperiences()` → discover-experiences |
-| `deckService.ts` | Unified deck service: `fetchDeck()` → new-generate-experiences edge function, `warmDeckPool()` → background pool pre-warming. Returns `{ cards, deckMode, activePills, total }` |
+| `deckService.ts` | Unified deck service: `fetchDeck()` runs category and curated pipelines in parallel via `Promise.allSettled` with 15-second `Promise.race` timeouts. Per-category round-robin interleaving (Nature→Drink→Fine Dining→Nature→...). `warmDeckPool()` → background pool pre-warming with 15s timeout. Returns `{ cards, deckMode, activePills, total, hasMore }` |
 | `curatedExperiencesService.ts` | `generateCuratedExperiences()` → generate-curated-experiences. Returns `CuratedExperienceCard[]` |
 | `holidayExperiencesService.ts` | `generateHolidayExperiences()` → holiday-experiences |
 | `nightOutExperiencesService.ts` | `fetchTicketmasterEvents()` → ticketmaster-events. Returns events with artistName, venueName, ticketUrl, priceRange |
+| `savedPeopleService.ts` | CRUD for `saved_people` table + experience generation via `generate-person-experiences` edge function |
 | `natureCardsService.ts` | `discoverNature()` → discover-nature |
 | `casualEatsCardsService.ts` | Category-specific: Casual Eats |
 | `fineDiningCardsService.ts` | Category-specific: Fine Dining |
@@ -1777,6 +1781,16 @@ npx supabase functions serve function-name --env-file .env.local
 - **All DB access** via Supabase JS client or edge functions
 - **Custom navigation** — no React Navigation library
 - **Categories use display-name format** ('Fine Dining') in `PreferencesSheet.tsx`, not slugs
+
+---
+
+## Recent Changes (2026-03-02)
+
+- **Pool Card Format Fix (CRIT-001/002):** Pool-served cards now output API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`) instead of hardcoded strings. Real distance computed via haversine; real travel time via mode-aware estimate.
+- **Opening Hours Parsing:** Raw Google `regularOpeningHours` objects are now parsed into `Record<string, string>` at both ingestion time (`upsertPlaceToPool`) and serving time (`poolCardToApiCard`, gap-fill builder). Cards display "Monday: 9:00 AM – 10:00 PM" instead of "[object Object]".
+- **Per-Category Round-Robin (HIGH-001):** Deck cards are now grouped by category before round-robin interleaving. With Nature + Drink + Fine Dining selected, the deck alternates: N1, D1, FD1, N2, D2, FD2... instead of 5 Fine Dining cards first.
+- **15-Second Timeout Fix (HIGH-002):** Replaced dead `AbortController` code with `Promise.race` pattern in both `fetchDeck` and `warmDeckPool`. The Supabase JS `invoke()` method does not accept an AbortSignal — `Promise.race` enforces the 15s timeout correctly.
+- **Gap-Fill Cards Fixed (HIGH-003):** Fresh Google Places cards inserted during gap-fill now use the same API-compatible format as pool-served cards, with real distance/travel time and parsed opening hours.
 
 ---
 
