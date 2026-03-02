@@ -1050,10 +1050,15 @@ serve(async (req) => {
 
         if (poolResult.cards.length >= Math.ceil(limit * 0.75)) {
           console.log(`[pool-first-curated] Served ${poolResult.cards.length} curated cards from pool`);
+          // Normalize categoryLabel — pool cards may not have it set
+          const normalizedPoolCards = poolResult.cards.map((card: any) => ({
+            ...card,
+            categoryLabel: card.categoryLabel || card.category || experienceType || 'Experience',
+          }));
           return new Response(
             JSON.stringify({
               success: true,
-              cards: poolResult.cards,
+              cards: normalizedPoolCards,
               meta: {
                 totalResults: poolResult.cards.length,
                 fromPool: poolResult.fromPool,
@@ -1161,9 +1166,14 @@ serve(async (req) => {
     }
 
     const servedCards = warmPool ? [] : cards.slice(0, limit);
+    // Normalize categoryLabel on all served cards
+    const normalizedCards = servedCards.map((card: any) => ({
+      ...card,
+      categoryLabel: card.categoryLabel || card.category || experienceType || 'Experience',
+    }));
     return new Response(
       JSON.stringify({
-        cards: servedCards,
+        cards: normalizedCards,
         experienceType,
         total: servedCards.length,
         generatedAt: new Date().toISOString(),

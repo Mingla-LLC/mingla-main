@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import {
   Text,
   View,
@@ -127,49 +127,6 @@ const timeSlots = [
 
 type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
 type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
-
-// Compatibility matrix: maps intent IDs to allowed category IDs
-// null means all categories are allowed
-const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
-  "adventurous":   null, // All categories allowed
-  "first-date":    ["fine_dining", "watch", "nature", "first_meet", "creative_arts", "play", "work_business"],
-  "romantic":      ["fine_dining", "creative_arts", "wellness"],
-  "friendly":      null, // All categories allowed
-  "group-fun":     ["play", "watch", "casual_eats"],
-  "picnic-dates":  ["groceries_flowers", "picnic_park"],
-  "take-a-stroll": ["casual_eats", "nature"],
-};
-
-// Get allowed category IDs based on selected intents
-const getAllowedCategoryIds = (
-  selectedIntents: string[]
-): Set<string> | null => {
-  if (selectedIntents.length === 0) {
-    // If no intents selected, show all categories
-    return null;
-  }
-
-  const allowedSets: Set<string>[] = [];
-
-  for (const intent of selectedIntents) {
-    const allowed = INTENT_CATEGORY_COMPATIBILITY[intent];
-    if (allowed === null) {
-      // This intent allows all categories, so return null (all allowed)
-      return null;
-    }
-    allowedSets.push(new Set(allowed));
-  }
-
-  // Union of all allowed categories
-  const union = new Set<string>();
-  for (const allowedSet of allowedSets) {
-    for (const categoryId of allowedSet) {
-      union.add(categoryId);
-    }
-  }
-
-  return union;
-};
 
 export default function PreferencesSheet({
   visible,
@@ -537,25 +494,8 @@ export default function PreferencesSheet({
     }
   }, [loadedPreferences, preferencesLoading, visible, isCollaborationMode]);
 
-  // Filter categories based on selected intents
-  const filteredCategories = useMemo(() => {
-    const allowedIds = getAllowedCategoryIds(selectedIntents);
-    if (allowedIds === null) {
-      return categories;
-    }
-    return categories.filter((category) => allowedIds.has(category.id));
-  }, [selectedIntents]);
-
-  // Filter out invalid selectedCategories when intents change
-  useEffect(() => {
-    const allowedIds = getAllowedCategoryIds(selectedIntents);
-    if (allowedIds !== null) {
-      setSelectedCategories((prev) => {
-        const validCategories = prev.filter((catId) => allowedIds.has(catId));
-        return validCategories.length !== prev.length ? validCategories : prev;
-      });
-    }
-  }, [selectedIntents]);
+  // All categories always visible — curated pills are independent of category pills
+  const filteredCategories = categories;
 
   // Memoized callbacks
   const handleIntentToggle = useCallback((id: string) => {
@@ -832,13 +772,17 @@ export default function PreferencesSheet({
       exact_time: exactTime || null,
     } as any;
 
+    const previousPrefs = user?.id
+      ? queryClient.getQueryData(["userPreferences", user.id])
+      : undefined;
+
     if (user?.id) {
       queryClient.setQueryData(["userPreferences", user.id], nextUserPreferences);
     }
 
     setIsSaving(true);
     try {
-      // === CRITICAL PATH: Save to DB with 10s timeout ===
+      // === CRITICAL PATH: Save to DB with 30s timeout ===
       const savePromise = (async () => {
         if (isCollaborationMode) {
           const dbPrefs: any = {
@@ -868,7 +812,7 @@ export default function PreferencesSheet({
       })();
 
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Save timeout after 10s')), 10000)
+        setTimeout(() => reject(new Error('Save timeout after 30s')), 30000)
       );
 
       await Promise.race([savePromise, timeoutPromise]);
@@ -893,7 +837,16 @@ export default function PreferencesSheet({
       }
 
     } catch (error) {
+      // Rollback optimistic update on failure
+      if (previousPrefs !== undefined && user?.id) {
+        queryClient.setQueryData(["userPreferences", user.id], previousPrefs);
+      }
       console.error("[PreferencesSheet] Save failed:", error);
+      Alert.alert(
+        'Save Failed',
+        'Your preferences could not be saved. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setIsSaving(false); // ALWAYS resets, even on timeout/error
     }

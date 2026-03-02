@@ -7,6 +7,7 @@
  * Convert translation key to readable category name
  */
 export const getReadableCategoryName = (categoryKey: string): string => {
+  if (!categoryKey) return 'Experience';
   // Convert translation keys and old slugs to readable names based on new category system
   const categoryMap: Record<string, string> = {
     // New category slugs -> display names
@@ -103,6 +104,7 @@ export const getReadableCategoryName = (categoryKey: string): string => {
  * Get category slug from translation key or category name
  */
 export const getCategorySlug = (categoryKey: string): string => {
+  if (!categoryKey) return 'experience';
   const readableName = getReadableCategoryName(categoryKey);
   
   // Map readable names to slugs
@@ -139,6 +141,7 @@ export const getCategorySlug = (categoryKey: string): string => {
  * Get category icon name for Ionicons
  */
 export const getCategoryIcon = (categoryKey: string): string => {
+  if (!categoryKey) return 'compass-outline';
   const slug = getCategorySlug(categoryKey);
   
   const iconMap: Record<string, string> = {
@@ -163,6 +166,7 @@ export const getCategoryIcon = (categoryKey: string): string => {
  * Get category color
  */
 export const getCategoryColor = (categoryKey: string): string => {
+  if (!categoryKey) return '#6B7280';
   const slug = getCategorySlug(categoryKey);
   
   const colorMap: Record<string, string> = {

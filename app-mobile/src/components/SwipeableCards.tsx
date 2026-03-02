@@ -41,6 +41,7 @@ import {
   Recommendation,
 } from "../contexts/RecommendationsContext";
 import { DeckHistorySheet } from "./DeckHistorySheet";
+import { getReadableCategoryName } from "../utils/categoryUtils";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 const CARD_HEIGHT = Math.min(screenHeight * 0.72, 800);
@@ -864,6 +865,8 @@ export default function SwipeableCards({
         if ((card as any).cardType === 'curated') {
           if (direction === 'right') {
             onCardLike(card);
+          } else {
+            console.log('[SwipeableCards] Curated card left-swiped:', card.title || card.id);
           }
           position.setValue({ x: 0, y: 0 });
           return;
@@ -1151,7 +1154,7 @@ export default function SwipeableCards({
                 <View style={styles.filterPillRow}>
                   {displayCategories.map((cat: string) => (
                     <View key={cat} style={styles.filterPill}>
-                      <Text style={styles.filterPillText}>{cat}</Text>
+                      <Text style={styles.filterPillText}>{getReadableCategoryName(cat)}</Text>
                     </View>
                   ))}
                 </View>
@@ -1163,7 +1166,7 @@ export default function SwipeableCards({
               <Text style={styles.filterLabel}>Budget:</Text>
               <View style={styles.filterTag}>
                 <Text style={styles.filterTagText}>
-                  ${displayBudgetMin}-${displayBudgetMax}
+                  Up to ${displayBudgetMax}
                 </Text>
               </View>
             </View>

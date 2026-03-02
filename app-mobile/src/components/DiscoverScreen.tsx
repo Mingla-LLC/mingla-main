@@ -721,22 +721,20 @@ export default function DiscoverScreen({
   const [personGender, setPersonGender] = useState<"male" | "female" | "other" | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
 
-  // Saved people from Supabase
-  const { data: savedPeople = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
+  // Phase 2: Person selector — hooks disabled to prevent unnecessary Supabase queries.
+  // The UI still renders but with stub data. Re-enable hooks when person selector UI ships.
+  // const { data: savedPeople = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
+  const savedPeople: SavedPerson[] = [];
+  const isPeopleLoading = false;
   const createPersonMutation = useCreatePerson();
   const deletePersonMutation = useDeletePerson();
   const generateExperiencesMutation = useGeneratePersonExperiences();
-  const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you"); // "for-you" or person.id
-
-  // Person description state
+  const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you");
   const [personDescription, setPersonDescription] = useState("");
-
-  // Person experiences for selected person
-  // TODO: Render personExperiences in a dedicated section below the person selector.
-  // The data is fetched and cached here; the rendering component is deferred to Phase 2.
-  const { data: personExperiences = [] } = usePersonExperiences(
-    selectedPersonId !== "for-you" ? selectedPersonId : undefined
-  );
+  // const { data: personExperiences = [] } = usePersonExperiences(
+  //   selectedPersonId !== "for-you" ? selectedPersonId : undefined
+  // );
+  const personExperiences: any[] = [];
 
   // Expanded holidays state (track which holiday dropdowns are open)
   const [expandedHolidayIds, setExpandedHolidayIds] = useState<Set<string>>(new Set());

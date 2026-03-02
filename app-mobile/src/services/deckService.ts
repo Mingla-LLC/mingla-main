@@ -218,7 +218,7 @@ class DeckService {
   async fetchDeck(params: DeckParams): Promise<DeckResponse> {
     const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
     const limit = params.limit ?? 20;
-    let hasMoreFromEdge = true; // Tracks hasMore from discover-cards response
+    let hasMoreFromEdge = true;
 
     if (__DEV__) {
       console.log('[DeckService] Input categories:', JSON.stringify(params.categories));
@@ -228,59 +228,71 @@ class DeckService {
       }
     }
 
-    // Separate category pills and curated pills
     const categoryPills = pills.filter(p => p.type === 'category');
     const curatedPills = pills.filter(p => p.type === 'curated');
-
     const fetchStart = Date.now();
-    const results: Recommendation[][] = [];
 
-    // ── ONE call for ALL categories (replaces 11 parallel calls) ──────────
-    if (categoryPills.length > 0) {
+    // ── Build parallel fetch promises ──────────────────────────────────
+    const categoryPromise: Promise<Recommendation[]> = (async () => {
+      if (categoryPills.length === 0) return [];
       try {
         const categoryNames = categoryPills.map(p =>
           PILL_TO_CATEGORY_NAME[p.id] || p.id
         );
         const categoryLimit = Math.ceil(limit * (categoryPills.length / pills.length));
 
-        const { data, error } = await supabase.functions.invoke('discover-cards', {
-          body: {
-            categories: categoryNames,
-            location: params.location,
-            budgetMax: params.budgetMax,
-            travelMode: params.travelMode,
-            travelConstraintType: params.travelConstraintType,
-            travelConstraintValue: params.travelConstraintValue,
-            datetimePref: params.datetimePref,
-            dateOption: params.dateOption,
-            timeSlot: params.timeSlot,
-            batchSeed: params.batchSeed,
-            limit: categoryLimit,
-          },
-        });
+        // 15-second timeout for discover-cards specifically
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-        if (!error && data?.cards) {
-          const cards = (data.cards as any[]).map(unifiedCardToRecommendation);
-          results.push(cards);
-          hasMoreFromEdge = data.metadata?.hasMore ?? true;
-          if (__DEV__) {
-            console.log(`[DeckService] Unified discover-cards → ${cards.length} cards (source: ${data.source}, hasMore: ${hasMoreFromEdge})`);
+        try {
+          const { data, error } = await supabase.functions.invoke('discover-cards', {
+            body: {
+              categories: categoryNames,
+              location: params.location,
+              budgetMax: params.budgetMax,
+              travelMode: params.travelMode,
+              travelConstraintType: params.travelConstraintType,
+              travelConstraintValue: params.travelConstraintValue,
+              datetimePref: params.datetimePref,
+              dateOption: params.dateOption,
+              timeSlot: params.timeSlot,
+              batchSeed: params.batchSeed,
+              limit: categoryLimit,
+            },
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!error && data?.cards) {
+            const cards = (data.cards as any[]).map(unifiedCardToRecommendation);
+            hasMoreFromEdge = data.metadata?.hasMore ?? true;
+            if (__DEV__) {
+              console.log(`[DeckService] discover-cards → ${cards.length} cards (source: ${data.source}, hasMore: ${hasMoreFromEdge})`);
+            }
+            return cards;
+          } else {
+            if (__DEV__) console.warn('[DeckService] discover-cards error:', error);
+            return [];
           }
-        } else {
-          if (__DEV__) {
-            console.warn('[DeckService] discover-cards error:', error);
+        } catch (err) {
+          clearTimeout(timeoutId);
+          if ((err as any)?.name === 'AbortError') {
+            console.warn('[DeckService] discover-cards timed out after 15s');
+          } else {
+            console.warn('[DeckService] discover-cards failed:', (err as any)?.message || err);
           }
-          results.push([]);
+          return [];
         }
       } catch (err) {
-        console.warn('[DeckService] Category fetch failed:', err);
-        results.push([]);
+        console.warn('[DeckService] discover-cards outer error:', (err as any)?.message || err);
+        return [];
       }
-    }
+    })();
 
-    // ── Curated pills still use their own function (multi-stop itineraries) ──
-    if (curatedPills.length > 0) {
-      const curatedResults = await Promise.all(
+    const curatedPromise: Promise<Recommendation[][]> = (async () => {
+      if (curatedPills.length === 0) return [];
+      return Promise.all(
         curatedPills.map(async (pill): Promise<Recommendation[]> => {
           try {
             const curatedLimit = Math.ceil(limit * (1 / pills.length));
@@ -308,7 +320,21 @@ class DeckService {
           }
         })
       );
-      results.push(...curatedResults);
+    })();
+
+    // ── Run BOTH pipelines in parallel ─────────────────────────────────
+    const [categoryResult, curatedResult] = await Promise.allSettled([
+      categoryPromise,
+      curatedPromise,
+    ]);
+
+    const results: Recommendation[][] = [];
+
+    if (categoryResult.status === 'fulfilled' && categoryResult.value.length > 0) {
+      results.push(categoryResult.value);
+    }
+    if (curatedResult.status === 'fulfilled') {
+      results.push(...curatedResult.value);
     }
 
     const interleaved = roundRobinInterleave(results).slice(0, limit);
@@ -344,11 +370,13 @@ class DeckService {
 
     const warmPromises: Promise<void>[] = [];
 
-    // ONE warm call for all categories
+    // ONE warm call for all categories (with 15s timeout)
     if (categoryPills.length > 0) {
       const categoryNames = categoryPills.map(p =>
         PILL_TO_CATEGORY_NAME[p.id] || p.id
       );
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       warmPromises.push(
         supabase.functions.invoke('discover-cards', {
           body: {
@@ -364,7 +392,7 @@ class DeckService {
             warmPool: true,
             limit: 40,
           },
-        }).then(() => {}).catch(() => {})
+        }).then(() => { clearTimeout(timeoutId); }).catch(() => { clearTimeout(timeoutId); })
       );
     }
 

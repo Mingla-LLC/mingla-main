@@ -35,6 +35,9 @@ import {
  * ──────────────────────────────────────────────────────────────────────────── */
 
 const GOOGLE_PLACES_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') ?? '';
+if (!GOOGLE_PLACES_API_KEY) {
+  console.error('[discover-cards] FATAL: GOOGLE_MAPS_API_KEY is not set in Supabase secrets');
+}
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -355,9 +358,20 @@ serve(async (req: Request) => {
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
     // ── Extract userId from auth header ───────────────────────────────────
-    const userId = (await supabaseAdmin.auth.getUser(
-      req.headers.get('Authorization')?.replace('Bearer ', '') ?? ''
-    ))?.data?.user?.id;
+    const authHeader = req.headers.get('Authorization');
+    const token = authHeader?.replace('Bearer ', '') ?? '';
+    let userId: string | undefined;
+
+    if (!token) {
+      console.warn('[discover-cards] No Authorization header — pool path will be skipped');
+    } else {
+      const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
+      if (authError) {
+        console.warn('[discover-cards] Auth failed:', authError.message, '— pool path will be skipped');
+      } else {
+        userId = userData?.user?.id;
+      }
+    }
 
     // ── Calculate search radius from travel constraint ────────────────────
     const maxDistKm =
@@ -428,6 +442,19 @@ serve(async (req: Request) => {
     }
 
     console.log(`[discover-cards] Searching ${allPlaceTypes.length} place types across ${categories.length} categories`);
+
+    // ── Guard: cannot fall back to Google API if key is missing ───────────
+    if (!GOOGLE_PLACES_API_KEY) {
+      console.error('[discover-cards] Cannot fall back to Google API — GOOGLE_MAPS_API_KEY not set');
+      return new Response(
+        JSON.stringify({
+          error: 'Places API key not configured. Pool had insufficient cards.',
+          cards: [],
+          source: 'error'
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // ── Batch search all place types using shared cache ───────────────────
     const { results, apiCallsMade, cacheHits } = await batchSearchPlaces(
@@ -567,10 +594,10 @@ serve(async (req: Request) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
-    console.error('[discover-cards] Error:', err);
+    console.error('[discover-cards] Unhandled error:', err);
     return new Response(
-      JSON.stringify({ error: 'Internal server error', cards: [] }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: (err as any)?.message || 'Internal error', cards: [] }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
