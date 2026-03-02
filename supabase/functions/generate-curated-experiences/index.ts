@@ -939,7 +939,7 @@ serve(async (req) => {
     }
 
     // Session aggregation for collaboration mode
-    if (session_id) {
+    if (session_id && typeof session_id === 'string' && session_id.length > 0) {
       try {
         const agg = await aggregateSessionPreferences(session_id);
         budgetMin = agg.budgetMin;
@@ -949,7 +949,7 @@ serve(async (req) => {
         travelConstraintValue = agg.travelConstraintValue;
         if (agg.datetimePref) datetimePref = agg.datetimePref;
         if (agg.location) location = agg.location;
-        if (!agg.experienceTypes.includes(experienceType)) {
+        if (!agg.experienceTypes || !agg.experienceTypes.includes(experienceType)) {
           return new Response(
             JSON.stringify({ cards: [], meta: { totalResults: 0, reason: 'experience_type_not_selected' } }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

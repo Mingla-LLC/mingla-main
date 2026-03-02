@@ -1,6 +1,6 @@
-# Implementation Report: Deck Polish — Bug Fixes, Round-Robin, Performance & History
+# Implementation Report: Deck Pipeline Fix — Edge Function 500s, Curated TypeError, Legacy Categories
 **Date:** 2026-03-01
-**Status:** Complete
+**Status:** Complete (code changes) / Infrastructure action required (DB migration + deploy)
 **Implementer:** Senior Engineer Skill
 
 ---
@@ -10,52 +10,36 @@
 ### Existing Files Modified
 | File | Purpose Before Change | Lines Before |
 |------|-----------------------|--------------|
-| `app-mobile/src/hooks/useDeckCards.ts` | Unified deck query hook | ~83 lines |
-| `app-mobile/src/services/deckService.ts` | Multi-pill parallel pipeline | ~447 lines |
-| `app-mobile/src/utils/cardConverters.ts` | Card type → Recommendation converters | ~727 lines |
-| `app-mobile/src/hooks/useUserLocation.ts` | Location resolution hook | ~93 lines |
-| `app-mobile/src/contexts/RecommendationsContext.tsx` | Deck orchestration context | ~711 lines |
-| `app-mobile/src/components/SwipeableCards.tsx` | Swipeable card deck UI | ~2143 lines |
+| `app-mobile/src/services/deckService.ts` | Multi-pill parallel pipeline | ~489 lines |
+| `app-mobile/src/services/curatedExperiencesService.ts` | Curated experience edge function client | ~58 lines |
+| `supabase/functions/generate-curated-experiences/index.ts` | Curated experience generator edge function | ~1100+ lines |
 
 ### Pre-existing Behavior
-- Cards would deadlock on permanent loading spinner when fewer than 10 results were available (rural/sparse locations)
-- Groceries & Flowers category silently fell through to curated filters — no dedicated pill was created
-- All curated cards except "nature" showed a generic compass icon
-- No location caching — 100-500ms GPS wait on every app launch
-- Batch history existed in Zustand but wasn't used as `initialData` for instant re-rendering
-- History review was inline-only at end-of-deck — no dedicated history sheet or header button
-- Round-robin could theoretically exceed 20 cards with many pills (7+ pills × 3 each = 21)
+- All 10 discover-* edge functions (nature, drink, first_meet, etc.) crashed with 500 `FunctionsHttpError`, returning 0 category cards
+- The "romantic" curated pill crashed with `TypeError: Cannot read property 'includes' of undefined` because `session_id: undefined` serialized as `null` in JSON, causing the edge function to enter the session aggregation path with malformed data
+- Other curated pills (adventurous, etc.) returned 0 cards because `generate-curated-experiences` depends on the same card pool infrastructure
+- Legacy category "Play & Move" from pre-v2 preferences fell through `CATEGORY_PILL_MAP`, producing noise warnings and being misrouted as a curated filter
+- Net result: users saw a permanent loading/empty state with 0 cards
 
 ---
 
 ## What Changed
 
-### New Files Created
-| File | Purpose | Key Exports |
-|------|---------|-------------|
-| `app-mobile/src/services/groceriesFlowersCardsService.ts` | Groceries & Flowers card fetcher via discover-experiences | `GroceriesFlowersCard`, `groceriesFlowersCardsService` |
-| `app-mobile/src/components/DeckHistorySheet.tsx` | Bottom sheet for batch history browsing | `DeckHistorySheet` |
-
 ### Files Modified
 | File | Change Summary |
 |------|---------------|
-| `app-mobile/src/hooks/useDeckCards.ts` | Fixed `isFullBatchLoaded` from count threshold (>=10) to query-settled check; added `initialData` from Zustand batch history; aligned `deckMode` type to use `DeckResponse['deckMode']` |
-| `app-mobile/src/services/deckService.ts` | Replaced if/else pill resolution chain with `CATEGORY_PILL_MAP` lookup map; added Groceries & Flowers import, fetch handler, warm handler; added `groceries_flowers` to `deckMode` union; capped round-robin with `.slice(0, limit)`; added fetch timing log |
-| `app-mobile/src/utils/cardConverters.ts` | Added `groceriesFlowersToRecommendation()` converter; fixed curated icon from hardcoded nature/compass to `getCategoryIcon()` lookup; added imports for `GroceriesFlowersCard` and `getCategoryIcon` |
-| `app-mobile/src/hooks/useUserLocation.ts` | Added AsyncStorage location cache (`@mingla/lastLocation`); module-level `cachedLocationSync` populated on import; `initialData` feeds cached location to query; `useEffect` persists resolved location |
-| `app-mobile/src/contexts/RecommendationsContext.tsx` | Added warm pool timing log (`[Deck] Pool warmed in Xms`) |
-| `app-mobile/src/components/SwipeableCards.tsx` | Added `DeckHistorySheet` import + render; added `historyVisible` state; added "Batch N" header button with clock icon; destructured `totalDeckCardsViewed` from context; added `deckHeader`, `historyButton`, `historyButtonText` styles |
+| `app-mobile/src/services/deckService.ts` | Added 10 legacy category name mappings to `CATEGORY_PILL_MAP` (Play & Move → play, Stroll → nature, Sip & Chill → drink, Dining → fine_dining, Screen & Relax → watch, Creative & Hands-On → creative_arts, plus `&`/`and` variants) |
+| `app-mobile/src/services/curatedExperiencesService.ts` | Destructured `sessionId` and `selectedCategories` separately; only include `session_id` in body when truthy; only include `selectedCategories` when non-empty array; prevents `session_id: null` and `selectedCategories: undefined` from reaching edge function |
+| `supabase/functions/generate-curated-experiences/index.ts` | Strengthened session_id guard from `if (session_id)` to `if (session_id && typeof session_id === 'string' && session_id.length > 0)`; added defensive null-check `!agg.experienceTypes ||` before `.includes()` call |
 
 ### Database Changes
-None — no migrations needed.
+**No new migrations.** The existing migration `supabase/migrations/20260301000002_card_pool_pipeline.sql` creates the required `place_pool`, `card_pool`, and `user_card_impressions` tables — but it **must be applied to production** if not already done.
 
 ### Edge Functions
-None — reuses existing `discover-experiences` with `categories: ["Groceries & Flowers"]`.
-
-### State Changes
-- React Query `initialData` added to `useDeckCards` from Zustand `deckBatches`
-- React Query `initialData` added to `useUserLocation` from AsyncStorage
-- AsyncStorage key `@mingla/lastLocation` persists last-known GPS coordinates
+| Function | Change | Re-deploy Required |
+|----------|--------|--------------------|
+| `generate-curated-experiences` | Defensive session_id + experienceTypes null checks | **Yes** |
+| All `discover-*` functions | No code change — but need re-deploy to bundle shared modules | **Yes** |
 
 ---
 
@@ -63,17 +47,24 @@ None — reuses existing `discover-experiences` with `categories: ["Groceries & 
 
 ### Architecture Decisions
 
-1. **`isFullBatchLoaded` — query-settled vs count threshold:** Changed from `(total >= 10)` to `(!isLoading && !isFetching && data !== undefined)`. The old threshold conflated "query finished" with "batch is big enough." The new check simply means "the query has settled," regardless of how many cards it returned. The existing empty-state handler at `RecommendationsContext.tsx:428` already handles 0-card results correctly.
+1. **Client-side defense (curatedExperiencesService):** Rather than relying solely on the edge function to handle `null` gracefully, the client now omits `session_id` and `selectedCategories` entirely when they have no meaningful value. This is the correct contract: don't send fields you don't intend to use.
 
-2. **Pill normalization via lookup map:** Replaced a 10-case if/else chain (which missed Groceries & Flowers) with a `CATEGORY_PILL_MAP` Record that maps all format variations (display names, slugs, underscore slugs) to canonical pill IDs. Unrecognized categories get a console.warn and fall through to curated filters.
+2. **Server-side defense (generate-curated-experiences):** Belt-and-suspenders approach — even if the client sends a bad `session_id`, the edge function now guards against it with a type+length check. The `experienceTypes` null-guard prevents the crash even if aggregation returns malformed data.
 
-3. **Groceries & Flowers reuses `discover-experiences`:** No new edge function. The service passes `categories: ["Groceries & Flowers"]` to the existing `discover-experiences` endpoint, which already handles all categories via its `DISCOVER_CATEGORIES` mapping.
+3. **Legacy category mappings:** All 6 old category names (Stroll, Sip & Chill, Dining, Screen & Relax, Creative & Hands-On, Play & Move) are mapped to their v2 equivalents, with both `&` and `and` variants since the `_` → space normalization in the lookup code already handles underscores.
 
-4. **Curated icon fix uses existing `getCategoryIcon()`:** Instead of adding a new map, the fix leverages the already-complete `categoryUtils.ts:getCategoryIcon()` which maps all 11 categories including curated labels.
+---
 
-5. **Location cache is module-level, not hook-level:** `cachedLocationSync` is populated asynchronously when the module is imported, before any component renders. This ensures the first `useUserLocation` call can immediately return cached location via `initialData`.
+## Infrastructure Actions Required
 
-6. **Batch history as `initialData` with `initialDataUpdatedAt`:** By passing the batch's timestamp as `initialDataUpdatedAt`, React Query knows when the initial data was last valid and can properly determine staleness for background revalidation.
+These are **not code changes** — they require Supabase dashboard/CLI access:
+
+| # | Action | Command / Location | Why |
+|---|--------|--------------------|-----|
+| 1 | **Apply card pool migration** | `supabase db push` or paste `20260301000002_card_pool_pipeline.sql` in SQL Editor | Creates `place_pool`, `card_pool`, `user_card_impressions` tables — without these, ALL discover-* functions crash with 500 |
+| 2 | **Verify env vars** | `supabase secrets list` or Dashboard → Edge Functions → Secrets | Confirm `GOOGLE_MAPS_API_KEY`, `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` are set |
+| 3 | **Re-deploy ALL edge functions** | `supabase functions deploy` | Bundles `_shared/*.ts` modules with each function; also deploys the updated `generate-curated-experiences` |
+| 4 | **Clean legacy DB data** (optional) | `UPDATE preferences SET categories = array_remove(categories, 'Play & Move') WHERE 'Play & Move' = ANY(categories);` (repeat for Stroll, Sip & Chill, Dining, Screen & Relax, Creative & Hands-On) | Removes legacy names at source; the code-side mapping handles stragglers |
 
 ---
 
@@ -81,30 +72,24 @@ None — reuses existing `discover-experiences` with `categories: ["Groceries & 
 
 | Test | Result | Notes |
 |------|--------|-------|
-| TypeScript compilation (modified files) | Pass | Zero errors in all 8 touched files |
-| TypeScript compilation (full project) | Pass | Pre-existing errors in unrelated files only |
-| Spec Test 1: Fresh install, default prefs | Ready | Cards should appear — `isFullBatchLoaded` fix unblocks pipeline |
-| Spec Test 2: Curated + categories mix | Ready | Round-robin interleave works (already correct) |
-| Spec Test 5: Select Groceries & Flowers | Ready | Dedicated pill now created via `CATEGORY_PILL_MAP` |
-| Spec Test 6: < 10 total results | Ready | `isFullBatchLoaded` now true when query settles, not when count >= 10 |
-| Spec Test 7: 0 results | Ready | Empty-state handler fires correctly |
-| Spec Test 8: "Get More" button | Ready | Already existed in SwipeableCards, now also DeckHistorySheet |
-| Spec Test 9: "Review History" | Ready | New DeckHistorySheet with relative time, pill labels, batch navigation |
-| Spec Test 10: Kill + reopen | Ready | AsyncStorage location cache provides instant `initialData` |
+| TypeScript compilation (deckService.ts) | Pass | Legacy mappings are valid Record entries |
+| TypeScript compilation (curatedExperiencesService.ts) | Pass | Destructuring + conditional body build compiles cleanly |
+| Edge function syntax (generate-curated-experiences) | Pass | Guard conditions are valid JS |
+| RCA-2: romantic pill with undefined sessionId | Fixed | `session_id` omitted from body entirely; server-side guard added |
+| RCA-4: "Play & Move" in preferences | Fixed | Maps to `play` pill via `CATEGORY_PILL_MAP` |
+| RCA-1/RCA-3: Edge function 500s | **Requires infrastructure** | Code changes alone don't fix this — DB migration + deploy needed |
 
 ### Bugs Found and Fixed
-1. **Bug:** `UseDeckCardsResult.deckMode` type was `'nature' | 'curated' | 'mixed'` — narrower than `DeckResponse.deckMode` which includes all category slugs | **Root Cause:** Type was hardcoded instead of derived | **Fix:** Changed to `DeckResponse['deckMode']`
+1. **Bug:** `session_id: undefined` serialized as `null` in JSON body | **Root Cause:** `curatedExperiencesService` spread `sessionId` unconditionally via `...edgeParams` | **Fix:** Destructure separately, only include when truthy
+2. **Bug:** `agg.experienceTypes.includes()` crashes on undefined | **Root Cause:** Session aggregation can return malformed `agg` when `session_id` is `null` | **Fix:** Added `!agg.experienceTypes ||` null-guard before `.includes()` call
+3. **Bug:** "Play & Move" unrecognized category warning | **Root Cause:** Legacy category name not in `CATEGORY_PILL_MAP` | **Fix:** Added all 6 legacy names with `&`/`and` variants
 
 ---
 
 ## Success Criteria Verification
-- [x] App bundles and runs without syntax errors — verified by TypeScript compilation
-- [x] Cards appear on first load — `isFullBatchLoaded` deadlock fixed (query-settled check)
-- [x] Round-robin interleaving works — verified algorithm is correct; `.slice(0, limit)` caps at 20
-- [x] Groceries & Flowers creates dedicated pill — `CATEGORY_PILL_MAP` maps all 3 format variations
-- [x] "Get More" button generates new batch — existing `generateNextBatch()` + end-of-deck UI
-- [x] "Review History" allows browsing batches — new `DeckHistorySheet` + header button
-- [x] 0-card edge case shows empty state — `isFullBatchLoaded` true when settled, empty handler fires
-- [x] Card pool serves from cache on subsequent loads — timing logs added for verification
-- [x] Curated icons are category-specific — `getCategoryIcon()` replaces hardcoded nature/compass
-- [x] Location cached for instant startup — AsyncStorage `@mingla/lastLocation` + `initialData`
+- [x] No `TypeError: Cannot read property 'includes' of undefined` — client omits null session_id; server guards against it
+- [x] No `Unrecognized category: "Play & Move"` warning — legacy names mapped in CATEGORY_PILL_MAP
+- [x] `selectedCategories: undefined` no longer sent to edge function — omitted when empty
+- [ ] All discover-* edge functions return 200 — **requires DB migration + function deploy**
+- [ ] `generate-curated-experiences` returns cards — **requires function deploy**
+- [ ] Deck loads with >0 cards — **requires infrastructure actions above**

@@ -19,9 +19,20 @@ interface GenerateCuratedParams {
 
 class CuratedExperiencesService {
   async generateCuratedExperiences(params: GenerateCuratedParams): Promise<CuratedExperienceCard[]> {
-    const { sessionId, ...edgeParams } = params;
+    const { sessionId, selectedCategories, ...edgeParams } = params;
+    const body: Record<string, any> = {
+      ...edgeParams,
+    };
+    // Only include session_id if it's a real session (not solo mode)
+    if (sessionId) {
+      body.session_id = sessionId;
+    }
+    // Only include selectedCategories if there are actual filters
+    if (selectedCategories && selectedCategories.length > 0) {
+      body.selectedCategories = selectedCategories;
+    }
     const { data, error } = await supabase.functions.invoke('generate-curated-experiences', {
-      body: { ...edgeParams, session_id: sessionId },
+      body,
     });
     if (error) throw error;
     return (data?.cards ?? []) as CuratedExperienceCard[];

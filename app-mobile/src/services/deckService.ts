@@ -97,6 +97,17 @@ class DeckService {
       'groceries & flowers': 'groceries_flowers',
       'groceries flowers': 'groceries_flowers',
       'groceries_flowers': 'groceries_flowers',
+      // Legacy category names (pre-v2) → map to current slugs
+      'play & move': 'play',
+      'play and move': 'play',
+      'stroll': 'nature',
+      'sip & chill': 'drink',
+      'sip and chill': 'drink',
+      'dining': 'fine_dining',
+      'screen & relax': 'watch',
+      'screen and relax': 'watch',
+      'creative & hands-on': 'creative_arts',
+      'creative and hands-on': 'creative_arts',
     };
 
     for (const cat of cats) {
