@@ -366,17 +366,98 @@ serve(async (req) => {
 
         if (poolResult.fromPool >= 8) {
           console.log(`[pool-first] Serving ${poolResult.cards.length} discover cards from pool (${poolResult.fromPool} pool, ${poolResult.fromApi} API)`);
-          const poolCards = poolResult.cards.slice(0, 10);
-          const poolFeaturedCard = poolResult.cards.length > 10 ? poolResult.cards[10] : null;
+
+          // ── Category-diverse selection from pool cards ──
+          const HERO_CATEGORIES = ["Fine Dining", "Play"];
+          const poolHeroCards: any[] = [];
+          const poolGridCards: any[] = [];
+          const usedCategories = new Set<string>();
+          const usedIds = new Set<string>();
+
+          // PASS 1: Extract hero cards (Fine Dining + Play)
+          for (const heroCategory of HERO_CATEGORIES) {
+            const heroCandidates = poolResult.cards.filter(
+              (c: any) => c.category === heroCategory && !usedIds.has(c.id)
+            );
+            if (heroCandidates.length > 0) {
+              const selected = heroCandidates[0]; // Already sorted by popularity from pool
+              poolHeroCards.push(selected);
+              usedIds.add(selected.id);
+              usedCategories.add(heroCategory);
+              console.log(`[pool-first] Hero card for ${heroCategory}: "${selected.title}"`);
+            } else {
+              console.log(`[pool-first] No pool card for hero category: ${heroCategory}`);
+            }
+          }
+
+          // PASS 2: One card per non-hero category (round-robin diversity)
+          for (const category of categoriesToFetch) {
+            if (HERO_CATEGORIES.includes(category)) continue; // Heroes already extracted
+            if (usedCategories.has(category)) continue;
+            if (poolGridCards.length >= 10) break;
+
+            const candidates = poolResult.cards.filter(
+              (c: any) => c.category === category && !usedIds.has(c.id)
+            );
+            if (candidates.length > 0) {
+              const selected = candidates[0];
+              poolGridCards.push(selected);
+              usedIds.add(selected.id);
+              usedCategories.add(category);
+            }
+          }
+
+          // PASS 3: Fill remaining grid slots (if fewer than 10) from unused pool cards
+          if (poolGridCards.length < 10) {
+            const remaining = poolResult.cards.filter((c: any) => !usedIds.has(c.id));
+            for (const card of remaining) {
+              if (poolGridCards.length >= 10) break;
+              poolGridCards.push(card);
+              usedIds.add(card.id);
+            }
+          }
+
+          // Backward compat: featuredCard = first hero
+          const poolFeaturedCard = poolHeroCards[0] || poolGridCards[0] || null;
+
+          // ── Persist to daily cache (same as Google API path) ──
+          if (adminClient && userId) {
+            adminClient
+              .from("discover_daily_cache")
+              .delete()
+              .eq("user_id", userId)
+              .eq("us_date_key", usDateKey)
+              .then(() =>
+                adminClient!
+                  .from("discover_daily_cache")
+                  .insert({
+                    user_id: userId,
+                    us_date_key: usDateKey,
+                    cards: poolGridCards,
+                    featured_card: poolFeaturedCard,
+                    generated_location: {
+                      lat: location.lat,
+                      lng: location.lng,
+                      radius,
+                      categoryHash,
+                      heroCards: poolHeroCards,
+                    },
+                  })
+              )
+              .catch((e: any) => console.warn("[pool-first] Cache write error:", e));
+          }
+
           return new Response(
             JSON.stringify({
-              cards: poolCards,
+              cards: poolGridCards,
+              heroCards: poolHeroCards,
               featuredCard: poolFeaturedCard,
               meta: {
-                totalResults: poolCards.length,
+                totalResults: poolGridCards.length,
+                heroCount: poolHeroCards.length,
                 categories: categoriesToFetch,
-                successfulCategories: categoriesToFetch,
-                failedCategories: [],
+                successfulCategories: Array.from(usedCategories),
+                failedCategories: categoriesToFetch.filter((c) => !usedCategories.has(c)),
                 poolFirst: true,
                 fromPool: poolResult.fromPool,
                 fromApi: poolResult.fromApi,

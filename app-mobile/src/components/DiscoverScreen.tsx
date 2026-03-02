@@ -42,8 +42,8 @@ const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
-const DISCOVER_CACHE_KEY = "mingla_discover_cache_v3";
-const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v2";
+const DISCOVER_CACHE_KEY = "mingla_discover_cache_v4";
+const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v3";
 const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
 const DISCOVER_CACHE_MIGRATION_VERSION = "2026-02-27-cache-reset-1";
 
@@ -143,6 +143,7 @@ interface DiscoverCache {
   recommendations: Recommendation[];
   featuredCard: FeaturedCardData | null;
   gridCards: GridCardData[];
+  heroCards: FeaturedCardData[];
 }
 
 const discoverSessionCache = new Map<string, DiscoverCache>();
@@ -1210,7 +1211,8 @@ export default function DiscoverScreen({
   const saveDiscoverCache = async (
     recommendations: Recommendation[],
     featuredCard: FeaturedCardData | null,
-    gridCards: GridCardData[]
+    gridCards: GridCardData[],
+    heroCards: FeaturedCardData[] = []
   ) => {
     if (!user?.id) {
       return;
@@ -1221,6 +1223,7 @@ export default function DiscoverScreen({
         recommendations,
         featuredCard,
         gridCards,
+        heroCards,
       };
       const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
       const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
@@ -1370,6 +1373,12 @@ export default function DiscoverScreen({
     const hasCompleteCardState = !!fallbackFeatured && hasGridCards;
 
     loadedFromCacheRef.current = hasCompleteCardState;
+
+    // Restore hero cards from cache (backward compat: default to empty array)
+    const cachedHeroCards = cachedData.heroCards || [];
+    if (cachedHeroCards.length > 0) {
+      setSelectedHeroCards(cachedHeroCards);
+    }
 
     if (hasCompleteCardState) {
       setSelectedFeaturedCard(fallbackFeatured);
@@ -1589,7 +1598,7 @@ export default function DiscoverScreen({
         lastDiscoverFetchDateRef.current = today;
         
         // Save to cache for 24-hour persistence
-        saveDiscoverCache(transformed, finalFeatured, gridCards);
+        saveDiscoverCache(transformed, finalFeatured, gridCards, transformedHeroes);
         
         // Mark as loaded from cache to skip the card selection useEffect
         loadedFromCacheRef.current = true;
@@ -1674,6 +1683,14 @@ export default function DiscoverScreen({
       console.log("Skipping card selection - loaded from cache");
       previousRecommendationsLengthRef.current = recommendations.length;
       loadedFromCacheRef.current = false; // Reset flag for future updates
+      return;
+    }
+
+    // Skip re-randomization if hero cards were already set by the API fetch path
+    // (the fetch path sets selectedHeroCards directly — this useEffect must not overwrite them)
+    if (selectedHeroCards.length > 0) {
+      console.log("Skipping card selection - hero cards already set by API fetch");
+      previousRecommendationsLengthRef.current = recommendations.length;
       return;
     }
 
@@ -3380,7 +3397,7 @@ export default function DiscoverScreen({
                           
                           return (
                             <Animated.View
-                              key={card.id}
+                              key={`${card.id}-${index}`}
                               style={{
                                 opacity: isRightColumn ? gridCardsRightOpacity : gridCardsLeftOpacity,
                                 transform: [
