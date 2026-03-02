@@ -6,10 +6,9 @@ description: >
   exactly, never drifts out of scope, never hallucinates APIs or files that don't exist.
   Expert in TypeScript, React Native (Expo), JavaScript, Supabase (PostgreSQL, Auth, Realtime,
   Edge Functions in Deno), Google Places API (New), React Query, Zustand, and unit testing.
-  Produces production-quality code that matches existing patterns exactly, then unit tests
-  every change and fixes all bugs before declaring success. After every implementation, generates
-  a structured IMPLEMENTATION_REPORT.md describing exactly what changed and why, plus a concise
-  plain-English summary.
+  Produces production-quality code that matches existing patterns exactly. After every 
+  implementation, generates a structured IMPLEMENTATION_REPORT.md describing exactly what 
+  changed and why, then hands off directly to the tester.
 
   Trigger this skill whenever someone says: "implement this", "build this feature", "make this
   work", "add X to the codebase", "fix this bug", "integrate X", "write the code for", "update
@@ -45,6 +44,8 @@ BestTime.app, Resend, Expo Push, Stripe Connect, OpenTable, Eventbrite, Viator
 - React Query for all server state; Zustand only for client-only persisted state
 - AsyncStorage persistence for both React Query cache and Zustand store
 - No React Navigation — navigation is custom state-driven via context/zustand
+- TypeScript strict mode — no `any`, no `@ts-ignore`, no `as unknown as`
+- StyleSheet.create() for all styles — no inline style objects
 
 ---
 
@@ -52,9 +53,16 @@ BestTime.app, Resend, Expo Push, Stripe Connect, OpenTable, Eventbrite, Viator
 
 This is the most important phase. Skipping it causes hallucination and drift.
 
-**Step 1.1 — Read the spec/instructions completely.**
-If given a FEATURE_SPEC.md or IMPLEMENTATION_GUIDE.txt, read the entire thing before touching
-a single file. Extract: files to create, files to modify, DB changes, edge functions, test criteria.
+**Step 1.1 — Read the spec completely.**
+The architect's `FEATURE_[NAME]_SPEC.md` is your single source of truth. Read the entire thing
+before touching a single file. Extract and hold in working memory:
+- Every file to create (exact paths from §6.1)
+- Every file to modify (exact paths from §6.2)
+- Every DB change (exact SQL from §4)
+- Every edge function (exact signatures from §5)
+- Every success criterion (exact list from §3)
+- Every test case (exact table from §8)
+- The exact implementation order (§7)
 
 **Step 1.2 — Scan every file you will touch.**
 For each file listed in the spec (or that you reason must be involved):
@@ -71,7 +79,8 @@ For each file listed in the spec (or that you reason must be involved):
 
 **Step 1.4 — Confirm scope before writing.**
 If anything is ambiguous or seems to require going outside the stated scope, flag it explicitly
-and ask. Do not silently expand scope. Do not silently shrink scope.
+and ask. Do not silently expand scope. Do not silently shrink scope. The spec is the contract.
+If the spec says do X, do X. If the spec doesn't mention Y, don't touch Y.
 
 ---
 
@@ -121,8 +130,7 @@ Identify the natural seams — points where the work is genuinely independent. C
 | By feature area | Feature A end-to-end | Feature B end-to-end | Shared types + integration |
 | By layer | DB + types | Edge functions + services | Hooks + components |
 
-**Step 2: Write each agent's briefing.** Use this exact template — it's designed to prevent
-hallucination by giving the agent only what it needs and no more:
+**Step 2: Write each agent's briefing.** Use this exact template:
 
 ```
 AGENT [N] BRIEFING — [Agent Role Name]
@@ -141,7 +149,6 @@ THE CONTRACT (interfaces you must match exactly):
 
 STACK CONTEXT:
 - [Only the stack facts relevant to this agent's scope]
-- [e.g., "Edge functions use Deno, CORS headers required, see pattern below"]
 
 IMPLEMENTATION ORDER:
 1. [First thing to do]
@@ -172,48 +179,34 @@ and test results.
 
 **Step 4: Integration is your responsibility.**
 The orchestrator is accountable for the whole feature. If two agents produced code that
-doesn't fit together, that's your failure to define the contract clearly — fix it yourself
-and learn from it. Do not blame agents or spawn a fourth agent to "fix integration."
+doesn't fit together, that's your failure to define the contract clearly — fix it yourself.
 
 ---
 
 ## Phase 2: Implement
 
-Execute the implementation in this order (the order matters for dependency reasons):
+Execute the implementation in the exact order the spec prescribes (§7). The order matters for
+dependency reasons. Do not reorder. If the spec says "Step 1: Database" then "Step 2: Edge
+function" — do database first, verify it, then do the edge function.
 
 ### 2.1 Database First
 If there are schema changes:
-1. Write the exact SQL migration — precise column names, types, constraints, defaults
-2. Add RLS policies immediately after table creation — never leave a table without RLS
-3. Update TypeScript types in `types/database.ts` or equivalent to reflect new schema
-
-```sql
--- Example pattern for new table
-CREATE TABLE public.new_table (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE public.new_table ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage their own records"
-  ON public.new_table FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-```
+1. Copy the exact SQL migration from the spec's §4. Do not modify it unless you find an error
+   — if you find an error, flag it and explain what you changed and why in your report.
+2. Verify RLS is enabled and policies exist — the spec must have provided them.
+3. Update TypeScript types in `types/` to reflect new schema.
 
 ### 2.2 Edge Functions Second
 If there are new or modified edge functions:
-1. Follow the existing Deno edge function pattern exactly (read an existing one first)
-2. Handle CORS headers — check existing functions for the pattern used in this repo
-3. Validate all inputs — never trust mobile input
-4. Structured error responses with consistent shape
-5. For Google Places API calls, use the patterns in §2.3 below
+1. Follow the existing Deno edge function pattern exactly (read an existing one first).
+2. Copy the function signature, request/response types, and validation rules from the spec's §5.
+3. Handle CORS headers — check existing functions for the exact pattern used in this repo.
+4. Implement validation rules exactly as specified. Every rule the spec lists, you implement.
+   Every error message the spec specifies, you return verbatim.
+5. Structured error responses with the consistent `{ error: string }` shape.
 
 Standard edge function shape:
 ```typescript
-// supabase/functions/function-name/index.ts
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -244,7 +237,8 @@ serve(async (req) => {
 
 **Base URL:** `https://places.googleapis.com/v1`
 **Auth:** `X-Goog-Api-Key: ${GOOGLE_PLACES_API_KEY}` header — never query param
-**Critical:** Always use `X-Goog-FieldMask` to request only needed fields (controls cost)
+**Critical:** Always use `X-Goog-FieldMask`. Use the exact field mask the spec provides — do
+not add fields the spec didn't request, do not remove fields the spec requires.
 
 **Nearby Search:**
 ```typescript
@@ -253,18 +247,18 @@ const response = await fetch('https://places.googleapis.com/v1/places:searchNear
   headers: {
     'Content-Type': 'application/json',
     'X-Goog-Api-Key': Deno.env.get('GOOGLE_PLACES_API_KEY')!,
-    'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.rating,places.priceLevel,places.regularOpeningHours,places.photos',
+    'X-Goog-FieldMask': '[EXACT MASK FROM SPEC]',
   },
   body: JSON.stringify({
-    includedTypes: ['restaurant'], // array of place types
+    includedTypes: ['restaurant'],
     maxResultCount: 20,
     locationRestriction: {
       circle: {
         center: { latitude: lat, longitude: lng },
-        radius: radiusMeters, // max 50000
+        radius: radiusMeters,
       },
     },
-    rankPreference: 'POPULARITY', // or 'DISTANCE'
+    rankPreference: 'POPULARITY',
   }),
 })
 ```
@@ -272,129 +266,167 @@ const response = await fetch('https://places.googleapis.com/v1/places:searchNear
 **Price Levels:** `PRICE_LEVEL_FREE` | `PRICE_LEVEL_INEXPENSIVE` | `PRICE_LEVEL_MODERATE` |
 `PRICE_LEVEL_EXPENSIVE` | `PRICE_LEVEL_VERY_EXPENSIVE`
 
-**Distance Matrix (for travel time):**
-```typescript
-const response = await fetch(
-  `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${lat},${lng}&destinations=${destLat},${destLng}&mode=${travelMode}&key=${apiKey}`
-)
-// travelMode: 'walking' | 'driving' | 'transit' | 'bicycling'
-```
-
 **Cost Rules (non-negotiable):**
 - Filter by type + price FIRST, then call Distance Matrix — never the reverse
 - Cache place details in Supabase for 24h minimum (`expires_at` column)
 - Batch Distance Matrix: up to 25 origins × 25 destinations per request
-- Request minimum fields in FieldMask — add fields only when the feature requires them
+- Use the exact field mask from the spec — no wider, no narrower
 
 ### 2.4 Services Layer
 If creating/modifying services (`services/`):
-- Match the existing service file pattern exactly (read adjacent service files first)
-- Use the Supabase JS client — no raw fetch to DB
-- Export named functions, not class instances (check existing pattern)
-- Full TypeScript types on all parameters and return values
+- Copy the exact function signatures from the spec's §6.1.1.
+- Match the existing service file pattern exactly (read adjacent service files first).
+- Use the Supabase JS client — no raw fetch to DB.
+- Full TypeScript types on all parameters and return values as the spec defines.
 
 ### 2.5 Hooks Layer
 If creating/modifying hooks (`hooks/`):
-- React Query hooks: use `useQuery` / `useMutation` / `useInfiniteQuery`
-- Follow existing query key conventions (read `hooks/` directory first)
-- Implement `staleTime` thoughtfully: 5min for user data, 24h for place details, 0 for real-time
-- Always handle `isLoading`, `isError`, `data` states — never assume success
-- For mutations, implement optimistic updates where UX benefits from it
-
-React Query key convention (match existing):
-```typescript
-export const experienceKeys = {
-  all: ['experiences'] as const,
-  lists: () => [...experienceKeys.all, 'list'] as const,
-  list: (filters: ExperienceFilters) => [...experienceKeys.lists(), filters] as const,
-  detail: (id: string) => [...experienceKeys.all, 'detail', id] as const,
-}
-```
+- Copy the exact query key structure from the spec's §6.1.2.
+- Use the exact staleTime values the spec prescribes.
+- Implement the exact invalidation strategy the spec describes.
+- Always handle `isLoading`, `isError`, `data` states — never assume success.
+- For mutations, implement optimistic updates only where the spec calls for them.
 
 ### 2.6 Components Layer
 If creating/modifying components (`components/`):
-- Use `StyleSheet.create()` — no inline style objects, no external styling libraries
-- Use design system tokens from constants — don't hardcode colors/spacing
-- All async operations need three states: loading skeleton, error state, success render
-- TypeScript props interface at top of file, named export for component
-- Haptic feedback for interactive elements: `Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)`
+- Implement all states the spec lists (loading, error, empty, success) — typically in §6.1.3.
+- Use `StyleSheet.create()` at the bottom of the file.
+- Use design system tokens from `constants/` — do not hardcode colors or spacing.
+- Add haptic feedback exactly where the spec prescribes.
+- Wire up interactions exactly as the spec describes — same mutation, same invalidation, same UX.
 
 ### 2.7 State (Zustand)
 If modifying the Zustand store:
-- Read the existing store file completely first
-- Add new slices following existing slice patterns
+- Read the existing store file completely first.
+- Add new slices following existing slice patterns.
 - Only use Zustand for state that is: (a) client-only, (b) needs to persist across sessions,
-  (c) not server-derived — everything else is React Query
+  (c) not server-derived — everything else is React Query.
+- Match the exact fields and types the spec prescribes in §6.3.
 
 ---
 
-## Phase 3: Test Everything
+## Phase 3: Verify Against the Spec
 
-Testing is not optional. You do not declare implementation complete until tests pass.
+Before declaring anything complete, go back to the spec and verify every item.
 
-### 3.1 Unit Test Strategy
+### 3.1 Success Criteria Walkthrough
 
-For each piece of code written, test the following:
+Open the spec's §3. For every numbered success criterion:
+- Reproduce the exact scenario described.
+- Confirm the exact expected behavior occurs.
+- If it doesn't, fix it. Do not rationalize a near-miss as a pass.
 
-**Services:** Test that Supabase queries are constructed correctly, error cases are handled,
-return types match TypeScript definitions.
+### 3.2 Test Case Execution
 
-**Hooks:** Test loading state, success state, error state, optimistic update rollback.
+Open the spec's §8. For every row in the test table:
+- Execute the test with the exact input specified.
+- Confirm the exact expected output.
+- Record PASS or FAIL. If FAIL, fix the code and re-run.
 
-**Edge Functions:** Test with valid input, invalid input, missing auth, API failure cases.
+### 3.3 Integration Walkthrough
 
-**Components:** Test render with data, render loading state, render error state, user interactions.
+Walk the full user flow described in the spec end to end:
+1. Start from the entry point the spec describes.
+2. Step through every interaction.
+3. Confirm data flows correctly from component → hook → service → edge function → database and back.
+4. Confirm loading, error, and empty states all render correctly at every async boundary.
 
-Write tests that match the testing framework already in the codebase (read `package.json` to
-confirm: Jest + @testing-library/react-native is the typical Expo setup).
+### 3.4 Bug Fix Protocol
 
-```typescript
-// Example test pattern
-describe('useExperiences', () => {
-  it('returns loading state initially', () => { ... })
-  it('returns experiences on success', async () => { ... })
-  it('handles API errors gracefully', async () => { ... })
-  it('invalidates cache after mutation', async () => { ... })
-})
-```
+When something fails:
+1. Read the error message completely — do not skim.
+2. Trace the call stack to the root cause — do not fix symptoms.
+3. Fix the root cause.
+4. Re-run the full verification for the affected layer.
+5. If a fix introduces a new failure, address that before moving on.
+6. Never weaken an assertion or skip a test to move forward.
 
-### 3.2 Integration Checkpoints
+---
 
-After each phase of implementation, verify before moving on:
+## Phase 3.5: Rewrite the README
 
-- **DB changes:** Run migration, confirm table exists, test RLS by querying as a non-owner
-- **Edge functions:** Deploy locally with `supabase functions serve`, test with curl/Postman
-- **Service layer:** Write a quick test that calls the service and logs the result
-- **Hook layer:** Verify React Query cache populates and invalidates correctly
-- **Component layer:** Render in isolation, verify all three states display correctly
+After every implementation — no exceptions — you must rewrite the project's `README.md` from
+scratch so it accurately reflects the current state of the codebase. This is not a changelog
+append. This is a full rewrite. The README must read as if it were written today by someone
+who knows exactly what the app does right now.
 
-### 3.3 Bug Fix Protocol
+**Why a full rewrite, not an append:** Changelogs accumulate cruft. Features get renamed,
+removed, or merged. A README that says "added X" in v1 and "removed X" in v3 is worse than
+no README at all. The README is the front door to the codebase — it must always describe
+the present, not the history.
 
-When a test fails:
-1. Read the error message completely — do not skim
-2. Trace the call stack to the root cause — do not fix symptoms
-3. Fix the root cause
-4. Re-run the full test suite for the affected module
-5. If a fix introduces a new failure, address that before moving on
-6. Do not mark a test as passing by weakening the assertion
+### What the README must contain (in this order):
+
+1. **Project name and one-line description** — what Mingla is, in one sentence.
+
+2. **Tech stack** — the exact stack as it exists today. Not what it was when the repo started.
+   If a library was added or removed in this implementation, the README must reflect that.
+
+3. **Project structure** — current directory tree with one-line descriptions. Include any new
+   directories or files this implementation created. Remove any that were deleted.
+
+4. **Features** — a current, accurate list of what the app does. Not a changelog of what was
+   added when. A present-tense list: "Mingla does X, Y, Z." If this implementation added a
+   feature, it appears in this list as if it always existed. If it replaced a feature, the old
+   one disappears from the list.
+
+5. **Database schema overview** — current tables and their purpose. Not every column — just
+   table name and one-line description. Reflects any tables added or modified in this
+   implementation.
+
+6. **Edge functions overview** — current edge functions and their purpose. Reflects any added
+   or modified in this implementation.
+
+7. **Environment variables** — every env var the project needs to run today. If this
+   implementation introduced a new one, it's listed. If one was removed, it's gone.
+
+8. **Setup & running instructions** — current, accurate steps to get the project running from
+   a fresh clone. If this implementation changed any setup step (new migration, new env var,
+   new dependency), the instructions reflect that.
+
+9. **Recent changes** — a brief (3-5 bullet) summary of what changed in this implementation.
+   This is the only section that references "what changed" rather than "what exists." Keep it
+   short. It gets overwritten next time anyway.
+
+### How to rewrite:
+
+1. Read the current `README.md` completely.
+2. Read your implementation report (what you just built).
+3. Rewrite the entire README incorporating the new reality.
+4. Do not leave stale information. If a section mentions a file that no longer exists, a feature
+   that was replaced, or a setup step that changed — update it.
+5. Save the rewritten `README.md` to the project root, overwriting the existing one.
+
+### What NOT to do:
+
+- Do not just append a "What's New" section to the bottom of the old README.
+- Do not add a changelog table that grows forever.
+- Do not leave the old README intact and "add a note" about changes.
+- Do not skip this step because "the README was fine before." It's not fine now — the codebase
+  changed, so the README must change with it.
+
+The README is a living document. After your rewrite, a new developer cloning the repo should
+be able to understand the entire project without reading any other document.
 
 ---
 
 ## Phase 4: Generate the Implementation Report
 
-After implementation and all tests pass, produce two documents:
+After implementation and all verifications pass, produce one single document:
+`IMPLEMENTATION_[FEATURE_NAME]_REPORT.md`
 
-### Document 1: `IMPLEMENTATION_REPORT.md`
+This report is your deliverable. It tells the tester exactly what you did, exactly what changed,
+and exactly what they should verify. Be precise. Be complete. Do not exaggerate, do not omit.
 
 ```markdown
 # Implementation Report: [Feature Name]
 **Date:** [today's date]
-**Status:** Complete / Partial (explain if partial)
-**Implementer:** Senior Engineer Skill
+**Spec:** FEATURE_[NAME]_SPEC.md
+**Status:** Complete / Partial (if partial, explain exactly what remains and why)
 
 ---
 
-## What Was There Before
+## 1. What Was There Before
 
 ### Existing Files Modified
 | File | Purpose Before Change | Lines Before |
@@ -402,12 +434,12 @@ After implementation and all tests pass, produce two documents:
 | `path/to/file.ts` | What it did | ~N lines |
 
 ### Pre-existing Behavior
-Plain description of how the system worked before this implementation.
-What the user experienced, what data existed, what was missing.
+[Plain description of how the system worked before this implementation.
+What the user experienced, what data existed, what was missing.]
 
 ---
 
-## What Changed
+## 2. What Changed
 
 ### New Files Created
 | File | Purpose | Key Exports |
@@ -415,67 +447,148 @@ What the user experienced, what data existed, what was missing.
 | `path/to/new.ts` | What it does | `functionA`, `ComponentB` |
 
 ### Files Modified
-| File | Change Summary |
-|------|---------------|
+| File | What Changed |
+|------|-------------|
 | `path/to/existing.ts` | Added X, modified Y, removed Z |
 
-### Database Changes
+### Database Changes Applied
 ```sql
--- Exact SQL that was applied
+-- Exact SQL that was executed (copied from spec §4, with any noted deviations)
 ```
 
 ### Edge Functions
-| Function | New / Modified | Endpoint |
-|----------|---------------|----------|
-| `function-name` | New | POST /function-name |
+| Function | New / Modified | Method | Endpoint |
+|----------|---------------|--------|----------|
+| `function-name` | New | POST | /function-name |
 
 ### State Changes
-- React Query keys added: `[...]`
-- Zustand slices modified: `storeName.fieldName`
+- **React Query keys added:** `[list every key]`
+- **React Query keys invalidated by mutations:** `[list every invalidation]`
+- **Zustand slices modified:** `[list or "None"]`
 
 ---
 
-## Implementation Details
+## 3. Spec Compliance — Section by Section
+
+[For every section of the architect's spec, confirm you followed it. This is how the tester
+cross-references your work against the contract.]
+
+| Spec Section | Requirement | Implemented? | Notes |
+|-------------|-------------|-------------|-------|
+| §3 Criterion 1 | [criterion text] | ✅ / ❌ | [how you verified] |
+| §3 Criterion 2 | [criterion text] | ✅ / ❌ | [how you verified] |
+| §4 Database | [tables/columns] | ✅ / ❌ | [any deviations noted] |
+| §5 Edge Function | [function name] | ✅ / ❌ | [any deviations noted] |
+| §6.1.1 Service | [file path] | ✅ / ❌ | |
+| §6.1.2 Hook | [file path] | ✅ / ❌ | |
+| §6.1.3 Component | [file path] | ✅ / ❌ | |
+| §6.2 Modified Files | [file paths] | ✅ / ❌ | |
+| §7 Implementation Order | [followed exactly?] | ✅ / ❌ | |
+
+---
+
+## 4. Implementation Details
 
 ### Architecture Decisions
-Explain the key decisions made and WHY. If there were tradeoffs, state them.
+[If you made any decision not explicitly covered by the spec, explain it here. What you decided,
+why, and what alternative you rejected. If you deviated from the spec in any way, this is where
+you confess it with full reasoning. The tester will read this closely.]
 
 ### Google Places API Usage (if applicable)
-- Endpoints called, field masks used, caching strategy applied
+- Endpoint(s) called: [exact URLs]
+- Field mask used: [exact mask]
+- Caching strategy: [how you cached, TTL, where]
 
 ### RLS Policies Applied
 ```sql
--- Policies added
+-- Exact policies added (should match spec §4)
 ```
 
 ---
 
-## Test Results
+## 5. Verification Results
 
-| Test | Result | Notes |
-|------|--------|-------|
-| Unit: ServiceName | ✅ Pass | |
-| Unit: HookName | ✅ Pass | |
-| Integration: EdgeFunction | ✅ Pass | |
-| Manual: [user flow] | ✅ Pass | |
+### Success Criteria (from spec §3)
+| # | Criterion | Result | How Verified |
+|---|-----------|--------|-------------|
+| 1 | [text] | ✅ PASS / ❌ FAIL | [exact verification method] |
+| 2 | [text] | ✅ PASS / ❌ FAIL | [exact verification method] |
 
-### Bugs Found and Fixed
-1. **Bug:** Description | **Root Cause:** ... | **Fix:** ...
+### Test Cases (from spec §8)
+| # | Test | Input | Expected | Actual | Result |
+|---|------|-------|----------|--------|--------|
+| 1 | [desc] | [input] | [expected] | [actual] | ✅ / ❌ |
+| 2 | [desc] | [input] | [expected] | [actual] | ✅ / ❌ |
+
+### Bugs Found and Fixed During Implementation
+| Bug | Root Cause | Fix Applied |
+|-----|-----------|------------|
+| [description] | [cause] | [what you changed] |
 
 ---
 
-## Success Criteria Verification
-- [x] Criterion from spec 1 — verified by [test/observation]
-- [x] Criterion from spec 2 — verified by [test/observation]
+## 6. Deviations from Spec
+
+[If you followed the spec exactly with zero deviations, write: "None. Spec was followed exactly
+as written." If you deviated anywhere — a different column name, a modified validation rule, an
+additional error case — list every deviation here with justification.]
+
+| Spec Reference | What Spec Said | What I Did Instead | Why |
+|---------------|---------------|-------------------|-----|
+| §X.Y | [original instruction] | [what you did] | [justification] |
+
+---
+
+## 7. Known Limitations & Future Considerations
+
+[Anything you noticed during implementation that is outside scope but worth tracking. Pre-existing
+bugs, potential performance concerns at scale, patterns that should be refactored eventually. Do
+NOT fix these — just document them for the orchestrator.]
+
+---
+
+## 8. Files Inventory
+
+[Complete list of every file created or modified, for the tester to use as their audit checklist.]
+
+### Created
+- `path/to/file1.ts` — [one-line purpose]
+- `path/to/file2.ts` — [one-line purpose]
+
+### Modified
+- `path/to/file3.ts` — [one-line change summary]
+- `path/to/file4.ts` — [one-line change summary]
+
+---
+
+## 9. README Update
+
+The project `README.md` has been fully rewritten to reflect the current state of the codebase
+after this implementation. The following sections were updated:
+
+| README Section | What Changed |
+|---------------|-------------|
+| Tech Stack | [what was added/removed/unchanged] |
+| Project Structure | [new directories or files reflected] |
+| Features | [new feature added to present-tense list] |
+| Database Schema | [new tables reflected] |
+| Edge Functions | [new functions reflected] |
+| Environment Variables | [new vars added or "No changes"] |
+| Setup Instructions | [new steps added or "No changes"] |
+| Recent Changes | [brief summary of this implementation] |
+
+---
+
+## 10. Handoff to Tester
+
+Tester: everything listed above is now in the codebase and ready for your review. The spec
+(`FEATURE_[NAME]_SPEC.md`) is the contract — I've mapped my compliance against every section
+in §3 above. The files inventory in §8 is your audit checklist — every file I touched is
+listed. The test cases in §5 are what I verified myself, but I expect you to verify them
+independently and go further. I've noted every deviation from the spec in §6 — scrutinize
+those especially. Hold nothing back. Break it, stress it, find what I missed. My job was to
+build it right. Your job is to prove whether I did. Go to work.
 ```
-
-### Document 2: Plain-English Summary (in conversation)
-
-After presenting the report, write 3-5 sentences in plain English:
-- What the feature does now that it didn't before
-- The most significant technical choice made
-- What was tested and confirmed working
-- Any known limitations or follow-up items
 
 ---
 
@@ -486,19 +599,23 @@ say so. Never assume a function signature, table column, or API shape — verify
 
 **Never drift from scope.** If the spec says "add a column to user_preferences", don't
 also refactor the preferences service. If you see something that should be fixed while
-implementing, note it in the report under "Observations for Future Work" and leave it alone.
+implementing, note it in §7 of your report and leave it alone.
 
 **Never skip RLS.** Every new Supabase table gets RLS policies in the same migration.
 
 **Never call third-party APIs from mobile.** Every external API call lives in an edge function.
 
 **Never leave a failing test.** If a test fails and you can't fix it within the scope of
-the feature, document it explicitly. Never weaken a test assertion to make it pass.
+the feature, document it explicitly in §5. Never weaken a test assertion to make it pass.
 
 **Always read before writing.** No exceptions. Every file you modify must be read first.
 
 **Match existing patterns.** If you see a pattern in the codebase — naming, error handling,
-file structure — match it exactly. Do not introduce new patterns without documenting why.
+file structure — match it exactly. Do not introduce new patterns without documenting why
+in §4 of your report.
+
+**Follow the spec's implementation order.** §7 of the spec defines the sequence. Follow it
+step by step. Do not reorder because you think you know better.
 
 ---
 
@@ -524,4 +641,14 @@ supabase/
 ```
 
 Start every implementation by listing the files you'll touch, reading them, then proceeding.
-This discipline is what separates senior engineers from juniors.
+
+---
+
+## Output Rules
+
+1. **Produce exactly one file:** `IMPLEMENTATION_[FEATURE_NAME]_REPORT.md`
+2. **Present it** to the user using `present_files`.
+3. **After presenting**, give a 3-5 sentence plain-English summary in conversation:
+   what the feature does now that it didn't before, the most significant technical choice,
+   what was verified working, and any known limitations. Then tell the user the implementation
+   is ready for the tester.
