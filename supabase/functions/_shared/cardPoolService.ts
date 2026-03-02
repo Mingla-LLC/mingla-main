@@ -141,12 +141,14 @@ async function queryPoolCards(
     return { poolCards: [], totalPoolSize: 0 };
   }
 
-  // Get user's impressions since last preference change
+  // Sliding window: only exclude the last 200 impressions instead of all-time.
+  // This prevents pool depletion for frequent users — old cards resurface naturally.
   const { data: impressions } = await supabaseAdmin
     .from('user_card_impressions')
     .select('card_pool_id')
     .eq('user_id', userId)
-    .gte('created_at', prefUpdatedAt);
+    .order('created_at', { ascending: false })
+    .limit(200);
 
   const seenIds = new Set(
     (impressions || []).map((imp: any) => imp.card_pool_id)

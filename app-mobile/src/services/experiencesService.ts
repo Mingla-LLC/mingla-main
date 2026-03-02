@@ -23,6 +23,7 @@ export interface UserPreferences {
   budget_max: number;
   people_count: number;
   categories: string[];
+  intents?: string[];
   travel_mode: string;
   travel_constraint_type: 'time' | 'distance';
   travel_constraint_value: number;

@@ -803,12 +803,19 @@ export default function PreferencesSheet({
       custom_location: customLocationValue,
     };
 
+    // Enforce at least one category pill alongside any intents.
+    // Prevents the case where DB has only intents (e.g., ['adventurous']) → 0 cards.
+    const finalCategories = selectedCategories.length > 0
+      ? selectedCategories
+      : ['Nature', 'Casual Eats', 'Drink'];
+
     const nextUserPreferences = {
       mode: "explore",
       budget_min: typeof budgetMin === "number" ? budgetMin : 0,
       budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
       people_count: 1,
-      categories: [...selectedIntents, ...selectedCategories],
+      categories: finalCategories,
+      intents: selectedIntents,
       travel_mode: travelMode,
       travel_constraint_type: constraintType,
       travel_constraint_value:
@@ -835,7 +842,8 @@ export default function PreferencesSheet({
       const savePromise = (async () => {
         if (isCollaborationMode) {
           const dbPrefs: any = {
-            categories: [...selectedIntents, ...selectedCategories],
+            categories: finalCategories,
+            intents: selectedIntents,
             budget_min: typeof budgetMin === "number" ? budgetMin : 0,
             budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
             travel_mode: travelMode,

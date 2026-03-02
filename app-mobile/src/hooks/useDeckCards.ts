@@ -15,6 +15,7 @@ import type { Recommendation } from '../types/recommendation';
 interface UseDeckCardsParams {
   location: { lat: number; lng: number } | null;
   categories: string[];
+  intents?: string[];
   budgetMin: number;
   budgetMax: number;
   travelMode: string;
@@ -52,6 +53,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       location?.lat,
       location?.lng,
       params.categories.sort().join(','),
+      (params.intents ?? []).sort().join(','),
       params.budgetMin,
       params.budgetMax,
       params.travelMode,

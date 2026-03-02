@@ -6,11 +6,13 @@ export interface UserPreferences {
   budget_max: number;
   people_count: number;
   categories: string[];
+  intents?: string[];
   travel_mode: string;
   travel_constraint_type: string;
   travel_constraint_value: number;
   datetime_pref: string;
   date_option?: string | null;
+  time_slot?: string | null;
   exact_time?: string | null;
 }
 

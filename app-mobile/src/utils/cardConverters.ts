@@ -17,6 +17,7 @@ import type { CreativeArtsCard } from '../services/creativeArtsCardsService';
 import type { PlayCard } from '../services/playCardsService';
 import type { WellnessCard } from '../services/wellnessCardsService';
 import type { GroceriesFlowersCard } from '../services/groceriesFlowersCardsService';
+import type { WorkBusinessCard } from '../services/workBusinessCardsService';
 import { getCategoryIcon } from './categoryUtils';
 
 export function shuffleArray<T>(arr: T[]): T[] {
@@ -703,6 +704,60 @@ export function groceriesFlowersToRecommendation(card: GroceriesFlowersCard): Re
     distance: `${card.distanceKm} km`,
     travelTime: `${card.travelTimeMin} min`,
     experienceType: 'groceries_flowers',
+    highlights: [card.placeTypeLabel],
+    fullDescription: card.description,
+    address: card.address,
+    openingHours: Object.keys(card.openingHours).length > 0
+      ? {
+          open_now: card.isOpenNow,
+          weekday_text: Object.entries(card.openingHours).map(
+            ([day, hours]) =>
+              `${day.charAt(0).toUpperCase() + day.slice(1)}: ${hours}`
+          ),
+        }
+      : card.isOpenNow != null
+        ? { open_now: card.isOpenNow }
+        : null,
+    tags: [card.placeType, card.placeTypeLabel],
+    matchScore: card.matchScore,
+    reviewCount: card.reviewCount,
+    website: card.website,
+    placeId: card.placeId,
+    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+    matchFactors: {
+      location: 0.5,
+      budget: 0.5,
+      category: 1.0,
+      time: 0.5,
+      popularity: card.rating > 4 ? 0.8 : 0.5,
+    },
+  };
+}
+
+/** Converts a WorkBusinessCard from the discover-experiences edge function into a Recommendation */
+export function workBusinessToRecommendation(card: WorkBusinessCard): Recommendation {
+  const priceText =
+    card.priceMin === 0 && card.priceMax === 0
+      ? 'Free'
+      : `$${card.priceMin}–$${card.priceMax}`;
+
+  return {
+    id: card.id,
+    title: card.title,
+    category: 'Work & Business',
+    categoryIcon: 'briefcase-outline',
+    lat: card.lat,
+    lng: card.lng,
+    timeAway: `${card.travelTimeMin} min`,
+    description: card.description,
+    budget: priceText,
+    rating: card.rating,
+    image: card.image,
+    images: card.images.length > 0 ? card.images : [card.image].filter(Boolean),
+    priceRange: priceText,
+    distance: `${card.distanceKm} km`,
+    travelTime: `${card.travelTimeMin} min`,
+    experienceType: 'work_business',
     highlights: [card.placeTypeLabel],
     fullDescription: card.description,
     address: card.address,

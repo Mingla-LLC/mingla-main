@@ -195,6 +195,7 @@ export const RecommendationsProvider: React.FC<
       deckService.warmDeckPool({
         location: userLocation,
         categories: userPrefs.categories ?? [],
+        intents: userPrefs.intents ?? [],
         budgetMin: userPrefs.budget_min ?? 0,
         budgetMax: userPrefs.budget_max ?? 1000,
         travelMode: userPrefs.travel_mode ?? 'walking',
@@ -220,6 +221,7 @@ export const RecommendationsProvider: React.FC<
   } = useDeckCards({
     location: userLocation,
     categories: userPrefs?.categories ?? [],
+    intents: userPrefs?.intents ?? [],
     budgetMin: userPrefs?.budget_min ?? 0,
     budgetMax: userPrefs?.budget_max ?? 1000,
     travelMode: userPrefs?.travel_mode ?? 'walking',
@@ -229,7 +231,7 @@ export const RecommendationsProvider: React.FC<
     dateOption: userPrefs?.date_option ?? 'now',
     timeSlot: userPrefs?.time_slot ?? null,
     batchSeed,
-    enabled: isSoloMode && !!userLocation && !isWaitingForSessionResolution,
+    enabled: isSoloMode && !!userLocation && !!userPrefs?.categories?.length && !isWaitingForSessionResolution,
   });
 
   // ── Collaboration Mode: useRecommendationsQuery (fallback) ──────────────
@@ -643,13 +645,19 @@ export const RecommendationsProvider: React.FC<
   );
 
   // ── Error Computation ───────────────────────────────────────────────────
-  const error = recommendationsError
-    ? (recommendationsError as Error).message === "no_matches"
-      ? "no_matches"
-      : "Failed to load recommendations"
-    : locationError
-    ? "Failed to load location"
-    : null;
+  // Solo mode: detect when deck has genuinely loaded 0 cards (not just loading)
+  const deckEmpty = isSoloMode && isDeckBatchLoaded && deckCards.length === 0
+    && !isDeckFetching && !isDeckLoading;
+
+  const error = deckEmpty
+    ? "no_matches"
+    : recommendationsError
+      ? (recommendationsError as Error).message === "no_matches"
+        ? "no_matches"
+        : "Failed to load recommendations"
+      : locationError
+        ? "Failed to load location"
+        : null;
 
   const hasCompletedInitialFetch =
     !isModeTransitioning &&

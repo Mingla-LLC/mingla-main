@@ -1,46 +1,29 @@
 /**
  * Unified Deck Service — single entry point for the solo swipeable deck.
  *
- * Multi-pill parallel pipeline: resolves user's selections into independent
- * "pills" (Nature, adventurous, romantic, etc.), fetches ALL pills in
- * parallel via Promise.all, then round-robin interleaves the results.
+ * Pipeline (after rewrite):
+ *   1. Resolve user preferences into pills (category + curated)
+ *   2. ALL category pills → 1 HTTP call to discover-cards (not 11 separate calls)
+ *   3. Curated pills → still use generate-curated-experiences (multi-stop itineraries)
+ *   4. Round-robin interleave results from both pipelines
  *
- * Latency = max(pill1, pill2, ...) — NOT sum(). Graceful degradation:
- * if one pill fails, the others still serve cards.
+ * Performance: 1 HTTP call + 0-N curated calls, down from 11+ HTTP calls.
+ * Latency: <500ms from pool, <2s from Google API cold start.
  */
-import { natureCardsService } from './natureCardsService';
-import { firstMeetCardsService } from './firstMeetCardsService';
-import { picnicParkCardsService } from './picnicParkCardsService';
+import { supabase } from './supabase';
 import { curatedExperiencesService } from './curatedExperiencesService';
-import { drinkCardsService } from './drinkCardsService';
-import { casualEatsCardsService } from './casualEatsCardsService';
-import { fineDiningCardsService } from './fineDiningCardsService';
-import { watchCardsService } from './watchCardsService';
-import { creativeArtsCardsService } from './creativeArtsCardsService';
-import { playCardsService } from './playCardsService';
-import { wellnessCardsService } from './wellnessCardsService';
-import { groceriesFlowersCardsService } from './groceriesFlowersCardsService';
 import {
   separateIntentsAndCategories,
-  natureToRecommendation,
-  firstMeetToRecommendation,
-  picnicParkToRecommendation,
   curatedToRecommendation,
   roundRobinInterleave,
-  drinkToRecommendation,
-  casualEatsToRecommendation,
-  fineDiningToRecommendation,
-  watchToRecommendation,
-  creativeArtsToRecommendation,
-  playToRecommendation,
-  wellnessToRecommendation,
-  groceriesFlowersToRecommendation,
 } from '../utils/cardConverters';
+import { getCategoryIcon } from '../utils/categoryUtils';
 import type { Recommendation } from '../types/recommendation';
 
 export interface DeckParams {
   location: { lat: number; lng: number };
   categories: string[];
+  intents?: string[];
   budgetMin: number;
   budgetMax: number;
   travelMode: string;
@@ -55,7 +38,7 @@ export interface DeckParams {
 
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'drink' | 'casual_eats' | 'fine_dining' | 'watch' | 'creative_arts' | 'play' | 'wellness' | 'groceries_flowers' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'drink' | 'casual_eats' | 'fine_dining' | 'watch' | 'creative_arts' | 'play' | 'wellness' | 'groceries_flowers' | 'work_business' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
 }
@@ -65,12 +48,93 @@ interface DeckPill {
   type: 'category' | 'curated';
 }
 
+// ── Pill ID → display name for the unified edge function ─────────────────
+const PILL_TO_CATEGORY_NAME: Record<string, string> = {
+  nature: 'Nature',
+  first_meet: 'First Meet',
+  picnic_park: 'Picnic',
+  drink: 'Drink',
+  casual_eats: 'Casual Eats',
+  fine_dining: 'Fine Dining',
+  watch: 'Watch',
+  creative_arts: 'Creative & Arts',
+  play: 'Play',
+  wellness: 'Wellness',
+  groceries_flowers: 'Groceries & Flowers',
+  work_business: 'Work & Business',
+};
+
+/**
+ * Generic converter: transforms a card from the unified discover-cards edge function
+ * into a Recommendation. The card already includes `category` so we derive the
+ * icon and experienceType dynamically.
+ */
+function unifiedCardToRecommendation(card: any): Recommendation {
+  const priceText =
+    card.priceMin === 0 && card.priceMax === 0
+      ? 'Free'
+      : `$${card.priceMin}–$${card.priceMax}`;
+
+  const category = card.category || 'Nature';
+  const experienceType = category.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_');
+
+  return {
+    id: card.id,
+    title: card.title,
+    category,
+    categoryIcon: getCategoryIcon(category) || 'compass',
+    lat: card.lat,
+    lng: card.lng,
+    timeAway: `${card.travelTimeMin} min`,
+    description: card.description,
+    budget: priceText,
+    rating: card.rating,
+    image: card.image,
+    images: card.images?.length > 0 ? card.images : [card.image].filter(Boolean),
+    priceRange: priceText,
+    distance: `${card.distanceKm} km`,
+    travelTime: `${card.travelTimeMin} min`,
+    experienceType,
+    highlights: [card.placeTypeLabel],
+    fullDescription: card.description,
+    address: card.address,
+    openingHours: card.openingHours && Object.keys(card.openingHours).length > 0
+      ? {
+          open_now: card.isOpenNow,
+          weekday_text: Object.entries(card.openingHours).map(
+            ([day, hours]) =>
+              `${day.charAt(0).toUpperCase() + day.slice(1)}: ${hours}`
+          ),
+        }
+      : card.isOpenNow != null
+        ? { open_now: card.isOpenNow }
+        : null,
+    tags: [card.placeType, card.placeTypeLabel].filter(Boolean),
+    matchScore: card.matchScore,
+    reviewCount: card.reviewCount,
+    website: card.website,
+    placeId: card.placeId,
+    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+    matchFactors: {
+      location: 0.5,
+      budget: 0.5,
+      category: 1.0,
+      time: 0.5,
+      popularity: card.rating > 4 ? 0.8 : 0.5,
+    },
+  };
+}
+
 class DeckService {
-  private resolvePills(categories: string[]): {
+  private resolvePills(categories: string[], dedicatedIntents?: string[]): {
     pills: DeckPill[];
     categoryFilters: string[];
   } {
-    const { intents, categories: cats } = separateIntentsAndCategories(categories);
+    // If dedicatedIntents is provided (new DB schema), use it directly.
+    // Otherwise, fall back to parsing the mixed categories array (backwards compat).
+    const { intents: parsedIntents, categories: parsedCats } = separateIntentsAndCategories(categories);
+    const intents = dedicatedIntents && dedicatedIntents.length > 0 ? dedicatedIntents : parsedIntents;
+    const cats = dedicatedIntents && dedicatedIntents.length > 0 ? categories : parsedCats;
     const pills: DeckPill[] = [];
     const categoryFilters: string[] = [];
 
@@ -97,6 +161,10 @@ class DeckService {
       'groceries & flowers': 'groceries_flowers',
       'groceries flowers': 'groceries_flowers',
       'groceries_flowers': 'groceries_flowers',
+      'work & business': 'work_business',
+      'work_business': 'work_business',
+      'work business': 'work_business',
+      'work and business': 'work_business',
       // Legacy category names (pre-v2) → map to current slugs
       'play & move': 'play',
       'play and move': 'play',
@@ -126,181 +194,93 @@ class DeckService {
       pills.push({ id: intent, type: 'curated' });
     }
 
-    // Fallback: if nothing resolved, default to adventurous
+    // If we have curated intent pills but no category pills, add default categories
+    // so the user always gets single-place cards alongside curated itineraries.
+    const hasCategoryPill = pills.some(p => p.type === 'category');
+    if (!hasCategoryPill) {
+      const DEFAULT_CATEGORIES = ['nature', 'casual_eats', 'drink'];
+      for (const cat of DEFAULT_CATEGORIES) {
+        pills.push({ id: cat, type: 'category' });
+      }
+    }
+
+    // Final fallback: if STILL nothing (shouldn't happen), add defaults
     if (pills.length === 0) {
-      pills.push({ id: 'adventurous', type: 'curated' });
+      pills.push({ id: 'nature', type: 'category' });
+      pills.push({ id: 'casual_eats', type: 'category' });
+      pills.push({ id: 'drink', type: 'category' });
     }
 
     return { pills, categoryFilters };
   }
 
   async fetchDeck(params: DeckParams): Promise<DeckResponse> {
-    const { pills, categoryFilters } = this.resolvePills(params.categories);
+    const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
     const limit = params.limit ?? 20;
-    const perPillLimit = Math.ceil(limit / pills.length);
 
-    // Fetch ALL pills in parallel — latency = max(pill), not sum(pill)
+    if (__DEV__) {
+      console.log('[DeckService] Input categories:', JSON.stringify(params.categories));
+      console.log('[DeckService] Resolved pills:', JSON.stringify(pills));
+      if (categoryFilters.length > 0) {
+        console.log('[DeckService] Category filters:', JSON.stringify(categoryFilters));
+      }
+    }
+
+    // Separate category pills and curated pills
+    const categoryPills = pills.filter(p => p.type === 'category');
+    const curatedPills = pills.filter(p => p.type === 'curated');
+
     const fetchStart = Date.now();
-    const results = await Promise.all(
-      pills.map(async (pill): Promise<Recommendation[]> => {
-        try {
-          if (pill.type === 'category') {
-            if (pill.id === 'first_meet') {
-              const cards = await firstMeetCardsService.discoverFirstMeet({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-                batchSeed: params.batchSeed,
-                limit: perPillLimit,
-              });
-              return cards.map(firstMeetToRecommendation);
-            } else if (pill.id === 'picnic_park') {
-              const cards = await picnicParkCardsService.discoverPicnicPark({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-                batchSeed: params.batchSeed,
-                limit: perPillLimit,
-              });
-              return cards.map(picnicParkToRecommendation);
-            } else if (pill.id === 'drink') {
-              const cards = await drinkCardsService.discoverDrink({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-                batchSeed: params.batchSeed,
-                limit: perPillLimit,
-              });
-              return cards.map(drinkToRecommendation);
-            } else if (pill.id === 'casual_eats') {
-              const cards = await casualEatsCardsService.discoverCasualEats({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-                batchSeed: params.batchSeed,
-                limit: perPillLimit,
-              });
-              return cards.map(casualEatsToRecommendation);
-            } else if (pill.id === 'fine_dining') {
-              const cards = await fineDiningCardsService.discoverFineDining({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-                batchSeed: params.batchSeed,
-                limit: perPillLimit,
-              });
-              return cards.map(fineDiningToRecommendation);
-            } else if (pill.id === 'watch') {
-              const cards = await watchCardsService.discoverWatch({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-                batchSeed: params.batchSeed,
-                limit: perPillLimit,
-              });
-              return cards.map(watchToRecommendation);
-            } else if (pill.id === 'creative_arts') {
-              const cards = await creativeArtsCardsService.discoverCreativeArts({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-                batchSeed: params.batchSeed,
-                limit: perPillLimit,
-              });
-              return cards.map(creativeArtsToRecommendation);
-            } else if (pill.id === 'play') {
-              const cards = await playCardsService.discoverPlay({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-                batchSeed: params.batchSeed,
-                limit: perPillLimit,
-              });
-              return cards.map(playToRecommendation);
-            } else if (pill.id === 'wellness') {
-              const cards = await wellnessCardsService.discoverWellness({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-                batchSeed: params.batchSeed,
-                limit: perPillLimit,
-              });
-              return cards.map(wellnessToRecommendation);
-            } else if (pill.id === 'groceries_flowers') {
-              const cards = await groceriesFlowersCardsService.discoverGroceriesFlowers({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-                batchSeed: params.batchSeed,
-                limit: perPillLimit,
-              });
-              return cards.map(groceriesFlowersToRecommendation);
-            }
-            // Default: Nature
-            const cards = await natureCardsService.discoverNature({
-              location: params.location,
-              budgetMax: params.budgetMax,
-              travelMode: params.travelMode,
-              travelConstraintType: params.travelConstraintType,
-              travelConstraintValue: params.travelConstraintValue,
-              datetimePref: params.datetimePref,
-              dateOption: params.dateOption,
-              timeSlot: params.timeSlot,
-              batchSeed: params.batchSeed,
-              limit: perPillLimit,
-            });
-            return cards.map(natureToRecommendation);
-          } else {
+    const results: Recommendation[][] = [];
+
+    // ── ONE call for ALL categories (replaces 11 parallel calls) ──────────
+    if (categoryPills.length > 0) {
+      try {
+        const categoryNames = categoryPills.map(p =>
+          PILL_TO_CATEGORY_NAME[p.id] || p.id
+        );
+        const categoryLimit = Math.ceil(limit * (categoryPills.length / pills.length));
+
+        const { data, error } = await supabase.functions.invoke('discover-cards', {
+          body: {
+            categories: categoryNames,
+            location: params.location,
+            budgetMax: params.budgetMax,
+            travelMode: params.travelMode,
+            travelConstraintType: params.travelConstraintType,
+            travelConstraintValue: params.travelConstraintValue,
+            datetimePref: params.datetimePref,
+            dateOption: params.dateOption,
+            timeSlot: params.timeSlot,
+            batchSeed: params.batchSeed,
+            limit: categoryLimit,
+          },
+        });
+
+        if (!error && data?.cards) {
+          const cards = (data.cards as any[]).map(unifiedCardToRecommendation);
+          results.push(cards);
+          if (__DEV__) {
+            console.log(`[DeckService] Unified discover-cards → ${cards.length} cards (source: ${data.source})`);
+          }
+        } else {
+          if (__DEV__) {
+            console.warn('[DeckService] discover-cards error:', error);
+          }
+          results.push([]);
+        }
+      } catch (err) {
+        console.warn('[DeckService] Category fetch failed:', err);
+        results.push([]);
+      }
+    }
+
+    // ── Curated pills still use their own function (multi-stop itineraries) ──
+    if (curatedPills.length > 0) {
+      const curatedResults = await Promise.all(
+        curatedPills.map(async (pill): Promise<Recommendation[]> => {
+          try {
+            const curatedLimit = Math.ceil(limit * (1 / pills.length));
             const cards = await curatedExperiencesService.generateCuratedExperiences({
               experienceType: pill.id as any,
               location: params.location,
@@ -312,17 +292,21 @@ class DeckService {
               datetimePref: params.datetimePref,
               batchSeed: params.batchSeed,
               selectedCategories: categoryFilters.length > 0 ? categoryFilters : undefined,
-              limit: perPillLimit,
+              limit: curatedLimit,
               skipDescriptions: true,
             });
+            if (__DEV__) {
+              console.log(`[DeckService] Curated pill "${pill.id}" → ${cards.length} cards`);
+            }
             return cards.map(curatedToRecommendation);
+          } catch (err) {
+            console.warn(`[DeckService] Curated pill ${pill.id} failed:`, err);
+            return [];
           }
-        } catch (err) {
-          console.warn(`[DeckService] Pill ${pill.id} failed:`, err);
-          return []; // Graceful degradation
-        }
-      })
-    );
+        })
+      );
+      results.push(...curatedResults);
+    }
 
     const interleaved = roundRobinInterleave(results).slice(0, limit);
 
@@ -348,151 +332,53 @@ class DeckService {
     };
   }
 
-  /** Pre-warm ALL active pill pools in parallel */
+  /** Pre-warm ALL active pill pools — ONE call for categories, individual for curated */
   async warmDeckPool(params: Omit<DeckParams, 'limit' | 'batchSeed'>): Promise<void> {
-    const { pills } = this.resolvePills(params.categories);
+    const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
+    const categoryPills = pills.filter(p => p.type === 'category');
+    const curatedPills = pills.filter(p => p.type === 'curated');
 
-    await Promise.all(
-      pills.map(async (pill) => {
-        try {
-          if (pill.type === 'category') {
-            if (pill.id === 'first_meet') {
-              await firstMeetCardsService.warmFirstMeetPool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            } else if (pill.id === 'picnic_park') {
-              await picnicParkCardsService.warmPicnicParkPool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            } else if (pill.id === 'drink') {
-              await drinkCardsService.warmDrinkPool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            } else if (pill.id === 'casual_eats') {
-              await casualEatsCardsService.warmCasualEatsPool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            } else if (pill.id === 'fine_dining') {
-              await fineDiningCardsService.warmFineDiningPool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            } else if (pill.id === 'watch') {
-              await watchCardsService.warmWatchPool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            } else if (pill.id === 'creative_arts') {
-              await creativeArtsCardsService.warmCreativeArtsPool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            } else if (pill.id === 'play') {
-              await playCardsService.warmPlayPool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            } else if (pill.id === 'wellness') {
-              await wellnessCardsService.warmWellnessPool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            } else if (pill.id === 'groceries_flowers') {
-              await groceriesFlowersCardsService.warmGroceriesFlowersPool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            } else {
-              await natureCardsService.warmNaturePool({
-                location: params.location,
-                budgetMax: params.budgetMax,
-                travelMode: params.travelMode,
-                travelConstraintType: params.travelConstraintType,
-                travelConstraintValue: params.travelConstraintValue,
-                datetimePref: params.datetimePref,
-                dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
-              });
-            }
-          } else {
-            await curatedExperiencesService.warmPool({
-              experienceType: pill.id as any,
-              location: params.location,
-              budgetMax: params.budgetMax,
-              travelMode: params.travelMode,
-              travelConstraintType: params.travelConstraintType as string,
-              travelConstraintValue: params.travelConstraintValue,
-            });
-          }
-        } catch {
-          // Silent — non-critical background operation
-        }
-      })
-    );
+    const warmPromises: Promise<void>[] = [];
+
+    // ONE warm call for all categories
+    if (categoryPills.length > 0) {
+      const categoryNames = categoryPills.map(p =>
+        PILL_TO_CATEGORY_NAME[p.id] || p.id
+      );
+      warmPromises.push(
+        supabase.functions.invoke('discover-cards', {
+          body: {
+            categories: categoryNames,
+            location: params.location,
+            budgetMax: params.budgetMax,
+            travelMode: params.travelMode,
+            travelConstraintType: params.travelConstraintType,
+            travelConstraintValue: params.travelConstraintValue,
+            datetimePref: params.datetimePref,
+            dateOption: params.dateOption,
+            timeSlot: params.timeSlot,
+            warmPool: true,
+            limit: 40,
+          },
+        }).then(() => {}).catch(() => {})
+      );
+    }
+
+    // Warm curated pools individually
+    for (const pill of curatedPills) {
+      warmPromises.push(
+        curatedExperiencesService.warmPool({
+          experienceType: pill.id as any,
+          location: params.location,
+          budgetMax: params.budgetMax,
+          travelMode: params.travelMode,
+          travelConstraintType: params.travelConstraintType as string,
+          travelConstraintValue: params.travelConstraintValue,
+        }).catch(() => {})
+      );
+    }
+
+    await Promise.all(warmPromises);
   }
 }
 
