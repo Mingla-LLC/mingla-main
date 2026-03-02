@@ -23,6 +23,9 @@ export const getReadableCategoryName = (categoryKey: string): string => {
     'groceries_flowers': 'Groceries & Flowers',
     'groceries & flowers': 'Groceries & Flowers',
     'Groceries & Flowers': 'Groceries & Flowers',
+    'work_business': 'Work & Business',
+    'work & business': 'Work & Business',
+    'Work & Business': 'Work & Business',
     // Legacy translation keys -> new names
     'category.screen_nature': 'Nature',
     'category.screen_drink': 'Drink',
@@ -35,7 +38,7 @@ export const getReadableCategoryName = (categoryKey: string): string => {
     'category.screen_social': 'Drink',
     'category.screen_romantic': 'Fine Dining',
     'category.screen_family': 'Nature',
-    'category.screen_business': 'Fine Dining',
+    'category.screen_business': 'Work & Business',
     'category.screen_travel': 'Nature',
     'category.screen_stroll': 'Nature',
     'category.screen_sip': 'Drink',
@@ -57,7 +60,7 @@ export const getReadableCategoryName = (categoryKey: string): string => {
     'screen_social': 'Drink',
     'screen_romantic': 'Fine Dining',
     'screen_family': 'Nature',
-    'screen_business': 'Fine Dining',
+    'screen_business': 'Work & Business',
     'screen_travel': 'Nature',
     'screen_stroll': 'Nature',
     'screen_sip': 'Drink',
@@ -115,6 +118,7 @@ export const getCategorySlug = (categoryKey: string): string => {
     'Play': 'play',
     'Wellness': 'wellness',
     'Groceries & Flowers': 'groceries_flowers',
+    'Work & Business': 'work_business',
     // Legacy names
     'Take a Stroll': 'nature',
     'Sip & Chill': 'drink',
@@ -148,9 +152,10 @@ export const getCategoryIcon = (categoryKey: string): string => {
     'creative_arts': 'color-palette-outline',
     'play': 'game-controller-outline',
     'wellness': 'body-outline',
-    'groceries_flowers': 'cart-outline'
+    'groceries_flowers': 'cart-outline',
+    'work_business': 'briefcase-outline'
   };
-  
+
   return iconMap[slug] || 'location';
 };
 
@@ -171,8 +176,9 @@ export const getCategoryColor = (categoryKey: string): string => {
     'creative_arts': '#EC4899', // pink
     'play': '#EF4444',         // red
     'wellness': '#14B8A6',      // teal
-    'groceries_flowers': '#22C55E' // green-500
+    'groceries_flowers': '#22C55E', // green-500
+    'work_business': '#64748B' // slate
   };
-  
+
   return colorMap[slug] || '#6B7280'; // gray fallback
 };

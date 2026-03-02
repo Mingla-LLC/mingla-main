@@ -117,6 +117,12 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   "Groceries & Flowers": ["grocery_store", "supermarket"],
   "groceries-flowers": ["grocery_store", "supermarket"],
   groceriesflowers: ["grocery_store", "supermarket"],
+  // Work & Business variations
+  work_business: ["tea_house", "coffee_shop", "cafe"],
+  "Work & Business": ["tea_house", "coffee_shop", "cafe"],
+  "work & business": ["tea_house", "coffee_shop", "cafe"],
+  "work-business": ["tea_house", "coffee_shop", "cafe"],
+  workbusiness: ["tea_house", "coffee_shop", "cafe"],
 };
 
 // Excluded types for specific categories

@@ -28,7 +28,7 @@ const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
 
 const getUsDateKey = (): string => usDateFormatter.format(new Date());
 
-// All 10 discover categories
+// All 12 discover categories
 const DISCOVER_CATEGORIES = [
   "Nature",
   "First Meet",
@@ -41,6 +41,7 @@ const DISCOVER_CATEGORIES = [
   "Play",
   "Wellness",
   "Groceries & Flowers",
+  "Work & Business",
 ];
 
 // Category to Google Places type mapping (using CONFIRMED valid Google Places API New types)
@@ -121,6 +122,11 @@ const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
   "Groceries & Flowers": [
     "grocery_store",
     "supermarket",
+  ],
+  "Work & Business": [
+    "tea_house",
+    "coffee_shop",
+    "cafe",
   ],
 };
 
@@ -208,6 +214,7 @@ serve(async (req) => {
       play: "Play",
       wellness: "Wellness",
       groceries_flowers: "Groceries & Flowers",
+      work_business: "Work & Business",
     };
 
     // Resolve which categories to fetch: filter DISCOVER_CATEGORIES by user selection
@@ -1023,6 +1030,7 @@ function generateFallbackDescription(place: any): string {
     "Play": "Fun and active entertainment for an exciting time out.",
     "Wellness": "Relax and rejuvenate in a peaceful wellness setting.",
     "Groceries & Flowers": "Fresh groceries, produce, and flowers for every occasion.",
+    "Work & Business": "Quiet cafe or tea house — perfect for focused work or a business meeting.",
   };
   return descriptions[place.category] || "An amazing experience waiting for you.";
 }
@@ -1040,6 +1048,7 @@ function generateFallbackHighlights(place: any): string[] {
     "Play": ["Fun Activities", "Exciting"],
     "Wellness": ["Relaxing", "Rejuvenating"],
     "Groceries & Flowers": ["Fresh Produce", "Convenient"],
+    "Work & Business": ["WiFi Friendly", "Quiet Space"],
   };
   return highlights[place.category] || ["Great Experience", "Highly Rated"];
 }

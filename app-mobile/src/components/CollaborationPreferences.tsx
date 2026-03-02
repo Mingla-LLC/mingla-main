@@ -80,6 +80,7 @@ const categories = [
   { id: "play", label: "Play", icon: "game-controller-outline" },
   { id: "wellness", label: "Wellness", icon: "body-outline" },
   { id: "groceries_flowers", label: "Groceries & Flowers", icon: "cart-outline" },
+  { id: "work_business", label: "Work & Business", icon: "briefcase-outline" },
 ];
 
 // Travel modes
@@ -113,7 +114,7 @@ type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
 // null means all categories are allowed
 const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
   "adventurous":   null, // All categories allowed
-  "first-date":    ["fine_dining", "watch", "nature", "first_meet", "creative_arts", "play"],
+  "first-date":    ["fine_dining", "watch", "nature", "first_meet", "creative_arts", "play", "work_business"],
   "romantic":      ["fine_dining", "creative_arts", "wellness"],
   "friendly":      null, // All categories allowed
   "group-fun":     ["play", "watch", "casual_eats"],

@@ -487,6 +487,45 @@ export const categories: Category[] = [
     incompatibleWith: ['fine_dining', 'play', 'watch', 'wellness'],
     activityType: 'stationary',
     duration: 'short',
+  },
+  {
+    slug: 'work_business',
+    name: 'Work & Business',
+    icon: '💼',
+    description: 'Quiet cafes and tea houses ideal for working, meetings, or productive sessions',
+    detailedDescription: 'Coffee shops, tea houses, and cafes with a work-friendly atmosphere. Ideal for remote work, business meetings, study sessions, or getting things done.',
+    expectedActivities: [
+      'Coffee shops with WiFi',
+      'Tea houses for quiet meetings',
+      'Cafes for focused work sessions'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['tea_house', 'coffee_shop', 'cafe'],
+        attributes: ['quiet', 'wifi', 'work-friendly'],
+        excludedAttributes: ['bar', 'night_club', 'casino', 'amusement_park']
+      },
+      eventbrite: {
+        eventTypes: ['networking', 'business_events', 'workshops']
+      }
+    },
+    logic: {
+      hardFilter: 'Must be a quiet, work-friendly venue with seating',
+      hierarchy: {
+        broad: 'Work & Business',
+        niche: ['Coffee Shops', 'Tea Houses', 'Cafes']
+      },
+      fallbackBehavior: 'If no work-friendly cafe found, show nearest coffee shop.'
+    },
+    ux: {
+      activeColor: '#64748B',
+      subcategories: ['Coffee Shops', 'Tea Houses', 'Cafes'],
+      contextualPreview: 'Quiet coffee shop with fast WiFi — perfect for a productive afternoon.'
+    },
+    activityType: 'stationary',
+    duration: 'medium',
+    compatibleWith: ['first_meet', 'drink'],
+    incompatibleWith: ['play', 'nature', 'picnic_park']
   }
 ];
 

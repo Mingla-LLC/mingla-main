@@ -295,6 +295,25 @@ const CATEGORY_MAPPINGS = {
       "fresh produce",
     ],
   },
+  work_business: {
+    places: ["tea_house", "coffee_shop", "cafe"],
+    keywords: [
+      "work",
+      "business",
+      "meeting",
+      "productivity",
+      "laptop",
+      "wifi",
+      "coworking",
+      "quiet cafe",
+    ],
+    activities: [
+      "remote work",
+      "business meeting",
+      "study session",
+      "focused work",
+    ],
+  },
 };
 
 interface RecommendationsRequest {

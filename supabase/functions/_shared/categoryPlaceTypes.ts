@@ -68,6 +68,9 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
   'Groceries & Flowers': [
     'grocery_store', 'supermarket',
   ],
+  'Work & Business': [
+    'tea_house', 'coffee_shop', 'cafe',
+  ],
 };
 
 // ── Alias mapping: handles all case/format variations ────────────────────────
@@ -97,6 +100,12 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'groceries & flowers': 'Groceries & Flowers',
   'groceries-flowers': 'Groceries & Flowers',
   'groceriesflowers': 'Groceries & Flowers',
+  'work_business': 'Work & Business',
+  'work-business': 'Work & Business',
+  'workbusiness': 'Work & Business',
+  'work & business': 'Work & Business',
+  'work and business': 'Work & Business',
+  'work_and_business': 'Work & Business',
 
   // Old category system (backwards compat)
   'sip & chill': 'Drink',
