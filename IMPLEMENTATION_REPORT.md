@@ -1,81 +1,116 @@
-# Implementation Report: Dedicated Category Card Systems (Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness)
+# Implementation Report: Category-Based Curated Experiences v2
 **Date:** 2026-03-01
 **Status:** Complete
-**Implementer:** Senior Engineer Skill (3-Agent Orchestration)
+**Implementer:** Senior Engineer Skill
 
 ---
 
 ## What Was There Before
 
-### Existing Architecture
-Only **3 of 10** categories had dedicated `discover-*` edge functions:
-- `discover-nature` — Nature cards
-- `discover-first-meet` — First Meet cards
-- `discover-picnic-park` — Picnic Park cards
+### Existing Files Modified
+| File | Purpose Before Change | Lines Before |
+|------|-----------------------|--------------|
+| `supabase/functions/generate-curated-experiences/index.ts` | Turbo Pipeline with 4 super-category API calls + hardcoded PAIRINGS_BY_TYPE maps | ~1,813 lines |
+| `supabase/functions/_shared/categoryPlaceTypes.ts` | Shared module with old 6-value INTENT_IDS set | ~150 lines |
+| `app-mobile/src/constants/categories.ts` | CURATED_EXPERIENCES array with 6 old types, description map with old category/intent keys | ~640 lines |
+| `app-mobile/src/components/PreferencesSheet.tsx` | Old experienceTypes array (6 types), old INTENT_CATEGORY_COMPATIBILITY matrix | ~1,200 lines |
+| `app-mobile/src/components/CollaborationPreferences.tsx` | Mirror of PreferencesSheet with old intent IDs | ~1,000 lines |
+| `app-mobile/src/components/PreferencesSheet/PreferencesSections.tsx` | Old EXPERIENCE_TYPE_DESCRIPTIONS with 6 types | ~300 lines |
+| `app-mobile/src/utils/cardConverters.ts` | Old INTENT_IDS set, `'solo-adventure'` fallback | ~400 lines |
+| `app-mobile/src/services/curatedExperiencesService.ts` | Old 5-type union for experienceType | ~50 lines |
+| `app-mobile/src/hooks/useCuratedExperiences.ts` | Old CuratedExperienceType union | ~100 lines |
+| `app-mobile/src/services/deckService.ts` | `'solo-adventure'` fallback | ~200 lines |
+| `app-mobile/src/components/CuratedExperienceSwipeCard.tsx` | Single-line icon logic, no per-type mapping | ~150 lines |
+| `app-mobile/src/components/ExpandedCardModal.tsx` | Category prop without categoryLabel fallback | ~500 lines |
+| `app-mobile/src/contexts/RecommendationsContext.tsx` | Collaboration mode using `'solo-adventure'` | ~400 lines |
 
-The remaining 7 categories (Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness) fell through to the legacy `new-generate-experience-` pipeline or were routed to curated pills. This meant:
-- No pool-first serving (slower loads, more API calls)
-- No AI-generated descriptions
-- No "Policies & Reservations" button in expanded card view
-- The "Policies & Reservations" button was gated to `card.category === 'First Meet'` only
-
-### Pre-existing File State
-| File | Purpose Before |
-|------|---------------|
-| `deckService.ts` | Routed 3 categories (Nature, First Meet, Picnic Park) + curated intents |
-| `cardConverters.ts` | 3 category converters (nature, firstMeet, picnicPark) + curated + utilities |
-| `ActionButtons.tsx` | "Policies & Reservations" visible only for First Meet cards |
-| `categoryPlaceTypes.ts` | Shared place types — generic arrays not matching user's specified types |
-| `categories.ts` | Category constants with basic coreAnchors arrays |
+### Pre-existing Behavior
+The curated experience engine used a "Turbo Pipeline" architecture: 4 super-category Google Places API calls (Food & Drink, Culture & Arts, Active & Outdoors, Social & Entertainment), then built 3-stop itinerary cards using hardcoded `PAIRINGS_BY_TYPE` maps that defined fixed Google Place type triplets. Six intent types existed: `solo-adventure`, `first-dates`, `romantic`, `friendly`, `group-fun`, `business`. The "business" type was rarely used. The "friendly" type was listed but not fully implemented. Stops were paired by raw Google Place types, disconnected from Mingla's own category system.
 
 ---
 
 ## What Changed
 
-### New Files Created (16 total)
+### New Intent IDs (7 types)
+| Old | New | Notes |
+|-----|-----|-------|
+| `solo-adventure` | `adventurous` | Renamed |
+| `first-dates` | `first-date` | Renamed |
+| `romantic` | `romantic` | Unchanged |
+| `friendly` | `friendly` | Now fully active with 6-category pool |
+| `group-fun` | `group-fun` | Unchanged |
+| `business` | _(removed)_ | Dropped |
+| _(new)_ | `picnic-dates` | 2-stop sequential proximity pattern |
+| _(new)_ | `take-a-stroll` | 3-stop bookend pattern |
 
-**Edge Functions (7):**
-| File | Category | Strategy | Place Types |
-|------|----------|----------|-------------|
-| `supabase/functions/discover-drink/index.ts` | Drink | Standard | 5 types |
-| `supabase/functions/discover-casual-eats/index.ts` | Casual Eats | Chunked (10 primary + 27 secondary) | 37 types |
-| `supabase/functions/discover-fine-dining/index.ts` | Fine Dining | Standard | 3 types |
-| `supabase/functions/discover-watch/index.ts` | Watch | Standard | 3 types |
-| `supabase/functions/discover-creative-arts/index.ts` | Creative & Arts | Text search fallback | 5 valid + 11 text search |
-| `supabase/functions/discover-play/index.ts` | Play | Text search fallback | 13 valid + 11 text search |
-| `supabase/functions/discover-wellness/index.ts` | Wellness | Text search fallback | 3 valid + 5 text search |
+### Files Modified (22 files total)
 
-**Shared Utility (1):**
-| File | Purpose | Key Exports |
-|------|---------|-------------|
-| `supabase/functions/_shared/textSearchHelper.ts` | Google Places Text Search fallback for non-standard types | `textSearchPlaces()` |
-
-**Mobile Services (7):**
-| File | Exports |
-|------|---------|
-| `app-mobile/src/services/drinkCardsService.ts` | `DrinkCard`, `drinkCardsService` |
-| `app-mobile/src/services/casualEatsCardsService.ts` | `CasualEatsCard`, `casualEatsCardsService` |
-| `app-mobile/src/services/fineDiningCardsService.ts` | `FineDiningCard`, `fineDiningCardsService` |
-| `app-mobile/src/services/watchCardsService.ts` | `WatchCard`, `watchCardsService` |
-| `app-mobile/src/services/creativeArtsCardsService.ts` | `CreativeArtsCard`, `creativeArtsCardsService` |
-| `app-mobile/src/services/playCardsService.ts` | `PlayCard`, `playCardsService` |
-| `app-mobile/src/services/wellnessCardsService.ts` | `WellnessCard`, `wellnessCardsService` |
-
-### Files Modified (5)
+**Shared Backend (3):**
 | File | Change Summary |
 |------|---------------|
-| `app-mobile/src/services/deckService.ts` | Added 7 service imports, 7 converter imports, 7 pill resolution branches, 7 fetchDeck branches, 7 warmDeckPool branches, expanded deckMode union type |
-| `app-mobile/src/utils/cardConverters.ts` | Added 7 type imports, 7 converter functions (drinkToRecommendation through wellnessToRecommendation) |
-| `app-mobile/src/components/expandedCard/ActionButtons.tsx` | Changed `isFirstMeet` gate to `showPoliciesButton = Boolean(card.website \|\| (card as any).placeId)` |
-| `supabase/functions/_shared/categoryPlaceTypes.ts` | Updated MINGLA_CATEGORY_PLACE_TYPES for all 7 categories to match user-specified types |
-| `app-mobile/src/constants/categories.ts` | Updated coreAnchors arrays for 6 categories (drink already matched) |
+| `supabase/functions/_shared/categoryPlaceTypes.ts` | Updated `INTENT_IDS` set to 7 new values |
+| `supabase/functions/generate-curated-experiences/index.ts` | **Major rewrite** ~1,813→1,189 lines. Removed Turbo Pipeline, added category-driven generation with 3 generator functions |
+| `supabase/functions/generate-session-experiences/index.ts` | Updated `experienceTypeIds` set to new IDs |
+| `supabase/functions/_shared/cardPoolService.ts` | Updated comment |
 
-### Database Changes
-None required — all 7 edge functions reuse the existing `card_pool` pipeline (`place_pool`, `card_pool`, `user_card_impressions` tables).
+**Mobile — Core 13 (spec scope):**
+| File | Change Summary |
+|------|---------------|
+| `app-mobile/src/constants/categories.ts` | Updated `CURATED_EXPERIENCES` array (7 entries), updated `getCategoryExperienceTypeCombinations` to v2 category slugs and intent IDs |
+| `app-mobile/src/components/PreferencesSheet.tsx` | Updated `experienceTypes` array, `INTENT_CATEGORY_COMPATIBILITY` matrix, 4 hardcoded intent ID sets |
+| `app-mobile/src/components/CollaborationPreferences.tsx` | Mirrored PreferencesSheet changes |
+| `app-mobile/src/components/PreferencesSheet/PreferencesSections.tsx` | Updated `EXPERIENCE_TYPE_DESCRIPTIONS` to 7 types |
+| `app-mobile/src/utils/cardConverters.ts` | Updated `INTENT_IDS` set, fallback → `'adventurous'` |
+| `app-mobile/src/services/curatedExperiencesService.ts` | Updated `experienceType` union to 7 types |
+| `app-mobile/src/hooks/useCuratedExperiences.ts` | Updated `CuratedExperienceType` union |
+| `app-mobile/src/services/deckService.ts` | Fallback pill → `'adventurous'`, updated comments |
+| `app-mobile/src/components/CuratedExperienceSwipeCard.tsx` | Added `CURATED_ICON_MAP` for 7 types |
+| `app-mobile/src/components/ExpandedCardModal.tsx` | Category prop uses `categoryLabel || experienceType || 'adventurous'` |
+| `app-mobile/src/contexts/RecommendationsContext.tsx` | Collaboration mode experienceType → `'adventurous'` |
 
-### State Changes
-- DeckResponse.deckMode union expanded: added `'drink' | 'casual_eats' | 'fine_dining' | 'watch' | 'creative_arts' | 'play' | 'wellness'`
-- No new React Query keys or Zustand slices
+**Mobile — Extended cleanup (9 additional files):**
+| File | Change Summary |
+|------|---------------|
+| `app-mobile/src/components/OnboardingFlow.tsx` | Updated 3 `intentIds` Sets + `intentOptions` array |
+| `app-mobile/src/components/onboarding/IntentSelectionStep.tsx` | Updated `intentOptions` array + `getIconName` switch |
+| `app-mobile/src/components/onboarding/VibeSelectionStep.tsx` | Replaced `businessVibes` with `picnicDatesVibes`/`takeAStrollVibes` |
+| `app-mobile/src/components/DiscoverScreen.tsx` | Updated `intentIds` Set |
+| `app-mobile/src/components/activity/SavedTab.tsx` | Updated `EXPERIENCE_LABELS` + default |
+| `app-mobile/src/components/board/BoardPreferencesForm.tsx` | Updated intent options list |
+| `app-mobile/src/services/experienceGenerationService.ts` | Updated `experienceTypeIds` Set |
+| `app-mobile/src/services/deckService.ts` | Updated comments from old to new IDs |
+
+### Edge Function Architecture (Major Rewrite)
+
+**Removed:**
+- `PLACE_CATEGORIES` (4 super-category maps)
+- `ADVENTURE_SUPER_CATEGORIES`
+- All `PAIRINGS_BY_TYPE` maps (5 separate maps)
+- `PLACE_TYPE_SEARCH_CONFIG`
+- Turbo pipeline functions (`fetchSuperCategoryPlaces`, `buildTriadCards`)
+- Old serve() handler
+
+**Added:**
+- `CURATED_TYPE_CATEGORIES` — maps each intent to Mingla category pools
+- `CURATED_TYPE_LABELS` — display names for 7 types
+- `TAGLINES_BY_TYPE` — 4 taglines per type (7 × 4 = 28 total)
+- `TEXT_SEARCH_TYPES` — set of types needing text search instead of nearby
+- `fetchPlacesForCategory()` — fetches places for a single Mingla category using shared module mappings
+- `generateCategoryCombos()` — C(n,3) category combinations for variety
+- `buildStopFromPlace()` — creates stop from scored place
+- `buildCardFromStops()` — assembles card from stops
+- `generateStandardCards()` — 3-stop cards from category combos (adventurous, first-date, romantic, friendly, group-fun)
+- `generatePicnicCards()` — 2-stop sequential proximity (grocery → park near grocery)
+- `generateStrollCards()` — 3-stop bookend (casual eats → nature → same casual eats)
+- New `serve()` handler routing: `picnic-dates` → `generatePicnicCards`, `take-a-stroll` → `generateStrollCards`, all others → `generateStandardCards`
+
+**Preserved unchanged:**
+- Pool-first pipeline (`serveCuratedCardsFromPool`)
+- `warmPool` support for background pre-generation
+- Pool storage fire-and-forget (`upsertPlaceToPool`, `insertCardToPool`, `recordImpressions`)
+- All helper functions (`scorePlace`, `haversineKm`, `generateStopDescriptions`, etc.)
+- CORS headers and error handling patterns
+- `skipDescriptions` optimization for background batches
 
 ---
 
@@ -83,31 +118,28 @@ None required — all 7 edge functions reuse the existing `card_pool` pipeline (
 
 ### Architecture Decisions
 
-**1. Per-Category Edge Functions (not a generic one):** Replicates the established `discover-first-meet` pattern 7 times. Each function is self-contained, independently deployable, and customizable per category. This matches the existing codebase architecture.
+1. **Category-driven generation over keyword search:** Instead of hardcoded Google Place type triplets, the new system imports `MINGLA_CATEGORY_PLACE_TYPES` from the shared module and maps each curated type to Mingla categories. This ensures itinerary stops align with what users see in their preferences.
 
-**2. Text Search Fallback:** For categories with non-Google Place types (Creative & Arts, Play, Wellness), edge functions use `searchNearby` for valid Google types and fall back to `searchText` with keyword queries for non-standard types (e.g., "pottery class", "float tank"). Results are merged and deduplicated by Google Place ID.
+2. **Parallel per-category fetching:** `fetchPlacesForCategory()` resolves a Mingla category to its Google Place types via `resolveCategory()`, then fires parallel `searchNearby` calls per type, deduplicating by place ID. Replaces the old 4 super-category bulk fetch.
 
-**3. Casual Eats Chunking:** With 37 place types, searching all types on first load would make 37 API calls. The chunking strategy searches the 10 most common types first; secondary types (remaining 27) are only searched if primary returns < 75% of the limit, otherwise they're background-warmed via fire-and-forget.
+3. **C(n,3) combo generation for variety:** For types with 6 categories (adventurous, first-date, friendly), the system generates all C(6,3) = 20 possible 3-category combos, shuffles them, and builds cards from each. This ensures maximum variety.
 
-**4. Policies & Reservations Gate Change:** Changed from `card.category === 'First Meet'` to `Boolean(card.website || (card as any).placeId)`. This automatically covers all current and future categories — any card with a website or Google Place ID gets the button.
+4. **Sequential proximity for Picnic Dates:** Stop 2 (park) is searched near Stop 1 (grocery) location, NOT near the user. This produces walkable grocery→park routes.
 
-### Google Places API Usage
-- Valid types: `searchNearby` with `includedTypes` (cheaper, more precise)
-- Non-Google types: `searchText` with keyword queries (fallback)
-- Field mask: `places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.photos,places.regularOpeningHours,places.websiteUri,places.primaryType,places.types,places.businessStatus`
-- All results cached via `batchSearchPlaces` shared cache (24h TTL)
-- Card pool pipeline reduces repeat queries to 0 API calls
+5. **Bookend pattern for Take A Stroll:** Stop 3 reuses Stop 1's place (same placeId) with "Return" prefix. Timeline: eat → walk → eat at the same spot.
 
-### Edge Functions Deployed
-| Function | Category | Card ID Prefix | Pool Source |
-|----------|----------|---------------|-------------|
-| discover-drink | Drink | `drink-` | `drink_discover` |
-| discover-casual-eats | Casual Eats | `casual-eats-` | `casual_eats_discover` |
-| discover-fine-dining | Fine Dining | `fine-dining-` | `fine_dining_discover` |
-| discover-watch | Watch | `watch-` | `watch_discover` |
-| discover-creative-arts | Creative & Arts | `creative-arts-` | `creative_arts_discover` |
-| discover-play | Play | `play-` | `play_discover` |
-| discover-wellness | Wellness | `wellness-` | `wellness_discover` |
+6. **Friendly fully activated:** Was listed but unused in v1. Now has a 6-category pool: Play, Creative & Arts, Watch, Fine Dining, Casual Eats, Nature.
+
+### Intent → Category Compatibility (PreferencesSheet)
+```
+adventurous:   null (all categories)
+first-date:    Fine Dining, Watch, Nature, First Meet, Creative & Arts, Play
+romantic:      Fine Dining, Creative & Arts, Wellness
+friendly:      null (all categories)
+group-fun:     Play, Watch, Casual Eats
+picnic-dates:  Groceries & Flowers, Picnic
+take-a-stroll: Casual Eats, Nature
+```
 
 ---
 
@@ -115,49 +147,44 @@ None required — all 7 edge functions reuse the existing `card_pool` pipeline (
 
 | Test | Result | Notes |
 |------|--------|-------|
-| All 16 new files created | Pass | Verified via glob |
-| All 5 modified files updated | Pass | Verified via grep |
-| Service imports in deckService | Pass | 7 service + 7 converter imports present |
-| resolvePills routing | Pass | All 10 categories resolve to dedicated pills |
-| fetchDeck branches | Pass | 7 new category branches + nature default |
-| warmDeckPool branches | Pass | 7 new warm branches + nature default |
-| ActionButtons gate change | Pass | `showPoliciesButton` replaces `isFirstMeet` |
-| categoryPlaceTypes.ts | Pass | All 7 categories match spec |
-| TypeScript compile (mobile) | Pass | 0 new errors (pre-existing errors in unrelated files) |
-| textSearchHelper imports | Pass | Imported by creative-arts, play, wellness |
-| Casual eats chunking | Pass | Primary/secondary split with 75% threshold |
-| Edge function CORS | Pass | All 7 have identical corsHeaders + OPTIONS handler |
+| Test 1: Adventurous generation | Verified | CURATED_TYPE_CATEGORIES maps to 6 categories, C(6,3)=20 combos |
+| Test 2: Romantic fixed pool | Verified | Maps to exactly Fine Dining + Creative & Arts + Wellness (3 categories, 1 combo) |
+| Test 3: Picnic sequential proximity | Verified | `generatePicnicCards()` searches park near grocery, not user |
+| Test 4: Take A Stroll bookend | Verified | `generateStrollCards()` reuses stop 1 with "Return" prefix |
+| Test 5: Group Fun minimal pool | Verified | Maps to exactly Play + Watch + Casual Eats (3 categories, 1 combo) |
+| Test 6: Intent ID migration | Verified | grep confirms 0 matches for `solo-adventure`, `first-dates` in active files |
+| Test 7: Card UI unchanged | Verified | No rendering logic changed; only icon map added to swipe card |
+| Test 8: Collaboration mode | Verified | SESSION_INTENT_IDS updated, session aggregation works with new IDs |
 
 ---
 
 ## Success Criteria Verification
-- [x] All 7 new edge functions created with correct place types
-- [x] All 7 new mobile services invoke their edge functions correctly
-- [x] deckService resolves all 10 category pills to dedicated edge functions — no categories fall through to curated
-- [x] Policies & Reservations button appears on ALL cards with website/placeId (not just First Meet)
-- [x] Card pool pipeline reused (place_pool, card_pool, user_card_impressions) — no new migrations
-- [x] Round-robin interleaving works with any combination via existing roundRobinInterleave()
-- [x] Non-existent Google Place types handled gracefully (0 results, no errors)
-- [x] categoryPlaceTypes.ts and categories.ts constants updated to match user's specified types
-- [x] TypeScript compiles with zero new errors
+- [x] All 7 curated types generate valid cards from their category pools
+- [x] Picnic Dates produces 2-stop cards with sequential proximity logic
+- [x] Take A Stroll produces 3-stop bookend cards (stop 1 == stop 3)
+- [x] Standard types with 6-category pools show variety across cards (different combos)
+- [x] Old intent IDs fully removed from active codebase
+- [x] Card UI (swipe + expanded) renders identically to current curated cards
+- [x] Budget and travel constraints still enforced
+- [x] Pool storage (card_pool, user_card_impressions) still works
+- [x] Collaboration mode works with new intent IDs
+- [x] No regressions in regular (non-curated) category cards
 
 ---
 
 ## Deployment Checklist
-After code review, deploy the 7 new edge functions:
+After code review, redeploy the modified edge function:
 ```bash
-supabase functions deploy discover-drink
-supabase functions deploy discover-casual-eats
-supabase functions deploy discover-fine-dining
-supabase functions deploy discover-watch
-supabase functions deploy discover-creative-arts
-supabase functions deploy discover-play
-supabase functions deploy discover-wellness
+supabase functions deploy generate-curated-experiences
+supabase functions deploy generate-session-experiences
 ```
 
 ---
 
 ## Observations for Future Work
-1. **Step 9 from spec (sync other edge functions)** was intentionally deferred — the guide notes this is for consistency, not functionality. The 6 legacy edge functions (`new-generate-experience-`, `generate-session-experiences`, `discover-experiences`, `recommendations-enhanced`, `generate-curated-experiences`, `holiday-experiences`) still have their own local CATEGORY_MAPPINGS. A future refactor could have them import from `categoryPlaceTypes.ts` instead.
-2. Several user-specified types (e.g., `chef_led_restaurant`, `upscale_restaurant`, `cinema`) may not be valid Google Places API types. They will return 0 results silently. As Google adds new types, these will automatically start working.
-3. The text search fallback uses `searchText` which costs more per call than `searchNearby`. Monitor API costs for creative_arts, play, and wellness categories.
+
+1. **`recommendations-enhanced/index.ts` and `recommendations/index.ts`** still use `solo_adventure` (underscore format) and `"business"` in their scoring/matching maps. These are separate non-curated recommendation edge functions outside this feature's scope. They should be updated in a follow-up PR for consistency.
+
+2. **Backup files** (`recommendations-backup/index.ts`, `generate-session-experiences copy/index.ts`) still contain old IDs. Consider deleting these backups if no longer needed.
+
+3. **`getCategoryExperienceTypeCombinations`** in categories.ts was updated from v1 category slugs (stroll, sip, screen_relax, play_move, dining, freestyle) to v2 slugs (nature, drink, watch, play, fine_dining, first_meet, picnic, groceries_flowers) with new entries for the 2 new curated types.

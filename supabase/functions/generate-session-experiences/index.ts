@@ -219,14 +219,15 @@ serve(async (req) => {
     }
 
     // Filter out experience types from categories array
-    // Experience types are: "first-dates", "romantic", "friendly", "group-fun", "business"
+    // Experience types are: "adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"
     const experienceTypeIds = new Set([
-      "first-dates",
+      "adventurous",
+      "first-date",
       "romantic",
       "friendly",
       "group-fun",
-      "business",
-      "solo-adventure", // Include for completeness, though not in collaboration
+      "picnic-dates",
+      "take-a-stroll",
     ]);
 
     const filteredCategories = aggregated.categories

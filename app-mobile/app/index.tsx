@@ -42,7 +42,7 @@ import CoachMap from "../src/components/CoachMap";
 import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
-import { useBoardSession } from "../hooks/useBoardSession";
+import { useBoardSession } from "../src/hooks/useBoardSession";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
 import { muteService } from "../src/services/muteService";
@@ -297,6 +297,22 @@ function AppContent() {
       }
     });
   }, [friendRequests]);
+
+  // Check if user needs onboarding (for authenticated users)
+  const isGoogleUser = (user as any)?.app_metadata?.provider === "google";
+  const isAppleUser = (user as any)?.app_metadata?.provider === "apple";
+  const needsOnboarding =
+    isAuthenticated &&
+    user &&
+    profile &&
+    (profile as any).has_completed_onboarding === false;
+  const needsEmailVerification =
+    isAuthenticated &&
+    user &&
+    profile &&
+    (profile as any).email_verified === false &&
+    !isGoogleUser &&
+    !isAppleUser;
 
   // Log current page for debugging
   useEffect(() => {
@@ -1372,27 +1388,6 @@ function AppContent() {
   }
   // jsieidjdj
 
-  // Check if user needs onboarding (for authenticated users)
-  // Show onboarding if user is authenticated but hasn't completed onboarding
-  const needsOnboarding =
-    isAuthenticated &&
-    user &&
-    profile &&
-    profile.has_completed_onboarding === false;
-
-  // Check if user needs email verification before onboarding
-  // Block onboarding if user is authenticated but email is not verified
-  // Skip email verification for Google and Apple sign-in users (they already verify emails)
-  const isGoogleUser = user?.app_metadata?.provider === "google";
-  const isAppleUser = user?.app_metadata?.provider === "apple";
-  const needsEmailVerification =
-    isAuthenticated &&
-    user &&
-    profile &&
-    profile.email_verified === false &&
-    !isGoogleUser &&
-    !isAppleUser; // Skip verification for Google and Apple users
-
   // Show email verification screen if needed (before onboarding)
   if (needsEmailVerification && !showSignUpForm) {
     return (
@@ -1486,14 +1481,14 @@ function AppContent() {
             handleSignIn(credentials, "explorer")
           }
           onSignUpRegular={(userData) => {
-            const accountType = userData.account_type || "explorer";
+            const accountType = (userData.account_type || "explorer") as "explorer" | "curator";
             handleSignUp(userData, accountType);
           }}
           onSignInCurator={(credentials) =>
             handleSignIn(credentials, "curator")
           }
           onSignUpCurator={(userData) => {
-            const accountType = userData.account_type || "curator";
+            const accountType = (userData.account_type || "curator") as "explorer" | "curator";
             handleSignUp(userData, accountType);
           }}
           onStartOnboarding={(accountType) => {

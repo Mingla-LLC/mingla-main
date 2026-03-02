@@ -557,77 +557,104 @@ export const getCompatibleCategories = (categorySlug: string): string[] => {
 // Categories × Experience Types Cross-Mapping
 export const getCategoryExperienceTypeCombinations = (categorySlug: string, experienceType: string): string => {
   const combinations: Record<string, Record<string, string>> = {
-    'stroll': {
-      'first_date': 'Scenic park walk + gelato nearby — low pressure, easy conversation.',
+    'nature': {
+      'first-date': 'Scenic park walk + gelato nearby — low pressure, easy conversation.',
       'romantic': 'Sunset stroll along the waterfront ending at a cozy wine bar.',
       'friendly': 'Group garden walk + taco truck outside the park gates.',
-      'solo_adventure': 'Botanical garden stroll with coffee to-go from nearby café.',
-      'group_fun': 'City mural walk with food truck rally at the finish line.',
-      'business': 'Walking meeting route with coffee stop along the way.'
+      'adventurous': 'Botanical garden stroll with coffee to-go from nearby café.',
+      'group-fun': 'City mural walk with food truck rally at the finish line.',
+      'picnic-dates': 'Picnic blanket in the botanical garden with a cheese board.',
+      'take-a-stroll': 'Nature trail loop with café bookend at the trailhead.'
     },
-    'sip': {
-      'first_date': 'Speakeasy with soft lighting and quiet booths — great for conversation.',
+    'drink': {
+      'first-date': 'Speakeasy with soft lighting and quiet booths — great for conversation.',
       'romantic': 'Wine bar with a 6-glass tasting flight and live acoustic music.',
       'friendly': 'Neighborhood brewery with board games and casual vibes.',
-      'solo_adventure': 'Specialty coffee roastery — perfect for journaling or reading.',
-      'group_fun': 'Cocktail lounge with large tables and happy hour pitchers.',
-      'business': 'Hotel lobby bar with Wi-Fi and private lounge seating.'
+      'adventurous': 'Specialty coffee roastery — perfect for journaling or reading.',
+      'group-fun': 'Cocktail lounge with large tables and happy hour pitchers.',
+      'picnic-dates': 'Grab-and-go juice bar near the park.',
+      'take-a-stroll': 'Coffee shop with a scenic walk to get there.'
     },
     'casual_eats': {
-      'first_date': 'Casual ramen shop — low-key and easy for a first meet.',
+      'first-date': 'Casual ramen shop — low-key and easy for a first meet.',
       'romantic': 'Late-night taco truck crawl for two under string lights.',
       'friendly': 'Food truck rally — great for trying different bites with friends.',
-      'solo_adventure': 'Hole-in-the-wall noodle shop — counter seating, quick service.',
-      'group_fun': 'Pizza-by-the-slice joint with outdoor benches for the crew.',
-      'business': 'Casual café with Wi-Fi and deli sandwiches — informal lunch spot.'
+      'adventurous': 'Hole-in-the-wall noodle shop — counter seating, quick service.',
+      'group-fun': 'Pizza-by-the-slice joint with outdoor benches for the crew.',
+      'picnic-dates': 'Deli sandwich pickup before heading to the park.',
+      'take-a-stroll': 'Casual café — grab a bite, walk, and come back for dessert.'
     },
-    'screen_relax': {
-      'first_date': 'Indie cinema showing a cult classic at 7pm.',
+    'watch': {
+      'first-date': 'Indie cinema showing a cult classic at 7pm.',
       'romantic': 'Drive-in double feature — bring blankets and snacks.',
       'friendly': 'Comedy club lineup — group tickets available.',
-      'solo_adventure': 'Arthouse screening — perfect for solo movie lovers.',
-      'group_fun': 'Big-screen watch party of the championship game.',
-      'business': 'Industry documentary screening followed by a networking mixer.'
+      'adventurous': 'Arthouse screening — perfect for solo movie lovers.',
+      'group-fun': 'Big-screen watch party of the championship game.',
+      'picnic-dates': 'Outdoor movie screening with picnic blankets.',
+      'take-a-stroll': 'Evening walk to the neighborhood cinema.'
     },
-    'creative': {
-      'first_date': 'Sip & Paint night with wine included — playful and low-stakes.',
+    'creative_arts': {
+      'first-date': 'Sip & Paint night with wine included — playful and low-stakes.',
       'romantic': 'Couples pottery class — make something together to keep.',
       'friendly': 'Cooking class for friends — team up to make pasta or dumplings.',
-      'solo_adventure': 'Saturday candle-making workshop — take home your own creation.',
-      'group_fun': 'Escape-room style craft workshop — collaborate on a challenge.',
-      'business': 'Corporate team-building cooking class — private session available.'
+      'adventurous': 'Saturday candle-making workshop — take home your own creation.',
+      'group-fun': 'Escape-room style craft workshop — collaborate on a challenge.',
+      'picnic-dates': 'Flower-arranging workshop then picnic with your bouquet.',
+      'take-a-stroll': 'Gallery walk with a café stop to sketch what you saw.'
     },
-    'play_move': {
-      'first_date': 'Glow-in-the-dark mini golf — fun, flirty, and interactive.',
+    'play': {
+      'first-date': 'Glow-in-the-dark mini golf — fun, flirty, and interactive.',
       'romantic': 'Evening skate date — rent skates and glide under the lights.',
       'friendly': 'Arcade night — grab tokens and compete in games.',
-      'solo_adventure': 'Solo bouldering session — day pass includes gear rental.',
-      'group_fun': 'Bowling alley with neon lights — lane reservations for 6.',
-      'business': 'Casual networking pickleball tournament.'
+      'adventurous': 'Solo bouldering session — day pass includes gear rental.',
+      'group-fun': 'Bowling alley with neon lights — lane reservations for 6.',
+      'picnic-dates': 'Frisbee in the park followed by a picnic spread.',
+      'take-a-stroll': 'Playground park with a food truck loop.'
     },
-    'dining': {
-      'first_date': 'Modern bistro with prix fixe menu, $65 per person.',
+    'fine_dining': {
+      'first-date': 'Modern bistro with prix fixe menu, $65 per person.',
       'romantic': 'Omakase counter with 10 seats — chef\'s choice, candlelit ambience.',
       'friendly': 'Family-style rooftop dinner with shared plates.',
-      'solo_adventure': 'Seasonal tasting menu at chef\'s counter — perfect for solo foodies.',
-      'group_fun': 'Wine-pairing dinner with large communal table.',
-      'business': 'Upscale steakhouse with private rooms and Wi-Fi.'
+      'adventurous': 'Seasonal tasting menu at chef\'s counter — perfect for solo foodies.',
+      'group-fun': 'Wine-pairing dinner with large communal table.',
+      'picnic-dates': 'Charcuterie board to-go from the bistro, eaten parkside.',
+      'take-a-stroll': 'Fine dining with a scenic waterfront walk to get there.'
     },
     'wellness': {
-      'first_date': 'Couples yoga followed by herbal tea lounge.',
+      'first-date': 'Couples yoga followed by herbal tea lounge.',
       'romantic': 'Day spa package with sauna + massage for two.',
       'friendly': 'Group sound bath meditation — mats provided.',
-      'solo_adventure': 'Sunset yoga in the park — solo mats welcome.',
-      'group_fun': 'Wellness retreat day pass — yoga, meditation, and healthy lunch.',
-      'business': 'Mindfulness workshop for teams — private booking available.'
+      'adventurous': 'Sunset yoga in the park — solo mats welcome.',
+      'group-fun': 'Wellness retreat day pass — yoga, meditation, and healthy lunch.',
+      'picnic-dates': 'Outdoor yoga session then picnic under the trees.',
+      'take-a-stroll': 'Mindfulness walk through the gardens with tea afterward.'
     },
-    'freestyle': {
-      'first_date': 'Secret pop-up dessert bar — intimate but unexpected.',
-      'romantic': 'Lantern festival with live music — magical, outdoors.',
-      'friendly': 'Street art crawl with food trucks and DJs.',
-      'solo_adventure': 'Experimental pop-up gallery with immersive installations.',
-      'group_fun': 'Rooftop silent disco — headphones on, dance together.',
-      'business': 'Startup pitch night disguised as a pop-up bar mixer.'
+    'first_meet': {
+      'first-date': 'Cozy café with board games — low-stakes and easy to chat.',
+      'romantic': 'Wine-and-cheese tasting in a candlelit cellar.',
+      'friendly': 'Coffee shop with large tables — easy group hangout.',
+      'adventurous': 'Quirky themed café — conversation starters built in.',
+      'group-fun': 'Trivia night at the local pub — team up and compete.',
+      'picnic-dates': 'Farmers market browse then park bench chat.',
+      'take-a-stroll': 'Coffee walk through the neighborhood — keep it casual.'
+    },
+    'picnic': {
+      'first-date': 'Picnic blanket by the lake with sandwiches and lemonade.',
+      'romantic': 'Sunset picnic with wine, cheese, and fairy lights.',
+      'friendly': 'Group picnic potluck in the park — everyone brings a dish.',
+      'adventurous': 'Solo picnic with a good book at the botanical garden.',
+      'group-fun': 'BBQ picnic at the park pavilion — games and grilling.',
+      'picnic-dates': 'Full picnic spread at the nicest park in town.',
+      'take-a-stroll': 'Picnic spot with a walking trail loop nearby.'
+    },
+    'groceries_flowers': {
+      'first-date': 'Farmers market stroll — sample together, buy flowers.',
+      'romantic': 'Pick up flowers and ingredients, cook dinner together.',
+      'friendly': 'Group grocery run for a cooking night — split the bill.',
+      'adventurous': 'Specialty grocery store exploration — find something new.',
+      'group-fun': 'Farmers market haul then group potluck prep.',
+      'picnic-dates': 'Grocery run for picnic supplies then head to the park.',
+      'take-a-stroll': 'Flower shop visit on a neighborhood walk.'
     }
   };
 
@@ -1278,11 +1305,19 @@ export const getMapPinPreview = (location: any, constraintType: string, constrai
 
 export const CURATED_EXPERIENCES = [
   {
-    id: 'solo_adventure',
+    id: 'adventurous',
     displayName: 'Adventurous',
     icon: 'compass-outline',
     color: '#F59E0B',
     description: 'Explore your city — great for adventurous souls',
+    isImplemented: true,
+  },
+  {
+    id: 'first-date',
+    displayName: 'First Date',
+    icon: 'people-outline',
+    color: '#6366F1',
+    description: 'Low-pressure, memorable first impressions',
     isImplemented: true,
   },
   {
@@ -1291,46 +1326,38 @@ export const CURATED_EXPERIENCES = [
     icon: 'heart-outline',
     color: '#EC4899',
     description: 'A curated romantic evening',
-    isImplemented: false,
+    isImplemented: true,
   },
   {
-    id: 'first_date',
-    displayName: 'First Date',
+    id: 'friendly',
+    displayName: 'Friendly',
     icon: 'people-outline',
-    color: '#6366F1',
-    description: 'Low-pressure, memorable first impressions',
-    isImplemented: false,
+    color: '#3B82F6',
+    description: 'Casual hangouts with close friends',
+    isImplemented: true,
   },
   {
-    id: 'picnic_dates',
-    displayName: 'Picnic Dates',
-    icon: 'basket-outline',
-    color: '#84CC16',
-    description: 'Pack a basket, find the perfect spot',
-    isImplemented: false,
-  },
-  {
-    id: 'take_a_stroll',
-    displayName: 'Take a Stroll',
-    icon: 'walk-outline',
-    color: '#10B981',
-    description: 'A scenic walk with a perfect pitstop',
-    isImplemented: false,
-  },
-  {
-    id: 'group_fun',
+    id: 'group-fun',
     displayName: 'Group Fun',
     icon: 'people-circle-outline',
     color: '#EF4444',
     description: 'Activities everyone will enjoy',
-    isImplemented: false,
+    isImplemented: true,
   },
   {
-    id: 'business',
-    displayName: 'Business',
-    icon: 'briefcase-outline',
-    color: '#6B7280',
-    description: 'Professional settings that impress',
-    isImplemented: false,
+    id: 'picnic-dates',
+    displayName: 'Picnic Dates',
+    icon: 'basket-outline',
+    color: '#84CC16',
+    description: 'Grab supplies, find the perfect spot',
+    isImplemented: true,
+  },
+  {
+    id: 'take-a-stroll',
+    displayName: 'Take a Stroll',
+    icon: 'walk-outline',
+    color: '#10B981',
+    description: 'A scenic walk bookended by great food',
+    isImplemented: true,
   },
 ] as const;

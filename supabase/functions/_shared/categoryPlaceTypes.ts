@@ -192,12 +192,13 @@ export function getAllPlaceTypes(categories: string[]): string[] {
  * They should be filtered out before passing categories to place search.
  */
 export const INTENT_IDS = new Set([
-  'solo-adventure',
-  'first-dates',
+  'adventurous',
+  'first-date',
   'romantic',
   'friendly',
   'group-fun',
-  'business',
+  'picnic-dates',
+  'take-a-stroll',
 ]);
 
 /**

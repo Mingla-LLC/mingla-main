@@ -15,12 +15,13 @@ import { Ionicons } from "@expo/vector-icons";
  */
 // Helper descriptions for curated experience types
 const EXPERIENCE_TYPE_DESCRIPTIONS: Record<string, string> = {
-  "solo-adventure": "Bold outings and unique solo experiences to push your comfort zone",
-  "first-dates": "Relaxed, low-pressure settings ideal for getting to know someone",
-  "romantic": "Intimate and memorable experiences for you and your partner",
-  "friendly": "Casual hangouts and fun activities with close friends",
-  "group-fun": "Exciting group activities everyone will enjoy together",
-  "business": "Professional yet comfortable venues for meetings and networking",
+  "adventurous":   "Bold outings and unique experiences to push your comfort zone",
+  "first-date":    "Relaxed, low-pressure settings ideal for getting to know someone",
+  "romantic":      "Intimate and memorable experiences for you and your partner",
+  "friendly":      "Casual hangouts and fun activities with close friends",
+  "group-fun":     "Exciting group activities everyone will enjoy together",
+  "picnic-dates":  "Grab supplies at the store and enjoy a curated picnic",
+  "take-a-stroll": "A scenic walk with a great food spot to start and end at",
 };
 
 export const ExperienceTypesSection = memo(
@@ -229,28 +230,18 @@ export const DateTimeSection = memo(
               key={option.id}
               onPress={() => onDateOptionSelect(option.id)}
               style={[
-                styles.dateOptionCard,
-                isSelected && styles.dateOptionCardSelected,
+                styles.dateOptionPill,
+                isSelected && styles.dateOptionPillSelected,
               ]}
             >
-              <View style={styles.dateOptionContent}>
-                <Text
-                  style={[
-                    styles.dateOptionLabel,
-                    isSelected && styles.dateOptionLabelSelected,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.dateOptionDescription,
-                    isSelected && styles.dateOptionDescriptionSelected,
-                  ]}
-                >
-                  {option.description}
-                </Text>
-              </View>
+              <Text
+                style={[
+                  styles.dateOptionPillLabel,
+                  isSelected && styles.dateOptionPillLabelSelected,
+                ]}
+              >
+                {option.label}
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -345,8 +336,8 @@ export const TravelModeSection = memo(
             >
               <Ionicons
                 name={mode.icon as any}
-                size={20}
-                color={isSelected ? "#ffffff" : "#6b7280"}
+                size={14}
+                color={isSelected ? "#eb7825" : "#6b7280"}
               />
               <Text
                 style={[
@@ -493,43 +484,32 @@ const styles = StyleSheet.create({
   dateOptionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: 8,
     marginBottom: 12,
   },
-  dateOptionCard: {
-    width: "47.5%",
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    backgroundColor: "#f9fafb",
-    borderColor: "#e5e7eb",
-    minHeight: 60,
-    justifyContent: "center",
-  },
-  dateOptionCardSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-    borderWidth: 2,
-  },
-  dateOptionContent: {
+  dateOptionPill: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
-  dateOptionLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
+  dateOptionPillSelected: {
+    backgroundColor: "#fff7ed",
+    borderColor: "#eb7825",
   },
-  dateOptionLabelSelected: {
-    color: "#ffffff",
-  },
-  dateOptionDescription: {
+  dateOptionPillLabel: {
     fontSize: 11,
-    color: "#6b7280",
+    fontWeight: "500",
+    color: "#374151",
   },
-  dateOptionDescriptionSelected: {
-    color: "#ffffff",
-    opacity: 0.9,
+  dateOptionPillLabelSelected: {
+    color: "#eb7825",
+    fontWeight: "600",
   },
   weekendInfoCard: {
     flexDirection: "row",
@@ -614,33 +594,32 @@ const styles = StyleSheet.create({
   },
   travelModesGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
+    gap: 6,
   },
   travelModeCard: {
-    width: "47%",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    backgroundColor: "white",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
   travelModeCardSelected: {
-    backgroundColor: "#eb7825",
+    backgroundColor: "#fff7ed",
     borderColor: "#eb7825",
   },
   travelModeLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#111827",
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#374151",
   },
   travelModeLabelSelected: {
-    color: "#ffffff",
+    color: "#eb7825",
+    fontWeight: "600",
   },
   loadingContainer: {
     flex: 1,

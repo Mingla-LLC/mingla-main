@@ -2,7 +2,7 @@
  * Unified Deck Service — single entry point for the solo swipeable deck.
  *
  * Multi-pill parallel pipeline: resolves user's selections into independent
- * "pills" (Nature, solo-adventure, romantic, etc.), fetches ALL pills in
+ * "pills" (Nature, adventurous, romantic, etc.), fetches ALL pills in
  * parallel via Promise.all, then round-robin interleaves the results.
  *
  * Latency = max(pill1, pill2, ...) — NOT sum(). Graceful degradation:
@@ -106,9 +106,9 @@ class DeckService {
       pills.push({ id: intent, type: 'curated' });
     }
 
-    // Fallback: if nothing resolved, default to solo-adventure
+    // Fallback: if nothing resolved, default to adventurous
     if (pills.length === 0) {
-      pills.push({ id: 'solo-adventure', type: 'curated' });
+      pills.push({ id: 'adventurous', type: 'curated' });
     }
 
     return { pills, categoryFilters };

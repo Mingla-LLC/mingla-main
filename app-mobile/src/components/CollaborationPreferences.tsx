@@ -46,12 +46,13 @@ interface CollaborationPreferencesProps {
 
 // Experience Types for collaboration (matching PreferencesSheet)
 const experienceTypes = [
-  { id: "solo-adventure", label: "Adventurous", icon: "compass-outline" },
-  { id: "first-dates", label: "First Date", icon: "heart-outline" },
-  { id: "romantic", label: "Romantic", icon: "heart-outline" },
-  { id: "friendly", label: "Friendly", icon: "people-outline" },
-  { id: "group-fun", label: "Group Fun", icon: "people-outline" },
-  { id: "business", label: "Business", icon: "briefcase-outline" },
+  { id: "adventurous",   label: "Adventurous",   icon: "compass-outline" },
+  { id: "first-date",    label: "First Date",    icon: "people-outline" },
+  { id: "romantic",      label: "Romantic",       icon: "heart-outline" },
+  { id: "friendly",      label: "Friendly",       icon: "people-outline" },
+  { id: "group-fun",     label: "Group Fun",      icon: "people-circle-outline" },
+  { id: "picnic-dates",  label: "Picnic Dates",   icon: "basket-outline" },
+  { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
 // Budget presets (USD base values)
@@ -111,25 +112,13 @@ type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
 // Compatibility matrix: maps intent IDs to allowed category IDs
 // null means all categories are allowed
 const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
-  "solo-adventure": null, // All categories
-  "first-dates": [
-    "nature",
-    "first_meet",
-    "drink",
-    "watch",
-    "creative_arts",
-    "picnic_park",
-  ],
-  romantic: ["first_meet", "drink", "picnic_park", "fine_dining", "wellness", "nature"],
-  friendly: null, // All categories
-  "group-fun": [
-    "play",
-    "creative_arts",
-    "casual_eats",
-    "watch",
-    "drink",
-  ],
-  business: ["first_meet", "drink", "fine_dining"],
+  "adventurous":   null, // All categories allowed
+  "first-date":    ["fine_dining", "watch", "nature", "first_meet", "creative_arts", "play"],
+  "romantic":      ["fine_dining", "creative_arts", "wellness"],
+  "friendly":      null, // All categories allowed
+  "group-fun":     ["play", "watch", "casual_eats"],
+  "picnic-dates":  ["groceries_flowers", "picnic_park"],
+  "take-a-stroll": ["casual_eats", "nature"],
 };
 
 // Get allowed category IDs based on selected intents
@@ -256,7 +245,7 @@ export default function CollaborationPreferences({
         // Split categories array into intents and pure categories
         // (matches how PreferencesSheet saves: [...intents, ...categories])
         const INTENT_IDS = new Set([
-          "solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business",
+          "adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll",
         ]);
         const loadedIntents: string[] = [];
         const loadedCategories: string[] = [];

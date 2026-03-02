@@ -239,7 +239,7 @@ export default function BlockedUsersModal({
                 renderEmptyState()
               ) : (
                 <View style={styles.listContainer}>
-                  {blockedUsers.map((item) => renderBlockedUser({ item, index: 0 }))}
+                  {blockedUsers.map((item) => renderBlockedUser({ item }))}
                 </View>
               )}
             </ScrollView>
@@ -337,14 +337,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-  },
-  contentContainer: {
-    flexGrow: 1,
-    padding: 16,
-  },
-
-  content: {
-    flex: 1,
   },
   contentContainer: {
     flexGrow: 1,

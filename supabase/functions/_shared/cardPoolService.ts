@@ -24,7 +24,7 @@ export interface PoolQueryParams {
   budgetMax: number;
   limit: number;                   // how many cards to return (e.g., 20)
   cardType?: 'single' | 'curated';
-  experienceType?: string;         // for curated: 'solo-adventure', etc.
+  experienceType?: string;         // for curated: 'adventurous', 'romantic', etc.
   excludeCardIds?: string[];       // additional exclusions
 }
 

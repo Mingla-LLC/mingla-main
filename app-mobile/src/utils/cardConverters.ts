@@ -88,7 +88,7 @@ export function curatedToRecommendation(card: any): Recommendation {
     priceRange: `$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
     distance: firstStop ? `${firstStop.distanceFromUserKm ?? 0} km` : '0 km',
     travelTime: firstStop ? `${firstStop.travelTimeFromUserMin ?? 0} min` : '0 min',
-    experienceType: card.experienceType ?? 'solo-adventure',
+    experienceType: card.experienceType ?? 'adventurous',
     highlights: stops.map((s: any) => s.placeName),
     fullDescription: card.tagline ?? '',
     address: firstStop?.address ?? '',
@@ -703,7 +703,8 @@ export function computePrefsHash(prefs: any): string {
 
 /** Well-known intent IDs — used to separate intents from category names */
 export const INTENT_IDS = new Set([
-  'solo-adventure', 'first-dates', 'romantic', 'friendly', 'group-fun', 'business',
+  'adventurous', 'first-date', 'romantic', 'friendly', 'group-fun',
+  'picnic-dates', 'take-a-stroll',
 ]);
 
 /** Separate a mixed categories array into intents and actual categories */

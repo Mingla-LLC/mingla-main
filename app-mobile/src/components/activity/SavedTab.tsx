@@ -1645,13 +1645,15 @@ const SavedTab = ({
       ? `${hrs}h ${mins > 0 ? `${mins}min` : ''}`
       : `${mins}min`;
     const EXPERIENCE_LABELS: Record<string, string> = {
-      'solo-adventure': 'Adventurous',
-      'first-dates': 'First Date',
+      'adventurous': 'Adventurous',
+      'first-date': 'First Date',
       'romantic': 'Romantic',
       'friendly': 'Friendly',
       'group-fun': 'Group Fun',
+      'picnic-dates': 'Picnic Dates',
+      'take-a-stroll': 'Take a Stroll',
     };
-    const rawType = (card as any).experienceType || 'solo-adventure';
+    const rawType = (card as any).experienceType || 'adventurous';
     const experienceLabel = EXPERIENCE_LABELS[rawType] ?? rawType.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
     return (

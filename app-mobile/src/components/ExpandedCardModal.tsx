@@ -1004,7 +1004,7 @@ export default function ExpandedCardModal({
                 {/* Animated Timeline for Curated Cards */}
                 {curatedCard.stops && curatedCard.stops.length > 0 && (
                   <TimelineSection
-                    category={curatedCard.experienceType || 'solo-adventure'}
+                    category={curatedCard.categoryLabel || curatedCard.experienceType || 'adventurous'}
                     title={curatedCard.title}
                     address={curatedCard.stops[0]?.address}
                     priceRange={`$${curatedCard.totalPriceMin}–$${curatedCard.totalPriceMax}`}

@@ -3,6 +3,16 @@ import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 
+const CURATED_ICON_MAP: Record<string, string> = {
+  'Adventurous':   'compass-outline',
+  'First Date':    'people-outline',
+  'Romantic':      'heart-outline',
+  'Friendly':      'people-outline',
+  'Group Fun':     'people-circle-outline',
+  'Picnic Dates':  'basket-outline',
+  'Take a Stroll': 'walk-outline',
+};
+
 interface Props {
   card: CuratedExperienceCard;
   onSeePlan: () => void;
@@ -18,7 +28,7 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
 
   const isSingleStop = card.stops.length === 1;
   const categoryLabel = card.categoryLabel || 'Adventurous';
-  const categoryIcon = categoryLabel.toLowerCase() === 'nature' ? 'leaf-outline' : 'compass-outline';
+  const categoryIcon = CURATED_ICON_MAP[categoryLabel] || 'compass-outline';
   const ctaText = isSingleStop ? 'See Details' : 'See Full Plan';
 
   return (

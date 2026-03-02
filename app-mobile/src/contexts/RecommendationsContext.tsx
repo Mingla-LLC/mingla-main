@@ -255,10 +255,10 @@ export const RecommendationsProvider: React.FC<
     ),
   });
 
-  // ── Collaboration Mode: useCuratedExperiences (solo-adventure only) ─────
+  // ── Collaboration Mode: useCuratedExperiences (adventurous default) ─────
   const curatedSessionId = isCollaborationMode ? resolvedSessionId : undefined;
   const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo } = useCuratedExperiences({
-    experienceType: 'solo-adventure',
+    experienceType: 'adventurous',
     location: userLocation,
     budgetMin: userPrefs?.budget_min ?? 0,
     budgetMax: userPrefs?.budget_max ?? 1000,

@@ -3,11 +3,13 @@ import { curatedExperiencesService } from '../services/curatedExperiencesService
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 
 export type CuratedExperienceType =
-  | 'solo-adventure'
-  | 'first-dates'
+  | 'adventurous'
+  | 'first-date'
   | 'romantic'
   | 'friendly'
-  | 'group-fun';
+  | 'group-fun'
+  | 'picnic-dates'
+  | 'take-a-stroll';
 
 interface UseCuratedExperiencesParams {
   experienceType: CuratedExperienceType;

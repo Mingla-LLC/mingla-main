@@ -85,14 +85,15 @@ export class ExperienceGenerationService {
   ): Promise<GeneratedExperience[]> {
     try {
       // Filter out experience types from categories array
-      // Experience types are: "solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business"
+      // Experience types are: "adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"
       const experienceTypeIds = new Set([
-        "solo-adventure",
-        "first-dates",
+        "adventurous",
+        "first-date",
         "romantic",
         "friendly",
         "group-fun",
-        "business",
+        "picnic-dates",
+        "take-a-stroll",
       ]);
 
       const filteredCategories = request.preferences.categories

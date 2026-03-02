@@ -186,14 +186,14 @@ const OnboardingFlow = ({
           const mapIntentIdsToObjects = (categoryIds: string[]): any[] => {
             const intentOptions = [
               {
-                id: "solo-adventure",
+                id: "adventurous",
                 title: "Adventurous",
                 icon: "compass-outline",
                 description: "Explore your city — great for adventurous souls",
                 experienceType: "Adventurous",
               },
               {
-                id: "first-dates",
+                id: "first-date",
                 title: "Plan First Dates",
                 icon: "heart-outline",
                 description: "Great first impression experiences",
@@ -221,11 +221,18 @@ const OnboardingFlow = ({
                 experienceType: "Group fun",
               },
               {
-                id: "business",
-                title: "Business/Work Meetings",
-                icon: "briefcase-outline",
-                description: "Professional meeting spaces",
-                experienceType: "Business",
+                id: "picnic-dates",
+                title: "Picnic Dates",
+                icon: "basket-outline",
+                description: "Outdoor picnic experiences and parks",
+                experienceType: "Picnic Dates",
+              },
+              {
+                id: "take-a-stroll",
+                title: "Take a Stroll",
+                icon: "walk-outline",
+                description: "Scenic walks and leisurely strolls",
+                experienceType: "Take a Stroll",
               },
             ];
 
@@ -242,12 +249,13 @@ const OnboardingFlow = ({
 
           // Filter out intent IDs from categories to get only vibe categories
           const intentIds = new Set([
-            "solo-adventure",
-            "first-dates",
+            "adventurous",
+            "first-date",
             "romantic",
             "friendly",
             "group-fun",
-            "business",
+            "picnic-dates",
+            "take-a-stroll",
           ]);
           const vibeCategories = categories.filter(
             (cat: string) => !intentIds.has(cat)
@@ -878,12 +886,13 @@ const OnboardingFlow = ({
 
       // Known intent IDs - filter these out to preserve only vibe categories
       const intentIds = new Set([
-        "solo-adventure",
-        "first-dates",
+        "adventurous",
+        "first-date",
         "romantic",
         "friendly",
         "group-fun",
-        "business",
+        "picnic-dates",
+        "take-a-stroll",
       ]);
 
       // Extract existing vibe categories (non-intent IDs)
@@ -961,12 +970,13 @@ const OnboardingFlow = ({
 
       // Known intent IDs - filter these out to preserve only intent categories
       const intentIds = new Set([
-        "solo-adventure",
-        "first-dates",
+        "adventurous",
+        "first-date",
         "romantic",
         "friendly",
         "group-fun",
-        "business",
+        "picnic-dates",
+        "take-a-stroll",
       ]);
 
       // Extract existing intent categories (preserve intent IDs from step 2)

@@ -52,7 +52,7 @@ import {
 interface PreferencesSheetProps {
   visible?: boolean;
   onClose?: () => void;
-  onSave?: (preferences: any) => Promise<boolean> | boolean | void;
+  onSave?: (preferences: any) => Promise<boolean | void> | boolean | void;
   accountPreferences?: {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
@@ -62,14 +62,15 @@ interface PreferencesSheetProps {
   sessionName?: string;
 }
 
-// Experience Types matching the image - using exact icons from IntentSelectionStep
+// Experience Types — 7 curated types (kebab-case IDs match edge function)
 const experienceTypes = [
-  { id: "solo-adventure", label: "Adventurous", icon: "compass-outline" },
-  { id: "first-dates", label: "First Date", icon: "heart-outline" },
-  { id: "romantic", label: "Romantic", icon: "heart-outline" },
-  { id: "friendly", label: "Friendly", icon: "people-outline" },
-  { id: "group-fun", label: "Group Fun", icon: "people-outline" },
-  { id: "business", label: "Business", icon: "briefcase-outline" },
+  { id: "adventurous",   label: "Adventurous",   icon: "compass-outline" },
+  { id: "first-date",    label: "First Date",    icon: "people-outline" },
+  { id: "romantic",      label: "Romantic",       icon: "heart-outline" },
+  { id: "friendly",      label: "Friendly",       icon: "people-outline" },
+  { id: "group-fun",     label: "Group Fun",      icon: "people-circle-outline" },
+  { id: "picnic-dates",  label: "Picnic Dates",   icon: "basket-outline" },
+  { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
 // Budget presets
@@ -101,10 +102,10 @@ const categories = [
 
 // Travel modes matching database constraint
 const travelModes = [
-  { id: "walking", label: "Walking", icon: "walk-outline" },
-  { id: "biking", label: "Biking", icon: "bicycle-outline" },
-  { id: "transit", label: "Public Transit", icon: "bus-outline" },
-  { id: "driving", label: "Driving", icon: "car-outline" },
+  { id: "walking", label: "Walk", icon: "walk-outline" },
+  { id: "biking", label: "Bike", icon: "bicycle-outline" },
+  { id: "transit", label: "Bus", icon: "bus-outline" },
+  { id: "driving", label: "Drive", icon: "car-outline" },
 ];
 
 // Date options
@@ -129,25 +130,13 @@ type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
 // Compatibility matrix: maps intent IDs to allowed category IDs
 // null means all categories are allowed
 const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
-  "solo-adventure": null, // All categories
-  "first-dates": [
-    "nature",
-    "first_meet",
-    "drink",
-    "watch",
-    "creative_arts",
-    "picnic_park",
-  ],
-  romantic: ["first_meet", "drink", "picnic_park", "fine_dining", "wellness", "nature"],
-  friendly: null, // All categories
-  "group-fun": [
-    "play",
-    "creative_arts",
-    "casual_eats",
-    "watch",
-    "drink",
-  ],
-  business: ["first_meet", "drink", "fine_dining"],
+  "adventurous":   null, // All categories allowed
+  "first-date":    ["fine_dining", "watch", "nature", "first_meet", "creative_arts", "play"],
+  "romantic":      ["fine_dining", "creative_arts", "wellness"],
+  "friendly":      null, // All categories allowed
+  "group-fun":     ["play", "watch", "casual_eats"],
+  "picnic-dates":  ["groceries_flowers", "picnic_park"],
+  "take-a-stroll": ["casual_eats", "nature"],
 };
 
 // Get allowed category IDs based on selected intents
@@ -338,8 +327,8 @@ export default function PreferencesSheet({
       // Intents and categories are both stored in the `categories` column —
       // split them the same way solo mode does.
       const intentIds = new Set([
-        "solo-adventure", "first-dates", "romantic",
-        "friendly", "group-fun", "business",
+        "adventurous", "first-date", "romantic",
+        "friendly", "group-fun", "picnic-dates", "take-a-stroll",
       ]);
       if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
         const loadedIntents: string[] = [];
@@ -392,12 +381,12 @@ export default function PreferencesSheet({
 
       setInitialPreferences({
         selectedIntents: (loadedPreferences.categories || []).filter((item: string) =>
-          ["solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business"].includes(item)
+          ["adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"].includes(item)
         ),
         budgetMin: (loadedPreferences as any).budget_min || 0,
         budgetMax: (loadedPreferences as any).budget_max || 200,
         selectedCategories: (loadedPreferences.categories || []).filter((item: string) =>
-          !["solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business"].includes(item)
+          !["adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"].includes(item)
         ),
         selectedDateOption: "Now",
         selectedTimeSlot: (loadedPreferences as any).time_of_day || null,
@@ -416,12 +405,13 @@ export default function PreferencesSheet({
       // Load from solo preferences
       if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
         const intentIds = new Set([
-          "solo-adventure",
-          "first-dates",
+          "adventurous",
+          "first-date",
           "romantic",
           "friendly",
           "group-fun",
-          "business",
+          "picnic-dates",
+          "take-a-stroll",
         ]);
 
         const loadedIntents: string[] = [];
@@ -500,12 +490,13 @@ export default function PreferencesSheet({
       setInitialPreferences({
         selectedIntents: (loadedPreferences.categories || []).filter((item: string) =>
           [
-            "solo-adventure",
-            "first-dates",
+            "adventurous",
+            "first-date",
             "romantic",
             "friendly",
             "group-fun",
-            "business",
+            "picnic-dates",
+            "take-a-stroll",
           ].includes(item)
         ),
         budgetMin: loadedPreferences.budget_min || 0,
@@ -513,12 +504,13 @@ export default function PreferencesSheet({
         selectedCategories: (loadedPreferences.categories || []).filter(
           (item: string) =>
             ![
-              "solo-adventure",
-              "first-dates",
+              "adventurous",
+              "first-date",
               "romantic",
               "friendly",
               "group-fun",
-              "business",
+              "picnic-dates",
+              "take-a-stroll",
             ].includes(item)
         ),
         selectedDateOption: loadedPreferences.date_option
@@ -1460,43 +1452,32 @@ const styles = StyleSheet.create({
   dateOptionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: 8,
     marginBottom: 12,
   },
-  dateOptionCard: {
-    width: "47.5%",
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    backgroundColor: "#f9fafb",
-    borderColor: "#e5e7eb",
-    minHeight: 60,
-    justifyContent: "center",
-  },
-  dateOptionCardSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-    borderWidth: 2,
-  },
-  dateOptionContent: {
+  dateOptionPill: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
-  dateOptionLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
+  dateOptionPillSelected: {
+    backgroundColor: "#fff7ed",
+    borderColor: "#eb7825",
   },
-  dateOptionLabelSelected: {
-    color: "#ffffff",
-  },
-  dateOptionDescription: {
+  dateOptionPillLabel: {
     fontSize: 11,
-    color: "#6b7280",
+    fontWeight: "500",
+    color: "#374151",
   },
-  dateOptionDescriptionSelected: {
-    color: "#ffffff",
-    opacity: 0.9,
+  dateOptionPillLabelSelected: {
+    color: "#eb7825",
+    fontWeight: "600",
   },
   weekendInfoCard: {
     flexDirection: "row",
@@ -1632,33 +1613,32 @@ const styles = StyleSheet.create({
   },
   travelModesGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
+    gap: 6,
   },
   travelModeCard: {
-    width: "47%",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    backgroundColor: "white",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "white",
   },
   travelModeCardSelected: {
-    backgroundColor: "#eb7825",
+    backgroundColor: "#fff7ed",
     borderColor: "#eb7825",
   },
   travelModeLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#111827",
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#374151",
   },
   travelModeLabelSelected: {
-    color: "#ffffff",
+    color: "#eb7825",
+    fontWeight: "600",
   },
   constraintTypeContainer: {
     flexDirection: "row",

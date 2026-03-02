@@ -188,14 +188,14 @@ const IntentSelectionStep = ({
 
   const intentOptions = [
     {
-      id: "solo-adventure",
+      id: "adventurous",
       title: "Adventurous",
       icon: "compass-outline",
       description: "Explore your city — great for adventurous souls",
       experienceType: "Adventurous",
     },
     {
-      id: "first-dates",
+      id: "first-date",
       title: "Plan First Dates",
       icon: "heart-outline",
       description: "Great first impression experiences",
@@ -223,11 +223,18 @@ const IntentSelectionStep = ({
       experienceType: "Group fun",
     },
     {
-      id: "business",
-      title: "Business/Work Meetings",
-      icon: "briefcase-outline",
-      description: "Professional meeting spaces",
-      experienceType: "Business",
+      id: "picnic-dates",
+      title: "Picnic Dates",
+      icon: "basket-outline",
+      description: "Outdoor picnic experiences and parks",
+      experienceType: "Picnic Dates",
+    },
+    {
+      id: "take-a-stroll",
+      title: "Take a Stroll",
+      icon: "walk-outline",
+      description: "Scenic walks and leisurely strolls",
+      experienceType: "Take a Stroll",
     },
   ];
 
@@ -235,17 +242,19 @@ const IntentSelectionStep = ({
   const getIconName = (option: (typeof intentOptions)[0]) => {
     // Use the icon specified in the option, or map to appropriate Ionicons
     switch (option.id) {
-      case "solo-adventure":
+      case "adventurous":
         return "globe-outline";
-      case "first-dates":
+      case "first-date":
       case "romantic":
         return "heart-outline";
       case "friendly":
         return "people-outline"; // Two people concept
       case "group-fun":
         return "people-outline"; // Three+ people concept
-      case "business":
-        return "briefcase-outline";
+      case "picnic-dates":
+        return "basket-outline";
+      case "take-a-stroll":
+        return "walk-outline";
       default:
         return option.icon;
     }

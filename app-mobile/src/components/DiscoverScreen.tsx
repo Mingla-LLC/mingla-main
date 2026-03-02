@@ -921,7 +921,7 @@ export default function DiscoverScreen({
         if (prefs?.categories && prefs.categories.length > 0) {
           // Filter out intent IDs – keep only actual category names/IDs
           const intentIds = new Set([
-            "solo-adventure", "first-dates", "romantic", "friendly", "group-fun", "business",
+            "adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll",
           ]);
           const categories = prefs.categories.filter((c: string) => !intentIds.has(c));
           setUserSelectedCategories(categories.length > 0 ? categories : null);
