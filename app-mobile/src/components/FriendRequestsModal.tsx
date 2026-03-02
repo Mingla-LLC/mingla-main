@@ -175,11 +175,12 @@ export default function FriendRequestsModal({
               <ActivityIndicator size="large" color="#eb7825" />
             </View>
           ) : (
-            <ScrollView
-              style={styles.content}
-              contentContainerStyle={styles.contentContainer}
-              showsVerticalScrollIndicator={false}
-            >
+            <>
+              <ScrollView
+                style={styles.content}
+                contentContainerStyle={styles.contentContainer}
+                showsVerticalScrollIndicator={false}
+              >
                 {/* Received Requests */}
                 {incomingRequests.length === 0 ? (
                   <View style={styles.emptyState}>
@@ -338,8 +339,16 @@ export default function FriendRequestsModal({
                       })}
                     </View>
                   )}
-            </ScrollView>
-            )}
+              </ScrollView>
+
+              {/* Footer */}
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>
+                  Accept or decline friend requests to manage your connections
+                </Text>
+              </View>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -592,5 +601,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     minHeight: 200,
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+    alignItems: "center",
+  },
+  footerText: {
+    fontSize: 13,
+    color: "#9ca3af",
+    textAlign: "center",
   },
 });
