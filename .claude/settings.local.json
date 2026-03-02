@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(supabase functions deploy discover-cards --project-ref gqnoajqerqhnvulmnyvv)"
+    ]
+  }
+}

@@ -185,6 +185,8 @@ export async function upsertPlaceToPool(
     heightPx: p.heightPx,
   }));
 
+  const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours || place.openingHours);
+
   const row = {
     google_place_id: googlePlaceId,
     name: place.displayName?.text || place.name || 'Unknown Place',
@@ -198,7 +200,7 @@ export async function upsertPlaceToPool(
     price_level: typeof place.priceLevel === 'string' ? place.priceLevel : null,
     price_min: priceRange.min,
     price_max: priceRange.max,
-    opening_hours: parseGoogleOpeningHours(place.regularOpeningHours || place.openingHours).hours,
+    opening_hours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
     photos: photos,
     website: place.websiteUri || place.website || null,
     raw_google_data: place,
@@ -377,7 +379,7 @@ function buildSingleCardFromPlace(
     .map((p: any) => p.name ? buildPhotoUrl(p.name, apiKey) : null)
     .filter((img: string | null) => img !== null);
 
-  const { hours: parsedHours, isOpenNow } = parseGoogleOpeningHours(place.opening_hours);
+  const { hours: parsedHours, isOpenNow } = resolveOpeningHours(place.opening_hours);
 
   let distanceKm = 0;
   let travelTimeMin = 0;
@@ -453,7 +455,7 @@ function parseGoogleOpeningHours(
   roh: any
 ): { hours: Record<string, string> | null; isOpenNow: boolean | null } {
   if (!roh) return { hours: null, isOpenNow: null };
-  if (!roh.weekdayDescriptions && !roh.openNow) return { hours: null, isOpenNow: null };
+  if (!roh.weekdayDescriptions && roh.openNow == null) return { hours: null, isOpenNow: null };
 
   const hours: Record<string, string> = {};
   for (const desc of roh.weekdayDescriptions ?? []) {
@@ -465,6 +467,31 @@ function parseGoogleOpeningHours(
     hours: Object.keys(hours).length > 0 ? hours : null,
     isOpenNow: roh.openNow ?? null,
   };
+}
+
+/**
+ * Resolves opening hours from either raw Google format or already-parsed pool format.
+ * Pool storage uses Record<string, string> with optional _isOpenNow sentinel.
+ * Raw Google uses { weekdayDescriptions: string[], openNow?: boolean }.
+ */
+function resolveOpeningHours(openingHours: any): { hours: Record<string, string> | null; isOpenNow: boolean | null } {
+  if (!openingHours) return { hours: null, isOpenNow: null };
+
+  // Raw Google format — has weekdayDescriptions key
+  if (openingHours.weekdayDescriptions) {
+    return parseGoogleOpeningHours(openingHours);
+  }
+
+  // Already parsed Record<string, string> from pool storage
+  if (typeof openingHours === 'object') {
+    const { _isOpenNow, ...hourEntries } = openingHours;
+    return {
+      hours: Object.keys(hourEntries).length > 0 ? hourEntries : null,
+      isOpenNow: _isOpenNow ?? null,
+    };
+  }
+
+  return { hours: null, isOpenNow: null };
 }
 
 // ── Step 8: Convert a card_pool row to the API response format ──────────────
@@ -498,13 +525,13 @@ function poolCardToApiCard(
       lng: card.lng,
       stops: card.stops || [],
       experienceType: card.experience_type || '',
-      openingHours: parseGoogleOpeningHours(card.opening_hours).hours,
+      openingHours: resolveOpeningHours(card.opening_hours).hours,
       _poolCardId: card.id,
     };
   }
 
   // Single card — output must match discover-cards API format
-  const { hours: parsedHours, isOpenNow } = parseGoogleOpeningHours(card.opening_hours);
+  const { hours: parsedHours, isOpenNow } = resolveOpeningHours(card.opening_hours);
 
   // Compute real distance if user location is available
   let distanceKm = 0;
@@ -676,7 +703,10 @@ export async function serveCardsFromPipeline(
         const rating = place.rating || 0;
         const reviewCount = place.userRatingCount || 0;
 
-        // Insert to card_pool
+        // Parse opening hours once from raw Google format (used for both DB storage and API card)
+        const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours);
+
+        // Insert to card_pool (store _isOpenNow alongside hours for pool re-serve)
         const cardPoolId = await insertCardToPool(supabaseAdmin, {
           placePoolId: placePoolId || undefined,
           googlePlaceId,
@@ -695,7 +725,7 @@ export async function serveCardsFromPipeline(
           reviewCount,
           priceMin: priceRange.min,
           priceMax: priceRange.max,
-          openingHours: parseGoogleOpeningHours(place.regularOpeningHours).hours,
+          openingHours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
         });
 
         // Compute real distance and travel time
@@ -705,9 +735,6 @@ export async function serveCardsFromPipeline(
           ? Math.round(haversine(lat, lng, placeLat, placeLng) * 10) / 10
           : 0;
         const travelMin = estimateTravelMin(distKm, options?.travelMode);
-
-        // Parse opening hours from raw Google format
-        const { hours: parsedHours, isOpenNow: placeIsOpenNow } = parseGoogleOpeningHours(place.regularOpeningHours);
 
         // Build API-format card
         gapCards.push({
@@ -724,8 +751,8 @@ export async function serveCardsFromPipeline(
           priceMax: priceRange.max,
           distanceKm: distKm,
           travelTimeMin: travelMin,
-          isOpenNow: placeIsOpenNow,
-          openingHours: parsedHours,
+          isOpenNow: parsedOH.isOpenNow,
+          openingHours: parsedOH.hours,
           description: `A great ${category} spot to explore.`,
           highlights: ['Highly Rated', 'Popular Choice'],
           address: place.formattedAddress || '',

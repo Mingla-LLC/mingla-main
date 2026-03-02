@@ -1786,11 +1786,12 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-02)
 
-- **Pool Card Format Fix (CRIT-001/002):** Pool-served cards now output API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`) instead of hardcoded strings. Real distance computed via haversine; real travel time via mode-aware estimate.
-- **Opening Hours Parsing:** Raw Google `regularOpeningHours` objects are now parsed into `Record<string, string>` at both ingestion time (`upsertPlaceToPool`) and serving time (`poolCardToApiCard`, gap-fill builder). Cards display "Monday: 9:00 AM – 10:00 PM" instead of "[object Object]".
-- **Per-Category Round-Robin (HIGH-001):** Deck cards are now grouped by category before round-robin interleaving. With Nature + Drink + Fine Dining selected, the deck alternates: N1, D1, FD1, N2, D2, FD2... instead of 5 Fine Dining cards first.
-- **15-Second Timeout Fix (HIGH-002):** Replaced dead `AbortController` code with `Promise.race` pattern in both `fetchDeck` and `warmDeckPool`. The Supabase JS `invoke()` method does not accept an AbortSignal — `Promise.race` enforces the 15s timeout correctly.
-- **Gap-Fill Cards Fixed (HIGH-003):** Fresh Google Places cards inserted during gap-fill now use the same API-compatible format as pool-served cards, with real distance/travel time and parsed opening hours.
+- **Pool Card Format Fix:** Pool-served cards output API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`) with real distance (haversine) and mode-aware travel time.
+- **Opening Hours Dual-Format Detection:** A new `resolveOpeningHours()` function detects whether `card_pool.opening_hours` contains raw Google data (with `weekdayDescriptions`) or already-parsed `Record<string, string>`, preventing double-parse data loss on pool re-serve. `_isOpenNow` sentinel stored alongside parsed hours for persistence.
+- **Travel Mode Pass-Through:** `discover-cards` now passes `travelMode` to `serveCardsFromPipeline()` as the 3rd argument, ensuring pool-served cards use the user's selected travel mode instead of defaulting to walking.
+- **Per-Category Round-Robin:** Deck cards grouped by category before round-robin interleaving for proper alternation.
+- **15-Second Timeout Fix:** `DOMException` replaced with plain `Error` + `err.name = 'AbortError'` for Hermes engine compatibility in both `fetchDeck` and `warmDeckPool`.
+- **`_isOpenNow` Third Ingestion Path:** `discover-cards/storeResultsInPoolBatched` now stores the `_isOpenNow` sentinel into `card_pool.opening_hours` JSONB, completing the fix across all 3 ingestion paths so pool-served cards retain open/closed status.
 
 ---
 
