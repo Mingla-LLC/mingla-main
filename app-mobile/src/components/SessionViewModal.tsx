@@ -30,6 +30,7 @@ import { SwipeableSessionCards } from "./board/SwipeableSessionCards";
 import { BoardDiscussionTab } from "./board/BoardDiscussionTab";
 import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { ManageBoardModal } from "./board/ManageBoardModal";
+import { InviteParticipantsModal } from "./board/InviteParticipantsModal";
 import { CardDiscussionModal } from "./board/CardDiscussionModal";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
@@ -101,6 +102,7 @@ export default function SessionViewModal({
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [showManageMembersModal, setShowManageMembersModal] = useState(false);
+  const [showInviteParticipantsModal, setShowInviteParticipantsModal] = useState(false);
 
   // Card discussion modal state
   const [selectedCardForDiscussion, setSelectedCardForDiscussion] = useState<{
@@ -963,6 +965,7 @@ export default function SessionViewModal({
           notificationsEnabled={notificationsEnabled}
           onToggleNotifications={() => setNotificationsEnabled(!notificationsEnabled)}
           onManageMembers={() => setShowManageMembersModal(true)}
+          onInviteParticipants={() => setShowInviteParticipantsModal(true)}
           onExitBoard={handleExitBoard}
           onSessionDeleted={() => {
             if (onSessionDeleted) onSessionDeleted();
@@ -984,6 +987,16 @@ export default function SessionViewModal({
           onClose={() => setShowManageMembersModal(false)}
           onExitBoard={handleExitBoard}
           onParticipantsChange={loadParticipants}
+        />
+
+        {/* Invite Participants Modal */}
+        <InviteParticipantsModal
+          visible={showInviteParticipantsModal}
+          sessionId={sessionId}
+          sessionName={sessionName || session?.name || "Board"}
+          existingParticipantIds={participants.map((p) => p.user_id)}
+          onClose={() => setShowInviteParticipantsModal(false)}
+          onInvitesSent={loadParticipants}
         />
 
         {/* Card Discussion Modal */}
