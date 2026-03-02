@@ -6,6 +6,7 @@ import { CuratedStop } from './curatedExperience';
 
 export interface ExpandedCardData {
   id: string;
+  placeId?: string;
   title: string;
   category: string;
   categoryIcon: string;

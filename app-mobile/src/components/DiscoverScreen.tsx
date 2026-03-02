@@ -31,9 +31,9 @@ import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
 import { PreferencesService } from "../services/preferencesService";
-
-// Storage key for saved people
-const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
+import { useSavedPeople, useCreatePerson, useDeletePerson, useGeneratePersonExperiences, usePersonExperiences } from "../hooks/useSavedPeople";
+import { generateInitials } from "../utils/stringUtils";
+import type { SavedPerson } from "../services/savedPeopleService";
 
 // Storage key for custom holidays
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
@@ -49,16 +49,6 @@ const DISCOVER_CACHE_MIGRATION_VERSION = "2026-02-27-cache-reset-1";
 
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
-
-// Saved Person interface
-interface SavedPerson {
-  id: string;
-  name: string;
-  initials: string;
-  birthday: string | null;
-  gender: "male" | "female" | "other" | null;
-  createdAt: string;
-}
 
 // Custom Holiday interface (user-created holidays attached to a person)
 interface CustomHoliday {
@@ -731,9 +721,22 @@ export default function DiscoverScreen({
   const [personGender, setPersonGender] = useState<"male" | "female" | "other" | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
 
-  // Saved people state
-  const [savedPeople, setSavedPeople] = useState<SavedPerson[]>([]);
+  // Saved people from Supabase
+  const { data: savedPeople = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
+  const createPersonMutation = useCreatePerson();
+  const deletePersonMutation = useDeletePerson();
+  const generateExperiencesMutation = useGeneratePersonExperiences();
   const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you"); // "for-you" or person.id
+
+  // Person description state
+  const [personDescription, setPersonDescription] = useState("");
+
+  // Person experiences for selected person
+  // TODO: Render personExperiences in a dedicated section below the person selector.
+  // The data is fetched and cached here; the rendering component is deferred to Phase 2.
+  const { data: personExperiences = [] } = usePersonExperiences(
+    selectedPersonId !== "for-you" ? selectedPersonId : undefined
+  );
 
   // Expanded holidays state (track which holiday dropdowns are open)
   const [expandedHolidayIds, setExpandedHolidayIds] = useState<Set<string>>(new Set());
@@ -1003,57 +1006,49 @@ export default function DiscoverScreen({
   const locationLat = deviceGpsLat;
   const locationLng = deviceGpsLng;
 
-  // Load saved people from AsyncStorage on mount or when user changes
+  // One-time migration: AsyncStorage saved people → Supabase
   useEffect(() => {
-    const loadSavedPeople = async () => {
-      if (!user?.id) {
-        setSavedPeople([]);
-        return;
-      }
+    const migratePeopleFromAsyncStorage = async () => {
+      if (!user?.id) return;
+      const migrationKey = `mingla_people_migrated_${user.id}`;
       try {
-        const userStorageKey = `${SAVED_PEOPLE_STORAGE_KEY}_${user.id}`;
-        const stored = await AsyncStorage.getItem(userStorageKey);
+        const alreadyMigrated = await AsyncStorage.getItem(migrationKey);
+        if (alreadyMigrated) return;
+
+        const oldStorageKey = `mingla_saved_people_${user.id}`;
+        const stored = await AsyncStorage.getItem(oldStorageKey);
         if (stored) {
-          const people = JSON.parse(stored) as SavedPerson[];
-          setSavedPeople(people);
-        } else {
-          setSavedPeople([]);
+          const oldPeople = JSON.parse(stored) as Array<{
+            id: string;
+            name: string;
+            initials: string;
+            birthday: string | null;
+            gender: "male" | "female" | "other" | null;
+            createdAt: string;
+          }>;
+          for (const person of oldPeople) {
+            try {
+              await createPersonMutation.mutateAsync({
+                user_id: user.id,
+                name: person.name,
+                initials: person.initials,
+                birthday: person.birthday ? person.birthday.split("T")[0] : null,
+                gender: person.gender,
+                description: null,
+              });
+            } catch {
+              // Skip duplicates or errors during migration
+            }
+          }
+          await AsyncStorage.removeItem(oldStorageKey);
         }
+        await AsyncStorage.setItem(migrationKey, "true");
       } catch (error) {
-        console.error("Error loading saved people:", error);
-        setSavedPeople([]);
+        console.error("[Discover] People migration error:", error);
       }
     };
-    loadSavedPeople();
+    migratePeopleFromAsyncStorage();
   }, [user?.id]);
-
-  // Generate unique ID
-  const generateUniqueId = (): string => {
-    return `person_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  };
-
-  // Generate initials from name
-  const generateInitials = (name: string): string => {
-    const words = name.trim().split(/\s+/);
-    if (words.length === 1) {
-      return words[0].substring(0, 2).toUpperCase();
-    }
-    return (words[0][0] + words[words.length - 1][0]).toUpperCase();
-  };
-
-  // Save people to AsyncStorage
-  const savePeopleToStorage = async (people: SavedPerson[]) => {
-    if (!user?.id) {
-      console.warn("Cannot save people: no user ID available");
-      return;
-    }
-    try {
-      const userStorageKey = `${SAVED_PEOPLE_STORAGE_KEY}_${user.id}`;
-      await AsyncStorage.setItem(userStorageKey, JSON.stringify(people));
-    } catch (error) {
-      console.error("Error saving people to storage:", error);
-    }
-  };
 
   // Save custom holidays to AsyncStorage
   const saveCustomHolidaysToStorage = async (holidays: CustomHoliday[]) => {
@@ -1479,7 +1474,7 @@ export default function DiscoverScreen({
 
         // Use new discoverExperiences method that calls discover-experiences edge function
         // Returns category cards (filtered by user prefs) + a featured card
-        const { cards: generatedCards, featuredCard } = await ExperienceGenerationService.discoverExperiences(
+        const { cards: generatedCards, heroCards: heroCardsRaw, featuredCard } = await ExperienceGenerationService.discoverExperiences(
           { lat: locationLat, lng: locationLng },
           10000, // 10km radius
           userSelectedCategories || undefined // pass user-selected categories (or undefined for all)
@@ -1541,67 +1536,28 @@ export default function DiscoverScreen({
           strollData: exp.strollData,
         }));
 
-        // Transform featured card if present AND it's different from all grid cards
-        let transformedFeatured: FeaturedCardData | null = null;
-        const gridCardIds = new Set(generatedCards.map((exp: any) => exp.id));
-        
-        if (featuredCard && !gridCardIds.has(featuredCard.id)) {
-          // Featured card is unique - use it
-          transformedFeatured = {
-            id: featuredCard.id,
-            title: featuredCard.title,
-            experienceType: featuredCard.category,
-            description: featuredCard.description,
-            image: featuredCard.heroImage,
-            images: featuredCard.images || [featuredCard.heroImage],
-            priceRange: featuredCard.priceRange,
-            rating: featuredCard.rating,
-            reviewCount: featuredCard.reviewCount,
-            address: featuredCard.address,
-            travelTime: featuredCard.travelTime,
-            distance: featuredCard.distance,
-            highlights: featuredCard.highlights || [],
-            tags: featuredCard.highlights || [],
-            location: featuredCard.lat && featuredCard.lng 
-              ? { lat: featuredCard.lat, lng: featuredCard.lng } 
-              : undefined,
-            openingHours: featuredCard.openingHours || null,
-          };
-          console.log("Set unique featured card:", transformedFeatured.title);
-        } else {
-          // Featured card is duplicate or missing - pick best from grid cards (keep all 10 in grid)
-          console.log("Featured card duplicate/missing, selecting best from grid cards...");
-          const sortedByRating = [...generatedCards].sort((a: any, b: any) => {
-            const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
-            const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
-            return bScore - aScore;
-          });
-          const bestCard = sortedByRating[0];
-          if (bestCard) {
-            // Create featured with unique ID suffix (keeping all 10 in grid)
-            transformedFeatured = {
-              id: `${bestCard.id}_featured`,
-              title: bestCard.title,
-              experienceType: bestCard.category,
-              description: bestCard.description,
-              image: bestCard.heroImage,
-              images: bestCard.images || [bestCard.heroImage],
-              priceRange: bestCard.priceRange,
-              rating: bestCard.rating,
-              reviewCount: bestCard.reviewCount,
-              address: bestCard.address,
-              travelTime: bestCard.travelTime,
-              distance: bestCard.distance,
-              highlights: bestCard.highlights || [],
-              tags: bestCard.highlights || [],
-              location: bestCard.lat && bestCard.lng 
-                ? { lat: bestCard.lat, lng: bestCard.lng } 
-                : undefined,
-              openingHours: bestCard.openingHours || null,
-            };
-            console.log("Featured card selected from grid:", transformedFeatured.title);
-          }
-        }
+        // Transform hero cards (2 heroes: Fine Dining + Play)
+        const transformedHeroes: FeaturedCardData[] = (heroCardsRaw || []).map((hc: any) => ({
+          id: hc.id,
+          title: hc.title,
+          experienceType: hc.category,
+          description: hc.description,
+          image: hc.heroImage,
+          images: hc.images || [hc.heroImage],
+          priceRange: hc.priceRange,
+          rating: hc.rating,
+          reviewCount: hc.reviewCount,
+          address: hc.address,
+          travelTime: hc.travelTime,
+          distance: hc.distance,
+          highlights: hc.highlights || [],
+          tags: hc.highlights || [],
+          location: hc.lat && hc.lng ? { lat: hc.lat, lng: hc.lng } : undefined,
+          openingHours: hc.openingHours || null,
+        }));
+
+        // Backward compat: featuredCard = first hero
+        const transformedFeatured = transformedHeroes[0] || null;
         // Transform ALL 10 cards to grid cards (no removal)
         const gridCards: GridCardData[] = generatedCards.map((exp: any) => ({
           id: exp.id,
@@ -1623,9 +1579,10 @@ export default function DiscoverScreen({
         }));
 
         const finalFeatured = transformedFeatured || (gridCards[0] ? featuredFromGridCard(gridCards[0]) : null);
+        setSelectedHeroCards(transformedHeroes);
         setSelectedFeaturedCard(finalFeatured);
         setSelectedGridCards(gridCards);
-        console.log("Set grid cards:", gridCards.length, "cards");
+        console.log("Set hero cards:", transformedHeroes.length, "grid cards:", gridCards.length);
 
         prefetchDiscoverImages(finalFeatured, gridCards);
 
@@ -1699,6 +1656,7 @@ export default function DiscoverScreen({
   });
 
   // State for selected cards (to prevent re-randomization on every render)
+  const [selectedHeroCards, setSelectedHeroCards] = useState<FeaturedCardData[]>([]);
   const [selectedFeaturedCard, setSelectedFeaturedCard] = useState<FeaturedCardData | null>(null);
   const [selectedGridCards, setSelectedGridCards] = useState<GridCardData[]>([]);
   const previousRecommendationsLengthRef = useRef<number>(0);
@@ -2330,36 +2288,79 @@ export default function DiscoverScreen({
     setPersonBirthday(null);
     setShowBirthdayPicker(false);
     setPersonGender(null);
+    setPersonDescription("");
     setNameError(null);
   };
 
+  // Build occasions for experience generation
+  const buildOccasionsForPerson = (person: SavedPerson): Array<{ name: string; date: string }> => {
+    const occasions: Array<{ name: string; date: string }> = [];
+    const now = new Date();
+
+    // Birthday (if set)
+    if (person.birthday) {
+      const bday = new Date(person.birthday);
+      const thisYearBday = new Date(now.getFullYear(), bday.getMonth(), bday.getDate());
+      if (thisYearBday < now) {
+        thisYearBday.setFullYear(thisYearBday.getFullYear() + 1);
+      }
+      occasions.push({ name: "birthday", date: thisYearBday.toISOString().split("T")[0] });
+    }
+
+    // Upcoming calendar holidays (next 6 months, not archived)
+    if (calendarHolidays) {
+      const sixMonthsDays = 180;
+      const archivedKeys = new Set(archivedHolidayKeysByPerson[person.id] || []);
+      for (const holiday of calendarHolidays) {
+        if (holiday.daysAway >= 0 && holiday.daysAway <= sixMonthsDays) {
+          const holidayKey = `${holiday.name}_${holiday.date instanceof Date ? holiday.date.toISOString().split("T")[0] : holiday.date}`;
+          if (!archivedKeys.has(holidayKey)) {
+            const dateStr = holiday.date instanceof Date
+              ? holiday.date.toISOString().split("T")[0]
+              : new Date(holiday.date).toISOString().split("T")[0];
+            occasions.push({ name: holiday.name, date: dateStr });
+          }
+        }
+      }
+    }
+
+    return occasions.slice(0, 10); // Cap at 10 occasions to limit API calls
+  };
+
   const handleAddPerson = async () => {
-    // Validate name is required
     const trimmedName = personName.trim();
     if (!trimmedName) {
       setNameError("Name is required");
       return;
     }
+    if (!user?.id) return;
 
-    // Create new person
-    const newPerson: SavedPerson = {
-      id: generateUniqueId(),
-      name: trimmedName,
-      initials: generateInitials(trimmedName),
-      birthday: personBirthday ? personBirthday.toISOString() : null,
-      gender: personGender,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      // Create person in Supabase
+      const newPerson = await createPersonMutation.mutateAsync({
+        user_id: user.id,
+        name: trimmedName,
+        initials: generateInitials(trimmedName),
+        birthday: personBirthday ? personBirthday.toISOString().split("T")[0] : null,
+        gender: personGender,
+        description: personDescription.trim() || null,
+      });
 
-    // Add to saved people
-    const updatedPeople = [...savedPeople, newPerson];
-    setSavedPeople(updatedPeople);
+      // If description provided and location available, generate experiences in background
+      if (personDescription.trim().length >= 10 && locationLat && locationLng) {
+        const occasions = buildOccasionsForPerson(newPerson);
+        generateExperiencesMutation.mutate({
+          personId: newPerson.id,
+          description: personDescription.trim(),
+          location: { lat: locationLat, lng: locationLng },
+          occasions,
+        });
+      }
 
-    // Save to AsyncStorage
-    await savePeopleToStorage(updatedPeople);
-
-    // Close modal and reset form
-    handleCloseAddPersonModal();
+      handleCloseAddPersonModal();
+    } catch (error) {
+      setNameError("Failed to save. Please try again.");
+    }
   };
 
   // Handle person pill selection ("for-you" or person.id)
@@ -2374,15 +2375,17 @@ export default function DiscoverScreen({
 
   // Handle removing a person
   const handleRemovePerson = async (personId: string) => {
-    const updatedPeople = savedPeople.filter((p) => p.id !== personId);
-    setSavedPeople(updatedPeople);
-    await savePeopleToStorage(updatedPeople);
-    
+    try {
+      await deletePersonMutation.mutateAsync(personId);
+    } catch (error) {
+      console.error("[Discover] Failed to delete person:", error);
+    }
+
     // Also remove custom holidays associated with this person
     const updatedHolidays = customHolidays.filter((h) => h.personId !== personId);
     setCustomHolidays(updatedHolidays);
     await saveCustomHolidaysToStorage(updatedHolidays);
-    
+
     if (selectedPersonId === personId) {
       setSelectedPersonId("for-you");
     }
@@ -3331,25 +3334,45 @@ export default function DiscoverScreen({
                     </View>
                   )}
 
-                  {/* Content - Featured Card and Grid */}
-                  {(featuredCard || gridCards.length > 0) && (
+                  {/* Content - Hero Cards and Grid */}
+                  {(selectedHeroCards.length > 0 || featuredCard || gridCards.length > 0) && (
                     <>
-                      {/* Featured Card */}
-                      {featuredCard && (
+                      {/* Hero Cards — 2 full-width, stacked vertically */}
+                      {selectedHeroCards.length > 0 ? (
+                        <View style={styles.heroCardsContainer}>
+                          {selectedHeroCards.map((heroCard, index) => (
+                            <Animated.View
+                              key={heroCard.id}
+                              style={{
+                                opacity: featuredCardOpacity,
+                                transform: [{ translateY: featuredCardSlide }],
+                                marginBottom: index < selectedHeroCards.length - 1 ? 12 : 0,
+                              }}
+                            >
+                              <FeaturedCard
+                                card={heroCard}
+                                currency={accountPreferences?.currency}
+                                measurementSystem={accountPreferences?.measurementSystem}
+                                onPress={() => handleCardPress(heroCard)}
+                              />
+                            </Animated.View>
+                          ))}
+                        </View>
+                      ) : featuredCard ? (
                         <Animated.View
                           style={{
                             opacity: featuredCardOpacity,
                             transform: [{ translateY: featuredCardSlide }],
                           }}
                         >
-                          <FeaturedCard 
-                            card={featuredCard} 
+                          <FeaturedCard
+                            card={featuredCard}
                             currency={accountPreferences?.currency}
                             measurementSystem={accountPreferences?.measurementSystem}
                             onPress={() => handleCardPress(featuredCard)}
                           />
                         </Animated.View>
-                      )}
+                      ) : null}
 
                       {/* Grid Cards Section */}
                       <View style={styles.gridCardsContainer}>
@@ -3644,6 +3667,26 @@ export default function DiscoverScreen({
               </View>
             </View>
 
+            {/* Description field */}
+            <View style={styles.addPersonFieldContainer}>
+              <Text style={styles.addPersonFieldLabel}>Describe them</Text>
+              <Text style={styles.addPersonHint}>
+                What do they enjoy? What's their vibe? The more detail, the better the recommendations.
+              </Text>
+              <TextInput
+                style={styles.personDescriptionInput}
+                value={personDescription}
+                onChangeText={setPersonDescription}
+                placeholder="They love outdoor dining, jazz music, wine tasting, and cozy bookshops..."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                maxLength={500}
+              />
+              <Text style={styles.charCount}>{personDescription.length}/500</Text>
+            </View>
+
             {/* Action Buttons */}
             <View style={styles.addPersonButtonsContainer}>
               <TouchableOpacity
@@ -3654,11 +3697,14 @@ export default function DiscoverScreen({
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.addPersonButton}
+                style={[styles.addPersonButton, createPersonMutation.isPending && { opacity: 0.6 }]}
                 onPress={handleAddPerson}
                 activeOpacity={0.7}
+                disabled={createPersonMutation.isPending}
               >
-                <Text style={styles.addPersonButtonText}>Add Person</Text>
+                <Text style={styles.addPersonButtonText}>
+                  {createPersonMutation.isPending ? "Saving..." : "Add Person"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -4103,6 +4149,10 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#f5f5f5",
+  },
+  heroCardsContainer: {
+    marginBottom: 16,
+    gap: 12,
   },
   container: {
     flex: 1,
@@ -4916,6 +4966,27 @@ const styles = StyleSheet.create({
   },
   genderOptionTextSelected: {
     color: "white",
+  },
+  personDescriptionInput: {
+    backgroundColor: "#1F2937",
+    borderRadius: 12,
+    padding: 14,
+    color: "#FFFFFF",
+    fontSize: 14,
+    minHeight: 100,
+    borderWidth: 1,
+    borderColor: "#374151",
+  },
+  addPersonHint: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginBottom: 8,
+  },
+  charCount: {
+    fontSize: 11,
+    color: "#6B7280",
+    textAlign: "right" as const,
+    marginTop: 4,
   },
   addPersonButtonsContainer: {
     flexDirection: "row",

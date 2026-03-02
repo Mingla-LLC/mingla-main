@@ -294,6 +294,7 @@ serve(async (req) => {
               return new Response(
                 JSON.stringify({
                   cards: matchingRow.cards,
+                  heroCards: matchingRow.generated_location?.heroCards || [],
                   featuredCard: matchingRow.featured_card,
                   meta: {
                     totalResults: matchingRow.cards.length,
@@ -404,6 +405,8 @@ serve(async (req) => {
     const allCategoryCandidates = await Promise.all(categoryPromises);
 
     // Select one unique place per category, avoiding duplicates
+    // Hero categories are selected separately — exclude from grid
+    const heroCategories = ["Fine Dining", "Play"];
     const usedPlaceIds = new Set<string>();
     const places: DiscoverPlace[] = [];
     const successfulCategories: string[] = [];
@@ -411,6 +414,9 @@ serve(async (req) => {
 
     for (let i = 0; i < categoriesToFetch.length; i++) {
       const category = categoriesToFetch[i];
+
+      // Skip hero categories — they'll be selected as hero cards below
+      if (heroCategories.includes(category)) continue;
       const candidates = allCategoryCandidates[i];
 
       if (!candidates || candidates.length === 0) {
@@ -444,8 +450,7 @@ serve(async (req) => {
     console.log(`Failed categories (${failedCategories.length}):`, failedCategories);
     console.log(`Found ${places.length} unique places across ${categoriesToFetch.length} categories`);
 
-    // Select an 11th unique card as the featured card - MUST be a dining experience
-    // Collect all unused candidates across all categories
+    // Select 2 hero cards: Fine Dining and Play
     const allUnusedCandidates: DiscoverPlace[] = [];
     for (const candidates of allCategoryCandidates) {
       if (candidates && candidates.length > 0) {
@@ -454,49 +459,41 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Total unused candidates for featured card: ${allUnusedCandidates.length}`);
+    console.log(`Total unused candidates for hero cards: ${allUnusedCandidates.length}`);
 
-    // Filter to only fine dining experiences (ONLY "Fine Dining" category, not "Casual Eats")
-    const diningCategories = ["Fine Dining"];
-    const unusedDiningCandidates = allUnusedCandidates.filter(
-      (c) => c.category === "Fine Dining"
-    );
+    const heroCards: DiscoverPlace[] = [];
 
-    console.log(`Dining Experience candidates for featured card: ${unusedDiningCandidates.length}`);
+    for (const heroCategory of heroCategories) {
+      const heroCandidates = allUnusedCandidates.filter(
+        (c) => c.category === heroCategory && !usedPlaceIds.has(c.placeId)
+      );
 
-    // Sort dining candidates by rating/popularity score and pick the best
-    const sortedDining = unusedDiningCandidates.sort((a, b) => {
-      const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
-      const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
-      return bScore - aScore;
-    });
-
-    // If no dining candidates available, fall back to any unused candidate
-    let featuredPlace = sortedDining[0] || null;
-    
-    if (!featuredPlace) {
-      console.log(`No dining candidates available, falling back to any category`);
-      const sortedUnused = allUnusedCandidates.sort((a, b) => {
-        const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
-        const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
-        return bScore - aScore;
-      });
-      featuredPlace = sortedUnused[0] || null;
+      if (heroCandidates.length > 0) {
+        const sorted = heroCandidates.sort((a, b) => {
+          const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
+          const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
+          return bScore - aScore;
+        });
+        const selected = sorted[0];
+        usedPlaceIds.add(selected.placeId);
+        heroCards.push(selected);
+        console.log(`✓ Selected hero card for ${heroCategory}: "${selected.name}" (rating: ${selected.rating})`);
+      } else {
+        console.log(`✗ No candidates available for hero category: ${heroCategory}`);
+      }
     }
 
-    if (featuredPlace) {
-      // Add featured to used set to ensure it's tracked
-      usedPlaceIds.add(featuredPlace.placeId);
-      const isDiningExperience = featuredPlace.category === "Fine Dining";
-      console.log(`✓ Selected featured card: "${featuredPlace.name}" (category: ${featuredPlace.category}, ${isDiningExperience ? 'DINING EXPERIENCE ✓' : 'FALLBACK - not Dining Experience'}, id: ${featuredPlace.id}, placeId: ${featuredPlace.placeId}) from ${allUnusedCandidates.length} unused candidates`);
-    } else {
-      console.log(`✗ No unused candidates available for featured card`);
-    }
+    // For backward compatibility
+    const featuredPlace = heroCards[0] || null;
 
-    // Verify featured is different from all grid cards
+    console.log(`Selected ${heroCards.length} hero cards`);
+
+    // Verify heroes are different from all grid cards
     const gridPlaceIds = places.map(p => p.placeId);
-    if (featuredPlace && gridPlaceIds.includes(featuredPlace.placeId)) {
-      console.error(`BUG: Featured card placeId ${featuredPlace.placeId} is in grid cards!`);
+    for (const hero of heroCards) {
+      if (gridPlaceIds.includes(hero.placeId)) {
+        console.error(`BUG: Hero card placeId ${hero.placeId} is in grid cards!`);
+      }
     }
 
     if (places.length === 0) {
@@ -515,22 +512,25 @@ serve(async (req) => {
       );
     }
 
-    // Calculate travel times for all places (including featured)
-    const allPlacesToProcess = featuredPlace ? [...places, featuredPlace] : places;
+    // Calculate travel times for all places (including hero cards)
+    const allPlacesToProcess = [...places, ...heroCards];
     const placesWithTravel = await annotateWithTravel(allPlacesToProcess, location);
 
     // Enrich with AI descriptions
     const enrichedPlaces = await enrichWithAI(placesWithTravel);
 
-    // Separate the featured card from the grid cards
-    const gridPlaces = featuredPlace ? enrichedPlaces.slice(0, -1) : enrichedPlaces;
-    const enrichedFeaturedPlace = featuredPlace ? enrichedPlaces[enrichedPlaces.length - 1] : null;
+    // Separate grid cards from hero cards
+    const gridPlaces = enrichedPlaces.slice(0, places.length);
+    const enrichedHeroPlaces = enrichedPlaces.slice(places.length);
 
-    // Convert to card format - these are the 10 small cards (one per category)
+    // Convert to card format - grid cards (one per non-hero category)
     const cards = gridPlaces.map((place) => convertToCard(place));
 
-    // Convert featured place to card format (separate from grid cards)
-    const featuredCard = enrichedFeaturedPlace ? convertToCard(enrichedFeaturedPlace) : null;
+    // Convert hero places to card format
+    const heroCardResults = enrichedHeroPlaces.map((place) => convertToCard(place));
+
+    // Backward compat: featuredCard = first hero
+    const featuredCard = heroCardResults[0] || null;
 
     if (adminClient && userId && cards.length > 0) {
       // Delete any existing cache row for this user+date (since we can't use
@@ -553,6 +553,7 @@ serve(async (req) => {
             lng: location.lng,
             radius,
             categoryHash,
+            heroCards: heroCardResults,
           },
         });
 
@@ -565,7 +566,7 @@ serve(async (req) => {
 
     // ── Pool storage: store generated cards in card_pool (fire-and-forget) ──
     if (adminClient) {
-      const allCardsToStore = featuredCard ? [...cards, featuredCard] : cards;
+      const allCardsToStore = [...cards, ...heroCardResults];
       const poolCardIds: string[] = [];
       (async () => {
         try {
@@ -625,14 +626,16 @@ serve(async (req) => {
       })();
     }
 
-    console.log(`Returning ${cards.length} grid cards + featured card: "${featuredCard?.title}"`);
+    console.log(`Returning ${cards.length} grid cards + ${heroCardResults.length} hero cards`);
 
     return new Response(
       JSON.stringify({
-        cards, // 10 category cards for grid display
-        featuredCard, // 11th unique card for featured display (NOT in cards array)
+        cards,               // Grid cards (excluding Fine Dining and Play)
+        heroCards: heroCardResults,  // [Fine Dining card, Play card]
+        featuredCard,        // Backward compat: heroCards[0]
         meta: {
           totalResults: cards.length,
+          heroCount: heroCardResults.length,
           categories: categoriesToFetch,
           successfulCategories,
           failedCategories,

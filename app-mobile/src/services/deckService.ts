@@ -41,6 +41,7 @@ export interface DeckResponse {
   deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'drink' | 'casual_eats' | 'fine_dining' | 'watch' | 'creative_arts' | 'play' | 'wellness' | 'groceries_flowers' | 'work_business' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
+  hasMore: boolean;
 }
 
 interface DeckPill {
@@ -217,6 +218,7 @@ class DeckService {
   async fetchDeck(params: DeckParams): Promise<DeckResponse> {
     const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
     const limit = params.limit ?? 20;
+    let hasMoreFromEdge = true; // Tracks hasMore from discover-cards response
 
     if (__DEV__) {
       console.log('[DeckService] Input categories:', JSON.stringify(params.categories));
@@ -260,8 +262,9 @@ class DeckService {
         if (!error && data?.cards) {
           const cards = (data.cards as any[]).map(unifiedCardToRecommendation);
           results.push(cards);
+          hasMoreFromEdge = data.metadata?.hasMore ?? true;
           if (__DEV__) {
-            console.log(`[DeckService] Unified discover-cards → ${cards.length} cards (source: ${data.source})`);
+            console.log(`[DeckService] Unified discover-cards → ${cards.length} cards (source: ${data.source}, hasMore: ${hasMoreFromEdge})`);
           }
         } else {
           if (__DEV__) {
@@ -329,6 +332,7 @@ class DeckService {
       deckMode,
       activePills: pills.map(p => p.id),
       total: interleaved.length,
+      hasMore: hasMoreFromEdge,
     };
   }
 

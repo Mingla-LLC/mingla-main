@@ -398,6 +398,7 @@ serve(async (req: Request) => {
             cards: poolResult.cards,
             total: poolResult.totalPoolSize,
             source: poolResult.fromApi > 0 ? 'mixed' : 'pool',
+            metadata: { hasMore: poolResult.cards.length >= limit, poolSize: poolResult.totalPoolSize, batchSeed: body.batchSeed ?? 0 },
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
@@ -495,9 +496,12 @@ serve(async (req: Request) => {
 
     console.log(`[discover-cards] Batch ${batchSeed}: offset=${offset}, returning ${batch.length}/${totalAvailable}`);
 
+    // hasMore is false when there are no more batches beyond the current one
+    const hasMore = (offset + limit) < totalAvailable;
+
     if (batch.length === 0 && !isWarmPool) {
       return new Response(
-        JSON.stringify({ cards: [], total: totalAvailable, source: 'api' }),
+        JSON.stringify({ cards: [], total: totalAvailable, source: 'api', metadata: { hasMore: false, poolSize: totalAvailable, batchSeed } }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -559,7 +563,7 @@ serve(async (req: Request) => {
     storeResultsInPoolBatched(supabaseAdmin, batch, cards, categories, userId);
 
     return new Response(
-      JSON.stringify({ cards, total: totalAvailable, source }),
+      JSON.stringify({ cards, total: totalAvailable, source, metadata: { hasMore, poolSize: totalAvailable, batchSeed } }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {

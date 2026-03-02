@@ -164,6 +164,7 @@ export class ExperienceGenerationService {
     selectedCategories?: string[]
   ): Promise<{
     cards: GeneratedExperience[];
+    heroCards: GeneratedExperience[];
     featuredCard: GeneratedExperience | null;
   }> {
     try {
@@ -194,7 +195,7 @@ export class ExperienceGenerationService {
 
       if (!data || !data.cards || data.cards.length === 0) {
         console.log("No discover experiences found");
-        return { cards: [], featuredCard: null };
+        return { cards: [], heroCards: [], featuredCard: null };
       }
 
       console.log(`Found ${data.cards.length} discover experiences`);
@@ -204,12 +205,17 @@ export class ExperienceGenerationService {
         this.transformToGeneratedExperience(card)
       );
 
-      // Transform featured card if present
-      const featuredCard = data.featuredCard
-        ? this.transformToGeneratedExperience(data.featuredCard)
-        : null;
+      // Transform hero cards (new 2-hero layout)
+      const heroCards = (data.heroCards || []).map((card: any) =>
+        this.transformToGeneratedExperience(card)
+      );
 
-      return { cards, featuredCard };
+      // Backward compat: featuredCard = first hero or legacy field
+      const featuredCard = heroCards[0] || (data.featuredCard
+        ? this.transformToGeneratedExperience(data.featuredCard)
+        : null);
+
+      return { cards, heroCards, featuredCard };
     } catch (error) {
       console.error("Failed to fetch discover experiences:", error);
       throw error;

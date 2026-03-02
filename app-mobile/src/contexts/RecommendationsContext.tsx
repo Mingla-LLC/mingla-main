@@ -67,6 +67,11 @@ interface RecommendationsContextType {
   navigateToDeckBatch: (index: number) => void;
   totalDeckCardsViewed: number;
   handleDeckCardProgress: (currentIndex: number, total: number) => void;
+  hasMoreCards: boolean;
+  dismissedCards: Recommendation[];
+  addDismissedCard: (card: Recommendation) => void;
+  clearDismissedCards: () => void;
+  isExhausted: boolean;
 }
 
 const RecommendationsContext = createContext<
@@ -93,6 +98,10 @@ export const RecommendationsProvider: React.FC<
     useState(false);
   const [isBatchTransitioning, setIsBatchTransitioning] = useState(false);
   const [isRefreshingAfterPrefChange, setIsRefreshingAfterPrefChange] = useState(false);
+  const [hasMoreCards, setHasMoreCards] = useState(true);
+  const [dismissedCards, setDismissedCards] = useState<Recommendation[]>([]);
+  const [isExhausted, setIsExhausted] = useState(false);
+  const prefetchFiredRef = useRef(false);
   const previousBatchRef = useRef<Recommendation[]>([]);
   const currentMode = propCurrentMode;
   const refreshKey = propRefreshKey;
@@ -218,6 +227,7 @@ export const RecommendationsProvider: React.FC<
     isLoading: isDeckLoading,
     isFetching: isDeckFetching,
     isFullBatchLoaded: isDeckBatchLoaded,
+    hasMore: deckHasMore,
   } = useDeckCards({
     location: userLocation,
     categories: userPrefs?.categories ?? [],
@@ -305,6 +315,28 @@ export const RecommendationsProvider: React.FC<
     }
   }, [batchSeed]);
 
+  // ── Dismissed card callbacks ─────────────────────────────────────────────
+  const addDismissedCard = useCallback((card: Recommendation) => {
+    setDismissedCards((prev) => [...prev, card]);
+  }, []);
+
+  const clearDismissedCards = useCallback(() => {
+    setDismissedCards([]);
+  }, []);
+
+  // ── Sync hasMore and exhaustion from deck hook ──────────────────────────
+  useEffect(() => {
+    setHasMoreCards(deckHasMore);
+    if (deckCards.length === 0 && !deckHasMore && isDeckBatchLoaded && !isDeckFetching) {
+      setIsExhausted(true);
+    }
+  }, [deckHasMore, deckCards.length, isDeckBatchLoaded, isDeckFetching]);
+
+  // Reset prefetchFiredRef when batchSeed changes
+  useEffect(() => {
+    prefetchFiredRef.current = false;
+  }, [batchSeed]);
+
   // ── Refresh Key Handler ─────────────────────────────────────────────────
   // When preferences change (refreshKey increments), reset state and refetch
   useEffect(() => {
@@ -313,6 +345,9 @@ export const RecommendationsProvider: React.FC<
       setIsBatchTransitioning(false);
       warmPoolFired.current = false;
       setIsRefreshingAfterPrefChange(true);
+      setDismissedCards([]);
+      setIsExhausted(false);
+      setHasMoreCards(true);
       // Invalidate deck-cards so it refetches with fresh params
       queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
       // Also invalidate collaboration fallback queries
@@ -374,10 +409,14 @@ export const RecommendationsProvider: React.FC<
     }
   }, [currentDeckBatchIndex, deckBatches]);
 
-  // ── Pre-fetch next batch at 75% consumption ───────────────────────────
+  // ── Pre-fetch next batch when 5 or fewer cards remain ─────────────────
   const handleDeckCardProgress = useCallback((currentIndex: number, total: number) => {
     if (!userLocation || !userPrefs) return;
-    if (currentIndex >= Math.floor(total * 0.75) && total > 0) {
+    const remainingCards = total - currentIndex - 1;
+
+    // When 5 or fewer cards remain, prefetch next batch (once per batch)
+    if (remainingCards <= 5 && !prefetchFiredRef.current && hasMoreCards) {
+      prefetchFiredRef.current = true;
       const nextSeed = batchSeed + 1;
       queryClient.prefetchQuery({
         queryKey: [
@@ -410,10 +449,10 @@ export const RecommendationsProvider: React.FC<
           batchSeed: nextSeed,
           limit: 20,
         }),
-        staleTime: 30 * 60 * 1000,
+        staleTime: 5 * 60 * 1000,
       });
     }
-  }, [batchSeed, userLocation, userPrefs, queryClient]);
+  }, [batchSeed, hasMoreCards, userLocation, userPrefs, queryClient]);
 
   // ── Sync deck cards to recommendations state ────────────────────────────
   // This replaces the massive 130-line sync effect with a simple one.
@@ -427,7 +466,17 @@ export const RecommendationsProvider: React.FC<
         const deckIdsKey = deckCards.map(c => c.id).sort().join(',');
         if (previousDeckIdsRef.current !== deckIdsKey) {
           previousDeckIdsRef.current = deckIdsKey;
-          setRecommendations(deckCards);
+
+          // If this is a prefetched batch (batchSeed > 0), append to existing
+          if (batchSeed > 0 && recommendations.length > 0) {
+            const existingIds = new Set(recommendations.map(r => r.id));
+            const newCards = deckCards.filter(c => !existingIds.has(c.id));
+            if (newCards.length > 0) {
+              setRecommendations(prev => [...prev, ...newCards]);
+            }
+          } else {
+            setRecommendations(deckCards);
+          }
         }
         if (isBatchTransitioning && isDeckBatchLoaded) {
           setIsBatchTransitioning(false);
@@ -441,7 +490,7 @@ export const RecommendationsProvider: React.FC<
       }
       // During batch transition with 0 cards, keep previous recommendations visible
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSoloMode]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSoloMode, batchSeed]);
 
   // ── Collaboration mode sync ─────────────────────────────────────────────
   const previousRecommendationsRef = useRef<Recommendation[] | undefined>(undefined);
@@ -703,6 +752,11 @@ export const RecommendationsProvider: React.FC<
     navigateToDeckBatch,
     totalDeckCardsViewed: deckBatches.reduce((sum, b) => sum + b.cards.length, 0),
     handleDeckCardProgress,
+    hasMoreCards,
+    dismissedCards,
+    addDismissedCard,
+    clearDismissedCards,
+    isExhausted,
   };
 
   return (

@@ -617,14 +617,14 @@ export default function ActionButtons({
           url = `https://${url}`;
         }
         onOpenBrowser(url, card.title);
-      } else if ((card as any).placeId) {
-        const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${(card as any).placeId}`;
+      } else if (card.placeId) {
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=Google+Maps&query_place_id=${card.placeId}`;
         onOpenBrowser(mapsUrl, card.title);
       }
     }
   };
 
-  const showPoliciesButton = Boolean(card.website || (card as any).placeId);
+  const showPoliciesButton = card.category !== "Nature" && card.category !== "Picnic";
 
   const hasBookingOptions =
     bookingOptions.length > 0 || card.website || card.phone;

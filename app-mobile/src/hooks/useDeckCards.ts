@@ -35,6 +35,7 @@ export interface UseDeckCardsResult {
   isLoading: boolean;
   isFetching: boolean;
   isFullBatchLoaded: boolean;
+  hasMore: boolean;
   error: Error | null;
   refetch: () => void;
 }
@@ -80,6 +81,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       deckMode: 'mixed' as const,
       activePills: latestBatch.activePills,
       total: latestBatch.cards.length,
+      hasMore: true,
     } : undefined,
     initialDataUpdatedAt: latestBatch?.timestamp,
   });
@@ -91,6 +93,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     isFullBatchLoaded: !query.isLoading && !query.isFetching && query.data !== undefined,
+    hasMore: query.data?.hasMore ?? true,
     error: query.error as Error | null,
     refetch: query.refetch,
   };
