@@ -1787,7 +1787,7 @@ npx supabase functions serve function-name --env-file .env.local
 ## Recent Changes (2026-03-02)
 
 - **Deck Reliability Fix:** Five compounding bugs fixed in the solo swipe deck — category limit formula now requests full 20 cards (was proportionally starved to 10), server-side dedup by `google_place_id` in card pool eliminates cross-category duplicates, query params stabilized via `useMemo` to guarantee one fetch per param change (was 4), batch transition uses replace-not-append (eliminates infinite spinner and dedup deadlock), and pool threshold raised to 80% (was 50%) for full batches.
-- **Brand-Consistent Loading UI:** "Loading more" spinner and exhausted-state icons changed from purple (#6366F1) to brand orange (#eb7825). Spinner now includes "This should only take a moment" subtitle. 10-second timeout auto-detects exhaustion when batch transition stalls.
+- **Brand-Consistent Loading UI:** All exhausted-state UI (spinner, icons, "Review Dismissed" button border/text, "Change Preferences" button background) unified to brand orange (#eb7825). Spinner subtitle uses a dedicated `loadingNextBatchSubtitle` StyleSheet entry. 10-second timeout auto-detects exhaustion when batch transition stalls.
 - **Discover For You — All 12 Categories:** The For You tab now always requests all 12 categories from the edge function, ignoring user preferences. For You is a discovery surface — user preferences only filter the main swipe deck.
 - **Policies & Reservations Button Fix:** `placeId` is now carried through the full transformation chain (`FeaturedCardData` → `GridCardData` → `ExpandedCardData`), so the "Policies & Reservations" button in expanded cards correctly opens Google Maps for the venue.
 
