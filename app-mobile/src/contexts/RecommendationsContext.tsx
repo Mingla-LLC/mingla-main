@@ -384,6 +384,7 @@ export const RecommendationsProvider: React.FC<
           'deck-cards',
           userLocation.lat, userLocation.lng,
           (userPrefs.categories ?? []).sort().join(','),
+          (userPrefs.intents ?? []).sort().join(','),
           userPrefs.budget_min ?? 0,
           userPrefs.budget_max ?? 1000,
           userPrefs.travel_mode ?? 'walking',
@@ -397,6 +398,7 @@ export const RecommendationsProvider: React.FC<
         queryFn: () => deckService.fetchDeck({
           location: userLocation,
           categories: userPrefs.categories ?? [],
+          intents: userPrefs.intents ?? [],
           budgetMin: userPrefs.budget_min ?? 0,
           budgetMax: userPrefs.budget_max ?? 1000,
           travelMode: userPrefs.travel_mode ?? 'walking',

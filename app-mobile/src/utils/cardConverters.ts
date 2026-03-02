@@ -17,7 +17,31 @@ import type { CreativeArtsCard } from '../services/creativeArtsCardsService';
 import type { PlayCard } from '../services/playCardsService';
 import type { WellnessCard } from '../services/wellnessCardsService';
 import type { GroceriesFlowersCard } from '../services/groceriesFlowersCardsService';
-import type { WorkBusinessCard } from '../services/workBusinessCardsService';
+/** Inlined from deleted workBusinessCardsService.ts (dead code — called wrong endpoint) */
+interface WorkBusinessCard {
+  id: string;
+  placeId: string;
+  title: string;
+  description: string;
+  image: string;
+  images: string[];
+  rating: number;
+  reviewCount: number;
+  priceLevelLabel: string;
+  priceMin: number;
+  priceMax: number;
+  address: string;
+  openingHours: Record<string, string>;
+  isOpenNow: boolean;
+  website: string | null;
+  lat: number;
+  lng: number;
+  placeType: string;
+  placeTypeLabel: string;
+  distanceKm: number;
+  travelTimeMin: number;
+  matchScore: number;
+}
 import { getCategoryIcon } from './categoryUtils';
 
 export function shuffleArray<T>(arr: T[]): T[] {
