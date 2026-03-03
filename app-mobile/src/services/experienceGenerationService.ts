@@ -167,6 +167,7 @@ export class ExperienceGenerationService {
     cards: GeneratedExperience[];
     heroCards: GeneratedExperience[];
     featuredCard: GeneratedExperience | null;
+    expiresAt: string | null;
   }> {
     try {
       console.log("Fetching discover experiences for location:", location, "categories:", selectedCategories);
@@ -199,7 +200,7 @@ export class ExperienceGenerationService {
 
       if (!data || !data.cards || data.cards.length === 0) {
         console.log("No discover experiences found");
-        return { cards: [], heroCards: [], featuredCard: null };
+        return { cards: [], heroCards: [], featuredCard: null, expiresAt: null };
       }
 
       console.log(`Found ${data.cards.length} discover experiences`);
@@ -219,7 +220,10 @@ export class ExperienceGenerationService {
         ? this.transformToGeneratedExperience(data.featuredCard)
         : null);
 
-      return { cards, heroCards, featuredCard };
+      // 24h expiry timestamp from server
+      const expiresAt: string | null = data.expiresAt || null;
+
+      return { cards, heroCards, featuredCard, expiresAt };
     } catch (error) {
       console.error("Failed to fetch discover experiences:", error);
       throw error;

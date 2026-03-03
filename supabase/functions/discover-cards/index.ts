@@ -367,6 +367,7 @@ async function expandPoolWithNewPlaces(
       reviewCount: place.userRatingCount || 0,
       priceMin: priceRange.min,
       priceMax: priceRange.max,
+      website: place.websiteUri || null,
     });
   }
 
@@ -807,6 +808,7 @@ function storeResultsInPoolBatched(
           opening_hours: card.openingHours
             ? { ...card.openingHours, _isOpenNow: card.isOpenNow ?? null }
             : null,
+          website: card.website || null,
           popularity_score: popularityScore,
           is_active: true,
         };

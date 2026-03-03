@@ -2,8 +2,8 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
-import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
-import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
+import { upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+// resolveCategories no longer used — per-category selection handles this directly
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -159,6 +159,19 @@ const EXCLUDED_TYPES = new Set([
   "transit_station",
 ]);
 
+/**
+ * Haversine distance between two lat/lng points in km
+ */
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 interface DiscoverRequest {
   location: { lat: number; lng: number };
   radius?: number; // Optional radius in meters, default 10km
@@ -271,6 +284,8 @@ serve(async (req) => {
 
     let userId: string | null = null;
     let adminClient: ReturnType<typeof createClient> | null = null;
+    // Previous batch's place IDs — used to exclude cards from the last 24h batch
+    let previousBatchPlaceIds: string[] = [];
 
     try {
       const authHeader = req.headers.get("Authorization");
@@ -290,24 +305,29 @@ serve(async (req) => {
         if (userId) {
           adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-          // Include category hash in cache lookup so different preference sets get separate caches
-          const cacheQuery = adminClient
+          // ── 24-hour cache lookup: find a non-expired batch for this user ──
+          const { data: cachedRows, error: cacheReadError } = await adminClient
             .from("discover_daily_cache")
-            .select("cards, featured_card, generated_location")
+            .select("id, cards, featured_card, generated_location, expires_at, all_place_ids, previous_batch_place_ids, us_date_key")
             .eq("user_id", userId)
-            .eq("us_date_key", usDateKey);
-
-          const { data: cachedRows, error: cacheReadError } = await cacheQuery;
+            .order("created_at", { ascending: false })
+            .limit(5);
 
           if (cacheReadError) {
             console.warn("Discover daily cache read warning:", cacheReadError.message);
           } else if (cachedRows && cachedRows.length > 0) {
-            // Find a row whose generated_location.categoryHash matches the current request
-            const matchingRow = cachedRows.find((row: any) =>
-              row.generated_location?.categoryHash === categoryHash
-            );
+            // Find the most recent row that (a) matches categoryHash and (b) hasn't expired
+            const now = new Date().toISOString();
+            const matchingRow = cachedRows.find((row: any) => {
+              const hashMatch = row.generated_location?.categoryHash === categoryHash;
+              // Check timestamp-based expiry (24h). Falls back to date-key for legacy rows.
+              const expiresAt = row.expires_at;
+              const stillValid = expiresAt ? new Date(expiresAt) > new Date() : row.us_date_key === usDateKey;
+              return hashMatch && stillValid;
+            });
+
             if (matchingRow?.cards && matchingRow.cards.length > 0) {
-              console.log(`Cache hit for user ${userId} on ${usDateKey} (hash=${categoryHash}). Returning persisted discover cards.`);
+              console.log(`Cache hit for user ${userId} (expires_at=${matchingRow.expires_at}, hash=${categoryHash}). Returning persisted For You cards.`);
 
               // Reconstruct hero cards from cached grid if the cache entry has none
               let cachedHeroCards = matchingRow.generated_location?.heroCards || [];
@@ -327,7 +347,6 @@ serve(async (req) => {
                     console.log(`[cache-reconstruct] Hero for ${heroCat}: "${candidate.title}"`);
                   }
                 }
-                // Fill remaining hero slots from highest-rated
                 if (cachedHeroCards.length < 2) {
                   const remaining = cachedGridCards
                     .filter((c: any) => !heroUsedIds.has(c.id))
@@ -339,7 +358,6 @@ serve(async (req) => {
                     console.log(`[cache-reconstruct] Filled hero with "${c.title}" (${c.category})`);
                   }
                 }
-                // Remove heroes from grid to avoid duplicates
                 cachedGridCards = cachedGridCards.filter((c: any) => !heroUsedIds.has(c.id));
                 console.log(`[cache-reconstruct] Reconstructed ${cachedHeroCards.length} heroes, ${cachedGridCards.length} grid cards`);
               }
@@ -349,6 +367,7 @@ serve(async (req) => {
                   cards: cachedGridCards,
                   heroCards: cachedHeroCards,
                   featuredCard: cachedHeroCards[0] || matchingRow.featured_card,
+                  expiresAt: matchingRow.expires_at || null,
                   meta: {
                     totalResults: cachedGridCards.length,
                     categories: categoriesToFetch,
@@ -362,6 +381,25 @@ serve(async (req) => {
                   headers: { ...corsHeaders, "Content-Type": "application/json" },
                 }
               );
+            }
+
+            // ── No valid (non-expired) cache found — collect previous batch place IDs for exclusion ──
+            // Use the most recent expired row to know what to exclude
+            const mostRecentRow = cachedRows.find((row: any) =>
+              row.generated_location?.categoryHash === categoryHash
+            );
+            if (mostRecentRow) {
+              previousBatchPlaceIds = mostRecentRow.all_place_ids || [];
+              // Fallback: reconstruct from cards + heroCards if all_place_ids was never set
+              if (previousBatchPlaceIds.length === 0) {
+                const prevCards = mostRecentRow.cards || [];
+                const prevHeroes = mostRecentRow.generated_location?.heroCards || [];
+                previousBatchPlaceIds = [
+                  ...prevCards.map((c: any) => c.placeId || c.id),
+                  ...prevHeroes.map((h: any) => h.placeId || h.id),
+                ].filter(Boolean);
+              }
+              console.log(`[For You rotation] Previous batch had ${previousBatchPlaceIds.length} place IDs to exclude`);
             }
           }
         }
@@ -398,88 +436,173 @@ serve(async (req) => {
 
     console.log(`Fetching discover experiences for location: ${location.lat}, ${location.lng} | categories: ${categoriesToFetch.join(", ")}`);
 
-    // ── Pool-first pipeline: try to serve from card_pool before hitting Google ──
+    // ── Pool-first pipeline: PER-CATEGORY pool query for guaranteed diversity ──
+    // Instead of querying all categories in one blob (which returns top-popularity
+    // cards biased toward a few categories), we query the full pool in the geo area
+    // once, then pick the BEST card per category to guarantee 12 distinct categories.
+    let poolCoveredCategories = new Set<string>();
+    let poolMissedCategories: string[] = [];
+
     if (adminClient && userId) {
       try {
-        const poolResult = await serveCardsFromPipeline(
-          {
-            supabaseAdmin: adminClient,
-            userId,
-            lat: location.lat,
-            lng: location.lng,
-            radiusMeters: radius,
-            categories: categoriesToFetch,
-            budgetMin: 0,
-            budgetMax: 500,
-            limit: 11, // 10 category cards + 1 featured
-            cardType: 'single',
-          },
-          GOOGLE_API_KEY!,
-        );
+        const latDelta = radius / 111320;
+        const lngDelta = radius / (111320 * Math.cos(location.lat * Math.PI / 180));
 
-        if (poolResult.fromPool >= 8) {
-          console.log(`[pool-first] Serving ${poolResult.cards.length} discover cards from pool (${poolResult.fromPool} pool, ${poolResult.fromApi} API)`);
+        // Single query: fetch ALL active single cards in the user's geo area (cap 500)
+        const { data: allPoolCards, error: poolErr } = await adminClient
+          .from('card_pool')
+          .select('*')
+          .eq('is_active', true)
+          .eq('card_type', 'single')
+          .gte('lat', location.lat - latDelta)
+          .lte('lat', location.lat + latDelta)
+          .gte('lng', location.lng - lngDelta)
+          .lte('lng', location.lng + lngDelta)
+          .order('popularity_score', { ascending: false })
+          .limit(500);
 
-          // ── Category-diverse selection from pool cards ──
-          const poolHeroCards: any[] = [];
-          const poolGridCards: any[] = [];
-          const usedCategories = new Set<string>();
+        if (poolErr) throw poolErr;
+
+        if (allPoolCards && allPoolCards.length > 0) {
+          // Fetch recent impressions for this user (sliding window of 200)
+          const { data: impressions } = await adminClient
+            .from('user_card_impressions')
+            .select('card_pool_id')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(200);
+
+          const seenIds = new Set((impressions || []).map((imp: any) => imp.card_pool_id));
+          const prevExclude = new Set(previousBatchPlaceIds);
+
+          // Filter: unseen + dedup by google_place_id
+          const seenPlaces = new Set<string>();
+          const availableCards = allPoolCards.filter((card: any) => {
+            if (seenIds.has(card.id)) return false;
+            const placeKey = card.google_place_id || card.id;
+            if (seenPlaces.has(placeKey)) return false;
+            seenPlaces.add(placeKey);
+            return true;
+          });
+
+          console.log(`[pool-first] ${allPoolCards.length} total pool cards in area, ${availableCards.length} available after impression/dedup filter`);
+
+          // Helper: find best pool card for a specific category
           const usedIds = new Set<string>();
+          const findBestForCategory = (category: string): any | null => {
+            // Prefer cards NOT in previous batch (24h rotation)
+            let candidates = availableCards.filter(
+              (c: any) => c.category === category && !usedIds.has(c.id) && !prevExclude.has(c.google_place_id || c.id)
+            );
+            if (candidates.length === 0) {
+              // Category exhaustion fallback: allow previous batch cards
+              candidates = availableCards.filter(
+                (c: any) => c.category === category && !usedIds.has(c.id)
+              );
+              if (candidates.length > 0) {
+                console.log(`⚠ [pool-first] "${category}" exhausted fresh places — reusing from previous batch`);
+              }
+            }
+            // Already sorted by popularity_score DESC from the query
+            return candidates.length > 0 ? candidates[0] : null;
+          };
 
-          // PASS 1: Extract hero cards (user's preferred categories or defaults)
+          // Helper: convert pool DB row to API card format
+          const poolRowToApiCard = (card: any): any => {
+            const distKm = (card.lat && card.lng)
+              ? Math.round(haversineDistance(location.lat, location.lng, card.lat, card.lng) * 10) / 10
+              : 0;
+            const travelMin = Math.round(distKm / 5 * 60); // ~5 km/h walking default
+
+            const parsedOH = card.opening_hours || null;
+            const isOpenNow = parsedOH?._isOpenNow ?? parsedOH?.open_now ?? null;
+            const hours = parsedOH ? { ...parsedOH } : null;
+            if (hours) { delete hours._isOpenNow; }
+
+            return {
+              id: card.google_place_id || card.id,
+              placeId: card.google_place_id || null,
+              title: card.title,
+              category: card.category,
+              matchScore: card.base_match_score || 85,
+              image: card.image_url || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
+              images: card.images || [],
+              rating: card.rating || 0,
+              reviewCount: card.review_count || 0,
+              priceMin: card.price_min ?? 0,
+              priceMax: card.price_max ?? 0,
+              priceRange: formatPriceRange(card.price_min ?? 0, card.price_max ?? 0),
+              distanceKm: distKm,
+              travelTimeMin: travelMin,
+              travelTime: `${travelMin} min`,
+              distance: `${distKm} km`,
+              isOpenNow,
+              openingHours: hours,
+              description: card.description || '',
+              highlights: card.highlights || [],
+              address: card.address || '',
+              lat: card.lat,
+              lng: card.lng,
+              heroImage: card.image_url || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
+            };
+          };
+
+          // ── PASS 1: Hero cards (Fine Dining + Play) ──
+          const poolHeroCards: any[] = [];
           for (const heroCategory of HERO_CATEGORIES_RESOLVED) {
-            const heroCandidates = poolResult.cards.filter(
-              (c: any) => c.category === heroCategory && !usedIds.has(c.id)
-            );
-            if (heroCandidates.length > 0) {
-              const selected = heroCandidates[0]; // Already sorted by popularity from pool
-              poolHeroCards.push(selected);
-              usedIds.add(selected.id);
-              usedCategories.add(heroCategory);
-              console.log(`[pool-first] Hero card for ${heroCategory}: "${selected.title}"`);
-            } else {
-              console.log(`[pool-first] No pool card for hero category: ${heroCategory}`);
-            }
-          }
-
-          // PASS 2: One card per non-hero category (round-robin diversity)
-          for (const category of categoriesToFetch) {
-            if (HERO_CATEGORIES_RESOLVED.includes(category)) continue; // Heroes already extracted
-            if (usedCategories.has(category)) continue;
-            if (poolGridCards.length >= 10) break;
-
-            const candidates = poolResult.cards.filter(
-              (c: any) => c.category === category && !usedIds.has(c.id)
-            );
-            if (candidates.length > 0) {
-              const selected = candidates[0];
-              poolGridCards.push(selected);
-              usedIds.add(selected.id);
-              usedCategories.add(category);
-            }
-          }
-
-          // PASS 3: Fill remaining grid slots (if fewer than 10) from unused pool cards
-          if (poolGridCards.length < 10) {
-            const remaining = poolResult.cards.filter((c: any) => !usedIds.has(c.id));
-            for (const card of remaining) {
-              if (poolGridCards.length >= 10) break;
-              poolGridCards.push(card);
+            const card = findBestForCategory(heroCategory);
+            if (card) {
+              poolHeroCards.push(poolRowToApiCard(card));
               usedIds.add(card.id);
+              poolCoveredCategories.add(heroCategory);
+              console.log(`✓ [pool-first] Hero "${heroCategory}": "${card.title}" (rating: ${card.rating})`);
+            } else {
+              console.log(`✗ [pool-first] No pool card for hero: ${heroCategory}`);
             }
           }
 
-          // Backward compat: featuredCard = first hero
-          const poolFeaturedCard = poolHeroCards[0] || poolGridCards[0] || null;
+          // ── PASS 2: One card per remaining category ──
+          const poolGridCards: any[] = [];
+          for (const category of categoriesToFetch) {
+            if (HERO_CATEGORIES_RESOLVED.includes(category)) continue;
+            if (poolCoveredCategories.has(category)) continue;
 
-          // ── Persist to daily cache (same as Google API path) ──
-          // Only delete the cache row matching this categoryHash, not all rows for this user+date
-          if (adminClient && userId) {
+            const card = findBestForCategory(category);
+            if (card) {
+              poolGridCards.push(poolRowToApiCard(card));
+              usedIds.add(card.id);
+              poolCoveredCategories.add(category);
+              console.log(`✓ [pool-first] Grid "${category}": "${card.title}"`);
+            } else {
+              console.log(`✗ [pool-first] No pool card for: ${category}`);
+            }
+          }
+
+          poolMissedCategories = categoriesToFetch.filter((c) => !poolCoveredCategories.has(c));
+          console.log(`[pool-first] Per-category coverage: ${poolCoveredCategories.size}/${categoriesToFetch.length} | missed: [${poolMissedCategories.join(', ')}]`);
+
+          // If ALL 12 categories covered → serve entirely from pool (0 API calls)
+          if (poolMissedCategories.length === 0) {
+            const poolFeaturedCard = poolHeroCards[0] || poolGridCards[0] || null;
+            const poolExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            const poolAllPlaceIds = [
+              ...poolHeroCards.map((c: any) => c.placeId || c.id),
+              ...poolGridCards.map((c: any) => c.placeId || c.id),
+            ].filter(Boolean);
+
+            // Record impressions for served pool cards
+            const servedPoolCardIds = [...poolHeroCards, ...poolGridCards]
+              .map((c: any) => allPoolCards.find((pc: any) => (pc.google_place_id || pc.id) === (c.placeId || c.id))?.id)
+              .filter(Boolean);
+            if (servedPoolCardIds.length > 0) {
+              recordImpressions(adminClient, userId, servedPoolCardIds).catch(() => {});
+            }
+
+            // Persist to daily cache
             adminClient
               .from("discover_daily_cache")
               .delete()
               .eq("user_id", userId)
-              .eq("us_date_key", usDateKey)
               .filter("generated_location->>categoryHash", "eq", categoryHash)
               .then(() =>
                 adminClient!
@@ -489,6 +612,9 @@ serve(async (req) => {
                     us_date_key: usDateKey,
                     cards: poolGridCards,
                     featured_card: poolFeaturedCard,
+                    expires_at: poolExpiresAt,
+                    all_place_ids: poolAllPlaceIds,
+                    previous_batch_place_ids: previousBatchPlaceIds,
                     generated_location: {
                       lat: location.lat,
                       lng: location.lng,
@@ -499,30 +625,155 @@ serve(async (req) => {
                   })
               )
               .catch((e: any) => console.warn("[pool-first] Cache write error:", e));
+
+            console.log(`[pool-first] Serving all 12 categories from pool (0 API calls): ${poolHeroCards.length} heroes + ${poolGridCards.length} grid`);
+
+            return new Response(
+              JSON.stringify({
+                cards: poolGridCards,
+                heroCards: poolHeroCards,
+                featuredCard: poolFeaturedCard,
+                expiresAt: poolExpiresAt,
+                meta: {
+                  totalResults: poolGridCards.length,
+                  heroCount: poolHeroCards.length,
+                  categories: categoriesToFetch,
+                  successfulCategories: Array.from(poolCoveredCategories),
+                  failedCategories: [],
+                  poolFirst: true,
+                  fromPool: poolHeroCards.length + poolGridCards.length,
+                  fromApi: 0,
+                },
+              }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
           }
 
-          return new Response(
-            JSON.stringify({
-              cards: poolGridCards,
-              heroCards: poolHeroCards,
-              featuredCard: poolFeaturedCard,
-              meta: {
-                totalResults: poolGridCards.length,
-                heroCount: poolHeroCards.length,
-                categories: categoriesToFetch,
-                successfulCategories: Array.from(usedCategories),
-                failedCategories: categoriesToFetch.filter((c) => !usedCategories.has(c)),
-                poolFirst: true,
-                fromPool: poolResult.fromPool,
-                fromApi: poolResult.fromApi,
-              },
-            }),
-            {
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
+          // If >= 8 categories covered, fetch the missing ones from Google and combine
+          if (poolCoveredCategories.size >= 8) {
+            console.log(`[pool-first] ${poolCoveredCategories.size}/12 from pool, fetching ${poolMissedCategories.length} from Google API`);
+
+            const missedPromises = poolMissedCategories.map((category) =>
+              fetchCandidatesForCategory(category, location, radius, adminClient)
+            );
+            const missedResults = await Promise.all(missedPromises);
+
+            const usedPlaceIds = new Set([
+              ...poolHeroCards.map((c: any) => c.placeId || c.id),
+              ...poolGridCards.map((c: any) => c.placeId || c.id),
+            ].filter(Boolean));
+            const previousBatchExcludeSet = new Set(previousBatchPlaceIds);
+
+            const missedPlaces: DiscoverPlace[] = [];
+            for (let i = 0; i < poolMissedCategories.length; i++) {
+              const category = poolMissedCategories[i];
+              const candidates = missedResults[i];
+              if (!candidates || candidates.length === 0) continue;
+
+              let available = candidates.filter(
+                (c) => !usedPlaceIds.has(c.placeId) && !previousBatchExcludeSet.has(c.placeId)
+              );
+              if (available.length === 0) {
+                available = candidates.filter((c) => !usedPlaceIds.has(c.placeId));
+              }
+              if (available.length > 0) {
+                usedPlaceIds.add(available[0].placeId);
+                missedPlaces.push(available[0]);
+                poolCoveredCategories.add(category);
+              }
             }
-          );
+
+            // Annotate missed places with travel + AI
+            let enrichedMissedCards: any[] = [];
+            if (missedPlaces.length > 0) {
+              const withTravel = await annotateWithTravel(missedPlaces, location);
+              const enriched = await enrichWithAI(withTravel);
+              enrichedMissedCards = enriched.map((place) => convertToCard(place));
+            }
+
+            // Split enriched missed cards into hero vs grid
+            for (const card of enrichedMissedCards) {
+              if (HERO_CATEGORIES_RESOLVED.includes(card.category) && poolHeroCards.length < 2) {
+                poolHeroCards.push(card);
+              } else {
+                poolGridCards.push(card);
+              }
+            }
+
+            const poolFeaturedCard = poolHeroCards[0] || poolGridCards[0] || null;
+            const poolExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            const poolAllPlaceIds = [
+              ...poolHeroCards.map((c: any) => c.placeId || c.id),
+              ...poolGridCards.map((c: any) => c.placeId || c.id),
+            ].filter(Boolean);
+
+            // Record impressions for pool-served cards
+            const servedPoolCardIds = [...poolHeroCards, ...poolGridCards]
+              .map((c: any) => allPoolCards.find((pc: any) => (pc.google_place_id || pc.id) === (c.placeId || c.id))?.id)
+              .filter(Boolean);
+            if (servedPoolCardIds.length > 0) {
+              recordImpressions(adminClient, userId, servedPoolCardIds).catch(() => {});
+            }
+
+            // Persist to daily cache
+            adminClient
+              .from("discover_daily_cache")
+              .delete()
+              .eq("user_id", userId)
+              .filter("generated_location->>categoryHash", "eq", categoryHash)
+              .then(() =>
+                adminClient!
+                  .from("discover_daily_cache")
+                  .insert({
+                    user_id: userId,
+                    us_date_key: usDateKey,
+                    cards: poolGridCards,
+                    featured_card: poolFeaturedCard,
+                    expires_at: poolExpiresAt,
+                    all_place_ids: poolAllPlaceIds,
+                    previous_batch_place_ids: previousBatchPlaceIds,
+                    generated_location: {
+                      lat: location.lat,
+                      lng: location.lng,
+                      radius,
+                      categoryHash,
+                      heroCards: poolHeroCards,
+                    },
+                  })
+              )
+              .catch((e: any) => console.warn("[pool-first] Cache write error:", e));
+
+            console.log(`[pool-first] Hybrid serve: ${poolCoveredCategories.size} categories (${poolHeroCards.length} heroes + ${poolGridCards.length} grid), ${enrichedMissedCards.length} from Google API`);
+
+            return new Response(
+              JSON.stringify({
+                cards: poolGridCards,
+                heroCards: poolHeroCards,
+                featuredCard: poolFeaturedCard,
+                expiresAt: poolExpiresAt,
+                meta: {
+                  totalResults: poolGridCards.length,
+                  heroCount: poolHeroCards.length,
+                  categories: categoriesToFetch,
+                  successfulCategories: Array.from(poolCoveredCategories),
+                  failedCategories: categoriesToFetch.filter((c) => !poolCoveredCategories.has(c)),
+                  poolFirst: true,
+                  fromPool: poolHeroCards.length + poolGridCards.length - enrichedMissedCards.length,
+                  fromApi: enrichedMissedCards.length,
+                },
+              }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+
+          console.log(`[pool-first] Only ${poolCoveredCategories.size}/12 categories in pool, need >= 8. Falling back to full Google API.`);
+        } else {
+          console.log(`[pool-first] No pool cards in geo area. Falling back to Google API.`);
         }
-        console.log(`[pool-first] Pool has ${poolResult.fromPool} cards, need >= 8. Falling back to Google API.`);
       } catch (poolError) {
         console.warn("[pool-first] Pool query failed, falling back to Google API:", poolError);
       }
@@ -547,6 +798,12 @@ serve(async (req) => {
     const successfulCategories: string[] = [];
     const failedCategories: string[] = [];
 
+    // Set of place IDs from the previous 24h batch — exclude these for fresh rotation
+    const previousBatchExcludeSet = new Set(previousBatchPlaceIds);
+    if (previousBatchExcludeSet.size > 0) {
+      console.log(`[For You rotation] Excluding ${previousBatchExcludeSet.size} place IDs from previous batch`);
+    }
+
     for (let i = 0; i < categoriesToFetch.length; i++) {
       const category = categoriesToFetch[i];
 
@@ -560,25 +817,34 @@ serve(async (req) => {
         continue;
       }
 
-      // Filter out already-used places
-      const availableCandidates = candidates.filter(c => !usedPlaceIds.has(c.placeId));
+      // Filter out already-used places AND previous batch places
+      let availableCandidates = candidates.filter(
+        c => !usedPlaceIds.has(c.placeId) && !previousBatchExcludeSet.has(c.placeId)
+      );
+
+      // Category exhaustion fallback: if ALL candidates were excluded, allow previous batch
+      // cards but still avoid duplicates within this batch
+      if (availableCandidates.length === 0 && previousBatchExcludeSet.size > 0) {
+        availableCandidates = candidates.filter(c => !usedPlaceIds.has(c.placeId));
+        if (availableCandidates.length > 0) {
+          console.log(`⚠ Category "${category}" exhausted fresh places — reusing from previous batch`);
+        }
+      }
       
       if (availableCandidates.length === 0) {
         failedCategories.push(category);
-        console.log(`✗ All ${candidates.length} candidates for ${category} were already used by other categories`);
+        console.log(`✗ All ${candidates.length} candidates for ${category} were already used`);
         continue;
       }
 
-      // Randomly select from top candidates (up to top 5) to add variety on refresh
-      const topCandidatesCount = Math.min(5, availableCandidates.length);
-      const topCandidates = availableCandidates.slice(0, topCandidatesCount);
-      const randomIndex = Math.floor(Math.random() * topCandidates.length);
-      const selectedPlace = topCandidates[randomIndex];
+      // Select the single best candidate (sorted by quality score)
+      // Top candidate = best-of-the-best from this category
+      const selectedPlace = availableCandidates[0];
       
       usedPlaceIds.add(selectedPlace.placeId);
       places.push(selectedPlace);
       successfulCategories.push(category);
-      console.log(`✓ Selected for ${category}: "${selectedPlace.name}" (rating: ${selectedPlace.rating}, reviews: ${selectedPlace.reviewCount}) [picked ${randomIndex + 1} of ${topCandidates.length} top candidates]`);
+      console.log(`✓ Selected for ${category}: "${selectedPlace.name}" (rating: ${selectedPlace.rating}, reviews: ${selectedPlace.reviewCount})`);
     }
 
     console.log(`Successful categories (${successfulCategories.length}):`, successfulCategories);
@@ -599,9 +865,20 @@ serve(async (req) => {
     const heroCards: DiscoverPlace[] = [];
 
     for (const heroCategory of heroCategories) {
-      const heroCandidates = allUnusedCandidates.filter(
-        (c) => c.category === heroCategory && !usedPlaceIds.has(c.placeId)
+      // Filter candidates: not already used AND not in previous batch
+      let heroCandidates = allUnusedCandidates.filter(
+        (c) => c.category === heroCategory && !usedPlaceIds.has(c.placeId) && !previousBatchExcludeSet.has(c.placeId)
       );
+
+      // Category exhaustion fallback for heroes: allow previous batch if no fresh candidates
+      if (heroCandidates.length === 0 && previousBatchExcludeSet.size > 0) {
+        heroCandidates = allUnusedCandidates.filter(
+          (c) => c.category === heroCategory && !usedPlaceIds.has(c.placeId)
+        );
+        if (heroCandidates.length > 0) {
+          console.log(`⚠ Hero "${heroCategory}" exhausted fresh places — reusing from previous batch`);
+        }
+      }
 
       if (heroCandidates.length > 0) {
         const sorted = heroCandidates.sort((a, b) => {
@@ -667,13 +944,21 @@ serve(async (req) => {
     // Backward compat: featuredCard = first hero
     const featuredCard = heroCardResults[0] || null;
 
+    // Compute all place IDs in this batch (heroes + grid) for next-rotation exclusion
+    const allBatchPlaceIds = [
+      ...heroCardResults.map((c: any) => c.placeId || c.id),
+      ...cards.map((c: any) => c.placeId || c.id),
+    ].filter(Boolean);
+
+    // 24-hour expiry timestamp
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
     if (adminClient && userId && cards.length > 0) {
       // Delete only the cache row matching this categoryHash (not all rows for this user+date)
       await adminClient
         .from("discover_daily_cache")
         .delete()
         .eq("user_id", userId)
-        .eq("us_date_key", usDateKey)
         .filter("generated_location->>categoryHash", "eq", categoryHash);
 
       const { error: cacheWriteError } = await adminClient
@@ -683,6 +968,9 @@ serve(async (req) => {
           us_date_key: usDateKey,
           cards,
           featured_card: featuredCard,
+          expires_at: expiresAt,
+          all_place_ids: allBatchPlaceIds,
+          previous_batch_place_ids: previousBatchPlaceIds,
           generated_location: {
             lat: location.lat,
             lng: location.lng,
@@ -761,13 +1049,14 @@ serve(async (req) => {
       })();
     }
 
-    console.log(`Returning ${cards.length} grid cards + ${heroCardResults.length} hero cards`);
+    console.log(`Returning ${cards.length} grid cards + ${heroCardResults.length} hero cards (expires: ${expiresAt})`);
 
     return new Response(
       JSON.stringify({
         cards,               // Grid cards (excluding Fine Dining and Play)
         heroCards: heroCardResults,  // [Fine Dining card, Play card]
         featuredCard,        // Backward compat: heroCards[0]
+        expiresAt,           // 24h expiry timestamp for client-side caching
         meta: {
           totalResults: cards.length,
           heroCount: heroCardResults.length,

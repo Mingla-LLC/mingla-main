@@ -821,11 +821,11 @@ export default function SwipeableCards({
       fullDescription: currentRec.fullDescription || currentRec.description,
       image: currentRec.image,
       images: currentRec.images || [currentRec.image],
-      rating: currentRec.rating,
-      reviewCount: currentRec.reviewCount,
-      priceRange: currentRec.priceRange,
-      distance: currentRec.distance,
-      travelTime: currentRec.travelTime,
+      rating: currentRec.rating ?? 0,
+      reviewCount: currentRec.reviewCount ?? 0,
+      priceRange: currentRec.priceRange || 'Free',
+      distance: currentRec.distance || '0 km',
+      travelTime: currentRec.travelTime || '0 min',
       address: currentRec.address,
       openingHours: currentRec.openingHours,
       highlights: currentRec.highlights || [],
@@ -1050,11 +1050,11 @@ export default function SwipeableCards({
           fullDescription: card.fullDescription || card.description,
           image: card.image,
           images: card.images || [card.image],
-          rating: card.rating,
-          reviewCount: card.reviewCount,
-          priceRange: card.priceRange,
-          distance: card.distance,
-          travelTime: card.travelTime,
+          rating: card.rating ?? 0,
+          reviewCount: card.reviewCount ?? 0,
+          priceRange: card.priceRange || 'Free',
+          distance: card.distance || '0 km',
+          travelTime: card.travelTime || '0 min',
           address: card.address,
           openingHours: card.openingHours,
           highlights: card.highlights || [],
@@ -1488,19 +1488,19 @@ export default function SwipeableCards({
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem)}
+                            {parseAndFormatDistance(nextCard.distance || '0 km', accountPreferences?.measurementSystem) || 'Nearby'}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
                           <Ionicons name="star" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {nextCard.rating.toFixed(1)}
+                            {(nextCard.rating ?? 0).toFixed(1)}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
                           <Ionicons name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {formatPriceRange(nextCard.priceRange, accountPreferences?.currency)}
+                            {formatPriceRange(nextCard.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
@@ -1623,19 +1623,19 @@ export default function SwipeableCards({
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
+                            {parseAndFormatDistance(currentRec.distance || '0 km', accountPreferences?.measurementSystem) || 'Nearby'}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
                           <Ionicons name="star" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {currentRec.rating.toFixed(1)}
+                            {(currentRec.rating ?? 0).toFixed(1)}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
                           <Ionicons name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {formatPriceRange(currentRec.priceRange, accountPreferences?.currency)}
+                            {formatPriceRange(currentRec.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>

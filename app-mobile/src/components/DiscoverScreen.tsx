@@ -42,10 +42,10 @@ const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
-const DISCOVER_CACHE_KEY = "mingla_discover_cache_v4";
-const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v3";
+const DISCOVER_CACHE_KEY = "mingla_discover_cache_v5";
+const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v4";
 const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
-const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-hero-cards-v4-allcats";
+const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-per-category-diversity-v5";
 
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
@@ -141,6 +141,7 @@ const ALL_CATEGORIES = [
 
 interface DiscoverCache {
   date: string;
+  expiresAt: string | null; // ISO timestamp for 24h expiry (null for legacy entries)
   recommendations: Recommendation[];
   featuredCard: FeaturedCardData | null;
   gridCards: GridCardData[];
@@ -1234,9 +1235,11 @@ export default function DiscoverScreen({
             key.startsWith(`mingla_discover_cache_v2_${user.id}_`) ||
             key.startsWith(`mingla_discover_cache_v3_${user.id}_`) ||
             key.startsWith(`mingla_discover_cache_v4_${user.id}_`) ||
+            key.startsWith(`mingla_discover_cache_v5_${user.id}_`) ||
             key.startsWith(`mingla_discover_cache_daily_v1_${user.id}`) ||
             key.startsWith(`mingla_discover_cache_daily_v2_${user.id}`) ||
-            key.startsWith(`mingla_discover_cache_daily_v3_${user.id}`)
+            key.startsWith(`mingla_discover_cache_daily_v3_${user.id}`) ||
+            key.startsWith(`mingla_discover_cache_daily_v4_${user.id}`)
           );
 
           if (keysToRemove.length > 0) {
@@ -1269,7 +1272,8 @@ export default function DiscoverScreen({
     recommendations: Recommendation[],
     featuredCard: FeaturedCardData | null,
     gridCards: GridCardData[],
-    heroCards: FeaturedCardData[] = []
+    heroCards: FeaturedCardData[] = [],
+    expiresAt: string | null = null
   ) => {
     if (!user?.id) {
       return;
@@ -1277,6 +1281,7 @@ export default function DiscoverScreen({
     try {
       const cacheData: DiscoverCache = {
         date: getTodayDateString(),
+        expiresAt: expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         recommendations,
         featuredCard,
         gridCards,
@@ -1495,8 +1500,17 @@ export default function DiscoverScreen({
     prefetchDiscoverImages(cachedHeroCards[0] || fallbackFeatured, cachedGridCards);
   };
 
-  // Fetch recommendations with ALL 10 categories for the Discover "For You" tab
-  // Only fetches once per day - uses cached data if available for today
+  // Helper: check if a cached batch is still within its 24h window
+  const isCacheStillValid = (cache: DiscoverCache): boolean => {
+    if (cache.expiresAt) {
+      return new Date(cache.expiresAt) > new Date();
+    }
+    // Legacy fallback: date-based check
+    return cache.date === getTodayDateString();
+  };
+
+  // Fetch recommendations with ALL 12 categories for the Discover "For You" tab
+  // Cached for 24 hours - uses persisted data until expiry
   useEffect(() => {
     const fetchDiscoverRecommendations = async () => {
       if (!user?.id) {
@@ -1527,11 +1541,11 @@ export default function DiscoverScreen({
         let cachedData = getDiscoverCacheFromMemory();
 
         if (cachedData && cachedData.recommendations.length > 0) {
-          console.log("Using in-memory discover cache from:", cachedData.date);
+          console.log("Using in-memory discover cache from:", cachedData.date, "expires:", cachedData.expiresAt);
           applyCachedDiscoverData(cachedData);
           setDiscoverLoading(false);
 
-          if (cachedData.date === today) {
+          if (isCacheStillValid(cachedData)) {
             hasFetchedRef.current = true;
             lastDiscoverFetchDateRef.current = today;
             return;
@@ -1545,11 +1559,11 @@ export default function DiscoverScreen({
         }
 
         if (cachedData && cachedData.recommendations.length > 0) {
-          console.log("Using cached discover data from:", cachedData.date);
+          console.log("Using cached discover data from:", cachedData.date, "expires:", cachedData.expiresAt);
           applyCachedDiscoverData(cachedData);
           setDiscoverLoading(false);
 
-          if (cachedData.date === today) {
+          if (isCacheStillValid(cachedData)) {
             hasFetchedRef.current = true;
             lastDiscoverFetchDateRef.current = today;
             return;
@@ -1565,8 +1579,8 @@ export default function DiscoverScreen({
         }
 
         // If we already hydrated stale cache, refresh in background without blocking UI
-        if (cachedData && cachedData.date !== today) {
-          console.log("Refreshing stale discover cache in background from:", cachedData.date);
+        if (cachedData && !isCacheStillValid(cachedData)) {
+          console.log("Refreshing stale discover cache in background (expired)");
         } else {
           setDiscoverLoading(true);
           console.log("Cache miss or stale. Fetching fresh discover data...");
@@ -1576,7 +1590,7 @@ export default function DiscoverScreen({
 
         // For You: always fetch ALL 12 categories with Fine Dining + Play heroes
         // User preferences do NOT filter the For You view — it shows best-of-the-best across ALL categories
-        const { cards: generatedCards, heroCards: heroCardsRaw, featuredCard } = await ExperienceGenerationService.discoverExperiences(
+        const { cards: generatedCards, heroCards: heroCardsRaw, featuredCard, expiresAt: serverExpiresAt } = await ExperienceGenerationService.discoverExperiences(
           { lat: locationLat, lng: locationLng },
           10000, // 10km radius
           undefined,              // For You: always ALL categories (never filtered by user prefs)
@@ -1776,7 +1790,7 @@ export default function DiscoverScreen({
         lastDiscoverFetchDateRef.current = today;
         
         // Save to cache for 24-hour persistence
-        saveDiscoverCache(transformed, finalFeatured, gridCards, transformedHeroes);
+        saveDiscoverCache(transformed, finalFeatured, gridCards, transformedHeroes, serverExpiresAt);
         
         // Mark as loaded from cache to skip the card selection useEffect
         loadedFromCacheRef.current = true;
@@ -3746,7 +3760,7 @@ export default function DiscoverScreen({
           <View
             style={[
               styles.addPersonBottomSheetContent,
-              { paddingBottom: Platform.OS === "ios" ? 48 + insets.bottom : 48 },
+              { paddingBottom: Math.max(insets.bottom, 16) + 16 },
             ]}
           >
             <View style={styles.addPersonSheetHandleContainer}>
@@ -3762,126 +3776,133 @@ export default function DiscoverScreen({
               <View style={styles.addPersonCloseButtonPlaceholder} />
             </View>
 
-            {/* Description */}
-            <Text style={styles.addPersonDescription}>
-              Add a partner, friend, or family member to get personalized recommendations.
-            </Text>
+            {/* Scrollable form content */}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+            >
+              {/* Description */}
+              <Text style={styles.addPersonDescription}>
+                Add a partner, friend, or family member to get personalized recommendations.
+              </Text>
 
-            {/* Name Field */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>Name</Text>
-              <TextInput
-                style={[
-                  styles.addPersonInput,
-                  nameError && styles.addPersonInputError,
-                ]}
-                value={personName}
-                onChangeText={(text) => {
-                  setPersonName(text);
-                  if (nameError) setNameError(null);
-                }}
-                placeholder="Enter their name"
-                placeholderTextColor="#9ca3af"
-              />
-              {nameError && (
-                <Text style={styles.errorText}>{nameError}</Text>
-              )}
-            </View>
-
-            {/* Birthday Field */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>Birthday</Text>
-              <TouchableOpacity
-                style={styles.addPersonBirthdayInput}
-                onPress={() => setShowBirthdayPicker(true)}
-                activeOpacity={0.7}
-              >
-                {personBirthday ? (
-                  <Text style={styles.birthdayText}>
-                    {formatBirthdayForDisplay(personBirthday)}
-                  </Text>
-                ) : (
-                  <Text style={styles.birthdayPlaceholder}>dd/mm/yyyy</Text>
+              {/* Name Field */}
+              <View style={styles.addPersonFieldContainer}>
+                <Text style={styles.addPersonFieldLabel}>Name</Text>
+                <TextInput
+                  style={[
+                    styles.addPersonInput,
+                    nameError && styles.addPersonInputError,
+                  ]}
+                  value={personName}
+                  onChangeText={(text) => {
+                    setPersonName(text);
+                    if (nameError) setNameError(null);
+                  }}
+                  placeholder="Enter their name"
+                  placeholderTextColor="#9ca3af"
+                />
+                {nameError && (
+                  <Text style={styles.errorText}>{nameError}</Text>
                 )}
-                <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-              </TouchableOpacity>
-              {showBirthdayPicker && (
-                Platform.OS === "ios" ? (
-                  <View style={styles.datePickerContainer}>
+              </View>
+
+              {/* Birthday Field */}
+              <View style={styles.addPersonFieldContainer}>
+                <Text style={styles.addPersonFieldLabel}>Birthday</Text>
+                <TouchableOpacity
+                  style={styles.addPersonBirthdayInput}
+                  onPress={() => setShowBirthdayPicker(true)}
+                  activeOpacity={0.7}
+                >
+                  {personBirthday ? (
+                    <Text style={styles.birthdayText}>
+                      {formatBirthdayForDisplay(personBirthday)}
+                    </Text>
+                  ) : (
+                    <Text style={styles.birthdayPlaceholder}>dd/mm/yyyy</Text>
+                  )}
+                  <Ionicons name="calendar-outline" size={20} color="#6b7280" />
+                </TouchableOpacity>
+                {showBirthdayPicker && (
+                  Platform.OS === "ios" ? (
+                    <View style={styles.datePickerContainer}>
+                      <DateTimePicker
+                        value={personBirthday || new Date()}
+                        mode="date"
+                        display="spinner"
+                        onChange={handleBirthdayChange}
+                        maximumDate={new Date()}
+                      />
+                      <TouchableOpacity
+                        style={styles.datePickerDoneButton}
+                        onPress={() => setShowBirthdayPicker(false)}
+                      >
+                        <Text style={styles.datePickerDoneText}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
                     <DateTimePicker
                       value={personBirthday || new Date()}
                       mode="date"
-                      display="spinner"
+                      display="default"
                       onChange={handleBirthdayChange}
                       maximumDate={new Date()}
                     />
-                    <TouchableOpacity
-                      style={styles.datePickerDoneButton}
-                      onPress={() => setShowBirthdayPicker(false)}
-                    >
-                      <Text style={styles.datePickerDoneText}>Done</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <DateTimePicker
-                    value={personBirthday || new Date()}
-                    mode="date"
-                    display="default"
-                    onChange={handleBirthdayChange}
-                    maximumDate={new Date()}
-                  />
-                )
-              )}
-            </View>
-
-            {/* Gender Selection */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>Gender</Text>
-              <View style={styles.genderOptionsContainer}>
-                {(["male", "female", "other"] as const).map((gender) => (
-                  <TouchableOpacity
-                    key={gender}
-                    style={[
-                      styles.genderOption,
-                      personGender === gender && styles.genderOptionSelected,
-                    ]}
-                    onPress={() => setPersonGender(gender)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.genderOptionText,
-                        personGender === gender && styles.genderOptionTextSelected,
-                      ]}
-                    >
-                      {gender.charAt(0).toUpperCase() + gender.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                  )
+                )}
               </View>
-            </View>
 
-            {/* Description field */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>Describe them</Text>
-              <Text style={styles.addPersonHint}>
-                What do they enjoy? What's their vibe? The more detail, the better the recommendations.
-              </Text>
-              <TextInput
-                style={styles.personDescriptionInput}
-                value={personDescription}
-                onChangeText={setPersonDescription}
-                placeholder="They love outdoor dining, jazz music, wine tasting, and cozy bookshops..."
-                placeholderTextColor="#9CA3AF"
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-                maxLength={500}
-              />
-              <Text style={styles.charCount}>{personDescription.length}/500</Text>
-            </View>
+              {/* Gender Selection */}
+              <View style={styles.addPersonFieldContainer}>
+                <Text style={styles.addPersonFieldLabel}>Gender</Text>
+                <View style={styles.genderOptionsContainer}>
+                  {(["male", "female", "other"] as const).map((gender) => (
+                    <TouchableOpacity
+                      key={gender}
+                      style={[
+                        styles.genderOption,
+                        personGender === gender && styles.genderOptionSelected,
+                      ]}
+                      onPress={() => setPersonGender(gender)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.genderOptionText,
+                          personGender === gender && styles.genderOptionTextSelected,
+                        ]}
+                      >
+                        {gender.charAt(0).toUpperCase() + gender.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
 
-            {/* Action Buttons */}
+              {/* Description field */}
+              <View style={styles.addPersonFieldContainer}>
+                <Text style={styles.addPersonFieldLabel}>Describe them</Text>
+                <Text style={styles.addPersonHint}>
+                  What do they enjoy? What's their vibe? The more detail, the better the recommendations.
+                </Text>
+                <TextInput
+                  style={styles.personDescriptionInput}
+                  value={personDescription}
+                  onChangeText={setPersonDescription}
+                  placeholder="They love outdoor dining, jazz music, wine tasting, and cozy bookshops..."
+                  placeholderTextColor="#9CA3AF"
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                  maxLength={500}
+                />
+                <Text style={styles.charCount}>{personDescription.length}/500</Text>
+              </View>
+            </ScrollView>
+
+            {/* Action Buttons — pinned below scroll area, above safe area */}
             <View style={styles.addPersonButtonsContainer}>
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -3922,7 +3943,7 @@ export default function DiscoverScreen({
             style={[
               styles.addPersonBottomSheetContent,
               styles.customDayBottomSheetContent,
-              { paddingBottom: Platform.OS === "ios" ? 48 + insets.bottom : 48 },
+              { paddingBottom: Math.max(insets.bottom, 16) + 16 },
             ]}
           >
             <View style={styles.addPersonSheetHandleContainer}>

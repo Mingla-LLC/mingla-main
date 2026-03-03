@@ -281,6 +281,7 @@ export async function insertCardToPool(
     totalPriceMin?: number;
     totalPriceMax?: number;
     estimatedDurationMinutes?: number;
+    website?: string | null;
   }
 ): Promise<string | null> {
   const popularityScore = (cardData.rating || 0) * Math.log10((cardData.reviewCount || 0) + 1);
@@ -304,6 +305,7 @@ export async function insertCardToPool(
     price_min: cardData.priceMin ?? 0,
     price_max: cardData.priceMax ?? 0,
     opening_hours: cardData.openingHours || null,
+    website: cardData.website || null,
     popularity_score: popularityScore,
     is_active: true,
   };
@@ -429,6 +431,7 @@ function buildSingleCardFromPlace(
     lng: place.lng,
     placeType: place.primary_type || 'place',
     placeTypeLabel: (place.primary_type || '').replace(/_/g, ' '),
+    website: place.website || null,
     matchFactors: {},
   };
 }
@@ -544,6 +547,7 @@ function poolCardToApiCard(
       stops: card.stops || [],
       experienceType: card.experience_type || '',
       openingHours: resolveOpeningHours(card.opening_hours).hours,
+      website: card.website || null,
       _poolCardId: card.id,
     };
   }
@@ -582,6 +586,7 @@ function poolCardToApiCard(
     lng: card.lng,
     placeType: card.primary_type || 'place',
     placeTypeLabel: card.primary_type ? card.primary_type.replace(/_/g, ' ') : '',
+    website: card.website || null,
     matchFactors: {},
     _poolCardId: card.id,
   };
@@ -744,6 +749,7 @@ export async function serveCardsFromPipeline(
           priceMin: priceRange.min,
           priceMax: priceRange.max,
           openingHours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
+          website: place.websiteUri || null,
         });
 
         // Compute real distance and travel time
@@ -778,6 +784,7 @@ export async function serveCardsFromPipeline(
           lng: placeLng,
           placeType: place.primaryType || place.types?.[0] || 'place',
           placeTypeLabel: (place.primaryType || place.types?.[0] || '').replace(/_/g, ' '),
+          website: place.websiteUri || null,
           matchFactors: {},
           _poolCardId: cardPoolId,
         });

@@ -11,7 +11,7 @@ import {
 } from "../types";
 import type { Recommendation } from "../types/recommendation";
 
-const DECK_SCHEMA_VERSION = 2; // Bump this to invalidate stale persisted deck data
+const DECK_SCHEMA_VERSION = 3; // Bump this to invalidate stale persisted deck data
 
 export interface DeckBatch {
   batchSeed: number;

@@ -585,25 +585,20 @@ function MultiStopPlanView({
                   </View>
                 </View>
 
-                {/* Policies & Reservations — always visible */}
-                <TouchableOpacity
-                  style={curatedStyles.policiesButton}
-                  onPress={() => {
-                    if (stop.website) {
+                {/* Policies & Reservations — only when website exists */}
+                {stop.website ? (
+                  <TouchableOpacity
+                    style={curatedStyles.policiesButton}
+                    onPress={() => {
                       setBrowserTitle(stop.placeName);
                       setBrowserUrl(stop.website);
-                    } else {
-                      // Fallback: open Google Maps place page for policies/hours/reservations
-                      const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${stop.placeId}`;
-                      setBrowserTitle(stop.placeName);
-                      setBrowserUrl(mapsUrl);
-                    }
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="globe-outline" size={15} color="#ffffff" />
-                  <Text style={curatedStyles.policiesButtonText}>Policies & Reservations</Text>
-                </TouchableOpacity>
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="globe-outline" size={15} color="#ffffff" />
+                    <Text style={curatedStyles.policiesButtonText}>Policies & Reservations</Text>
+                  </TouchableOpacity>
+                ) : null}
 
                 {/* Opening Hours — visible when expanded */}
                 {isExpanded && Object.keys(stop.openingHours).length > 0 && (

@@ -610,21 +610,16 @@ export default function ActionButtons({
   };
 
   const handlePoliciesAndReservations = () => {
-    if (onOpenBrowser) {
-      if (card.website) {
-        let url = card.website;
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
-          url = `https://${url}`;
-        }
-        onOpenBrowser(url, card.title);
-      } else if (card.placeId) {
-        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=Google+Maps&query_place_id=${card.placeId}`;
-        onOpenBrowser(mapsUrl, card.title);
+    if (onOpenBrowser && card.website) {
+      let url = card.website;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = `https://${url}`;
       }
+      onOpenBrowser(url, card.title);
     }
   };
 
-  const showPoliciesButton = card.category !== "Nature" && card.category !== "Picnic";
+  const showPoliciesButton = !!card.website;
 
   const hasBookingOptions =
     bookingOptions.length > 0 || card.website || card.phone;

@@ -117,7 +117,7 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
 };
 
 // IDs of categories that need wider pills due to long labels
-const WIDE_CATEGORY_IDS = new Set(["groceries_flowers", "creative_arts"]);
+const WIDE_CATEGORY_IDS = new Set(["groceries_flowers", "creative_arts", "work_business"]);
 
 /**
  * Memoized Categories Section
