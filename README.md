@@ -999,7 +999,7 @@ defaultOptions: {
 | Service | Purpose |
 |---------|---------|
 | `authService.ts` | Profile CRUD: `loadUserProfile()`, `updateUserProfile()`, `uploadAvatar()` |
-| `supabase.ts` | Supabase client singleton with auth configuration and 30-second global fetch timeout wrapper (prevents indefinite hangs when Supabase is unreachable) |
+| `supabase.ts` | Supabase client singleton with auth configuration and 30-second global fetch timeout wrapper via `Promise.race` (reliable on React Native Android where `AbortController.abort()` silently fails) |
 
 ### Experience Generation & Cards (9)
 
@@ -1785,7 +1785,9 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-03)
 
-- **Preferences Save Reliability (6-fix batch):** Triple-fire save button fixed with `useRef` synchronous guard; competing 30s timeouts resolved (PreferencesSheet bumped to 35s so Supabase fetch timeout fires first); `people_count: undefined` in cache write fixed; dead code (`nextUserPreferences`, `previousPrefs`) removed; offline cache priority reversed to DB-first; `board_session_preferences` now stores `intents` in a separate column (migration `20260303000002`).
+- **Policies & Reservations Button Fix:** Fixed compound data pipeline failure at 9 independent points that prevented the "Policies & Reservations" button from appearing on regular cards. Threaded `website`/`phone` through `GeneratedExperience` interface, `transformToGeneratedExperience()`, `useRecommendationsQuery` Recommendation mapping, `DiscoverScreen` card press handlers, `SavedTab` card press handler, and 4 edge function field masks/card mappings. SQL backfill migration populates existing `card_pool` rows from `place_pool`.
+- **Preferences Save — Resilient Timeout & Performance:** Three-layer timeout defense (12s service, 30s fetch via `Promise.race`, 15s UI safety net) guarantees the user sees success or failure within 12 seconds — never an indefinite hang. `fetchWithTimeout` now uses `Promise.race` (reliable on RN Android where `AbortController.abort()` silently fails). `handleSavePreferences` critical path slimmed to DB-write-only; all post-save work is fire-and-forget. Duplicate query invalidation eliminated. `preference_history` trigger exception-safe (migration `20260303000003`).
+- **Preferences Save Reliability (6-fix batch):** Triple-fire save button fixed with `useRef` synchronous guard; `people_count: undefined` in cache write fixed; dead code removed; offline cache priority reversed to DB-first; `board_session_preferences` now stores `intents` in a separate column (migration `20260303000002`).
 - **Dismissed Cards Review UI:** New `DismissedCardsSheet` bottom sheet lets users review left-swiped cards on deck exhaustion.
 - **Pool Pagination (batchSeed Offset + nextPageToken):** Each swipe batch now gets a distinct slice of the card pool via offset-based pagination.
 - **Legacy Code Cleanup:** Deleted 11 dead per-category service files (~715 lines) and 1 dead hook.

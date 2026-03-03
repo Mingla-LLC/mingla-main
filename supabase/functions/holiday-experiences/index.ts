@@ -356,6 +356,7 @@ serve(async (req) => {
                 placeId: poolCard.placeId || poolCard.id,
                 priceLevel: 0,
                 openingHours: poolCard.openingHours || null,
+                website: poolCard.website || null,
               });
             }
 
@@ -392,6 +393,7 @@ serve(async (req) => {
                   placeId: poolCard.placeId || poolCard.id,
                   priceLevel: 0,
                   openingHours: poolCard.openingHours || null,
+                  website: poolCard.website || null,
                 });
               }
 
@@ -747,6 +749,7 @@ async function fetchExperiencesForCategory(
         "places.id","places.displayName","places.location","places.formattedAddress",
         "places.priceLevel","places.rating","places.userRatingCount",
         "places.photos","places.types","places.regularOpeningHours",
+        "places.websiteUri",
       ].join(",");
 
       const requestBody = {
@@ -863,5 +866,6 @@ function transformToExperienceCard(place: any, category: string): ExperienceCard
           weekday_text: place.regularOpeningHours.weekdayDescriptions || [],
         }
       : null,
+    website: place.websiteUri || null,
   };
 }

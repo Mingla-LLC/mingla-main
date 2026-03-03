@@ -65,6 +65,8 @@ export class PreferencesService {
     userId: string,
     preferences: Partial<UserPreferences>
   ): Promise<boolean> {
+    const SERVICE_TIMEOUT_MS = 12000;
+
     try {
       const payload = {
         profile_id: userId,
@@ -72,8 +74,17 @@ export class PreferencesService {
         updated_at: new Date().toISOString(),
       };
 
-      const result = await supabase.from("preferences").upsert(payload);
-      const { data, error } = result;
+      const upsertPromise = supabase.from("preferences").upsert(payload);
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error('Preferences save timed out after 12s')),
+          SERVICE_TIMEOUT_MS
+        );
+      });
+
+      const result = await Promise.race([upsertPromise, timeoutPromise]);
+      const { error } = result as { data: any; error: any };
 
       if (error) {
         throw error;

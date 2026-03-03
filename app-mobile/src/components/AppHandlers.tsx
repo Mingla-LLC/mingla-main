@@ -575,34 +575,25 @@ export function useAppHandlers(state: any) {
   };
 
   const handleSavePreferences = async (preferences: any): Promise<boolean> => {
-    // Update local state immediately for UI responsiveness
+    // --- Immediate local state update (sync) ---
     setUserPreferences(preferences);
 
-    // Save to database if user is authenticated
     if (!user?.id) {
-      console.warn(
-        "⚠️ Cannot save preferences to database: User not authenticated"
-      );
-      console.warn("⚠️ User object:", user);
+      console.warn("[handleSavePreferences] No authenticated user");
       return false;
     }
 
     try {
-      // Map travel mode to database-compatible values
-      const travelModeMap: { [key: string]: string } = {
-        walk: "walking",
-        drive: "driving",
-        transit: "transit",
-        walking: "walking",
-        driving: "driving",
-        biking: "biking",
+      // --- Map & normalize (sync) ---
+      const travelModeMap: Record<string, string> = {
+        walk: "walking", drive: "driving", transit: "transit",
+        walking: "walking", driving: "driving", biking: "biking",
       };
       const normalizedTravelMode =
         travelModeMap[preferences.travelMode] ||
         preferences.travelMode ||
         "walking";
 
-      // Convert PreferencesSheet format to database format
       const dbPreferences: any = {
         mode: preferences.selectedIntents?.length > 0 ? "custom" : "explore",
         people_count: 1,
@@ -650,27 +641,29 @@ export function useAppHandlers(state: any) {
           : new Date().toISOString(),
       };
 
-      // Handle GPS toggle and custom_location (new approach takes priority)
       if (preferences.custom_location !== undefined) {
-        // New GPS-toggle approach: custom_location is pre-computed (null when GPS is on)
         dbPreferences.custom_location = preferences.custom_location;
       } else if (preferences.searchLocation) {
-        // Legacy fallback: store searchLocation as custom_location
         dbPreferences.custom_location = preferences.searchLocation;
       }
-      // Save GPS toggle flag
       dbPreferences.use_gps_location = preferences.useGpsLocation ?? true;
 
-      try {
-        const success = await PreferencesService.updateUserPreferences(
-          user.id,
-          dbPreferences
-        );
+      // === CRITICAL PATH: Only the DB write is awaited ===
+      const success = await PreferencesService.updateUserPreferences(
+        user.id,
+        dbPreferences
+      );
 
-        if (success) {
-          // Optimistically prime query and offline caches with the saved payload.
-          // This removes a blocking read-after-write roundtrip and allows
-          // Explore recommendations to refresh immediately.
+      if (!success) {
+        return false;
+      }
+
+      // === FIRE-AND-FORGET: Post-save operations ===
+      // These run asynchronously after we return true. Failures are logged, not propagated.
+      // Query invalidation is NOT here — it lives in PreferencesSheet (single source of truth).
+      Promise.resolve().then(async () => {
+        try {
+          // Optimistic cache update
           queryClient.setQueryData(["userPreferences", user.id], {
             mode: dbPreferences.mode,
             budget_min: dbPreferences.budget_min,
@@ -689,58 +682,34 @@ export function useAppHandlers(state: any) {
             use_gps_location: dbPreferences.use_gps_location,
           });
 
-          try {
-            await offlineService.cacheUserPreferences({
-              profile_id: user.id,
-              mode: dbPreferences.mode,
-              budget_min: dbPreferences.budget_min,
-              budget_max: dbPreferences.budget_max,
-              people_count: dbPreferences.people_count,
-              categories: dbPreferences.categories,
-              travel_mode: dbPreferences.travel_mode,
-              travel_constraint_type: dbPreferences.travel_constraint_type,
-              travel_constraint_value: dbPreferences.travel_constraint_value,
-              datetime_pref: dbPreferences.datetime_pref,
-              date_option: dbPreferences.date_option,
-              time_slot: dbPreferences.time_slot,
-              exact_time: dbPreferences.exact_time,
-              custom_location: dbPreferences.custom_location,
-              use_gps_location: dbPreferences.use_gps_location,
-            } as any);
-          } catch (cacheError) {
-            console.error("Error updating offline cache:", cacheError);
-          }
+          // Offline cache (was previously awaited — no longer)
+          offlineService.cacheUserPreferences({
+            profile_id: user.id,
+            ...dbPreferences,
+          } as any).catch((e: any) => console.warn("[PostSave] Offline cache failed:", e));
 
-          // Invalidate unified deck + collaboration fallback + location
-          queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
-          queryClient.invalidateQueries({ queryKey: ["recommendations"] });
-          queryClient.invalidateQueries({ queryKey: ["userLocation"] });
-
-          // Reset deck card history if preferences changed
+          // Deck history reset
           const newHashStr = computePrefsHash(dbPreferences);
           const { deckPrefsHash, resetDeckHistory } = useAppStore.getState();
           if (newHashStr !== deckPrefsHash) {
             resetDeckHistory(newHashStr);
           }
 
-          // Trigger refresh of experiences by updating refresh key
+          // Preferences refresh key
           if (setPreferencesRefreshKey) {
             setPreferencesRefreshKey((prev: number) => prev + 1);
-          } else {
-            console.warn("⚠️ setPreferencesRefreshKey is not available");
           }
 
-          // Log in-app notification
+          // In-app notification
           inAppNotificationService.notifyPreferencesUpdated("solo");
-
-          return true;
-        } else {
-          return false;
+        } catch (e) {
+          console.warn("[PostSave] Non-critical post-save operation failed:", e);
         }
-      } catch (saveError) {
-        return false;
-      }
+      });
+
+      return true;
     } catch (error) {
+      console.error("[handleSavePreferences] Failed:", error);
       return false;
     }
   };

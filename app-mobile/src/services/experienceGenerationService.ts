@@ -63,6 +63,8 @@ export interface GeneratedExperience {
       duration: number;
     }>;
   };
+  website?: string | null;
+  phone?: string | null;
 }
 
 export interface ExperienceGenerationRequest {
@@ -273,6 +275,9 @@ export class ExperienceGenerationService {
       openingHours: card.openingHours || null,
       // Preserve strollData if available
       strollData: card.strollData,
+      // Preserve website/phone for Policies & Reservations button
+      website: card.website || null,
+      phone: card.phone || null,
     };
   }
 

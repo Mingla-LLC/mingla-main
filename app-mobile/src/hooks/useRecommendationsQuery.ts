@@ -131,6 +131,9 @@ const fetchRecommendations = async (
       },
       // Preserve strollData if it exists
       strollData: exp.strollData,
+      // Preserve website/phone for Policies & Reservations button
+      website: exp.website || undefined,
+      phone: exp.phone || undefined,
     };
   });
 

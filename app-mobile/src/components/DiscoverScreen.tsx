@@ -265,6 +265,8 @@ interface FeaturedCardData {
   tags?: string[];
   location?: { lat: number; lng: number };
   openingHours?: string | { open_now?: boolean; weekday_text?: string[] } | null;
+  website?: string | null;
+  phone?: string | null;
 }
 
 interface FeaturedCardProps {
@@ -292,6 +294,8 @@ interface GridCardData {
   tags?: string[];
   location?: { lat: number; lng: number };
   openingHours?: string | { open_now?: boolean; weekday_text?: string[] } | null;
+  website?: string | null;
+  phone?: string | null;
 }
 
 interface GridCardProps {
@@ -2164,6 +2168,8 @@ export default function DiscoverScreen({
       location: card.location,
       openingHours,
       selectedDateTime: new Date(),
+      website: card.website || undefined,
+      phone: card.phone || undefined,
     };
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
@@ -2210,6 +2216,8 @@ export default function DiscoverScreen({
       location: card.location,
       openingHours,
       selectedDateTime: new Date(),
+      website: card.website || undefined,
+      phone: card.phone || undefined,
     };
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);

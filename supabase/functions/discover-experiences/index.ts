@@ -541,6 +541,7 @@ serve(async (req) => {
               description: card.description || '',
               highlights: card.highlights || [],
               address: card.address || '',
+              website: card.website || null,
               lat: card.lat,
               lng: card.lng,
               heroImage: card.image_url || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
@@ -1131,6 +1132,7 @@ async function fetchCandidatesForCategory(
         "places.id","places.displayName","places.location","places.formattedAddress",
         "places.priceLevel","places.rating","places.userRatingCount",
         "places.photos","places.types","places.regularOpeningHours",
+        "places.websiteUri",
       ].join(",");
 
       const requestBody = {
@@ -1249,6 +1251,7 @@ function transformPlaceToDiscoverPlace(
     price_min,
     price_max,
     placeTypes: place.types || [],
+    website: place.websiteUri || null,
   };
 }
 
@@ -1503,6 +1506,7 @@ function convertToCard(place: any): any {
     lng: place.location.lng,
     placeId: place.placeId,
     openingHours: place.openingHours || null,
+    website: place.website || null,
   };
 }
 
