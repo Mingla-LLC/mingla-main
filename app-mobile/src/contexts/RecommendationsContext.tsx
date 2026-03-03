@@ -514,10 +514,11 @@ export const RecommendationsProvider: React.FC<
         if (isDeckBatchLoaded && (isBatchTransitioning || isSlowBatchLoad)) {
           setIsBatchTransitioning(false);
           setIsSlowBatchLoad(false);
-          // If we timed out but batch arrived late, un-exhaust
-          if (isExhausted && deckCards.length > 0) {
-            setIsExhausted(false);
-          }
+        }
+
+        // If we timed out but batch arrived late, un-exhaust
+        if (isDeckBatchLoaded && isExhausted && deckCards.length > 0) {
+          setIsExhausted(false);
         }
       } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isBatchTransitioning) {
         // Genuinely empty — no cards available
@@ -526,7 +527,7 @@ export const RecommendationsProvider: React.FC<
       // During batch transition with 0 cards from new query,
       // keep previous recommendations visible (no else branch needed)
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSoloMode, batchSeed]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSlowBatchLoad, isExhausted, isSoloMode, batchSeed]);
 
   // ── Collaboration mode sync ─────────────────────────────────────────────
   const previousRecommendationsRef = useRef<Recommendation[] | undefined>(undefined);

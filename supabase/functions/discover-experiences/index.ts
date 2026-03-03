@@ -210,11 +210,6 @@ serve(async (req) => {
       );
     }
 
-    // Dynamic hero categories: use request param or fall back to defaults
-    const HERO_CATEGORIES_RESOLVED = request.heroCategories && request.heroCategories.length > 0
-      ? request.heroCategories.slice(0, 2)
-      : ["Fine Dining", "Play"];
-
     // Map from preference IDs (snake_case) to discover category labels
     const PREF_ID_TO_DISCOVER_CATEGORY: Record<string, string> = {
       nature: "Nature",
@@ -231,27 +226,35 @@ serve(async (req) => {
       work_business: "Work & Business",
     };
 
+    // Resolve heroCategories through the same 3-step pipeline as selectedCategories
+    // (display name → slug lookup → case-insensitive fallback)
+    const resolveCategory = (cat: string): string | null => {
+      if (DISCOVER_CATEGORIES.includes(cat)) return cat;
+      const mapped = PREF_ID_TO_DISCOVER_CATEGORY[cat];
+      if (mapped) return mapped;
+      const lowerCat = cat.toLowerCase();
+      return DISCOVER_CATEGORIES.find((dc) => dc.toLowerCase() === lowerCat) || null;
+    };
+
+    // Dynamic hero categories: resolve from request param or fall back to defaults
+    let HERO_CATEGORIES_RESOLVED = ["Fine Dining", "Play"];
+    if (request.heroCategories && request.heroCategories.length > 0) {
+      const resolved = request.heroCategories
+        .slice(0, 2)
+        .map(resolveCategory)
+        .filter((c): c is string => c !== null);
+      if (resolved.length > 0) {
+        HERO_CATEGORIES_RESOLVED = resolved;
+      }
+    }
+
     // Resolve which categories to fetch: filter DISCOVER_CATEGORIES by user selection
     let categoriesToFetch = DISCOVER_CATEGORIES;
     if (selectedCategories && selectedCategories.length > 0) {
-      // Build a set of valid discover-category labels from whatever format the client sends
       const resolvedLabels = new Set<string>();
       for (const cat of selectedCategories) {
-        // Direct label match (e.g. "Nature")
-        if (DISCOVER_CATEGORIES.includes(cat)) {
-          resolvedLabels.add(cat);
-          continue;
-        }
-        // Preference ID match (e.g. "nature", "fine_dining")
-        const mapped = PREF_ID_TO_DISCOVER_CATEGORY[cat];
-        if (mapped) {
-          resolvedLabels.add(mapped);
-          continue;
-        }
-        // Case-insensitive fallback
-        const lowerCat = cat.toLowerCase();
-        const found = DISCOVER_CATEGORIES.find((dc) => dc.toLowerCase() === lowerCat);
-        if (found) resolvedLabels.add(found);
+        const resolved = resolveCategory(cat);
+        if (resolved) resolvedLabels.add(resolved);
       }
       if (resolvedLabels.size > 0) {
         categoriesToFetch = DISCOVER_CATEGORIES.filter((c) => resolvedLabels.has(c));

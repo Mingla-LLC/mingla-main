@@ -208,7 +208,7 @@ User Request → Edge Function (Deno)
 | **Busyness Forecast** | Crowd level predictions by time of day |
 | **Match Score Breakdown** | Visual breakdown of recommendation factors: location, budget, category, time, popularity |
 | **Experience Feedback Modal** | Post-interaction feedback ("too expensive", "too far", etc.) stored in `experience_feedback` |
-| **Deck Batch Navigation** | Navigate forward/backward through batch history. Pre-fetch triggers at 75% card consumption. Batches persisted to Zustand/AsyncStorage. Replace-not-append batch transitions: each new batch fully replaces the old one, preventing unbounded array growth and dedup deadlocks. 10-second batch transition timeout auto-detects exhaustion |
+| **Deck Batch Navigation** | Navigate forward/backward through batch history. Pre-fetch triggers at 75% card consumption. Batches persisted to Zustand/AsyncStorage. Replace-not-append batch transitions: each new batch fully replaces the old one, preventing unbounded array growth and dedup deadlocks. Two-tier batch timeout: 10s "Still loading..." intermediate state, 30s hard exhaustion timeout. Late-arriving batches automatically recover the deck. Pool re-warms on preference changes for fast first-batch serving. |
 | **Solo vs. Collaboration Mode** | Toggle between personal recommendations and session-scoped cards via CollaborationSessions pill bar |
 | **Skeleton Loading** | Shimmer placeholder cards while deck generates |
 
@@ -216,7 +216,7 @@ User Request → Edge Function (Deno)
 
 | Feature | Description |
 |---|---|
-| **Daily Curated Feed** | AI-generated grid of 2 hero cards (Fine Dining + Play) + 10 diverse grid cards (one per remaining category), always fetching all 12 categories regardless of user preferences (For You is a discovery surface). Cached in `discover_daily_cache` (24h TTL). Pool-first path enforces per-category round-robin diversity via a 3-pass selection algorithm (extract heroes → one-per-category → fill remaining). Client-side AsyncStorage cache persists hero cards across sessions. "Policies & Reservations" button opens Google Maps for each venue via `placeId` |
+| **Personalized Daily Feed** | AI-generated grid of 2 hero cards (user's top 2 preferred categories, defaulting to Fine Dining + Play) + grid cards for remaining selected categories. Hero and grid categories are driven by user preferences — changing preferences refreshes the feed within 3 seconds. Cached in `discover_daily_cache` (24h TTL) with per-preference-set cache keys so switching preferences back serves from cache instantly. Pool-first path enforces per-category round-robin diversity via a 3-pass selection algorithm (extract heroes → one-per-category → fill remaining). "Policies & Reservations" button opens Google Maps for each venue via `placeId` |
 | **Category Browsing** | Horizontal category pills for all 12 categories with Ionicon icons and brand colors |
 | **Holiday Experiences** | Reads device calendar for upcoming holidays (falls back to 15 hardcoded holidays). Each holiday maps to primary + secondary categories. Gender-specific holidays (Mother's Day → feminine gifts, Father's Day → masculine activities) |
 | **Night-Out Section (Ticketmaster)** | Real live events from Ticketmaster Discovery API. Genre filter (server-side GENRE_TO_KEYWORDS map), date filter (getDateRange → startDate/endDate), price filter (client-side priceMin/priceMax). "Get Tickets" opens in-app browser via `expo-web-browser` |
@@ -735,6 +735,7 @@ Every table has RLS enabled with policies enforcing:
 | 2026-03-02 | `20260302000003` | Fix google_places_cache UNIQUE constraint (NULL text_query → NOT NULL DEFAULT '') |
 | 2026-03-02 | `20260302000004` | Card pool dedup (partial unique index on google_place_id for single cards) |
 | 2026-03-02 | `20260302000005` | Saved people + person experiences tables (Add Person → curated experiences) |
+| 2026-03-02 | `20260302000006` | Sanitize empty-string `google_place_id` values to NULL in `card_pool` and `place_pool` |
 
 ---
 
@@ -748,7 +749,7 @@ Every table has RLS enabled with policies enforcing:
 | `generate-experiences` | No | Google Places, OpenAI | `experiences`, `card_pool` | Legacy standalone experience generation (pre-pool era) |
 | `generate-session-experiences` | No | Google Places, OpenAI | `board_session_preferences`, `card_pool`, `place_pool` | Collaboration mode: aggregates all participants' preferences (widest budget, union categories, majority travel mode, centroid location) |
 | `generate-curated-experiences` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `user_card_impressions` | 3-stop itinerary builder. Generates stop routes with travel times, AI descriptions, duration estimates |
-| `discover-cards` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `google_places_cache`, `user_card_impressions` | Unified card discovery — pool-first serving for all 12 categories, 4 types/category, batch upsert to pool, fire-and-forget AI enrichment. Returns `hasMore` flag for swipe lifecycle exhaustion detection. **Always returns HTTP 200** with `{ cards: [] }` on failure (never 500) to prevent killing curated pipeline. |
+| `discover-cards` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `google_places_cache`, `user_card_impressions` | Unified card discovery — pool-first serving for all 12 categories, 4 types/category, batch upsert to pool (with `onConflict: 'google_place_id'` dedup), fire-and-forget AI enrichment. Returns `hasMore` flag for swipe lifecycle exhaustion detection. Returns HTTP 500 on unhandled errors (enables React Query retry). Pool query fetches `limit * 3` buffer to survive impression filtering + dedup. |
 | `generate-person-experiences` | JWT | Google Places, OpenAI | `saved_people`, `person_experiences` | Parses person description via OpenAI into interests, finds matching Google Places for each occasion (birthday, holidays), stores curated per-person experiences |
 | `discover-experiences` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool`, `place_pool` | General discovery for all 12 categories with 24h daily cache |
 | `discover-casual-eats` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool` | Category-specific: Casual Eats |
@@ -877,7 +878,8 @@ Card State
 Deck History (persisted)
 ├── deckBatches: DeckBatch[] (cards + activePills + timestamp per batch)
 ├── currentDeckBatchIndex: number
-└── deckPrefsHash: string (reset trigger)
+├── deckPrefsHash: string (reset trigger)
+└── deckSchemaVersion: number (bumped to invalidate stale batches on deploy)
 
 UI State (NOT persisted)
 └── showAccountSettings: boolean
@@ -1786,10 +1788,11 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-02)
 
-- **Deck Reliability Fix:** Five compounding bugs fixed in the solo swipe deck — category limit formula now requests full 20 cards (was proportionally starved to 10), server-side dedup by `google_place_id` in card pool eliminates cross-category duplicates, query params stabilized via `useMemo` to guarantee one fetch per param change (was 4), batch transition uses replace-not-append (eliminates infinite spinner and dedup deadlock), and pool threshold raised to 80% (was 50%) for full batches.
-- **Brand-Consistent Loading UI:** All exhausted-state UI (spinner, icons, "Review Dismissed" button border/text, "Change Preferences" button background) unified to brand orange (#eb7825). Spinner subtitle uses a dedicated `loadingNextBatchSubtitle` StyleSheet entry. 10-second timeout auto-detects exhaustion when batch transition stalls.
-- **Discover For You — All 12 Categories:** The For You tab now always requests all 12 categories from the edge function, ignoring user preferences. For You is a discovery surface — user preferences only filter the main swipe deck.
-- **Policies & Reservations Button Fix:** `placeId` is now carried through the full transformation chain (`FeaturedCardData` → `GridCardData` → `ExpandedCardData`), so the "Policies & Reservations" button in expanded cards correctly opens Google Maps for the venue.
+- **For You Hero Card Personalization:** Hero cards on the Discover For You tab now display the user's top 2 preferred categories instead of hardcoded Fine Dining + Play. Grid cards are limited to the user's selected categories. The `discover-experiences` edge function accepts a new `heroCategories` request parameter with graceful fallback to defaults.
+- **Per-Preference Cache Keys:** Discover daily cache now uses a preferences fingerprint in the cache key. Switching preferences creates a separate cache entry — switching back serves from cache instantly without refetch. Old entries expire naturally at midnight.
+- **Preference Change Refresh:** Changing preferences resets the fetch guard and clears session cache, triggering a fresh API call with the new categories. The For You tab refreshes within 3 seconds of saving new preferences.
+- **Deck Stability Fixes:** Three independent reliability fixes — (1) `useFriends` state setters now guard with deep-equality checks, dropping unnecessary re-renders from 20+ to 1-2 per session; (2) batch transition timeout replaced with two-tier system: 10s "Still loading..." intermediate UI + 30s hard exhaustion timeout, with late-arriving batch recovery; (3) warm pool re-fires on preference changes so the first batch after a pref change serves from pool (fast) instead of API fallback (slow).
+- **Card Batch 20 Fix (Dedup Pipeline):** Fixed a critical one-character bug in `roundRobinInterleave` where `??` (nullish coalescing) was used instead of `||` (logical OR) for dedup keys — empty-string `placeId` values collapsed 18 of 20 cards into a single key `""`. Also fixed: `poolCardToApiCard` now normalizes empty `google_place_id` to `null`, pool query buffer increased from `limit + 20` to `limit * 3`, error handler returns HTTP 500 (was 200), upsert now uses `onConflict: 'google_place_id'`, new migration sanitizes existing empty-string place IDs, and Zustand `deckSchemaVersion` invalidates stale 2-card batches on deploy.
 
 ---
 
