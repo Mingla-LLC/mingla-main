@@ -696,7 +696,15 @@ export async function serveCardsFromPipeline(
     // Track google_place_ids already in pool cards to avoid duplicates
     const servedPlaceIds = new Set(poolCards.map((c: any) => c.google_place_id).filter(Boolean));
 
-    // Process each type's results
+    // ── Phase 1: Collect raw places + build card data (no DB calls) ──────
+    interface PendingPlace {
+      place: any;
+      category: string;
+      placeType: string;
+    }
+
+    const pendingPlaces: PendingPlace[] = [];
+
     for (const [placeType, places] of Object.entries(typeResults)) {
       const category = typeMap[placeType];
       if (!category || !places || places.length === 0) continue;
@@ -707,88 +715,167 @@ export async function serveCardsFromPipeline(
         if (!place.location?.latitude || !place.location?.longitude) continue;
         servedPlaceIds.add(googlePlaceId);
 
-        // Upsert to place_pool (fire-and-forget for speed, but await the first few for data)
-        const placePoolId = await upsertPlaceToPool(supabaseAdmin, place, googleApiKey);
-
-        // Build card display data
-        const priceRange = priceLevelToRange(place.priceLevel);
-        const primaryPhoto = place.photos?.[0];
-        const imageUrl = primaryPhoto?.name
-          ? buildPhotoUrl(primaryPhoto.name, googleApiKey)
-          : null;
-
-        const images = (place.photos || [])
-          .slice(0, 5)
-          .map((p: any) => p.name ? buildPhotoUrl(p.name, googleApiKey) : null)
-          .filter((img: string | null) => img !== null);
-
-        const title = place.displayName?.text || 'Unknown Place';
-        const rating = place.rating || 0;
-        const reviewCount = place.userRatingCount || 0;
-
-        // Parse opening hours once from raw Google format (used for both DB storage and API card)
-        const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours);
-
-        // Insert to card_pool (store _isOpenNow alongside hours for pool re-serve)
-        const cardPoolId = await insertCardToPool(supabaseAdmin, {
-          placePoolId: placePoolId || undefined,
-          googlePlaceId,
-          cardType: 'single',
-          title,
-          category,
-          categories: [category],
-          description: `A great ${category} spot to explore.`,
-          highlights: ['Highly Rated', 'Popular Choice'],
-          imageUrl,
-          images: images as string[],
-          address: place.formattedAddress || '',
-          lat: place.location?.latitude || 0,
-          lng: place.location?.longitude || 0,
-          rating,
-          reviewCount,
-          priceMin: priceRange.min,
-          priceMax: priceRange.max,
-          openingHours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
-          website: place.websiteUri || null,
-        });
-
-        // Compute real distance and travel time
-        const placeLat = place.location?.latitude || 0;
-        const placeLng = place.location?.longitude || 0;
-        const distKm = (placeLat && placeLng)
-          ? Math.round(haversine(lat, lng, placeLat, placeLng) * 10) / 10
-          : 0;
-        const travelMin = estimateTravelMin(distKm, options?.travelMode);
-
-        // Build API-format card
-        gapCards.push({
-          id: googlePlaceId,
-          placeId: googlePlaceId,
-          title,
-          category,
-          matchScore: 85,
-          image: imageUrl || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
-          images: images.length > 0 ? images : [imageUrl].filter(Boolean),
-          rating,
-          reviewCount,
-          priceMin: priceRange.min,
-          priceMax: priceRange.max,
-          distanceKm: distKm,
-          travelTimeMin: travelMin,
-          isOpenNow: parsedOH.isOpenNow,
-          openingHours: parsedOH.hours,
-          description: `A great ${category} spot to explore.`,
-          highlights: ['Highly Rated', 'Popular Choice'],
-          address: place.formattedAddress || '',
-          lat: placeLat,
-          lng: placeLng,
-          placeType: place.primaryType || place.types?.[0] || 'place',
-          placeTypeLabel: (place.primaryType || place.types?.[0] || '').replace(/_/g, ' '),
-          website: place.websiteUri || null,
-          matchFactors: {},
-          _poolCardId: cardPoolId,
-        });
+        pendingPlaces.push({ place, category, placeType });
       }
+    }
+
+    // ── Phase 2: Batch upsert all places to place_pool (1 DB call) ──────
+    const placeRows = pendingPlaces.map(({ place }) => {
+      const priceRange = priceLevelToRange(place.priceLevel);
+      const photos = (place.photos || []).map((p: any) => ({
+        name: p.name,
+        widthPx: p.widthPx,
+        heightPx: p.heightPx,
+      }));
+      const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours);
+
+      return {
+        google_place_id: place.id,
+        name: place.displayName?.text || 'Unknown Place',
+        address: place.formattedAddress || '',
+        lat: place.location?.latitude ?? 0,
+        lng: place.location?.longitude ?? 0,
+        types: place.types || [],
+        primary_type: place.primaryType || place.types?.[0] || null,
+        rating: place.rating || 0,
+        review_count: place.userRatingCount || 0,
+        price_level: typeof place.priceLevel === 'string' ? place.priceLevel : null,
+        price_min: priceRange.min,
+        price_max: priceRange.max,
+        opening_hours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
+        photos,
+        website: place.websiteUri || null,
+        raw_google_data: place,
+        fetched_via: 'nearby_search',
+        last_detail_refresh: new Date().toISOString(),
+        refresh_failures: 0,
+        is_active: true,
+      };
+    });
+
+    const placePoolIdMap: Record<string, string> = {};
+    if (placeRows.length > 0) {
+      const { data: upsertedPlaces, error: placeError } = await supabaseAdmin
+        .from('place_pool')
+        .upsert(placeRows, { onConflict: 'google_place_id' })
+        .select('id, google_place_id');
+
+      if (placeError) {
+        console.warn('[card-pool] Batch place upsert error:', placeError.message);
+      }
+      if (upsertedPlaces) {
+        for (const row of upsertedPlaces) {
+          placePoolIdMap[row.google_place_id] = row.id;
+        }
+      }
+    }
+
+    // ── Phase 3: Batch upsert all cards to card_pool (1 DB call) ────────
+    const cardRows = pendingPlaces.map(({ place, category }) => {
+      const priceRange = priceLevelToRange(place.priceLevel);
+      const primaryPhoto = place.photos?.[0];
+      const imageUrl = primaryPhoto?.name
+        ? buildPhotoUrl(primaryPhoto.name, googleApiKey)
+        : null;
+      const images = (place.photos || [])
+        .slice(0, 5)
+        .map((p: any) => p.name ? buildPhotoUrl(p.name, googleApiKey) : null)
+        .filter((img: string | null) => img !== null);
+      const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours);
+      const popularityScore = (place.rating || 0) * Math.log10((place.userRatingCount || 0) + 1);
+
+      return {
+        card_type: 'single' as const,
+        place_pool_id: placePoolIdMap[place.id] || null,
+        google_place_id: place.id,
+        title: place.displayName?.text || 'Unknown Place',
+        category,
+        categories: [category],
+        description: `A great ${category} spot to explore.`,
+        highlights: ['Highly Rated', 'Popular Choice'],
+        image_url: imageUrl,
+        images: images as string[],
+        address: place.formattedAddress || '',
+        lat: place.location?.latitude ?? 0,
+        lng: place.location?.longitude ?? 0,
+        rating: place.rating || 0,
+        review_count: place.userRatingCount || 0,
+        price_min: priceRange.min,
+        price_max: priceRange.max,
+        opening_hours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
+        website: place.websiteUri || null,
+        popularity_score: popularityScore,
+        is_active: true,
+      };
+    });
+
+    const cardPoolIdMap: Record<string, string> = {};
+    if (cardRows.length > 0) {
+      const { data: insertedCards, error: cardError } = await supabaseAdmin
+        .from('card_pool')
+        .upsert(cardRows, { onConflict: 'google_place_id', ignoreDuplicates: true })
+        .select('id, google_place_id');
+
+      if (cardError) {
+        console.warn('[card-pool] Batch card insert error (may be duplicates):', cardError.message);
+      }
+      if (insertedCards) {
+        for (const row of insertedCards) {
+          cardPoolIdMap[row.google_place_id] = row.id;
+        }
+      }
+    }
+
+    // ── Phase 4: Build API-format gapCards (no DB calls) ────────────────
+    for (const { place, category } of pendingPlaces) {
+      const googlePlaceId = place.id;
+      const priceRange = priceLevelToRange(place.priceLevel);
+      const primaryPhoto = place.photos?.[0];
+      const imageUrl = primaryPhoto?.name
+        ? buildPhotoUrl(primaryPhoto.name, googleApiKey)
+        : null;
+      const images = (place.photos || [])
+        .slice(0, 5)
+        .map((p: any) => p.name ? buildPhotoUrl(p.name, googleApiKey) : null)
+        .filter((img: string | null) => img !== null);
+      const title = place.displayName?.text || 'Unknown Place';
+      const rating = place.rating || 0;
+      const reviewCount = place.userRatingCount || 0;
+      const parsedOH = parseGoogleOpeningHours(place.regularOpeningHours);
+      const placeLat = place.location?.latitude || 0;
+      const placeLng = place.location?.longitude || 0;
+      const distKm = (placeLat && placeLng)
+        ? Math.round(haversine(lat, lng, placeLat, placeLng) * 10) / 10
+        : 0;
+      const travelMin = estimateTravelMin(distKm, options?.travelMode);
+
+      gapCards.push({
+        id: googlePlaceId,
+        placeId: googlePlaceId,
+        title,
+        category,
+        matchScore: 85,
+        image: imageUrl || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8',
+        images: images.length > 0 ? images : [imageUrl].filter(Boolean),
+        rating,
+        reviewCount,
+        priceMin: priceRange.min,
+        priceMax: priceRange.max,
+        distanceKm: distKm,
+        travelTimeMin: travelMin,
+        isOpenNow: parsedOH.isOpenNow,
+        openingHours: parsedOH.hours,
+        description: `A great ${category} spot to explore.`,
+        highlights: ['Highly Rated', 'Popular Choice'],
+        address: place.formattedAddress || '',
+        lat: placeLat,
+        lng: placeLng,
+        placeType: place.primaryType || place.types?.[0] || 'place',
+        placeTypeLabel: (place.primaryType || place.types?.[0] || '').replace(/_/g, ' '),
+        website: place.websiteUri || null,
+        matchFactors: {},
+        _poolCardId: cardPoolIdMap[googlePlaceId],
+      });
     }
   }
 

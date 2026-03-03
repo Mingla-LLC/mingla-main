@@ -81,6 +81,7 @@ export class PreferencesService {
 
       return true;
     } catch (error) {
+      console.error("[PreferencesService] updateUserPreferences failed:", error);
       return false;
     }
   }

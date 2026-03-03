@@ -568,10 +568,11 @@ The card pool pipeline replaces direct Google API calls with pool-first serving.
 2. **If pool ≥ 80% of requested limit at offset**: Serve directly (0 API calls). `hasMore` calculated from `totalPoolSize > (offset + limit)`. Cards enriched with real distance/travel time via haversine + estimateTravelMin
 3. **If pool exhausted at offset (batchSeed > 0)**: Check `google_places_cache` for entries with `next_page_token`. For each, call `fetchNextPage` which sends a pageToken-only request to Google Places API, appends results to cache, then inserts new places into `place_pool` + `card_pool`. Retry pool query with expanded pool
 4. **If pool < 80% of limit**: Gap analysis identifies missing categories, then batch Google Places searches fill gaps. The 80% threshold ensures full batches survive downstream dedup
-5. **Upsert results**: New places → `place_pool` (opening hours parsed at ingestion), new cards → `card_pool`
-6. **Card format**: All output paths produce API-compatible fields: `priceMin`/`priceMax` (numeric), `distanceKm` (haversine from user), `travelTimeMin` (mode-aware estimate), `isOpenNow` (boolean), `openingHours` (parsed `Record<string, string>`)
-7. **Record impressions**: Log `user_card_impressions` with batch number
-8. **Return cards**: With metadata: `fromPool` count, `fromApi` count, `totalPoolSize`, `hasMore` flag
+5. **Batched upsert results**: New places → `place_pool` in a single batched upsert, new cards → `card_pool` in a single batched upsert. This replaces previous sequential per-place inserts, reducing ~80 DB round-trips to exactly 2 calls
+6. **Short-circuit on API fetch**: When `serveCardsFromPipeline()` already fetched from Google (fromApi > 0), `discover-cards` returns those cards immediately instead of falling through to a redundant second `batchSearchPlaces()` call
+7. **Card format**: All output paths produce API-compatible fields: `priceMin`/`priceMax` (numeric), `distanceKm` (haversine from user), `travelTimeMin` (mode-aware estimate), `isOpenNow` (boolean), `openingHours` (parsed `Record<string, string>`)
+8. **Record impressions**: Log `user_card_impressions` with batch number
+9. **Return cards**: With metadata: `fromPool` count, `fromApi` count, `totalPoolSize`, `hasMore` flag
 
 ### Curated Cards (Multi-Stop Itineraries)
 
@@ -1782,14 +1783,14 @@ npx supabase functions serve function-name --env-file .env.local
 
 ---
 
-## Recent Changes (2026-03-02)
+## Recent Changes (2026-03-03)
 
-- **Dismissed Cards Review UI:** New `DismissedCardsSheet` bottom sheet lets users review left-swiped cards on deck exhaustion. Each card row shows thumbnail, title, category, rating, and distance with "Reconsider" (re-add to deck front) and "Save" (bookmark) actions. Tapping a card opens the full ExpandedCardModal. Added `removeDismissedCard` and `addCardToFront` callbacks to `RecommendationsContext`.
-- **Pool Pagination (batchSeed Offset + nextPageToken):** Each swipe batch now gets a distinct slice of the card pool via offset-based pagination (`batchSeed × limit`). When the pool is exhausted at higher offsets, the system uses stored `nextPageToken` values to fetch additional Google Places results, expands the pool, and retries. Migration adds `next_page_token` and `pages_fetched` columns to `google_places_cache`. Handles expired page tokens gracefully.
-- **Legacy Code Cleanup:** Deleted 11 dead per-category service files (~715 lines) and 1 dead hook (`useNatureCards`). Removed 12 dead converter functions from `cardConverters.ts`.
-- **For You Hero Card Personalization:** Hero cards on the Discover For You tab now display the user's top 2 preferred categories instead of hardcoded Fine Dining + Play.
-- **Deck Stability Fixes:** Deep-equality guards on `useFriends` state setters, two-tier batch transition timeout, warm pool re-fires on preference changes.
-- **Card Batch 20 Fix:** Fixed dedup key bug in `roundRobinInterleave`, pool query buffer increase, error handler HTTP 500 fix, upsert conflict resolution.
+- **Preferences Save Performance Fix:** Replaced ~80 sequential DB round-trips in `serveCardsFromPipeline()` with 2 batched upserts (1 for `place_pool`, 1 for `card_pool`), dropping cold-pool response time from ~16s to ~2s. Added short-circuit guard in `discover-cards` to prevent redundant Google API searches when the pipeline already fetched results. Removed premature optimistic cache write from `PreferencesSheet` so `["userPreferences"]` is written exactly once per save. Fixed categories/intents separation in `AppHandlers` — intent strings are no longer merged into the `categories` array.
+- **Dismissed Cards Review UI:** New `DismissedCardsSheet` bottom sheet lets users review left-swiped cards on deck exhaustion.
+- **Pool Pagination (batchSeed Offset + nextPageToken):** Each swipe batch now gets a distinct slice of the card pool via offset-based pagination.
+- **Legacy Code Cleanup:** Deleted 11 dead per-category service files (~715 lines) and 1 dead hook.
+- **For You Hero Card Personalization:** Hero cards display user's top 2 preferred categories.
+- **Deck Stability Fixes:** Deep-equality guards, two-tier batch transition timeout, warm pool re-fires.
 
 ---
 

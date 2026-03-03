@@ -282,13 +282,17 @@ export default function PreferencesSheet({
 
     if (isCollaborationMode) {
       // Load from board session preferences
-      // Intents and categories are both stored in the `categories` column —
-      // split them the same way solo mode does.
+      // Prefer dedicated `intents` field; fall back to parsing from `categories`
       const intentIds = new Set([
         "adventurous", "first-date", "romantic",
         "friendly", "group-fun", "picnic-dates", "take-a-stroll",
       ]);
-      if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
+      if (Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0) {
+        setSelectedIntents((loadedPreferences as any).intents);
+        setSelectedCategories(
+          Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
+        );
+      } else if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
         const loadedIntents: string[] = [];
         const loadedCats: string[] = [];
         loadedPreferences.categories.forEach((item: string) => {
@@ -337,15 +341,20 @@ export default function PreferencesSheet({
         setUseLocation(isCoordinates ? "gps" : "search");
       }
 
+      const collabHasIntents = Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0;
       setInitialPreferences({
-        selectedIntents: (loadedPreferences.categories || []).filter((item: string) =>
-          ["adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"].includes(item)
-        ),
+        selectedIntents: collabHasIntents
+          ? (loadedPreferences as any).intents
+          : (loadedPreferences.categories || []).filter((item: string) =>
+              intentIds.has(item)
+            ),
         budgetMin: (loadedPreferences as any).budget_min || 0,
         budgetMax: (loadedPreferences as any).budget_max || 200,
-        selectedCategories: (loadedPreferences.categories || []).filter((item: string) =>
-          !["adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"].includes(item)
-        ),
+        selectedCategories: collabHasIntents
+          ? (loadedPreferences.categories || [])
+          : (loadedPreferences.categories || []).filter((item: string) =>
+              !intentIds.has(item)
+            ),
         selectedDateOption: "Now",
         selectedTimeSlot: (loadedPreferences as any).time_of_day || null,
         selectedDate: (loadedPreferences as any).datetime_pref
@@ -361,7 +370,13 @@ export default function PreferencesSheet({
       });
     } else {
       // Load from solo preferences
-      if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
+      // Prefer dedicated `intents` field (post-migration); fall back to parsing from `categories`
+      if (Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0) {
+        setSelectedIntents((loadedPreferences as any).intents);
+        setSelectedCategories(
+          Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
+        );
+      } else if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
         const intentIds = new Set([
           "adventurous",
           "first-date",
@@ -445,32 +460,21 @@ export default function PreferencesSheet({
         setUseLocation(isCoordinates ? "gps" : "search");
       }
 
+      const hasIntentsField = Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0;
+      const intentIdSet = new Set([
+        "adventurous", "first-date", "romantic", "friendly",
+        "group-fun", "picnic-dates", "take-a-stroll",
+      ]);
+
       setInitialPreferences({
-        selectedIntents: (loadedPreferences.categories || []).filter((item: string) =>
-          [
-            "adventurous",
-            "first-date",
-            "romantic",
-            "friendly",
-            "group-fun",
-            "picnic-dates",
-            "take-a-stroll",
-          ].includes(item)
-        ),
+        selectedIntents: hasIntentsField
+          ? (loadedPreferences as any).intents
+          : (loadedPreferences.categories || []).filter((item: string) => intentIdSet.has(item)),
         budgetMin: loadedPreferences.budget_min || 0,
         budgetMax: loadedPreferences.budget_max || 200,
-        selectedCategories: (loadedPreferences.categories || []).filter(
-          (item: string) =>
-            ![
-              "adventurous",
-              "first-date",
-              "romantic",
-              "friendly",
-              "group-fun",
-              "picnic-dates",
-              "take-a-stroll",
-            ].includes(item)
-        ),
+        selectedCategories: hasIntentsField
+          ? (loadedPreferences.categories || [])
+          : (loadedPreferences.categories || []).filter((item: string) => !intentIdSet.has(item)),
         selectedDateOption: loadedPreferences.date_option
           ? ({
               now: "Now",
@@ -776,10 +780,6 @@ export default function PreferencesSheet({
       ? queryClient.getQueryData(["userPreferences", user.id])
       : undefined;
 
-    if (user?.id) {
-      queryClient.setQueryData(["userPreferences", user.id], nextUserPreferences);
-    }
-
     setIsSaving(true);
     try {
       // === CRITICAL PATH: Save to DB with 30s timeout ===
@@ -837,10 +837,6 @@ export default function PreferencesSheet({
       }
 
     } catch (error) {
-      // Rollback optimistic update on failure
-      if (previousPrefs !== undefined && user?.id) {
-        queryClient.setQueryData(["userPreferences", user.id], previousPrefs);
-      }
       console.error("[PreferencesSheet] Save failed:", error);
       Alert.alert(
         'Save Failed',

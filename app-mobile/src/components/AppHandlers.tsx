@@ -192,10 +192,8 @@ export function useAppHandlers(state: any) {
         mode: preferences.selectedIntents?.length > 0 ? "custom" : "explore",
         budget_min: typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
         budget_max: typeof preferences.budgetMax === "number" ? preferences.budgetMax : 1000,
-        categories: [
-          ...(preferences.selectedIntents || []),
-          ...(preferences.selectedCategories || []),
-        ],
+        categories: preferences.selectedCategories || ['Nature', 'Casual Eats', 'Drink'],
+        intents: preferences.selectedIntents || [],
         travel_mode: preferences.travelMode || "walking",
         travel_constraint_type: preferences.constraintType || "time",
         travel_constraint_value:
@@ -619,12 +617,10 @@ export function useAppHandlers(state: any) {
             : preferences.budgetMax !== ""
             ? Number(preferences.budgetMax)
             : 1000,
-        categories: (() => {
-          // Combine selected intents (as IDs) and selected categories (as names)
-          const intentIds = preferences.selectedIntents || [];
-          const categoryNames = preferences.selectedCategories || [];
-          return [...intentIds, ...categoryNames];
-        })(),
+        categories: preferences.selectedCategories?.length > 0
+          ? preferences.selectedCategories
+          : ['Nature', 'Casual Eats', 'Drink'],
+        intents: preferences.selectedIntents || [],
         travel_mode: normalizedTravelMode,
         travel_constraint_type: preferences.constraintType || "time",
         travel_constraint_value:
@@ -680,6 +676,7 @@ export function useAppHandlers(state: any) {
             budget_max: dbPreferences.budget_max,
             people_count: dbPreferences.people_count,
             categories: dbPreferences.categories,
+            intents: dbPreferences.intents || [],
             travel_mode: dbPreferences.travel_mode,
             travel_constraint_type: dbPreferences.travel_constraint_type,
             travel_constraint_value: dbPreferences.travel_constraint_value,

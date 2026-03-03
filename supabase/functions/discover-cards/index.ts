@@ -546,7 +546,22 @@ serve(async (req: Request) => {
           }
         }
 
-        console.log(`[discover-cards] Pool had ${poolResult.cards.length}/${limit} (below 80%), falling through to API`);
+        // If serveCardsFromPipeline already fetched from Google (fromApi > 0),
+        // return what we have — falling through would duplicate the Google search.
+        if (poolResult.fromApi > 0 && poolResult.cards.length > 0) {
+          const elapsed = Date.now() - t0;
+          console.log(`[discover-cards] Pipeline returned ${poolResult.cards.length} (${poolResult.fromPool} pool + ${poolResult.fromApi} API) in ${elapsed}ms — serving partial`);
+
+          const poolHasMoreAtNextOffset = poolResult.totalPoolSize > (poolOffset + limit);
+          return new Response(JSON.stringify({
+            cards: poolResult.cards,
+            total: poolResult.totalPoolSize,
+            source: 'mixed',
+            metadata: { hasMore: poolResult.cards.length >= limit || poolHasMoreAtNextOffset, poolSize: poolResult.totalPoolSize, batchSeed: batchSeed ?? 0 },
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        console.log(`[discover-cards] Pool had ${poolResult.cards.length}/${limit} (pool-only, below 80%), falling through to API`);
       } catch (poolErr) {
         console.warn('[discover-cards] Pool serve failed, falling back to API:', poolErr);
       }
