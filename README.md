@@ -426,7 +426,7 @@ Floating/content modals:
 |-------|-----------|
 | Share | `ShareModal` |
 | Feedback | `FeedbackModal` |
-| Experience Review | `ExperienceReviewModal` |
+| Post-Experience Review | `PostExperienceModal` |
 | Coach Map | `CoachMap` |
 | Debug | `DebugModal` (5-tap gesture) |
 | Notifications | `NotificationsModal` |
@@ -1816,6 +1816,7 @@ npx supabase functions serve function-name --env-file .env.local
 - **Dismissed Cards Review UI:** New `DismissedCardsSheet` bottom sheet lets users review left-swiped cards on deck exhaustion.
 - **Pool Pagination (batchSeed Offset + nextPageToken):** Each swipe batch now gets a distinct slice of the card pool via offset-based pagination.
 - **For You Hero Card Personalization:** Hero cards display user's top 2 preferred categories.
+- **App Integration — Voice Review Wiring:** Swapped `ExperienceReviewModal` + `usePendingReviews` for `PostExperienceModal` + `usePostExperienceCheck` in `app/index.tsx`. Patched `experienceFeedbackService.getPendingReviewEntries()` with `.is("feedback_status", null)` filter for backward compatibility. Added `expo-av` to `app.json` plugins for native audio recording support.
 
 ---
 

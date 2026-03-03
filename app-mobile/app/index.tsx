@@ -51,8 +51,8 @@ import { muteService } from "../src/services/muteService";
 import ShareModal from "../src/components/ShareModal";
 import FeedbackModal from "../src/components/FeedbackModal";
 
-import ExperienceReviewModal from "../src/components/expandedCard/FeedbackModal";
-import { usePendingReviews } from "../src/hooks/usePendingReviews";
+import PostExperienceModal from "../src/components/PostExperienceModal";
+import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
 
 import GiveFeedbackModal from "../src/components/coachmark/GiveFeedbackModal";
 
@@ -90,7 +90,7 @@ function AppContent() {
   const helpButtonDismissedRef = useRef<boolean>(false);
 
   // Pending experience reviews — shows review modal after scheduled experiences
-  const { pendingReview, showReviewModal, dismissReview } = usePendingReviews();
+  const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
   const viewShotRef = useRef<any>(null);
   const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
 
@@ -2283,13 +2283,16 @@ function AppContent() {
                     />
 
 
-                    {/* Experience Review Modal — shown day-after for past scheduled experiences */}
+                    {/* Post-Experience Review Modal — locked modal for voice reviews */}
                     {pendingReview && (
-                      <ExperienceReviewModal
+                      <PostExperienceModal
                         visible={showReviewModal}
-                        experienceTitle={pendingReview.experienceTitle}
-                        cardId={pendingReview.cardId}
-                        onClose={dismissReview}
+                        review={pendingReview}
+                        onComplete={() => {
+                          dismissReview();
+                          // Check for next pending review after a brief delay
+                          setTimeout(() => recheckPending(), 1000);
+                        }}
                       />
                     )}
 
