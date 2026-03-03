@@ -1,15 +1,23 @@
 import { Mixpanel } from "mixpanel-react-native";
 
-// TODO: Replace with your actual Mixpanel project token
 const MIXPANEL_TOKEN = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN;
 
 class MixpanelService {
   private static instance: MixpanelService;
-  private mixpanel: Mixpanel;
+  private mixpanel: Mixpanel | null = null;
   private initialized = false;
+  private readonly enabled: boolean;
 
   private constructor() {
-    this.mixpanel = new Mixpanel(MIXPANEL_TOKEN, true); // trackAutomaticEvents = true
+    this.enabled = typeof MIXPANEL_TOKEN === "string" && MIXPANEL_TOKEN.length > 0;
+    if (this.enabled) {
+      this.mixpanel = new Mixpanel(MIXPANEL_TOKEN!, true);
+    } else {
+      console.warn(
+        "📊 Mixpanel disabled — EXPO_PUBLIC_MIXPANEL_TOKEN is not set. " +
+        "All analytics calls will be silent no-ops."
+      );
+    }
   }
 
   static getInstance(): MixpanelService {
@@ -20,7 +28,7 @@ class MixpanelService {
   }
 
   async initialize(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initialized || !this.enabled || !this.mixpanel) return;
     try {
       await this.mixpanel.init();
       this.initialized = true;
@@ -34,10 +42,7 @@ class MixpanelService {
    * Identify a user after login so all subsequent events are tied to them.
    */
   identify(userId: string): void {
-    if (!this.initialized) {
-      console.warn("📊 Mixpanel not initialized — skipping identify");
-      return;
-    }
+    if (!this.initialized || !this.mixpanel) return;
     this.mixpanel.identify(userId);
     console.log("📊 Mixpanel identified user:", userId);
   }
@@ -46,7 +51,7 @@ class MixpanelService {
    * Set user profile properties (shown in Mixpanel People).
    */
   setUserProperties(properties: Record<string, any>): void {
-    if (!this.initialized) return;
+    if (!this.initialized || !this.mixpanel) return;
     this.mixpanel.getPeople().set(properties);
   }
 
@@ -54,21 +59,16 @@ class MixpanelService {
    * Track a generic event with optional properties.
    */
   track(eventName: string, properties?: Record<string, any>): void {
-    if (!this.initialized) {
-      console.warn(`📊 Mixpanel not initialized — skipping track: ${eventName}`);
-      return;
-    }
+    if (!this.initialized || !this.mixpanel) return;
     this.mixpanel.track(eventName, properties);
-    console.log(`📊 Mixpanel tracked: ${eventName}`, properties ?? "");
   }
 
   /**
    * Reset Mixpanel state on logout (clears distinct_id / super properties).
    */
   reset(): void {
-    if (!this.initialized) return;
+    if (!this.initialized || !this.mixpanel) return;
     this.mixpanel.reset();
-    console.log("📊 Mixpanel reset");
   }
 
   // ─── Convenience helpers ────────────────────────────────────────────

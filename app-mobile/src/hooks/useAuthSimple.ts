@@ -16,15 +16,17 @@ const webClientId =
   Constants.expoConfig?.extra?.googleWebClientId ||
   process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
-console.log("Google Web Client ID:", webClientId);
+const iosClientId =
+  Constants.expoConfig?.extra?.IOS_CLIENT_ID ||
+  process.env.EXPO_PUBLIC_IOS_CLIENT_ID;
 
 if (webClientId) {
   GoogleSignin.configure({
-    webClientId, // From Google Cloud Console - Web Client ID
-    offlineAccess: true, // If you want to access Google API on behalf of the user FROM YOUR SERVER
-    forceCodeForRefreshToken: true, // [Android] related to `serverAuthCode`
+    webClientId,
+    iosClientId: Platform.OS === "ios" ? iosClientId : undefined,
+    offlineAccess: true,
+    forceCodeForRefreshToken: true,
   });
-  console.log("Google Sign-In configured successfully");
 } else {
   console.warn(
     "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set. Google Sign-In may not work."
