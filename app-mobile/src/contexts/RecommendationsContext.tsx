@@ -72,6 +72,8 @@ interface RecommendationsContextType {
   dismissedCards: Recommendation[];
   addDismissedCard: (card: Recommendation) => void;
   clearDismissedCards: () => void;
+  removeDismissedCard: (card: Recommendation) => void;
+  addCardToFront: (card: Recommendation) => void;
   isExhausted: boolean;
   isSlowBatchLoad: boolean;
 }
@@ -359,6 +361,14 @@ export const RecommendationsProvider: React.FC<
 
   const clearDismissedCards = useCallback(() => {
     setDismissedCards([]);
+  }, []);
+
+  const removeDismissedCard = useCallback((card: Recommendation) => {
+    setDismissedCards((prev) => prev.filter((c) => c.id !== card.id));
+  }, []);
+
+  const addCardToFront = useCallback((card: Recommendation) => {
+    setRecommendations((prev) => [card, ...prev]);
   }, []);
 
   // ── Sync hasMore and exhaustion from deck hook ──────────────────────────
