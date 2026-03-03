@@ -161,7 +161,8 @@ export class ExperienceGenerationService {
   static async discoverExperiences(
     location: { lat: number; lng: number },
     radius?: number,
-    selectedCategories?: string[]
+    selectedCategories?: string[],
+    heroCategories?: string[],
   ): Promise<{
     cards: GeneratedExperience[];
     heroCards: GeneratedExperience[];
@@ -176,6 +177,9 @@ export class ExperienceGenerationService {
       };
       if (selectedCategories && selectedCategories.length > 0) {
         body.selectedCategories = selectedCategories;
+      }
+      if (heroCategories && heroCategories.length > 0) {
+        body.heroCategories = heroCategories;
       }
 
       const { data, error } = await supabase.functions.invoke(

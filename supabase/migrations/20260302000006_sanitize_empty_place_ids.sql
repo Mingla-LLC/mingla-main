@@ -3,8 +3,3 @@
 UPDATE public.card_pool
 SET google_place_id = NULL
 WHERE google_place_id = '';
-
--- Also clean place_pool if it has the same issue
-UPDATE public.place_pool
-SET google_place_id = NULL
-WHERE google_place_id = '';

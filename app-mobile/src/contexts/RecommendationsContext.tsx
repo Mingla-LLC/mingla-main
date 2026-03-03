@@ -73,6 +73,7 @@ interface RecommendationsContextType {
   addDismissedCard: (card: Recommendation) => void;
   clearDismissedCards: () => void;
   isExhausted: boolean;
+  isSlowBatchLoad: boolean;
 }
 
 const RecommendationsContext = createContext<
@@ -102,6 +103,7 @@ export const RecommendationsProvider: React.FC<
   const [hasMoreCards, setHasMoreCards] = useState(true);
   const [dismissedCards, setDismissedCards] = useState<Recommendation[]>([]);
   const [isExhausted, setIsExhausted] = useState(false);
+  const [isSlowBatchLoad, setIsSlowBatchLoad] = useState(false);
   const prefetchFiredRef = useRef(false);
   const previousBatchRef = useRef<Recommendation[]>([]);
   const currentMode = propCurrentMode;
@@ -312,17 +314,31 @@ export const RecommendationsProvider: React.FC<
     setBatchSeed(prev => prev + 1);
   }, [recommendations]);
 
-  // Timeout for "Loading more" state — if batch transition takes > 10s, mark exhausted
+  // Soft timeout (10s): show "Still loading..." intermediate state
+  // Hard timeout (30s): mark exhausted only if batch truly never arrived
   useEffect(() => {
     if (!isBatchTransitioning) return;
-    const timer = setTimeout(() => {
+
+    const softTimer = setTimeout(() => {
       if (isBatchTransitioning) {
-        console.warn('[RecommendationsContext] Batch transition timed out after 10s — marking exhausted');
-        setIsBatchTransitioning(false);
-        setIsExhausted(true);
+        console.log('[RecommendationsContext] Batch transition slow (10s) — showing intermediate state');
+        setIsSlowBatchLoad(true);
       }
     }, 10000);
-    return () => clearTimeout(timer);
+
+    const hardTimer = setTimeout(() => {
+      if (isBatchTransitioning) {
+        console.warn('[RecommendationsContext] Batch transition timed out after 30s — marking exhausted');
+        setIsBatchTransitioning(false);
+        setIsExhausted(true);
+        setIsSlowBatchLoad(false);
+      }
+    }, 30000);
+
+    return () => {
+      clearTimeout(softTimer);
+      clearTimeout(hardTimer);
+    };
   }, [isBatchTransitioning]);
 
   // Restore the previous batch (used by "Review Previous Batch")
@@ -372,7 +388,8 @@ export const RecommendationsProvider: React.FC<
       previousBatchRef.current = [];
       setIsRefreshingAfterPrefChange(true);
       setDismissedCards([]);
-      // DO NOT reset warmPoolFired — warm pool should only fire once per mount
+      // Reset warm pool so it re-fires with new preferences
+      warmPoolFired.current = false;
       // DO NOT call queryClient.invalidateQueries — the query key change
       // from updated categories/intents handles refetching automatically
     }
@@ -494,8 +511,13 @@ export const RecommendationsProvider: React.FC<
           setRecommendations(deckCards);
         }
 
-        if (isDeckBatchLoaded && isBatchTransitioning) {
+        if (isDeckBatchLoaded && (isBatchTransitioning || isSlowBatchLoad)) {
           setIsBatchTransitioning(false);
+          setIsSlowBatchLoad(false);
+          // If we timed out but batch arrived late, un-exhaust
+          if (isExhausted && deckCards.length > 0) {
+            setIsExhausted(false);
+          }
         }
       } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isBatchTransitioning) {
         // Genuinely empty — no cards available
@@ -771,6 +793,7 @@ export const RecommendationsProvider: React.FC<
     addDismissedCard,
     clearDismissedCards,
     isExhausted,
+    isSlowBatchLoad,
   };
 
   return (

@@ -211,6 +211,7 @@ export default function SwipeableCards({
     dismissedCards,
     addDismissedCard,
     isExhausted,
+    isSlowBatchLoad,
   } = useRecommendations();
 
   // Combine all loading states for UI consistency and to prevent animation freezing
@@ -1248,6 +1249,21 @@ export default function SwipeableCards({
           >
             <Text style={styles.startOverButtonText}>Try Again</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // Slow batch load — show "Still loading" instead of exhaustion
+  if (isSlowBatchLoad && !isExhausted) {
+    return (
+      <View style={styles.noCardsContainer}>
+        <View style={styles.noCardsContent}>
+          <ActivityIndicator size="large" color="#eb7825" />
+          <Text style={styles.noCardsTitle}>Still loading...</Text>
+          <Text style={styles.noCardsSubtitle}>
+            Finding more places nearby. This is taking a bit longer than usual.
+          </Text>
         </View>
       </View>
     );

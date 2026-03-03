@@ -154,8 +154,8 @@ const getDiscoverExactCacheKey = (
   lng: number | null
 ): string => `${DISCOVER_CACHE_KEY}_${userId}_${lat?.toFixed(2)}_${lng?.toFixed(2)}`;
 
-const getDiscoverDailyCacheKey = (userId: string): string =>
-  `${DISCOVER_DAILY_CACHE_KEY}_${userId}`;
+const getDiscoverDailyCacheKey = (userId: string, prefsFingerprint?: string): string =>
+  `${DISCOVER_DAILY_CACHE_KEY}_${userId}${prefsFingerprint ? `_${prefsFingerprint}` : ''}`;
 
 const US_TIMEZONE = "America/New_York";
 const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -918,6 +918,12 @@ export default function DiscoverScreen({
   const [userSelectedCategories, setUserSelectedCategories] = useState<string[] | null>(null);
   const prevRefreshKeyRef = useRef<number | undefined>(undefined);
 
+  // Stable fingerprint of user's selected categories — used to partition caches per preference set
+  const prefsFingerprint = useMemo(() => {
+    if (!userSelectedCategories || userSelectedCategories.length === 0) return 'all';
+    return [...userSelectedCategories].sort().join(',');
+  }, [userSelectedCategories]);
+
   useEffect(() => {
     const loadUserCategories = async () => {
       if (!user?.id) return;
@@ -943,17 +949,12 @@ export default function DiscoverScreen({
   }, [user?.id, preferencesRefreshKey]);
 
   // When preferences change (refreshKey bumps), invalidate local caches so discover re-fetches
+  // Per-fingerprint cache keys mean old entries expire naturally — no need to delete them.
   useEffect(() => {
     if (prevRefreshKeyRef.current !== undefined && prevRefreshKeyRef.current !== preferencesRefreshKey) {
-      console.log("[Discover] Preferences changed – invalidating discover cache");
+      console.log("[Discover] Preferences changed – resetting fetch guard for new preference set");
       hasFetchedRef.current = false;
       discoverSessionCache.clear();
-      // Clear async-storage discover caches for this user
-      if (user?.id) {
-        const exactCacheKey = getDiscoverExactCacheKey(user.id, deviceGpsLat, deviceGpsLng);
-        const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
-        AsyncStorage.multiRemove([exactCacheKey, dailyCacheKey]).catch(() => {});
-      }
     }
     prevRefreshKeyRef.current = preferencesRefreshKey;
   }, [preferencesRefreshKey]);
@@ -1230,7 +1231,7 @@ export default function DiscoverScreen({
         heroCards,
       };
       const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
-      const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+      const dailyCacheKey = getDiscoverDailyCacheKey(user.id, prefsFingerprint);
       const serialized = JSON.stringify(cacheData);
 
       discoverSessionCache.set(exactCacheKey, cacheData);
@@ -1240,7 +1241,7 @@ export default function DiscoverScreen({
         [exactCacheKey, serialized],
         [dailyCacheKey, serialized],
       ]);
-      console.log("Saved discover cache for date:", cacheData.date);
+      console.log("Saved discover cache for date:", cacheData.date, "prefs:", prefsFingerprint);
     } catch (error) {
       console.error("Error saving discover cache:", error);
     }
@@ -1253,7 +1254,7 @@ export default function DiscoverScreen({
     }
     try {
       const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
-      const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+      const dailyCacheKey = getDiscoverDailyCacheKey(user.id, prefsFingerprint);
 
       const cachedExactInMemory = discoverSessionCache.get(exactCacheKey);
       if (cachedExactInMemory) {
@@ -1293,7 +1294,7 @@ export default function DiscoverScreen({
     }
 
     const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
-    const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+    const dailyCacheKey = getDiscoverDailyCacheKey(user.id, prefsFingerprint);
 
     return discoverSessionCache.get(exactCacheKey) || discoverSessionCache.get(dailyCacheKey) || null;
   };
@@ -1484,11 +1485,13 @@ export default function DiscoverScreen({
         hasFetchedRef.current = true;
 
         // Use new discoverExperiences method that calls discover-experiences edge function
-        // Returns category cards (filtered by user prefs) + a featured card
+        // Returns category cards (filtered by user prefs) + hero cards matching user's top preferences
+        const heroCategories = userSelectedCategories?.slice(0, 2) || undefined;
         const { cards: generatedCards, heroCards: heroCardsRaw, featuredCard } = await ExperienceGenerationService.discoverExperiences(
           { lat: locationLat, lng: locationLng },
           10000, // 10km radius
-          undefined // Always fetch all 12 categories — For You is a discovery surface
+          userSelectedCategories || undefined, // Pass user's selected categories
+          heroCategories,                      // Pass user's top 2 as hero categories
         );
 
         if (!generatedCards || generatedCards.length === 0) {
@@ -1547,7 +1550,7 @@ export default function DiscoverScreen({
           strollData: exp.strollData,
         }));
 
-        // Transform hero cards (2 heroes: Fine Dining + Play)
+        // Transform hero cards (2 heroes: user's top preferred categories or Fine Dining + Play default)
         const transformedHeroes: FeaturedCardData[] = (heroCardsRaw || []).map((hc: any) => ({
           id: hc.id,
           placeId: hc.placeId || hc.id,

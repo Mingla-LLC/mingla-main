@@ -2,6 +2,10 @@ import { useState, useCallback, useEffect } from "react";
 import { supabase } from "../services/supabase";
 import { blockService } from "../services/blockService";
 
+function hasChanged<T>(prev: T, next: T): boolean {
+  return JSON.stringify(prev) !== JSON.stringify(next);
+}
+
 export interface Friend {
   id: string;
   user_id: string;
@@ -76,7 +80,9 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         avatar_url: undefined, // Profile doesn't include avatar in current query
         blocked_at: b.created_at,
       }));
-      setBlockedUsers(list);
+      if (hasChanged(blockedUsers, list)) {
+        setBlockedUsers(list);
+      }
     } catch (error) {
       console.error("Error fetching blocked users:", error);
       setBlockedUsers([]);
@@ -128,7 +134,9 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
       }, []);
 
       // Set count immediately so UI updates fast
-      setFriendCount(uniqueFriends.length);
+      if (friendCount !== uniqueFriends.length) {
+        setFriendCount(uniqueFriends.length);
+      }
 
       const friendsData = uniqueFriends;
 
@@ -171,7 +179,9 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         };
       });
 
-      setFriends(transformedFriends);
+      if (hasChanged(friends, transformedFriends)) {
+        setFriends(transformedFriends);
+      }
     } catch (err: any) {
       console.error("Error loading friends:", err);
       const errorMessage = err?.message?.includes('network') || err?.message?.includes('Network') || err?.code === 'NETWORK_ERROR'
@@ -363,7 +373,9 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         email: r.sender.email
       })));
 
-      setFriendRequests(transformedRequests);
+      if (hasChanged(friendRequests, transformedRequests)) {
+        setFriendRequests(transformedRequests);
+      }
     } catch (error) {
       console.error("Error loading friend requests:", error);
     }

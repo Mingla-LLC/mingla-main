@@ -163,6 +163,7 @@ interface DiscoverRequest {
   location: { lat: number; lng: number };
   radius?: number; // Optional radius in meters, default 10km
   selectedCategories?: string[]; // Optional: only fetch these categories (IDs or labels)
+  heroCategories?: string[]; // Optional: user's top 2 categories for hero cards
 }
 
 interface DiscoverPlace {
@@ -200,6 +201,19 @@ serve(async (req) => {
     const request: DiscoverRequest = await req.json();
     const { location, radius = 10000, selectedCategories } = request;
     const usDateKey = getUsDateKey();
+
+    // Validate heroCategories if provided
+    if (request.heroCategories && !Array.isArray(request.heroCategories)) {
+      return new Response(
+        JSON.stringify({ error: 'heroCategories must be an array of strings' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Dynamic hero categories: use request param or fall back to defaults
+    const HERO_CATEGORIES_RESOLVED = request.heroCategories && request.heroCategories.length > 0
+      ? request.heroCategories.slice(0, 2)
+      : ["Fine Dining", "Play"];
 
     // Map from preference IDs (snake_case) to discover category labels
     const PREF_ID_TO_DISCOVER_CATEGORY: Record<string, string> = {
@@ -368,14 +382,13 @@ serve(async (req) => {
           console.log(`[pool-first] Serving ${poolResult.cards.length} discover cards from pool (${poolResult.fromPool} pool, ${poolResult.fromApi} API)`);
 
           // ── Category-diverse selection from pool cards ──
-          const HERO_CATEGORIES = ["Fine Dining", "Play"];
           const poolHeroCards: any[] = [];
           const poolGridCards: any[] = [];
           const usedCategories = new Set<string>();
           const usedIds = new Set<string>();
 
-          // PASS 1: Extract hero cards (Fine Dining + Play)
-          for (const heroCategory of HERO_CATEGORIES) {
+          // PASS 1: Extract hero cards (user's preferred categories or defaults)
+          for (const heroCategory of HERO_CATEGORIES_RESOLVED) {
             const heroCandidates = poolResult.cards.filter(
               (c: any) => c.category === heroCategory && !usedIds.has(c.id)
             );
@@ -392,7 +405,7 @@ serve(async (req) => {
 
           // PASS 2: One card per non-hero category (round-robin diversity)
           for (const category of categoriesToFetch) {
-            if (HERO_CATEGORIES.includes(category)) continue; // Heroes already extracted
+            if (HERO_CATEGORIES_RESOLVED.includes(category)) continue; // Heroes already extracted
             if (usedCategories.has(category)) continue;
             if (poolGridCards.length >= 10) break;
 
@@ -487,7 +500,7 @@ serve(async (req) => {
 
     // Select one unique place per category, avoiding duplicates
     // Hero categories are selected separately — exclude from grid
-    const heroCategories = ["Fine Dining", "Play"];
+    const heroCategories = HERO_CATEGORIES_RESOLVED;
     const usedPlaceIds = new Set<string>();
     const places: DiscoverPlace[] = [];
     const successfulCategories: string[] = [];
