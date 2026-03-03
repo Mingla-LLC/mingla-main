@@ -251,7 +251,7 @@ User Request (batchSeed=N) → Edge Function (Deno)
 |---|---|
 | **Scheduled Experiences** | Calendar view of scheduled activities with date grid and time slots |
 | **Calendar Integration** | Export to device calendar via Expo Calendar. Date proposal system with weekend day selection |
-| **Experience Reviews** | Prompted to review past scheduled experiences. `usePendingReviews` hook checks on mount + app foreground, waits 10 seconds, then shows modal (once per return to app) |
+| **Experience Reviews** | Prompted to review past scheduled experiences. `usePostExperienceCheck` hook checks on mount, app foreground, and every 60 seconds. 3-second delay before modal. Returns rich place data (name, address, category, image, IDs) for the voice review modal. Full `PostExperienceModal` component: locked modal (no dismiss), two paths — "Yes, I went" (star rating → voice recording → submit) or "No, I'll go later" (reschedule with date picker). Up to 5 voice clips (60s each), playback/delete, skip recording option. Reschedule updates calendar entry + sets `feedback_status='rescheduled'`. |
 | **QR Code Display** | QR codes for in-store/mobile payments on purchased experiences |
 
 ### 6. Activity Tab
@@ -987,7 +987,7 @@ defaultOptions: {
 | `useRecentActivity` | User activity history | Fetches via `userActivityService.fetchRecentActivity()`. Default limit: 20 |
 | `useCalendarEntries` | Calendar entries | Wraps `CalendarService.fetchUserCalendarEntries()`. Always fresh (staleTime: 0) |
 | `useCalendarHolidays` | Holiday calendar | Reads device calendar, falls back to 15 hardcoded holidays. Maps holiday → primary + secondary category |
-| `usePendingReviews` | Day-after review prompts | Checks on mount + app foreground. 10-second delay, once per return to app |
+| `usePostExperienceCheck` | Post-experience review prompts | Checks on mount, foreground, and 60s interval. 3-second delay. Returns `PendingExperienceReview` with full place data. `recheckPending()` for chained reviews |
 
 ### Profile & Gamification (1)
 
@@ -1386,6 +1386,7 @@ Filters out experience intents (adventurous, romantic, business, etc.) before Go
 | `CardStackPreview.tsx` | Stacked card preview behind main card |
 | `DeckHistorySheet.tsx` | Bottom sheet for swipe batch history |
 | `DismissedCardsSheet.tsx` | Bottom sheet for reviewing/reconsidering left-swiped cards |
+| `PostExperienceModal.tsx` | Locked post-experience modal: star rating, voice recording (up to 5 clips), reschedule path with date picker |
 | `PullToRefresh.tsx` | Pull-to-refresh with Reanimated animations + haptic feedback |
 
 ### Activity Subdirectory (9)
@@ -1503,7 +1504,7 @@ Mingla/
 │   │   │   ├── useFriends.ts               # Friend management
 │   │   │   ├── useMessages.ts              # Messaging
 │   │   │   ├── useCalendarHolidays.ts      # Device calendar holidays
-│   │   │   ├── usePendingReviews.ts        # Day-after review prompts
+│   │   │   ├── usePostExperienceCheck.ts   # Post-experience review prompts (replaces usePendingReviews)
 │   │   │   ├── useEnhancedProfile.ts       # Gamified profile
 │   │   │   └── ... (22 more)
 │   │   ├── services/                        # 65+ service modules
@@ -1801,6 +1802,8 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-03)
 
+- **Post-Experience Modal:** New `PostExperienceModal.tsx` — fully locked modal (no dismiss, no X, Android back disabled) with two completion paths: review (star rating → voice recording → submit) and reschedule (date picker → calendar update). Supports up to 5 voice clips (60s each, auto-stop), playback/delete, skip recording, retry on submit error. Integrates `voiceReviewService`, `CalendarService`, and `voiceReviewRecorder`.
+- **Post-Experience Check Hook:** New `usePostExperienceCheck` hook replaces `usePendingReviews`. Queries `calendar_entries` directly (single query with `feedback_status IS NULL` filter instead of cross-referencing `experience_feedback`). 3-second modal delay (down from 10s), 60-second periodic interval check (new), rich `PendingExperienceReview` interface with full place data for the voice review modal, `recheckPending()` for chained reviews, concurrent-check prevention via `isCheckingRef`.
 - **Voice Review Mobile Service:** New `voiceReviewService.ts` provides audio recording via `expo-av` (`VoiceReviewRecorder` singleton class with `initialize`, `startRecording`, `stopRecording`, `cancelRecording`), parallel audio upload to private `voice-reviews` Supabase Storage bucket with 1-year signed URLs, `submitVoiceReview` orchestrating upload → `place_reviews` insert → `calendar_entries` status update → fire-and-forget `process-voice-review` edge function invocation, and `markRescheduled` for deferred feedback. Exports `VoiceClip`, `VoiceReviewSubmission`, `VoiceReviewResult` types and `MAX_CLIP_DURATION_MS` / `MAX_CLIPS` constants.
 - **Voice Reviews Database Layer:** New `place_reviews` table for storing voice reviews with star ratings (1-5), audio file Storage paths, AI-processed transcription, sentiment classification, theme extraction, and processing lifecycle tracking. New `voice-reviews` private storage bucket with per-user folder isolation and RLS policies. `calendar_entries` extended with `feedback_status` and `review_id` columns for post-experience review prompting. Migration: `20260303000015`.
 - **Voice Review Processing Edge Function:** New `process-voice-review` edge function that runs in the background after a user submits a voice review. Downloads audio clips from Supabase Storage, sends them to GPT-4o-mini-audio-preview as `input_audio` for combined transcription + sentiment analysis + theme extraction in a single API call. Updates `place_reviews` with results, recalculates `place_pool` aggregate analytics (review count, avg rating, sentiment counts, top themes), and increments `user_engagement_stats.total_reviews_given`. Graceful fallback on GPT failure: infers sentiment from star rating, marks processing as completed. Migration `20260303000016` adds `processed_at` column.
