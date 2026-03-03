@@ -215,10 +215,10 @@ export async function fetchNextPage(
   apiKey: string,
   cacheId: string,
 ): Promise<{ newPlaces: any[]; hasMore: boolean }> {
-  // 1. Read the cache entry to get the stored nextPageToken
+  // 1. Read the cache entry to get the stored nextPageToken and search_strategy
   const { data: cacheEntry, error } = await supabaseAdmin
     .from('google_places_cache')
-    .select('id, places, next_page_token, pages_fetched, place_type')
+    .select('id, places, next_page_token, pages_fetched, place_type, search_strategy')
     .eq('id', cacheId)
     .single();
 
@@ -226,10 +226,14 @@ export async function fetchNextPage(
     return { newPlaces: [], hasMore: false };
   }
 
-  // 2. Call Google Places API with ONLY the pageToken (no other search params)
+  // 2. Call Google Places API with ONLY the pageToken — use the correct endpoint
+  //    based on the original search strategy (text vs nearby)
+  const endpoint = cacheEntry.search_strategy === 'text'
+    ? 'https://places.googleapis.com/v1/places:searchText'
+    : 'https://places.googleapis.com/v1/places:searchNearby';
   let res: Response;
   try {
-    res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+    res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

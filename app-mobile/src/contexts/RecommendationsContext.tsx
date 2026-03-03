@@ -398,6 +398,7 @@ export const RecommendationsProvider: React.FC<
       previousBatchRef.current = [];
       setIsRefreshingAfterPrefChange(true);
       setDismissedCards([]);
+      setIsSlowBatchLoad(false);
       // Reset warm pool so it re-fires with new preferences
       warmPoolFired.current = false;
       // DO NOT call queryClient.invalidateQueries — the query key change

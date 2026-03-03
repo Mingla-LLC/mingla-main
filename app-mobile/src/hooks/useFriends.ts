@@ -1,10 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "../services/supabase";
 import { blockService } from "../services/blockService";
-
-function hasChanged<T>(prev: T, next: T): boolean {
-  return JSON.stringify(prev) !== JSON.stringify(next);
-}
 
 export interface Friend {
   id: string;
@@ -53,6 +49,12 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Track previous values via refs to avoid stale closure issues in useCallback
+  const prevBlockedUsersJson = useRef('[]');
+  const prevFriendsJson = useRef('[]');
+  const prevFriendRequestsJson = useRef('[]');
+  const prevFriendCount = useRef(0);
+
   // Fetch blocked users from blocked_users table (new system)
   const fetchBlockedUsers = useCallback(async () => {
     try {
@@ -80,12 +82,17 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         avatar_url: undefined, // Profile doesn't include avatar in current query
         blocked_at: b.created_at,
       }));
-      if (hasChanged(blockedUsers, list)) {
+      const listJson = JSON.stringify(list);
+      if (prevBlockedUsersJson.current !== listJson) {
+        prevBlockedUsersJson.current = listJson;
         setBlockedUsers(list);
       }
     } catch (error) {
       console.error("Error fetching blocked users:", error);
-      setBlockedUsers([]);
+      if (prevBlockedUsersJson.current !== '[]') {
+        prevBlockedUsersJson.current = '[]';
+        setBlockedUsers([]);
+      }
     }
   }, []);
 
@@ -134,7 +141,8 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
       }, []);
 
       // Set count immediately so UI updates fast
-      if (friendCount !== uniqueFriends.length) {
+      if (prevFriendCount.current !== uniqueFriends.length) {
+        prevFriendCount.current = uniqueFriends.length;
         setFriendCount(uniqueFriends.length);
       }
 
@@ -179,7 +187,9 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         };
       });
 
-      if (hasChanged(friends, transformedFriends)) {
+      const friendsJson = JSON.stringify(transformedFriends);
+      if (prevFriendsJson.current !== friendsJson) {
+        prevFriendsJson.current = friendsJson;
         setFriends(transformedFriends);
       }
     } catch (err: any) {
@@ -373,7 +383,9 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         email: r.sender.email
       })));
 
-      if (hasChanged(friendRequests, transformedRequests)) {
+      const requestsJson = JSON.stringify(transformedRequests);
+      if (prevFriendRequestsJson.current !== requestsJson) {
+        prevFriendRequestsJson.current = requestsJson;
         setFriendRequests(transformedRequests);
       }
     } catch (error) {

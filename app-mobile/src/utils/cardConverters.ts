@@ -31,7 +31,7 @@ export function roundRobinInterleave(pillResults: Recommendation[][]): Recommend
     for (let p = 0; p < pillResults.length; p++) {
       if (round < pillResults[p].length) {
         const card = pillResults[p][round];
-        const dedupeKey = (card as any).placeId || card.id;
+        const dedupeKey = card.placeId || card.id;
         if (!seen.has(dedupeKey)) {
           seen.add(dedupeKey);
           result.push(card);

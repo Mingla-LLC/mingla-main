@@ -204,6 +204,7 @@ export const useAppStore = create<AppState>()(
           deckBatches: [],
           currentDeckBatchIndex: -1,
           deckPrefsHash: '',
+          deckSchemaVersion: DECK_SCHEMA_VERSION,
         }),
     }),
     {

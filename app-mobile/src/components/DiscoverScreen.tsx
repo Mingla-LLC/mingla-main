@@ -65,6 +65,7 @@ interface CustomHoliday {
 const { width: screenWidth } = Dimensions.get("window");
 const CARD_WIDTH = screenWidth - 32; // 16px padding on each side
 const GRID_CARD_WIDTH = (screenWidth - 48) / 2; // 16px padding + 16px gap between cards
+const HERO_CARD_WIDTH = (screenWidth - 44) / 2; // 16px padding + 12px gap between hero cards
 const ANIMATION_DURATION = 400;
 
 // Month names for custom day picker
@@ -509,6 +510,54 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", mea
           <View style={styles.ratingContainer}>
             <Ionicons name="star" size={16} color="#eb7825" />
             <Text style={styles.ratingText}>{card.rating.toFixed(1)}</Text>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// Hero Card Component (side-by-side at top of For You view)
+interface HeroCardProps {
+  card: FeaturedCardData;
+  currency?: string;
+  measurementSystem?: "Metric" | "Imperial";
+  onPress?: () => void;
+}
+
+const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurementSystem = "Imperial", onPress }) => {
+  const formattedPrice = formatPriceRange(card.priceRange, currency);
+  const categoryIcon = categoryIcons[card.experienceType] || "ellipse-outline";
+
+  return (
+    <TouchableOpacity
+      style={styles.heroCard}
+      onPress={onPress}
+      activeOpacity={0.9}
+    >
+      {/* Hero Image */}
+      <View style={styles.heroCardImageContainer}>
+        <Image
+          source={{ uri: card.image }}
+          style={styles.heroCardImage}
+          resizeMode="cover"
+        />
+        {/* Category Badge */}
+        <View style={styles.heroCardCategoryBadge}>
+          <Ionicons name={categoryIcon as any} size={14} color="#eb7825" />
+          <Text style={styles.heroCardCategoryText}>{card.experienceType}</Text>
+        </View>
+      </View>
+
+      {/* Hero Content */}
+      <View style={styles.heroCardContent}>
+        <Text style={styles.heroCardTitle} numberOfLines={2}>{card.title}</Text>
+        <Text style={styles.heroCardDescription} numberOfLines={2}>{card.description}</Text>
+        <View style={styles.heroCardFooter}>
+          <Text style={styles.heroCardPrice}>{formattedPrice}</Text>
+          <View style={styles.heroCardRating}>
+            <Ionicons name="star" size={13} color="#eb7825" />
+            <Text style={styles.heroCardRatingText}>{card.rating.toFixed(1)}</Text>
           </View>
         </View>
       </View>
@@ -3363,27 +3412,26 @@ export default function DiscoverScreen({
                   {/* Content - Hero Cards and Grid */}
                   {(selectedHeroCards.length > 0 || featuredCard || gridCards.length > 0) && (
                     <>
-                      {/* Hero Cards — 2 full-width, stacked vertically */}
+                      {/* Hero Cards — 2 side-by-side at the top (Fine Dining + Play) */}
                       {selectedHeroCards.length > 0 ? (
-                        <View style={styles.heroCardsContainer}>
-                          {selectedHeroCards.map((heroCard, index) => (
-                            <Animated.View
-                              key={heroCard.id}
-                              style={{
-                                opacity: featuredCardOpacity,
-                                transform: [{ translateY: featuredCardSlide }],
-                                marginBottom: index < selectedHeroCards.length - 1 ? 12 : 0,
-                              }}
-                            >
-                              <FeaturedCard
+                        <Animated.View
+                          style={{
+                            opacity: featuredCardOpacity,
+                            transform: [{ translateY: featuredCardSlide }],
+                          }}
+                        >
+                          <View style={styles.heroCardsRow}>
+                            {selectedHeroCards.slice(0, 2).map((heroCard) => (
+                              <HeroCard
+                                key={heroCard.id}
                                 card={heroCard}
                                 currency={accountPreferences?.currency}
                                 measurementSystem={accountPreferences?.measurementSystem}
                                 onPress={() => handleCardPress(heroCard)}
                               />
-                            </Animated.View>
-                          ))}
-                        </View>
+                            ))}
+                          </View>
+                        </Animated.View>
                       ) : featuredCard ? (
                         <Animated.View
                           style={{
@@ -4179,6 +4227,84 @@ const styles = StyleSheet.create({
   heroCardsContainer: {
     marginBottom: 16,
     gap: 12,
+  },
+  heroCardsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    gap: 12,
+  },
+  heroCard: {
+    width: HERO_CARD_WIDTH,
+    backgroundColor: "white",
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  heroCardImageContainer: {
+    position: "relative",
+    height: 180,
+  },
+  heroCardImage: {
+    width: "100%",
+    height: "100%",
+  },
+  heroCardCategoryBadge: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    gap: 4,
+  },
+  heroCardCategoryText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  heroCardContent: {
+    padding: 12,
+  },
+  heroCardTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 4,
+    lineHeight: 20,
+  },
+  heroCardDescription: {
+    fontSize: 12,
+    color: "#6b7280",
+    lineHeight: 16,
+    marginBottom: 8,
+  },
+  heroCardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  heroCardPrice: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  heroCardRating: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  heroCardRatingText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1f2937",
   },
   container: {
     flex: 1,

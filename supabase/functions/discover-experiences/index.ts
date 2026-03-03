@@ -203,7 +203,7 @@ serve(async (req) => {
     const usDateKey = getUsDateKey();
 
     // Validate heroCategories if provided
-    if (request.heroCategories && !Array.isArray(request.heroCategories)) {
+    if (request.heroCategories && (!Array.isArray(request.heroCategories) || !request.heroCategories.every((c: any) => typeof c === 'string'))) {
       return new Response(
         JSON.stringify({ error: 'heroCategories must be an array of strings' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -437,12 +437,14 @@ serve(async (req) => {
           const poolFeaturedCard = poolHeroCards[0] || poolGridCards[0] || null;
 
           // ── Persist to daily cache (same as Google API path) ──
+          // Only delete the cache row matching this categoryHash, not all rows for this user+date
           if (adminClient && userId) {
             adminClient
               .from("discover_daily_cache")
               .delete()
               .eq("user_id", userId)
               .eq("us_date_key", usDateKey)
+              .filter("generated_location->>categoryHash", "eq", categoryHash)
               .then(() =>
                 adminClient!
                   .from("discover_daily_cache")
@@ -630,13 +632,13 @@ serve(async (req) => {
     const featuredCard = heroCardResults[0] || null;
 
     if (adminClient && userId && cards.length > 0) {
-      // Delete any existing cache row for this user+date (since we can't use
-      // upsert with the categoryHash stored inside a JSONB column).
+      // Delete only the cache row matching this categoryHash (not all rows for this user+date)
       await adminClient
         .from("discover_daily_cache")
         .delete()
         .eq("user_id", userId)
-        .eq("us_date_key", usDateKey);
+        .eq("us_date_key", usDateKey)
+        .filter("generated_location->>categoryHash", "eq", categoryHash);
 
       const { error: cacheWriteError } = await adminClient
         .from("discover_daily_cache")

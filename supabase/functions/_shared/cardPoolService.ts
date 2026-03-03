@@ -103,9 +103,10 @@ async function queryPoolCards(
   }
 
   // Build the query using Supabase JS client
+  // Use { count: 'exact' } to get the true total pool size without LIMIT cap
   let query = supabaseAdmin
     .from('card_pool')
-    .select('*')
+    .select('*', { count: 'exact' })
     .eq('is_active', true)
     .eq('card_type', cardType);
 
@@ -116,8 +117,6 @@ async function queryPoolCards(
   }
 
   const startIndex = params.offset || 0;
-  // Fetch enough rows to survive impression filtering + dedup after offset skip
-  const fetchLimit = Math.max(limit * 3, (startIndex + limit) * 2);
 
   query = query
     .gte('lat', lat - latDelta)
@@ -125,21 +124,18 @@ async function queryPoolCards(
     .gte('lng', lng - lngDelta)
     .lte('lng', lng + lngDelta)
     .lte('price_min', budgetMax)
-    .order('popularity_score', { ascending: false })
-    .limit(fetchLimit);
+    .order('popularity_score', { ascending: false });
 
   if (experienceType) {
     query = query.eq('experience_type', experienceType);
   }
 
-  const { data: allMatching, error } = await query;
+  const { data: allMatching, error, count: totalPoolSize } = await query;
 
   if (error) {
     console.error('[card-pool] Query error:', error);
     return { poolCards: [], totalPoolSize: 0 };
   }
-
-  const totalPoolSize = allMatching?.length || 0;
 
   if (!allMatching || allMatching.length === 0) {
     return { poolCards: [], totalPoolSize: 0 };
@@ -185,7 +181,7 @@ async function queryPoolCards(
 
   return {
     poolCards: dedupedUnseen.slice(adjustedStart, adjustedStart + limit),
-    totalPoolSize,
+    totalPoolSize: totalPoolSize ?? 0,
   };
 }
 
