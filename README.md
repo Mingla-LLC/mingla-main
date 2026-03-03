@@ -72,8 +72,8 @@ Mingla combines **location-aware discovery**, **AI personalization**, **real-tim
 │                        Supabase Platform                             │
 │                                                                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────────┐  │
-│  │  Auth (JWT)   │  │  Realtime    │  │  Storage (avatars)        │  │
-│  │  Email/Pass   │  │  Presence    │  │  RLS-protected bucket     │  │
+│  │  Auth (JWT)   │  │  Realtime    │  │  Storage (avatars,        │  │
+│  │  Email/Pass   │  │  Presence    │  │  voice-reviews) RLS buckets│  │
 │  │  Phone OTP    │  │  Broadcasts  │  └───────────────────────────┘  │
 │  │  Google OAuth │  │  Typing      │                                 │
 │  │  Apple Sign-In│  └──────────────┘                                 │
@@ -176,7 +176,7 @@ User Request (batchSeed=N) → Edge Function (Deno)
 | API | Auto-generated REST (PostgREST) + Realtime (WebSocket) |
 | Edge Functions | 25+ Deno/TypeScript serverless functions |
 | Auth | Supabase Auth with JWT + RLS |
-| Storage | Supabase Storage (avatars bucket) |
+| Storage | Supabase Storage (avatars bucket, voice-reviews bucket) |
 | Email | Resend API (transactional emails) |
 
 ---
@@ -610,6 +610,7 @@ Runs daily to keep `place_pool` data fresh:
 | `app_feedback` | In-app feedback submissions (rating, message, category) |
 | `experience_feedback` | Per-experience feedback |
 | `user_engagement_stats` | Per-user lifetime engagement totals: total_cards_seen, total_cards_saved, total_cards_scheduled, total_reviews_given. PK: user_id (FK to auth.users). RLS: users read own, service_role all. Writes via `increment_user_engagement` SECURITY DEFINER RPC only |
+| `place_reviews` | Voice reviews with star rating (1-5), audio file URLs (Storage paths), AI-processed transcription, sentiment (positive/negative/mixed/neutral), themes[], ai_summary. Processing lifecycle: pending→processing→completed/failed. No user DELETE policy (reviews permanent). FKs: user_id (CASCADE), calendar_entry_id (SET NULL), place_pool_id (SET NULL). RLS: users read/insert/update own, service_role all |
 
 ### Pipeline Tables
 
@@ -654,11 +655,11 @@ Runs daily to keep `place_pool` data fresh:
 | `board_typing_indicators` | Real-time typing status |
 | `board_user_swipe_states` | Per-user swipe state on board cards |
 
-### Calendar
+### Calendar & Reviews
 
 | Table | Purpose |
 |---|---|
-| `calendar_entries` | Scheduled experiences with date/time, source, card data |
+| `calendar_entries` | Scheduled experiences with date/time, source, card data. Includes `feedback_status` (NULL/pending/completed/skipped/rescheduled) and `review_id` (FK to `place_reviews`) for post-experience review tracking |
 
 ### Entity Relationships
 
@@ -676,9 +677,15 @@ auth.users ──┐
              │
              ├── user_card_impressions (1:M → card_pool)
              │
+             ├── place_reviews (1:M, CASCADE)
+             │     ├── calendar_entry_id (FK → calendar_entries, SET NULL)
+             │     └── place_pool_id (FK → place_pool, SET NULL)
+             │
              ├── saves (M:N with experiences)
              ├── saved_cards (1:M)
              ├── calendar_entries (1:M)
+             │     ├── feedback_status (NULL/pending/completed/skipped/rescheduled)
+             │     └── review_id (FK → place_reviews, SET NULL)
              │
              ├── collaboration_sessions (1:M as creator)
              │     ├── session_participants (M:N)
@@ -746,6 +753,7 @@ Every table has RLS enabled with policies enforcing:
 | 2026-03-02 | `20260302000004` | Card pool dedup (partial unique index on google_place_id for single cards) |
 | 2026-03-02 | `20260302000005` | Saved people + person experiences tables (Add Person → curated experiences) |
 | 2026-03-02 | `20260302000006` | Pool pagination: add `next_page_token` (TEXT) and `pages_fetched` (INTEGER) to `google_places_cache` |
+| 2026-03-03 | `20260303000015` | Voice reviews: `place_reviews` table, `calendar_entries` feedback columns, `voice-reviews` storage bucket |
 | 2026-03-03 | `20260303000010` | Engagement analytics: `user_engagement_stats` table, 8 analytics columns on `place_pool`, 2 atomic increment RPC functions |
 
 ---
@@ -1790,6 +1798,7 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-03)
 
+- **Voice Reviews Database Layer:** New `place_reviews` table for storing voice reviews with star ratings (1-5), audio file Storage paths, AI-processed transcription, sentiment classification, theme extraction, and processing lifecycle tracking. New `voice-reviews` private storage bucket with per-user folder isolation and RLS policies. `calendar_entries` extended with `feedback_status` and `review_id` columns for post-experience review prompting. Migration: `20260303000015`.
 - **Engagement Analytics Database Layer:** New `user_engagement_stats` table for per-user lifetime totals (cards seen/saved/scheduled, reviews given). 8 analytics columns added to `place_pool` (total_impressions, total_saves, total_schedules, review counts, ratings, themes). Two SECURITY DEFINER RPC functions (`increment_user_engagement`, `increment_place_engagement`) for atomic counter increments. Migration: `20260303000010`.
 - **Session-Scoped Impressions:** Replaced the 200-card sliding window with preference-session scoping. Cards seen since the last preference change are excluded; changing any preference makes all previous cards eligible again. Impressions now recorded via `record_card_impressions` RPC with `view_count` and `first_seen_at` analytics columns. Covering index `idx_impressions_user_session` added for session-scoped queries. Both `cardPoolService.ts` and `discover-experiences` updated.
 - **Preference History Trigger Fix:** Migration `20260303000005` restores the correct JSONB-based `create_preference_history()` trigger function.
