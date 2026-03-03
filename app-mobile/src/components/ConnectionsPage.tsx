@@ -28,6 +28,7 @@ import { supabase } from "../services/supabase";
 import { BlockReason, blockService } from "../services/blockService";
 import { muteService } from "../services/muteService";
 import { reportService, ReportReason } from "../services/reportService";
+import { mixpanelService } from "../services/mixpanelService";
 
 interface ConnectionsPageProps {
   onSendCollabInvite?: (friend: any) => void;
@@ -1233,6 +1234,12 @@ export default function ConnectionsPageRefactored({
               await removeFriend(friend.id);
               await fetchFriends();
               onRemoveFriend?.(friend);
+
+              // Track friend removed
+              mixpanelService.trackFriendRemoved({
+                friendName: friend.name,
+                friendUsername: friend.username,
+              });
             } catch (error) {
               console.error("Error removing friend:", error);
               Alert.alert("Error", "Failed to remove friend. Please try again.");
@@ -1294,6 +1301,14 @@ export default function ConnectionsPageRefactored({
       await blockFriend(selectedUserToBlock.id, reason);
       onBlockUser?.(selectedUserToBlock);
       await fetchFriends();
+
+      // Track friend blocked
+      mixpanelService.trackFriendBlocked({
+        blockedUserName: selectedUserToBlock.name,
+        blockedUserUsername: selectedUserToBlock.username,
+        reason: reason,
+      });
+
       setShowBlockModal(false);
       setSelectedUserToBlock(null);
     } catch (error) {
@@ -1409,7 +1424,10 @@ export default function ConnectionsPageRefactored({
               {/* Tab Navigation */}
               <View style={styles.tabContainer}>
                 <TouchableOpacity
-                  onPress={() => setActiveTab("friends")}
+                  onPress={() => {
+                    setActiveTab("friends");
+                    mixpanelService.trackTabViewed({ screen: "Connections", tab: "Friends" });
+                  }}
                   style={[
                     styles.tab,
                     activeTab === "friends" && styles.activeTab,
@@ -1432,7 +1450,10 @@ export default function ConnectionsPageRefactored({
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => setActiveTab("messages")}
+                  onPress={() => {
+                    setActiveTab("messages");
+                    mixpanelService.trackTabViewed({ screen: "Connections", tab: "Messages" });
+                  }}
                   style={[
                     styles.tab,
                     activeTab === "messages" && styles.activeTab,

@@ -36,6 +36,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { useQueryClient } from "@tanstack/react-query";
 import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
 import { getRate } from "../services/currencyService";
+import { mixpanelService } from "../services/mixpanelService";
 import {
   ExperienceTypesSection,
   CategoriesSection,
@@ -702,6 +703,7 @@ export default function PreferencesSheet({
   ]);
 
   const handleReset = useCallback(() => {
+    mixpanelService.trackPreferencesReset(isCollaborationMode);
     setSelectedIntents(defaultPreferences.selectedIntents);
     setBudgetMin(defaultPreferences.budgetMin);
     setBudgetMax(defaultPreferences.budgetMax);
@@ -779,6 +781,22 @@ export default function PreferencesSheet({
     if (user?.id) {
       queryClient.setQueryData(["userPreferences", user.id], nextUserPreferences);
     }
+
+    // Track the update in Mixpanel
+    mixpanelService.trackPreferencesUpdated({
+      isCollaborationMode,
+      changesCount: countChanges(),
+      intents: selectedIntents,
+      categories: selectedCategories,
+      budgetMin: typeof budgetMin === "number" ? budgetMin : 0,
+      budgetMax: typeof budgetMax === "number" ? budgetMax : 1000,
+      travelMode,
+      constraintType,
+      constraintValue: typeof constraintValue === "number" ? constraintValue : 20,
+      dateOption: selectedDateOption,
+      timeSlot: selectedTimeSlot,
+      location: searchLocation || undefined,
+    });
 
     setIsSaving(true);
     try {

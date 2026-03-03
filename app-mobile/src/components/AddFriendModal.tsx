@@ -17,6 +17,7 @@ import { supabase } from "../services/supabase";
 import { useFriends } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
 import { blockService } from "../services/blockService";
+import { mixpanelService } from "../services/mixpanelService";
 
 interface AddFriendModalProps {
   isOpen: boolean;
@@ -234,6 +235,11 @@ export default function AddFriendModal({
 
       // Only show success if we got here without errors
       setRequestSent(true);
+
+      // Track friend request sent
+      mixpanelService.trackFriendRequestSent({
+        recipientUsername: selectedUser.username,
+      });
 
       // Reload friend requests
       await loadFriendRequests();

@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFriends } from "../hooks/useFriends";
 import { formatTimestamp } from "../utils/dateUtils";
+import { mixpanelService } from "../services/mixpanelService";
 
 interface FriendRequestsModalProps {
   isOpen: boolean;
@@ -66,8 +67,27 @@ export default function FriendRequestsModal({
     setProcessedRequests((prev) => ({ ...prev, [requestId]: "accepted" }));
     setLoading(true);
 
+    // Find the request to get sender info for tracking
+    const request = incomingRequests.find((r) => r.id === requestId);
+
     try {
       await acceptFriendRequest(requestId);
+
+      // Track friend request accepted
+      if (request) {
+        const senderName =
+          request.sender.display_name ||
+          (request.sender.first_name && request.sender.last_name
+            ? `${request.sender.first_name} ${request.sender.last_name}`
+            : request.sender.username) ||
+          "Unknown";
+        mixpanelService.trackFriendRequestAccepted({
+          requestId,
+          senderName,
+          senderUsername: request.sender.username,
+        });
+      }
+
       // Reload requests after accepting
       await loadFriendRequests();
 
@@ -96,8 +116,27 @@ export default function FriendRequestsModal({
     setProcessedRequests((prev) => ({ ...prev, [requestId]: "declined" }));
     setLoading(true);
 
+    // Find the request to get sender info for tracking
+    const request = incomingRequests.find((r) => r.id === requestId);
+
     try {
       await declineFriendRequest(requestId);
+
+      // Track friend request declined
+      if (request) {
+        const senderName =
+          request.sender.display_name ||
+          (request.sender.first_name && request.sender.last_name
+            ? `${request.sender.first_name} ${request.sender.last_name}`
+            : request.sender.username) ||
+          "Unknown";
+        mixpanelService.trackFriendRequestDeclined({
+          requestId,
+          senderName,
+          senderUsername: request.sender.username,
+        });
+      }
+
       // Reload requests after declining
       await loadFriendRequests();
 

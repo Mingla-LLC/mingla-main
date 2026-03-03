@@ -28,6 +28,7 @@ import {
 } from "../../services/countryCurrencyService";
 import { LocationService } from "../../services/locationService";
 import { geocodingService } from "../../services/geocodingService";
+import { mixpanelService } from "../../services/mixpanelService";
 
 interface AccountSettingsProps {
   accountPreferences: {
@@ -90,6 +91,12 @@ export default function AccountSettings() {
       currency: country.currencyCode,
     };
     handleAccountPreferencesUpdate(updatedPreferences);
+
+    // Track account setting updated
+    mixpanelService.trackAccountSettingUpdated({
+      setting: "currency",
+      value: country.currencyCode,
+    });
     
     if (user?.id) {
       try {
@@ -109,6 +116,12 @@ export default function AccountSettings() {
       measurementSystem: system,
     };
     handleAccountPreferencesUpdate(updatedPreferences);
+
+    // Track account setting updated
+    mixpanelService.trackAccountSettingUpdated({
+      setting: "measurement_system",
+      value: system,
+    });
     if (user?.id) {
       try {
         await PreferencesService.updateUserProfile(user.id, {

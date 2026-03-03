@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
 import { useAppState } from "../AppStateManager";
 import { formatMonthYear } from "@/src/utils/dateUtils";
+import { mixpanelService } from "../../services/mixpanelService";
 
 // Simple, self-contained Account Information card.
 // Currently uses static placeholder values to match the design.
@@ -32,6 +33,10 @@ export default function ProfileAccountSection() {
     };
 
     handleUserIdentityUpdate(updatedIdentity);
+
+    // Track profile setting updated
+    mixpanelService.trackProfileSettingUpdated({ field: "email" });
+
     setIsEditingEmail(false);
   };
 

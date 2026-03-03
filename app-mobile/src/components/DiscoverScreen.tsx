@@ -34,6 +34,10 @@ import { PreferencesService } from "../services/preferencesService";
 import { useSavedPeople, useCreatePerson, useDeletePerson, useGeneratePersonExperiences, usePersonExperiences } from "../hooks/useSavedPeople";
 import { generateInitials } from "../utils/stringUtils";
 import type { SavedPerson } from "../services/savedPeopleService";
+import { mixpanelService } from "../services/mixpanelService";
+
+// Storage key for saved people
+const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
 
 // Storage key for custom holidays
 const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
@@ -478,12 +482,12 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", mea
         </View>
         {/* Travel Info Badges */}
         <View style={styles.travelInfoContainer}>
-          {formattedDistance && (
+          {formattedDistance ? (
             <View style={styles.travelInfoBadge}>
               <Ionicons name="location-outline" size={14} color="white" />
               <Text style={styles.travelInfoText}>{formattedDistance}</Text>
             </View>
-          )}
+          ) : null}
         </View>
       </View>
 
@@ -617,12 +621,12 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
       {/* Tags strip (only show genre + first 2 tags) */}
       {(card.genre || card.tags.length > 0) && (
         <View style={styles.nightOutTagStrip}>
-          {card.genre && (
+          {card.genre ? (
             <View style={styles.nightOutTagChip}>
               <Ionicons name="musical-notes-outline" size={10} color="#eb7825" />
               <Text style={styles.nightOutTagLabel}>{card.genre}</Text>
             </View>
-          )}
+          ) : null}
           {card.tags.filter(t => t !== card.genre && t !== "Music" && t !== "Live").slice(0, 2).map((tag, i) => (
             <View key={i} style={styles.nightOutTagChip}>
               <Text style={styles.nightOutTagLabel}>{tag}</Text>
@@ -723,9 +727,6 @@ export default function DiscoverScreen({
 
   // Phase 2: Person selector — hooks disabled to prevent unnecessary Supabase queries.
   // The UI still renders but with stub data. Re-enable hooks when person selector UI ships.
-  // const { data: savedPeople = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
-  const savedPeople: SavedPerson[] = [];
-  const isPeopleLoading = false;
   const createPersonMutation = useCreatePerson();
   const deletePersonMutation = useDeletePerson();
   const generateExperiencesMutation = useGeneratePersonExperiences();
@@ -806,10 +807,15 @@ export default function DiscoverScreen({
     }));
   };
 
+  // Get auth for Discover features
+  const { user } = useAuthSimple();
+  const { data: savedPeopleData = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
+  const savedPeople: SavedPerson[] = savedPeopleData;
+
   // Get the currently selected person (null if "for-you" is selected)
   const selectedPerson = useMemo(() => {
     if (selectedPersonId === "for-you") return null;
-    return savedPeople.find((p) => p.id === selectedPersonId) || null;
+    return savedPeople?.find((p) => p.id === selectedPersonId) || null;
   }, [selectedPersonId, savedPeople]);
 
   // Animate birthday hero section when person is selected
@@ -907,9 +913,6 @@ export default function DiscoverScreen({
     }
     return null; // "other" - show all
   }, []);
-
-  // Get auth for custom Discover fetch
-  const { user } = useAuthSimple();
 
   // ── User preference categories (drives which categories the Discover API fetches) ──
   const [userSelectedCategories, setUserSelectedCategories] = useState<string[] | null>(null);
@@ -2331,33 +2334,31 @@ export default function DiscoverScreen({
       setNameError("Name is required");
       return;
     }
+
     if (!user?.id) return;
 
     try {
-      // Create person in Supabase
-      const newPerson = await createPersonMutation.mutateAsync({
+      // Create person via mutation (persists to Supabase & invalidates query cache)
+      await createPersonMutation.mutateAsync({
         user_id: user.id,
         name: trimmedName,
         initials: generateInitials(trimmedName),
-        birthday: personBirthday ? personBirthday.toISOString().split("T")[0] : null,
+        birthday: personBirthday ? personBirthday.toISOString() : null,
         gender: personGender,
-        description: personDescription.trim() || null,
+        description: null,
       });
 
-      // If description provided and location available, generate experiences in background
-      if (personDescription.trim().length >= 10 && locationLat && locationLng) {
-        const occasions = buildOccasionsForPerson(newPerson);
-        generateExperiencesMutation.mutate({
-          personId: newPerson.id,
-          description: personDescription.trim(),
-          location: { lat: locationLat, lng: locationLng },
-          occasions,
-        });
-      }
+      // Track in Mixpanel
+      mixpanelService.trackDiscoverPersonAdded({
+        personName: trimmedName,
+        hasBirthday: !!personBirthday,
+        gender: personGender,
+      });
 
+      // Close modal and reset form
       handleCloseAddPersonModal();
     } catch (error) {
-      setNameError("Failed to save. Please try again.");
+      console.error("Failed to add person:", error);
     }
   };
 
@@ -2489,7 +2490,15 @@ export default function DiscoverScreen({
     const updatedHolidays = [...customHolidays, newCustomHoliday];
     setCustomHolidays(updatedHolidays);
     await saveCustomHolidaysToStorage(updatedHolidays);
-    
+
+    // Track in Mixpanel
+    mixpanelService.trackDiscoverCustomHolidayAdded({
+      holidayName: customDayName.trim(),
+      date: dateStr,
+      categories: normalizedCategories,
+      personId: selectedPersonId,
+    });
+
     // Close modal
     handleCloseAddCustomDayModal();
   };
@@ -2837,7 +2846,10 @@ export default function DiscoverScreen({
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         {/* Tabs */}
-        <DiscoverTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        <DiscoverTabs activeTab={activeTab} onTabChange={(tab) => {
+          setActiveTab(tab);
+          mixpanelService.trackTabViewed({ screen: "Discover", tab: tab === "for-you" ? "For You" : "Night Out" });
+        }} />
 
         {/* Content */}
         <ScrollView
@@ -2939,7 +2951,7 @@ export default function DiscoverScreen({
                   </Text>
 
                   {/* Birthday Hero Card */}
-                  {selectedPerson.birthday && (
+                  {selectedPerson.birthday ? (
                     <View style={styles.birthdayHeroCard}>
                       <View style={styles.birthdayHeroContent}>
                         <View style={styles.birthdayHeroLeft}>
@@ -3008,20 +3020,20 @@ export default function DiscoverScreen({
                               <Text style={styles.birthdayRecommendationDescription} numberOfLines={2}>
                                 {featuredCard.description}
                               </Text>
-                              {featuredCard.address && (
+                              {featuredCard.address ? (
                                 <View style={styles.birthdayRecommendationLocation}>
                                   <Ionicons name="location-outline" size={12} color="#6b7280" />
                                   <Text style={styles.birthdayRecommendationLocationText} numberOfLines={1}>
                                     {featuredCard.address}
                                   </Text>
                                 </View>
-                              )}
+                              ) : null}
                             </View>
                           </TouchableOpacity>
                         )}
                       </Animated.View>
                     </View>
-                  )}
+                  ) : null}
 
                   {/* Upcoming Holidays Section */}
                   <View style={styles.upcomingHolidaysSection}>
@@ -5665,3 +5677,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 });
+function generateUniqueId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+

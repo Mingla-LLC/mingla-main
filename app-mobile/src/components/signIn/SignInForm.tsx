@@ -14,6 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Input } from "../ui/input";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { mixpanelService } from "../../services/mixpanelService";
 
 const logo = require("../../../assets/mobile_logo.png");
 
@@ -178,8 +179,17 @@ export default function SignInForm({
     setIsLoading(true);
     try {
       await onSignIn({ email: formData.email, password: formData.password });
+      // Track successful login attempt (user will be identified after auth resolves)
+      mixpanelService.track("Login Attempted", {
+        method: "email",
+        email: formData.email,
+      });
     } catch (error) {
       console.error("Sign in error:", error);
+      mixpanelService.trackLoginFailed(
+        formData.email,
+        error instanceof Error ? error.message : "unknown"
+      );
     } finally {
       setIsLoading(false);
     }

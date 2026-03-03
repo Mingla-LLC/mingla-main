@@ -18,6 +18,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
 import ExpandedCardModal from "../ExpandedCardModal";
+import { mixpanelService } from "../../services/mixpanelService";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
@@ -369,13 +370,22 @@ const CalendarTab = ({
       // 3. Invalidate calendar entries query to refresh the list
       queryClient.invalidateQueries({ queryKey: ["calendarEntries", user.id] });
 
-      // 4. Show success message
+      // 4. Track experience rescheduled
+      mixpanelService.trackExperienceRescheduled({
+        entryId: entryToReschedule.id,
+        entryTitle: entryToReschedule.title || "Unknown",
+        category: entryToReschedule.category,
+        newScheduledDate: scheduledDateISO,
+        dateOption,
+      });
+
+      // 5. Show success message
       toastManager.success(
         `${entryToReschedule.title || "Experience"} rescheduled successfully`,
         3000
       );
 
-      // 5. Close modal and reset state
+      // 6. Close modal and reset state
       setShowProposeDateTimeModal(false);
       setEntryToReschedule(null);
     } catch (error: any) {
@@ -1147,6 +1157,14 @@ const CalendarTab = ({
 
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
+
+    // Track card expanded
+    mixpanelService.trackCardExpanded({
+      cardId: entry.id,
+      cardTitle: experience.title || entry.title,
+      category: experience.category || entry.category || "Experience",
+      source: "calendar",
+    });
   };
 
   const handleCloseExpandedModal = () => {

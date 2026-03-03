@@ -32,6 +32,7 @@ import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { CuratedExperienceSwipeCard } from "./CuratedExperienceSwipeCard";
 import type { CuratedExperienceCard } from "../types/curatedExperience";
+import { mixpanelService } from "../services/mixpanelService";
 import { BoardCardService } from "../services/boardCardService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -804,6 +805,13 @@ export default function SwipeableCards({
       setSelectedCardForExpansion(currentRec as unknown as ExpandedCardData);
       return;
     }
+    // Track card expanded
+    mixpanelService.trackCardExpanded({
+      cardId: currentRec.id,
+      cardTitle: currentRec.title,
+      category: currentRec.category,
+      source: "home",
+    });
 
     // Transform Recommendation to ExpandedCardData
     const expandedCardData: ExpandedCardData = {
