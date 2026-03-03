@@ -138,6 +138,7 @@ CREATE POLICY "sp_insert" ON public.session_participants
 FOR INSERT WITH CHECK (
   auth.uid() = user_id
   OR public.is_session_creator(session_id, auth.uid())
+  OR public.is_session_participant(session_id, auth.uid())
 );
 
 CREATE POLICY "sp_update" ON public.session_participants

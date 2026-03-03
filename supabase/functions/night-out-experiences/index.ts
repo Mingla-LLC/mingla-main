@@ -1,5 +1,9 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,6 +13,9 @@ const corsHeaders = {
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseAdmin = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '');
 
 // Night-out venue types mapped to Google Places API (New) types
 // All use Nearby Search with strict locationRestriction for accurate local results
@@ -95,6 +102,88 @@ serve(async (req) => {
 
     console.log(`Fetching night-out venues for location: ${location.lat}, ${location.lng}`);
 
+    // ── Pool-first pipeline: try to serve from card_pool before hitting Google ──
+    try {
+      const poolResult = await serveCardsFromPipeline(
+        {
+          supabaseAdmin: supabaseAdmin,
+          userId: 'anonymous',
+          lat: location.lat,
+          lng: location.lng,
+          radiusMeters: radius,
+          categories: ['Drink'], // Night-out maps to Drink category in pool
+          budgetMin: 0,
+          budgetMax: 500,
+          limit: 15,
+          cardType: 'single',
+        },
+        GOOGLE_API_KEY!,
+      );
+
+      if (poolResult.fromPool >= 10) {
+        console.log(`[pool-first] Serving ${poolResult.cards.length} night-out cards from pool (${poolResult.fromPool} pool, ${poolResult.fromApi} API)`);
+        // Convert pool cards to night-out card format
+        const poolNightOutCards = poolResult.cards.map((card: any, index: number) => {
+          const now = new Date();
+          const dayOffset = index % 7;
+          const eventDate = new Date(now);
+          eventDate.setDate(eventDate.getDate() + dayOffset);
+          const dateOptions: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" };
+          const dateStr = eventDate.toLocaleDateString("en-US", dateOptions);
+          const startHour = 20 + (index % 4);
+          const endHour = startHour + 3;
+          const formatHour = (h: number) => {
+            const hr = h % 24;
+            const ampm = hr >= 12 ? "PM" : "AM";
+            const display = hr > 12 ? hr - 12 : hr === 0 ? 12 : hr;
+            return `${display}:00 ${ampm}`;
+          };
+
+          return {
+            id: `${card.placeId || card.id}_evt_${dayOffset}`,
+            placeName: card.title,
+            eventName: "Night Out",
+            hostName: card.title,
+            image: card.image || "https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=800",
+            images: card.images || [],
+            price: card.priceRange || "Free",
+            matchPercentage: card.matchScore || 80,
+            date: dateStr,
+            time: formatHour(startHour),
+            timeRange: `${formatHour(startHour)} - ${formatHour(endHour)}`,
+            location: card.address?.split(",").slice(-2).join(",").trim() || card.address || "",
+            tags: ["Night Out", "Social"],
+            musicGenre: "house",
+            peopleGoing: Math.max(20, Math.min(500, Math.round((card.reviewCount || 0) * 0.3))),
+            address: card.address || "",
+            description: card.description || "",
+            rating: card.rating || 4.0,
+            reviewCount: card.reviewCount || 0,
+            coordinates: { lat: card.lat, lng: card.lng },
+            distance: card.distance || "Unknown",
+            travelTime: card.travelTime || "Unknown",
+          };
+        });
+
+        return new Response(
+          JSON.stringify({
+            venues: poolNightOutCards,
+            meta: {
+              totalResults: poolNightOutCards.length,
+              totalCandidates: poolResult.totalPoolSize,
+              poolFirst: true,
+              fromPool: poolResult.fromPool,
+              fromApi: poolResult.fromApi,
+            },
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.log(`[pool-first] Pool has ${poolResult.fromPool} cards, need >= 10. Falling back to Google API.`);
+    } catch (poolError) {
+      console.warn("[pool-first] Pool query failed, falling back to Google API:", poolError);
+    }
+
     // Fetch all venue types in parallel
     const searchPromises = NIGHT_OUT_SEARCHES.map((search) =>
       fetchVenuesForType(search, location, radius)
@@ -135,6 +224,56 @@ serve(async (req) => {
     // Convert to final card format
     const cards = venuesWithTravel.map((venue) => convertToNightOutCard(venue));
 
+    // ── Pool storage: store generated venue cards in card_pool (fire-and-forget) ──
+    (async () => {
+      try {
+        for (const card of cards) {
+          const placePoolId = await upsertPlaceToPool(
+            supabaseAdmin,
+            {
+              id: card.id?.split('_evt_')[0] || card.id,
+              placeId: card.id?.split('_evt_')[0] || card.id,
+              displayName: { text: card.placeName },
+              name: card.placeName,
+              formattedAddress: card.address,
+              location: { latitude: card.coordinates?.lat, longitude: card.coordinates?.lng },
+              rating: card.rating,
+              userRatingCount: card.reviewCount,
+              types: [],
+              photos: [],
+              priceLevel: 0,
+              regularOpeningHours: null,
+            },
+            GOOGLE_API_KEY!,
+            'night_out_experiences'
+          );
+
+          await insertCardToPool(supabaseAdmin, {
+            placePoolId: placePoolId || undefined,
+            googlePlaceId: card.id?.split('_evt_')[0] || card.id,
+            cardType: 'single',
+            title: card.placeName,
+            category: 'Drink', // Night-out maps to Drink category
+            categories: ['Drink'],
+            description: card.description,
+            imageUrl: card.image,
+            images: card.images,
+            address: card.address,
+            lat: card.coordinates?.lat || 0,
+            lng: card.coordinates?.lng || 0,
+            rating: card.rating,
+            reviewCount: card.reviewCount,
+            priceMin: 0,
+            priceMax: 0,
+            openingHours: null,
+          });
+        }
+        console.log(`[pool-storage] Stored ${cards.length} night-out cards in pool`);
+      } catch (e) {
+        console.warn('[pool-storage] Error storing night-out cards:', e);
+      }
+    })();
+
     return new Response(
       JSON.stringify({
         venues: cards,
@@ -166,60 +305,29 @@ async function fetchVenuesForType(
   radius: number
 ): Promise<NightOutPlace[]> {
   try {
-    // Always use Nearby Search with strict locationRestriction
-    // This ensures results are strictly within the user's area
-    const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
+    const { results: typeResults } = await batchSearchPlaces(
+      supabaseAdmin,
+      GOOGLE_API_KEY!,
+      search.types,
+      location.lat,
+      location.lng,
+      radius,
+      { maxResultsPerType: 20, rankPreference: 'POPULARITY', ttlHours: 24 }
+    );
 
-    const fieldMask = [
-      "places.id",
-      "places.displayName",
-      "places.location",
-      "places.formattedAddress",
-      "places.priceLevel",
-      "places.rating",
-      "places.userRatingCount",
-      "places.photos",
-      "places.types",
-      "places.regularOpeningHours",
-    ].join(",");
-
-    const requestBody = {
-      includedTypes: search.types,
-      maxResultCount: 20,
-      locationRestriction: {
-        circle: {
-          center: { latitude: location.lat, longitude: location.lng },
-          radius: radius,
-        },
-      },
-      rankPreference: "POPULARITY",
-    };
-
-    const response = await fetch(baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY!,
-        "X-Goog-FieldMask": fieldMask,
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Google Places API error for ${search.label}:`, response.status, errorText);
-      return [];
+    // Merge all results
+    const allPlaces: any[] = [];
+    for (const places of Object.values(typeResults)) {
+      allPlaces.push(...places);
     }
 
-    const data = await response.json();
-
-    if (!data.places || data.places.length === 0) {
+    if (allPlaces.length === 0) {
       console.log(`No venues found for: ${search.label}`);
       return [];
     }
 
     // Sort by rating + review count score
-    const sorted = data.places.sort((a: any, b: any) => {
+    const sorted = allPlaces.sort((a: any, b: any) => {
       const aScore = (a.rating || 0) * Math.min(1, (a.userRatingCount || 0) / 50);
       const bScore = (b.rating || 0) * Math.min(1, (b.userRatingCount || 0) / 50);
       return bScore - aScore;

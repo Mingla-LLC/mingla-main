@@ -10,7 +10,6 @@ import {
   ExperiencesService,
   UserPreferences,
 } from "../services/experiencesService";
-import { ExperienceGenerationService } from "../services/experienceGenerationService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -18,91 +17,24 @@ import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useRecommendationsQuery } from "../hooks/useRecommendationsQuery";
+import { useCuratedExperiences } from "../hooks/useCuratedExperiences";
+import { useDeckCards } from "../hooks/useDeckCards";
+import { deckService } from "../services/deckService";
+import { computePrefsHash } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAppStore } from "../store/appStore";
+import type { DeckBatch } from "../store/appStore";
+import { Recommendation } from "../types/recommendation";
 
-export interface Recommendation {
-  id: string;
-  title: string;
-  category: string;
-  categoryIcon: string;
-  lat?: number;
-  lng?: number;
-  timeAway: string;
-  description: string;
-  budget: string;
-  rating: number;
-  image: string;
-  images: string[];
-  priceRange: string;
-  distance: string;
-  travelTime: string;
-  experienceType: string;
-  highlights: string[];
-  fullDescription: string;
-  address: string;
-  openingHours:
-    | string
-    | {
-        open_now?: boolean;
-        weekday_text?: string[];
-      }
-    | null;
-  tags: string[];
-  matchScore: number;
-  reviewCount: number;
-  socialStats: {
-    views: number;
-    likes: number;
-    saves: number;
-    shares: number;
-  };
-  matchFactors: {
-    location: number;
-    budget: number;
-    category: number;
-    time: number;
-    popularity: number;
-  };
-  strollData?: {
-    anchor: {
-      id: string;
-      name: string;
-      location: { lat: number; lng: number };
-      address: string;
-    };
-    companionStops: Array<{
-      id: string;
-      name: string;
-      location: { lat: number; lng: number };
-      address: string;
-      rating?: number;
-      reviewCount?: number;
-      imageUrl?: string | null;
-      placeId: string;
-      type: string;
-    }>;
-    route: {
-      duration: number;
-      startLocation: { lat: number; lng: number };
-      endLocation: { lat: number; lng: number };
-    };
-    timeline: Array<{
-      step: number;
-      type: string;
-      title: string;
-      location: any;
-      description: string;
-      duration: number;
-    }>;
-  };
-}
+// Re-export so all existing consumer imports keep working
+export type { Recommendation };
 
 const getDefaultPreferences = (): UserPreferences => ({
   mode: "explore",
   budget_min: 0,
   budget_max: 1000,
   people_count: 1,
-  categories: ["Sip & Chill", "Stroll"],
+  categories: ["Nature", "Casual Eats", "Drink"],
   travel_mode: "walking",
   travel_constraint_type: "time",
   travel_constraint_value: 30,
@@ -116,7 +48,9 @@ interface RecommendationsContextType {
   error: string | null;
   userLocation: { lat: number; lng: number } | null;
   isModeTransitioning: boolean;
+  isBatchTransitioning: boolean;
   isWaitingForSessionResolution: boolean;
+  isRefreshingAfterPrefChange: boolean;
   hasCompletedInitialFetch: boolean;
   refreshRecommendations: (refreshKey?: number | string) => void;
   clearRecommendations: () => void;
@@ -124,6 +58,20 @@ interface RecommendationsContextType {
     cardId: string,
     strollData: Recommendation["strollData"]
   ) => void;
+  batchSeed: number;
+  generateNextBatch: () => void;
+  restorePreviousBatch: () => void;
+  // Deck card batch history
+  deckBatches: DeckBatch[];
+  currentDeckBatchIndex: number;
+  navigateToDeckBatch: (index: number) => void;
+  totalDeckCardsViewed: number;
+  handleDeckCardProgress: (currentIndex: number, total: number) => void;
+  hasMoreCards: boolean;
+  dismissedCards: Recommendation[];
+  addDismissedCard: (card: Recommendation) => void;
+  clearDismissedCards: () => void;
+  isExhausted: boolean;
 }
 
 const RecommendationsContext = createContext<
@@ -144,13 +92,33 @@ export const RecommendationsProvider: React.FC<
   refreshKey: propRefreshKey,
 }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [batchSeed, setBatchSeed] = useState(0);
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const [hasCompletedFetchForCurrentMode, setHasCompletedFetchForCurrentMode] =
     useState(false);
+  const [isBatchTransitioning, setIsBatchTransitioning] = useState(false);
+  const [isRefreshingAfterPrefChange, setIsRefreshingAfterPrefChange] = useState(false);
+  const [hasMoreCards, setHasMoreCards] = useState(true);
+  const [dismissedCards, setDismissedCards] = useState<Recommendation[]>([]);
+  const [isExhausted, setIsExhausted] = useState(false);
+  const prefetchFiredRef = useRef(false);
+  const previousBatchRef = useRef<Recommendation[]>([]);
   const currentMode = propCurrentMode;
   const refreshKey = propRefreshKey;
+  const previousRefreshKeyRef = useRef(propRefreshKey);
   const currentCacheKeyRef = useRef<string | null>(null);
+  const warmPoolFired = useRef(false);
   const queryClient = useQueryClient();
+
+  // ── Deck card batch history (Zustand) ────────────────────────────────
+  const {
+    addDeckBatch,
+    resetDeckHistory,
+    deckPrefsHash,
+    deckBatches,
+    currentDeckBatchIndex,
+    navigateToDeckBatch,
+  } = useAppStore();
 
   const { user } = useAuthSimple();
   const cardsCache = useCardsCache();
@@ -161,26 +129,21 @@ export const RecommendationsProvider: React.FC<
     loading: sessionsLoading,
   } = useSessionManagement();
 
-  // Wait for cache to be loaded from storage before checking cache
   const shouldCheckCache = cardsCache.isCacheLoaded;
 
-  // Resolve session ID from currentMode
+  // ── Session Resolution ──────────────────────────────────────────────────
   const resolvedSessionId = React.useMemo(() => {
     if (currentMode === "solo") return null;
     if (currentSession?.id) return currentSession.id;
-
-    // Check if currentMode itself looks like a UUID (session ID)
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(currentMode)) return currentMode;
-
     const session = availableSessions.find(
       (s) => s.id === currentMode || s.name === currentMode
     );
     return session?.id || null;
   }, [currentMode, currentSession, availableSessions]);
 
-  // Add a state to track if we've given up on session resolution
   const [hasTimedOutWaitingForSession, setHasTimedOutWaitingForSession] =
     useState(false);
 
@@ -213,7 +176,7 @@ export const RecommendationsProvider: React.FC<
   );
   const boardPreferences = boardSessionResult?.preferences || null;
 
-  // Use TanStack Query hooks
+  // ── Location & Preferences ──────────────────────────────────────────────
   const {
     data: userLocationData,
     isLoading: isLoadingLocation,
@@ -227,11 +190,61 @@ export const RecommendationsProvider: React.FC<
   const { data: userPrefs, isLoading: isLoadingPreferences } =
     useUserPreferences(user?.id);
 
-  // Use TanStack Query for recommendations
+  // ── Collaboration mode flag ─────────────────────────────────────────────
   const isCollaborationMode: boolean = Boolean(
     currentMode !== "solo" && resolvedSessionId
   );
+  const isSoloMode = currentMode === "solo";
 
+  // ── Unified Deck Pool Warming ───────────────────────────────────────────
+  useEffect(() => {
+    if (userLocation && userPrefs && !warmPoolFired.current) {
+      warmPoolFired.current = true;
+      const warmStart = Date.now();
+      deckService.warmDeckPool({
+        location: userLocation,
+        categories: userPrefs.categories ?? [],
+        intents: userPrefs.intents ?? [],
+        budgetMin: userPrefs.budget_min ?? 0,
+        budgetMax: userPrefs.budget_max ?? 1000,
+        travelMode: userPrefs.travel_mode ?? 'walking',
+        travelConstraintType: (userPrefs.travel_constraint_type as 'time' | 'distance') ?? 'time',
+        travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
+        datetimePref: userPrefs.datetime_pref,
+        dateOption: userPrefs.date_option ?? 'now',
+        timeSlot: userPrefs.time_slot ?? null,
+      }).then(() => {
+        if (__DEV__) console.log(`[Deck] Pool warmed in ${Date.now() - warmStart}ms`);
+      }).catch(() => {});
+    }
+  }, [userLocation, userPrefs]);
+
+  // ── Unified Deck Hook (replaces 7 independent hooks) ────────────────────
+  const {
+    cards: deckCards,
+    deckMode,
+    activePills,
+    isLoading: isDeckLoading,
+    isFetching: isDeckFetching,
+    isFullBatchLoaded: isDeckBatchLoaded,
+    hasMore: deckHasMore,
+  } = useDeckCards({
+    location: userLocation,
+    categories: userPrefs?.categories ?? [],
+    intents: userPrefs?.intents ?? [],
+    budgetMin: userPrefs?.budget_min ?? 0,
+    budgetMax: userPrefs?.budget_max ?? 1000,
+    travelMode: userPrefs?.travel_mode ?? 'walking',
+    travelConstraintType: (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
+    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
+    datetimePref: userPrefs?.datetime_pref,
+    dateOption: userPrefs?.date_option ?? 'now',
+    timeSlot: userPrefs?.time_slot ?? null,
+    batchSeed,
+    enabled: isSoloMode && !!userLocation && !!userPrefs?.categories?.length && !isWaitingForSessionResolution,
+  });
+
+  // ── Collaboration Mode: useRecommendationsQuery (fallback) ──────────────
   const {
     data: recommendationsData,
     isLoading: isLoadingRecommendations,
@@ -241,133 +254,305 @@ export const RecommendationsProvider: React.FC<
     userId: user?.id,
     currentMode,
     userLocation,
+    userPreferences: userPrefs,
     resolvedSessionId,
     isBoardSession,
     boardPreferences,
     isCollaborationMode,
     isWaitingForSessionResolution,
+    batchSeed,
     enabled: Boolean(
-      userLocation &&
+      isCollaborationMode &&
+        userLocation &&
         !isWaitingForSessionResolution &&
-        (currentMode === "solo" || !!resolvedSessionId) &&
+        !!resolvedSessionId &&
         Boolean(cardsCache.isCacheLoaded)
     ),
   });
 
-  // Get stable references to cache methods to avoid dependency issues
-  const generateCacheKey = cardsCache.generateCacheKey;
-  const getCachedCards = cardsCache.getCachedCards;
-  const setCachedCards = cardsCache.setCachedCards;
+  // ── Collaboration Mode: useCuratedExperiences (adventurous default) ─────
+  const curatedSessionId = isCollaborationMode ? resolvedSessionId : undefined;
+  const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo } = useCuratedExperiences({
+    experienceType: 'adventurous',
+    location: userLocation,
+    budgetMin: userPrefs?.budget_min ?? 0,
+    budgetMax: userPrefs?.budget_max ?? 1000,
+    travelMode: userPrefs?.travel_mode ?? 'walking',
+    travelConstraintType:
+      (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
+    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
+    datetimePref: userPrefs?.datetime_pref ?? new Date().toISOString(),
+    batchSeed,
+    sessionId: curatedSessionId ?? undefined,
+    enabled: isCollaborationMode,
+  });
 
-  // Track previous recommendations to prevent unnecessary updates
-  const previousRecommendationsRef = useRef<Recommendation[] | undefined>(
-    undefined
-  );
+  // ── Generate Next Batch ─────────────────────────────────────────────────
+  const generateNextBatch = useCallback(() => {
+    previousBatchRef.current = recommendations;
+    setIsBatchTransitioning(true);
+    setBatchSeed(prev => prev + 1);
+  }, [recommendations]);
 
-  // Sync recommendations from TanStack Query to local state and CardsCache
+  // Safety timeout: if isBatchTransitioning stays true for >15s, clear it
   useEffect(() => {
-    // Handle undefined or empty recommendations
-    if (!recommendationsData) {
-      return; // Don't update state if data is still loading
-    }
+    if (!isBatchTransitioning) return;
+    const timeout = setTimeout(() => {
+      console.warn('[RecommendationsContext] Batch transition safety timeout — clearing spinner');
+      setIsBatchTransitioning(false);
+    }, 15_000);
+    return () => clearTimeout(timeout);
+  }, [isBatchTransitioning]);
 
-    // Check if recommendations have actually changed
+  // Restore the previous batch (used by "Review Previous Batch")
+  const restorePreviousBatch = useCallback(() => {
+    if (batchSeed > 0) {
+      setIsBatchTransitioning(true);
+      setBatchSeed(prev => prev - 1);
+    } else if (previousBatchRef.current.length > 0) {
+      setRecommendations(previousBatchRef.current);
+      setIsBatchTransitioning(false);
+    }
+  }, [batchSeed]);
+
+  // ── Dismissed card callbacks ─────────────────────────────────────────────
+  const addDismissedCard = useCallback((card: Recommendation) => {
+    setDismissedCards((prev) => [...prev, card]);
+  }, []);
+
+  const clearDismissedCards = useCallback(() => {
+    setDismissedCards([]);
+  }, []);
+
+  // ── Sync hasMore and exhaustion from deck hook ──────────────────────────
+  useEffect(() => {
+    setHasMoreCards(deckHasMore);
+    if (deckCards.length === 0 && !deckHasMore && isDeckBatchLoaded && !isDeckFetching) {
+      setIsExhausted(true);
+    }
+  }, [deckHasMore, deckCards.length, isDeckBatchLoaded, isDeckFetching]);
+
+  // Reset prefetchFiredRef when batchSeed changes
+  useEffect(() => {
+    prefetchFiredRef.current = false;
+  }, [batchSeed]);
+
+  // ── Refresh Key Handler ─────────────────────────────────────────────────
+  // When preferences change (refreshKey increments), reset state and refetch
+  useEffect(() => {
+    if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
+      setBatchSeed(0);
+      setIsBatchTransitioning(false);
+      warmPoolFired.current = false;
+      setIsRefreshingAfterPrefChange(true);
+      setDismissedCards([]);
+      setIsExhausted(false);
+      setHasMoreCards(true);
+      // Invalidate deck-cards so it refetches with fresh params
+      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
+      // Also invalidate collaboration fallback queries
+      queryClient.invalidateQueries({ queryKey: ['curated-experiences'] });
+    }
+    previousRefreshKeyRef.current = refreshKey;
+  }, [refreshKey, queryClient]);
+
+  // ── Clear isRefreshingAfterPrefChange once deck settles ─────────────────
+  useEffect(() => {
+    if (!isRefreshingAfterPrefChange) return;
+    const allSettled = isDeckBatchLoaded && !isDeckFetching;
+    if (allSettled) {
+      setIsRefreshingAfterPrefChange(false);
+    }
+  }, [isRefreshingAfterPrefChange, isDeckBatchLoaded, isDeckFetching]);
+
+  // Safety timeout: prevent infinite spinner if deck hangs
+  useEffect(() => {
+    if (!isRefreshingAfterPrefChange) return;
+    const timeout = setTimeout(() => {
+      console.warn('[RecommendationsContext] Preference refresh safety timeout — clearing spinner');
+      setIsRefreshingAfterPrefChange(false);
+    }, 8_000);
+    return () => clearTimeout(timeout);
+  }, [isRefreshingAfterPrefChange]);
+
+  // ── Deck batch history: detect pref changes → reset ──────────────────
+  useEffect(() => {
+    if (!userPrefs) return;
+    const newHash = computePrefsHash(userPrefs);
+    if (newHash && newHash !== deckPrefsHash) {
+      resetDeckHistory(newHash);
+    }
+  }, [userPrefs, deckPrefsHash, resetDeckHistory]);
+
+  // ── Deck batch history: store arriving batches ───────────────────────
+  useEffect(() => {
+    if (deckCards.length > 0 && isDeckBatchLoaded) {
+      addDeckBatch({
+        batchSeed,
+        cards: deckCards,
+        activePills,
+        timestamp: Date.now(),
+      });
+    }
+  }, [deckCards, isDeckBatchLoaded, batchSeed, activePills, addDeckBatch]);
+
+  // ── Deck batch navigation: when navigating to a historical batch ─────
+  useEffect(() => {
+    if (
+      currentDeckBatchIndex >= 0 &&
+      currentDeckBatchIndex < deckBatches.length
+    ) {
+      const batch = deckBatches[currentDeckBatchIndex];
+      if (batch.batchSeed !== batchSeed) {
+        setBatchSeed(batch.batchSeed);
+      }
+    }
+  }, [currentDeckBatchIndex, deckBatches]);
+
+  // ── Pre-fetch next batch when 5 or fewer cards remain ─────────────────
+  const handleDeckCardProgress = useCallback((currentIndex: number, total: number) => {
+    if (!userLocation || !userPrefs) return;
+    const remainingCards = total - currentIndex - 1;
+
+    // When 5 or fewer cards remain, prefetch next batch (once per batch)
+    if (remainingCards <= 5 && !prefetchFiredRef.current && hasMoreCards) {
+      prefetchFiredRef.current = true;
+      const nextSeed = batchSeed + 1;
+      queryClient.prefetchQuery({
+        queryKey: [
+          'deck-cards',
+          userLocation.lat, userLocation.lng,
+          (userPrefs.categories ?? []).sort().join(','),
+          (userPrefs.intents ?? []).sort().join(','),
+          userPrefs.budget_min ?? 0,
+          userPrefs.budget_max ?? 1000,
+          userPrefs.travel_mode ?? 'walking',
+          userPrefs.travel_constraint_type ?? 'time',
+          userPrefs.travel_constraint_value ?? 30,
+          userPrefs.datetime_pref,
+          userPrefs.date_option ?? 'now',
+          userPrefs.time_slot ?? '',
+          nextSeed,
+        ],
+        queryFn: () => deckService.fetchDeck({
+          location: userLocation,
+          categories: userPrefs.categories ?? [],
+          intents: userPrefs.intents ?? [],
+          budgetMin: userPrefs.budget_min ?? 0,
+          budgetMax: userPrefs.budget_max ?? 1000,
+          travelMode: userPrefs.travel_mode ?? 'walking',
+          travelConstraintType: (userPrefs.travel_constraint_type as 'time' | 'distance') ?? 'time',
+          travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
+          datetimePref: userPrefs.datetime_pref,
+          dateOption: userPrefs.date_option ?? 'now',
+          timeSlot: userPrefs.time_slot ?? null,
+          batchSeed: nextSeed,
+          limit: 20,
+        }),
+        staleTime: 5 * 60 * 1000,
+      });
+    }
+  }, [batchSeed, hasMoreCards, userLocation, userPrefs, queryClient]);
+
+  // ── Sync deck cards to recommendations state ────────────────────────────
+  // This replaces the massive 130-line sync effect with a simple one.
+  // The deck hook already handles nature/curated routing, conversion, and dedup.
+  const previousDeckIdsRef = useRef<string>('');
+
+  useEffect(() => {
+    if (isSoloMode) {
+      // Solo mode: use unified deck cards
+      if (deckCards.length > 0) {
+        const deckIdsKey = deckCards.map(c => c.id).sort().join(',');
+        if (previousDeckIdsRef.current !== deckIdsKey) {
+          previousDeckIdsRef.current = deckIdsKey;
+
+          // If this is a prefetched batch (batchSeed > 0), append to existing
+          if (batchSeed > 0 && recommendations.length > 0) {
+            const existingIds = new Set(recommendations.map(r => r.id));
+            const newCards = deckCards.filter(c => !existingIds.has(c.id));
+            if (newCards.length > 0) {
+              setRecommendations(prev => [...prev, ...newCards]);
+            }
+          } else {
+            setRecommendations(deckCards);
+          }
+        }
+        if (isBatchTransitioning && isDeckBatchLoaded) {
+          setIsBatchTransitioning(false);
+        }
+      } else if (!isBatchTransitioning && deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching) {
+        // Genuinely empty — no cards available for these preferences
+        if (recommendations.length !== 0) {
+          setRecommendations([]);
+          previousDeckIdsRef.current = '';
+        }
+      }
+      // During batch transition with 0 cards, keep previous recommendations visible
+    }
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSoloMode, batchSeed]);
+
+  // ── Collaboration mode sync ─────────────────────────────────────────────
+  const previousRecommendationsRef = useRef<Recommendation[] | undefined>(undefined);
+
+  useEffect(() => {
+    if (!isCollaborationMode) return;
+    if (!recommendationsData && curatedSoloCards.length === 0) return;
+
+    const regularCards = recommendationsData ?? [];
     const prevRecs = previousRecommendationsRef.current;
     const hasChanged =
       !prevRecs ||
-      prevRecs.length !== recommendationsData.length ||
-      prevRecs.some((prev, idx) => prev.id !== recommendationsData[idx]?.id);
+      prevRecs.length !== regularCards.length ||
+      prevRecs.some((prev, idx) => prev.id !== regularCards[idx]?.id);
 
-    if (!hasChanged) {
-      return; // No change, skip update
+    if (!hasChanged) return;
+    previousRecommendationsRef.current = regularCards;
+
+    if (regularCards.length > 0) {
+      setRecommendations(regularCards);
     }
 
-    previousRecommendationsRef.current = recommendationsData;
+    // Cache for card state management
+    if (userLocation && userPrefs) {
+      const generateCacheKey = cardsCache.generateCacheKey;
+      const getCachedCards = cardsCache.getCachedCards;
+      const setCachedCards = cardsCache.setCachedCards;
+      const cacheKey = generateCacheKey(currentMode, userLocation, userPrefs, refreshKey);
+      const existingCache = getCachedCards(cacheKey);
+      const currentCardIds = new Set(regularCards.map((r: Recommendation) => r.id));
+      const cachedCardIds = existingCache
+        ? new Set(existingCache.cards.map((c: Recommendation) => c.id))
+        : null;
 
-    if (recommendationsData.length > 0) {
-      setRecommendations(recommendationsData);
-
-      // Also cache in CardsCacheContext for card state management
-      if (userLocation && userPrefs) {
-        const cacheKey = generateCacheKey(
-          currentMode,
-          userLocation,
-          userPrefs,
-          refreshKey
-        );
-
-        // Check if there's an existing cache entry with matching recommendations
-        const existingCache = getCachedCards(cacheKey);
-        const currentCardIds = new Set(
-          recommendationsData.map((r: Recommendation) => r.id)
-        );
-        const cachedCardIds = existingCache
-          ? new Set(existingCache.cards.map((c: Recommendation) => c.id))
-          : null;
-
-        // If cache exists and recommendations match, preserve existing state
-        if (
-          existingCache &&
-          cachedCardIds &&
-          currentCardIds.size === cachedCardIds.size &&
-          Array.from(currentCardIds).every((id) => cachedCardIds.has(id))
-        ) {
-          // Recommendations match - preserve existing cache entry
-          // Only update the cards array if it's different, but keep state
-
-          setCachedCards(
-            cacheKey,
-            recommendationsData,
-            existingCache.currentCardIndex,
-            existingCache.removedCardIds || [],
-            currentMode,
-            userLocation
-          );
-        } else {
-          // New recommendations or cache doesn't exist - initialize with defaults
-
-          setCachedCards(
-            cacheKey,
-            recommendationsData,
-            0,
-            [],
-            currentMode,
-            userLocation
-          );
-        }
-        currentCacheKeyRef.current = cacheKey;
-
-        // Track interaction
-        if (user?.id && recommendationsData.length > 0) {
-          ExperiencesService.trackInteraction(
-            user.id,
-            recommendationsData[0].id,
-            "view"
-          ).catch((error) => {
-            console.error("Error tracking view interaction:", error);
-          });
-        }
+      if (
+        existingCache && cachedCardIds &&
+        currentCardIds.size === cachedCardIds.size &&
+        Array.from(currentCardIds).every((id) => cachedCardIds.has(id))
+      ) {
+        setCachedCards(cacheKey, regularCards, existingCache.currentCardIndex, existingCache.removedCardIds || [], currentMode, userLocation);
+      } else {
+        setCachedCards(cacheKey, regularCards, 0, [], currentMode, userLocation);
       }
-    } else if (recommendationsData.length === 0) {
-      // Empty array - always sync to state to ensure consistency
-      // This is important during mode transitions to show the correct state
-      if (recommendations.length !== 0) {
-        setRecommendations([]);
+      currentCacheKeyRef.current = cacheKey;
+
+      if (user?.id && regularCards.length > 0) {
+        ExperiencesService.trackInteraction(user.id, regularCards[0].id, "view").catch(() => {});
       }
     }
   }, [
     recommendationsData,
+    curatedSoloCards,
+    isCollaborationMode,
     userLocation,
     userPrefs,
     currentMode,
     refreshKey,
     user?.id,
-    generateCacheKey,
-    getCachedCards,
-    setCachedCards,
+    cardsCache,
   ]);
 
-  // Handle mode transitions
+  // ── Mode Transition Handling ────────────────────────────────────────────
   const previousModeRef = useRef<string | undefined>(undefined);
   const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -377,7 +562,6 @@ export const RecommendationsProvider: React.FC<
       previousModeRef.current !== currentMode;
 
     if (modeChanged) {
-      // Clear any existing timeout
       if (completionTimeoutRef.current) {
         clearTimeout(completionTimeoutRef.current);
         completionTimeoutRef.current = null;
@@ -386,27 +570,22 @@ export const RecommendationsProvider: React.FC<
       setIsModeTransitioning(true);
       setRecommendations([]);
       setHasCompletedFetchForCurrentMode(false);
-
-      // Reset the previous recommendations ref so new data is properly detected
       previousRecommendationsRef.current = undefined;
+      previousDeckIdsRef.current = '';
 
-      // Set a safety timeout to force completion after 5 seconds
-      // This prevents infinite loading if something goes wrong
       completionTimeoutRef.current = setTimeout(() => {
         console.warn("Recommendations fetch timeout - forcing completion");
         setHasCompletedFetchForCurrentMode(true);
         setIsModeTransitioning(false);
       }, 5000);
 
-      // Invalidate recommendations query to trigger refetch for new mode
-      // Since query keys include currentMode, different modes get separate cache entries
-      // This prevents stale data from previous mode while allowing in-flight queries to complete gracefully
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
+      queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
     }
 
     previousModeRef.current = currentMode;
 
-    // Cleanup timeout on unmount
     return () => {
       if (completionTimeoutRef.current) {
         clearTimeout(completionTimeoutRef.current);
@@ -414,69 +593,53 @@ export const RecommendationsProvider: React.FC<
     };
   }, [currentMode, queryClient]);
 
-  // Compute loading and error states from TanStack Query (moved up for use in effect)
-  const loading =
-    isLoadingLocation || isLoadingPreferences || isLoadingRecommendations;
-  const isFetching = isFetchingRecommendations;
+  // ── Loading & Fetching States ───────────────────────────────────────────
+  const loading = isSoloMode
+    ? isLoadingLocation || isLoadingPreferences || isDeckLoading
+    : isLoadingLocation || isLoadingPreferences || isLoadingRecommendations || isLoadingCuratedSolo;
 
-  // Reset mode transitioning and mark fetch as complete when query finishes
+  // isFetching covers ALL data pipelines — not just recommendations
+  const isFetching = isSoloMode
+    ? isDeckFetching || isRefreshingAfterPrefChange
+    : isFetchingRecommendations || isRefreshingAfterPrefChange;
+
+  // ── Mark Fetch Complete ─────────────────────────────────────────────────
   useEffect(() => {
-    // Don't mark as complete if we're waiting for session resolution or query is disabled
-    const queryEnabled = Boolean(
-      userLocation &&
-        !isWaitingForSessionResolution &&
-        (currentMode === "solo" || !!resolvedSessionId) &&
-        Boolean(cardsCache.isCacheLoaded)
-    );
+    const queryEnabled = isSoloMode
+      ? Boolean(userLocation && !isWaitingForSessionResolution)
+      : Boolean(
+          userLocation &&
+          !isWaitingForSessionResolution &&
+          !!resolvedSessionId &&
+          Boolean(cardsCache.isCacheLoaded)
+        );
 
-    // Clear timeout if we're marking as complete
     if (hasCompletedFetchForCurrentMode && completionTimeoutRef.current) {
       clearTimeout(completionTimeoutRef.current);
       completionTimeoutRef.current = null;
     }
 
-    // Only process if we're currently transitioning or haven't completed fetch for this mode
     if (isModeTransitioning || !hasCompletedFetchForCurrentMode) {
-      // Check if query has finished (either with data, empty array, or error)
-      const queryFinished =
-        !isLoadingRecommendations && !isFetchingRecommendations;
+      const queryFinished = isSoloMode
+        ? isDeckBatchLoaded
+        : !isLoadingRecommendations && !isFetchingRecommendations;
 
-      // CRITICAL: During mode transitions, we MUST wait for the query to actually run
-      // and return data for the new mode before marking as complete.
-      // We cannot mark complete if:
-      // 1. We're transitioning AND the query hasn't returned data yet (recommendationsData is undefined)
-      // 2. We're transitioning AND we don't have recommendations in state yet
-      //
-      // Mark as complete ONLY if:
-      // 1. Query was enabled AND it has finished AND we have data (even if empty array)
-      //    - This ensures the query actually ran and returned a result for the current mode
-      // 2. OR we already have recommendations in state (from cache or previous fetch) AND not transitioning
-      // 3. OR the query had an error AND finished AND we're not transitioning (error is valid result)
-      //
-      // CRITICAL: During transitions, we MUST wait for recommendationsData to be defined
-      // This ensures we don't mark complete before the new mode's query runs
-      const isInTransition = isModeTransitioning;
-      const hasQueryResult = recommendationsData !== undefined;
+      const hasQueryResult = isSoloMode
+        ? deckCards.length > 0 || isDeckBatchLoaded
+        : recommendationsData !== undefined;
+
       const hasRecommendationsInState = recommendations.length > 0;
 
       const shouldMarkComplete =
-        // Case 1: Query ran and finished (enabled + finished + has data)
         (queryEnabled && queryFinished && hasQueryResult) ||
-        // Case 2: We have recommendations AND we're not transitioning (from cache/previous)
-        (hasRecommendationsInState &&
-          !isInTransition &&
-          !isLoadingRecommendations) ||
-        // Case 3: Query had an error AND finished AND we have a result (error is a valid completion)
-        (!!recommendationsError && queryFinished && hasQueryResult);
+        (hasRecommendationsInState && !isModeTransitioning && !loading) ||
+        (!!recommendationsError && queryFinished);
 
       if (shouldMarkComplete) {
-        // Mark fetch as completed
         setHasCompletedFetchForCurrentMode(true);
-        // Reset transitioning flag
         if (isModeTransitioning) {
           setIsModeTransitioning(false);
         }
-        // Clear timeout since we completed
         if (completionTimeoutRef.current) {
           clearTimeout(completionTimeoutRef.current);
           completionTimeoutRef.current = null;
@@ -486,6 +649,8 @@ export const RecommendationsProvider: React.FC<
   }, [
     isModeTransitioning,
     hasCompletedFetchForCurrentMode,
+    isDeckBatchLoaded,
+    deckCards.length,
     isLoadingRecommendations,
     isFetchingRecommendations,
     recommendationsData,
@@ -498,23 +663,20 @@ export const RecommendationsProvider: React.FC<
     cardsCache.isCacheLoaded,
     sessionsLoading,
     loading,
-    isFetching,
+    isSoloMode,
   ]);
 
+  // ── Update Card Stroll Data ─────────────────────────────────────────────
   const updateCardStrollData = useCallback(
     (cardId: string, strollData: Recommendation["strollData"]) => {
-      // Update the recommendation in state
       setRecommendations((prev) =>
         prev.map((card) =>
           card.id === cardId ? { ...card, strollData } : card
         )
       );
 
-      // Update the cache if we have a cache key
       if (currentCacheKeyRef.current) {
-        const cachedEntry = cardsCache.getCachedCards(
-          currentCacheKeyRef.current
-        );
+        const cachedEntry = cardsCache.getCachedCards(currentCacheKeyRef.current);
         if (cachedEntry) {
           const updatedCards = cachedEntry.cards.map((card) =>
             card.id === cardId ? { ...card, strollData } : card
@@ -533,24 +695,29 @@ export const RecommendationsProvider: React.FC<
     [cardsCache]
   );
 
-  const error = recommendationsError
-    ? (recommendationsError as Error).message === "no_matches"
-      ? "no_matches"
-      : "Failed to load recommendations"
-    : locationError
-    ? "Failed to load location"
-    : null;
+  // ── Error Computation ───────────────────────────────────────────────────
+  // Solo mode: detect when deck has genuinely loaded 0 cards (not just loading)
+  const deckEmpty = isSoloMode && isDeckBatchLoaded && deckCards.length === 0
+    && !isDeckFetching && !isDeckLoading;
 
-  // Compute hasCompletedInitialFetch - must not be transitioning and must have completed fetch for current mode
-  // Mark as complete if we've successfully finished our initial work for this mode
+  const error = deckEmpty
+    ? "no_matches"
+    : recommendationsError
+      ? (recommendationsError as Error).message === "no_matches"
+        ? "no_matches"
+        : "Failed to load recommendations"
+      : locationError
+        ? "Failed to load location"
+        : null;
+
   const hasCompletedInitialFetch =
     !isModeTransitioning &&
     !isWaitingForSessionResolution &&
     hasCompletedFetchForCurrentMode &&
-    !isLoadingRecommendations;
+    (isSoloMode ? !isDeckLoading : !isLoadingRecommendations);
 
   const refreshRecommendations = useCallback(() => {
-    // Invalidate queries to trigger refetch
+    queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
     queryClient.invalidateQueries({ queryKey: ["recommendations"] });
     queryClient.invalidateQueries({ queryKey: ["userLocation"] });
     queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
@@ -558,9 +725,11 @@ export const RecommendationsProvider: React.FC<
 
   const clearRecommendations = useCallback(() => {
     setRecommendations([]);
+    queryClient.removeQueries({ queryKey: ["deck-cards"] });
     queryClient.removeQueries({ queryKey: ["recommendations"] });
   }, [queryClient]);
 
+  // ── Context Value ───────────────────────────────────────────────────────
   const value: RecommendationsContextType = {
     recommendations,
     loading,
@@ -568,11 +737,26 @@ export const RecommendationsProvider: React.FC<
     error,
     userLocation,
     isModeTransitioning,
+    isBatchTransitioning,
     isWaitingForSessionResolution,
+    isRefreshingAfterPrefChange,
     hasCompletedInitialFetch,
     refreshRecommendations,
     clearRecommendations,
     updateCardStrollData,
+    batchSeed,
+    generateNextBatch,
+    restorePreviousBatch,
+    deckBatches,
+    currentDeckBatchIndex,
+    navigateToDeckBatch,
+    totalDeckCardsViewed: deckBatches.reduce((sum, b) => sum + b.cards.length, 0),
+    handleDeckCardProgress,
+    hasMoreCards,
+    dismissedCards,
+    addDismissedCard,
+    clearDismissedCards,
+    isExhausted,
   };
 
   return (

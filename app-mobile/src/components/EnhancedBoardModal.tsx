@@ -144,9 +144,10 @@ export const EnhancedBoardModal: React.FC<EnhancedBoardModalProps> = ({
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* Header */}
           <View style={styles.header}>
+            <View style={styles.headerSidePlaceholder} />
             <Text style={styles.title}>Create New Board</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#666" />
+              <Ionicons name="close" size={20} color="#6B7280" />
             </TouchableOpacity>
           </View>
 
@@ -344,15 +345,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
     marginBottom: 20,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1a1a1a',
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    textAlign: 'center',
   },
   closeButton: {
-    padding: 4,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   sessionContext: {
     flexDirection: 'row',

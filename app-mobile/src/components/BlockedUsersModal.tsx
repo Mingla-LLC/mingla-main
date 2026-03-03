@@ -212,19 +212,14 @@ export default function BlockedUsersModal({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerContent}>
-              <View style={styles.headerLeft}>
+              <View style={styles.headerSidePlaceholder} />
+              <View style={styles.headerCenter}>
                 <Text style={styles.headerTitle}>Blocked Users</Text>
                 <Text style={styles.headerSubtitle}>
                   {blockedUsers.length} {blockedUsers.length === 1 ? "user" : "users"} blocked
                 </Text>
               </View>
-              <TouchableOpacity
-                onPress={onClose}
-                style={styles.closeButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={22} color="#6B7280" />
-              </TouchableOpacity>
+              <View style={styles.headerSidePlaceholder} />
             </View>
           </View>
 
@@ -244,7 +239,7 @@ export default function BlockedUsersModal({
                 renderEmptyState()
               ) : (
                 <View style={styles.listContainer}>
-                  {blockedUsers.map((item) => renderBlockedUser({ item, index: 0 }))}
+                  {blockedUsers.map((item) => renderBlockedUser({ item }))}
                 </View>
               )}
             </ScrollView>
@@ -294,8 +289,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
@@ -305,18 +301,22 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     width: "100%",
   },
-  headerLeft: {
+  headerCenter: {
     flex: 1,
+    alignItems: "center",
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: "700",
-    color: "#111827",
+    color: "#1e293b",
+    textAlign: "center",
   },
   headerSubtitle: {
     fontSize: 13,
-    color: "#6B7280",
+    fontWeight: "600",
+    color: "#374151",
     marginTop: 2,
+    textAlign: "center",
   },
   closeButton: {
     width: 36,
@@ -326,17 +326,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  closeButtonPlaceholder: {
+    width: 36,
+    height: 36,
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
+  },
   content: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-  },
-  contentContainer: {
-    flexGrow: 1,
-    padding: 16,
-  },
-
-  content: {
-    flex: 1,
   },
   contentContainer: {
     flexGrow: 1,

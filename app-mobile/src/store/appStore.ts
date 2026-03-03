@@ -9,6 +9,14 @@ import {
   CollaborationInvite,
   Board,
 } from "../types";
+import type { Recommendation } from "../types/recommendation";
+
+export interface DeckBatch {
+  batchSeed: number;
+  cards: Recommendation[];
+  activePills: string[];
+  timestamp: number;
+}
 
 interface AppState {
   // Auth state
@@ -29,6 +37,11 @@ interface AppState {
 
   // Recommendations state
   currentCardIndex: number;
+
+  // Deck card history
+  deckBatches: DeckBatch[];
+  currentDeckBatchIndex: number;
+  deckPrefsHash: string;
 
   // UI overlay state (not persisted)
   showAccountSettings: boolean;
@@ -56,6 +69,11 @@ interface AppState {
   setCurrentCardIndex: (index: number) => void;
   setShowAccountSettings: (show: boolean) => void;
 
+  // Deck card history actions
+  addDeckBatch: (batch: DeckBatch) => void;
+  navigateToDeckBatch: (index: number) => void;
+  resetDeckHistory: (newPrefsHash: string) => void;
+
   // Utilities
   clearUserData: () => void;
 }
@@ -75,6 +93,9 @@ export const useAppStore = create<AppState>()(
       pendingInvites: [],
       isInSolo: true,
       currentCardIndex: 0,
+      deckBatches: [],
+      currentDeckBatchIndex: -1,
+      deckPrefsHash: '',
       showAccountSettings: false,
       blockedUsers: [],
 
@@ -144,6 +165,24 @@ export const useAppStore = create<AppState>()(
       setShowAccountSettings: (showAccountSettings) =>
         set({ showAccountSettings }),
 
+      // Deck card history actions
+      addDeckBatch: (batch) => set((state) => {
+        const exists = state.deckBatches.some(b => b.batchSeed === batch.batchSeed);
+        if (exists) return state;
+        return {
+          deckBatches: [...state.deckBatches, batch],
+          currentDeckBatchIndex: state.deckBatches.length,
+        };
+      }),
+
+      navigateToDeckBatch: (index) => set({ currentDeckBatchIndex: index }),
+
+      resetDeckHistory: (newPrefsHash) => set({
+        deckBatches: [],
+        currentDeckBatchIndex: -1,
+        deckPrefsHash: newPrefsHash,
+      }),
+
       // Utilities
       clearUserData: () =>
         set({
@@ -158,6 +197,9 @@ export const useAppStore = create<AppState>()(
           pendingInvites: [],
           isInSolo: true,
           currentCardIndex: 0,
+          deckBatches: [],
+          currentDeckBatchIndex: -1,
+          deckPrefsHash: '',
         }),
     }),
     {
@@ -172,6 +214,10 @@ export const useAppStore = create<AppState>()(
         boards: state.boards,
         // Don't persist currentSession and isInSolo - always fetch from database
         currentCardIndex: state.currentCardIndex,
+        // Deck card history — persisted across sessions
+        deckBatches: state.deckBatches,
+        currentDeckBatchIndex: state.currentDeckBatchIndex,
+        deckPrefsHash: state.deckPrefsHash,
       }),
     }
   )

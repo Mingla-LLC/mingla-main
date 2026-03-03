@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,12 +7,17 @@ import {
   Modal,
   Platform,
   ScrollView,
+  Animated,
+  Dimensions,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import DateOptionsGrid from "./DateOptionsGrid";
 import WeekendDaySelection from "./WeekendDaySelection";
 import ProposeDateTimeFooter from "./ProposeDateTimeFooter";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 interface SavedCard {
   id: string;
@@ -30,6 +35,7 @@ interface ProposeDateTimeModalProps {
     dateOption: "now" | "today" | "weekend" | "custom",
   ) => void;
   isScheduling?: boolean;
+  isCurated?: boolean;
 }
 
 export default function ProposeDateTimeModal({
@@ -39,6 +45,7 @@ export default function ProposeDateTimeModal({
   currentScheduledDate,
   onProposeDateTime,
   isScheduling = false,
+  isCurated = false,
 }: ProposeDateTimeModalProps) {
   const [selectedDateOption, setSelectedDateOption] = useState<
     "now" | "today" | "weekend" | "custom" | null
@@ -58,63 +65,103 @@ export default function ProposeDateTimeModal({
     string | null
   >(null);
 
+  // Bottom sheet slide animation
+  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const backdropAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          damping: 25,
+          stiffness: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropAnim, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      slideAnim.setValue(SCREEN_HEIGHT);
+      backdropAnim.setValue(0);
+    }
+  }, [visible]);
+
+  const animateClose = () => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: SCREEN_HEIGHT,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      handleClose();
+    });
+  };
+
   /**
    * Normalize openingHours from any format into a usable object.
-   * Handles: plain strings, JSON-stringified strings (possibly double-stringified),
-   * objects with weekday_text/open_now, arrays, and empty values.
    */
-  const normalizeOpeningHours = (raw: any): { weekday_text?: string[]; open_now?: boolean } | null => {
+  const normalizeOpeningHours = (
+    raw: any,
+  ): { weekday_text?: string[]; open_now?: boolean } | null => {
     if (!raw) return null;
 
-    // Unwrap strings — may be double-JSON-stringified
     let value = raw;
     if (typeof value === "string") {
       const trimmed = value.trim();
       if (trimmed === "" || trimmed === '""') return null;
 
-      // Try to JSON-parse (handles double-stringification too)
       let attempts = 0;
       while (typeof value === "string" && attempts < 3) {
         try {
           value = JSON.parse(value);
           attempts++;
         } catch {
-          break; // It's a plain string, stop trying
+          break;
         }
       }
     }
 
-    // If it's now an object with weekday_text, return it
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      if (value.weekday_text && Array.isArray(value.weekday_text) && value.weekday_text.length > 0) {
+      if (
+        value.weekday_text &&
+        Array.isArray(value.weekday_text) &&
+        value.weekday_text.length > 0
+      ) {
         return { weekday_text: value.weekday_text, open_now: value.open_now };
       }
-      // Object without weekday_text (e.g. empty {} from experienceService)
       return null;
     }
 
-    // If it's an array of strings, treat as weekday_text
     if (Array.isArray(value) && value.length > 0) {
       return { weekday_text: value };
     }
 
-    // Still a plain string (e.g. "Daily 6am-10pm", "Hours vary")
     if (typeof value === "string" && value.trim().length > 0) {
-      // Split by newlines or semicolons into lines
-      const lines = value.split(/\n|;/).map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+      const lines = value
+        .split(/\n|;/)
+        .map((s: string) => s.trim())
+        .filter((s: string) => s.length > 0);
       return lines.length > 0 ? { weekday_text: lines } : null;
     }
 
     return null;
   };
 
-  // Normalized opening hours object (used by both display and availability check)
   const normalizedHours = useMemo(() => {
     if (!card) return null;
     return normalizeOpeningHours((card as any).openingHours);
   }, [card]);
 
-  // Parse opening hours for display
   const parsedOpeningHours = useMemo(() => {
     if (!normalizedHours || !normalizedHours.weekday_text) return null;
     return {
@@ -123,18 +170,32 @@ export default function ProposeDateTimeModal({
     };
   }, [normalizedHours]);
 
-  // Get today's day name for highlighting
   const todayDayName = useMemo(() => {
-    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const days = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
     return days[new Date().getDay()];
   }, []);
+
+  // Curated stop count for display
+  const stopCount = useMemo(() => {
+    if (!isCurated || !card) return 0;
+    const stops = (card as any).stops;
+    return Array.isArray(stops) ? stops.length : 0;
+  }, [card, isCurated]);
 
   const handleDateOptionSelect = (
     option: "now" | "today" | "weekend" | "custom",
   ) => {
     setSelectedDateOption(option);
-    setSelectedWeekendDay(null); // Reset weekend day selection
-    setIsAvailabilityChecked(false); // Reset availability check when option changes
+    setSelectedWeekendDay(null);
+    setIsAvailabilityChecked(false);
     setIsPlaceOpen(false);
     setProposedDateTime(null);
     setAvailabilityAssumption(null);
@@ -142,20 +203,16 @@ export default function ProposeDateTimeModal({
     if (option === "custom") {
       setShowDatePicker(true);
     } else if (option === "today") {
-      // Show time picker immediately for "today"
       setShowTimePicker(true);
     }
-    // For "now" - wait for "Check Compatibility" button
-    // For "weekend" - show weekend day selection buttons
   };
 
   const handleWeekendDaySelect = (day: "saturday" | "sunday") => {
     setSelectedWeekendDay(day);
-    setIsAvailabilityChecked(false); // Reset availability check when day changes
+    setIsAvailabilityChecked(false);
     setIsPlaceOpen(false);
     setProposedDateTime(null);
     setAvailabilityAssumption(null);
-    // Show time picker after selecting weekend day
     setShowTimePicker(true);
   };
 
@@ -167,27 +224,24 @@ export default function ProposeDateTimeModal({
     switch (selectedDateOption) {
       case "now":
         return now;
-      case "today":
-        // Use selected time
+      case "today": {
         const today = new Date(now);
         if (customTime) {
           today.setHours(customTime.getHours());
           today.setMinutes(customTime.getMinutes());
         } else {
-          // Default to current time if no time selected
           return now;
         }
         return today;
-      case "weekend":
+      }
+      case "weekend": {
         if (!selectedWeekendDay) return null;
-        // Calculate the selected day's date
-        const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+        const dayOfWeek = now.getDay();
         let daysToAdd = 0;
 
         if (selectedWeekendDay === "saturday") {
           daysToAdd = dayOfWeek === 0 ? 6 : (6 - dayOfWeek + 7) % 7 || 7;
         } else {
-          // Sunday
           daysToAdd = dayOfWeek === 0 ? 7 : 7 - dayOfWeek;
         }
 
@@ -197,28 +251,26 @@ export default function ProposeDateTimeModal({
           weekendDate.setHours(customTime.getHours());
           weekendDate.setMinutes(customTime.getMinutes());
         } else {
-          // Default to 2 PM if no time selected
           weekendDate.setHours(14, 0, 0, 0);
         }
         return weekendDate;
-      case "custom":
-        // Use custom date and time
+      }
+      case "custom": {
         const combinedDateTime = new Date(customDate);
         if (customTime) {
           combinedDateTime.setHours(customTime.getHours());
           combinedDateTime.setMinutes(customTime.getMinutes());
         } else {
-          // Default to noon if no time selected
           combinedDateTime.setHours(12, 0, 0, 0);
         }
         return combinedDateTime;
+      }
       default:
         return null;
     }
   };
 
   const parseTimeString = (timeStr: string): number => {
-    // Parse time string like "9:00 AM" or "12:00 AM" to minutes since midnight
     const trimmed = timeStr.trim();
     const match = trimmed.match(/(\d+):(\d+)\s*(AM|PM)/i);
     if (!match) return 0;
@@ -227,15 +279,13 @@ export default function ProposeDateTimeModal({
     const minutes = parseInt(match[2], 10);
     const period = match[3].toUpperCase();
 
-    // Convert to 24-hour format
     if (period === "AM") {
-      if (hours === 12) hours = 0; // 12 AM = midnight
+      if (hours === 12) hours = 0;
     } else {
-      // PM
-      if (hours !== 12) hours += 12; // 1 PM = 13:00, but 12 PM stays 12
+      if (hours !== 12) hours += 12;
     }
 
-    return hours * 60 + minutes; // Return minutes since midnight
+    return hours * 60 + minutes;
   };
 
   const checkPlaceAvailability = (
@@ -257,8 +307,11 @@ export default function ProposeDateTimeModal({
 
     const openingHours = normalizedHours;
 
-    // If no usable opening hours data, assume open (user schedules at own risk)
-    if (!openingHours || !openingHours.weekday_text || openingHours.weekday_text.length === 0) {
+    if (
+      !openingHours ||
+      !openingHours.weekday_text ||
+      openingHours.weekday_text.length === 0
+    ) {
       return {
         isOpen: true,
         isAssumption: true,
@@ -266,7 +319,6 @@ export default function ProposeDateTimeModal({
       };
     }
 
-    // Get the day of the week from date (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
     const dayOfWeek = date.getDay();
     const dayNames = [
       "Sunday",
@@ -279,20 +331,14 @@ export default function ProposeDateTimeModal({
     ];
     const selectedDayName = dayNames[dayOfWeek];
 
-    // Find the opening hours for the selected day
     const dayHours = openingHours.weekday_text?.find((entry: string) =>
       entry.startsWith(selectedDayName),
     );
 
     if (!dayHours) {
-      // No hours found for this day, assume closed
-      return {
-        isOpen: false,
-        isAssumption: false,
-      };
+      return { isOpen: false, isAssumption: false };
     }
 
-    // Ensure dayHours is a string
     if (typeof dayHours !== "string") {
       return {
         isOpen: true,
@@ -301,36 +347,20 @@ export default function ProposeDateTimeModal({
       };
     }
 
-    // Handle special case: "Open 24 hours"
     if (/open\s*24\s*hours?/i.test(dayHours)) {
-      return {
-        isOpen: true,
-        isAssumption: false,
-      };
+      return { isOpen: true, isAssumption: false };
     }
 
-    // Handle special case: "Closed"
     if (/closed/i.test(dayHours)) {
-      return {
-        isOpen: false,
-        isAssumption: false,
-      };
+      return { isOpen: false, isAssumption: false };
     }
 
-    // Parse the time range (e.g., "Monday: 9:00 AM – 12:00 AM")
-    // Try different patterns to handle various formats
     let timeRangeMatch = dayHours.match(/:\s*(.+?)\s*–\s*(.+)$/);
-
-    // If that doesn't work, try with different dash characters
+    if (!timeRangeMatch)
+      timeRangeMatch = dayHours.match(/:\s*(.+?)\s*-\s*(.+)$/);
+    if (!timeRangeMatch)
+      timeRangeMatch = dayHours.match(/:\s*(.+?)\s*to\s*(.+)$/i);
     if (!timeRangeMatch) {
-      timeRangeMatch = dayHours.match(/:\s*(.+?)\s*-\s*(.+)$/); // Regular dash
-    }
-    if (!timeRangeMatch) {
-      timeRangeMatch = dayHours.match(/:\s*(.+?)\s*to\s*(.+)$/i); // "to" separator
-    }
-    if (!timeRangeMatch) {
-      // Can't parse the time range, assume open with warning
-      console.log("Failed to parse dayHours:", dayHours);
       return {
         isOpen: true,
         isAssumption: true,
@@ -340,116 +370,73 @@ export default function ProposeDateTimeModal({
 
     const openTimeStr = timeRangeMatch[1].trim();
     const closeTimeStr = timeRangeMatch[2].trim();
-
-    // Parse times to minutes since midnight
     const openTimeMinutes = parseTimeString(openTimeStr);
     const closeTimeMinutes = parseTimeString(closeTimeStr);
-
-    // Get selected time in minutes since midnight
     const selectedHours = date.getHours();
     const selectedMinutes = date.getMinutes();
     const selectedTimeMinutes = selectedHours * 60 + selectedMinutes;
 
-    // Handle case where closing time is midnight (12:00 AM) - it means it closes at end of day
-    // If closeTimeMinutes is 0 (midnight), it means the place closes at midnight (end of current day)
     if (closeTimeMinutes === 0) {
-      // Place closes at midnight, so check if selected time is after opening time
       const isOpen = selectedTimeMinutes >= openTimeMinutes;
-      return {
-        isOpen,
-        isAssumption: false,
-      };
+      return { isOpen, isAssumption: false };
     }
 
-    // Normal case: check if selected time is within the range
     if (openTimeMinutes < closeTimeMinutes) {
-      // Normal case: opening and closing on same day (e.g., 9 AM - 6 PM)
       const isOpen =
         selectedTimeMinutes >= openTimeMinutes &&
         selectedTimeMinutes < closeTimeMinutes;
-      return {
-        isOpen,
-        isAssumption: false,
-      };
+      return { isOpen, isAssumption: false };
     } else {
-      // Opening time is after closing time (e.g., 9 PM - 2 AM) - spans midnight
-      // This means it's open from openTime to midnight, then from midnight to closeTime
       const isOpen =
         selectedTimeMinutes >= openTimeMinutes ||
         selectedTimeMinutes < closeTimeMinutes;
-      return {
-        isOpen,
-        isAssumption: false,
-      };
+      return { isOpen, isAssumption: false };
     }
   };
 
-  const handleDatePickerChange = (event: any, date?: Date) => {
-    if (Platform.OS === "android") {
-      setShowDatePicker(false);
-    }
+  const handleDatePickerChange = (_event: any, date?: Date) => {
+    if (Platform.OS === "android") setShowDatePicker(false);
 
     if (date) {
       setCustomDate(date);
-      setIsAvailabilityChecked(false); // Reset availability check when date changes
+      setIsAvailabilityChecked(false);
       setIsPlaceOpen(false);
       setProposedDateTime(null);
       setAvailabilityAssumption(null);
-      if (Platform.OS === "ios") {
-        // On iOS, show time picker after date is selected
-        setShowTimePicker(true);
-      } else {
-        // On Android, show time picker immediately
-        setShowTimePicker(true);
-      }
+      setShowTimePicker(true);
     }
   };
 
-  const handleTimePickerChange = (event: any, time?: Date) => {
-    if (Platform.OS === "android") {
-      setShowTimePicker(false);
-    }
+  const handleTimePickerChange = (_event: any, time?: Date) => {
+    if (Platform.OS === "android") setShowTimePicker(false);
 
     if (time) {
       setCustomTime(time);
-      setIsAvailabilityChecked(false); // Reset availability check when time changes
+      setIsAvailabilityChecked(false);
       setIsPlaceOpen(false);
       setProposedDateTime(null);
       setAvailabilityAssumption(null);
 
-      if (Platform.OS === "ios") {
-        setShowTimePicker(false);
-      }
-      // Don't schedule immediately - wait for "Check Availability" button
+      if (Platform.OS === "ios") setShowTimePicker(false);
     }
   };
 
   const handleCheckCompatibility = async () => {
     if (!selectedDateOption) return;
+    if (selectedDateOption === "weekend" && !selectedWeekendDay) return;
+    if (selectedDateOption === "custom" && !customDate) return;
 
-    // Validate that required selections are made
-    if (selectedDateOption === "weekend" && !selectedWeekendDay) {
-      return; // Can't check availability without selecting a day
-    }
-
-    if (selectedDateOption === "custom" && !customDate) {
-      return; // Can't check availability without selecting a date
-    }
-
-    // For options that require time selection, ensure time is selected
     if (
       (selectedDateOption === "today" ||
         selectedDateOption === "weekend" ||
         selectedDateOption === "custom") &&
       !customTime
     ) {
-      // Time picker should have been shown, but if somehow time wasn't selected, return
       return;
     }
 
     setIsCheckingAvailability(true);
 
-    // Calculate the proposed date/time
     const proposedDate = calculateProposedDateTime();
     if (!proposedDate) {
       setIsCheckingAvailability(false);
@@ -458,8 +445,6 @@ export default function ProposeDateTimeModal({
 
     setProposedDateTime(proposedDate);
 
-    // Simulate async availability check (in real app, this might call an API)
-    // For now, we'll check if the place is currently open
     setTimeout(() => {
       const result = checkPlaceAvailability(proposedDate);
       setIsPlaceOpen(result.isOpen);
@@ -471,12 +456,73 @@ export default function ProposeDateTimeModal({
     }, 500);
   };
 
-  const handleSchedule = () => {
+  // For regular cards: schedule after availability check
+  const handleScheduleRegular = () => {
     if (!proposedDateTime || !selectedDateOption) return;
-
-    // Schedule the card with the proposed date/time
     onProposeDateTime(proposedDateTime, selectedDateOption);
   };
+
+  // For curated cards: schedule directly (validation happens in SavedTab.handleProposeDateTime)
+  const handleScheduleCuratedDirect = () => {
+    if (!selectedDateOption) return;
+
+    // Validate required selections
+    if (selectedDateOption === "weekend" && !selectedWeekendDay) return;
+    if (selectedDateOption === "custom" && !customDate) return;
+    if (
+      (selectedDateOption === "today" ||
+        selectedDateOption === "weekend" ||
+        selectedDateOption === "custom") &&
+      !customTime
+    ) {
+      return;
+    }
+
+    const proposedDate = calculateProposedDateTime();
+    if (!proposedDate) return;
+
+    onProposeDateTime(proposedDate, selectedDateOption);
+  };
+
+  // Formatted selected time for display
+  const selectedTimeLabel = useMemo(() => {
+    if (!selectedDateOption) return null;
+
+    if (selectedDateOption === "now") return "Right now";
+
+    if (selectedDateOption === "today" && customTime) {
+      return `Today at ${customTime.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })}`;
+    }
+
+    if (selectedDateOption === "weekend" && selectedWeekendDay && customTime) {
+      const dayLabel =
+        selectedWeekendDay === "saturday" ? "Saturday" : "Sunday";
+      return `${dayLabel} at ${customTime.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })}`;
+    }
+
+    if (selectedDateOption === "custom" && customDate && customTime) {
+      const dateStr = customDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      const timeStr = customTime.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      return `${dateStr} at ${timeStr}`;
+    }
+
+    return null;
+  }, [selectedDateOption, customTime, customDate, selectedWeekendDay]);
 
   const formatDate = (dateStr: Date | string): string => {
     const date = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
@@ -521,23 +567,48 @@ export default function ProposeDateTimeModal({
       <Modal
         visible={visible}
         transparent={true}
-        animationType="fade"
-        onRequestClose={handleClose}
+        animationType="none"
+        onRequestClose={animateClose}
+        statusBarTranslucent
       >
-        <View style={styles.overlay}>
-          <TouchableOpacity
-            style={styles.overlayBackground}
-            activeOpacity={1}
-            onPress={handleClose}
-          />
-          <View style={styles.modalContainer}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
+        >
+          {/* Backdrop */}
+          <Animated.View style={[styles.backdrop, { opacity: backdropAnim }]}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={animateClose}
+            />
+          </Animated.View>
+
+          {/* Bottom Sheet */}
+          <Animated.View
+            style={[
+              styles.bottomSheet,
+              { transform: [{ translateY: slideAnim }] },
+            ]}
+          >
+            {/* Drag handle */}
+            <View style={styles.handleContainer}>
+              <View style={styles.handle} />
+            </View>
+
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerLeft}>
-                <Ionicons name="calendar" size={24} color="white" />
+                <View style={styles.headerIconContainer}>
+                  <Ionicons
+                    name={isCurated ? "map" : "calendar"}
+                    size={18}
+                    color="#F59E0B"
+                  />
+                </View>
                 <View style={styles.headerTextContainer}>
                   <Text style={styles.headerTitle}>
-                    Propose New Date & Time
+                    {isCurated ? "Schedule Plan" : "Schedule Experience"}
                   </Text>
                   {card && (
                     <Text style={styles.headerSubtitle} numberOfLines={1}>
@@ -547,22 +618,45 @@ export default function ProposeDateTimeModal({
                 </View>
               </View>
               <TouchableOpacity
-                onPress={handleClose}
+                onPress={animateClose}
                 style={styles.closeButton}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close" size={24} color="white" />
+                <Ionicons
+                  name="close"
+                  size={18}
+                  color="rgba(255,255,255,0.6)"
+                />
               </TouchableOpacity>
             </View>
 
             {/* Content */}
-            <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
-              <View style={styles.content}>
-              {/* Opening Hours Section */}
-              {parsedOpeningHours && (
+            <ScrollView
+              style={styles.scrollContent}
+              contentContainerStyle={styles.scrollContentContainer}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              {/* Curated plan info banner */}
+              {isCurated && stopCount > 0 && (
+                <View style={styles.curatedBanner}>
+                  <Ionicons
+                    name="trail-sign-outline"
+                    size={16}
+                    color="#F59E0B"
+                  />
+                  <Text style={styles.curatedBannerText}>
+                    {stopCount} stops · Opening hours will be validated for all
+                    stops
+                  </Text>
+                </View>
+              )}
+
+              {/* Opening Hours Section (regular cards only) */}
+              {!isCurated && parsedOpeningHours && (
                 <View style={styles.openingHoursSection}>
                   <View style={styles.openingHoursHeader}>
-                    <Ionicons name="time" size={20} color="#ea580c" />
+                    <Ionicons name="time" size={18} color="#F59E0B" />
                     <Text style={styles.openingHoursTitle}>Opening Hours</Text>
                     {parsedOpeningHours.openNow !== undefined && (
                       <View
@@ -595,119 +689,116 @@ export default function ProposeDateTimeModal({
                     )}
                   </View>
                   <View style={styles.openingHoursList}>
-                    {parsedOpeningHours.lines.map((line: string, index: number) => {
-                      const isToday = line.startsWith(todayDayName);
-                      return (
-                        <View
-                          key={index}
-                          style={[
-                            styles.openingHoursRow,
-                            isToday && styles.openingHoursRowToday,
-                          ]}
-                        >
-                          {isToday && (
-                            <View style={styles.todayIndicator} />
-                          )}
-                          <Text
+                    {parsedOpeningHours.lines.map(
+                      (line: string, index: number) => {
+                        const isToday = line.startsWith(todayDayName);
+                        return (
+                          <View
+                            key={index}
                             style={[
-                              styles.openingHoursText,
-                              isToday && styles.openingHoursTextToday,
+                              styles.openingHoursRow,
+                              isToday && styles.openingHoursRowToday,
                             ]}
                           >
-                            {line}
-                          </Text>
-                        </View>
-                      );
-                    })}
+                            {isToday && <View style={styles.todayIndicator} />}
+                            <Text
+                              style={[
+                                styles.openingHoursText,
+                                isToday && styles.openingHoursTextToday,
+                              ]}
+                            >
+                              {line}
+                            </Text>
+                          </View>
+                        );
+                      },
+                    )}
                   </View>
                 </View>
               )}
 
-              {/* Current Scheduled Date & Time Section */}
+              {/* Current Scheduled Date (if rescheduling) */}
               {currentScheduledDate && (
                 <View style={styles.currentScheduleSection}>
                   <View style={styles.currentScheduleHeader}>
-                    <Ionicons name="calendar" size={20} color="#ea580c" />
+                    <Ionicons name="calendar" size={16} color="#F59E0B" />
                     <Text style={styles.currentScheduleTitle}>
-                      Current Scheduled Date & Time
+                      Currently Scheduled
                     </Text>
                   </View>
-                  <View style={styles.currentScheduleItem}>
-                    <Ionicons
-                      name="calendar-outline"
-                      size={18}
-                      color="#ea580c"
-                    />
-                    <View style={styles.currentScheduleItemContent}>
-                      <Text style={styles.currentScheduleLabel}>
-                        Scheduled For
-                      </Text>
-                      <Text style={styles.currentScheduleValue}>
-                        {formatDate(currentScheduledDate)}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.currentScheduleItem}>
-                    <Ionicons name="time-outline" size={18} color="#ea580c" />
-                    <View style={styles.currentScheduleItemContent}>
-                      <Text style={styles.currentScheduleLabel}>Time</Text>
-                      <Text style={styles.currentScheduleValue}>
-                        {formatTime(currentScheduledDate)}
-                      </Text>
-                    </View>
-                  </View>
+                  <Text style={styles.currentScheduleValue}>
+                    {formatDate(currentScheduledDate)} at{" "}
+                    {formatTime(currentScheduledDate)}
+                  </Text>
                 </View>
               )}
 
-              {/* Propose New Schedule Section */}
-              <View style={styles.proposeSection}>
-                <Text style={styles.proposeTitle}>Propose New Schedule</Text>
-                <Text style={styles.dateLabel}>Date</Text>
+              {/* Date Selection */}
+              <View style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>Pick a Date</Text>
                 <DateOptionsGrid
                   selectedDateOption={selectedDateOption}
                   onSelectOption={handleDateOptionSelect}
+                  dark
                 />
 
-                {/* Weekend Day Selection */}
                 {selectedDateOption === "weekend" && (
                   <WeekendDaySelection
                     selectedWeekendDay={selectedWeekendDay}
                     onSelectDay={handleWeekendDaySelect}
+                    dark
                   />
                 )}
+              </View>
 
-                {/* Availability Status Message */}
-                {isAvailabilityChecked && !isPlaceOpen && (
-                  <View style={styles.availabilityMessage}>
-                    <Ionicons name="warning" size={20} color="#ef4444" />
-                    <Text style={styles.availabilityMessageText}>
-                      This place is currently closed. Please select a different
-                      time.
+              {/* Selected time display */}
+              {selectedTimeLabel && (
+                <View style={styles.selectedTimeContainer}>
+                  <Ionicons name="time-outline" size={16} color="#F59E0B" />
+                  <Text style={styles.selectedTimeText}>
+                    {selectedTimeLabel}
+                  </Text>
+                  {selectedDateOption !== "now" && (
+                    <TouchableOpacity
+                      onPress={() => setShowTimePicker(true)}
+                      style={styles.changeTimeButton}
+                    >
+                      <Text style={styles.changeTimeText}>Change Time</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {/* Availability messages (regular cards only) */}
+              {!isCurated && isAvailabilityChecked && !isPlaceOpen && (
+                <View style={styles.availabilityMessage}>
+                  <Ionicons name="warning" size={18} color="#ef4444" />
+                  <Text style={styles.availabilityMessageText}>
+                    This place is closed at the selected time. Please choose a
+                    different time.
+                  </Text>
+                </View>
+              )}
+
+              {!isCurated &&
+                isAvailabilityChecked &&
+                isPlaceOpen &&
+                availabilityAssumption && (
+                  <View style={styles.assumptionWarning}>
+                    <Ionicons
+                      name="information-circle"
+                      size={18}
+                      color="#F59E0B"
+                    />
+                    <Text style={styles.assumptionWarningText}>
+                      {availabilityAssumption}. Please verify opening hours
+                      before scheduling.
                     </Text>
                   </View>
                 )}
-
-                {/* Assumption Warning Message */}
-                {isAvailabilityChecked &&
-                  isPlaceOpen &&
-                  availabilityAssumption && (
-                    <View style={styles.assumptionWarning}>
-                      <Ionicons
-                        name="information-circle"
-                        size={20}
-                        color="#f59e0b"
-                      />
-                      <Text style={styles.assumptionWarningText}>
-                        {availabilityAssumption}. Please verify opening hours
-                        before scheduling.
-                      </Text>
-                    </View>
-                  )}
-              </View>
-              </View>
             </ScrollView>
 
-            {/* Footer Button */}
+            {/* Footer */}
             <ProposeDateTimeFooter
               selectedDateOption={selectedDateOption}
               selectedWeekendDay={selectedWeekendDay}
@@ -715,11 +806,16 @@ export default function ProposeDateTimeModal({
               isPlaceOpen={isPlaceOpen}
               isCheckingAvailability={isCheckingAvailability}
               onCheckAvailability={handleCheckCompatibility}
-              onSchedule={handleSchedule}
+              onSchedule={
+                isCurated ? handleScheduleCuratedDirect : handleScheduleRegular
+              }
               isScheduling={isScheduling}
+              isCurated={isCurated}
+              customTime={customTime}
+              dark
             />
-          </View>
-        </View>
+          </Animated.View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Date Picker */}
@@ -747,234 +843,146 @@ export default function ProposeDateTimeModal({
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  overlayBackground: {
+  backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
   },
-  modalContainer: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    width: "100%",
-    maxWidth: 400,
-    maxHeight: "90%",
+  bottomSheet: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#1C1C1E",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: SCREEN_HEIGHT * 0.85,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 16,
+  },
+  handleContainer: {
+    alignItems: "center",
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.2)",
   },
   header: {
-    backgroundColor: "#ea580c",
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
   },
   headerLeft: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-    marginRight: 16,
+    marginRight: 12,
+  },
+  headerIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(245,158,11,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
   headerTextContainer: {
-    marginLeft: 12,
     flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
-    color: "white",
+    color: "#FFFFFF",
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: "white",
-    opacity: 0.9,
+    fontSize: 13,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.5)",
     marginTop: 2,
   },
   closeButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     justifyContent: "center",
     alignItems: "center",
   },
-  content: {
-    padding: 20,
-    backgroundColor: "white",
+  scrollContent: {
+    maxHeight: SCREEN_HEIGHT * 0.55,
   },
-  currentScheduleSection: {
-    backgroundColor: "#fdf8f5",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#fbe8d9",
-    padding: 16,
-    marginBottom: 24,
+  scrollContentContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  currentScheduleHeader: {
+  curatedBanner: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
-  },
-  currentScheduleTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333333",
-    marginLeft: 8,
-  },
-  currentScheduleItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fdf8f5",
-    borderRadius: 8,
+    gap: 8,
+    backgroundColor: "rgba(245,158,11,0.08)",
     borderWidth: 1,
-    borderColor: "#fbe8d9",
-    padding: 12,
-    marginBottom: 8,
-  },
-  currentScheduleItemContent: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  currentScheduleLabel: {
-    fontSize: 13,
-    color: "#666666",
-    marginBottom: 4,
-  },
-  currentScheduleValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#333333",
-  },
-  proposeSection: {
-    width: "100%",
-  },
-  proposeTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#374151",
+    borderColor: "rgba(245,158,11,0.15)",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     marginBottom: 16,
-    textAlign: "center",
   },
-  dateLabel: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 12,
-  },
-  dateOptionsGrid: {
-    flexDirection: "column",
-    gap: 12,
-    width: "100%",
-  },
-  dateOptionsRow: {
-    flexDirection: "row",
-    gap: 12,
-    width: "100%",
-  },
-  dateOption: {
-    flex: 1,
-    backgroundColor: "white",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dateOptionSelected: {
-    backgroundColor: "#fef3c7",
-    borderColor: "#ea580c",
-    borderWidth: 2,
-  },
-  dateOptionText: {
-    fontSize: 14,
+  curatedBannerText: {
+    fontSize: 13,
+    color: "rgba(245,158,11,0.9)",
     fontWeight: "500",
-    color: "#1f2937",
-  },
-  dateOptionTextSelected: {
-    color: "#ea580c",
-    fontWeight: "600",
-  },
-  availabilityMessage: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 12,
-    gap: 8,
-  },
-  availabilityMessageText: {
     flex: 1,
-    fontSize: 14,
-    color: "#991b1b",
-    fontWeight: "500",
-  },
-  assumptionWarning: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fffbeb",
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: "#fde68a",
-  },
-  assumptionWarningText: {
-    flex: 1,
-    fontSize: 14,
-    color: "#92400e",
-    fontWeight: "500",
   },
   openingHoursSection: {
-    backgroundColor: "#f0fdf4",
+    backgroundColor: "rgba(255,255,255,0.04)",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
-    padding: 16,
-    marginBottom: 20,
+    borderColor: "rgba(255,255,255,0.06)",
+    padding: 14,
+    marginBottom: 16,
   },
   openingHoursHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 10,
     gap: 8,
   },
   openingHoursTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
-    color: "#333333",
+    color: "rgba(255,255,255,0.8)",
     flex: 1,
   },
   openNowBadge: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 5,
   },
   openNowBadgeOpen: {
-    backgroundColor: "#dcfce7",
+    backgroundColor: "rgba(34,197,94,0.12)",
   },
   openNowBadgeClosed: {
-    backgroundColor: "#fef2f2",
+    backgroundColor: "rgba(239,68,68,0.12)",
   },
   openNowDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   openNowDotOpen: {
     backgroundColor: "#22c55e",
@@ -983,42 +991,138 @@ const styles = StyleSheet.create({
     backgroundColor: "#ef4444",
   },
   openNowText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
   },
   openNowTextOpen: {
-    color: "#166534",
+    color: "#22c55e",
   },
   openNowTextClosed: {
-    color: "#991b1b",
+    color: "#ef4444",
   },
   openingHoursList: {
-    gap: 2,
+    gap: 1,
   },
   openingHoursRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 5,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
     borderRadius: 6,
   },
   openingHoursRowToday: {
-    backgroundColor: "#dcfce7",
+    backgroundColor: "rgba(245,158,11,0.08)",
   },
   todayIndicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#ea580c",
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#F59E0B",
     marginRight: 8,
   },
   openingHoursText: {
-    fontSize: 13,
-    color: "#374151",
-    lineHeight: 20,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.5)",
+    lineHeight: 18,
   },
   openingHoursTextToday: {
     fontWeight: "700",
-    color: "#166534",
+    color: "#F59E0B",
+  },
+  currentScheduleSection: {
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    padding: 14,
+    marginBottom: 16,
+  },
+  currentScheduleHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+    gap: 8,
+  },
+  currentScheduleTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.6)",
+  },
+  currentScheduleValue: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  sectionContainer: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.9)",
+    marginBottom: 12,
+  },
+  selectedTimeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(245,158,11,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.15)",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  selectedTimeText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#F59E0B",
+    flex: 1,
+  },
+  changeTimeButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "rgba(245,158,11,0.12)",
+  },
+  changeTimeText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#F59E0B",
+  },
+  availabilityMessage: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(239,68,68,0.1)",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.2)",
+  },
+  availabilityMessageText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#ef4444",
+    fontWeight: "500",
+  },
+  assumptionWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(245,158,11,0.08)",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.15)",
+  },
+  assumptionWarningText: {
+    flex: 1,
+    fontSize: 13,
+    color: "rgba(245,158,11,0.9)",
+    fontWeight: "500",
   },
 });

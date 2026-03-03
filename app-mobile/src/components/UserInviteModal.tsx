@@ -99,6 +99,7 @@ export default function UserInviteModal({ isOpen, onClose, sessionName, onSendIn
         <View style={styles.modal}>
           {/* Header */}
           <View style={styles.header}>
+            <View style={styles.headerSidePlaceholder} />
             <View style={styles.headerContent}>
               <Text style={styles.title}>Invite to Session</Text>
               <Text style={styles.sessionName}>"{sessionName}"</Text>
@@ -272,26 +273,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
   },
   headerContent: {
     flex: 1,
+    alignItems: 'center',
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    textAlign: 'center',
   },
   sessionName: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
     marginTop: 2,
+    textAlign: 'center',
   },
   closeButton: {
-    padding: 8,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   searchContainer: {
     padding: 16,

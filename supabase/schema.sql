@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS public.preferences (
   budget_min integer DEFAULT 0,
   budget_max integer DEFAULT 1000,
   people_count integer DEFAULT 1,
-  categories text[] DEFAULT ARRAY['Stroll', 'Sip & Chill'],
+  categories text[] DEFAULT ARRAY['Nature', 'Casual Eats', 'Drink'],
   travel_mode text DEFAULT 'walking',
   travel_constraint_type text DEFAULT 'time',
   travel_constraint_value integer DEFAULT 30,

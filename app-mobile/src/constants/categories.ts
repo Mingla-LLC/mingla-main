@@ -40,395 +40,492 @@ export interface Category {
 
 export const categories: Category[] = [
   {
-    slug: 'stroll',
-    name: 'Take a Stroll',
-    icon: '🚶‍♀️',
-    description: 'Light, scenic activities designed for calm conversation or exploration',
-    detailedDescription: 'Always paired with a small treat stop (ice cream, street food, or food truck) nearby. Scenic walking routes, promenades, waterfronts, parks, botanical gardens, urban trails, river walks, coastal walks.',
+    slug: 'nature',
+    name: 'Nature',
+    icon: '🌿',
+    description: 'Outdoor experiences in natural settings — parks, trails, beaches, and wildlife',
+    detailedDescription: 'Scenic parks, botanical gardens, hiking trails, beaches, national parks, zoos, and wildlife areas. Perfect for fresh air, calm conversation, and connection with the outdoors.',
     expectedActivities: [
-      'Scenic walking routes, promenades, waterfronts',
-      'Parks, botanical gardens, arboretums',
-      'Urban trails, river walks, coastal walks'
-    ],
-    pairedExperiences: [
-      'Ice cream shop',
-      'Small chops / snack spot',
-      'Food truck'
+      'Parks, botanical gardens, national parks',
+      'Hiking trails and nature reserves',
+      'Beaches, zoos, and wildlife parks'
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['park', 'trailhead', 'botanical_garden', 'waterfront', 'tourist_attraction'],
-        companionAnchors: ['ice_cream_shop', 'street_food', 'food_truck', 'cafe', 'bakery'],
+        coreAnchors: ['park', 'botanical_garden', 'hiking_area', 'national_park', 'state_park', 'beach', 'zoo', 'wildlife_park'],
         attributes: ['scenic', 'outdoor', 'peaceful'],
-        excludedAttributes: ['loud', 'crowded', 'commercial']
+        excludedAttributes: ['bar', 'night_club', 'casino', 'movie_theater', 'bowling_alley', 'fine_dining_restaurant']
       },
       eventbrite: {
-        eventTypes: ['walking_tours', 'outdoor_guided_strolls'],
-        tags: ['food_trucks', 'tastings']
+        eventTypes: ['outdoor_events', 'nature_tours', 'guided_hikes']
       }
     },
     logic: {
-      hardFilter: 'Must start with a stroll anchor',
-      pairingRule: 'Always attach at least one snack/food stop within a short radius',
+      hardFilter: 'Must be an outdoor natural setting',
       hierarchy: {
-        broad: 'Take a Stroll',
-        niche: ['Parks & Gardens', 'Waterfront + Ice Cream', 'Park + Food Truck', 'Botanical Garden + Café', 'Urban Stroll + Bakery']
+        broad: 'Nature',
+        niche: ['Parks & Gardens', 'Hiking & Trails', 'Beaches', 'National Parks', 'Zoos & Wildlife']
       },
-      fallbackBehavior: 'If no snack shop is found within radius, stretch search slightly. If none at all → still show stroll card, but OpenAI frames suggestion: "Bring along snacks — not much nearby."'
+      fallbackBehavior: 'If no nature spots within range, suggest closest park or botanical garden.'
     },
     ux: {
-      activeColor: '#4CAF50',
-      subcategories: ['Parks & Gardens 🌸', 'Waterfront + Ice Cream 🍦🌊', 'Park + Food Truck 🚚🌳', 'Botanical Garden + Café ☕🌸', 'Urban Stroll + Bakery 🥖🏙️'],
-      contextualPreview: 'Scenic riverwalk, just 12 minutes from you — finish with gelato at Dolce Vita nearby.'
+      activeColor: '#10B981',
+      subcategories: ['Parks & Gardens', 'Hiking & Trails', 'Beaches', 'National Parks', 'Zoos & Wildlife'],
+      contextualPreview: 'Botanical garden just 10 minutes away — perfect for a peaceful walk.'
     },
     activityType: 'mobile',
     duration: 'medium',
-    compatibleWith: ['sip', 'wellness'],
-    incompatibleWith: ['dining', 'creative', 'nightlife']
+    compatibleWith: ['picnic_park', 'wellness', 'creative_arts'],
+    incompatibleWith: ['watch', 'fine_dining', 'play']
   },
   {
-    slug: 'sip',
-    name: 'Sip & Chill',
-    icon: '🍹',
-    description: 'Relaxed, lounge-style experiences focused on drinks and ambience',
-    detailedDescription: 'Designed for unhurried conversation and vibe. Works well for first dates, romantic evenings, or low-key group hangs. Cocktail bars, speakeasies, wine bars, brewery tours/tastings, 5-star hotel lounges, tea houses, coffee roasteries.',
+    slug: 'first_meet',
+    name: 'First Meet',
+    icon: '🤝',
+    description: 'Low-pressure social settings perfect for meeting someone new or a first date',
+    detailedDescription: 'Bookstores, coffee shops, wine bars, tea houses, pubs, and planetariums — relaxed venues that enable easy conversation without the pressure of a formal date setting.',
     expectedActivities: [
-      'Cocktail bars, speakeasies',
-      'Wine bars',
-      'Brewery tours/tastings',
-      '5-star hotel lounges',
-      'Tea houses',
-      'Coffee roasteries'
+      'Bookstores and coffee shops',
+      'Wine bars and pubs',
+      'Tea houses and casual lounges',
+      'Planetariums'
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['bar', 'cafe', 'brewery', 'night_club'],
-        attributes: ['romantic', 'quiet', 'upscale'],
-        excludedAttributes: ['loud', 'frat_vibe', 'party']
+        coreAnchors: ['bookstore', 'bar', 'pub', 'wine_bar', 'tea_house', 'coffee_shop', 'planetarium'],
+        attributes: ['quiet', 'conversational', 'relaxed'],
+        excludedAttributes: ['amusement_park', 'water_park', 'bowling_alley', 'spa', 'massage']
       },
       eventbrite: {
-        eventTypes: ['wine_tastings', 'mixology_classes', 'cocktail_making', 'brewery_events']
+        eventTypes: ['social_events', 'networking', 'casual_meetups']
       }
     },
     logic: {
-      hardFilter: 'Must be a venue or event centered on drinks/relaxation',
+      hardFilter: 'Must be a conversational, low-pressure venue',
       hierarchy: {
-        broad: 'Sip & Chill',
-        niche: ['Cocktail Bars', 'Wine Bars', 'Breweries', 'Speakeasies', 'Hotel Lounges', 'Coffee & Tea']
+        broad: 'First Meet',
+        niche: ['Coffee Shops', 'Wine Bars', 'Bookstores', 'Pubs', 'Tea Houses']
       },
-      fallbackBehavior: 'If no explicitly tagged upscale bars/cafés, show best available "quiet" options and reframe via OpenAI: "Closest match: casual coffee roastery with cozy seating."'
+      fallbackBehavior: 'If no bookstore or specialty venue found, show nearest coffee shop or wine bar.'
     },
     ux: {
-      activeColor: '#9C27B0',
-      subcategories: ['Cocktail Bars', 'Wine Bars', 'Breweries', 'Speakeasies', 'Hotel Lounges', 'Coffee & Tea'],
-      contextualPreview: 'Cozy speakeasy with candlelit booths — live jazz set at 8pm.'
+      activeColor: '#6366F1',
+      subcategories: ['Coffee Shops', 'Wine Bars', 'Bookstores', 'Pubs', 'Tea Houses'],
+      contextualPreview: 'Indie bookstore with a café corner — great for a relaxed first meet.'
     },
     activityType: 'stationary',
     duration: 'short',
-    compatibleWith: ['stroll', 'creative', 'culture'],
-    incompatibleWith: ['dining', 'wellness', 'nightlife']
+    compatibleWith: ['drink', 'watch', 'creative_arts'],
+    incompatibleWith: ['wellness', 'picnic_park']
+  },
+  {
+    slug: 'picnic_park',
+    name: 'Picnic Park',
+    icon: '🧺',
+    description: 'Outdoor picnic grounds — designated areas with tables, shelters, and scenic views',
+    detailedDescription: 'Dedicated picnic grounds perfect for an outdoor meal. Tables, benches, shelters, and scenic settings for a relaxed time with friends, family, or a date.',
+    expectedActivities: [
+      'Designated picnic grounds with tables',
+      'Scenic outdoor areas for dining',
+      'Parks with picnic shelters'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['picnic_ground'],
+        attributes: ['outdoor', 'open_space', 'family_friendly'],
+        excludedAttributes: ['dog_park', 'amusement_park', 'water_park', 'bar', 'night_club', 'casino', 'movie_theater']
+      },
+      eventbrite: {
+        eventTypes: ['outdoor_events', 'picnics', 'garden_events']
+      }
+    },
+    logic: {
+      hardFilter: 'Must be a designated picnic ground with outdoor facilities',
+      hierarchy: {
+        broad: 'Picnic Park',
+        niche: ['Picnic Grounds']
+      },
+      fallbackBehavior: 'If no picnic ground nearby, show closest available result.'
+    },
+    ux: {
+      activeColor: '#84CC16',
+      subcategories: ['Picnic Grounds'],
+      contextualPreview: 'Waterfront picnic ground with tables — beautiful sunset views.'
+    },
+    activityType: 'mixed',
+    duration: 'medium',
+    compatibleWith: ['nature', 'drink', 'casual_eats'],
+    incompatibleWith: ['fine_dining', 'watch', 'wellness']
+  },
+  {
+    slug: 'drink',
+    name: 'Drink',
+    icon: '🍹',
+    description: 'Bars, pubs, wine bars, coffee shops, and tea houses for drinks and conversation',
+    detailedDescription: 'Relaxed venues centered on drinks — cocktail bars, pubs, wine bars, tea houses, and coffee shops. Works for first dates, group hangs, and casual social outings.',
+    expectedActivities: [
+      'Cocktail bars and pubs',
+      'Wine bars and tea houses',
+      'Coffee shops and cafes'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['bar', 'pub', 'wine_bar', 'tea_house', 'coffee_shop'],
+        attributes: ['relaxed', 'social', 'drinks'],
+        excludedAttributes: ['fine_dining_restaurant', 'spa', 'amusement_park']
+      },
+      eventbrite: {
+        eventTypes: ['wine_tastings', 'cocktail_events', 'coffee_events']
+      }
+    },
+    logic: {
+      hardFilter: 'Must be a drink-centered venue',
+      hierarchy: {
+        broad: 'Drink',
+        niche: ['Cocktail Bars', 'Wine Bars', 'Pubs', 'Tea Houses', 'Coffee Shops']
+      },
+      fallbackBehavior: 'If no specialty bar found, show nearest cafe or pub.'
+    },
+    ux: {
+      activeColor: '#F59E0B',
+      subcategories: ['Cocktail Bars', 'Wine Bars', 'Pubs', 'Tea Houses', 'Coffee Shops'],
+      contextualPreview: 'Cozy wine bar with a curated list — perfect for unwinding.'
+    },
+    activityType: 'stationary',
+    duration: 'short',
+    compatibleWith: ['first_meet', 'casual_eats', 'fine_dining', 'watch', 'play', 'creative_arts', 'picnic_park'],
+    incompatibleWith: ['wellness', 'nature']
   },
   {
     slug: 'casual_eats',
     name: 'Casual Eats',
-    icon: '🍕',
-    description: 'Affordable, informal, and often quick food experiences',
-    detailedDescription: 'Designed for low-stakes, easygoing outings — whether it\'s a casual first meet-up, a group hang, or a spontaneous solo bite. Tacos, pizza, burgers, noodles, ramen, cafés, delis, diners, food trucks and casual pop-ups.',
+    icon: '🍔',
+    description: 'Affordable, informal dining — burgers, ramen, tacos, pizza, and more',
+    detailedDescription: 'Low-stakes, easygoing food outings across a wide range of cuisines. Fast food, diners, sandwich shops, ramen bars, pizza spots, and everything in between.',
     expectedActivities: [
-      'Tacos, pizza, burgers, noodles, ramen',
-      'Cafés, delis, diners',
-      'Food trucks and casual pop-ups'
+      'Burgers, tacos, pizza, ramen',
+      'Diners, delis, brunch spots',
+      'Fast casual and food courts'
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['fast_food', 'casual_restaurant', 'cafe', 'food_truck', 'diner', 'sandwich_shop'],
-        attributes: ['inexpensive', 'affordable'],
-        excludedAttributes: ['upscale_only', 'fine_dining']
+        coreAnchors: [
+          'buffet_restaurant', 'brunch_restaurant', 'diner', 'fast_food_restaurant', 'food_court',
+          'hamburger_restaurant', 'pizza_restaurant', 'ramen_restaurant', 'sandwich_shop', 'sushi_restaurant',
+          'afghani_restaurant', 'african_restaurant', 'american_restaurant', 'asian_restaurant',
+          'barbecue_restaurant', 'brazilian_restaurant', 'breakfast_restaurant', 'indian_restaurant',
+          'indonesian_restaurant', 'japanese_restaurant', 'korean_restaurant', 'lebanese_restaurant',
+          'mediterranean_restaurant', 'mexican_restaurant', 'middle_eastern_restaurant', 'seafood_restaurant',
+          'spanish_restaurant', 'thai_restaurant', 'turkish_restaurant', 'vegan_restaurant',
+          'vegetarian_restaurant', 'vietnamese_restaurant', 'chinese_restaurant', 'steak_house',
+          'french_restaurant', 'greek_restaurant', 'italian_restaurant'
+        ],
+        attributes: ['affordable', 'casual', 'informal'],
+        excludedAttributes: ['fine_dining_restaurant', 'bar', 'night_club', 'spa']
       },
       eventbrite: {
-        eventTypes: ['food_festivals', 'casual_street_food_events', 'pop_up_dining_nights']
+        eventTypes: ['food_festivals', 'pop_up_dining', 'street_food_events']
       }
     },
     logic: {
       hardFilter: 'Must be food-centered and informal in pricing/setting',
       hierarchy: {
         broad: 'Casual Eats',
-        niche: ['Tacos', 'Pizza', 'Burgers', 'Noodles/Ramen', 'Food Trucks', 'Diners/Cafés']
+        niche: ['Burgers', 'Pizza', 'Ramen', 'Tacos', 'Brunch', 'Asian Cuisine', 'Diners']
       },
-      fallbackBehavior: 'If no explicitly casual venues in range, show nearby mid-tier options reframed via OpenAI: "Closest match: ramen shop with $12 bowls, open late."'
+      fallbackBehavior: 'If no exact match, show nearest highly rated casual restaurant.'
     },
     ux: {
-      activeColor: '#FF9800',
-      subcategories: ['Tacos', 'Pizza', 'Burgers', 'Noodles/Ramen', 'Food Trucks', 'Diners/Cafés'],
-      contextualPreview: 'Taco truck by the park — $3 tacos, open until midnight.'
+      activeColor: '#F97316',
+      subcategories: ['Burgers', 'Pizza', 'Ramen', 'Tacos', 'Brunch', 'Asian Cuisine', 'Diners'],
+      contextualPreview: 'Ramen bar 8 minutes away — $14 bowls, open late.'
     },
     activityType: 'stationary',
     duration: 'short',
-    compatibleWith: ['stroll', 'culture'],
-    incompatibleWith: ['dining', 'wellness', 'nightlife']
+    compatibleWith: ['drink', 'watch', 'play', 'picnic_park'],
+    incompatibleWith: ['wellness', 'fine_dining']
   },
   {
-    slug: 'screen_relax',
-    name: 'Screen & Relax',
-    icon: '🎬',
-    description: 'Experiences where the focus is on watching, listening, or being entertained while seated',
-    detailedDescription: 'Designed for laid-back nights where conversation is lighter and the activity is centered around a shared show or performance. Movie theaters, drive-in cinemas, film screenings & festivals, theater plays & stage shows, comedy shows, watch parties & special screenings.',
+    slug: 'fine_dining',
+    name: 'Fine Dining',
+    icon: '🍽️',
+    description: 'Elevated dining — steakhouses, French cuisine, Italian, Greek, and fine dining restaurants',
+    detailedDescription: 'Curated, sit-down dining experiences centered on quality. Fine dining restaurants, steakhouses, French, Greek, and Italian restaurants for special occasions and refined outings.',
     expectedActivities: [
-      'Movie theaters (blockbusters, indie, arthouse)',
-      'Drive-in cinemas',
-      'Film screenings & festivals',
-      'Theater plays & stage shows',
-      'Comedy shows (stand-up, improv)',
-      'Watch parties & special screenings'
+      'Fine dining restaurants',
+      'Steakhouses',
+      'French, Greek, and Italian restaurants'
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['movie_theater', 'performing_arts_theater', 'stadium', 'comedy_club'],
-        attributes: ['indoor', 'ticketed_seating'],
-        excludedAttributes: ['outdoor_only', 'standing_room']
+        coreAnchors: ['fine_dining_restaurant', 'chef_led_restaurant', 'upscale_restaurant'],
+        attributes: ['upscale', 'refined', 'reservation_recommended'],
+        excludedAttributes: ['fast_food_restaurant', 'food_court', 'bar', 'bowling_alley', 'amusement_park']
       },
       eventbrite: {
-        eventTypes: ['film_festivals', 'theater_productions', 'comedy_nights', 'cultural_screenings']
+        eventTypes: ['chef_led_dinners', 'wine_pairing_events', 'fine_dining_events']
       }
     },
     logic: {
-      hardFilter: 'Must be a cinema, or an event/venue primarily centered around screening or stage performance',
+      hardFilter: 'Must be upscale or chef-led dining',
       hierarchy: {
-        broad: 'Screen & Relax',
-        niche: ['Movies', 'Theater', 'Comedy', 'Drive-in', 'Watch Parties', 'Special Screenings']
+        broad: 'Fine Dining',
+        niche: ['Steakhouses', 'French', 'Italian', 'Greek', 'Fine Dining Restaurants']
       },
-      fallbackBehavior: 'If no dedicated screenings nearby, reframe broader entertainment options via OpenAI: "Closest match: small comedy show at a café tonight."'
+      fallbackBehavior: 'If no fine dining options, reframe best mid-range option nearby.'
     },
     ux: {
-      activeColor: '#FF6B35',
-      subcategories: ['Movies', 'Theater', 'Comedy', 'Drive-in', 'Watch Parties', 'Special Screenings'],
-      contextualPreview: 'Indie cinema screening an award-winning film at 7pm.'
-    },
-    activityType: 'stationary',
-    duration: 'medium',
-    compatibleWith: ['casual_eats', 'sip'],
-    incompatibleWith: ['stroll', 'creative', 'wellness']
-  },
-  {
-    slug: 'creative',
-    name: 'Creative & Hands-On',
-    icon: '🎨',
-    description: 'Interactive workshops and artistic activities where participants create, craft, or learn by doing',
-    detailedDescription: 'Designed for dates or group outings that are playful, memorable, and leave participants with something to take home or a new skill to share. Pottery classes, sip & paint nights, candle making, cooking classes, baking workshops, woodworking, glassblowing, jewelry or craft workshops.',
-    expectedActivities: [
-      'Pottery classes',
-      'Sip & Paint nights',
-      'Candle making',
-      'Cooking classes',
-      'Baking workshops',
-      'Woodworking',
-      'Glassblowing',
-      'Jewelry or craft workshops'
-    ],
-    apiMapping: {
-      googleMaps: {
-        coreAnchors: ['art_studio', 'cultural_center', 'workshop', 'cooking_school'],
-        attributes: ['small_group', 'interactive', 'materials_provided'],
-        excludedAttributes: ['lecture_only', 'observation_only']
-      },
-      eventbrite: {
-        eventTypes: ['arts_crafts_events', 'creative_workshops', 'cooking_classes']
-      }
-    },
-    logic: {
-      hardFilter: 'Must be interactive, with participants directly engaging in creation or hands-on learning',
-      hierarchy: {
-        broad: 'Creative & Hands-On',
-        niche: ['Pottery', 'Sip & Paint', 'Candle Making', 'Cooking/Baking', 'Woodworking', 'Glassblowing']
-      },
-      fallbackBehavior: 'If no creative classes nearby, reframe casual alternatives via OpenAI: "Closest match: open studio art night where you can sketch or paint freely."'
-    },
-    ux: {
-      activeColor: '#FFC107',
-      subcategories: ['Pottery', 'Sip & Paint', 'Candle Making', 'Cooking/Baking', 'Woodworking', 'Glassblowing'],
-      contextualPreview: 'Sip & Paint with wine flights — paint your own canvas while sipping.'
+      activeColor: '#7C3AED',
+      subcategories: ['Steakhouses', 'French', 'Italian', 'Greek', 'Fine Dining Restaurants'],
+      contextualPreview: 'Intimate Italian bistro with a prix fixe menu — reservations recommended.'
     },
     activityType: 'stationary',
     duration: 'long',
-    compatibleWith: ['sip', 'culture'],
-    incompatibleWith: ['stroll', 'dining', 'wellness', 'nightlife']
+    compatibleWith: ['drink', 'watch'],
+    incompatibleWith: ['casual_eats', 'picnic_park', 'play', 'nature']
   },
   {
-    slug: 'play_move',
-    name: 'Play & Move',
-    icon: '⚽',
-    description: 'Active, energetic, or competitive activities designed for fun, movement, and group interaction',
-    detailedDescription: 'Works well for friends, group dates, or playful couples who want to do more than just sit and talk. Bowling, climbing/bouldering, skating, trampoline parks, kayaking, paddleboarding, hiking, mini golf, arcades, escape rooms, go-karts, axe throwing, laser tag, pickleball, basketball, tennis, badminton.',
+    slug: 'watch',
+    name: 'Watch',
+    icon: '🎬',
+    description: 'Movie theaters and comedy clubs — shared entertainment experiences',
+    detailedDescription: 'Venues centered on watching and being entertained together. Movie theaters and comedy clubs for a fun shared evening.',
     expectedActivities: [
-      'Bowling',
-      'Climbing/bouldering',
-      'Skating',
-      'Trampoline parks',
-      'Kayaking, paddleboarding, hiking',
-      'Mini golf',
-      'Arcades',
-      'Escape rooms',
-      'Go-karts',
-      'Axe throwing',
-      'Laser tag',
-      'Pickleball, basketball, tennis, badminton'
+      'Movie theaters',
+      'Comedy clubs and stand-up shows'
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['bowling_alley', 'stadium', 'gym', 'amusement_center', 'climbing_gym', 'park', 'sports_complex', 'arcade', 'skating_rink'],
-        attributes: ['group_capacity', 'team_based_activities', 'active', 'energetic_setting'],
-        excludedAttributes: ['sedentary', 'quiet', 'individual_only']
+        coreAnchors: ['movie_theater', 'cinema', 'comedy_club'],
+        attributes: ['entertainment', 'indoor', 'seated'],
+        excludedAttributes: ['spa', 'botanical_garden', 'park', 'restaurant']
       },
       eventbrite: {
-        eventTypes: ['fitness_events', 'recreational_events', 'tournaments', 'group_hikes', 'activity_nights']
+        eventTypes: ['film_screenings', 'comedy_nights', 'movie_events']
       }
     },
     logic: {
-      hardFilter: 'Must involve movement, active play, or competition',
+      hardFilter: 'Must be a cinema or comedy venue',
       hierarchy: {
-        broad: 'Play & Move',
-        niche: ['Bowling', 'Climbing/Bouldering', 'Skating', 'Mini Golf', 'Arcades', 'Escape Rooms', 'Team Sports', 'Adventure Activities']
+        broad: 'Watch',
+        niche: ['Movies', 'Comedy Shows', 'Special Screenings']
       },
-      fallbackBehavior: 'If no formal activities found, reframe casual alternatives via OpenAI: "Closest match: open public basketball courts at Riverside Park."'
+      fallbackBehavior: 'If no movie theater found, show nearest comedy club or performing arts venue.'
     },
     ux: {
-      activeColor: '#F44336',
-      subcategories: ['Bowling', 'Climbing/Bouldering', 'Skating', 'Mini Golf', 'Arcades', 'Escape Rooms', 'Team Sports', 'Adventure Activities'],
-      contextualPreview: 'Escape room challenge — 1-hour mission for 4–6 players.'
+      activeColor: '#3B82F6',
+      subcategories: ['Movies', 'Comedy Shows', 'Special Screenings'],
+      contextualPreview: 'Comedy club with a headliner tonight — doors at 7pm.'
+    },
+    activityType: 'stationary',
+    duration: 'medium',
+    compatibleWith: ['drink', 'casual_eats', 'fine_dining', 'first_meet'],
+    incompatibleWith: ['nature', 'picnic_park', 'wellness']
+  },
+  {
+    slug: 'creative_arts',
+    name: 'Creative & Arts',
+    icon: '🎨',
+    description: 'Art galleries, museums, planetariums, karaoke, and creative spaces',
+    detailedDescription: 'Inspiring venues for art lovers and curious minds. Art galleries, museums, planetariums, karaoke bars, and coffee roasteries where creativity flows freely.',
+    expectedActivities: [
+      'Art galleries and museums',
+      'Planetariums',
+      'Karaoke bars',
+      'Coffee roasteries'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['art_gallery', 'museum', 'planetarium', 'karaoke', 'pottery', 'sip_and_paint', 'cooking_classes', 'woodworking_class', 'jewelry_making_studio', 'sewing_class', 'glass_blowing_studio', 'diy_workshop', 'perfume_lab', 'flower_arranging_studio', 'bakery_workshop', 'coffee_roastery'],
+        attributes: ['creative', 'cultural', 'inspiring'],
+        excludedAttributes: ['fast_food_restaurant', 'bar', 'bowling_alley', 'spa']
+      },
+      eventbrite: {
+        eventTypes: ['art_events', 'museum_nights', 'cultural_events', 'creative_workshops']
+      }
+    },
+    logic: {
+      hardFilter: 'Must be a creative or cultural venue',
+      hierarchy: {
+        broad: 'Creative & Arts',
+        niche: ['Art Galleries', 'Museums', 'Planetariums', 'Karaoke', 'Coffee Roasteries']
+      },
+      fallbackBehavior: 'If no gallery or museum found, show nearest karaoke bar or roastery.'
+    },
+    ux: {
+      activeColor: '#EC4899',
+      subcategories: ['Art Galleries', 'Museums', 'Planetariums', 'Karaoke', 'Coffee Roasteries'],
+      contextualPreview: 'Art gallery opening tonight — free admission, wine served.'
+    },
+    activityType: 'stationary',
+    duration: 'medium',
+    compatibleWith: ['drink', 'first_meet', 'nature', 'play'],
+    incompatibleWith: ['wellness', 'fine_dining']
+  },
+  {
+    slug: 'play',
+    name: 'Play',
+    icon: '🎯',
+    description: 'Bowling, arcades, escape rooms, trampoline parks, amusement parks, and more',
+    detailedDescription: 'High-energy, fun-first venues for groups and couples who want to move, compete, and laugh. Bowling alleys, arcades, escape rooms, trampolines, mini golf, ice skating, and adventure parks.',
+    expectedActivities: [
+      'Bowling, mini golf, ice skating',
+      'Arcades, escape rooms, trampolines',
+      'Amusement parks, water parks',
+      'Karaoke and casinos'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: [
+          'bowling_alley', 'amusement_park', 'water_park', 'planetarium', 'video_arcade', 'karaoke', 'casino',
+          'roller_coaster', 'ferris_wheel', 'trampoline_park', 'rock_climbing_gym', 'mini_golf_course',
+          'ice_skating_rink', 'skate_park', 'batting_cages', 'laser_tag_center', 'paintball_center',
+          'escape_room', 'billiards_hall', 'dart_bar', 'board_game_cafe', 'virtual_reality_center',
+          'adventure_park', 'go_kart_track'
+        ],
+        attributes: ['active', 'fun', 'group_friendly'],
+        excludedAttributes: ['spa', 'massage', 'botanical_garden', 'fine_dining_restaurant']
+      },
+      eventbrite: {
+        eventTypes: ['recreational_events', 'game_nights', 'group_activities']
+      }
+    },
+    logic: {
+      hardFilter: 'Must be an active, game-based, or entertainment venue',
+      hierarchy: {
+        broad: 'Play',
+        niche: ['Bowling', 'Arcades', 'Escape Rooms', 'Trampolines', 'Mini Golf', 'Amusement Parks', 'Ice Skating']
+      },
+      fallbackBehavior: 'If no dedicated play venue found, show nearest bowling alley or arcade.'
+    },
+    ux: {
+      activeColor: '#EF4444',
+      subcategories: ['Bowling', 'Arcades', 'Escape Rooms', 'Trampolines', 'Mini Golf', 'Amusement Parks', 'Ice Skating'],
+      contextualPreview: 'Escape room challenge for 4–6 players — book tonight.'
     },
     activityType: 'mixed',
     duration: 'medium',
-    compatibleWith: ['casual_eats'],
-    incompatibleWith: ['sip', 'dining', 'wellness', 'culture']
-  },
-  {
-    slug: 'dining',
-    name: 'Dining Experience',
-    icon: '🍽️',
-    description: 'Elevated or curated dining experiences where the meal itself is the centerpiece',
-    detailedDescription: 'Designed for special occasions, romantic nights, or refined group outings. These are sit-down, reservation-driven, and often multi-course or chef-led. Tasting menus, prix fixe dinners, chef\'s counter, omakase, wine pairing dinners, rooftop dining with views.',
-    expectedActivities: [
-      'Tasting menus',
-      'Prix fixe dinners',
-      'Chef\'s counter',
-      'Omakase',
-      'Wine pairing dinners',
-      'Rooftop dining with views'
-    ],
-    apiMapping: {
-      googleMaps: {
-        coreAnchors: ['restaurant'],
-        attributes: ['upscale', 'fine_dining', 'reservation_required', 'romantic_ambience', 'scenic_view', 'wine_program'],
-        excludedAttributes: ['casual', 'fast_food', 'counter_service']
-      },
-      eventbrite: {
-        eventTypes: ['ticketed_food_wine_events', 'chef_led_dinners', 'special_pop_up_culinary_experiences']
-      }
-    },
-    logic: {
-      hardFilter: 'Must be upscale, curated, or chef-led dining',
-      hierarchy: {
-        broad: 'Dining Experience',
-        niche: ['Tasting Menu', 'Prix Fixe', 'Chef\'s Counter', 'Omakase', 'Wine Pairing', 'Rooftop Dining']
-      },
-      fallbackBehavior: 'If no explicitly fine-dining options nearby, reframe mid-range venues with upscale attributes via OpenAI: "Closest match: modern bistro with prix fixe menu, $65 per person."'
-    },
-    ux: {
-      activeColor: '#8B0000',
-      subcategories: ['Tasting Menu', 'Prix Fixe', 'Chef\'s Counter', 'Omakase', 'Wine Pairing', 'Rooftop Dining'],
-      contextualPreview: '7-course chef\'s tasting menu with wine pairing — reservations required.'
-    },
-    activityType: 'stationary',
-    duration: 'long',
-    compatibleWith: ['culture', 'nightlife'],
-    incompatibleWith: ['stroll', 'sip', 'creative', 'wellness']
+    compatibleWith: ['drink', 'casual_eats', 'creative_arts'],
+    incompatibleWith: ['wellness', 'fine_dining', 'nature']
   },
   {
     slug: 'wellness',
-    name: 'Wellness Dates',
-    icon: '🧘‍♀️',
-    description: 'Mindful, restorative, and health-centered activities designed to help people relax, recharge, and connect',
-    detailedDescription: 'Ideal for self-care solo outings, intimate couple experiences, or small group sessions. Yoga classes, meditation sessions, sound baths, spa & massage packages, hot springs / thermal baths, float tanks / hydrotherapy, healthy dining spots, wellness retreats & day passes, nature-immersion.',
+    name: 'Wellness',
+    icon: '🧘',
+    description: 'Spas, saunas, and hot springs for relaxation and rejuvenation',
+    detailedDescription: 'Restorative experiences centered on calm and self-care. Spas, saunas, and hot springs for solo or shared relaxation.',
     expectedActivities: [
-      'Yoga classes (studio, rooftop, outdoor)',
-      'Meditation sessions',
-      'Sound baths',
-      'Spa & massage packages',
-      'Hot springs / thermal baths',
-      'Float tanks / hydrotherapy',
-      'Healthy dining spots (plant-based, farm-to-table, juice bars)',
-      'Wellness retreats & day passes',
-      'Nature-immersion (forest bathing, sunrise meditations)'
+      'Spas and wellness centers',
+      'Saunas',
+      'Hot springs'
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['yoga_studio', 'spa', 'wellness_center', 'massage_therapist', 'health_food_restaurant', 'retreat'],
-        attributes: ['wellness_focused', 'mindful', 'restorative'],
-        excludedAttributes: ['loud', 'energetic', 'competitive']
+        coreAnchors: ['spa', 'massage', 'sauna', 'hot_spring', 'turkish_bath', 'float_tank_center', 'public_bath', 'cold_plunge_facility'],
+        attributes: ['relaxing', 'restorative', 'mindful'],
+        excludedAttributes: ['bar', 'night_club', 'casino', 'bowling_alley', 'amusement_park', 'fast_food_restaurant']
       },
       eventbrite: {
-        eventTypes: ['health_wellness_events', 'yoga_in_park', 'mindfulness_workshops', 'nutrition_seminars']
+        eventTypes: ['wellness_events', 'spa_days', 'mindfulness_workshops']
       }
     },
     logic: {
-      hardFilter: 'Only show cards explicitly tagged as wellness-focused',
+      hardFilter: 'Must be a wellness or spa venue',
       hierarchy: {
-        broad: 'Wellness Dates',
-        niche: ['Yoga Classes', 'Meditation Sessions', 'Spa/Hot Springs', 'Sound Baths', 'Wellness Retreats', 'Healthy Dining']
+        broad: 'Wellness',
+        niche: ['Spas', 'Saunas', 'Hot Springs']
       },
-      fallbackBehavior: 'If no structured wellness activities are nearby, suggest calm alternatives reframed via OpenAI: "Closest match: quiet botanical garden walk with tea house nearby."'
+      fallbackBehavior: 'If no spa found, suggest nearest wellness center or sauna.'
     },
     ux: {
-      activeColor: '#00BCD4',
-      subcategories: ['Yoga Classes', 'Meditation Sessions', 'Spa/Hot Springs', 'Sound Baths', 'Wellness Retreats', 'Healthy Dining'],
-      contextualPreview: 'Sunset yoga in the park — mats provided, 6pm start.'
+      activeColor: '#14B8A6',
+      subcategories: ['Spas', 'Saunas', 'Hot Springs'],
+      contextualPreview: 'Spa day with sauna access — book a couples package.'
+    },
+    activityType: 'stationary',
+    duration: 'long',
+    compatibleWith: ['nature'],
+    incompatibleWith: ['play', 'drink', 'watch', 'casual_eats', 'fine_dining']
+  },
+  {
+    slug: 'groceries_flowers',
+    name: 'Groceries & Flowers',
+    icon: '🛒',
+    description: 'Grocery stores, supermarkets, and flower shops for everyday errands or special occasions.',
+    detailedDescription: 'Discover nearby grocery stores, supermarkets, and florists. Perfect for picking up ingredients for a home-cooked meal, grabbing fresh flowers for a date, or stocking up on essentials.',
+    expectedActivities: [
+      'Grocery shopping',
+      'Flower shopping',
+      'Fresh produce browsing',
+      'Market visits',
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['grocery_store', 'supermarket'],
+        attributes: ['wheelchair_accessible_entrance'],
+        excludedAttributes: [],
+      },
+      eventbrite: {
+        eventTypes: [],
+        tags: [],
+      },
+    },
+    logic: {
+      hardFilter: 'Must be a grocery store, supermarket, or florist',
+      hierarchy: {
+        broad: 'Shopping & Errands',
+        niche: ['Grocery Stores', 'Supermarkets', 'Florists'],
+      },
+      fallbackBehavior: 'Show nearest supermarkets within expanded radius',
+    },
+    ux: {
+      activeColor: '#22C55E',
+      subcategories: ['Grocery Stores', 'Supermarkets', 'Flower Shops'],
+      contextualPreview: 'Fresh groceries and flowers nearby',
+    },
+    compatibleWith: ['nature', 'picnic', 'casual_eats'],
+    incompatibleWith: ['fine_dining', 'play', 'watch', 'wellness'],
+    activityType: 'stationary',
+    duration: 'short',
+  },
+  {
+    slug: 'work_business',
+    name: 'Work & Business',
+    icon: '💼',
+    description: 'Quiet cafes and tea houses ideal for working, meetings, or productive sessions',
+    detailedDescription: 'Coffee shops, tea houses, and cafes with a work-friendly atmosphere. Ideal for remote work, business meetings, study sessions, or getting things done.',
+    expectedActivities: [
+      'Coffee shops with WiFi',
+      'Tea houses for quiet meetings',
+      'Cafes for focused work sessions'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['tea_house', 'coffee_shop', 'cafe'],
+        attributes: ['quiet', 'wifi', 'work-friendly'],
+        excludedAttributes: ['bar', 'night_club', 'casino', 'amusement_park']
+      },
+      eventbrite: {
+        eventTypes: ['networking', 'business_events', 'workshops']
+      }
+    },
+    logic: {
+      hardFilter: 'Must be a quiet, work-friendly venue with seating',
+      hierarchy: {
+        broad: 'Work & Business',
+        niche: ['Coffee Shops', 'Tea Houses', 'Cafes']
+      },
+      fallbackBehavior: 'If no work-friendly cafe found, show nearest coffee shop.'
+    },
+    ux: {
+      activeColor: '#64748B',
+      subcategories: ['Coffee Shops', 'Tea Houses', 'Cafes'],
+      contextualPreview: 'Quiet coffee shop with fast WiFi — perfect for a productive afternoon.'
     },
     activityType: 'stationary',
     duration: 'medium',
-    compatibleWith: ['stroll'],
-    incompatibleWith: ['sip', 'dining', 'creative', 'nightlife']
-  },
-  {
-    slug: 'freestyle',
-    name: 'Freestyle',
-    icon: '🎪',
-    description: 'Wildcard mode where Mingla surfaces anything interesting, quirky, or surprising nearby',
-    detailedDescription: 'Designed for adventurous users who want discovery, spontaneity, or a "surprise me" experience. Quirky pop-ups, hybrid experiences (karaoke + cocktails, museum nights with DJs), seasonal/holiday events, street fairs, cultural festivals, block parties, art crawls, immersive pop-ups, surprise AI-curated gems.',
-    expectedActivities: [
-      'Quirky pop-ups',
-      'Hybrid experiences (karaoke + cocktails, museum nights with DJs)',
-      'Seasonal/holiday events (pumpkin patches, holiday markets, fireworks shows)',
-      'Street fairs, cultural festivals, block parties',
-      'Art crawls, immersive pop-ups',
-      'Surprise AI-curated gems'
-    ],
-    apiMapping: {
-      googleMaps: {
-        coreAnchors: ['tourist_attraction', 'event_venue', 'night_club', 'amusement_center', 'cultural_center'],
-        attributes: ['unique', 'special', 'event_driven'],
-        excludedAttributes: []
-      },
-      eventbrite: {
-        eventTypes: ['festivals', 'pop_ups', 'community_gatherings', 'nightlife_mash_ups']
-      }
-    },
-    logic: {
-      hardFilter: 'None — Freestyle accepts any activity type',
-      hierarchy: {
-        broad: 'Freestyle',
-        niche: ['Seasonal Specials', 'Pop-up Events', 'Experimental/Hybrid']
-      },
-      fallbackBehavior: 'If no unique events found, system defaults to highlighting a top-ranked card from another category and reframes it as a surprise option: "Closest match: karaoke bar with hidden cocktail lounge inside."'
-    },
-    ux: {
-      activeColor: '#E91E63',
-      subcategories: ['Seasonal Specials', 'Pop-up Events', 'Experimental/Hybrid'],
-      contextualPreview: 'Pop-up ramen fest — live DJ + food stalls until 11pm.'
-    },
-    activityType: 'mixed',
-    duration: 'medium',
-    compatibleWith: [],
-    incompatibleWith: []
+    compatibleWith: ['first_meet', 'drink'],
+    incompatibleWith: ['play', 'nature', 'picnic_park']
   }
 ];
 
@@ -499,77 +596,104 @@ export const getCompatibleCategories = (categorySlug: string): string[] => {
 // Categories × Experience Types Cross-Mapping
 export const getCategoryExperienceTypeCombinations = (categorySlug: string, experienceType: string): string => {
   const combinations: Record<string, Record<string, string>> = {
-    'stroll': {
-      'first_date': 'Scenic park walk + gelato nearby — low pressure, easy conversation.',
+    'nature': {
+      'first-date': 'Scenic park walk + gelato nearby — low pressure, easy conversation.',
       'romantic': 'Sunset stroll along the waterfront ending at a cozy wine bar.',
       'friendly': 'Group garden walk + taco truck outside the park gates.',
-      'solo_adventure': 'Botanical garden stroll with coffee to-go from nearby café.',
-      'group_fun': 'City mural walk with food truck rally at the finish line.',
-      'business': 'Walking meeting route with coffee stop along the way.'
+      'adventurous': 'Botanical garden stroll with coffee to-go from nearby café.',
+      'group-fun': 'City mural walk with food truck rally at the finish line.',
+      'picnic-dates': 'Picnic blanket in the botanical garden with a cheese board.',
+      'take-a-stroll': 'Nature trail loop with café bookend at the trailhead.'
     },
-    'sip': {
-      'first_date': 'Speakeasy with soft lighting and quiet booths — great for conversation.',
+    'drink': {
+      'first-date': 'Speakeasy with soft lighting and quiet booths — great for conversation.',
       'romantic': 'Wine bar with a 6-glass tasting flight and live acoustic music.',
       'friendly': 'Neighborhood brewery with board games and casual vibes.',
-      'solo_adventure': 'Specialty coffee roastery — perfect for journaling or reading.',
-      'group_fun': 'Cocktail lounge with large tables and happy hour pitchers.',
-      'business': 'Hotel lobby bar with Wi-Fi and private lounge seating.'
+      'adventurous': 'Specialty coffee roastery — perfect for journaling or reading.',
+      'group-fun': 'Cocktail lounge with large tables and happy hour pitchers.',
+      'picnic-dates': 'Grab-and-go juice bar near the park.',
+      'take-a-stroll': 'Coffee shop with a scenic walk to get there.'
     },
     'casual_eats': {
-      'first_date': 'Casual ramen shop — low-key and easy for a first meet.',
+      'first-date': 'Casual ramen shop — low-key and easy for a first meet.',
       'romantic': 'Late-night taco truck crawl for two under string lights.',
       'friendly': 'Food truck rally — great for trying different bites with friends.',
-      'solo_adventure': 'Hole-in-the-wall noodle shop — counter seating, quick service.',
-      'group_fun': 'Pizza-by-the-slice joint with outdoor benches for the crew.',
-      'business': 'Casual café with Wi-Fi and deli sandwiches — informal lunch spot.'
+      'adventurous': 'Hole-in-the-wall noodle shop — counter seating, quick service.',
+      'group-fun': 'Pizza-by-the-slice joint with outdoor benches for the crew.',
+      'picnic-dates': 'Deli sandwich pickup before heading to the park.',
+      'take-a-stroll': 'Casual café — grab a bite, walk, and come back for dessert.'
     },
-    'screen_relax': {
-      'first_date': 'Indie cinema showing a cult classic at 7pm.',
+    'watch': {
+      'first-date': 'Indie cinema showing a cult classic at 7pm.',
       'romantic': 'Drive-in double feature — bring blankets and snacks.',
       'friendly': 'Comedy club lineup — group tickets available.',
-      'solo_adventure': 'Arthouse screening — perfect for solo movie lovers.',
-      'group_fun': 'Big-screen watch party of the championship game.',
-      'business': 'Industry documentary screening followed by a networking mixer.'
+      'adventurous': 'Arthouse screening — perfect for solo movie lovers.',
+      'group-fun': 'Big-screen watch party of the championship game.',
+      'picnic-dates': 'Outdoor movie screening with picnic blankets.',
+      'take-a-stroll': 'Evening walk to the neighborhood cinema.'
     },
-    'creative': {
-      'first_date': 'Sip & Paint night with wine included — playful and low-stakes.',
+    'creative_arts': {
+      'first-date': 'Sip & Paint night with wine included — playful and low-stakes.',
       'romantic': 'Couples pottery class — make something together to keep.',
       'friendly': 'Cooking class for friends — team up to make pasta or dumplings.',
-      'solo_adventure': 'Saturday candle-making workshop — take home your own creation.',
-      'group_fun': 'Escape-room style craft workshop — collaborate on a challenge.',
-      'business': 'Corporate team-building cooking class — private session available.'
+      'adventurous': 'Saturday candle-making workshop — take home your own creation.',
+      'group-fun': 'Escape-room style craft workshop — collaborate on a challenge.',
+      'picnic-dates': 'Flower-arranging workshop then picnic with your bouquet.',
+      'take-a-stroll': 'Gallery walk with a café stop to sketch what you saw.'
     },
-    'play_move': {
-      'first_date': 'Glow-in-the-dark mini golf — fun, flirty, and interactive.',
+    'play': {
+      'first-date': 'Glow-in-the-dark mini golf — fun, flirty, and interactive.',
       'romantic': 'Evening skate date — rent skates and glide under the lights.',
       'friendly': 'Arcade night — grab tokens and compete in games.',
-      'solo_adventure': 'Solo bouldering session — day pass includes gear rental.',
-      'group_fun': 'Bowling alley with neon lights — lane reservations for 6.',
-      'business': 'Casual networking pickleball tournament.'
+      'adventurous': 'Solo bouldering session — day pass includes gear rental.',
+      'group-fun': 'Bowling alley with neon lights — lane reservations for 6.',
+      'picnic-dates': 'Frisbee in the park followed by a picnic spread.',
+      'take-a-stroll': 'Playground park with a food truck loop.'
     },
-    'dining': {
-      'first_date': 'Modern bistro with prix fixe menu, $65 per person.',
+    'fine_dining': {
+      'first-date': 'Modern bistro with prix fixe menu, $65 per person.',
       'romantic': 'Omakase counter with 10 seats — chef\'s choice, candlelit ambience.',
       'friendly': 'Family-style rooftop dinner with shared plates.',
-      'solo_adventure': 'Seasonal tasting menu at chef\'s counter — perfect for solo foodies.',
-      'group_fun': 'Wine-pairing dinner with large communal table.',
-      'business': 'Upscale steakhouse with private rooms and Wi-Fi.'
+      'adventurous': 'Seasonal tasting menu at chef\'s counter — perfect for solo foodies.',
+      'group-fun': 'Wine-pairing dinner with large communal table.',
+      'picnic-dates': 'Charcuterie board to-go from the bistro, eaten parkside.',
+      'take-a-stroll': 'Fine dining with a scenic waterfront walk to get there.'
     },
     'wellness': {
-      'first_date': 'Couples yoga followed by herbal tea lounge.',
+      'first-date': 'Couples yoga followed by herbal tea lounge.',
       'romantic': 'Day spa package with sauna + massage for two.',
       'friendly': 'Group sound bath meditation — mats provided.',
-      'solo_adventure': 'Sunset yoga in the park — solo mats welcome.',
-      'group_fun': 'Wellness retreat day pass — yoga, meditation, and healthy lunch.',
-      'business': 'Mindfulness workshop for teams — private booking available.'
+      'adventurous': 'Sunset yoga in the park — solo mats welcome.',
+      'group-fun': 'Wellness retreat day pass — yoga, meditation, and healthy lunch.',
+      'picnic-dates': 'Outdoor yoga session then picnic under the trees.',
+      'take-a-stroll': 'Mindfulness walk through the gardens with tea afterward.'
     },
-    'freestyle': {
-      'first_date': 'Secret pop-up dessert bar — intimate but unexpected.',
-      'romantic': 'Lantern festival with live music — magical, outdoors.',
-      'friendly': 'Street art crawl with food trucks and DJs.',
-      'solo_adventure': 'Experimental pop-up gallery with immersive installations.',
-      'group_fun': 'Rooftop silent disco — headphones on, dance together.',
-      'business': 'Startup pitch night disguised as a pop-up bar mixer.'
+    'first_meet': {
+      'first-date': 'Cozy café with board games — low-stakes and easy to chat.',
+      'romantic': 'Wine-and-cheese tasting in a candlelit cellar.',
+      'friendly': 'Coffee shop with large tables — easy group hangout.',
+      'adventurous': 'Quirky themed café — conversation starters built in.',
+      'group-fun': 'Trivia night at the local pub — team up and compete.',
+      'picnic-dates': 'Farmers market browse then park bench chat.',
+      'take-a-stroll': 'Coffee walk through the neighborhood — keep it casual.'
+    },
+    'picnic': {
+      'first-date': 'Picnic blanket by the lake with sandwiches and lemonade.',
+      'romantic': 'Sunset picnic with wine, cheese, and fairy lights.',
+      'friendly': 'Group picnic potluck in the park — everyone brings a dish.',
+      'adventurous': 'Solo picnic with a good book at the botanical garden.',
+      'group-fun': 'BBQ picnic at the park pavilion — games and grilling.',
+      'picnic-dates': 'Full picnic spread at the nicest park in town.',
+      'take-a-stroll': 'Picnic spot with a walking trail loop nearby.'
+    },
+    'groceries_flowers': {
+      'first-date': 'Farmers market stroll — sample together, buy flowers.',
+      'romantic': 'Pick up flowers and ingredients, cook dinner together.',
+      'friendly': 'Group grocery run for a cooking night — split the bill.',
+      'adventurous': 'Specialty grocery store exploration — find something new.',
+      'group-fun': 'Farmers market haul then group potluck prep.',
+      'picnic-dates': 'Grocery run for picnic supplies then head to the park.',
+      'take-a-stroll': 'Flower shop visit on a neighborhood walk.'
     }
   };
 
@@ -1212,8 +1336,67 @@ export const getMapPinPreview = (location: any, constraintType: string, constrai
     },
     radius: constraintType === 'distance' ? constraintValue * 1609.34 : null, // Convert miles to meters
     title: getHumanFriendlyLocation(location),
-    description: constraintType === 'time' 
+    description: constraintType === 'time'
       ? `Within ${constraintValue} minutes travel time`
       : `Within ${constraintValue} miles radius`
   };
 };
+
+export const CURATED_EXPERIENCES = [
+  {
+    id: 'adventurous',
+    displayName: 'Adventurous',
+    icon: 'compass-outline',
+    color: '#F59E0B',
+    description: 'Explore your city — great for adventurous souls',
+    isImplemented: true,
+  },
+  {
+    id: 'first-date',
+    displayName: 'First Date',
+    icon: 'people-outline',
+    color: '#6366F1',
+    description: 'Low-pressure, memorable first impressions',
+    isImplemented: true,
+  },
+  {
+    id: 'romantic',
+    displayName: 'Romantic',
+    icon: 'heart-outline',
+    color: '#EC4899',
+    description: 'A curated romantic evening',
+    isImplemented: true,
+  },
+  {
+    id: 'friendly',
+    displayName: 'Friendly',
+    icon: 'people-outline',
+    color: '#3B82F6',
+    description: 'Casual hangouts with close friends',
+    isImplemented: true,
+  },
+  {
+    id: 'group-fun',
+    displayName: 'Group Fun',
+    icon: 'people-circle-outline',
+    color: '#EF4444',
+    description: 'Activities everyone will enjoy',
+    isImplemented: true,
+  },
+  {
+    id: 'picnic-dates',
+    displayName: 'Picnic Dates',
+    icon: 'basket-outline',
+    color: '#84CC16',
+    description: 'Grab supplies, find the perfect spot',
+    isImplemented: true,
+  },
+  {
+    id: 'take-a-stroll',
+    displayName: 'Take a Stroll',
+    icon: 'walk-outline',
+    color: '#10B981',
+    description: 'A scenic walk bookended by great food',
+    isImplemented: true,
+  },
+] as const;

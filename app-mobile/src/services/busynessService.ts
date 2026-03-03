@@ -55,8 +55,10 @@ class BusynessService {
   // Simple in-memory cache: venueKey → { data, timestamp }
   private cache = new Map<string, { data: BusynessData; ts: number }>();
   private tzCache = new Map<string, { offsetSec: number; ts: number }>();
+  private routeCache = new Map<string, { data: TrafficInfo; ts: number }>();
   private CACHE_TTL = 15 * 60 * 1000; // 15 minutes
   private TZ_CACHE_TTL = 60 * 60 * 1000; // 1 hour (timezone offsets change rarely)
+  private ROUTE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes (traffic changes, but not per-second)
 
   /**
    * Get the current local time at a specific lat/lng using the Google Time Zone API.
@@ -413,6 +415,13 @@ class BusynessService {
 
       if (originLat === null || originLng === null) return null;
 
+      // Check route cache (30min TTL) — round coords to 2 decimals for cache hits
+      const routeCacheKey = `${originLat.toFixed(2)}_${originLng.toFixed(2)}_${destLat.toFixed(2)}_${destLng.toFixed(2)}`;
+      const cachedRoute = this.routeCache.get(routeCacheKey);
+      if (cachedRoute && Date.now() - cachedRoute.ts < this.ROUTE_CACHE_TTL) {
+        return cachedRoute.data;
+      }
+
       const response = await fetch(GOOGLE_ROUTES_BASE_URL, {
         method: "POST",
         headers: {
@@ -462,10 +471,23 @@ class BusynessService {
         condition = "Heavy";
       }
 
-      return {
+      const result: TrafficInfo = {
         trafficCondition: condition,
         currentTravelTime: `${durationMin} min`,
       };
+
+      // Cache the route result
+      this.routeCache.set(routeCacheKey, { data: result, ts: Date.now() });
+
+      // Evict old route cache entries (keep max 30)
+      if (this.routeCache.size > 30) {
+        const oldest = [...this.routeCache.entries()].sort(
+          (a, b) => a[1].ts - b[1].ts
+        )[0];
+        if (oldest) this.routeCache.delete(oldest[0]);
+      }
+
+      return result;
     } catch (error) {
       console.error("[GoogleRoutes] Error:", error);
       return null;

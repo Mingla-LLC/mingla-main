@@ -2,8 +2,11 @@
  * Type definitions for Expanded Card Modal
  */
 
+import { CuratedStop } from './curatedExperience';
+
 export interface ExpandedCardData {
   id: string;
+  placeId?: string;
   title: string;
   category: string;
   categoryIcon: string;
@@ -117,19 +120,30 @@ export interface ExpandedCardData {
       duration: number;
     }>;
   };
+  // Curated experience fields (multi-stop itinerary cards)
+  cardType?: 'curated';
+  stops?: CuratedStop[];
+  tagline?: string;
+  totalPriceMin?: number;
+  totalPriceMax?: number;
+  estimatedDurationMinutes?: number;
+  pairingKey?: string;
+  experienceType?: string;
   // Night Out-specific data
   nightOutData?: {
     eventName: string;
-    placeName: string;
-    hostName: string;
+    venueName: string;
+    artistName: string;
     date: string;
     time: string;
-    timeRange: string;
     price: string;
-    musicGenre?: string;
-    peopleGoing: number;
+    genre?: string;
+    subGenre?: string;
     tags: string[];
     coordinates?: { lat: number; lng: number };
+    ticketUrl: string;
+    ticketStatus: string;
+    seatMapUrl?: string;
   };
 }
 

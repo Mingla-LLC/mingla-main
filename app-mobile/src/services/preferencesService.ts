@@ -6,11 +6,13 @@ export interface UserPreferences {
   budget_max: number;
   people_count: number;
   categories: string[];
+  intents?: string[];
   travel_mode: string;
   travel_constraint_type: string;
   travel_constraint_value: number;
   datetime_pref: string;
   date_option?: string | null;
+  time_slot?: string | null;
   exact_time?: string | null;
 }
 
@@ -77,17 +79,6 @@ export class PreferencesService {
         throw error;
       }
 
-      // Verify the save by fetching the preferences back
-      const { data: verifyData, error: verifyError } = await supabase
-        .from("preferences")
-        .select("*")
-        .eq("profile_id", userId)
-        .maybeSingle();
-
-      if (verifyError) {
-        console.warn("⚠️ Could not verify saved preferences:", verifyError);
-      }
-
       return true;
     } catch (error) {
       return false;
@@ -152,7 +143,7 @@ export class PreferencesService {
         budget_min: 0,
         budget_max: 1000,
         people_count: 1,
-        categories: ["Stroll", "Sip & Chill"],
+        categories: ["Nature", "Casual Eats", "Drink"],
         travel_mode: "walking",
         travel_constraint_type: "time",
         travel_constraint_value: 30,

@@ -1,5 +1,9 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,65 +14,119 @@ const corsHeaders = {
 // Environment variables
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-// All 10 discover categories
+const US_TIMEZONE = "America/New_York";
+const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: US_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const getUsDateKey = (): string => usDateFormatter.format(new Date());
+
+// All 12 discover categories
 const DISCOVER_CATEGORIES = [
-  "Stroll",
-  "Sip & Chill",
+  "Nature",
+  "First Meet",
+  "Picnic",
+  "Drink",
   "Casual Eats",
-  "Screen & Relax",
-  "Creative & Hands-On",
-  "Picnics",
-  "Play & Move",
-  "Dining Experiences",
-  "Wellness Dates",
-  "Freestyle",
+  "Fine Dining",
+  "Watch",
+  "Creative & Arts",
+  "Play",
+  "Wellness",
+  "Groceries & Flowers",
+  "Work & Business",
 ];
 
 // Category to Google Places type mapping (using CONFIRMED valid Google Places API New types)
 // Reference: https://developers.google.com/maps/documentation/places/web-service/place-types
 // Each category uses distinct types where possible to avoid duplicates
 const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
-  "Stroll": [
+  "Nature": [
     "park",
     "hiking_area",
+    "botanical_garden",
+    "national_park",
+    "state_park",
+    "beach",
+    "zoo",
+    "wildlife_park",
   ],
-  "Sip & Chill": [
+  "First Meet": [
+    "bookstore",
     "bar",
-    "cafe",
+    "pub",
+    "wine_bar",
+    "tea_house",
+    "coffee_shop",
+    "planetarium",
+  ],
+  "Picnic": [
+    "picnic_ground",
+    "park",
+    "beach",
+    "botanical_garden",
+  ],
+  "Drink": [
+    "bar",
+    "pub",
+    "wine_bar",
+    "tea_house",
+    "coffee_shop",
   ],
   "Casual Eats": [
-    "restaurant",
+    "sandwich_shop",
+    "fast_food_restaurant",
+    "pizza_restaurant",
+    "hamburger_restaurant",
+    "american_restaurant",
+    "mexican_restaurant",
+    "diner",
   ],
-  "Screen & Relax": [
+  "Fine Dining": [
+    "fine_dining_restaurant",
+    "steak_house",
+    "french_restaurant",
+    "italian_restaurant",
+  ],
+  "Watch": [
     "movie_theater",
+    "comedy_club",
   ],
-  "Creative & Hands-On": [
+  "Creative & Arts": [
     "art_gallery",
     "museum",
+    "planetarium",
+    "karaoke",
   ],
-  "Picnics": [
-    "beach", // outdoor spots good for picnics
-    "marina",
-    "park", // Fallback
-  ],
-  "Play & Move": [
+  "Play": [
     "bowling_alley",
     "amusement_park",
+    "water_park",
+    "video_arcade",
+    "escape_room",
+    "mini_golf_course",
+    "ice_skating_rink",
   ],
-  "Dining Experiences": [
-    "bakery",
-    "ice_cream_shop",
-  ],
-  "Wellness Dates": [
+  "Wellness": [
     "spa",
-    "gym",
+    "sauna",
+    "hot_spring",
   ],
-  "Freestyle": [
-    "tourist_attraction",
-    "night_club",
-    "aquarium",
-    "zoo",
+  "Groceries & Flowers": [
+    "grocery_store",
+    "supermarket",
+  ],
+  "Work & Business": [
+    "tea_house",
+    "coffee_shop",
+    "cafe",
   ],
 };
 
@@ -104,6 +162,7 @@ const EXCLUDED_TYPES = new Set([
 interface DiscoverRequest {
   location: { lat: number; lng: number };
   radius?: number; // Optional radius in meters, default 10km
+  selectedCategories?: string[]; // Optional: only fetch these categories (IDs or labels)
 }
 
 interface DiscoverPlace {
@@ -127,6 +186,11 @@ interface DiscoverPlace {
   placeTypes: string[];
 }
 
+interface DiscoverDailyCacheRow {
+  cards: any[];
+  featured_card: any | null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -134,7 +198,124 @@ serve(async (req) => {
 
   try {
     const request: DiscoverRequest = await req.json();
-    const { location, radius = 10000 } = request;
+    const { location, radius = 10000, selectedCategories } = request;
+    const usDateKey = getUsDateKey();
+
+    // Map from preference IDs (snake_case) to discover category labels
+    const PREF_ID_TO_DISCOVER_CATEGORY: Record<string, string> = {
+      nature: "Nature",
+      first_meet: "First Meet",
+      picnic: "Picnic",
+      drink: "Drink",
+      casual_eats: "Casual Eats",
+      fine_dining: "Fine Dining",
+      watch: "Watch",
+      creative_arts: "Creative & Arts",
+      play: "Play",
+      wellness: "Wellness",
+      groceries_flowers: "Groceries & Flowers",
+      work_business: "Work & Business",
+    };
+
+    // Resolve which categories to fetch: filter DISCOVER_CATEGORIES by user selection
+    let categoriesToFetch = DISCOVER_CATEGORIES;
+    if (selectedCategories && selectedCategories.length > 0) {
+      // Build a set of valid discover-category labels from whatever format the client sends
+      const resolvedLabels = new Set<string>();
+      for (const cat of selectedCategories) {
+        // Direct label match (e.g. "Nature")
+        if (DISCOVER_CATEGORIES.includes(cat)) {
+          resolvedLabels.add(cat);
+          continue;
+        }
+        // Preference ID match (e.g. "nature", "fine_dining")
+        const mapped = PREF_ID_TO_DISCOVER_CATEGORY[cat];
+        if (mapped) {
+          resolvedLabels.add(mapped);
+          continue;
+        }
+        // Case-insensitive fallback
+        const lowerCat = cat.toLowerCase();
+        const found = DISCOVER_CATEGORIES.find((dc) => dc.toLowerCase() === lowerCat);
+        if (found) resolvedLabels.add(found);
+      }
+      if (resolvedLabels.size > 0) {
+        categoriesToFetch = DISCOVER_CATEGORIES.filter((c) => resolvedLabels.has(c));
+      }
+      console.log(`Filtered categories: ${categoriesToFetch.join(", ")} (from ${selectedCategories.length} requested)`);
+    } else {
+      console.log("No category filter provided – fetching all categories");
+    }
+
+    // Build a stable hash of selected categories to partition the cache
+    const categoryHash = selectedCategories && selectedCategories.length > 0
+      ? [...selectedCategories].sort().join(",")
+      : "all";
+
+    let userId: string | null = null;
+    let adminClient: ReturnType<typeof createClient> | null = null;
+
+    try {
+      const authHeader = req.headers.get("Authorization");
+      if (
+        authHeader?.startsWith("Bearer ") &&
+        SUPABASE_URL &&
+        SUPABASE_ANON_KEY &&
+        SUPABASE_SERVICE_ROLE_KEY
+      ) {
+        const token = authHeader.replace("Bearer ", "").trim();
+        const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const { data: authData } = await authClient.auth.getUser(token);
+        userId = authData.user?.id || null;
+
+        if (userId) {
+          adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+          // Include category hash in cache lookup so different preference sets get separate caches
+          const cacheQuery = adminClient
+            .from("discover_daily_cache")
+            .select("cards, featured_card, generated_location")
+            .eq("user_id", userId)
+            .eq("us_date_key", usDateKey);
+
+          const { data: cachedRows, error: cacheReadError } = await cacheQuery;
+
+          if (cacheReadError) {
+            console.warn("Discover daily cache read warning:", cacheReadError.message);
+          } else if (cachedRows && cachedRows.length > 0) {
+            // Find a row whose generated_location.categoryHash matches the current request
+            const matchingRow = cachedRows.find((row: any) =>
+              row.generated_location?.categoryHash === categoryHash
+            );
+            if (matchingRow?.cards && matchingRow.cards.length > 0) {
+              console.log(`Cache hit for user ${userId} on ${usDateKey} (hash=${categoryHash}). Returning persisted discover cards.`);
+              return new Response(
+                JSON.stringify({
+                  cards: matchingRow.cards,
+                  heroCards: matchingRow.generated_location?.heroCards || [],
+                  featuredCard: matchingRow.featured_card,
+                  meta: {
+                    totalResults: matchingRow.cards.length,
+                    categories: categoriesToFetch,
+                    successfulCategories: [],
+                    failedCategories: [],
+                    cacheHit: true,
+                    usDateKey,
+                  },
+                }),
+                {
+                  headers: { ...corsHeaders, "Content-Type": "application/json" },
+                }
+              );
+            }
+          }
+        }
+      }
+    } catch (authCacheError) {
+      console.warn("Discover auth/cache bootstrap warning:", authCacheError);
+    }
 
     if (!location || !location.lat || !location.lng) {
       return new Response(
@@ -162,23 +343,80 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Fetching discover experiences for location: ${location.lat}, ${location.lng}`);
+    console.log(`Fetching discover experiences for location: ${location.lat}, ${location.lng} | categories: ${categoriesToFetch.join(", ")}`);
 
-    // Fetch candidate places for all categories in parallel
-    const categoryPromises = DISCOVER_CATEGORIES.map((category) =>
-      fetchCandidatesForCategory(category, location, radius)
+    // ── Pool-first pipeline: try to serve from card_pool before hitting Google ──
+    if (adminClient && userId) {
+      try {
+        const poolResult = await serveCardsFromPipeline(
+          {
+            supabaseAdmin: adminClient,
+            userId,
+            lat: location.lat,
+            lng: location.lng,
+            radiusMeters: radius,
+            categories: categoriesToFetch,
+            budgetMin: 0,
+            budgetMax: 500,
+            limit: 11, // 10 category cards + 1 featured
+            cardType: 'single',
+          },
+          GOOGLE_API_KEY!,
+        );
+
+        if (poolResult.fromPool >= 8) {
+          console.log(`[pool-first] Serving ${poolResult.cards.length} discover cards from pool (${poolResult.fromPool} pool, ${poolResult.fromApi} API)`);
+          const poolCards = poolResult.cards.slice(0, 10);
+          const poolFeaturedCard = poolResult.cards.length > 10 ? poolResult.cards[10] : null;
+          return new Response(
+            JSON.stringify({
+              cards: poolCards,
+              featuredCard: poolFeaturedCard,
+              meta: {
+                totalResults: poolCards.length,
+                categories: categoriesToFetch,
+                successfulCategories: categoriesToFetch,
+                failedCategories: [],
+                poolFirst: true,
+                fromPool: poolResult.fromPool,
+                fromApi: poolResult.fromApi,
+              },
+            }),
+            {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+        console.log(`[pool-first] Pool has ${poolResult.fromPool} cards, need >= 8. Falling back to Google API.`);
+      } catch (poolError) {
+        console.warn("[pool-first] Pool query failed, falling back to Google API:", poolError);
+      }
+    }
+
+    // Fetch candidate places for filtered categories in parallel
+    // Create an admin client for cache operations if we don't have one yet
+    if (!adminClient && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+      adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    }
+    const categoryPromises = categoriesToFetch.map((category) =>
+      fetchCandidatesForCategory(category, location, radius, adminClient)
     );
 
     const allCategoryCandidates = await Promise.all(categoryPromises);
 
     // Select one unique place per category, avoiding duplicates
+    // Hero categories are selected separately — exclude from grid
+    const heroCategories = ["Fine Dining", "Play"];
     const usedPlaceIds = new Set<string>();
     const places: DiscoverPlace[] = [];
     const successfulCategories: string[] = [];
     const failedCategories: string[] = [];
 
-    for (let i = 0; i < DISCOVER_CATEGORIES.length; i++) {
-      const category = DISCOVER_CATEGORIES[i];
+    for (let i = 0; i < categoriesToFetch.length; i++) {
+      const category = categoriesToFetch[i];
+
+      // Skip hero categories — they'll be selected as hero cards below
+      if (heroCategories.includes(category)) continue;
       const candidates = allCategoryCandidates[i];
 
       if (!candidates || candidates.length === 0) {
@@ -210,10 +448,9 @@ serve(async (req) => {
 
     console.log(`Successful categories (${successfulCategories.length}):`, successfulCategories);
     console.log(`Failed categories (${failedCategories.length}):`, failedCategories);
-    console.log(`Found ${places.length} unique places across ${DISCOVER_CATEGORIES.length} categories`);
+    console.log(`Found ${places.length} unique places across ${categoriesToFetch.length} categories`);
 
-    // Select an 11th unique card as the featured card - MUST be a dining experience
-    // Collect all unused candidates across all categories
+    // Select 2 hero cards: Fine Dining and Play
     const allUnusedCandidates: DiscoverPlace[] = [];
     for (const candidates of allCategoryCandidates) {
       if (candidates && candidates.length > 0) {
@@ -222,49 +459,41 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Total unused candidates for featured card: ${allUnusedCandidates.length}`);
+    console.log(`Total unused candidates for hero cards: ${allUnusedCandidates.length}`);
 
-    // Filter to only dining experiences (ONLY "Dining Experiences" category, not "Casual Eats")
-    const diningCategories = ["Dining Experiences"];
-    const unusedDiningCandidates = allUnusedCandidates.filter(
-      (c) => c.category === "Dining Experiences"
-    );
+    const heroCards: DiscoverPlace[] = [];
 
-    console.log(`Dining Experience candidates for featured card: ${unusedDiningCandidates.length}`);
+    for (const heroCategory of heroCategories) {
+      const heroCandidates = allUnusedCandidates.filter(
+        (c) => c.category === heroCategory && !usedPlaceIds.has(c.placeId)
+      );
 
-    // Sort dining candidates by rating/popularity score and pick the best
-    const sortedDining = unusedDiningCandidates.sort((a, b) => {
-      const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
-      const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
-      return bScore - aScore;
-    });
-
-    // If no dining candidates available, fall back to any unused candidate
-    let featuredPlace = sortedDining[0] || null;
-    
-    if (!featuredPlace) {
-      console.log(`No dining candidates available, falling back to any category`);
-      const sortedUnused = allUnusedCandidates.sort((a, b) => {
-        const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
-        const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
-        return bScore - aScore;
-      });
-      featuredPlace = sortedUnused[0] || null;
+      if (heroCandidates.length > 0) {
+        const sorted = heroCandidates.sort((a, b) => {
+          const aScore = (a.rating || 0) * Math.log10((a.reviewCount || 1) + 1);
+          const bScore = (b.rating || 0) * Math.log10((b.reviewCount || 1) + 1);
+          return bScore - aScore;
+        });
+        const selected = sorted[0];
+        usedPlaceIds.add(selected.placeId);
+        heroCards.push(selected);
+        console.log(`✓ Selected hero card for ${heroCategory}: "${selected.name}" (rating: ${selected.rating})`);
+      } else {
+        console.log(`✗ No candidates available for hero category: ${heroCategory}`);
+      }
     }
 
-    if (featuredPlace) {
-      // Add featured to used set to ensure it's tracked
-      usedPlaceIds.add(featuredPlace.placeId);
-      const isDiningExperience = featuredPlace.category === "Dining Experiences";
-      console.log(`✓ Selected featured card: "${featuredPlace.name}" (category: ${featuredPlace.category}, ${isDiningExperience ? 'DINING EXPERIENCE ✓' : 'FALLBACK - not Dining Experience'}, id: ${featuredPlace.id}, placeId: ${featuredPlace.placeId}) from ${allUnusedCandidates.length} unused candidates`);
-    } else {
-      console.log(`✗ No unused candidates available for featured card`);
-    }
+    // For backward compatibility
+    const featuredPlace = heroCards[0] || null;
 
-    // Verify featured is different from all grid cards
+    console.log(`Selected ${heroCards.length} hero cards`);
+
+    // Verify heroes are different from all grid cards
     const gridPlaceIds = places.map(p => p.placeId);
-    if (featuredPlace && gridPlaceIds.includes(featuredPlace.placeId)) {
-      console.error(`BUG: Featured card placeId ${featuredPlace.placeId} is in grid cards!`);
+    for (const hero of heroCards) {
+      if (gridPlaceIds.includes(hero.placeId)) {
+        console.error(`BUG: Hero card placeId ${hero.placeId} is in grid cards!`);
+      }
     }
 
     if (places.length === 0) {
@@ -283,32 +512,131 @@ serve(async (req) => {
       );
     }
 
-    // Calculate travel times for all places (including featured)
-    const allPlacesToProcess = featuredPlace ? [...places, featuredPlace] : places;
+    // Calculate travel times for all places (including hero cards)
+    const allPlacesToProcess = [...places, ...heroCards];
     const placesWithTravel = await annotateWithTravel(allPlacesToProcess, location);
 
     // Enrich with AI descriptions
     const enrichedPlaces = await enrichWithAI(placesWithTravel);
 
-    // Separate the featured card from the grid cards
-    const gridPlaces = featuredPlace ? enrichedPlaces.slice(0, -1) : enrichedPlaces;
-    const enrichedFeaturedPlace = featuredPlace ? enrichedPlaces[enrichedPlaces.length - 1] : null;
+    // Separate grid cards from hero cards
+    const gridPlaces = enrichedPlaces.slice(0, places.length);
+    const enrichedHeroPlaces = enrichedPlaces.slice(places.length);
 
-    // Convert to card format - these are the 10 small cards (one per category)
+    // Convert to card format - grid cards (one per non-hero category)
     const cards = gridPlaces.map((place) => convertToCard(place));
 
-    // Convert featured place to card format (separate from grid cards)
-    const featuredCard = enrichedFeaturedPlace ? convertToCard(enrichedFeaturedPlace) : null;
+    // Convert hero places to card format
+    const heroCardResults = enrichedHeroPlaces.map((place) => convertToCard(place));
 
-    console.log(`Returning ${cards.length} grid cards + featured card: "${featuredCard?.title}"`);
+    // Backward compat: featuredCard = first hero
+    const featuredCard = heroCardResults[0] || null;
+
+    if (adminClient && userId && cards.length > 0) {
+      // Delete any existing cache row for this user+date (since we can't use
+      // upsert with the categoryHash stored inside a JSONB column).
+      await adminClient
+        .from("discover_daily_cache")
+        .delete()
+        .eq("user_id", userId)
+        .eq("us_date_key", usDateKey);
+
+      const { error: cacheWriteError } = await adminClient
+        .from("discover_daily_cache")
+        .insert({
+          user_id: userId,
+          us_date_key: usDateKey,
+          cards,
+          featured_card: featuredCard,
+          generated_location: {
+            lat: location.lat,
+            lng: location.lng,
+            radius,
+            categoryHash,
+            heroCards: heroCardResults,
+          },
+        });
+
+      if (cacheWriteError) {
+        console.warn("Discover daily cache write warning:", cacheWriteError.message);
+      } else {
+        console.log(`Persisted discover daily cache for user ${userId} (${usDateKey})`);
+      }
+    }
+
+    // ── Pool storage: store generated cards in card_pool (fire-and-forget) ──
+    if (adminClient) {
+      const allCardsToStore = [...cards, ...heroCardResults];
+      const poolCardIds: string[] = [];
+      (async () => {
+        try {
+          for (const card of allCardsToStore) {
+            const placePoolId = await upsertPlaceToPool(
+              adminClient,
+              {
+                id: card.placeId,
+                placeId: card.placeId,
+                displayName: { text: card.title },
+                name: card.title,
+                formattedAddress: card.address,
+                location: { latitude: card.lat, longitude: card.lng },
+                rating: card.rating,
+                userRatingCount: card.reviewCount,
+                types: [],
+                photos: [],
+                priceLevel: 0,
+                regularOpeningHours: card.openingHours,
+              },
+              GOOGLE_API_KEY!,
+              'discover_experiences'
+            );
+
+            const cardPoolId = await insertCardToPool(adminClient, {
+              placePoolId: placePoolId || undefined,
+              googlePlaceId: card.placeId,
+              cardType: 'single',
+              title: card.title,
+              category: card.category,
+              categories: [card.category],
+              description: card.description,
+              highlights: card.highlights,
+              imageUrl: card.image,
+              images: card.images,
+              address: card.address,
+              lat: card.lat,
+              lng: card.lng,
+              rating: card.rating,
+              reviewCount: card.reviewCount,
+              priceMin: 0,
+              priceMax: 0,
+              openingHours: card.openingHours,
+            });
+
+            if (cardPoolId) poolCardIds.push(cardPoolId);
+          }
+
+          if (userId && poolCardIds.length > 0) {
+            await recordImpressions(adminClient, userId, poolCardIds);
+          }
+
+          console.log(`[pool-storage] Stored ${poolCardIds.length} discover cards in pool`);
+        } catch (e) {
+          console.warn('[pool-storage] Error storing discover cards:', e);
+        }
+      })();
+    }
+
+    console.log(`Returning ${cards.length} grid cards + ${heroCardResults.length} hero cards`);
 
     return new Response(
       JSON.stringify({
-        cards, // 10 category cards for grid display
-        featuredCard, // 11th unique card for featured display (NOT in cards array)
+        cards,               // Grid cards (excluding Fine Dining and Play)
+        heroCards: heroCardResults,  // [Fine Dining card, Play card]
+        featuredCard,        // Backward compat: heroCards[0]
         meta: {
           totalResults: cards.length,
-          categories: DISCOVER_CATEGORIES,
+          heroCount: heroCardResults.length,
+          categories: categoriesToFetch,
           successfulCategories,
           failedCategories,
         },
@@ -338,7 +666,8 @@ serve(async (req) => {
 async function fetchCandidatesForCategory(
   category: string,
   location: { lat: number; lng: number },
-  radius: number
+  radius: number,
+  adminClient: any
 ): Promise<DiscoverPlace[]> {
   const placeTypes = CATEGORY_TO_PLACE_TYPES[category];
   if (!placeTypes || placeTypes.length === 0) {
@@ -347,62 +676,75 @@ async function fetchCandidatesForCategory(
   }
 
   try {
-    // Use Nearby Search (New) for better results
-    const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
-    
-    const fieldMask = [
-      "places.id",
-      "places.displayName",
-      "places.location",
-      "places.formattedAddress",
-      "places.priceLevel",
-      "places.rating",
-      "places.userRatingCount",
-      "places.photos",
-      "places.types",
-      "places.regularOpeningHours",
-    ].join(",");
+    // Use batchSearchPlaces (each type searched separately for better caching)
+    let allPlaces: any[] = [];
 
-    const requestBody = {
-      includedTypes: placeTypes,
-      maxResultCount: 20, // Get more to allow for deduplication and featured card selection
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: location.lat,
-            longitude: location.lng,
-          },
-          radius: radius,
+    if (adminClient) {
+      const { results: typeResults } = await batchSearchPlaces(
+        adminClient,
+        GOOGLE_API_KEY!,
+        placeTypes,
+        location.lat,
+        location.lng,
+        radius,
+        { maxResultsPerType: 20, rankPreference: 'POPULARITY', ttlHours: 24 }
+      );
+
+      // Merge and deduplicate results by place.id
+      const seenIds = new Set<string>();
+      for (const places of Object.values(typeResults)) {
+        for (const place of places) {
+          if (!seenIds.has(place.id)) {
+            seenIds.add(place.id);
+            allPlaces.push(place);
+          }
+        }
+      }
+    } else {
+      // Fallback: direct API call if no admin client available
+      const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
+      const fieldMask = [
+        "places.id","places.displayName","places.location","places.formattedAddress",
+        "places.priceLevel","places.rating","places.userRatingCount",
+        "places.photos","places.types","places.regularOpeningHours",
+      ].join(",");
+
+      const requestBody = {
+        includedTypes: placeTypes,
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: { center: { latitude: location.lat, longitude: location.lng }, radius },
         },
-      },
-      rankPreference: "POPULARITY", // Prioritize popular places
-    };
+        rankPreference: "POPULARITY",
+      };
 
-    const response = await fetch(baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY!,
-        "X-Goog-FieldMask": fieldMask,
-      },
-      body: JSON.stringify(requestBody),
-    });
+      const response = await fetch(baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_API_KEY!,
+          "X-Goog-FieldMask": fieldMask,
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Google Places API error for ${category}:`, response.status, errorText);
-      return [];
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Google Places API error for ${category}:`, response.status, errorText);
+        return [];
+      }
+
+      const data = await response.json();
+      allPlaces = data.places || [];
     }
 
-    const data = await response.json();
-
-    if (!data.places || data.places.length === 0) {
+    if (allPlaces.length === 0) {
       console.log(`No places found for category: ${category}`);
       return [];
     }
 
     // Filter out excluded types
-    const validPlaces = data.places.filter((place: any) => {
+    const validPlaces = allPlaces.filter((place: any) => {
       const placeTypeSet = new Set(place.types || []);
       return !Array.from(EXCLUDED_TYPES).some((excluded) => placeTypeSet.has(excluded));
     });
@@ -680,32 +1022,36 @@ async function generateHighlights(place: any): Promise<string[]> {
 
 function generateFallbackDescription(place: any): string {
   const descriptions: { [key: string]: string } = {
-    "Stroll": "Scenic walking adventure through beautiful surroundings. Perfect for relaxation and exploration.",
-    "Sip & Chill": "Cozy spot for great drinks and conversation in a relaxed atmosphere.",
+    "Nature": "Scenic outdoor adventure through beautiful natural surroundings. Perfect for relaxation and exploration.",
+    "First Meet": "A welcoming spot to break the ice and spark great conversation.",
+    "Picnic": "Beautiful outdoor space perfect for a relaxing picnic experience.",
+    "Drink": "Cozy spot for great drinks and conversation in a relaxed atmosphere.",
     "Casual Eats": "Delicious food in a welcoming environment. Great for any occasion.",
-    "Screen & Relax": "Entertainment and relaxation combined for a perfect outing.",
-    "Creative & Hands-On": "Engage your creativity in an inspiring artistic environment.",
-    "Picnics": "Beautiful outdoor space perfect for a relaxing picnic experience.",
-    "Play & Move": "Fun and active entertainment for an exciting time out.",
-    "Dining Experiences": "Exceptional culinary journey with outstanding service.",
-    "Wellness Dates": "Relax and rejuvenate in a peaceful wellness setting.",
-    "Freestyle": "Unique experience waiting to be discovered.",
+    "Fine Dining": "Exceptional culinary journey with outstanding service.",
+    "Watch": "Entertainment and relaxation combined for a perfect outing.",
+    "Creative & Arts": "Engage your creativity in an inspiring artistic environment.",
+    "Play": "Fun and active entertainment for an exciting time out.",
+    "Wellness": "Relax and rejuvenate in a peaceful wellness setting.",
+    "Groceries & Flowers": "Fresh groceries, produce, and flowers for every occasion.",
+    "Work & Business": "Quiet cafe or tea house — perfect for focused work or a business meeting.",
   };
   return descriptions[place.category] || "An amazing experience waiting for you.";
 }
 
 function generateFallbackHighlights(place: any): string[] {
   const highlights: { [key: string]: string[] } = {
-    "Stroll": ["Scenic Views", "Nature Trail"],
-    "Sip & Chill": ["Great Atmosphere", "Quality Drinks"],
+    "Nature": ["Scenic Views", "Nature Trail"],
+    "First Meet": ["Great Atmosphere", "Conversation Starter"],
+    "Picnic": ["Outdoor", "Relaxing"],
+    "Drink": ["Great Atmosphere", "Quality Drinks"],
     "Casual Eats": ["Tasty Food", "Good Service"],
-    "Screen & Relax": ["Entertainment", "Comfortable"],
-    "Creative & Hands-On": ["Artistic", "Interactive"],
-    "Picnics": ["Outdoor", "Relaxing"],
-    "Play & Move": ["Fun Activities", "Exciting"],
-    "Dining Experiences": ["Fine Cuisine", "Elegant"],
-    "Wellness Dates": ["Relaxing", "Rejuvenating"],
-    "Freestyle": ["Unique", "Memorable"],
+    "Fine Dining": ["Fine Cuisine", "Elegant"],
+    "Watch": ["Entertainment", "Comfortable"],
+    "Creative & Arts": ["Artistic", "Interactive"],
+    "Play": ["Fun Activities", "Exciting"],
+    "Wellness": ["Relaxing", "Rejuvenating"],
+    "Groceries & Flowers": ["Fresh Produce", "Convenient"],
+    "Work & Business": ["WiFi Friendly", "Quiet Space"],
   };
   return highlights[place.category] || ["Great Experience", "Highly Rated"];
 }

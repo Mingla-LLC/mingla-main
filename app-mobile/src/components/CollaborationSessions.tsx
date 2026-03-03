@@ -7,16 +7,18 @@ import {
   ScrollView,
   Modal,
   TextInput,
+  Alert,
   NativeSyntheticEvent,
   NativeScrollEvent,
   Dimensions,
   ActivityIndicator,
-  Image,
-  Image,
+  Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SessionViewModal from './SessionViewModal';
+import AddFriendModal from './AddFriendModal';
+import { supabase } from '../services/supabase';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const SHEET_HEIGHT = screenHeight * 0.88;
@@ -26,7 +28,7 @@ export type SessionType = 'active' | 'sent-invite' | 'received-invite';
 
 export interface Friend {
   id: string;
-  name: string;f
+  name: string;
   username?: string;
   avatar?: string;
   status?: 'online' | 'offline';
@@ -95,6 +97,7 @@ export default function CollaborationSessions({
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showSessionViewModal, setShowSessionViewModal] = useState(false);
   const [sessionToView, setSessionToView] = useState<CollaborationSession | null>(null);
@@ -102,6 +105,7 @@ export default function CollaborationSessions({
   const [newSessionName, setNewSessionName] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<Friend[]>([]);
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [isSendingFriendRequest, setIsSendingFriendRequest] = useState(false);
   const [contentWidth, setContentWidth] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   const lastHandledInviteTriggerNonce = useRef<number | null>(null);
@@ -180,6 +184,19 @@ export default function CollaborationSessions({
   };
 
   const handleCreateSession = () => {
+    if (!newSessionName.trim()) {
+      Alert.alert('Session name required', 'Please enter a session name before creating a session.');
+      return;
+    }
+
+    if (selectedFriends.length === 0) {
+      Alert.alert(
+        'Add at least one collaborator',
+        'For safety, you can only create a collaboration session after adding at least one friend as a collaborator.'
+      );
+      return;
+    }
+
     if (newSessionName.trim()) {
       onCreateSession(newSessionName.trim(), selectedFriends);
       setNewSessionName('');
@@ -195,6 +212,109 @@ export default function CollaborationSessions({
     setFriendSearchQuery('');
     setShowCreateModal(false);
   };
+
+  const handleAddTypedUserAsFriend = async () => {
+    const typedUsername = friendSearchQuery.trim().replace(/^@+/, '');
+
+    if (!typedUsername) {
+      Alert.alert('Enter a username', 'Type a username first to send a friend request.');
+      return;
+    }
+
+    setIsSendingFriendRequest(true);
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUser = authData.user;
+
+      if (!currentUser) {
+        Alert.alert('Sign in required', 'Please sign in and try again.');
+        return;
+      }
+
+      const { data: targetProfile, error: targetError } = await supabase
+        .from('profiles')
+        .select('id, username')
+        .ilike('username', typedUsername)
+        .maybeSingle();
+
+      if (targetError) {
+        throw targetError;
+      }
+
+      if (!targetProfile) {
+        Alert.alert('User not found', 'No user was found with that username.');
+        return;
+      }
+
+      if (targetProfile.id === currentUser.id) {
+        Alert.alert('Invalid user', 'You cannot add yourself as a friend.');
+        return;
+      }
+
+      const { data: existingFriend, error: existingFriendError } = await supabase
+        .from('friends')
+        .select('id')
+        .eq('user_id', currentUser.id)
+        .eq('friend_user_id', targetProfile.id)
+        .eq('status', 'accepted')
+        .maybeSingle();
+
+      if (existingFriendError) {
+        throw existingFriendError;
+      }
+
+      if (existingFriend) {
+        Alert.alert('Already friends', `@${targetProfile.username} is already in your friends list.`);
+        return;
+      }
+
+      const { data: existingRequest, error: existingRequestError } = await supabase
+        .from('friend_requests')
+        .select('id, status, sender_id, receiver_id')
+        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetProfile.id}),and(sender_id.eq.${targetProfile.id},receiver_id.eq.${currentUser.id})`)
+        .in('status', ['pending', 'accepted'])
+        .maybeSingle();
+
+      if (existingRequestError) {
+        throw existingRequestError;
+      }
+
+      if (existingRequest?.status === 'pending') {
+        const alreadySentByYou = existingRequest.sender_id === currentUser.id;
+        Alert.alert(
+          'Request already pending',
+          alreadySentByYou
+            ? `A friend request to @${targetProfile.username} is already pending.`
+            : `@${targetProfile.username} already sent you a friend request. Please accept it first.`
+        );
+        return;
+      }
+
+      const { error: insertError } = await supabase
+        .from('friend_requests')
+        .insert({
+          sender_id: currentUser.id,
+          receiver_id: targetProfile.id,
+          status: 'pending',
+        });
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      Alert.alert(
+        'Friend request sent',
+        `@${targetProfile.username} is not your friend yet. For safety, please come back and add them after they accept your request.`
+      );
+    } catch (error: any) {
+      Alert.alert('Unable to send request', error?.message || 'Please try again.');
+    } finally {
+      setIsSendingFriendRequest(false);
+    }
+  };
+
+  const canCreateSession = newSessionName.trim().length > 0 && selectedFriends.length > 0 && !isCreatingSession;
 
   const scrollLeft = () => {
     scrollViewRef.current?.scrollTo({ x: 0, animated: true });
@@ -318,13 +438,9 @@ export default function CollaborationSessions({
             </View>
 
             <View style={styles.createSheetHeader}>
+              <View style={styles.modalCloseButtonPlaceholder} />
               <Text style={styles.modalTitle}>Create New Session</Text>
-              <TouchableOpacity
-                onPress={handleCloseCreateModal}
-                style={styles.modalCloseButton}
-              >
-                <Ionicons name="close" size={22} color="#6B7280" />
-              </TouchableOpacity>
+              <View style={styles.modalCloseButtonPlaceholder} />
             </View>
 
             <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
@@ -342,6 +458,15 @@ export default function CollaborationSessions({
               {/* Friend Selection Section */}
               <View style={styles.friendSelectionSection}>
                 <Text style={styles.modalLabel}>Invite Collaborators</Text>
+
+                <TouchableOpacity
+                  style={styles.addFriendInlineButton}
+                  onPress={() => setShowAddFriendModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="person-add" size={16} color="#eb7825" />
+                  <Text style={styles.addFriendInlineButtonText}>Add Friend</Text>
+                </TouchableOpacity>
                 
                 {/* Selected Friends */}
                 {selectedFriends.length > 0 && (
@@ -399,6 +524,33 @@ export default function CollaborationSessions({
                   <View style={styles.noFriendsContainer}>
                     <Ionicons name="search-outline" size={32} color="#D1D5DB" />
                     <Text style={styles.noFriendsText}>No matches found</Text>
+
+                    {friendSearchQuery.trim().length > 0 && (
+                      <View style={styles.notFriendNoticeCard}>
+                        <Text style={styles.notFriendNoticeTitle}>
+                          This person is not your friend
+                        </Text>
+                        <Text style={styles.notFriendNoticeText}>
+                          Add them as a friend first, then come back and add them as a collaborator after they accept. This is for safety purposes.
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.addFriendNoticeButton,
+                            isSendingFriendRequest && styles.addFriendNoticeButtonDisabled,
+                          ]}
+                          onPress={handleAddTypedUserAsFriend}
+                          disabled={isSendingFriendRequest}
+                        >
+                          {isSendingFriendRequest ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.addFriendNoticeButtonText}>
+                              Add @{friendSearchQuery.trim().replace(/^@+/, '')} as Friend
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 ) : (
                   <View style={styles.friendsList}>
@@ -449,18 +601,12 @@ export default function CollaborationSessions({
             {/* Actions */}
             <View style={styles.modalActionsFixed}>
               <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={handleCloseCreateModal}
-              >
-                <Text style={styles.modalCancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
                 style={[
                   styles.modalCreateButton,
-                  (!newSessionName.trim() || isCreatingSession) && styles.modalCreateButtonDisabled,
+                  !canCreateSession && styles.modalCreateButtonDisabled,
                 ]}
                 onPress={handleCreateSession}
-                disabled={!newSessionName.trim() || isCreatingSession}
+                disabled={!canCreateSession}
               >
                 {isCreatingSession ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
@@ -498,6 +644,7 @@ export default function CollaborationSessions({
             </View>
 
             <View style={styles.inviteSheetHeader}>
+              <View style={styles.modalCloseButtonPlaceholder} />
               <Text style={styles.inviteSheetTitle}>
                 {inviteModalSession?.type === 'received-invite'
                   ? 'Received Invite'
@@ -610,6 +757,11 @@ export default function CollaborationSessions({
           }}
         />
       )}
+
+      <AddFriendModal
+        isOpen={showAddFriendModal}
+        onClose={() => setShowAddFriendModal(false)}
+      />
     </View>
   );
 }
@@ -792,8 +944,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
@@ -833,18 +986,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    paddingBottom: 12,
     marginBottom: 12,
   },
   inviteSheetTitle: {
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.2,
-    color: '#111827',
+    color: '#1e293b',
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: '#1e293b',
+    flex: 1,
+    textAlign: 'center',
   },
   modalCloseButton: {
     width: 36,
@@ -853,6 +1011,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modalCloseButtonPlaceholder: {
+    width: 36,
+    height: 36,
   },
   modalLabel: {
     fontSize: 14,
@@ -1024,6 +1186,23 @@ const styles = StyleSheet.create({
   friendSelectionSection: {
     marginTop: 20,
   },
+  addFriendInlineButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#FDDCAB',
+    backgroundColor: '#FEF3E7',
+    borderRadius: 10,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  addFriendInlineButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#eb7825',
+  },
   selectedFriendsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1060,11 +1239,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#FFFFFF',
-  },
-  selectedFriendAvatarImage: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
   },
   selectedFriendName: {
     fontSize: 13,
@@ -1151,11 +1325,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  friendAvatarImage: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
   friendInfo: {
     flex: 1,
   },
@@ -1175,5 +1344,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#eb7825',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  notFriendNoticeCard: {
+    marginTop: 12,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FDDCAB',
+    borderRadius: 12,
+    padding: 12,
+    width: '100%',
+  },
+  notFriendNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9A3412',
+    marginBottom: 4,
+  },
+  notFriendNoticeText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#7C2D12',
+    marginBottom: 10,
+  },
+  addFriendNoticeButton: {
+    backgroundColor: '#eb7825',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addFriendNoticeButtonDisabled: {
+    opacity: 0.6,
+  },
+  addFriendNoticeButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

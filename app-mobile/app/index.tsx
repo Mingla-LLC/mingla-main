@@ -39,15 +39,23 @@ import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
 import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
 import EmailOTPVerificationScreen from "../src/components/EmailOTPVerificationScreen";
 import CoachMap from "../src/components/CoachMap";
+import CoachMarkWelcome from "../src/components/coachmark";
+import CoachMarkTour from "../src/components/coachmark/CoachMarkTour";
 import { BoardViewScreen } from "../src/components/board/BoardViewScreen";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
-import { useBoardSession } from "../hooks/useBoardSession";
+import { useBoardSession } from "../src/hooks/useBoardSession";
 import { messagingService } from "../src/services/messagingService";
 import { BoardMessageService } from "../src/services/boardMessageService";
 import { muteService } from "../src/services/muteService";
 import ShareModal from "../src/components/ShareModal";
 import FeedbackModal from "../src/components/FeedbackModal";
+
+import ExperienceReviewModal from "../src/components/expandedCard/FeedbackModal";
+import { usePendingReviews } from "../src/hooks/usePendingReviews";
+
+import GiveFeedbackModal from "../src/components/coachmark/GiveFeedbackModal";
+
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, asyncStoragePersister } from "../src/config/queryClient";
 import { SessionService } from "../src/services/sessionService";
@@ -77,8 +85,12 @@ function AppContent() {
   const [showWelcomeDialog, setShowWelcomeDialog] = useState<boolean>(false);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
+  const [showGiveFeedbackModal, setShowGiveFeedbackModal] = useState<boolean>(false);
   const [showDebugModal, setShowDebugModal] = useState<boolean>(false);
   const helpButtonDismissedRef = useRef<boolean>(false);
+
+  // Pending experience reviews — shows review modal after scheduled experiences
+  const { pendingReview, showReviewModal, dismissReview } = usePendingReviews();
   const viewShotRef = useRef<any>(null);
   const notifiedFriendRequestIdsRef = useRef<Set<string>>(new Set()); // Track which friend requests we've notified about
 
@@ -292,6 +304,22 @@ function AppContent() {
       }
     });
   }, [friendRequests]);
+
+  // Check if user needs onboarding (for authenticated users)
+  const isGoogleUser = (user as any)?.app_metadata?.provider === "google";
+  const isAppleUser = (user as any)?.app_metadata?.provider === "apple";
+  const needsOnboarding =
+    isAuthenticated &&
+    user &&
+    profile &&
+    (profile as any).has_completed_onboarding === false;
+  const needsEmailVerification =
+    isAuthenticated &&
+    user &&
+    profile &&
+    (profile as any).email_verified === false &&
+    !isGoogleUser &&
+    !isAppleUser;
 
   // Log current page for debugging
   useEffect(() => {
@@ -522,6 +550,8 @@ function AppContent() {
     if (!user?.id) return;
     setIsCreatingSession(true);
     let createdSessionId: string | null = null;
+    let successfulParticipantAdds = 0;
+    let successfulInvites = 0;
     try {
       // Check for real duplicate: any session where user is an accepted participant with this name
       const { data: participations } = await supabase
@@ -608,6 +638,7 @@ function AppContent() {
           console.error(`Error adding friend ${friend.name} as participant:`, friendParticipantError);
           continue;
         }
+        successfulParticipantAdds += 1;
 
         // Create invite for the friend
         const { data: inviteData, error: inviteError } = await supabase
@@ -626,6 +657,7 @@ function AppContent() {
           console.error(`Error creating invite for ${friend.name}:`, inviteError);
           continue;
         }
+        successfulInvites += 1;
 
         // Send email and push notification via Edge Function
         if (friendEmail && inviteData) {
@@ -647,13 +679,19 @@ function AppContent() {
         }
       }
 
+      // If user selected friends but none were actually added/invited,
+      // fail fast instead of showing a misleading success toast.
+      if (selectedFriends.length > 0 && successfulParticipantAdds === 0 && successfulInvites === 0) {
+        throw new Error('No collaborators could be added to the session.');
+      }
+
       // Refresh all sessions (active + pending)
       await refreshAllSessions();
       
       // Show success toast
       const friendCount = selectedFriends.length;
       const message = friendCount > 0 
-        ? `Session "${sessionName}" created! Invites sent to ${friendCount} friend${friendCount > 1 ? 's' : ''}.`
+        ? `Session "${sessionName}" created! Invites sent to ${successfulInvites} friend${successfulInvites > 1 ? 's' : ''}.`
         : `Session "${sessionName}" created successfully!`;
       toastManager.success(message);
 
@@ -902,7 +940,9 @@ function AppContent() {
       coachMapCurrentTarget &&
       (coachMapCurrentTarget === "preferencesButton" ||
         coachMapCurrentTarget === "collaborateButton" ||
-        coachMapCurrentTarget === "sessionPills")
+        coachMapCurrentTarget === "sessionPills" ||
+        coachMapCurrentTarget === "soloButton" ||
+        coachMapCurrentTarget === "createSessionButton")
   );
 
   // Handle deep links for OAuth callback
@@ -1169,10 +1209,15 @@ function AppContent() {
   };
 
   // Function to handle starting the tour
-  const handleStartTour = async () => {
+  const handleStartTour = () => {
     setShowWelcomeDialog(false);
-    // Start the coach map tour
     setShowCoachMap(true);
+  };
+
+  // Function to handle giving feedback from welcome dialog
+  const handleGiveFeedback = () => {
+    setShowWelcomeDialog(false);
+    setTimeout(() => setShowGiveFeedbackModal(true), 100);
   };
 
   // ---- Feedback Modal Logic ----
@@ -1357,27 +1402,6 @@ function AppContent() {
   }
   // jsieidjdj
 
-  // Check if user needs onboarding (for authenticated users)
-  // Show onboarding if user is authenticated but hasn't completed onboarding
-  const needsOnboarding =
-    isAuthenticated &&
-    user &&
-    profile &&
-    profile.has_completed_onboarding === false;
-
-  // Check if user needs email verification before onboarding
-  // Block onboarding if user is authenticated but email is not verified
-  // Skip email verification for Google and Apple sign-in users (they already verify emails)
-  const isGoogleUser = user?.app_metadata?.provider === "google";
-  const isAppleUser = user?.app_metadata?.provider === "apple";
-  const needsEmailVerification =
-    isAuthenticated &&
-    user &&
-    profile &&
-    profile.email_verified === false &&
-    !isGoogleUser &&
-    !isAppleUser; // Skip verification for Google and Apple users
-
   // Show email verification screen if needed (before onboarding)
   if (needsEmailVerification && !showSignUpForm) {
     return (
@@ -1415,6 +1439,7 @@ function AppContent() {
             // Just update local state
             setHasCompletedOnboarding(true);
             setShowOnboardingFlow(false);
+            setCurrentPage("home");
           }}
           onNavigateToSignUp={(accountType) => {
             setShowOnboardingFlow(false);
@@ -1470,14 +1495,14 @@ function AppContent() {
             handleSignIn(credentials, "explorer")
           }
           onSignUpRegular={(userData) => {
-            const accountType = userData.account_type || "explorer";
+            const accountType = (userData.account_type || "explorer") as "explorer" | "curator";
             handleSignUp(userData, accountType);
           }}
           onSignInCurator={(credentials) =>
             handleSignIn(credentials, "curator")
           }
           onSignUpCurator={(userData) => {
-            const accountType = userData.account_type || "curator";
+            const accountType = (userData.account_type || "curator") as "explorer" | "curator";
             handleSignUp(userData, accountType);
           }}
           onStartOnboarding={(accountType) => {
@@ -1556,6 +1581,7 @@ function AppContent() {
                   | "Metric"
                   | "Imperial") || "Imperial",
             }}
+            preferencesRefreshKey={preferencesRefreshKey}
           />
         );
       case "saved":
@@ -2196,27 +2222,45 @@ function AppContent() {
                       </View>
                     </View>
 
-                    {/* Coach Map Overlay */}
-                    <CoachMap
+                    {/* Coach Mark Tour Overlay (new design) */}
+                    <CoachMarkTour
                       visible={showCoachMap}
                       onComplete={async () => {
                         setShowCoachMap(false);
                         setCoachMapCurrentTarget(null);
-                        // Update status in background — don't block UI
+                        setCurrentPage("home");
                         updateCoachMapTourStatus("completed");
                       }}
                       onSkip={async () => {
                         setShowCoachMap(false);
                         setCoachMapCurrentTarget(null);
-                        // Update status in background — don't block UI
+                        setCurrentPage("home");
                         updateCoachMapTourStatus("skipped");
                       }}
                       onStepChange={(stepIndex, target) => {
-                        // Reset target when coach map closes (stepIndex === -1)
                         if (stepIndex === -1) {
                           setCoachMapCurrentTarget(null);
                         } else {
                           setCoachMapCurrentTarget(target);
+                          // Navigate to the correct page for each step
+                          if (target === "discoverForYou" || target === "discoverAddPerson" || target === "discoverNightOut") {
+                            setCurrentPage("discover");
+                          } else if (target === "connectFriendsTab" || target === "connectMessagesTab") {
+                            setCurrentPage("connections");
+                          } else if (target === "likesSavedTab" || target === "likesCalendarTab") {
+                            setCurrentPage("likes");
+                          } else if (target === "profileHub") {
+                            setCurrentPage("profile");
+                          } else if (
+                            target === "preferencesButton" ||
+                            target === "sessionPills" ||
+                            target === "soloButton" ||
+                            target === "createSessionButton" ||
+                            target === "swipeCard" ||
+                            target === "viewMoreButton"
+                          ) {
+                            setCurrentPage("home");
+                          }
                         }
                       }}
                     />
@@ -2237,6 +2281,25 @@ function AppContent() {
                       onClose={handleFeedbackClose}
                       onSubmitFeedback={handleFeedbackSubmit}
                     />
+
+
+                    {/* Experience Review Modal — shown day-after for past scheduled experiences */}
+                    {pendingReview && (
+                      <ExperienceReviewModal
+                        visible={showReviewModal}
+                        experienceTitle={pendingReview.experienceTitle}
+                        cardId={pendingReview.cardId}
+                        onClose={dismissReview}
+                      />
+                    )}
+
+                    {/* Give Feedback Modal (from coach mark welcome) */}
+                    <GiveFeedbackModal
+                      visible={showGiveFeedbackModal}
+                      onClose={() => setShowGiveFeedbackModal(false)}
+                      userId={user?.id}
+                    />
+
 
                     {/* Floating Help Button */}
                     {showHelpButton && !showCoachMap && (
@@ -2259,55 +2322,12 @@ function AppContent() {
                     )}
 
                     {/* Welcome Dialog */}
-                    <Modal
+                    <CoachMarkWelcome
                       visible={showWelcomeDialog}
-                      transparent={true}
-                      animationType="fade"
-                      onRequestClose={() => setShowWelcomeDialog(false)}
-                    >
-                      <View style={styles.modalOverlay}>
-                        <View style={styles.dialogContainer}>
-                          {/* Logo */}
-                          <Image
-                            source={require("../assets/mingla_logo.png")}
-                            style={styles.dialogLogo}
-                            resizeMode="contain"
-                          />
-
-                          {/* Title with wave emoji */}
-                          <View style={styles.dialogTitleContainer}>
-                            <Text style={styles.dialogTitle}>
-                              Welcome to Mingla
-                            </Text>
-                            <Text style={styles.waveEmoji}>👋</Text>
-                          </View>
-
-                          {/* Description */}
-                          <Text style={styles.dialogDescription}>
-                            Let's show you the essentials (takes 30 seconds)
-                          </Text>
-
-                          {/* Buttons */}
-                          <View style={styles.dialogButtonsContainer}>
-                            <TouchableOpacity
-                              style={styles.startTourButton}
-                              onPress={handleStartTour}
-                            >
-                              <Text style={styles.startTourButtonText}>
-                                Start tour
-                              </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={styles.skipButton}
-                              onPress={() => setShowWelcomeDialog(false)}
-                            >
-                              <Text style={styles.skipButtonText}>Skip</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      </View>
-                    </Modal>
+                      onStartTour={handleStartTour}
+                      onGiveFeedback={handleGiveFeedback}
+                      onClose={() => setShowWelcomeDialog(false)}
+                    />
                   </SafeAreaView>
                 </ErrorBoundary>
               </NavigationProvider>
@@ -2379,8 +2399,8 @@ const styles = StyleSheet.create({
     borderTopColor: "#e5e7eb",
     paddingBottom: 8,
     paddingTop: 8,
-    zIndex: -1, // Low z-index so it doesn't overlay the Modal
-    elevation: -1,
+    zIndex: 1,
+    elevation: 1,
   },
   navigationContainer: {
     flexDirection: "row",
@@ -2464,79 +2484,23 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "white",
   },
-  // Welcome Dialog styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  dialogContainer: {
-    backgroundColor: "white",
-    borderRadius: 24,
-    padding: 32,
-    width: "100%",
-    maxWidth: 340,
-    alignItems: "center",
-  },
-  dialogLogo: {
-    width: 80,
-    height: 80,
-    marginBottom: 24,
-  },
-  dialogTitleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  dialogTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#111827",
-  },
-  waveEmoji: {
-    fontSize: 22,
-  },
-  dialogDescription: {
-    fontSize: 16,
-    color: "#6b7280",
-    textAlign: "center",
-    marginBottom: 32,
-    lineHeight: 24,
-  },
-  dialogButtonsContainer: {
-    width: "100%",
-    gap: 12,
-  },
-  startTourButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  startTourButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  skipButton: {
-    backgroundColor: "transparent",
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  skipButtonText: {
-    color: "#374151",
-    fontSize: 16,
-    fontWeight: "500",
-  },
 });
 
 export default function App() {
+  // Gate: clear corrupted/oversized React Query persisted cache BEFORE provider mounts
+  // PersistQueryClientProvider crashes on mount if the cache exceeds Android's 2MB CursorWindow
+  const [cacheReady, setCacheReady] = React.useState(false);
+
+  React.useEffect(() => {
+    AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE')
+      .catch(() => {})
+      .finally(() => setCacheReady(true));
+  }, []);
+
+  if (!cacheReady) {
+    return null; // Brief blank frame while clearing corrupted cache
+  }
+
   return (
     <PersistQueryClientProvider
       client={queryClient}
@@ -2545,18 +2509,27 @@ export default function App() {
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
 
         dehydrateOptions: {
-          // Exclude savedCards and calendarEntries queries from persistence
+          // Exclude large/transient queries from persistence to prevent
+          // Android CursorWindow overflow (2MB SQLite row limit)
           shouldDehydrateQuery: (query) => {
             const queryKey = query.queryKey;
 
-            // Don't persist queries with queryKey starting with "savedCards" or "calendarEntries"
             if (Array.isArray(queryKey)) {
               const firstKey = queryKey[0];
-              if (firstKey === "savedCards" || firstKey === "calendarEntries") {
+              // Never persist these heavy/transient queries:
+              // - savedCards, calendarEntries: refetched on mount
+              // - curated-experiences: very large payload (20 cards × 3 stops)
+              // - recommendations: large + stale quickly
+              if (
+                firstKey === "savedCards" ||
+                firstKey === "calendarEntries" ||
+                firstKey === "curated-experiences" ||
+                firstKey === "recommendations"
+              ) {
                 return false;
               }
             }
-            // Persist all other queries
+            // Persist lightweight queries (preferences, location, etc.)
             return true;
           },
         },

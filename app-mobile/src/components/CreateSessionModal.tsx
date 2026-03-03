@@ -106,15 +106,22 @@ export const CreateSessionModal: React.FC = () => {
         Alert.alert('Error', 'Please enter a session name');
         return;
       }
-      
+
+      setCurrentStep('friends');
+    } else if (currentStep === 'friends') {
+      if (sessionType === 'collaboration' && selectedFriends.length === 0) {
+        Alert.alert(
+          'Add a collaborator',
+          'Please add at least one friend as a collaborator before continuing. This is for safety purposes.'
+        );
+        return;
+      }
+
       if (sessionType === 'board') {
-        setCurrentStep('friends');
+        setCurrentStep('preferences');
       } else {
-        // For collaboration sessions, skip to invite method
         setCurrentStep('invite');
       }
-    } else if (currentStep === 'friends') {
-      setCurrentStep('preferences');
     } else if (currentStep === 'preferences') {
       setCurrentStep('invite');
     } else if (currentStep === 'invite') {
@@ -139,7 +146,7 @@ export const CreateSessionModal: React.FC = () => {
       if (sessionType === 'board') {
         setCurrentStep('preferences');
       } else {
-        setCurrentStep('basic');
+        setCurrentStep('friends');
       }
     } else if (currentStep === 'review') {
       setCurrentStep('invite');
@@ -149,6 +156,14 @@ export const CreateSessionModal: React.FC = () => {
   const handleCreateSession = async () => {
     if (!user) {
       Alert.alert('Error', 'You must be logged in');
+      return;
+    }
+
+    if (sessionType === 'collaboration' && selectedFriends.length === 0) {
+      Alert.alert(
+        'Add a collaborator',
+        'Please add at least one friend as a collaborator before creating this session. This is for safety purposes.'
+      );
       return;
     }
 
@@ -332,7 +347,9 @@ export const CreateSessionModal: React.FC = () => {
           <View style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Invite Friends</Text>
             <Text style={styles.stepDescription}>
-              Select friends to invite to your board session
+              {sessionType === 'board'
+                ? 'Select friends to invite to your board session'
+                : 'Select at least one friend to add as a collaborator. This is required for safety.'}
             </Text>
 
             <TouchableOpacity
@@ -492,12 +509,18 @@ export const CreateSessionModal: React.FC = () => {
       case 'basic':
         return sessionName.trim().length > 0;
       case 'friends':
-        return true; // Friends are optional
+        if (sessionType === 'collaboration') {
+          return selectedFriends.length > 0;
+        }
+        return true; // Friends are optional for board sessions
       case 'preferences':
         return true; // Preferences are optional
       case 'invite':
         return inviteMethod !== null;
       case 'review':
+        if (sessionType === 'collaboration') {
+          return selectedFriends.length > 0;
+        }
         return true;
       case 'success':
         return false;
@@ -553,11 +576,7 @@ export const CreateSessionModal: React.FC = () => {
               )}
             </View>
             <Text style={styles.title}>{getStepTitle()}</Text>
-            <View style={styles.headerSide}>
-              <TouchableOpacity onPress={closeCreateSessionModal} style={styles.iconButton}>
-                <Ionicons name="close" size={22} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
+            <View style={styles.headerSide} />
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -653,8 +672,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
@@ -663,9 +683,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
     flex: 1,
     textAlign: 'center',
   },

@@ -400,6 +400,25 @@ export function useAppState() {
     }
   }, [user, profile]);
 
+  // Reset navigation/UI auth state when signed out to avoid stale page carryover
+  useEffect(() => {
+    if (!user) {
+      setCurrentPage("home");
+      setShowProfileSettings(false);
+      setShowAccountSettings(false);
+      setShowPreferences(false);
+      setShowCollaboration(false);
+      setShowCollabPreferences(false);
+      setShowTermsOfService(false);
+      setShowPrivacyPolicy(false);
+      setShowShareModal(false);
+      setShowOnboardingFlow(false);
+      setShowSignUpForm(false);
+      setHasCompletedOnboarding(false);
+      setOnboardingData(null);
+    }
+  }, [user]);
+
   // Initialize mode from storage on mount
   useEffect(() => {
     const initializeMode = async () => {
@@ -761,6 +780,9 @@ export function useAppState() {
       }
 
       if (data?.user) {
+        // Always land users on Explore (home tab) after successful sign-in
+        setCurrentPage("home");
+
         // The useAuthSimple hook will automatically update the user state
         // and the app will re-render with the authenticated user
       }
@@ -839,6 +861,19 @@ export function useAppState() {
 
   const handleSignOut = async () => {
     try {
+      // Reset navigation/UI state immediately so next sign-in starts on Explore
+      setCurrentPage("home");
+      setShowProfileSettings(false);
+      setShowAccountSettings(false);
+      setShowPreferences(false);
+      setShowCollaboration(false);
+      setShowCollabPreferences(false);
+      setShowTermsOfService(false);
+      setShowPrivacyPolicy(false);
+      setShowShareModal(false);
+      setShowOnboardingFlow(false);
+      setShowSignUpForm(false);
+
       // Clear all user data from the store immediately
       const store = useAppStore.getState();
       store.clearUserData();

@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.send-message-email]
 verify_jwt = true
+
+[functions.ticketmaster-events]
+verify_jwt = false

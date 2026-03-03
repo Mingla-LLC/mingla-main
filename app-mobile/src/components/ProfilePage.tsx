@@ -39,6 +39,7 @@ interface ProfilePageProps {
   placesVisited?: number;
   notificationsEnabled?: boolean;
   onNotificationsToggle?: (enabled: boolean) => void;
+  onUnblockUser?: (blockedUser: any, suppressNotification?: boolean) => Promise<void>;
   userIdentity?: {
     firstName: string;
     lastName: string;

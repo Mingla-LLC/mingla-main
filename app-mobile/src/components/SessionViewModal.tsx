@@ -790,6 +790,17 @@ export default function SessionViewModal({
       selectedDateTime: cardData.selectedDateTime || new Date(),
       strollData: cardData.strollData,
       picnicData: cardData.picnicData,
+      // Curated card fields
+      ...(cardData.cardType === 'curated' ? {
+        cardType: cardData.cardType,
+        stops: cardData.stops,
+        tagline: cardData.tagline,
+        totalPriceMin: cardData.totalPriceMin,
+        totalPriceMax: cardData.totalPriceMax,
+        estimatedDurationMinutes: cardData.estimatedDurationMinutes,
+        pairingKey: cardData.pairingKey,
+        experienceType: cardData.experienceType,
+      } : {}),
     };
 
     setSelectedCardForExpansion(expandedCardData);
@@ -1088,8 +1099,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 0.5,
+    paddingTop: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
     backgroundColor: "white",
     marginBottom: 2,
@@ -1102,22 +1114,25 @@ const styles = StyleSheet.create({
   },
   headerCenter: {
     flex: 1,
-    alignItems: "flex-start",
+    alignItems: "center",
     marginHorizontal: 12,
   },
   headerTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#111827",
+    color: "#1e293b",
+    textAlign: "center",
   },
   headerSubtitle: {
     fontSize: 13,
-    color: "#6B7280",
+    fontWeight: "600",
+    color: "#374151",
     marginLeft: 4,
   },
   headerParticipantsRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 4,
   },
   participantAvatarsSmall: {

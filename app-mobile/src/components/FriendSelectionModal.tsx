@@ -50,16 +50,12 @@ export default function FriendSelectionModal({
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.header}>
-            <View>
+            <View style={styles.headerSidePlaceholder} />
+            <View style={styles.headerCenter}>
               <Text style={styles.headerTitle}>Start New Conversation</Text>
               <Text style={styles.headerSubtitle}>Choose a friend to message</Text>
             </View>
-            <TouchableOpacity
-              onPress={onClose}
-              style={styles.closeButton}
-            >
-              <Ionicons name="close" size={16} color="#6b7280" />
-            </TouchableOpacity>
+            <View style={styles.headerSidePlaceholder} />
           </View>
 
         {/* Search */}
@@ -165,19 +161,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    textAlign: 'center',
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
   },
   closeButton: {
     width: 32,
@@ -186,6 +191,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f4f6',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  closeButtonPlaceholder: {
+    width: 32,
+    height: 32,
+  },
+  headerSidePlaceholder: {
+    width: 32,
+    height: 32,
   },
   searchContainer: {
     padding: 16,

@@ -5,11 +5,12 @@ export interface ExperienceFeedback {
   experience_title: string;
   rating: number;
   feedback_text?: string;
+  did_not_attend?: boolean;
 }
 
 export const experienceFeedbackService = {
   /**
-   * Submit feedback after scheduling an experience
+   * Submit feedback after an experience
    */
   async submitFeedback(
     userId: string,
@@ -21,6 +22,7 @@ export const experienceFeedbackService = {
       experience_title: feedback.experience_title,
       rating: feedback.rating,
       feedback_text: feedback.feedback_text || null,
+      did_not_attend: feedback.did_not_attend || false,
     });
 
     if (error) {
@@ -51,5 +53,47 @@ export const experienceFeedbackService = {
     }
 
     return data;
+  },
+
+  /**
+   * Get calendar entries whose scheduled_at is in the past and haven't been reviewed yet.
+   * Used to prompt the user for a review when they return to the app.
+   */
+  async getPendingReviewEntries(userId: string) {
+    const now = new Date().toISOString();
+
+    // Fetch calendar entries that are scheduled in the past
+    const { data: entries, error: entryErr } = await supabase
+      .from("calendar_entries")
+      .select("id, card_id, card_data, scheduled_at, status")
+      .eq("user_id", userId)
+      .in("status", ["pending", "confirmed"])
+      .lt("scheduled_at", now)
+      .is("archived_at", null)
+      .order("scheduled_at", { ascending: false })
+      .limit(10);
+
+    if (entryErr || !entries || entries.length === 0) return [];
+
+    // Check which ones already have feedback
+    const cardIds = entries
+      .map((e: any) => e.card_id)
+      .filter(Boolean) as string[];
+
+    if (cardIds.length === 0) return [];
+
+    const { data: existingFeedback } = await supabase
+      .from("experience_feedback")
+      .select("card_id")
+      .eq("user_id", userId)
+      .in("card_id", cardIds);
+
+    const reviewedCardIds = new Set(
+      (existingFeedback || []).map((f: any) => f.card_id),
+    );
+
+    return entries.filter(
+      (e: any) => e.card_id && !reviewedCardIds.has(e.card_id),
+    );
   },
 };

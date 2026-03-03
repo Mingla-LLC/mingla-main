@@ -44,43 +44,43 @@ interface CollaborationPreferencesProps {
   };
 }
 
-// Experience Types for collaboration (no Solo Adventure)
+// Experience Types for collaboration (matching PreferencesSheet)
 const experienceTypes = [
-  { id: "first-dates", label: "First Date", icon: "heart-outline" },
-  { id: "romantic", label: "Romantic", icon: "heart-outline" },
-  { id: "friendly", label: "Friendly", icon: "people-outline" },
-  { id: "group-fun", label: "Group Fun", icon: "people-outline" },
-  { id: "business", label: "Business", icon: "briefcase-outline" },
+  { id: "adventurous",   label: "Adventurous",   icon: "compass-outline" },
+  { id: "first-date",    label: "First Date",    icon: "people-outline" },
+  { id: "romantic",      label: "Romantic",       icon: "heart-outline" },
+  { id: "friendly",      label: "Friendly",       icon: "people-outline" },
+  { id: "group-fun",     label: "Group Fun",      icon: "people-circle-outline" },
+  { id: "picnic-dates",  label: "Picnic Dates",   icon: "basket-outline" },
+  { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
 // Budget presets (USD base values)
 const budgetPresetsUSD = [
   { min: 0, max: 25 },
-  { min: 25, max: 75 },
-  { min: 75, max: 150 },
-  { min: 150, max: 1000 },
+  { min: 0, max: 50 },
+  { min: 0, max: 100 },
+  { min: 0, max: 150 },
 ];
 
 // Categories
 const categories = [
-  { id: "Stroll", label: "Take a Stroll", icon: "eye-outline" },
-  { id: "Sip & Chill", label: "Sip & Chill", icon: "cafe-outline" },
-  { id: "Casual Eats", label: "Casual Eats", icon: "restaurant-outline" },
-  { id: "screenRelax", label: "Screen & Relax", icon: "desktop-outline" },
+  { id: "nature", label: "Nature", icon: "leaf-outline" },
+  { id: "first_meet", label: "First Meet", icon: "chatbubbles-outline" },
+  { id: "picnic_park", label: "Picnic Park", icon: "basket-outline" },
+  { id: "drink", label: "Drink", icon: "wine-outline" },
+  { id: "casual_eats", label: "Casual Eats", icon: "fast-food-outline" },
+  { id: "fine_dining", label: "Fine Dining", icon: "restaurant-outline" },
+  { id: "watch", label: "Watch", icon: "film-outline" },
   {
-    id: "Creative & Hands-On",
-    label: "Creative & Hands-On",
+    id: "creative_arts",
+    label: "Creative & Arts",
     icon: "color-palette-outline",
   },
-  { id: "Picnics", label: "Picnics", icon: "basket-outline" },
-  { id: "Play & Move", label: "Play & Move", icon: "game-controller-outline" },
-  {
-    id: "Dining Experiences",
-    label: "Dining Experiences",
-    icon: "restaurant-outline",
-  },
-  { id: "Wellness Dates", label: "Wellness Dates", icon: "leaf-outline" },
-  { id: "Freestyle", label: "Freestyle", icon: "sparkles-outline" },
+  { id: "play", label: "Play", icon: "game-controller-outline" },
+  { id: "wellness", label: "Wellness", icon: "body-outline" },
+  { id: "groceries_flowers", label: "Groceries & Flowers", icon: "cart-outline" },
+  { id: "work_business", label: "Work & Business", icon: "briefcase-outline" },
 ];
 
 // Travel modes
@@ -113,25 +113,13 @@ type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight";
 // Compatibility matrix: maps intent IDs to allowed category IDs
 // null means all categories are allowed
 const INTENT_CATEGORY_COMPATIBILITY: Record<string, string[] | null> = {
-  "first-dates": [
-    "Stroll",
-    "Sip & Chill",
-    "Picnics",
-    "screenRelax",
-    "Creative & Hands-On",
-    "Play & Move",
-    "Dining Experiences",
-  ],
-  romantic: ["Sip & Chill", "Picnics", "Dining Experiences", "Wellness Dates"],
-  friendly: null, // All categories
-  "group-fun": [
-    "Play & Move",
-    "Creative & Hands-On",
-    "Casual Eats",
-    "screenRelax",
-    "Freestyle",
-  ],
-  business: ["Stroll", "Sip & Chill", "Dining Experiences"],
+  "adventurous":   null, // All categories allowed
+  "first-date":    ["fine_dining", "watch", "nature", "first_meet", "creative_arts", "play", "work_business"],
+  "romantic":      ["fine_dining", "creative_arts", "wellness"],
+  "friendly":      null, // All categories allowed
+  "group-fun":     ["play", "watch", "casual_eats"],
+  "picnic-dates":  ["groceries_flowers", "picnic_park"],
+  "take-a-stroll": ["casual_eats", "nature"],
 };
 
 // Get allowed category IDs based on selected intents
@@ -188,10 +176,7 @@ export default function CollaborationPreferences({
     return budgetPresetsUSD.map((preset) => {
       const convertedMin = Math.round(preset.min * rate);
       const convertedMax = Math.round(preset.max * rate);
-      const label =
-        preset.max >= 1000
-          ? `${currencySymbol}${formatNumberWithCommas(convertedMin)}+`
-          : `${currencySymbol}${formatNumberWithCommas(convertedMin)}-${formatNumberWithCommas(convertedMax)}`;
+      const label = `Up to ${currencySymbol}${formatNumberWithCommas(convertedMax)}`;
       return { label, min: convertedMin, max: convertedMax };
     });
   }, [currencyCode, currencySymbol]);
@@ -257,11 +242,23 @@ export default function CollaborationPreferences({
   useEffect(() => {
     if (isOpen && dbPreferences) {
       // Map database preferences to component state
-      if (dbPreferences.experience_types) {
+      if (dbPreferences.categories && Array.isArray(dbPreferences.categories)) {
+        // Split categories array into intents and pure categories
+        // (matches how PreferencesSheet saves: [...intents, ...categories])
+        const INTENT_IDS = new Set([
+          "adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll",
+        ]);
+        const loadedIntents: string[] = [];
+        const loadedCategories: string[] = [];
+        dbPreferences.categories.forEach((item: string) => {
+          if (INTENT_IDS.has(item)) loadedIntents.push(item);
+          else loadedCategories.push(item);
+        });
+        setSelectedIntents(loadedIntents);
+        setSelectedCategories(loadedCategories);
+      } else if (dbPreferences.experience_types) {
+        // Fallback for older data that still uses experience_types column
         setSelectedIntents(dbPreferences.experience_types);
-      }
-      if (dbPreferences.categories) {
-        setSelectedCategories(dbPreferences.categories);
       }
       if (dbPreferences.budget_min !== undefined) {
         setBudgetMin(dbPreferences.budget_min);
@@ -512,7 +509,7 @@ export default function CollaborationPreferences({
       // Transform preferences to database format
    
       const dbPreferences: any = {
-        categories: selectedCategories,
+        categories: [...selectedIntents, ...selectedCategories],
         budget_min: typeof budgetMin === "number" ? budgetMin : 0,
         budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
         // Note: group_size column doesn't exist in board_session_preferences table
@@ -555,6 +552,7 @@ export default function CollaborationPreferences({
       // Invalidate TanStack Query caches to trigger refetch
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
       queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+      queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
 
       // Also call the onSave callback for backward compatibility
       const preferences = {
@@ -614,7 +612,7 @@ export default function CollaborationPreferences({
         >
           {/* Experience Type Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Experience Type</Text>
+            <Text style={styles.sectionTitle}>Curated Experiences</Text>
             <Text style={styles.sectionSubtitle}>
               Date Idea / Friends / Romantic / Group Fun
             </Text>
@@ -683,10 +681,10 @@ export default function CollaborationPreferences({
             </View>
           </View>
 
-          {/* Budget per Person Section - Hide when only "Take a Stroll" is selected */}
+          {/* Budget per Person Section - Hide when only "Nature" is selected */}
           {!(
             selectedCategories.length === 1 &&
-            selectedCategories[0] === "Stroll"
+            selectedCategories[0] === "nature"
           ) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Budget per Person</Text>

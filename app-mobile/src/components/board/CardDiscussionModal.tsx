@@ -371,9 +371,7 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#666" />
-          </TouchableOpacity>
+          <View style={styles.headerSidePlaceholder} />
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {cardTitle || 'Card Discussion'}
@@ -382,6 +380,9 @@ export const CardDiscussionModal: React.FC<CardDiscussionModalProps> = ({
               {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
             </Text>
           </View>
+          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <Ionicons name="close" size={20} color="#6B7280" />
+          </TouchableOpacity>
         </View>
 
         {/* Messages */}
@@ -548,26 +549,42 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e1e5e9',
   },
   closeButton: {
-    marginRight: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
   headerContent: {
     flex: 1,
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: '#1e293b',
+    textAlign: 'center',
   },
   headerSubtitle: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
     marginTop: 2,
+    textAlign: 'center',
   },
   loadingContainer: {
     flex: 1,

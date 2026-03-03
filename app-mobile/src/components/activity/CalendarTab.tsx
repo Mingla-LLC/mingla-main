@@ -1075,6 +1075,10 @@ const CalendarTab = ({
       experience.categoryIcon || entry.categoryIcon
     );
 
+    // Detect curated multi-stop card
+    const cardData = experience || {};
+    const isCurated = Array.isArray(cardData.stops) && cardData.stops.length > 0;
+
     const expandedCardData: ExpandedCardData = {
       id: entry.id,
       title: experience.title || entry.title,
@@ -1128,9 +1132,18 @@ const CalendarTab = ({
         : new Date(),
       strollData: (experience as any).strollData,
       picnicData: (experience as any).picnicData,
+      // Curated fields — pass through if present
+      ...(isCurated && {
+        cardType: 'curated' as const,
+        stops: cardData.stops,
+        tagline: cardData.tagline,
+        pairingKey: cardData.pairingKey,
+        totalPriceMin: cardData.totalPriceMin,
+        totalPriceMax: cardData.totalPriceMax,
+        estimatedDurationMinutes: cardData.estimatedDurationMinutes,
+        experienceType: cardData.experienceType,
+      }),
     };
-
-    /*  console.log("expandedCardData", expandedCardData.lat); */
 
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);

@@ -104,7 +104,7 @@ function groupNotificationsByDate(
 function getNavigationLabel(nav: NavigationTarget): string | null {
   switch (nav.page) {
     case "home":
-      return "Go to Home";
+      return "Go to Explore";
     case "saved":
       return "View Saved";
     case "connections":
@@ -363,21 +363,14 @@ export default function NotificationsModal({
 
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.headerLeft}>
+            <View style={styles.headerSidePlaceholder} />
+            <View style={styles.headerCenter}>
               <Text style={styles.headerTitle}>Notifications</Text>
               {unreadCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{unreadCount}</Text>
-                </View>
+                <Text style={styles.headerSubtitle}>{unreadCount} unread</Text>
               )}
             </View>
-            <TouchableOpacity
-              onPress={onClose}
-              style={styles.closeButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="close" size={22} color="#6B7280" />
-            </TouchableOpacity>
+            <View style={styles.headerSidePlaceholder} />
           </View>
 
           {/* Action Buttons */}
@@ -472,20 +465,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
-  headerLeft: {
-    flexDirection: "row",
+  headerCenter: {
+    flex: 1,
     alignItems: "center",
-    gap: 10,
+    justifyContent: "center",
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: "700",
-    color: "#111827",
+    color: "#1e293b",
+    textAlign: "center",
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#374151",
+    marginTop: 2,
+    textAlign: "center",
   },
   badge: {
     backgroundColor: "#eb7825",
@@ -508,6 +510,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
+  },
+  closeButtonPlaceholder: {
+    width: 36,
+    height: 36,
+  },
+  headerSidePlaceholder: {
+    width: 36,
+    height: 36,
   },
 
   // ── Action Bar ──

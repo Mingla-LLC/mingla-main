@@ -10,6 +10,8 @@ import { toastManager } from "../components/ui/Toast";
 import { supabase } from "../services/supabase";
 import { offlineService } from "../services/offlineService";
 import { inAppNotificationService } from "../services/inAppNotificationService";
+import { useAppStore } from "../store/appStore";
+import { computePrefsHash } from "../utils/cardConverters";
 
 export function useAppHandlers(state: any) {
   const queryClient = useQueryClient();
@@ -137,8 +139,13 @@ export function useAppHandlers(state: any) {
 
     if (sessionId) {
       // Transform preferences to database format
+      // Include both intents AND categories — mirrors how handleSavePreferences
+      // builds the categories array for the solo preferences table.
       const dbPreferences: any = {
-        categories: preferences.selectedCategories || [],
+        categories: [
+          ...(preferences.selectedIntents || []),
+          ...(preferences.selectedCategories || []),
+        ],
         budget_min:
           typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
         budget_max:
@@ -174,6 +181,37 @@ export function useAppHandlers(state: any) {
 
       if (error) {
         console.error("Error saving collaboration preferences:", error);
+      }
+    }
+
+    // Also persist to the solo preferences table so that
+    // useUserPreferences (which drives curated-hook enabled flags) stays
+    // correct even after the TanStack cache staleTime expires.
+    if (user?.id) {
+      const soloDB: any = {
+        mode: preferences.selectedIntents?.length > 0 ? "custom" : "explore",
+        budget_min: typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
+        budget_max: typeof preferences.budgetMax === "number" ? preferences.budgetMax : 1000,
+        categories: [
+          ...(preferences.selectedIntents || []),
+          ...(preferences.selectedCategories || []),
+        ],
+        travel_mode: preferences.travelMode || "walking",
+        travel_constraint_type: preferences.constraintType || "time",
+        travel_constraint_value:
+          typeof preferences.constraintValue === "number" ? preferences.constraintValue : 20,
+        datetime_pref: preferences.selectedDate
+          ? new Date(preferences.selectedDate).toISOString()
+          : new Date().toISOString(),
+      };
+      try {
+        await PreferencesService.updateUserPreferences(user.id, soloDB);
+        // Prime the TanStack + offline caches so future refetches return
+        // the correct data instead of stale pre-collab values.
+        queryClient.setQueryData(["userPreferences", user.id], soloDB);
+        await offlineService.cacheUserPreferences({ profile_id: user.id, ...soloDB } as any);
+      } catch (err) {
+        console.error("Error mirroring collab prefs to solo table:", err);
       }
     }
 
@@ -615,11 +653,16 @@ export function useAppHandlers(state: any) {
           : new Date().toISOString(),
       };
 
-      // Add custom_location if searchLocation is provided (for both search and GPS)
-      // When useLocation is "gps", searchLocation contains the city name or coordinates
-      if (preferences.searchLocation) {
+      // Handle GPS toggle and custom_location (new approach takes priority)
+      if (preferences.custom_location !== undefined) {
+        // New GPS-toggle approach: custom_location is pre-computed (null when GPS is on)
+        dbPreferences.custom_location = preferences.custom_location;
+      } else if (preferences.searchLocation) {
+        // Legacy fallback: store searchLocation as custom_location
         dbPreferences.custom_location = preferences.searchLocation;
       }
+      // Save GPS toggle flag
+      dbPreferences.use_gps_location = preferences.useGpsLocation ?? true;
 
       try {
         const success = await PreferencesService.updateUserPreferences(
@@ -628,16 +671,58 @@ export function useAppHandlers(state: any) {
         );
 
         if (success) {
-          // Update offline cache with new preferences so useUserLocation gets fresh data
+          // Optimistically prime query and offline caches with the saved payload.
+          // This removes a blocking read-after-write roundtrip and allows
+          // Explore recommendations to refresh immediately.
+          queryClient.setQueryData(["userPreferences", user.id], {
+            mode: dbPreferences.mode,
+            budget_min: dbPreferences.budget_min,
+            budget_max: dbPreferences.budget_max,
+            people_count: dbPreferences.people_count,
+            categories: dbPreferences.categories,
+            travel_mode: dbPreferences.travel_mode,
+            travel_constraint_type: dbPreferences.travel_constraint_type,
+            travel_constraint_value: dbPreferences.travel_constraint_value,
+            datetime_pref: dbPreferences.datetime_pref,
+            date_option: dbPreferences.date_option,
+            time_slot: dbPreferences.time_slot,
+            exact_time: dbPreferences.exact_time,
+            custom_location: dbPreferences.custom_location,
+            use_gps_location: dbPreferences.use_gps_location,
+          });
+
           try {
-            const updatedPrefs = await PreferencesService.getUserPreferences(
-              user.id
-            );
-            if (updatedPrefs) {
-              await offlineService.cacheUserPreferences(updatedPrefs);
-            }
+            await offlineService.cacheUserPreferences({
+              profile_id: user.id,
+              mode: dbPreferences.mode,
+              budget_min: dbPreferences.budget_min,
+              budget_max: dbPreferences.budget_max,
+              people_count: dbPreferences.people_count,
+              categories: dbPreferences.categories,
+              travel_mode: dbPreferences.travel_mode,
+              travel_constraint_type: dbPreferences.travel_constraint_type,
+              travel_constraint_value: dbPreferences.travel_constraint_value,
+              datetime_pref: dbPreferences.datetime_pref,
+              date_option: dbPreferences.date_option,
+              time_slot: dbPreferences.time_slot,
+              exact_time: dbPreferences.exact_time,
+              custom_location: dbPreferences.custom_location,
+              use_gps_location: dbPreferences.use_gps_location,
+            } as any);
           } catch (cacheError) {
             console.error("Error updating offline cache:", cacheError);
+          }
+
+          // Invalidate unified deck + collaboration fallback + location
+          queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
+          queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+          queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+
+          // Reset deck card history if preferences changed
+          const newHashStr = computePrefsHash(dbPreferences);
+          const { deckPrefsHash, resetDeckHistory } = useAppStore.getState();
+          if (newHashStr !== deckPrefsHash) {
+            resetDeckHistory(newHashStr);
           }
 
           // Trigger refresh of experiences by updating refresh key
@@ -870,6 +955,17 @@ export function useAppHandlers(state: any) {
           matchFactors: card.matchFactors,
           lat: card.lat,
           lng: card.lng,
+          // Preserve curated card fields if this is a curated experience
+          ...((card as any).cardType === 'curated' ? {
+            cardType: (card as any).cardType,
+            stops: (card as any).stops,
+            tagline: (card as any).tagline,
+            totalPriceMin: (card as any).totalPriceMin,
+            totalPriceMax: (card as any).totalPriceMax,
+            estimatedDurationMinutes: (card as any).estimatedDurationMinutes,
+            pairingKey: (card as any).pairingKey,
+            experienceType: (card as any).experienceType,
+          } : {}),
         };
 
       
