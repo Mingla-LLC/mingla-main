@@ -72,8 +72,8 @@ Mingla combines **location-aware discovery**, **AI personalization**, **real-tim
 │                        Supabase Platform                             │
 │                                                                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────────┐  │
-│  │  Auth (JWT)   │  │  Realtime    │  │  Storage (avatars)        │  │
-│  │  Email/Pass   │  │  Presence    │  │  RLS-protected bucket     │  │
+│  │  Auth (JWT)   │  │  Realtime    │  │  Storage (avatars,        │  │
+│  │  Email/Pass   │  │  Presence    │  │  voice-reviews) RLS buckets│  │
 │  │  Phone OTP    │  │  Broadcasts  │  └───────────────────────────┘  │
 │  │  Google OAuth │  │  Typing      │                                 │
 │  │  Apple Sign-In│  └──────────────┘                                 │
@@ -116,22 +116,25 @@ Mingla combines **location-aware discovery**, **AI personalization**, **real-tim
 ### Data Pipeline Flow
 
 ```
-User Request → Edge Function (Deno)
+User Request (batchSeed=N) → Edge Function (Deno)
     ↓
 [1] Query preferences (DB)
     ↓
-[2] Query card_pool (exclude user_card_impressions since last pref change)
+[2] Query card_pool with offset (batchSeed × limit)
     ├── Filter: categories, geo (lat±δ, lng±δ), budget, card_type
-    ├── If pool ≥ limit → SERVE DIRECTLY (0 API calls)
-    └── If pool < limit → Gap analysis
-        ├── Identify missing categories
-        └── [3] Batch Google Places (google_places_cache first, 24h TTL)
-            ├── Upsert to place_pool
-            └── Insert to card_pool
+    ├── Exclude: user_card_impressions (session-scoped: since last pref change)
+    ├── Dedup: by google_place_id
+    ├── If pool ≥ limit at offset → SERVE DIRECTLY (0 API calls)
+    ├── If pool < limit at offset → Try nextPageToken expansion
+    │   ├── Check google_places_cache for entries with next_page_token
+    │   ├── Fetch next page from Google (pageToken-only request)
+    │   ├── Insert new places into place_pool + card_pool
+    │   └── Retry pool query
+    └── If still < limit → Gap analysis (batch Google Places)
     ↓
-[4] Record impressions (user_card_impressions)
+[3] Record impressions (user_card_impressions)
     ↓
-[5] Return cards to mobile → SwipeableCards deck
+[4] Return cards + hasMore flag to mobile → SwipeableCards deck
 ```
 
 ---
@@ -173,7 +176,7 @@ User Request → Edge Function (Deno)
 | API | Auto-generated REST (PostgREST) + Realtime (WebSocket) |
 | Edge Functions | 25+ Deno/TypeScript serverless functions |
 | Auth | Supabase Auth with JWT + RLS |
-| Storage | Supabase Storage (avatars bucket) |
+| Storage | Supabase Storage (avatars bucket, voice-reviews bucket) |
 | Email | Resend API (transactional emails) |
 
 ---
@@ -208,7 +211,8 @@ User Request → Edge Function (Deno)
 | **Busyness Forecast** | Crowd level predictions by time of day |
 | **Match Score Breakdown** | Visual breakdown of recommendation factors: location, budget, category, time, popularity |
 | **Experience Feedback Modal** | Post-interaction feedback ("too expensive", "too far", etc.) stored in `experience_feedback` |
-| **Deck Batch Navigation** | Navigate forward/backward through batch history. Pre-fetch triggers at 75% card consumption. Batches persisted to Zustand/AsyncStorage |
+| **Deck Batch Navigation** | Navigate forward/backward through batch history. Pre-fetch triggers at 75% card consumption. Batches persisted to Zustand/AsyncStorage. Replace-not-append batch transitions: each new batch fully replaces the old one, preventing unbounded array growth and dedup deadlocks. Two-tier batch timeout: 10s "Still loading..." intermediate state, 30s hard exhaustion timeout. Late-arriving batches automatically recover the deck. Pool re-warms on preference changes for fast first-batch serving. |
+| **Dismissed Cards Review** | When the deck is exhausted, users can review all left-swiped cards in a scrollable bottom sheet. Each card shows thumbnail, title, category, rating, and distance with "Reconsider" (re-add to deck) and "Save" (bookmark) actions. Tapping a card opens the full ExpandedCardModal. Haptic feedback on actions. List clears on preference change. |
 | **Solo vs. Collaboration Mode** | Toggle between personal recommendations and session-scoped cards via CollaborationSessions pill bar |
 | **Skeleton Loading** | Shimmer placeholder cards while deck generates |
 
@@ -216,7 +220,7 @@ User Request → Edge Function (Deno)
 
 | Feature | Description |
 |---|---|
-| **Daily Curated Feed** | AI-generated grid of 10 category cards + 1 featured card, cached in `discover_daily_cache` (24h TTL) |
+| **Personalized Daily Feed** | AI-generated grid of 2 hero cards (user's top 2 preferred categories, defaulting to Fine Dining + Play) + grid cards for remaining selected categories. Hero and grid categories are driven by user preferences — changing preferences refreshes the feed within 3 seconds. Cached in `discover_daily_cache` (24h TTL) with per-preference-set cache keys so switching preferences back serves from cache instantly. Pool-first path enforces per-category round-robin diversity via a 3-pass selection algorithm (extract heroes → one-per-category → fill remaining). "Policies & Reservations" button opens Google Maps for each venue via `placeId` |
 | **Category Browsing** | Horizontal category pills for all 12 categories with Ionicon icons and brand colors |
 | **Holiday Experiences** | Reads device calendar for upcoming holidays (falls back to 15 hardcoded holidays). Each holiday maps to primary + secondary categories. Gender-specific holidays (Mother's Day → feminine gifts, Father's Day → masculine activities) |
 | **Night-Out Section (Ticketmaster)** | Real live events from Ticketmaster Discovery API. Genre filter (server-side GENRE_TO_KEYWORDS map), date filter (getDateRange → startDate/endDate), price filter (client-side priceMin/priceMax). "Get Tickets" opens in-app browser via `expo-web-browser` |
@@ -247,7 +251,7 @@ User Request → Edge Function (Deno)
 |---|---|
 | **Scheduled Experiences** | Calendar view of scheduled activities with date grid and time slots |
 | **Calendar Integration** | Export to device calendar via Expo Calendar. Date proposal system with weekend day selection |
-| **Experience Reviews** | Prompted to review past scheduled experiences. `usePendingReviews` hook checks on mount + app foreground, waits 10 seconds, then shows modal (once per return to app) |
+| **Experience Reviews** | Prompted to review past scheduled experiences. `usePostExperienceCheck` hook checks on mount, app foreground, and every 60 seconds. 3-second delay before modal. Returns rich place data (name, address, category, image, IDs) for the voice review modal. Full `PostExperienceModal` component: locked modal (no dismiss), two paths — "Yes, I went" (star rating → voice recording → submit) or "No, I'll go later" (reschedule with date picker). Up to 5 voice clips (60s each), playback/delete, skip recording option. Reschedule updates calendar entry + sets `feedback_status='rescheduled'`. |
 | **QR Code Display** | QR codes for in-store/mobile payments on purchased experiences |
 
 ### 6. Activity Tab
@@ -422,7 +426,7 @@ Floating/content modals:
 |-------|-----------|
 | Share | `ShareModal` |
 | Feedback | `FeedbackModal` |
-| Experience Review | `ExperienceReviewModal` |
+| Post-Experience Review | `PostExperienceModal` |
 | Coach Map | `CoachMap` |
 | Debug | `DebugModal` (5-tap gesture) |
 | Notifications | `NotificationsModal` |
@@ -556,17 +560,19 @@ The card pool pipeline replaces direct Google API calls with pool-first serving.
 | `place_pool` | Shared enriched Google Places data. One row per unique `google_place_id` | Daily refresh via `refresh-place-pool` |
 | `card_pool` | Pre-built, ready-to-serve cards (`single` or `curated` type) | Deactivated when place deactivates |
 | `user_card_impressions` | Per-user card "seen" tracking. `(user_id, card_pool_id)` primary key | Resets when `preferences.updated_at` changes |
-| `google_places_cache` | Cached Google Places API responses. Key: `(place_type, location_key, radius_bucket)` | 24h TTL |
+| `google_places_cache` | Cached Google Places API responses. Key: `(place_type, location_key, radius_bucket)`. Stores `next_page_token` for pagination and `pages_fetched` counter | 24h TTL |
 
 ### Serving Logic (`cardPoolService.ts`)
 
-1. **Query pool**: `card_pool` filtered by categories (array overlap), geo bounds (lat/lng ± delta), budget (price range overlap), excluding user's impressions since last preference change
-2. **If pool ≥ requested limit**: Serve directly (0 API calls). Cards enriched with real distance/travel time via haversine + estimateTravelMin
-3. **If pool < limit**: Gap analysis identifies missing categories, then batch Google Places searches fill gaps
-4. **Upsert results**: New places → `place_pool` (opening hours parsed at ingestion), new cards → `card_pool`
-5. **Card format**: All output paths produce API-compatible fields: `priceMin`/`priceMax` (numeric), `distanceKm` (haversine from user), `travelTimeMin` (mode-aware estimate), `isOpenNow` (boolean), `openingHours` (parsed `Record<string, string>`)
-6. **Record impressions**: Log `user_card_impressions` with batch number
-7. **Return cards**: With metadata: `fromPool` count, `fromApi` count, `totalPoolSize`
+1. **Query pool with offset**: `card_pool` filtered by categories (array overlap), geo bounds (lat/lng ± delta), budget (price range overlap), excluding user's impressions (session-scoped: all impressions since `preferences.updated_at`). Changing any preference resets the session — previously seen cards become eligible again. **Server-side dedup** by `google_place_id` ensures the same physical place listed under multiple categories only appears once (highest popularity score wins). Applies `offset` parameter to skip cards from previous batches (`batchSeed × limit`)
+2. **If pool ≥ 80% of requested limit at offset**: Serve directly (0 API calls). `hasMore` calculated from `totalPoolSize > (offset + limit)`. Cards enriched with real distance/travel time via haversine + estimateTravelMin
+3. **If pool exhausted at offset (batchSeed > 0)**: Check `google_places_cache` for entries with `next_page_token`. For each, call `fetchNextPage` which sends a pageToken-only request to Google Places API, appends results to cache, then inserts new places into `place_pool` + `card_pool`. Retry pool query with expanded pool
+4. **If pool < 80% of limit**: Gap analysis identifies missing categories, then batch Google Places searches fill gaps. The 80% threshold ensures full batches survive downstream dedup
+5. **Batched upsert results**: New places → `place_pool` in a single batched upsert, new cards → `card_pool` in a single batched upsert. This replaces previous sequential per-place inserts, reducing ~80 DB round-trips to exactly 2 calls
+6. **Short-circuit on API fetch**: When `serveCardsFromPipeline()` already fetched from Google (fromApi > 0), `discover-cards` returns those cards immediately instead of falling through to a redundant second `batchSearchPlaces()` call
+7. **Card format**: All output paths produce API-compatible fields: `priceMin`/`priceMax` (numeric), `distanceKm` (haversine from user), `travelTimeMin` (mode-aware estimate), `isOpenNow` (boolean), `openingHours` (parsed `Record<string, string>`)
+8. **Record impressions**: Log `user_card_impressions` via `record_card_impressions` RPC — upserts with `ON CONFLICT DO UPDATE` to bump `created_at`, increment `view_count`, and preserve `first_seen_at`
+9. **Return cards**: With metadata: `fromPool` count, `fromApi` count, `totalPoolSize`, `hasMore` flag
 
 ### Curated Cards (Multi-Stop Itineraries)
 
@@ -603,15 +609,17 @@ Runs daily to keep `place_pool` data fresh:
 | `user_sessions` | Analytics sessions grouping related interactions |
 | `app_feedback` | In-app feedback submissions (rating, message, category) |
 | `experience_feedback` | Per-experience feedback |
+| `user_engagement_stats` | Per-user lifetime engagement totals: total_cards_seen, total_cards_saved, total_cards_scheduled, total_reviews_given. PK: user_id (FK to auth.users). RLS: users read own, service_role all. Writes via `increment_user_engagement` SECURITY DEFINER RPC only |
+| `place_reviews` | Voice reviews with star rating (1-5), audio file URLs (Storage paths), AI-processed transcription, sentiment (positive/negative/mixed/neutral), themes[], ai_summary. Processing lifecycle: pending→processing→completed/failed. No user DELETE policy (reviews permanent). FKs: user_id (CASCADE), calendar_entry_id (SET NULL), place_pool_id (SET NULL). RLS: users read/insert/update own, service_role all |
 
 ### Pipeline Tables
 
 | Table | Purpose |
 |---|---|
-| `place_pool` | Shared enriched Google Places data. `google_place_id` UNIQUE. Includes: name, address, lat/lng, types[], rating, review_count, price_level, opening_hours, photos, website, raw_google_data, is_active |
+| `place_pool` | Shared enriched Google Places data. `google_place_id` UNIQUE. Includes: name, address, lat/lng, types[], rating, review_count, price_level, opening_hours, photos, website, raw_google_data, is_active. **Analytics columns:** total_impressions, total_saves, total_schedules, mingla_review_count, mingla_avg_rating, mingla_positive_count, mingla_negative_count, mingla_top_themes[] |
 | `card_pool` | Pre-built cards (`single` or `curated`). Links to `place_pool` via `place_pool_id` FK. Includes: title, categories[], description, highlights, images, address, lat/lng, rating, popularity_score, base_match_score |
 | `user_card_impressions` | Per-user "seen" tracking. PK: `(user_id, card_pool_id)`. Includes `batch_number` and `created_at` |
-| `google_places_cache` | Google Places API response cache. Composite key: `(place_type, location_key, radius_bucket, search_strategy, text_query)`. 24h TTL |
+| `google_places_cache` | Google Places API response cache. Composite key: `(place_type, location_key, radius_bucket, search_strategy, text_query)`. Includes `next_page_token` (TEXT) for pagination and `pages_fetched` (INTEGER) counter. 24h TTL |
 | `ticketmaster_events_cache` | Ticketmaster API response cache. Key: `cache_key` TEXT (geo+keywords+date). 2h TTL |
 | `discover_daily_cache` | Per-city daily discover feed cache. 24h TTL |
 | `saved_people` | Per-user saved people (with optional description for AI). RLS: owner-only. Cascade deletes to `person_experiences` |
@@ -635,7 +643,7 @@ Runs daily to keep `place_pool` data fresh:
 | `collaboration_sessions` | Named sessions with status lifecycle (pending → active → completed). `created_by` FK |
 | `session_participants` | Session membership with `is_admin` flags and acceptance status |
 | `collaboration_invites` | Invite lifecycle tracking (pending → accepted/declined) |
-| `board_session_preferences` | Per-session preference overrides |
+| `board_session_preferences` | Per-session preference overrides (separate `categories` and `intents` columns) |
 | `board_saved_cards` | Cards added to boards with `card_data` JSONB |
 | `board_votes` | User votes on board cards |
 | `board_card_rsvps` | RSVP responses for scheduled board cards |
@@ -647,11 +655,11 @@ Runs daily to keep `place_pool` data fresh:
 | `board_typing_indicators` | Real-time typing status |
 | `board_user_swipe_states` | Per-user swipe state on board cards |
 
-### Calendar
+### Calendar & Reviews
 
 | Table | Purpose |
 |---|---|
-| `calendar_entries` | Scheduled experiences with date/time, source, card data |
+| `calendar_entries` | Scheduled experiences with date/time, source, card data. Includes `feedback_status` (NULL/pending/completed/skipped/rescheduled) and `review_id` (FK to `place_reviews`) for post-experience review tracking |
 
 ### Entity Relationships
 
@@ -669,9 +677,15 @@ auth.users ──┐
              │
              ├── user_card_impressions (1:M → card_pool)
              │
+             ├── place_reviews (1:M, CASCADE)
+             │     ├── calendar_entry_id (FK → calendar_entries, SET NULL)
+             │     └── place_pool_id (FK → place_pool, SET NULL)
+             │
              ├── saves (M:N with experiences)
              ├── saved_cards (1:M)
              ├── calendar_entries (1:M)
+             │     ├── feedback_status (NULL/pending/completed/skipped/rescheduled)
+             │     └── review_id (FK → place_reviews, SET NULL)
              │
              ├── collaboration_sessions (1:M as creator)
              │     ├── session_participants (M:N)
@@ -693,6 +707,8 @@ auth.users ──┐
 
 place_pool ──→ card_pool (1:M via place_pool_id FK)
 card_pool ──→ user_card_impressions (1:M)
+
+auth.users ──→ user_engagement_stats (1:1, CASCADE delete)
 ```
 
 ### Row Level Security
@@ -717,6 +733,7 @@ Every table has RLS enabled with policies enforcing:
 | `auto_create_profile` | Creates profile row on new user sign-up |
 | `cleanup_session_under_two_participants` | AFTER DELETE on `session_participants` → auto-deletes sessions below 2 members |
 | `sync_invite_inviter_ids` | Keeps `inviter_id` and `invited_by` columns in sync |
+| `update_user_engagement_stats_updated_at` | Auto-updates `updated_at` on `user_engagement_stats` row modification |
 
 ### Migrations
 
@@ -735,6 +752,12 @@ Every table has RLS enabled with policies enforcing:
 | 2026-03-02 | `20260302000003` | Fix google_places_cache UNIQUE constraint (NULL text_query → NOT NULL DEFAULT '') |
 | 2026-03-02 | `20260302000004` | Card pool dedup (partial unique index on google_place_id for single cards) |
 | 2026-03-02 | `20260302000005` | Saved people + person experiences tables (Add Person → curated experiences) |
+| 2026-03-02 | `20260302000006` | Pool pagination: add `next_page_token` (TEXT) and `pages_fetched` (INTEGER) to `google_places_cache` |
+| 2026-03-03 | `20260303000015` | Voice reviews: `place_reviews` table, `calendar_entries` feedback columns, `voice-reviews` storage bucket |
+| 2026-03-03 | `20260303000003` | Engagement analytics: `user_engagement_stats` table, 8 analytics columns on `place_pool`, 2 atomic increment RPC functions |
+| 2026-03-03 | `20260303000016` | Add `processed_at` (TIMESTAMPTZ) to `place_reviews` for tracking when voice review processing completed |
+| 2026-03-03 | `20260303000017` | Secure engagement RPCs: field whitelisting + auth.uid() ownership check on `increment_user_engagement` and `increment_place_engagement` |
+| 2026-03-03 | `20260303000018` | Fix tautological partial index on `calendar_entries` (feedback_status) |
 
 ---
 
@@ -748,7 +771,7 @@ Every table has RLS enabled with policies enforcing:
 | `generate-experiences` | No | Google Places, OpenAI | `experiences`, `card_pool` | Legacy standalone experience generation (pre-pool era) |
 | `generate-session-experiences` | No | Google Places, OpenAI | `board_session_preferences`, `card_pool`, `place_pool` | Collaboration mode: aggregates all participants' preferences (widest budget, union categories, majority travel mode, centroid location) |
 | `generate-curated-experiences` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `user_card_impressions` | 3-stop itinerary builder. Generates stop routes with travel times, AI descriptions, duration estimates |
-| `discover-cards` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `google_places_cache`, `user_card_impressions` | Unified card discovery — pool-first serving for all 12 categories, 4 types/category, batch upsert to pool, fire-and-forget AI enrichment. Returns `hasMore` flag for swipe lifecycle exhaustion detection. **Always returns HTTP 200** with `{ cards: [] }` on failure (never 500) to prevent killing curated pipeline. |
+| `discover-cards` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `google_places_cache`, `user_card_impressions` | Unified card discovery — pool-first serving for all 12 categories with offset-based pagination (`batchSeed × limit` skip). When pool exhausted at offset, expands pool via `nextPageToken` pagination from `google_places_cache`, inserts new places into `place_pool` + `card_pool`, and retries. Falls back to Google Places batch search if pool still insufficient. Batch upsert with dedup, fire-and-forget AI enrichment. Returns `hasMore` flag computed from `totalPoolSize > (offset + limit)`. |
 | `generate-person-experiences` | JWT | Google Places, OpenAI | `saved_people`, `person_experiences` | Parses person description via OpenAI into interests, finds matching Google Places for each occasion (birthday, holidays), stores curated per-person experiences |
 | `discover-experiences` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool`, `place_pool` | General discovery for all 12 categories with 24h daily cache |
 | `discover-casual-eats` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool` | Category-specific: Casual Eats |
@@ -777,6 +800,7 @@ Every table has RLS enabled with policies enforcing:
 |----------|------|---------------|---------|
 | `enhance-cards` | No | OpenAI GPT-4o-mini | Card enrichment with personalization context (group size, intents, time window, budget, travel mode). Returns enhanced matchScore, description, highlights |
 | `ai-reason` | JWT | OpenAI GPT-4o-mini | Weather-aware recommendations. Returns: `weather_badge`, `adjusted_duration`, `safety_notes`, `indoor_alternative` |
+| `process-voice-review` | No (service) | OpenAI GPT-4o-mini-audio-preview | Background voice review processor. Accepts `reviewId`, fetches audio clips from Storage signed URLs, sends to GPT as `input_audio` for combined transcription + sentiment analysis + theme extraction in a single call. Updates `place_reviews` row with results, recalculates `place_pool` analytics, increments `user_engagement_stats`. Graceful fallback: if GPT fails, infers sentiment from star rating |
 
 ### Maps & Location
 
@@ -814,9 +838,9 @@ Every table has RLS enabled with policies enforcing:
 
 | Module | Purpose |
 |--------|---------|
-| `cardPoolService.ts` | Core pool-first serving engine. `serveCardsFromPipeline()`, `serveCuratedCardsFromPool()`, `upsertPlaceToPool()`, `insertCardToPool()`, `recordImpressions()`. Includes `haversine()`, `estimateTravelMin()`, `parseGoogleOpeningHours()` for computing real distance/travel time and parsing opening hours from raw Google format. All card output paths produce API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`) |
+| `cardPoolService.ts` | Core pool-first serving engine with offset-based pagination. `serveCardsFromPipeline()` (accepts `offset` param for batch skip), `serveCuratedCardsFromPool()`, `upsertPlaceToPool()`, `insertCardToPool()`, `recordImpressions()`. `queryPoolCards()` applies offset after impression filtering + dedup, with dynamic fetch limit `Math.max(limit*3, (offset+limit)*2)`. Includes `haversine()`, `estimateTravelMin()`, `parseGoogleOpeningHours()` for computing real distance/travel time and parsing opening hours. All card output paths produce API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`). **Engagement wiring:** `incrementPlaceImpressions()` helper batch-resolves `google_place_id` from `card_pool` and fires `increment_place_engagement` per unique place. Both serve paths (pool-only and pool+fresh) fire-and-forget `increment_user_engagement(total_cards_seen)` and `incrementPlaceImpressions(total_impressions)` after recording impressions. Fresh-only edge case handled separately |
 | `categoryPlaceTypes.ts` (210 lines) | Single source of truth: `MINGLA_CATEGORY_PLACE_TYPES` (display name → Google types), `CATEGORY_ALIASES` (all variations), `resolveCategory()`, `getPlaceTypesForCategory()`, `INTENT_IDS`, `filterOutIntents()` |
-| `placesCache.ts` (257 lines) | Google Places API caching: `searchPlacesWithCache()` (single type), `batchSearchPlaces()` (parallel multi-type). Location key precision: `lat.toFixed(2),lng.toFixed(2)` (~1.1km grid) |
+| `placesCache.ts` (~340 lines) | Google Places API caching: `searchPlacesWithCache()` (single type, stores `nextPageToken`), `fetchNextPage()` (pageToken-only pagination, appends to cache, clears expired tokens), `batchSearchPlaces()` (parallel multi-type). Location key precision: `lat.toFixed(2),lng.toFixed(2)` (~1.1km grid) |
 | `textSearchHelper.ts` (57 lines) | Fallback for non-standard place types (e.g., "sip and paint", "cooking classes"). `textSearchPlaces()` with keyword replacement |
 
 ---
@@ -838,7 +862,7 @@ Every table has RLS enabled with policies enforcing:
 1. **Supabase Auth (JWT)** — Every API call carries a JWT; `auth.uid()` is the single source of identity
 2. **Row Level Security (RLS)** — All tables have RLS enabled. Policies enforce ownership, session membership, friendship-based visibility
 3. **Service Role Isolation** — Pipeline tables (`place_pool`, `card_pool`) are write-only for `service_role`; mobile clients get read-only access
-4. **SECURITY DEFINER Functions** — Trigger functions that cross RLS boundaries (e.g., writing to `user_preference_learning` from interaction inserts) use explicit `search_path`
+4. **SECURITY DEFINER Functions** — Trigger functions that cross RLS boundaries (e.g., writing to `user_preference_learning` from interaction inserts) use explicit `search_path`. Engagement analytics RPCs (`increment_user_engagement`, `increment_place_engagement`) run as SECURITY DEFINER for atomic counter increments — secured with explicit field whitelists (only known analytics columns accepted) and `auth.uid()` ownership checks (users can only increment their own stats)
 5. **Edge Function JWT Verification** — Critical functions (AI reasoning, API key retrieval, email sending, user deletion) require valid JWT. Discovery/weather endpoints are public
 6. **OAuth Redirect Page** — Dedicated static page (`oauth-redirect/`) handles OAuth callback token extraction
 7. **API Key Proxy** — Google Maps key served via `get-google-maps-key` edge function (JWT-required), never embedded in client code
@@ -877,7 +901,8 @@ Card State
 Deck History (persisted)
 ├── deckBatches: DeckBatch[] (cards + activePills + timestamp per batch)
 ├── currentDeckBatchIndex: number
-└── deckPrefsHash: string (reset trigger)
+├── deckPrefsHash: string (reset trigger)
+└── deckSchemaVersion: number (bumped to invalidate stale batches on deploy)
 
 UI State (NOT persisted)
 └── showAccountSettings: boolean
@@ -926,7 +951,6 @@ defaultOptions: {
 | `useDeckCards` | Unified deck cards (solo mode) | Wraps `deckService.fetchDeck()` (parallel category + curated pipelines via `Promise.allSettled`). 30-min stale time. Returns `Recommendation[]` with `deckMode`, `activePills`, and `hasMore` flag |
 | `useRecommendationsQuery` | Collaboration mode recommendations | Wraps `ExperienceGenerationService.generateExperiences()`. 1-hour stale time |
 | `useCuratedExperiences` | Multi-stop itinerary cards | Supports 7 types: adventurous, first-date, romantic, friendly, group-fun, picnic-dates, take-a-stroll. Background batch `skipDescriptions: true` |
-| `useNatureCards` | Nature category cards | Calls `discover-nature` edge function |
 | `useExperiences` | Generic experience fetching (legacy) | `fetchExperiences()`, `fetchNearbyPlaces()`, `saveExperience()`, `getSavedExperiences()` |
 | `useSavedCards` | React Query saved cards | Wraps `savedCardsService.fetchSavedCards()` |
 | `useSaves` | Manual saves management | `addSave()`, `updateSave()`, `removeSave()`. Real-time Supabase subscriptions |
@@ -965,7 +989,7 @@ defaultOptions: {
 | `useRecentActivity` | User activity history | Fetches via `userActivityService.fetchRecentActivity()`. Default limit: 20 |
 | `useCalendarEntries` | Calendar entries | Wraps `CalendarService.fetchUserCalendarEntries()`. Always fresh (staleTime: 0) |
 | `useCalendarHolidays` | Holiday calendar | Reads device calendar, falls back to 15 hardcoded holidays. Maps holiday → primary + secondary category |
-| `usePendingReviews` | Day-after review prompts | Checks on mount + app foreground. 10-second delay, once per return to app |
+| `usePostExperienceCheck` | Post-experience review prompts | Checks on mount, foreground, and 60s interval. 3-second delay. Returns `PendingExperienceReview` with full place data. `recheckPending()` for chained reviews |
 
 ### Profile & Gamification (1)
 
@@ -992,9 +1016,9 @@ defaultOptions: {
 | Service | Purpose |
 |---------|---------|
 | `authService.ts` | Profile CRUD: `loadUserProfile()`, `updateUserProfile()`, `uploadAvatar()` |
-| `supabase.ts` | Supabase client singleton with auth configuration and 30-second global fetch timeout wrapper (prevents indefinite hangs when Supabase is unreachable) |
+| `supabase.ts` | Supabase client singleton with auth configuration and 30-second global fetch timeout wrapper via `Promise.race` (reliable on React Native Android where `AbortController.abort()` silently fails) |
 
-### Experience Generation & Cards (19)
+### Experience Generation & Cards (9)
 
 | Service | Purpose |
 |---------|---------|
@@ -1004,19 +1028,8 @@ defaultOptions: {
 | `holidayExperiencesService.ts` | `generateHolidayExperiences()` → holiday-experiences |
 | `nightOutExperiencesService.ts` | `fetchTicketmasterEvents()` → ticketmaster-events. Returns events with artistName, venueName, ticketUrl, priceRange |
 | `savedPeopleService.ts` | CRUD for `saved_people` table + experience generation via `generate-person-experiences` edge function |
-| `natureCardsService.ts` | `discoverNature()` → discover-nature |
-| `casualEatsCardsService.ts` | Category-specific: Casual Eats |
-| `fineDiningCardsService.ts` | Category-specific: Fine Dining |
-| `drinkCardsService.ts` | Category-specific: Drink |
-| `firstMeetCardsService.ts` | Category-specific: First Meet |
-| `picnicParkCardsService.ts` | Category-specific: Picnic/Park |
-| `watchCardsService.ts` | Category-specific: Watch |
-| `creativeArtsCardsService.ts` | Category-specific: Creative & Arts |
-| `playCardsService.ts` | Category-specific: Play |
-| `wellnessCardsService.ts` | Category-specific: Wellness |
-| `groceriesFlowersCardsService.ts` | Category-specific: Groceries & Flowers |
 | `experiencesService.ts` | User preferences and interaction tracking |
-| `savedCardsService.ts` | `fetchSavedCards(userId)` from recommendations |
+| `savedCardsService.ts` | `saveCard()` (upsert + activity recording + fire-and-forget engagement counters: `total_cards_saved` + `total_saves`), `removeCard()`, `fetchSavedCards(userId)` (solo + board merge), `updateCardStrollData()`, `updateCardPicnicData()` |
 | `enhancedFavoritesService.ts` | Favorite management with analytics |
 
 ### Board & Collaboration (5)
@@ -1060,7 +1073,7 @@ defaultOptions: {
 
 | Service | Purpose |
 |---------|---------|
-| `calendarService.ts` | `fetchUserCalendarEntries(userId)` — scheduled experiences |
+| `calendarService.ts` | `fetchUserCalendarEntries(userId)`, `addEntryFromSavedCard()` (insert + activity recording + fire-and-forget engagement counters: `total_cards_scheduled` + `total_schedules`), `updateEntry()`, `deleteEntry()` |
 | `deviceCalendarService.ts` | Device calendar: `hasPermissions()`, `requestPermissions()`, `getHolidaysFromCalendar(daysAhead)` |
 
 ### User Activity & Personalization (4)
@@ -1102,11 +1115,12 @@ defaultOptions: {
 |---------|---------|
 | `messagingService.ts` | Direct message operations |
 
-### Feedback (1)
+### Feedback & Reviews (2)
 
 | Service | Purpose |
 |---------|---------|
 | `experienceFeedbackService.ts` | `getPendingReviewEntries(userId)` — unreviewed scheduled experiences |
+| `voiceReviewService.ts` | Voice review recording, upload, and submission. `VoiceReviewRecorder` singleton (expo-av): `initialize()`, `startRecording()`, `stopRecording()`, `cancelRecording()`, `isRecording()`. `voiceReviewService`: `submitVoiceReview(userId, submission)` → parallel audio upload to private `voice-reviews` bucket → `place_reviews` insert → calendar update → fire-and-forget edge function. `markRescheduled(userId, calendarEntryId)`. Exports: `VoiceClip`, `VoiceReviewSubmission`, `VoiceReviewResult`, `MAX_CLIP_DURATION_MS`, `MAX_CLIPS` |
 
 ### Device & System (6)
 
@@ -1259,6 +1273,8 @@ Filters out experience intents (adventurous, romantic, business, etc.) before Go
 | `roundRobinInterleave()` | Interleave multiple card arrays while deduping |
 | `curatedToRecommendation()` | Convert `CuratedExperienceCard` to `Recommendation` |
 | `computePrefsHash()` | Hash preferences for cache key generation |
+| `INTENT_IDS` | Set of well-known intent IDs (adventurous, romantic, etc.) |
+| `separateIntentsAndCategories()` | Split mixed array into intents vs. category names |
 
 ### Animation Utilities (`src/utils/animations.ts`)
 
@@ -1371,6 +1387,8 @@ Filters out experience intents (adventurous, romantic, business, etc.) before Go
 | `SkeletonCard.tsx` | Shimmer loading placeholder |
 | `CardStackPreview.tsx` | Stacked card preview behind main card |
 | `DeckHistorySheet.tsx` | Bottom sheet for swipe batch history |
+| `DismissedCardsSheet.tsx` | Bottom sheet for reviewing/reconsidering left-swiped cards |
+| `PostExperienceModal.tsx` | Locked post-experience modal: star rating, voice recording (up to 5 clips), reschedule path with date picker |
 | `PullToRefresh.tsx` | Pull-to-refresh with Reanimated animations + haptic feedback |
 
 ### Activity Subdirectory (9)
@@ -1488,7 +1506,7 @@ Mingla/
 │   │   │   ├── useFriends.ts               # Friend management
 │   │   │   ├── useMessages.ts              # Messaging
 │   │   │   ├── useCalendarHolidays.ts      # Device calendar holidays
-│   │   │   ├── usePendingReviews.ts        # Day-after review prompts
+│   │   │   ├── usePostExperienceCheck.ts   # Post-experience review prompts
 │   │   │   ├── useEnhancedProfile.ts       # Gamified profile
 │   │   │   └── ... (22 more)
 │   │   ├── services/                        # 65+ service modules
@@ -1784,14 +1802,27 @@ npx supabase functions serve function-name --env-file .env.local
 
 ---
 
-## Recent Changes (2026-03-02)
+## Recent Changes (2026-03-03)
 
-- **Pool Card Format Fix:** Pool-served cards output API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`) with real distance (haversine) and mode-aware travel time.
-- **Opening Hours Dual-Format Detection:** A new `resolveOpeningHours()` function detects whether `card_pool.opening_hours` contains raw Google data (with `weekdayDescriptions`) or already-parsed `Record<string, string>`, preventing double-parse data loss on pool re-serve. `_isOpenNow` sentinel stored alongside parsed hours for persistence.
-- **Travel Mode Pass-Through:** `discover-cards` now passes `travelMode` to `serveCardsFromPipeline()` as the 3rd argument, ensuring pool-served cards use the user's selected travel mode instead of defaulting to walking.
-- **Per-Category Round-Robin:** Deck cards grouped by category before round-robin interleaving for proper alternation.
-- **15-Second Timeout Fix:** `DOMException` replaced with plain `Error` + `err.name = 'AbortError'` for Hermes engine compatibility in both `fetchDeck` and `warmDeckPool`.
-- **`_isOpenNow` Third Ingestion Path:** `discover-cards/storeResultsInPoolBatched` now stores the `_isOpenNow` sentinel into `card_pool.opening_hours` JSONB, completing the fix across all 3 ingestion paths so pool-served cards retain open/closed status.
+- **Engagement Counter Wiring:** Wired `increment_user_engagement` and `increment_place_engagement` RPC functions into the three main user action paths. `cardPoolService.ts` now increments `total_cards_seen` (user) and `total_impressions` (place) on every card serve — pool-only, pool+fresh, and fresh-only paths all covered. `savedCardsService.ts` increments `total_cards_saved` (user) and `total_saves` (place) on successful saves (duplicate saves excluded). `calendarService.ts` increments `total_cards_scheduled` (user) and `total_schedules` (place) on successful schedule. All counter calls are fire-and-forget (never awaited, errors silently swallowed) to guarantee zero impact on main operation latency and reliability.
+- **Post-Experience Modal:** New `PostExperienceModal.tsx` — fully locked modal (no dismiss, no X, Android back disabled) with two completion paths: review (star rating → voice recording → submit) and reschedule (date picker → calendar update). Supports up to 5 voice clips (60s each, auto-stop), playback/delete, skip recording, retry on submit error. Integrates `voiceReviewService`, `CalendarService`, and `voiceReviewRecorder`.
+- **Post-Experience Check Hook:** New `usePostExperienceCheck` hook replaces `usePendingReviews`. Queries `calendar_entries` directly (single query with `feedback_status IS NULL` filter instead of cross-referencing `experience_feedback`). 3-second modal delay (down from 10s), 60-second periodic interval check (new), rich `PendingExperienceReview` interface with full place data for the voice review modal, `recheckPending()` for chained reviews, concurrent-check prevention via `isCheckingRef`.
+- **Voice Review Mobile Service:** New `voiceReviewService.ts` provides audio recording via `expo-av` (`VoiceReviewRecorder` singleton class with `initialize`, `startRecording`, `stopRecording`, `cancelRecording`), parallel audio upload to private `voice-reviews` Supabase Storage bucket with 1-year signed URLs, `submitVoiceReview` orchestrating upload → `place_reviews` insert → `calendar_entries` status update → fire-and-forget `process-voice-review` edge function invocation, and `markRescheduled` for deferred feedback. Exports `VoiceClip`, `VoiceReviewSubmission`, `VoiceReviewResult` types and `MAX_CLIP_DURATION_MS` / `MAX_CLIPS` constants.
+- **Voice Reviews Database Layer:** New `place_reviews` table for storing voice reviews with star ratings (1-5), audio file Storage paths, AI-processed transcription, sentiment classification, theme extraction, and processing lifecycle tracking. New `voice-reviews` private storage bucket with per-user folder isolation and RLS policies. `calendar_entries` extended with `feedback_status` and `review_id` columns for post-experience review prompting. Migration: `20260303000015`.
+- **Voice Review Processing Edge Function:** New `process-voice-review` edge function that runs in the background after a user submits a voice review. Downloads audio clips from Supabase Storage, sends them to GPT-4o-mini-audio-preview as `input_audio` for combined transcription + sentiment analysis + theme extraction in a single API call. Updates `place_reviews` with results, recalculates `place_pool` aggregate analytics (review count, avg rating, sentiment counts, top themes), and increments `user_engagement_stats.total_reviews_given`. Graceful fallback on GPT failure: infers sentiment from star rating, marks processing as completed. Migration `20260303000016` adds `processed_at` column.
+- **Engagement Analytics Database Layer:** New `user_engagement_stats` table for per-user lifetime totals (cards seen/saved/scheduled, reviews given). 8 analytics columns added to `place_pool` (total_impressions, total_saves, total_schedules, review counts, ratings, themes). Two SECURITY DEFINER RPC functions (`increment_user_engagement`, `increment_place_engagement`) for atomic counter increments. Migration: `20260303000003`.
+- **Session-Scoped Impressions:** Replaced the 200-card sliding window with preference-session scoping. Cards seen since the last preference change are excluded; changing any preference makes all previous cards eligible again. Impressions now recorded via `record_card_impressions` RPC with `view_count` and `first_seen_at` analytics columns. Covering index `idx_impressions_user_session` added for session-scoped queries. Both `cardPoolService.ts` and `discover-experiences` updated.
+- **Preference History Trigger Fix:** Migration `20260303000005` restores the correct JSONB-based `create_preference_history()` trigger function.
+- **Policies & Reservations Button Fix:** Fixed compound data pipeline failure at 9 independent points that prevented the "Policies & Reservations" button from appearing on regular cards.
+- **Preferences Save — Resilient Timeout & Performance:** Three-layer timeout defense (12s service, 30s fetch, 15s UI safety net) guarantees the user sees success or failure within 12 seconds.
+- **Preferences Save Reliability (6-fix batch):** Triple-fire save button fixed; `people_count: undefined` fixed; `board_session_preferences` now stores `intents` in a separate column.
+- **Dismissed Cards Review UI:** New `DismissedCardsSheet` bottom sheet lets users review left-swiped cards on deck exhaustion.
+- **Pool Pagination (batchSeed Offset + nextPageToken):** Each swipe batch now gets a distinct slice of the card pool via offset-based pagination.
+- **For You Hero Card Personalization:** Hero cards display user's top 2 preferred categories.
+- **App Integration — Voice Review Wiring:** Swapped `ExperienceReviewModal` for `PostExperienceModal` + `usePostExperienceCheck` in `app/index.tsx`. Patched `experienceFeedbackService.getPendingReviewEntries()` with `.is("feedback_status", null)` filter for backward compatibility. Added `expo-av` to `app.json` plugins for native audio recording support.
+- **Security Hardening — Engagement RPCs:** Added field whitelisting and `auth.uid()` ownership check to both `increment_user_engagement` and `increment_place_engagement` SECURITY DEFINER functions. Previously any authenticated user could increment arbitrary columns on any user's stats. Migration: `20260303000017`.
+- **Dead Code Removal:** Deleted `usePendingReviews.ts` (93 lines, zero imports) — fully replaced by `usePostExperienceCheck.ts`.
+- **Tautological Index Fix:** Dropped and recreated `idx_calendar_entries_feedback` without the always-true `WHERE feedback_status IS NOT NULL OR feedback_status IS NULL` clause. Migration: `20260303000018`.
 
 ---
 

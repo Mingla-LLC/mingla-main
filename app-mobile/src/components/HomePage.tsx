@@ -237,7 +237,7 @@ export default function HomePage({
             >
               <Ionicons
                 name="options-outline"
-                size={21}
+                size={18}
                 color={currentMode !== "solo" ? "#eb7825" : "#1f2937"}
               />
             </TouchableOpacity>
@@ -260,7 +260,7 @@ export default function HomePage({
               activeOpacity={0.6}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="notifications-outline" size={21} color="#1f2937" />
+              <Ionicons name="notifications-outline" size={18} color="#1f2937" />
               {/* Notification indicator dot */}
               {unreadNotificationCount > 0 && <View style={styles.notificationDot} />}
             </TouchableOpacity>

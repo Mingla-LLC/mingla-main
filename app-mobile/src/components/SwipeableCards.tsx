@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Text,
   View,
@@ -41,6 +41,7 @@ import {
   Recommendation,
 } from "../contexts/RecommendationsContext";
 import { DeckHistorySheet } from "./DeckHistorySheet";
+import { DismissedCardsSheet } from "./DismissedCardsSheet";
 import { getReadableCategoryName } from "../utils/categoryUtils";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
@@ -210,7 +211,10 @@ export default function SwipeableCards({
     hasMoreCards,
     dismissedCards,
     addDismissedCard,
+    removeDismissedCard,
+    addCardToFront,
     isExhausted,
+    isSlowBatchLoad,
   } = useRecommendations();
 
   // Combine all loading states for UI consistency and to prevent animation freezing
@@ -237,6 +241,7 @@ export default function SwipeableCards({
     useState<ExpandedCardData | null>(null);
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
+  const [dismissedSheetVisible, setDismissedSheetVisible] = useState(false);
   const batchSpinValue = useRef(new Animated.Value(0)).current;
   const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
     refreshKey
@@ -816,11 +821,11 @@ export default function SwipeableCards({
       fullDescription: currentRec.fullDescription || currentRec.description,
       image: currentRec.image,
       images: currentRec.images || [currentRec.image],
-      rating: currentRec.rating,
-      reviewCount: currentRec.reviewCount,
-      priceRange: currentRec.priceRange,
-      distance: currentRec.distance,
-      travelTime: currentRec.travelTime,
+      rating: currentRec.rating ?? 0,
+      reviewCount: currentRec.reviewCount ?? 0,
+      priceRange: currentRec.priceRange || 'Free',
+      distance: currentRec.distance || '0 km',
+      travelTime: currentRec.travelTime || '0 min',
       address: currentRec.address,
       openingHours: currentRec.openingHours,
       highlights: currentRec.highlights || [],
@@ -1010,6 +1015,71 @@ export default function SwipeableCards({
       onOpenCollabPreferences?.();
     }
   };
+
+  const handleReconsiderCard = useCallback((card: Recommendation) => {
+    removeDismissedCard(card);
+    addCardToFront(card);
+    setRemovedCards((prev) => {
+      const next = new Set(prev);
+      next.delete(card.id);
+      return next;
+    });
+    setCurrentCardIndex(0);
+    setDismissedSheetVisible(false);
+  }, [removeDismissedCard, addCardToFront]);
+
+  const handleSaveDismissedCard = useCallback((card: Recommendation) => {
+    onCardLike(card);
+  }, [onCardLike]);
+
+  const handleDismissedCardPress = useCallback((card: Recommendation) => {
+    setDismissedSheetVisible(false);
+    // Small delay to avoid modal animation conflict
+    setTimeout(() => {
+      // Transform the card to ExpandedCardData and open modal
+      if ((card as any).cardType === 'curated') {
+        setSelectedCardForExpansion(card as unknown as ExpandedCardData);
+      } else {
+        const expandedCardData: ExpandedCardData = {
+          id: card.id,
+          placeId: card.placeId ?? card.id,
+          title: card.title,
+          category: card.category,
+          categoryIcon: card.categoryIcon,
+          description: card.description,
+          fullDescription: card.fullDescription || card.description,
+          image: card.image,
+          images: card.images || [card.image],
+          rating: card.rating ?? 0,
+          reviewCount: card.reviewCount ?? 0,
+          priceRange: card.priceRange || 'Free',
+          distance: card.distance || '0 km',
+          travelTime: card.travelTime || '0 min',
+          address: card.address,
+          openingHours: card.openingHours,
+          highlights: card.highlights || [],
+          tags: card.tags || [],
+          matchScore: card.matchScore,
+          matchFactors: card.matchFactors,
+          socialStats: card.socialStats,
+          location:
+            card.lat && card.lng
+              ? { lat: card.lat, lng: card.lng }
+              : userLocation
+              ? { lat: userLocation.lat, lng: userLocation.lng }
+              : undefined,
+          selectedDateTime: userPreferences?.datetime_pref
+            ? new Date(userPreferences.datetime_pref)
+            : new Date(),
+          strollData: card.strollData,
+          website: (card as any).website ?? undefined,
+          phone: (card as any).phone ?? undefined,
+        };
+        setSelectedCardForExpansion(expandedCardData);
+      }
+      setIsExpandedModalVisible(true);
+    }, 300);
+  }, [userLocation, userPreferences]);
 
   const handleViewCardsAgain = async () => {
     // Clear local state
@@ -1253,6 +1323,21 @@ export default function SwipeableCards({
     );
   }
 
+  // Slow batch load — show "Still loading" instead of exhaustion
+  if (isSlowBatchLoad && !isExhausted) {
+    return (
+      <View style={styles.noCardsContainer}>
+        <View style={styles.noCardsContent}>
+          <ActivityIndicator size="large" color="#eb7825" />
+          <Text style={styles.noCardsTitle}>Still loading...</Text>
+          <Text style={styles.noCardsSubtitle}>
+            Finding more places nearby. This is taking a bit longer than usual.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   // End of deck — exhausted (no more Google results)
   if (
     isExhausted &&
@@ -1266,7 +1351,7 @@ export default function SwipeableCards({
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
           <View style={styles.sparklesContainer}>
-            <Ionicons name="earth-outline" size={48} color="#6366F1" />
+            <Ionicons name="earth-outline" size={48} color="#eb7825" />
           </View>
           <Text style={styles.noCardsTitle}>You've explored everything nearby</Text>
           <Text style={styles.noCardsSubtitle}>
@@ -1276,10 +1361,10 @@ export default function SwipeableCards({
           {dismissedCards.length > 0 && (
             <TouchableOpacity
               style={styles.reviewDismissedButton}
-              onPress={() => setHistoryVisible(true)}
+              onPress={() => setDismissedSheetVisible(true)}
               activeOpacity={0.7}
             >
-              <Ionicons name="refresh-outline" size={18} color="#6366F1" />
+              <Ionicons name="refresh-outline" size={18} color="#eb7825" />
               <Text style={styles.reviewDismissedText}>
                 Review {dismissedCards.length} dismissed card{dismissedCards.length !== 1 ? "s" : ""}
               </Text>
@@ -1310,8 +1395,11 @@ export default function SwipeableCards({
   ) {
     return (
       <View style={styles.noCardsContainer}>
-        <ActivityIndicator size="large" color="#6366F1" />
+        <ActivityIndicator size="large" color="#eb7825" />
         <Text style={styles.loadingNextBatch}>Loading more experiences...</Text>
+        <Text style={styles.loadingNextBatchSubtitle}>
+          This should only take a moment
+        </Text>
       </View>
     );
   }
@@ -1400,19 +1488,19 @@ export default function SwipeableCards({
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem)}
+                            {parseAndFormatDistance(nextCard.distance || '0 km', accountPreferences?.measurementSystem) || 'Nearby'}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
                           <Ionicons name="star" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {nextCard.rating.toFixed(1)}
+                            {(nextCard.rating ?? 0).toFixed(1)}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
                           <Ionicons name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {formatPriceRange(nextCard.priceRange, accountPreferences?.currency)}
+                            {formatPriceRange(nextCard.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
@@ -1535,19 +1623,19 @@ export default function SwipeableCards({
                         <View style={styles.detailBadge}>
                           <Ionicons name="location" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
+                            {parseAndFormatDistance(currentRec.distance || '0 km', accountPreferences?.measurementSystem) || 'Nearby'}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
                           <Ionicons name="star" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {currentRec.rating.toFixed(1)}
+                            {(currentRec.rating ?? 0).toFixed(1)}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
                           <Ionicons name="pricetag" size={12} color="white" />
                           <Text style={styles.detailBadgeText}>
-                            {formatPriceRange(currentRec.priceRange, accountPreferences?.currency)}
+                            {formatPriceRange(currentRec.priceRange || 'Free', accountPreferences?.currency) || 'Free'}
                           </Text>
                         </View>
                         <View style={styles.detailBadge}>
@@ -1666,6 +1754,15 @@ export default function SwipeableCards({
         currentDeckBatchIndex={currentDeckBatchIndex}
         navigateToDeckBatch={navigateToDeckBatch}
         totalDeckCardsViewed={totalDeckCardsViewed}
+      />
+
+      <DismissedCardsSheet
+        visible={dismissedSheetVisible}
+        onClose={() => setDismissedSheetVisible(false)}
+        dismissedCards={dismissedCards}
+        onReconsider={handleReconsiderCard}
+        onSave={handleSaveDismissedCard}
+        onCardPress={handleDismissedCardPress}
       />
     </View>
   );
@@ -2258,13 +2355,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#6366F1",
+    borderColor: "#eb7825",
     marginBottom: 12,
   },
   reviewDismissedText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#6366F1",
+    color: "#eb7825",
   },
   changePreferencesButton: {
     flexDirection: "row",
@@ -2273,7 +2370,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 12,
-    backgroundColor: "#6366F1",
+    backgroundColor: "#eb7825",
   },
   changePreferencesText: {
     fontSize: 14,
@@ -2284,6 +2381,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#9CA3AF",
     marginTop: 12,
+  },
+  loadingNextBatchSubtitle: {
+    fontSize: 13,
+    color: "#999",
+    marginTop: 4,
   },
   batchHistorySection: {
     marginTop: 16,

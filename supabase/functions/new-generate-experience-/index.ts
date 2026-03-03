@@ -2331,6 +2331,7 @@ serve(async (req) => {
               priceLevel: null,
               types: [],
               photos: [],
+              websiteUri: card.website || null,
             }, GOOGLE_API_KEY!);
 
             const cardId = await insertCardToPool(supabaseAdmin, {
@@ -2352,6 +2353,7 @@ serve(async (req) => {
               priceMin: 0,
               priceMax: 0,
               openingHours: card.openingHours,
+              website: card.website || null,
             });
             if (cardId) cardPoolIds.push(cardId);
           }
@@ -2513,6 +2515,7 @@ async function fetchGooglePlaces(
             placeTypes: place.types || [],
             price_min,
             price_max,
+            websiteUri: place.websiteUri || null,
           };
         });
         allPlaces.push(...transformed);
@@ -2527,7 +2530,7 @@ async function fetchGooglePlaces(
         const categoryKey = category.toLowerCase();
         const excludedTypes = EXCLUDED_TYPES[categoryKey] || null;
         const fieldMask =
-          "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours";
+          "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours,places.websiteUri";
 
         const requestBody: any = {
           includedTypes: [placeType],
@@ -2631,6 +2634,7 @@ async function fetchGooglePlaces(
               placeTypes: place.types || [],
               price_min,
               price_max,
+              websiteUri: place.websiteUri || null,
             };
           });
 
@@ -3248,6 +3252,7 @@ function convertToCard(place: any, preferences: UserPreferences): any {
     placeId: place.placeId,
     matchFactors: place.matchFactors || {},
     openingHours: place.openingHours || null,
+    website: place.websiteUri || null,
   };
 }
 

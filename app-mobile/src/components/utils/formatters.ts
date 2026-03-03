@@ -138,7 +138,7 @@ export function getCurrencySymbol(currencyCode: string = 'USD'): string {
  * @returns Formatted price range string in target currency
  */
 export function formatPriceRange(priceRange: string | undefined, currencyCode: string = 'USD'): string {
-  if (!priceRange) return '';
+  if (!priceRange || priceRange.includes('undefined') || priceRange.includes('NaN')) return 'Free';
   
   // Handle "Free" or non-numeric ranges
   if (priceRange.toLowerCase() === 'free' || priceRange === '-') {
@@ -192,7 +192,7 @@ export function getCurrencyRate(currencyCode: string = 'USD'): number {
  * @returns Formatted distance string in the user's preferred system
  */
 export function parseAndFormatDistance(distanceString: string | undefined, system: 'Metric' | 'Imperial' = 'Imperial'): string {
-  if (!distanceString) return '';
+  if (!distanceString || distanceString.includes('undefined') || distanceString.includes('NaN')) return 'Nearby';
 
   // Try to extract numeric value and unit from the string
   const kmMatch = distanceString.match(/([\d.]+)\s*km/i);

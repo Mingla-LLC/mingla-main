@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { batchSearchPlaces, fetchNextPage } from '../_shared/placesCache.ts';
 import {
   serveCardsFromPipeline,
   upsertPlaceToPool,
@@ -20,7 +20,7 @@ import {
  *
  * Pipeline:
  *   1. Pool-first: query card_pool for ALL requested categories at once
- *   2. Gap fill: if pool < 50% of limit, fetch missing from Google API
+ *   2. Gap fill: if pool < 80% of limit, fetch missing from Google API
  *   3. AI descriptions OFF critical path: return immediately with fallbacks,
  *      then fire-and-forget OpenAI enrichment to card_pool
  *   4. Batch upsert results to place_pool + card_pool
@@ -305,6 +305,75 @@ async function enrichDescriptionsInBackground(
   }
 }
 
+// ── Helper: Get cache entries that have a nextPageToken for expansion ────────
+async function getCacheEntriesWithTokens(
+  supabaseAdmin: any,
+  location: { lat: number; lng: number },
+  categories: string[],
+  radiusMeters: number,
+): Promise<Array<{ id: string; place_type: string; next_page_token: string | null }>> {
+  const locKey = `${location.lat.toFixed(2)},${location.lng.toFixed(2)}`;
+  const radBucket = Math.round(radiusMeters / 1000) * 1000;
+
+  const placeTypes: string[] = [];
+  for (const cat of categories) {
+    placeTypes.push(...getPlaceTypesForCategory(cat));
+  }
+
+  const { data } = await supabaseAdmin
+    .from('google_places_cache')
+    .select('id, place_type, next_page_token')
+    .eq('location_key', locKey)
+    .eq('radius_bucket', radBucket)
+    .in('place_type', placeTypes)
+    .not('next_page_token', 'is', null)
+    .gt('expires_at', new Date().toISOString());
+
+  return data || [];
+}
+
+// ── Helper: Insert new Google Places into place_pool + card_pool ─────────────
+async function expandPoolWithNewPlaces(
+  supabaseAdmin: any,
+  newPlaces: any[],
+  placeType: string,
+  typeToCategory: Record<string, string>,
+): Promise<void> {
+  const category = typeToCategory[placeType];
+  if (!category) return;
+
+  for (const place of newPlaces) {
+    const googlePlaceId = place.id;
+    if (!googlePlaceId) continue;
+
+    const placePoolId = await upsertPlaceToPool(supabaseAdmin, place, GOOGLE_PLACES_API_KEY);
+    const priceRange = priceLevelToRange(place.priceLevel);
+
+    await insertCardToPool(supabaseAdmin, {
+      placePoolId: placePoolId || undefined,
+      googlePlaceId,
+      cardType: 'single',
+      title: place.displayName?.text || 'Unknown Place',
+      category,
+      categories: [category],
+      description: getFallbackDescription(category, placeType),
+      highlights: [],
+      imageUrl: getPhotoUrl(place),
+      images: getAllPhotoUrls(place),
+      address: place.formattedAddress || '',
+      lat: place.location?.latitude || 0,
+      lng: place.location?.longitude || 0,
+      rating: place.rating || 0,
+      reviewCount: place.userRatingCount || 0,
+      priceMin: priceRange.min,
+      priceMax: priceRange.max,
+      website: place.websiteUri || null,
+    });
+  }
+
+  console.log(`[discover-cards] Expanded pool with ${newPlaces.length} places for type ${placeType} (category: ${category})`);
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -380,54 +449,7 @@ serve(async (req: Request) => {
         : travelConstraintValue;
     const radiusMeters = Math.min(Math.round(maxDistKm * 1000), 50000);
 
-    // ── Pool-first serving (ALL categories in ONE query) ──────────────────
-    // No batchSeed === 0 restriction; serve from pool for ANY batchSeed.
-    // Threshold lowered to 50% of limit.
-    if (userId && !body.warmPool) {
-      try {
-        const poolResult = await serveCardsFromPipeline(
-          {
-            supabaseAdmin,
-            userId,
-            lat: location.lat,
-            lng: location.lng,
-            radiusMeters,
-            categories,
-            budgetMin: 0,
-            budgetMax,
-            limit,
-            cardType: 'single',
-          },
-          GOOGLE_PLACES_API_KEY,
-          { travelMode },
-        );
-
-        // Lowered threshold: serve if pool has >= 50% of limit
-        if (poolResult.cards.length >= Math.ceil(limit * 0.5)) {
-          const elapsed = Date.now() - t0;
-          console.log(`[discover-cards] Served ${poolResult.cards.length} from pool in ${elapsed}ms (0 API calls)`);
-
-          // If pool returned enough but less than limit, we could gap-fill,
-          // but if >= 50% we serve what we have for speed.
-          return new Response(JSON.stringify({
-            cards: poolResult.cards,
-            total: poolResult.totalPoolSize,
-            source: poolResult.fromApi > 0 ? 'mixed' : 'pool',
-            metadata: { hasMore: poolResult.cards.length >= limit, poolSize: poolResult.totalPoolSize, batchSeed: body.batchSeed ?? 0 },
-          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-
-        console.log(`[discover-cards] Pool had ${poolResult.cards.length}/${limit} (below 50%), falling through to API`);
-      } catch (poolErr) {
-        console.warn('[discover-cards] Pool serve failed, falling back to API:', poolErr);
-      }
-    }
-
-    // ── Handle warmPool request ───────────────────────────────────────────
-    const isWarmPool = !!body.warmPool;
-
-    // ── Collect place types from ALL categories ───────────────────────────
-    // Use first 2 place types per category for diversity
+    // ── Collect place types from ALL categories (needed for both pool expansion + API fallback) ──
     const typeToCategory: Record<string, string> = {};
     const allPlaceTypes: string[] = [];
 
@@ -442,6 +464,114 @@ serve(async (req: Request) => {
       }
     }
 
+    // ── Pool-first serving (ALL categories in ONE query) ──────────────────
+    // No batchSeed === 0 restriction; serve from pool for ANY batchSeed.
+    // Offset pagination: batchSeed * limit skips previous batches in pool.
+    // Threshold raised to 80% of limit to ensure full batches after dedup.
+    const poolOffset = (batchSeed || 0) * limit;
+
+    if (userId && !body.warmPool) {
+      try {
+        const poolParams = {
+          supabaseAdmin,
+          userId,
+          lat: location.lat,
+          lng: location.lng,
+          radiusMeters,
+          categories,
+          budgetMin: 0,
+          budgetMax,
+          limit,
+          cardType: 'single' as const,
+          offset: poolOffset,
+        };
+
+        const poolResult = await serveCardsFromPipeline(
+          poolParams,
+          GOOGLE_PLACES_API_KEY,
+          { travelMode },
+        );
+
+        // Serve if pool has >= 80% of limit to ensure full batches
+        if (poolResult.cards.length >= Math.ceil(limit * 0.8)) {
+          const elapsed = Date.now() - t0;
+          console.log(`[discover-cards] Served ${poolResult.cards.length} from pool (offset=${poolOffset}) in ${elapsed}ms`);
+
+          const poolHasMoreAtNextOffset = poolResult.totalPoolSize > (poolOffset + limit);
+          return new Response(JSON.stringify({
+            cards: poolResult.cards,
+            total: poolResult.totalPoolSize,
+            source: poolResult.fromApi > 0 ? 'mixed' : 'pool',
+            metadata: { hasMore: poolResult.cards.length >= limit || poolHasMoreAtNextOffset, poolSize: poolResult.totalPoolSize, batchSeed: batchSeed ?? 0 },
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        // ── Pool exhausted at this offset — try expanding via nextPageToken ──
+        if (poolResult.cards.length < Math.ceil(limit * 0.8) && poolOffset > 0) {
+          console.log(`[discover-cards] Pool exhausted at offset ${poolOffset}, attempting nextPage expansion`);
+
+          const cacheEntries = await getCacheEntriesWithTokens(supabaseAdmin, location, categories, radiusMeters);
+
+          let expanded = false;
+          for (const entry of cacheEntries) {
+            if (entry.next_page_token) {
+              const { newPlaces } = await fetchNextPage(supabaseAdmin, GOOGLE_PLACES_API_KEY, entry.id);
+              if (newPlaces.length > 0) {
+                // Insert new places into place_pool + card_pool
+                await expandPoolWithNewPlaces(supabaseAdmin, newPlaces, entry.place_type, typeToCategory);
+                expanded = true;
+              }
+            }
+          }
+
+          if (expanded) {
+            // Retry pool query with expanded pool
+            const retryResult = await serveCardsFromPipeline(
+              poolParams,
+              GOOGLE_PLACES_API_KEY,
+              { travelMode },
+            );
+            if (retryResult.cards.length >= Math.ceil(limit * 0.8)) {
+              const elapsed = Date.now() - t0;
+              console.log(`[discover-cards] Served ${retryResult.cards.length} from expanded pool in ${elapsed}ms`);
+
+              const retryHasMore = retryResult.totalPoolSize > (poolOffset + limit);
+              return new Response(JSON.stringify({
+                cards: retryResult.cards,
+                total: retryResult.totalPoolSize,
+                source: 'pool',
+                metadata: { hasMore: retryResult.cards.length >= limit || retryHasMore, poolSize: retryResult.totalPoolSize, batchSeed: batchSeed ?? 0 },
+              }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+          }
+        }
+
+        // If serveCardsFromPipeline already fetched from Google (fromApi > 0),
+        // return what we have — falling through would duplicate the Google search.
+        if (poolResult.fromApi > 0 && poolResult.cards.length > 0) {
+          const elapsed = Date.now() - t0;
+          console.log(`[discover-cards] Pipeline returned ${poolResult.cards.length} (${poolResult.fromPool} pool + ${poolResult.fromApi} API) in ${elapsed}ms — serving partial`);
+
+          const poolHasMoreAtNextOffset = poolResult.totalPoolSize > (poolOffset + limit);
+          return new Response(JSON.stringify({
+            cards: poolResult.cards,
+            total: poolResult.totalPoolSize,
+            source: 'mixed',
+            metadata: { hasMore: poolResult.cards.length >= limit || poolHasMoreAtNextOffset, poolSize: poolResult.totalPoolSize, batchSeed: batchSeed ?? 0 },
+          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        console.log(`[discover-cards] Pool had ${poolResult.cards.length}/${limit} (pool-only, below 80%), falling through to API`);
+      } catch (poolErr) {
+        console.warn('[discover-cards] Pool serve failed, falling back to API:', poolErr);
+      }
+    }
+
+    // ── Handle warmPool request ───────────────────────────────────────────
+    const isWarmPool = !!body.warmPool;
+
+    // typeToCategory and allPlaceTypes already built above (before pool-first path)
+
     console.log(`[discover-cards] Searching ${allPlaceTypes.length} place types across ${categories.length} categories`);
 
     // ── Guard: cannot fall back to Google API if key is missing ───────────
@@ -453,7 +583,7 @@ serve(async (req: Request) => {
           cards: [],
           source: 'error'
         }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -598,7 +728,7 @@ serve(async (req: Request) => {
     console.error('[discover-cards] Unhandled error:', err);
     return new Response(
       JSON.stringify({ error: (err as any)?.message || 'Internal error', cards: [] }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
@@ -693,6 +823,7 @@ function storeResultsInPoolBatched(
           opening_hours: card.openingHours
             ? { ...card.openingHours, _isOpenNow: card.isOpenNow ?? null }
             : null,
+          website: card.website || null,
           popularity_score: popularityScore,
           is_active: true,
         };
@@ -701,7 +832,7 @@ function storeResultsInPoolBatched(
       // Single batched insert for all cards
       const { data: insertedCards, error: cardError } = await supabaseAdmin
         .from('card_pool')
-        .upsert(cardRows, { ignoreDuplicates: true })
+        .upsert(cardRows, { onConflict: 'google_place_id', ignoreDuplicates: true })
         .select('id, google_place_id');
 
       if (cardError) {

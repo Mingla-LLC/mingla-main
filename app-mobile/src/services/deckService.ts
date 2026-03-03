@@ -71,10 +71,16 @@ const PILL_TO_CATEGORY_NAME: Record<string, string> = {
  * icon and experienceType dynamically.
  */
 function unifiedCardToRecommendation(card: any): Recommendation {
+  // Defensive: ensure numeric fields are never undefined (edge fn may omit them)
+  const priceMin = card.priceMin ?? 0;
+  const priceMax = card.priceMax ?? 0;
+  const distanceKm = card.distanceKm ?? 0;
+  const travelTimeMin = card.travelTimeMin ?? 0;
+
   const priceText =
-    card.priceMin === 0 && card.priceMax === 0
+    priceMin === 0 && priceMax === 0
       ? 'Free'
-      : `$${card.priceMin}–$${card.priceMax}`;
+      : `$${priceMin}–$${priceMax}`;
 
   const category = card.category || 'Nature';
   const experienceType = category.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_');
@@ -86,15 +92,15 @@ function unifiedCardToRecommendation(card: any): Recommendation {
     categoryIcon: getCategoryIcon(category) || 'compass',
     lat: card.lat,
     lng: card.lng,
-    timeAway: `${card.travelTimeMin} min`,
+    timeAway: `${travelTimeMin} min`,
     description: card.description,
     budget: priceText,
-    rating: card.rating,
+    rating: card.rating ?? 0,
     image: card.image,
     images: card.images?.length > 0 ? card.images : [card.image].filter(Boolean),
     priceRange: priceText,
-    distance: `${card.distanceKm} km`,
-    travelTime: `${card.travelTimeMin} min`,
+    distance: `${distanceKm} km`,
+    travelTime: `${travelTimeMin} min`,
     experienceType,
     highlights: [card.placeTypeLabel],
     fullDescription: card.description,
@@ -111,8 +117,8 @@ function unifiedCardToRecommendation(card: any): Recommendation {
         ? { open_now: card.isOpenNow }
         : null,
     tags: [card.placeType, card.placeTypeLabel].filter(Boolean),
-    matchScore: card.matchScore,
-    reviewCount: card.reviewCount,
+    matchScore: card.matchScore ?? 85,
+    reviewCount: card.reviewCount ?? 0,
     website: card.website,
     placeId: card.placeId,
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
@@ -121,7 +127,7 @@ function unifiedCardToRecommendation(card: any): Recommendation {
       budget: 0.5,
       category: 1.0,
       time: 0.5,
-      popularity: card.rating > 4 ? 0.8 : 0.5,
+      popularity: (card.rating ?? 0) > 4 ? 0.8 : 0.5,
     },
   };
 }
@@ -239,7 +245,7 @@ class DeckService {
         const categoryNames = categoryPills.map(p =>
           PILL_TO_CATEGORY_NAME[p.id] || p.id
         );
-        const categoryLimit = Math.ceil(limit * (categoryPills.length / pills.length));
+        const categoryLimit = limit;
 
         try {
           // supabase.functions.invoke() does not accept an AbortSignal.

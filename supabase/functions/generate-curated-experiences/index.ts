@@ -50,11 +50,17 @@ async function aggregateSessionPreferences(sessionId: string): Promise<{
 
   // Categories + experience types: union, then split
   const allCats = new Set<string>();
+  const allIntents = new Set<string>();
   allPrefs.forEach(p => {
     if (Array.isArray(p.categories)) p.categories.forEach((c: string) => allCats.add(c));
+    // Read intents from dedicated column (post-migration)
+    if (Array.isArray(p.intents)) p.intents.forEach((i: string) => allIntents.add(i));
   });
   const categories = [...allCats].filter(c => !SESSION_INTENT_IDS.has(c));
-  const experienceTypes = [...allCats].filter(c => SESSION_INTENT_IDS.has(c));
+  // Prefer dedicated intents column; fall back to parsing from categories (pre-migration compat)
+  const experienceTypes = allIntents.size > 0
+    ? [...allIntents]
+    : [...allCats].filter(c => SESSION_INTENT_IDS.has(c));
 
   // Travel mode: majority vote
   const modeCounts: Record<string, number> = {};

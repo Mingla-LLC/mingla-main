@@ -70,6 +70,7 @@ export const experienceFeedbackService = {
       .in("status", ["pending", "confirmed"])
       .lt("scheduled_at", now)
       .is("archived_at", null)
+      .is("feedback_status", null)
       .order("scheduled_at", { ascending: false })
       .limit(10);
 

@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
 } from "react";
 import {
   ExperiencesService,
@@ -71,7 +72,10 @@ interface RecommendationsContextType {
   dismissedCards: Recommendation[];
   addDismissedCard: (card: Recommendation) => void;
   clearDismissedCards: () => void;
+  removeDismissedCard: (card: Recommendation) => void;
+  addCardToFront: (card: Recommendation) => void;
   isExhausted: boolean;
+  isSlowBatchLoad: boolean;
 }
 
 const RecommendationsContext = createContext<
@@ -101,6 +105,7 @@ export const RecommendationsProvider: React.FC<
   const [hasMoreCards, setHasMoreCards] = useState(true);
   const [dismissedCards, setDismissedCards] = useState<Recommendation[]>([]);
   const [isExhausted, setIsExhausted] = useState(false);
+  const [isSlowBatchLoad, setIsSlowBatchLoad] = useState(false);
   const prefetchFiredRef = useRef(false);
   const previousBatchRef = useRef<Recommendation[]>([]);
   const currentMode = propCurrentMode;
@@ -219,6 +224,23 @@ export const RecommendationsProvider: React.FC<
     }
   }, [userLocation, userPrefs]);
 
+  // ── Stabilize deck params — only compute once categories AND intents are both available
+  const stableDeckParams = useMemo(() => {
+    const cats = userPrefs?.categories ?? [];
+    const ints = userPrefs?.intents ?? [];
+    if (cats.length === 0) return null; // not ready
+    return {
+      categories: cats,
+      intents: ints,
+    };
+  }, [
+    // Use JSON.stringify to prevent array-reference changes from causing recomputation
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    JSON.stringify(userPrefs?.categories ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    JSON.stringify(userPrefs?.intents ?? []),
+  ]);
+
   // ── Unified Deck Hook (replaces 7 independent hooks) ────────────────────
   const {
     cards: deckCards,
@@ -230,8 +252,8 @@ export const RecommendationsProvider: React.FC<
     hasMore: deckHasMore,
   } = useDeckCards({
     location: userLocation,
-    categories: userPrefs?.categories ?? [],
-    intents: userPrefs?.intents ?? [],
+    categories: stableDeckParams?.categories ?? [],
+    intents: stableDeckParams?.intents ?? [],
     budgetMin: userPrefs?.budget_min ?? 0,
     budgetMax: userPrefs?.budget_max ?? 1000,
     travelMode: userPrefs?.travel_mode ?? 'walking',
@@ -241,7 +263,7 @@ export const RecommendationsProvider: React.FC<
     dateOption: userPrefs?.date_option ?? 'now',
     timeSlot: userPrefs?.time_slot ?? null,
     batchSeed,
-    enabled: isSoloMode && !!userLocation && !!userPrefs?.categories?.length && !isWaitingForSessionResolution,
+    enabled: isSoloMode && !!userLocation && stableDeckParams !== null && !isWaitingForSessionResolution,
   });
 
   // ── Collaboration Mode: useRecommendationsQuery (fallback) ──────────────
@@ -294,14 +316,31 @@ export const RecommendationsProvider: React.FC<
     setBatchSeed(prev => prev + 1);
   }, [recommendations]);
 
-  // Safety timeout: if isBatchTransitioning stays true for >15s, clear it
+  // Soft timeout (10s): show "Still loading..." intermediate state
+  // Hard timeout (30s): mark exhausted only if batch truly never arrived
   useEffect(() => {
     if (!isBatchTransitioning) return;
-    const timeout = setTimeout(() => {
-      console.warn('[RecommendationsContext] Batch transition safety timeout — clearing spinner');
-      setIsBatchTransitioning(false);
-    }, 15_000);
-    return () => clearTimeout(timeout);
+
+    const softTimer = setTimeout(() => {
+      if (isBatchTransitioning) {
+        console.log('[RecommendationsContext] Batch transition slow (10s) — showing intermediate state');
+        setIsSlowBatchLoad(true);
+      }
+    }, 10000);
+
+    const hardTimer = setTimeout(() => {
+      if (isBatchTransitioning) {
+        console.warn('[RecommendationsContext] Batch transition timed out after 30s — marking exhausted');
+        setIsBatchTransitioning(false);
+        setIsExhausted(true);
+        setIsSlowBatchLoad(false);
+      }
+    }, 30000);
+
+    return () => {
+      clearTimeout(softTimer);
+      clearTimeout(hardTimer);
+    };
   }, [isBatchTransitioning]);
 
   // Restore the previous batch (used by "Review Previous Batch")
@@ -324,6 +363,14 @@ export const RecommendationsProvider: React.FC<
     setDismissedCards([]);
   }, []);
 
+  const removeDismissedCard = useCallback((card: Recommendation) => {
+    setDismissedCards((prev) => prev.filter((c) => c.id !== card.id));
+  }, []);
+
+  const addCardToFront = useCallback((card: Recommendation) => {
+    setRecommendations((prev) => [card, ...prev.filter((c) => c.id !== card.id)]);
+  }, []);
+
   // ── Sync hasMore and exhaustion from deck hook ──────────────────────────
   useEffect(() => {
     setHasMoreCards(deckHasMore);
@@ -338,23 +385,27 @@ export const RecommendationsProvider: React.FC<
   }, [batchSeed]);
 
   // ── Refresh Key Handler ─────────────────────────────────────────────────
-  // When preferences change (refreshKey increments), reset state and refetch
+  // When preferences change (refreshKey increments), reset state.
+  // The query key change from updated categories/intents handles refetching automatically.
   useEffect(() => {
     if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
+      // Reset batch to 0 — the query key change from new params will
+      // naturally trigger a refetch. No need to manually invalidate.
       setBatchSeed(0);
       setIsBatchTransitioning(false);
-      warmPoolFired.current = false;
-      setIsRefreshingAfterPrefChange(true);
-      setDismissedCards([]);
       setIsExhausted(false);
       setHasMoreCards(true);
-      // Invalidate deck-cards so it refetches with fresh params
-      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
-      // Also invalidate collaboration fallback queries
-      queryClient.invalidateQueries({ queryKey: ['curated-experiences'] });
+      previousBatchRef.current = [];
+      setIsRefreshingAfterPrefChange(true);
+      setDismissedCards([]);
+      setIsSlowBatchLoad(false);
+      // Reset warm pool so it re-fires with new preferences
+      warmPoolFired.current = false;
+      // DO NOT call queryClient.invalidateQueries — the query key change
+      // from updated categories/intents handles refetching automatically
     }
     previousRefreshKeyRef.current = refreshKey;
-  }, [refreshKey, queryClient]);
+  }, [refreshKey]);
 
   // ── Clear isRefreshingAfterPrefChange once deck settles ─────────────────
   useEffect(() => {
@@ -461,36 +512,33 @@ export const RecommendationsProvider: React.FC<
 
   useEffect(() => {
     if (isSoloMode) {
-      // Solo mode: use unified deck cards
       if (deckCards.length > 0) {
         const deckIdsKey = deckCards.map(c => c.id).sort().join(',');
         if (previousDeckIdsRef.current !== deckIdsKey) {
           previousDeckIdsRef.current = deckIdsKey;
+          // ALWAYS replace — never append. Each batch is a fresh set of cards.
+          // The SwipeableCards component manages its own removedCards set
+          // which resets on batch change via the batchKey mechanism.
+          setRecommendations(deckCards);
+        }
 
-          // If this is a prefetched batch (batchSeed > 0), append to existing
-          if (batchSeed > 0 && recommendations.length > 0) {
-            const existingIds = new Set(recommendations.map(r => r.id));
-            const newCards = deckCards.filter(c => !existingIds.has(c.id));
-            if (newCards.length > 0) {
-              setRecommendations(prev => [...prev, ...newCards]);
-            }
-          } else {
-            setRecommendations(deckCards);
-          }
-        }
-        if (isBatchTransitioning && isDeckBatchLoaded) {
+        if (isDeckBatchLoaded && (isBatchTransitioning || isSlowBatchLoad)) {
           setIsBatchTransitioning(false);
+          setIsSlowBatchLoad(false);
         }
-      } else if (!isBatchTransitioning && deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching) {
-        // Genuinely empty — no cards available for these preferences
-        if (recommendations.length !== 0) {
-          setRecommendations([]);
-          previousDeckIdsRef.current = '';
+
+        // If we timed out but batch arrived late, un-exhaust
+        if (isDeckBatchLoaded && isExhausted && deckCards.length > 0) {
+          setIsExhausted(false);
         }
+      } else if (deckCards.length === 0 && isDeckBatchLoaded && !isDeckFetching && !isBatchTransitioning) {
+        // Genuinely empty — no cards available
+        setRecommendations([]);
       }
-      // During batch transition with 0 cards, keep previous recommendations visible
+      // During batch transition with 0 cards from new query,
+      // keep previous recommendations visible (no else branch needed)
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSoloMode, batchSeed]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSlowBatchLoad, isExhausted, isSoloMode, batchSeed]);
 
   // ── Collaboration mode sync ─────────────────────────────────────────────
   const previousRecommendationsRef = useRef<Recommendation[] | undefined>(undefined);
@@ -756,7 +804,10 @@ export const RecommendationsProvider: React.FC<
     dismissedCards,
     addDismissedCard,
     clearDismissedCards,
+    removeDismissedCard,
+    addCardToFront,
     isExhausted,
+    isSlowBatchLoad,
   };
 
   return (

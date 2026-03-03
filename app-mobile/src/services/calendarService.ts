@@ -73,6 +73,23 @@ export class CalendarService {
       metadata: { scheduled_at: scheduledAtIso },
     });
 
+    // Increment engagement counters (fire-and-forget)
+    supabase.rpc('increment_user_engagement', {
+      p_user_id: userId,
+      p_field: 'total_cards_scheduled',
+      p_amount: 1,
+    }).catch(() => {});
+
+    // Increment place-level schedules counter
+    const placeId = card.placeId || card.id;
+    if (placeId) {
+      supabase.rpc('increment_place_engagement', {
+        p_google_place_id: placeId,
+        p_field: 'total_schedules',
+        p_amount: 1,
+      }).catch(() => {});
+    }
+
     return data as CalendarEntryRecord;
   }
 
