@@ -116,22 +116,25 @@ Mingla combines **location-aware discovery**, **AI personalization**, **real-tim
 ### Data Pipeline Flow
 
 ```
-User Request → Edge Function (Deno)
+User Request (batchSeed=N) → Edge Function (Deno)
     ↓
 [1] Query preferences (DB)
     ↓
-[2] Query card_pool (exclude user_card_impressions since last pref change)
+[2] Query card_pool with offset (batchSeed × limit)
     ├── Filter: categories, geo (lat±δ, lng±δ), budget, card_type
-    ├── If pool ≥ limit → SERVE DIRECTLY (0 API calls)
-    └── If pool < limit → Gap analysis
-        ├── Identify missing categories
-        └── [3] Batch Google Places (google_places_cache first, 24h TTL)
-            ├── Upsert to place_pool
-            └── Insert to card_pool
+    ├── Exclude: user_card_impressions (sliding window of last 200)
+    ├── Dedup: by google_place_id
+    ├── If pool ≥ limit at offset → SERVE DIRECTLY (0 API calls)
+    ├── If pool < limit at offset → Try nextPageToken expansion
+    │   ├── Check google_places_cache for entries with next_page_token
+    │   ├── Fetch next page from Google (pageToken-only request)
+    │   ├── Insert new places into place_pool + card_pool
+    │   └── Retry pool query
+    └── If still < limit → Gap analysis (batch Google Places)
     ↓
-[4] Record impressions (user_card_impressions)
+[3] Record impressions (user_card_impressions)
     ↓
-[5] Return cards to mobile → SwipeableCards deck
+[4] Return cards + hasMore flag to mobile → SwipeableCards deck
 ```
 
 ---
@@ -209,6 +212,7 @@ User Request → Edge Function (Deno)
 | **Match Score Breakdown** | Visual breakdown of recommendation factors: location, budget, category, time, popularity |
 | **Experience Feedback Modal** | Post-interaction feedback ("too expensive", "too far", etc.) stored in `experience_feedback` |
 | **Deck Batch Navigation** | Navigate forward/backward through batch history. Pre-fetch triggers at 75% card consumption. Batches persisted to Zustand/AsyncStorage. Replace-not-append batch transitions: each new batch fully replaces the old one, preventing unbounded array growth and dedup deadlocks. Two-tier batch timeout: 10s "Still loading..." intermediate state, 30s hard exhaustion timeout. Late-arriving batches automatically recover the deck. Pool re-warms on preference changes for fast first-batch serving. |
+| **Dismissed Cards Review** | When the deck is exhausted, users can review all left-swiped cards in a scrollable bottom sheet. Each card shows thumbnail, title, category, rating, and distance with "Reconsider" (re-add to deck) and "Save" (bookmark) actions. Tapping a card opens the full ExpandedCardModal. Haptic feedback on actions. List clears on preference change. |
 | **Solo vs. Collaboration Mode** | Toggle between personal recommendations and session-scoped cards via CollaborationSessions pill bar |
 | **Skeleton Loading** | Shimmer placeholder cards while deck generates |
 
@@ -556,17 +560,18 @@ The card pool pipeline replaces direct Google API calls with pool-first serving.
 | `place_pool` | Shared enriched Google Places data. One row per unique `google_place_id` | Daily refresh via `refresh-place-pool` |
 | `card_pool` | Pre-built, ready-to-serve cards (`single` or `curated` type) | Deactivated when place deactivates |
 | `user_card_impressions` | Per-user card "seen" tracking. `(user_id, card_pool_id)` primary key | Resets when `preferences.updated_at` changes |
-| `google_places_cache` | Cached Google Places API responses. Key: `(place_type, location_key, radius_bucket)` | 24h TTL |
+| `google_places_cache` | Cached Google Places API responses. Key: `(place_type, location_key, radius_bucket)`. Stores `next_page_token` for pagination and `pages_fetched` counter | 24h TTL |
 
 ### Serving Logic (`cardPoolService.ts`)
 
-1. **Query pool**: `card_pool` filtered by categories (array overlap), geo bounds (lat/lng ± delta), budget (price range overlap), excluding user's impressions since last preference change. **Server-side dedup** by `google_place_id` ensures the same physical place listed under multiple categories only appears once (highest popularity score wins)
-2. **If pool ≥ 80% of requested limit**: Serve directly (0 API calls). For Discover "For You", a 3-pass category-diverse selection algorithm extracts 2 hero cards (Fine Dining + Play), then round-robins one card per remaining category, then fills leftover slots. Cards enriched with real distance/travel time via haversine + estimateTravelMin
-3. **If pool < 80% of limit**: Gap analysis identifies missing categories, then batch Google Places searches fill gaps. The 80% threshold ensures full batches survive downstream dedup
-4. **Upsert results**: New places → `place_pool` (opening hours parsed at ingestion), new cards → `card_pool`
-5. **Card format**: All output paths produce API-compatible fields: `priceMin`/`priceMax` (numeric), `distanceKm` (haversine from user), `travelTimeMin` (mode-aware estimate), `isOpenNow` (boolean), `openingHours` (parsed `Record<string, string>`)
-6. **Record impressions**: Log `user_card_impressions` with batch number
-7. **Return cards**: With metadata: `fromPool` count, `fromApi` count, `totalPoolSize`
+1. **Query pool with offset**: `card_pool` filtered by categories (array overlap), geo bounds (lat/lng ± delta), budget (price range overlap), excluding user's impressions (sliding window of last 200). **Server-side dedup** by `google_place_id` ensures the same physical place listed under multiple categories only appears once (highest popularity score wins). Applies `offset` parameter to skip cards from previous batches (`batchSeed × limit`)
+2. **If pool ≥ 80% of requested limit at offset**: Serve directly (0 API calls). `hasMore` calculated from `totalPoolSize > (offset + limit)`. Cards enriched with real distance/travel time via haversine + estimateTravelMin
+3. **If pool exhausted at offset (batchSeed > 0)**: Check `google_places_cache` for entries with `next_page_token`. For each, call `fetchNextPage` which sends a pageToken-only request to Google Places API, appends results to cache, then inserts new places into `place_pool` + `card_pool`. Retry pool query with expanded pool
+4. **If pool < 80% of limit**: Gap analysis identifies missing categories, then batch Google Places searches fill gaps. The 80% threshold ensures full batches survive downstream dedup
+5. **Upsert results**: New places → `place_pool` (opening hours parsed at ingestion), new cards → `card_pool`
+6. **Card format**: All output paths produce API-compatible fields: `priceMin`/`priceMax` (numeric), `distanceKm` (haversine from user), `travelTimeMin` (mode-aware estimate), `isOpenNow` (boolean), `openingHours` (parsed `Record<string, string>`)
+7. **Record impressions**: Log `user_card_impressions` with batch number
+8. **Return cards**: With metadata: `fromPool` count, `fromApi` count, `totalPoolSize`, `hasMore` flag
 
 ### Curated Cards (Multi-Stop Itineraries)
 
@@ -611,7 +616,7 @@ Runs daily to keep `place_pool` data fresh:
 | `place_pool` | Shared enriched Google Places data. `google_place_id` UNIQUE. Includes: name, address, lat/lng, types[], rating, review_count, price_level, opening_hours, photos, website, raw_google_data, is_active |
 | `card_pool` | Pre-built cards (`single` or `curated`). Links to `place_pool` via `place_pool_id` FK. Includes: title, categories[], description, highlights, images, address, lat/lng, rating, popularity_score, base_match_score |
 | `user_card_impressions` | Per-user "seen" tracking. PK: `(user_id, card_pool_id)`. Includes `batch_number` and `created_at` |
-| `google_places_cache` | Google Places API response cache. Composite key: `(place_type, location_key, radius_bucket, search_strategy, text_query)`. 24h TTL |
+| `google_places_cache` | Google Places API response cache. Composite key: `(place_type, location_key, radius_bucket, search_strategy, text_query)`. Includes `next_page_token` (TEXT) for pagination and `pages_fetched` (INTEGER) counter. 24h TTL |
 | `ticketmaster_events_cache` | Ticketmaster API response cache. Key: `cache_key` TEXT (geo+keywords+date). 2h TTL |
 | `discover_daily_cache` | Per-city daily discover feed cache. 24h TTL |
 | `saved_people` | Per-user saved people (with optional description for AI). RLS: owner-only. Cascade deletes to `person_experiences` |
@@ -735,7 +740,7 @@ Every table has RLS enabled with policies enforcing:
 | 2026-03-02 | `20260302000003` | Fix google_places_cache UNIQUE constraint (NULL text_query → NOT NULL DEFAULT '') |
 | 2026-03-02 | `20260302000004` | Card pool dedup (partial unique index on google_place_id for single cards) |
 | 2026-03-02 | `20260302000005` | Saved people + person experiences tables (Add Person → curated experiences) |
-| 2026-03-02 | `20260302000006` | Sanitize empty-string `google_place_id` values to NULL in `card_pool` and `place_pool` |
+| 2026-03-02 | `20260302000006` | Pool pagination: add `next_page_token` (TEXT) and `pages_fetched` (INTEGER) to `google_places_cache` |
 
 ---
 
@@ -749,7 +754,7 @@ Every table has RLS enabled with policies enforcing:
 | `generate-experiences` | No | Google Places, OpenAI | `experiences`, `card_pool` | Legacy standalone experience generation (pre-pool era) |
 | `generate-session-experiences` | No | Google Places, OpenAI | `board_session_preferences`, `card_pool`, `place_pool` | Collaboration mode: aggregates all participants' preferences (widest budget, union categories, majority travel mode, centroid location) |
 | `generate-curated-experiences` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `user_card_impressions` | 3-stop itinerary builder. Generates stop routes with travel times, AI descriptions, duration estimates |
-| `discover-cards` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `google_places_cache`, `user_card_impressions` | Unified card discovery — pool-first serving for all 12 categories, 4 types/category, batch upsert to pool (with `onConflict: 'google_place_id'` dedup), fire-and-forget AI enrichment. Returns `hasMore` flag for swipe lifecycle exhaustion detection. Returns HTTP 500 on unhandled errors (enables React Query retry). Pool query fetches `limit * 3` buffer to survive impression filtering + dedup. |
+| `discover-cards` | JWT | Google Places, OpenAI | `card_pool`, `place_pool`, `google_places_cache`, `user_card_impressions` | Unified card discovery — pool-first serving for all 12 categories with offset-based pagination (`batchSeed × limit` skip). When pool exhausted at offset, expands pool via `nextPageToken` pagination from `google_places_cache`, inserts new places into `place_pool` + `card_pool`, and retries. Falls back to Google Places batch search if pool still insufficient. Batch upsert with dedup, fire-and-forget AI enrichment. Returns `hasMore` flag computed from `totalPoolSize > (offset + limit)`. |
 | `generate-person-experiences` | JWT | Google Places, OpenAI | `saved_people`, `person_experiences` | Parses person description via OpenAI into interests, finds matching Google Places for each occasion (birthday, holidays), stores curated per-person experiences |
 | `discover-experiences` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool`, `place_pool` | General discovery for all 12 categories with 24h daily cache |
 | `discover-casual-eats` | No | Google Places, OpenAI | `discover_daily_cache`, `card_pool` | Category-specific: Casual Eats |
@@ -815,9 +820,9 @@ Every table has RLS enabled with policies enforcing:
 
 | Module | Purpose |
 |--------|---------|
-| `cardPoolService.ts` | Core pool-first serving engine. `serveCardsFromPipeline()`, `serveCuratedCardsFromPool()`, `upsertPlaceToPool()`, `insertCardToPool()`, `recordImpressions()`. Includes `haversine()`, `estimateTravelMin()`, `parseGoogleOpeningHours()` for computing real distance/travel time and parsing opening hours from raw Google format. All card output paths produce API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`) |
+| `cardPoolService.ts` | Core pool-first serving engine with offset-based pagination. `serveCardsFromPipeline()` (accepts `offset` param for batch skip), `serveCuratedCardsFromPool()`, `upsertPlaceToPool()`, `insertCardToPool()`, `recordImpressions()`. `queryPoolCards()` applies offset after impression filtering + dedup, with dynamic fetch limit `Math.max(limit*3, (offset+limit)*2)`. Includes `haversine()`, `estimateTravelMin()`, `parseGoogleOpeningHours()` for computing real distance/travel time and parsing opening hours. All card output paths produce API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`) |
 | `categoryPlaceTypes.ts` (210 lines) | Single source of truth: `MINGLA_CATEGORY_PLACE_TYPES` (display name → Google types), `CATEGORY_ALIASES` (all variations), `resolveCategory()`, `getPlaceTypesForCategory()`, `INTENT_IDS`, `filterOutIntents()` |
-| `placesCache.ts` (257 lines) | Google Places API caching: `searchPlacesWithCache()` (single type), `batchSearchPlaces()` (parallel multi-type). Location key precision: `lat.toFixed(2),lng.toFixed(2)` (~1.1km grid) |
+| `placesCache.ts` (~340 lines) | Google Places API caching: `searchPlacesWithCache()` (single type, stores `nextPageToken`), `fetchNextPage()` (pageToken-only pagination, appends to cache, clears expired tokens), `batchSearchPlaces()` (parallel multi-type). Location key precision: `lat.toFixed(2),lng.toFixed(2)` (~1.1km grid) |
 | `textSearchHelper.ts` (57 lines) | Fallback for non-standard place types (e.g., "sip and paint", "cooking classes"). `textSearchPlaces()` with keyword replacement |
 
 ---
@@ -928,7 +933,6 @@ defaultOptions: {
 | `useDeckCards` | Unified deck cards (solo mode) | Wraps `deckService.fetchDeck()` (parallel category + curated pipelines via `Promise.allSettled`). 30-min stale time. Returns `Recommendation[]` with `deckMode`, `activePills`, and `hasMore` flag |
 | `useRecommendationsQuery` | Collaboration mode recommendations | Wraps `ExperienceGenerationService.generateExperiences()`. 1-hour stale time |
 | `useCuratedExperiences` | Multi-stop itinerary cards | Supports 7 types: adventurous, first-date, romantic, friendly, group-fun, picnic-dates, take-a-stroll. Background batch `skipDescriptions: true` |
-| `useNatureCards` | Nature category cards | Calls `discover-nature` edge function |
 | `useExperiences` | Generic experience fetching (legacy) | `fetchExperiences()`, `fetchNearbyPlaces()`, `saveExperience()`, `getSavedExperiences()` |
 | `useSavedCards` | React Query saved cards | Wraps `savedCardsService.fetchSavedCards()` |
 | `useSaves` | Manual saves management | `addSave()`, `updateSave()`, `removeSave()`. Real-time Supabase subscriptions |
@@ -996,7 +1000,7 @@ defaultOptions: {
 | `authService.ts` | Profile CRUD: `loadUserProfile()`, `updateUserProfile()`, `uploadAvatar()` |
 | `supabase.ts` | Supabase client singleton with auth configuration and 30-second global fetch timeout wrapper (prevents indefinite hangs when Supabase is unreachable) |
 
-### Experience Generation & Cards (19)
+### Experience Generation & Cards (9)
 
 | Service | Purpose |
 |---------|---------|
@@ -1006,17 +1010,6 @@ defaultOptions: {
 | `holidayExperiencesService.ts` | `generateHolidayExperiences()` → holiday-experiences |
 | `nightOutExperiencesService.ts` | `fetchTicketmasterEvents()` → ticketmaster-events. Returns events with artistName, venueName, ticketUrl, priceRange |
 | `savedPeopleService.ts` | CRUD for `saved_people` table + experience generation via `generate-person-experiences` edge function |
-| `natureCardsService.ts` | `discoverNature()` → discover-nature |
-| `casualEatsCardsService.ts` | Category-specific: Casual Eats |
-| `fineDiningCardsService.ts` | Category-specific: Fine Dining |
-| `drinkCardsService.ts` | Category-specific: Drink |
-| `firstMeetCardsService.ts` | Category-specific: First Meet |
-| `picnicParkCardsService.ts` | Category-specific: Picnic/Park |
-| `watchCardsService.ts` | Category-specific: Watch |
-| `creativeArtsCardsService.ts` | Category-specific: Creative & Arts |
-| `playCardsService.ts` | Category-specific: Play |
-| `wellnessCardsService.ts` | Category-specific: Wellness |
-| `groceriesFlowersCardsService.ts` | Category-specific: Groceries & Flowers |
 | `experiencesService.ts` | User preferences and interaction tracking |
 | `savedCardsService.ts` | `fetchSavedCards(userId)` from recommendations |
 | `enhancedFavoritesService.ts` | Favorite management with analytics |
@@ -1261,6 +1254,8 @@ Filters out experience intents (adventurous, romantic, business, etc.) before Go
 | `roundRobinInterleave()` | Interleave multiple card arrays while deduping |
 | `curatedToRecommendation()` | Convert `CuratedExperienceCard` to `Recommendation` |
 | `computePrefsHash()` | Hash preferences for cache key generation |
+| `INTENT_IDS` | Set of well-known intent IDs (adventurous, romantic, etc.) |
+| `separateIntentsAndCategories()` | Split mixed array into intents vs. category names |
 
 ### Animation Utilities (`src/utils/animations.ts`)
 
@@ -1373,6 +1368,7 @@ Filters out experience intents (adventurous, romantic, business, etc.) before Go
 | `SkeletonCard.tsx` | Shimmer loading placeholder |
 | `CardStackPreview.tsx` | Stacked card preview behind main card |
 | `DeckHistorySheet.tsx` | Bottom sheet for swipe batch history |
+| `DismissedCardsSheet.tsx` | Bottom sheet for reviewing/reconsidering left-swiped cards |
 | `PullToRefresh.tsx` | Pull-to-refresh with Reanimated animations + haptic feedback |
 
 ### Activity Subdirectory (9)
@@ -1788,11 +1784,12 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-02)
 
-- **For You Hero Card Personalization:** Hero cards on the Discover For You tab now display the user's top 2 preferred categories instead of hardcoded Fine Dining + Play. Grid cards are limited to the user's selected categories. The `discover-experiences` edge function accepts a new `heroCategories` request parameter with graceful fallback to defaults.
-- **Per-Preference Cache Keys:** Discover daily cache now uses a preferences fingerprint in the cache key. Switching preferences creates a separate cache entry — switching back serves from cache instantly without refetch. Old entries expire naturally at midnight.
-- **Preference Change Refresh:** Changing preferences resets the fetch guard and clears session cache, triggering a fresh API call with the new categories. The For You tab refreshes within 3 seconds of saving new preferences.
-- **Deck Stability Fixes:** Three independent reliability fixes — (1) `useFriends` state setters now guard with deep-equality checks, dropping unnecessary re-renders from 20+ to 1-2 per session; (2) batch transition timeout replaced with two-tier system: 10s "Still loading..." intermediate UI + 30s hard exhaustion timeout, with late-arriving batch recovery; (3) warm pool re-fires on preference changes so the first batch after a pref change serves from pool (fast) instead of API fallback (slow).
-- **Card Batch 20 Fix (Dedup Pipeline):** Fixed a critical one-character bug in `roundRobinInterleave` where `??` (nullish coalescing) was used instead of `||` (logical OR) for dedup keys — empty-string `placeId` values collapsed 18 of 20 cards into a single key `""`. Also fixed: `poolCardToApiCard` now normalizes empty `google_place_id` to `null`, pool query buffer increased from `limit + 20` to `limit * 3`, error handler returns HTTP 500 (was 200), upsert now uses `onConflict: 'google_place_id'`, new migration sanitizes existing empty-string place IDs, and Zustand `deckSchemaVersion` invalidates stale 2-card batches on deploy.
+- **Dismissed Cards Review UI:** New `DismissedCardsSheet` bottom sheet lets users review left-swiped cards on deck exhaustion. Each card row shows thumbnail, title, category, rating, and distance with "Reconsider" (re-add to deck front) and "Save" (bookmark) actions. Tapping a card opens the full ExpandedCardModal. Added `removeDismissedCard` and `addCardToFront` callbacks to `RecommendationsContext`.
+- **Pool Pagination (batchSeed Offset + nextPageToken):** Each swipe batch now gets a distinct slice of the card pool via offset-based pagination (`batchSeed × limit`). When the pool is exhausted at higher offsets, the system uses stored `nextPageToken` values to fetch additional Google Places results, expands the pool, and retries. Migration adds `next_page_token` and `pages_fetched` columns to `google_places_cache`. Handles expired page tokens gracefully.
+- **Legacy Code Cleanup:** Deleted 11 dead per-category service files (~715 lines) and 1 dead hook (`useNatureCards`). Removed 12 dead converter functions from `cardConverters.ts`.
+- **For You Hero Card Personalization:** Hero cards on the Discover For You tab now display the user's top 2 preferred categories instead of hardcoded Fine Dining + Play.
+- **Deck Stability Fixes:** Deep-equality guards on `useFriends` state setters, two-tier batch transition timeout, warm pool re-fires on preference changes.
+- **Card Batch 20 Fix:** Fixed dedup key bug in `roundRobinInterleave`, pool query buffer increase, error handler HTTP 500 fix, upsert conflict resolution.
 
 ---
 

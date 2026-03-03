@@ -368,7 +368,7 @@ export const RecommendationsProvider: React.FC<
   }, []);
 
   const addCardToFront = useCallback((card: Recommendation) => {
-    setRecommendations((prev) => [card, ...prev]);
+    setRecommendations((prev) => [card, ...prev.filter((c) => c.id !== card.id)]);
   }, []);
 
   // ── Sync hasMore and exhaustion from deck hook ──────────────────────────
@@ -803,6 +803,8 @@ export const RecommendationsProvider: React.FC<
     dismissedCards,
     addDismissedCard,
     clearDismissedCards,
+    removeDismissedCard,
+    addCardToFront,
     isExhausted,
     isSlowBatchLoad,
   };

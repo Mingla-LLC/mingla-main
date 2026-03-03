@@ -26,6 +26,7 @@ export interface PoolQueryParams {
   cardType?: 'single' | 'curated';
   experienceType?: string;         // for curated: 'adventurous', 'romantic', etc.
   excludeCardIds?: string[];       // additional exclusions
+  offset?: number;                 // skip this many unique cards before returning (for batch pagination)
 }
 
 export interface PoolQueryResult {
@@ -114,6 +115,10 @@ async function queryPoolCards(
     query = query.overlaps('categories', resolvedCats);
   }
 
+  const startIndex = params.offset || 0;
+  // Fetch enough rows to survive impression filtering + dedup after offset skip
+  const fetchLimit = Math.max(limit * 3, (startIndex + limit) * 2);
+
   query = query
     .gte('lat', lat - latDelta)
     .lte('lat', lat + latDelta)
@@ -121,7 +126,7 @@ async function queryPoolCards(
     .lte('lng', lng + lngDelta)
     .lte('price_min', budgetMax)
     .order('popularity_score', { ascending: false })
-    .limit(limit * 3); // fetch 3x to survive impression filtering + dedup
+    .limit(fetchLimit);
 
   if (experienceType) {
     query = query.eq('experience_type', experienceType);
@@ -170,8 +175,16 @@ async function queryPoolCards(
     return true;
   });
 
+  // Adjust offset: impressions already removed previously-served cards from the array,
+  // so applying the full offset would double-skip. Subtract the impression-filtered count
+  // to compensate. When impressions cover all prior batches, adjustedStart → 0 (correct).
+  // When the 200-card sliding window is smaller than total served, the residual offset
+  // still skips past re-emerged old cards.
+  const impressionRemoved = (allMatching?.length || 0) - unseen.length;
+  const adjustedStart = Math.max(0, startIndex - impressionRemoved);
+
   return {
-    poolCards: dedupedUnseen.slice(0, limit),
+    poolCards: dedupedUnseen.slice(adjustedStart, adjustedStart + limit),
     totalPoolSize,
   };
 }

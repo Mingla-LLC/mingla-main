@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Text,
   View,
@@ -41,6 +41,7 @@ import {
   Recommendation,
 } from "../contexts/RecommendationsContext";
 import { DeckHistorySheet } from "./DeckHistorySheet";
+import { DismissedCardsSheet } from "./DismissedCardsSheet";
 import { getReadableCategoryName } from "../utils/categoryUtils";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
@@ -210,6 +211,8 @@ export default function SwipeableCards({
     hasMoreCards,
     dismissedCards,
     addDismissedCard,
+    removeDismissedCard,
+    addCardToFront,
     isExhausted,
     isSlowBatchLoad,
   } = useRecommendations();
@@ -238,6 +241,7 @@ export default function SwipeableCards({
     useState<ExpandedCardData | null>(null);
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
+  const [dismissedSheetVisible, setDismissedSheetVisible] = useState(false);
   const batchSpinValue = useRef(new Animated.Value(0)).current;
   const previousBatchRefreshKeyRef = useRef<number | string | undefined>(
     refreshKey
@@ -1012,6 +1016,71 @@ export default function SwipeableCards({
     }
   };
 
+  const handleReconsiderCard = useCallback((card: Recommendation) => {
+    removeDismissedCard(card);
+    addCardToFront(card);
+    setRemovedCards((prev) => {
+      const next = new Set(prev);
+      next.delete(card.id);
+      return next;
+    });
+    setCurrentCardIndex(0);
+    setDismissedSheetVisible(false);
+  }, [removeDismissedCard, addCardToFront]);
+
+  const handleSaveDismissedCard = useCallback((card: Recommendation) => {
+    onCardLike(card);
+  }, [onCardLike]);
+
+  const handleDismissedCardPress = useCallback((card: Recommendation) => {
+    setDismissedSheetVisible(false);
+    // Small delay to avoid modal animation conflict
+    setTimeout(() => {
+      // Transform the card to ExpandedCardData and open modal
+      if ((card as any).cardType === 'curated') {
+        setSelectedCardForExpansion(card as unknown as ExpandedCardData);
+      } else {
+        const expandedCardData: ExpandedCardData = {
+          id: card.id,
+          placeId: card.placeId ?? card.id,
+          title: card.title,
+          category: card.category,
+          categoryIcon: card.categoryIcon,
+          description: card.description,
+          fullDescription: card.fullDescription || card.description,
+          image: card.image,
+          images: card.images || [card.image],
+          rating: card.rating,
+          reviewCount: card.reviewCount,
+          priceRange: card.priceRange,
+          distance: card.distance,
+          travelTime: card.travelTime,
+          address: card.address,
+          openingHours: card.openingHours,
+          highlights: card.highlights || [],
+          tags: card.tags || [],
+          matchScore: card.matchScore,
+          matchFactors: card.matchFactors,
+          socialStats: card.socialStats,
+          location:
+            card.lat && card.lng
+              ? { lat: card.lat, lng: card.lng }
+              : userLocation
+              ? { lat: userLocation.lat, lng: userLocation.lng }
+              : undefined,
+          selectedDateTime: userPreferences?.datetime_pref
+            ? new Date(userPreferences.datetime_pref)
+            : new Date(),
+          strollData: card.strollData,
+          website: (card as any).website ?? undefined,
+          phone: (card as any).phone ?? undefined,
+        };
+        setSelectedCardForExpansion(expandedCardData);
+      }
+      setIsExpandedModalVisible(true);
+    }, 300);
+  }, [userLocation, userPreferences]);
+
   const handleViewCardsAgain = async () => {
     // Clear local state
     setRemovedCards(new Set());
@@ -1292,7 +1361,7 @@ export default function SwipeableCards({
           {dismissedCards.length > 0 && (
             <TouchableOpacity
               style={styles.reviewDismissedButton}
-              onPress={() => setHistoryVisible(true)}
+              onPress={() => setDismissedSheetVisible(true)}
               activeOpacity={0.7}
             >
               <Ionicons name="refresh-outline" size={18} color="#eb7825" />
@@ -1685,6 +1754,15 @@ export default function SwipeableCards({
         currentDeckBatchIndex={currentDeckBatchIndex}
         navigateToDeckBatch={navigateToDeckBatch}
         totalDeckCardsViewed={totalDeckCardsViewed}
+      />
+
+      <DismissedCardsSheet
+        visible={dismissedSheetVisible}
+        onClose={() => setDismissedSheetVisible(false)}
+        dismissedCards={dismissedCards}
+        onReconsider={handleReconsiderCard}
+        onSave={handleSaveDismissedCard}
+        onCardPress={handleDismissedCardPress}
       />
     </View>
   );
