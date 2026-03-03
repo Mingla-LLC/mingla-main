@@ -24,7 +24,8 @@
         "NSPhotoLibraryUsageDescription": "Mingla needs photo library access to select images for your experiences.",
         "NSCalendarsUsageDescription": "Mingla needs calendar access to add scheduled experiences to your device calendar.",
         "NSRemindersUsageDescription": "Mingla needs reminders access to add scheduled experiences to your device calendar.",
-        "NSMicrophoneUsageDescription": "Mingla needs microphone access to record voice reviews about your experiences."
+        "NSMicrophoneUsageDescription": "Mingla needs microphone access to record voice reviews about your experiences.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -47,7 +48,8 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_CALENDAR",
-        "android.permission.WRITE_CALENDAR"
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "web": {
