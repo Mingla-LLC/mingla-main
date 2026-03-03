@@ -1,12 +1,12 @@
 {
   "expo": {
     "name": "Mingla",
-    "slug": "mingla-mobile",
+    "slug": "mingla",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "scheme": "com.mingla.app.v2",
     "splash": {
       "image": "./assets/icon.png",
@@ -73,9 +73,15 @@
         {
           "android": {
             "newArchEnabled": true
+          },
+          "ios": {
+            "newArchEnabled": true
           }
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-router",
+      "expo-web-browser"
     ],
     "updates": {
       "enabled": true,
