@@ -464,13 +464,20 @@ serve(async (req) => {
         if (poolErr) throw poolErr;
 
         if (allPoolCards && allPoolCards.length > 0) {
-          // Fetch recent impressions for this user (sliding window of 200)
+          // Fetch preference timestamp for session-scoped filtering
+          const { data: prefData } = await adminClient
+            .from('preferences')
+            .select('updated_at')
+            .eq('profile_id', userId)
+            .maybeSingle();
+          const prefUpdatedAt = prefData?.updated_at || new Date(0).toISOString();
+
+          // Session-scoped: only exclude cards seen since last preference change
           const { data: impressions } = await adminClient
             .from('user_card_impressions')
             .select('card_pool_id')
             .eq('user_id', userId)
-            .order('created_at', { ascending: false })
-            .limit(200);
+            .gte('created_at', prefUpdatedAt);
 
           const seenIds = new Set((impressions || []).map((imp: any) => imp.card_pool_id));
           const prevExclude = new Set(previousBatchPlaceIds);

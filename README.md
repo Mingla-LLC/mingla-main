@@ -122,7 +122,7 @@ User Request (batchSeed=N) → Edge Function (Deno)
     ↓
 [2] Query card_pool with offset (batchSeed × limit)
     ├── Filter: categories, geo (lat±δ, lng±δ), budget, card_type
-    ├── Exclude: user_card_impressions (sliding window of last 200)
+    ├── Exclude: user_card_impressions (session-scoped: since last pref change)
     ├── Dedup: by google_place_id
     ├── If pool ≥ limit at offset → SERVE DIRECTLY (0 API calls)
     ├── If pool < limit at offset → Try nextPageToken expansion
@@ -564,14 +564,14 @@ The card pool pipeline replaces direct Google API calls with pool-first serving.
 
 ### Serving Logic (`cardPoolService.ts`)
 
-1. **Query pool with offset**: `card_pool` filtered by categories (array overlap), geo bounds (lat/lng ± delta), budget (price range overlap), excluding user's impressions (sliding window of last 200). **Server-side dedup** by `google_place_id` ensures the same physical place listed under multiple categories only appears once (highest popularity score wins). Applies `offset` parameter to skip cards from previous batches (`batchSeed × limit`)
+1. **Query pool with offset**: `card_pool` filtered by categories (array overlap), geo bounds (lat/lng ± delta), budget (price range overlap), excluding user's impressions (session-scoped: all impressions since `preferences.updated_at`). Changing any preference resets the session — previously seen cards become eligible again. **Server-side dedup** by `google_place_id` ensures the same physical place listed under multiple categories only appears once (highest popularity score wins). Applies `offset` parameter to skip cards from previous batches (`batchSeed × limit`)
 2. **If pool ≥ 80% of requested limit at offset**: Serve directly (0 API calls). `hasMore` calculated from `totalPoolSize > (offset + limit)`. Cards enriched with real distance/travel time via haversine + estimateTravelMin
 3. **If pool exhausted at offset (batchSeed > 0)**: Check `google_places_cache` for entries with `next_page_token`. For each, call `fetchNextPage` which sends a pageToken-only request to Google Places API, appends results to cache, then inserts new places into `place_pool` + `card_pool`. Retry pool query with expanded pool
 4. **If pool < 80% of limit**: Gap analysis identifies missing categories, then batch Google Places searches fill gaps. The 80% threshold ensures full batches survive downstream dedup
 5. **Batched upsert results**: New places → `place_pool` in a single batched upsert, new cards → `card_pool` in a single batched upsert. This replaces previous sequential per-place inserts, reducing ~80 DB round-trips to exactly 2 calls
 6. **Short-circuit on API fetch**: When `serveCardsFromPipeline()` already fetched from Google (fromApi > 0), `discover-cards` returns those cards immediately instead of falling through to a redundant second `batchSearchPlaces()` call
 7. **Card format**: All output paths produce API-compatible fields: `priceMin`/`priceMax` (numeric), `distanceKm` (haversine from user), `travelTimeMin` (mode-aware estimate), `isOpenNow` (boolean), `openingHours` (parsed `Record<string, string>`)
-8. **Record impressions**: Log `user_card_impressions` with batch number
+8. **Record impressions**: Log `user_card_impressions` via `record_card_impressions` RPC — upserts with `ON CONFLICT DO UPDATE` to bump `created_at`, increment `view_count`, and preserve `first_seen_at`
 9. **Return cards**: With metadata: `fromPool` count, `fromApi` count, `totalPoolSize`, `hasMore` flag
 
 ### Curated Cards (Multi-Stop Itineraries)
@@ -1785,14 +1785,14 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-03)
 
-- **Policies & Reservations Button Fix:** Fixed compound data pipeline failure at 9 independent points that prevented the "Policies & Reservations" button from appearing on regular cards. Threaded `website`/`phone` through `GeneratedExperience` interface, `transformToGeneratedExperience()`, `useRecommendationsQuery` Recommendation mapping, `DiscoverScreen` card press handlers, `SavedTab` card press handler, and 4 edge function field masks/card mappings. SQL backfill migration populates existing `card_pool` rows from `place_pool`.
-- **Preferences Save — Resilient Timeout & Performance:** Three-layer timeout defense (12s service, 30s fetch via `Promise.race`, 15s UI safety net) guarantees the user sees success or failure within 12 seconds — never an indefinite hang. `fetchWithTimeout` now uses `Promise.race` (reliable on RN Android where `AbortController.abort()` silently fails). `handleSavePreferences` critical path slimmed to DB-write-only; all post-save work is fire-and-forget. Duplicate query invalidation eliminated. `preference_history` trigger exception-safe (migration `20260303000003`).
-- **Preferences Save Reliability (6-fix batch):** Triple-fire save button fixed with `useRef` synchronous guard; `people_count: undefined` in cache write fixed; dead code removed; offline cache priority reversed to DB-first; `board_session_preferences` now stores `intents` in a separate column (migration `20260303000002`).
+- **Session-Scoped Impressions:** Replaced the 200-card sliding window with preference-session scoping. Cards seen since the last preference change are excluded; changing any preference makes all previous cards eligible again. Impressions now recorded via `record_card_impressions` RPC with `view_count` and `first_seen_at` analytics columns. Covering index `idx_impressions_user_session` added for session-scoped queries. Both `cardPoolService.ts` and `discover-experiences` updated.
+- **Preference History Trigger Fix:** Migration `20260303000005` restores the correct JSONB-based `create_preference_history()` trigger function.
+- **Policies & Reservations Button Fix:** Fixed compound data pipeline failure at 9 independent points that prevented the "Policies & Reservations" button from appearing on regular cards.
+- **Preferences Save — Resilient Timeout & Performance:** Three-layer timeout defense (12s service, 30s fetch, 15s UI safety net) guarantees the user sees success or failure within 12 seconds.
+- **Preferences Save Reliability (6-fix batch):** Triple-fire save button fixed; `people_count: undefined` fixed; `board_session_preferences` now stores `intents` in a separate column.
 - **Dismissed Cards Review UI:** New `DismissedCardsSheet` bottom sheet lets users review left-swiped cards on deck exhaustion.
 - **Pool Pagination (batchSeed Offset + nextPageToken):** Each swipe batch now gets a distinct slice of the card pool via offset-based pagination.
-- **Legacy Code Cleanup:** Deleted 11 dead per-category service files (~715 lines) and 1 dead hook.
 - **For You Hero Card Personalization:** Hero cards display user's top 2 preferred categories.
-- **Deck Stability Fixes:** Deep-equality guards, two-tier batch transition timeout, warm pool re-fires.
 
 ---
 

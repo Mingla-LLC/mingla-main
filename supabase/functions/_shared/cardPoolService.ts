@@ -141,14 +141,14 @@ async function queryPoolCards(
     return { poolCards: [], totalPoolSize: 0 };
   }
 
-  // Sliding window: only exclude the last 200 impressions instead of all-time.
-  // This prevents pool depletion for frequent users — old cards resurface naturally.
+  // Session-scoped: only exclude cards seen since the last preference change.
+  // When user changes preferences, prefUpdatedAt advances and previously seen
+  // cards no longer match this filter — they become eligible again naturally.
   const { data: impressions } = await supabaseAdmin
     .from('user_card_impressions')
     .select('card_pool_id')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(200);
+    .gte('created_at', prefUpdatedAt);
 
   const seenIds = new Set(
     (impressions || []).map((imp: any) => imp.card_pool_id)
@@ -347,15 +347,11 @@ export async function recordImpressions(
 ): Promise<void> {
   if (!userId || cardPoolIds.length === 0) return;
 
-  const rows = cardPoolIds.map(id => ({
-    user_id: userId,
-    card_pool_id: id,
-    batch_number: batchNumber,
-  }));
-
-  const { error } = await supabaseAdmin
-    .from('user_card_impressions')
-    .upsert(rows, { onConflict: 'user_id,card_pool_id', ignoreDuplicates: true });
+  const { error } = await supabaseAdmin.rpc('record_card_impressions', {
+    p_user_id: userId,
+    p_card_pool_ids: cardPoolIds,
+    p_batch_number: batchNumber,
+  });
 
   if (error) {
     console.warn('[card-pool] Record impressions error:', error.message);
