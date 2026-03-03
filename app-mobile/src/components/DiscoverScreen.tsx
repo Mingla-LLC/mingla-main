@@ -30,6 +30,7 @@ import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
 import { enhancedLocationService } from "../services/enhancedLocationService";
+import { mixpanelService } from "../services/mixpanelService";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
@@ -2341,6 +2342,13 @@ export default function DiscoverScreen({
     // Save to AsyncStorage
     await savePeopleToStorage(updatedPeople);
 
+    // Track in Mixpanel
+    mixpanelService.trackDiscoverPersonAdded({
+      personName: trimmedName,
+      hasBirthday: !!personBirthday,
+      gender: personGender,
+    });
+
     // Close modal and reset form
     handleCloseAddPersonModal();
   };
@@ -2471,7 +2479,15 @@ export default function DiscoverScreen({
     const updatedHolidays = [...customHolidays, newCustomHoliday];
     setCustomHolidays(updatedHolidays);
     await saveCustomHolidaysToStorage(updatedHolidays);
-    
+
+    // Track in Mixpanel
+    mixpanelService.trackDiscoverCustomHolidayAdded({
+      holidayName: customDayName.trim(),
+      date: dateStr,
+      categories: normalizedCategories,
+      personId: selectedPersonId,
+    });
+
     // Close modal
     handleCloseAddCustomDayModal();
   };
@@ -2819,7 +2835,10 @@ export default function DiscoverScreen({
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         {/* Tabs */}
-        <DiscoverTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        <DiscoverTabs activeTab={activeTab} onTabChange={(tab) => {
+          setActiveTab(tab);
+          mixpanelService.trackTabViewed({ screen: "Discover", tab: tab === "for-you" ? "For You" : "Night Out" });
+        }} />
 
         {/* Content */}
         <ScrollView

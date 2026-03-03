@@ -24,6 +24,7 @@ import { cameraService } from "../services/cameraService";
 import { authService } from "../services/authService";
 import { useAppStore } from "../store/appStore";
 import { useAppState } from "./AppStateManager";
+import { mixpanelService } from "../services/mixpanelService";
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -381,6 +382,9 @@ export default function ProfilePage({
               const updatedIdentity = { ...(userIdentity || {}), profileImage: null };
               handleUserIdentityUpdate?.(updatedIdentity);
 
+              // Track profile picture removed
+              mixpanelService.trackProfilePictureUpdated("removed");
+
               // Update UI states
               setHasUploadedImage(false);
               setProfileImageSrc(null);
@@ -415,6 +419,10 @@ export default function ProfilePage({
           profileImage: publicUrl,
         };
         handleUserIdentityUpdate?.(updatedIdentity);
+
+        // Track profile picture uploaded
+        mixpanelService.trackProfilePictureUpdated("uploaded");
+
         // animate completion progress
         setHasUploadedImage(true);
         

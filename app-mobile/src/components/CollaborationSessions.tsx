@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { mixpanelService } from '../services/mixpanelService';
 import SessionViewModal from './SessionViewModal';
 import AddFriendModal from './AddFriendModal';
 import { supabase } from '../services/supabase';
@@ -180,6 +181,7 @@ export default function CollaborationSessions({
       setSessionToView(session);
       setShowSessionViewModal(true);
       onSessionSelect(session.id);
+      mixpanelService.trackSessionSwitched({ mode: 'session', sessionName: session.name });
     }
   };
 
@@ -198,6 +200,10 @@ export default function CollaborationSessions({
     }
 
     if (newSessionName.trim()) {
+      mixpanelService.trackCollaborationSessionCreated({
+        sessionName: newSessionName.trim(),
+        invitedFriendsCount: selectedFriends.length,
+      });
       onCreateSession(newSessionName.trim(), selectedFriends);
       setNewSessionName('');
       setSelectedFriends([]);
@@ -388,7 +394,10 @@ export default function CollaborationSessions({
         {/* Solo pill */}
         <TouchableOpacity
           style={[styles.pill, isSoloMode && styles.soloPill]}
-          onPress={onSoloSelect}
+          onPress={() => {
+            onSoloSelect();
+            mixpanelService.trackSessionSwitched({ mode: 'solo' });
+          }}
           activeOpacity={0.7}
         >
           <Text style={[styles.pillText, isSoloMode && styles.soloPillText]}>

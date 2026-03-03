@@ -14,6 +14,7 @@ import {
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { supabase } from "../../services/supabase";
 import { useAppStore } from "../../store/appStore";
+import { mixpanelService } from "../../services/mixpanelService";
 
 interface FriendItem {
   id: string;
@@ -214,6 +215,12 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
       }
 
       if (successCount > 0) {
+        mixpanelService.trackCollaborationInvitesSent({
+          sessionId,
+          sessionName,
+          invitedCount: selectedFriends.length,
+          successCount,
+        });
         Alert.alert(
           "Invites Sent",
           `Successfully invited ${successCount} friend${successCount > 1 ? "s" : ""} to "${sessionName}".`

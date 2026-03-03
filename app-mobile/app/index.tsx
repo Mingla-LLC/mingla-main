@@ -63,6 +63,7 @@ import { debugService } from "../src/services/debugService";
 import { DebugModal } from "../src/components/debug/DebugModal";
 import { useDebugGesture } from "../src/hooks/useDebugGesture";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
+import { mixpanelService } from "../src/services/mixpanelService";
 
 const TAB_BAR_ICON_SIZE = 19;
 
@@ -89,6 +90,11 @@ function AppContent() {
   // Initialize debug service on mount
   useEffect(() => {
     debugService.initialize();
+  }, []);
+
+  // Initialize Mixpanel on mount
+  useEffect(() => {
+    mixpanelService.initialize();
   }, []);
 
   // Initialize in-app notification service on mount
@@ -297,6 +303,27 @@ function AppContent() {
     });
   }, [friendRequests]);
 
+  // Check if user needs onboarding (for authenticated users)
+  // Show onboarding if user is authenticated but hasn't completed onboarding
+  const needsOnboarding =
+    isAuthenticated &&
+    user &&
+    profile &&
+    profile.has_completed_onboarding === false;
+
+  // Check if user needs email verification before onboarding
+  // Block onboarding if user is authenticated but email is not verified
+  // Skip email verification for Google and Apple sign-in users (they already verify emails)
+  const isGoogleUser = user?.app_metadata?.provider === "google";
+  const isAppleUser = user?.app_metadata?.provider === "apple";
+  const needsEmailVerification =
+    isAuthenticated &&
+    user &&
+    profile &&
+    profile.email_verified === false &&
+    !isGoogleUser &&
+    !isAppleUser; // Skip verification for Google and Apple users
+
   // Log current page for debugging
   useEffect(() => {
     if (isLoadingAuth && !authTimeout) {
@@ -337,6 +364,24 @@ function AppContent() {
     showAccountSettings,
     showProfileSettings,
   ]);
+
+  // Track main screen visits in Mixpanel
+  useEffect(() => {
+    if (isAuthenticated && !isLoadingAuth && currentPage) {
+      mixpanelService.trackScreenViewed(currentPage);
+    }
+  }, [currentPage, isAuthenticated, isLoadingAuth]);
+
+  // Identify user in Mixpanel once authenticated
+  useEffect(() => {
+    if (isAuthenticated && user?.id) {
+      mixpanelService.trackLogin({
+        id: user.id,
+        email: user.email,
+        provider: user.app_metadata?.provider ?? "email",
+      });
+    }
+  }, [isAuthenticated, user?.id]);
 
   // Transform friends to Friend format for session creation
   // dbFriends from useFriends has: id, friend_user_id, username, display_name, first_name, last_name, avatar_url
@@ -1188,6 +1233,7 @@ function AppContent() {
   const handleStartTour = () => {
     setShowWelcomeDialog(false);
     setShowCoachMap(true);
+    mixpanelService.trackCoachMarkTourStarted();
   };
 
   // Function to handle giving feedback from welcome dialog
@@ -1377,27 +1423,6 @@ function AppContent() {
     );
   }
   // jsieidjdj
-
-  // Check if user needs onboarding (for authenticated users)
-  // Show onboarding if user is authenticated but hasn't completed onboarding
-  const needsOnboarding =
-    isAuthenticated &&
-    user &&
-    profile &&
-    profile.has_completed_onboarding === false;
-
-  // Check if user needs email verification before onboarding
-  // Block onboarding if user is authenticated but email is not verified
-  // Skip email verification for Google and Apple sign-in users (they already verify emails)
-  const isGoogleUser = user?.app_metadata?.provider === "google";
-  const isAppleUser = user?.app_metadata?.provider === "apple";
-  const needsEmailVerification =
-    isAuthenticated &&
-    user &&
-    profile &&
-    profile.email_verified === false &&
-    !isGoogleUser &&
-    !isAppleUser; // Skip verification for Google and Apple users
 
   // Show email verification screen if needed (before onboarding)
   if (needsEmailVerification && !showSignUpForm) {
@@ -2226,12 +2251,14 @@ function AppContent() {
                         setCoachMapCurrentTarget(null);
                         setCurrentPage("home");
                         updateCoachMapTourStatus("completed");
+                        mixpanelService.trackCoachMarkTourFinished({ outcome: "completed" });
                       }}
                       onSkip={async () => {
                         setShowCoachMap(false);
                         setCoachMapCurrentTarget(null);
                         setCurrentPage("home");
                         updateCoachMapTourStatus("skipped");
+                        mixpanelService.trackCoachMarkTourFinished({ outcome: "skipped" });
                       }}
                       onStepChange={(stepIndex, target) => {
                         if (stepIndex === -1) {

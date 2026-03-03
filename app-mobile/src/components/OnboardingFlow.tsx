@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useAppStore } from "../store/appStore";
 import { locationService } from "../services/locationService";
+import { mixpanelService } from "../services/mixpanelService";
 import { PreferencesService } from "../services/preferencesService";
 import WelcomeStep from "./onboarding/WelcomeStep";
 import AccountSetupStep from "./onboarding/AccountSetupStep";
@@ -394,6 +395,52 @@ const OnboardingFlow = ({
     }
   }, [user, profile]);
 
+  // Track every step view in Mixpanel
+  useEffect(() => {
+    mixpanelService.trackOnboardingStepViewed(currentStep);
+  }, [currentStep]);
+
+  // Build extra properties to attach when a step is completed
+  const buildStepExtras = (step: number): Record<string, any> | undefined => {
+    switch (step) {
+      case 2:
+        return {
+          intents_selected: onboardingData.intents?.map((i: any) => i.id ?? i) ?? [],
+          intents_count: onboardingData.intents?.length ?? 0,
+        };
+      case 3:
+        return {
+          vibes_selected: onboardingData.vibes ?? [],
+          vibes_count: onboardingData.vibes?.length ?? 0,
+        };
+      case 4:
+        return { location: onboardingData.location };
+      case 5:
+        return { travel_mode: onboardingData.travelMode };
+      case 6:
+        return {
+          constraint_type: onboardingData.travelConstraintType,
+          constraint_value: onboardingData.travelConstraintValue,
+        };
+      case 7:
+        return {
+          budget_min: onboardingData.budgetRange?.min,
+          budget_max: onboardingData.budgetRange?.max,
+        };
+      case 8:
+        return {
+          date_option: onboardingData.dateTimePref?.dateOption ?? null,
+          time_slot: onboardingData.dateTimePref?.timeSlot ?? null,
+        };
+      case 9:
+        return {
+          invited_friends_count: onboardingData.invitedFriends?.length ?? 0,
+        };
+      default:
+        return undefined;
+    }
+  };
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -492,6 +539,9 @@ const OnboardingFlow = ({
     if (currentStep < totalSteps) {
       const nextStep = currentStep + 1;
 
+      // Track step completion in Mixpanel
+      mixpanelService.trackOnboardingStepCompleted(currentStep, buildStepExtras(currentStep));
+
       // Update onboarding_step to the next step (only for tracked steps 2-10)
       // Step 1 (Account Setup) is not tracked, so we start tracking from step 2
       // When completing step 2, update to 3; when completing step 3, update to 4, etc.
@@ -514,6 +564,7 @@ const OnboardingFlow = ({
 
   const handleBack = () => {
     if (currentStep > 0) {
+      mixpanelService.trackOnboardingStepBack(currentStep);
       setCurrentStep(Math.max(1, currentStep - 1));
     }
   };
@@ -763,6 +814,13 @@ const OnboardingFlow = ({
           <MagicStep
             onComplete={async (data: any) => {
               // Mark onboarding as complete only at the final step
+              mixpanelService.trackOnboardingStepCompleted(10);
+              mixpanelService.trackOnboardingCompleted({
+                intents_count: onboardingData.intents?.length ?? 0,
+                vibes_count: onboardingData.vibes?.length ?? 0,
+                travel_mode: onboardingData.travelMode,
+                invited_friends_count: onboardingData.invitedFriends?.length ?? 0,
+              });
               await handleMarkOnboardingComplete();
               onComplete(data || onboardingData);
             }}

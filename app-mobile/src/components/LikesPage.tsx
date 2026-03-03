@@ -9,6 +9,7 @@ import { Feather } from "@expo/vector-icons";
 import SavedTab from "./activity/SavedTab";
 import CalendarTab from "./activity/CalendarTab";
 import { useAppState } from "./AppStateManager";
+import { mixpanelService } from "../services/mixpanelService";
 
 // Tab types for Likes screen
 export type LikesTab = "saved" | "calendar";
@@ -110,6 +111,7 @@ export default function LikesPage({
 
   const handleTabChange = (tab: LikesTab) => {
     setActiveTab(tab);
+    mixpanelService.trackTabViewed({ screen: "Likes", tab: tab === "saved" ? "Saved" : "Calendar" });
   };
 
   return (

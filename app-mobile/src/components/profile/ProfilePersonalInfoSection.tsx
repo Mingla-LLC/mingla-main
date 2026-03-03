@@ -9,6 +9,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
 import { useAppState } from "../AppStateManager";
+import { mixpanelService } from "../../services/mixpanelService";
 
 interface UserIdentity {
   firstName: string;
@@ -42,6 +43,10 @@ export default function ProfilePersonalInfoSection() {
       [field]: tempValues[field as keyof typeof tempValues],
     };
     handleUserIdentityUpdate(updatedIdentity);
+
+    // Track profile setting updated
+    mixpanelService.trackProfileSettingUpdated({ field });
+
     setIsEditing(null);
   };
 

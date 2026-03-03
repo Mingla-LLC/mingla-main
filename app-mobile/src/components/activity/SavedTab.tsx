@@ -18,6 +18,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
+import { mixpanelService } from "../../services/mixpanelService";
 import { useSavedCards } from "@/src/hooks/useSavedCards";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1076,6 +1077,15 @@ const SavedTab = ({
         console.warn("Failed to add to device calendar:", deviceCalendarError);
       }
 
+      // Track experience scheduled
+      mixpanelService.trackExperienceScheduled({
+        cardId: cardToSchedule.id,
+        cardTitle: cardToSchedule.title,
+        category: cardToSchedule.category,
+        source,
+        scheduledDate: scheduledDateISO,
+      });
+
       // Show success toast
       toastManager.success(
         `Scheduled! ${cardToSchedule.title} has been moved to your calendar`,
@@ -1148,6 +1158,14 @@ const SavedTab = ({
     setSelectedCardForModal(expandedCardData);
     setOriginalSavedCard(card);
     setIsModalVisible(true);
+
+    // Track card expanded
+    mixpanelService.trackCardExpanded({
+      cardId: card.id,
+      cardTitle: card.title,
+      category: card.category,
+      source: "saved",
+    });
   };
 
   const handleCloseModal = () => {

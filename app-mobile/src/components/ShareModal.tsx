@@ -5,6 +5,7 @@ import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useAppState } from './AppStateManager';
 import { formatPriceRange } from './utils/formatters';
 import { colors } from '../constants/colors';
+import { mixpanelService } from '../services/mixpanelService';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -98,6 +99,7 @@ export default function ShareModal({
       await Clipboard.setString(personalizedMessage);
       setMessageCopied(true);
       setTimeout(() => setMessageCopied(false), 2000);
+      mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_message' });
     } catch (err) {
       console.error('Failed to copy message:', err);
       Alert.alert('Error', 'Failed to copy message to clipboard');
@@ -108,6 +110,7 @@ export default function ShareModal({
     setIsSharing(true);
     try {
       const message = personalizedMessage;
+      mixpanelService.trackExperienceShared({ experienceTitle: title, method: platform });
       
       switch (platform) {
         case 'messages':
@@ -336,11 +339,20 @@ export default function ShareModal({
               </View>
 
               <View style={styles.bottomButtonsContainer}>
-                <TouchableOpacity style={[styles.bottomButtons, {borderWidth: 0, backgroundColor: '#f9f4f1', marginBottom: 10}]}>
+                <TouchableOpacity style={[styles.bottomButtons, {borderWidth: 0, backgroundColor: '#f9f4f1', marginBottom: 10}]}
+                  onPress={() => {
+                    handleSocialShare('more');
+                  }}
+                >
                   <Feather name='share-2' size={24} color="black"/>
                   <Text>More sharing options</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.bottomButtons]}>
+                <TouchableOpacity style={[styles.bottomButtons]}
+                  onPress={() => {
+                    Clipboard.setString(`Check out ${title} on Mingla!`);
+                    mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_link' });
+                  }}
+                >
                   <Feather name='copy' size={24} color="black"/>
                   <Text>Copy link</Text>
                 </TouchableOpacity>
