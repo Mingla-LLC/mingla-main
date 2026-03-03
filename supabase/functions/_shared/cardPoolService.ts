@@ -588,6 +588,43 @@ function poolCardToApiCard(
   };
 }
 
+// ── Helper: Increment place impressions in batch ──────────────────────────
+
+async function incrementPlaceImpressions(
+  supabaseAdmin: SupabaseClient,
+  cardPoolIds: string[]
+): Promise<void> {
+  if (cardPoolIds.length === 0) return;
+
+  try {
+    // Get google_place_ids for these cards
+    const { data: cards } = await supabaseAdmin
+      .from('card_pool')
+      .select('google_place_id')
+      .in('id', cardPoolIds);
+
+    if (!cards || cards.length === 0) return;
+
+    // Deduplicate place IDs (one place may have multiple cards)
+    const placeIds = [...new Set(
+      cards
+        .map((c: any) => c.google_place_id)
+        .filter((id: string | null | undefined): id is string => Boolean(id))
+    )];
+
+    // Increment each place's total_impressions (fire-and-forget per place)
+    for (const gpid of placeIds) {
+      supabaseAdmin.rpc('increment_place_engagement', {
+        p_google_place_id: gpid,
+        p_field: 'total_impressions',
+        p_amount: 1,
+      }).catch(() => {});
+    }
+  } catch {
+    // Entire helper is fire-and-forget; never propagate errors
+  }
+}
+
 // ── MAIN ENTRY POINT ────────────────────────────────────────────────────────
 
 export async function serveCardsFromPipeline(
@@ -631,6 +668,13 @@ export async function serveCardsFromPipeline(
     // Record impressions + update counts (fire-and-forget)
     recordImpressions(supabaseAdmin, userId, servedIds).catch(() => {});
     updateServedCounts(supabaseAdmin, servedIds).catch(() => {});
+    // Increment engagement analytics (fire-and-forget)
+    supabaseAdmin.rpc('increment_user_engagement', {
+      p_user_id: userId,
+      p_field: 'total_cards_seen',
+      p_amount: servedIds.length,
+    }).catch(() => {});
+    incrementPlaceImpressions(supabaseAdmin, servedIds).catch(() => {});
 
     console.log(`[card-pool] Served ${apiCards.length} from pool (0 API calls) in ${Date.now() - startTime}ms`);
     return {
@@ -886,6 +930,22 @@ export async function serveCardsFromPipeline(
   if (allPoolIds.length > 0) {
     recordImpressions(supabaseAdmin, userId, allPoolIds).catch(() => {});
     updateServedCounts(supabaseAdmin, allPoolIds).catch(() => {});
+    // Increment engagement analytics (fire-and-forget)
+    supabaseAdmin.rpc('increment_user_engagement', {
+      p_user_id: userId,
+      p_field: 'total_cards_seen',
+      p_amount: allCards.length,
+    }).catch(() => {});
+    incrementPlaceImpressions(supabaseAdmin, allPoolIds).catch(() => {});
+  }
+
+  // If some cards were served but none came from pool, still count them as seen
+  if (allPoolIds.length === 0 && allCards.length > 0) {
+    supabaseAdmin.rpc('increment_user_engagement', {
+      p_user_id: userId,
+      p_field: 'total_cards_seen',
+      p_amount: allCards.length,
+    }).catch(() => {});
   }
 
   console.log(`[card-pool] Pipeline done: ${poolApiCards.length} from pool + ${gapCards.length} from API (${apiCallCount} API calls) in ${Date.now() - startTime}ms`);

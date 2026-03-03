@@ -836,7 +836,7 @@ Every table has RLS enabled with policies enforcing:
 
 | Module | Purpose |
 |--------|---------|
-| `cardPoolService.ts` | Core pool-first serving engine with offset-based pagination. `serveCardsFromPipeline()` (accepts `offset` param for batch skip), `serveCuratedCardsFromPool()`, `upsertPlaceToPool()`, `insertCardToPool()`, `recordImpressions()`. `queryPoolCards()` applies offset after impression filtering + dedup, with dynamic fetch limit `Math.max(limit*3, (offset+limit)*2)`. Includes `haversine()`, `estimateTravelMin()`, `parseGoogleOpeningHours()` for computing real distance/travel time and parsing opening hours. All card output paths produce API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`) |
+| `cardPoolService.ts` | Core pool-first serving engine with offset-based pagination. `serveCardsFromPipeline()` (accepts `offset` param for batch skip), `serveCuratedCardsFromPool()`, `upsertPlaceToPool()`, `insertCardToPool()`, `recordImpressions()`. `queryPoolCards()` applies offset after impression filtering + dedup, with dynamic fetch limit `Math.max(limit*3, (offset+limit)*2)`. Includes `haversine()`, `estimateTravelMin()`, `parseGoogleOpeningHours()` for computing real distance/travel time and parsing opening hours. All card output paths produce API-compatible numeric fields (`priceMin`, `priceMax`, `distanceKm`, `travelTimeMin`, `isOpenNow`). **Engagement wiring:** `incrementPlaceImpressions()` helper batch-resolves `google_place_id` from `card_pool` and fires `increment_place_engagement` per unique place. Both serve paths (pool-only and pool+fresh) fire-and-forget `increment_user_engagement(total_cards_seen)` and `incrementPlaceImpressions(total_impressions)` after recording impressions. Fresh-only edge case handled separately |
 | `categoryPlaceTypes.ts` (210 lines) | Single source of truth: `MINGLA_CATEGORY_PLACE_TYPES` (display name → Google types), `CATEGORY_ALIASES` (all variations), `resolveCategory()`, `getPlaceTypesForCategory()`, `INTENT_IDS`, `filterOutIntents()` |
 | `placesCache.ts` (~340 lines) | Google Places API caching: `searchPlacesWithCache()` (single type, stores `nextPageToken`), `fetchNextPage()` (pageToken-only pagination, appends to cache, clears expired tokens), `batchSearchPlaces()` (parallel multi-type). Location key precision: `lat.toFixed(2),lng.toFixed(2)` (~1.1km grid) |
 | `textSearchHelper.ts` (57 lines) | Fallback for non-standard place types (e.g., "sip and paint", "cooking classes"). `textSearchPlaces()` with keyword replacement |
@@ -1027,7 +1027,7 @@ defaultOptions: {
 | `nightOutExperiencesService.ts` | `fetchTicketmasterEvents()` → ticketmaster-events. Returns events with artistName, venueName, ticketUrl, priceRange |
 | `savedPeopleService.ts` | CRUD for `saved_people` table + experience generation via `generate-person-experiences` edge function |
 | `experiencesService.ts` | User preferences and interaction tracking |
-| `savedCardsService.ts` | `fetchSavedCards(userId)` from recommendations |
+| `savedCardsService.ts` | `saveCard()` (upsert + activity recording + fire-and-forget engagement counters: `total_cards_saved` + `total_saves`), `removeCard()`, `fetchSavedCards(userId)` (solo + board merge), `updateCardStrollData()`, `updateCardPicnicData()` |
 | `enhancedFavoritesService.ts` | Favorite management with analytics |
 
 ### Board & Collaboration (5)
@@ -1071,7 +1071,7 @@ defaultOptions: {
 
 | Service | Purpose |
 |---------|---------|
-| `calendarService.ts` | `fetchUserCalendarEntries(userId)` — scheduled experiences |
+| `calendarService.ts` | `fetchUserCalendarEntries(userId)`, `addEntryFromSavedCard()` (insert + activity recording + fire-and-forget engagement counters: `total_cards_scheduled` + `total_schedules`), `updateEntry()`, `deleteEntry()` |
 | `deviceCalendarService.ts` | Device calendar: `hasPermissions()`, `requestPermissions()`, `getHolidaysFromCalendar(daysAhead)` |
 
 ### User Activity & Personalization (4)
@@ -1802,6 +1802,7 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-03)
 
+- **Engagement Counter Wiring:** Wired `increment_user_engagement` and `increment_place_engagement` RPC functions into the three main user action paths. `cardPoolService.ts` now increments `total_cards_seen` (user) and `total_impressions` (place) on every card serve — pool-only, pool+fresh, and fresh-only paths all covered. `savedCardsService.ts` increments `total_cards_saved` (user) and `total_saves` (place) on successful saves (duplicate saves excluded). `calendarService.ts` increments `total_cards_scheduled` (user) and `total_schedules` (place) on successful schedule. All counter calls are fire-and-forget (never awaited, errors silently swallowed) to guarantee zero impact on main operation latency and reliability.
 - **Post-Experience Modal:** New `PostExperienceModal.tsx` — fully locked modal (no dismiss, no X, Android back disabled) with two completion paths: review (star rating → voice recording → submit) and reschedule (date picker → calendar update). Supports up to 5 voice clips (60s each, auto-stop), playback/delete, skip recording, retry on submit error. Integrates `voiceReviewService`, `CalendarService`, and `voiceReviewRecorder`.
 - **Post-Experience Check Hook:** New `usePostExperienceCheck` hook replaces `usePendingReviews`. Queries `calendar_entries` directly (single query with `feedback_status IS NULL` filter instead of cross-referencing `experience_feedback`). 3-second modal delay (down from 10s), 60-second periodic interval check (new), rich `PendingExperienceReview` interface with full place data for the voice review modal, `recheckPending()` for chained reviews, concurrent-check prevention via `isCheckingRef`.
 - **Voice Review Mobile Service:** New `voiceReviewService.ts` provides audio recording via `expo-av` (`VoiceReviewRecorder` singleton class with `initialize`, `startRecording`, `stopRecording`, `cancelRecording`), parallel audio upload to private `voice-reviews` Supabase Storage bucket with 1-year signed URLs, `submitVoiceReview` orchestrating upload → `place_reviews` insert → `calendar_entries` status update → fire-and-forget `process-voice-review` edge function invocation, and `markRescheduled` for deferred feedback. Exports `VoiceClip`, `VoiceReviewSubmission`, `VoiceReviewResult` types and `MAX_CLIP_DURATION_MS` / `MAX_CLIPS` constants.

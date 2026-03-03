@@ -103,6 +103,23 @@ export const savedCardsService = {
       reference_id: card.id,
       reference_type: "experience",
     });
+
+    // Increment engagement counters (fire-and-forget)
+    supabase.rpc('increment_user_engagement', {
+      p_user_id: profileId,
+      p_field: 'total_cards_saved',
+      p_amount: 1,
+    }).catch(() => {});
+
+    // Increment place-level saves counter
+    const placeId = card.placeId || card.id;
+    if (placeId) {
+      supabase.rpc('increment_place_engagement', {
+        p_google_place_id: placeId,
+        p_field: 'total_saves',
+        p_amount: 1,
+      }).catch(() => {});
+    }
   },
 
   async removeCard(
