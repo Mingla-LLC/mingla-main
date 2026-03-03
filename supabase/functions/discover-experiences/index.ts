@@ -308,13 +308,49 @@ serve(async (req) => {
             );
             if (matchingRow?.cards && matchingRow.cards.length > 0) {
               console.log(`Cache hit for user ${userId} on ${usDateKey} (hash=${categoryHash}). Returning persisted discover cards.`);
+
+              // Reconstruct hero cards from cached grid if the cache entry has none
+              let cachedHeroCards = matchingRow.generated_location?.heroCards || [];
+              let cachedGridCards = [...matchingRow.cards];
+
+              if (cachedHeroCards.length < 2 && cachedGridCards.length > 0) {
+                const heroUsedIds = new Set(cachedHeroCards.map((h: any) => h.id));
+                const heroUsedCats = new Set(cachedHeroCards.map((h: any) => h.category));
+                for (const heroCat of HERO_CATEGORIES_RESOLVED) {
+                  if (cachedHeroCards.length >= 2) break;
+                  if (heroUsedCats.has(heroCat)) continue;
+                  const candidate = cachedGridCards.find((c: any) => c.category === heroCat && !heroUsedIds.has(c.id));
+                  if (candidate) {
+                    cachedHeroCards.push(candidate);
+                    heroUsedIds.add(candidate.id);
+                    heroUsedCats.add(heroCat);
+                    console.log(`[cache-reconstruct] Hero for ${heroCat}: "${candidate.title}"`);
+                  }
+                }
+                // Fill remaining hero slots from highest-rated
+                if (cachedHeroCards.length < 2) {
+                  const remaining = cachedGridCards
+                    .filter((c: any) => !heroUsedIds.has(c.id))
+                    .sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0));
+                  for (const c of remaining) {
+                    if (cachedHeroCards.length >= 2) break;
+                    cachedHeroCards.push(c);
+                    heroUsedIds.add(c.id);
+                    console.log(`[cache-reconstruct] Filled hero with "${c.title}" (${c.category})`);
+                  }
+                }
+                // Remove heroes from grid to avoid duplicates
+                cachedGridCards = cachedGridCards.filter((c: any) => !heroUsedIds.has(c.id));
+                console.log(`[cache-reconstruct] Reconstructed ${cachedHeroCards.length} heroes, ${cachedGridCards.length} grid cards`);
+              }
+
               return new Response(
                 JSON.stringify({
-                  cards: matchingRow.cards,
-                  heroCards: matchingRow.generated_location?.heroCards || [],
-                  featuredCard: matchingRow.featured_card,
+                  cards: cachedGridCards,
+                  heroCards: cachedHeroCards,
+                  featuredCard: cachedHeroCards[0] || matchingRow.featured_card,
                   meta: {
-                    totalResults: matchingRow.cards.length,
+                    totalResults: cachedGridCards.length,
                     categories: categoriesToFetch,
                     successfulCategories: [],
                     failedCategories: [],

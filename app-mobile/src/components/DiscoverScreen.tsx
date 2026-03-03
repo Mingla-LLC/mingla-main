@@ -45,7 +45,7 @@ const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 const DISCOVER_CACHE_KEY = "mingla_discover_cache_v4";
 const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v3";
 const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
-const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-hero-cards-v3-force";
+const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-hero-cards-v4-allcats";
 
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
@@ -1368,7 +1368,7 @@ export default function DiscoverScreen({
   };
 
   const featuredFromGridCard = (card: GridCardData): FeaturedCardData => ({
-    id: `${card.id}_featured_fallback`,
+    id: card.id,
     title: card.title,
     experienceType: card.category,
     description: card.description,
@@ -1432,14 +1432,52 @@ export default function DiscoverScreen({
     loadedFromCacheRef.current = hasCompleteCardState;
 
     // Restore hero cards from cache (backward compat: default to empty array)
-    const cachedHeroCards = cachedData.heroCards || [];
+    let cachedHeroCards = cachedData.heroCards || [];
+    let cachedGridCards = cachedData.gridCards || [];
+
+    // CLIENT-SIDE FALLBACK: If cached hero cards are missing, extract from grid
+    if (cachedHeroCards.length < 2 && cachedGridCards.length > 0) {
+      const TARGET_HERO_CATEGORIES = ["Fine Dining", "Play"];
+      const heroUsedIds = new Set(cachedHeroCards.map((h: FeaturedCardData) => h.id));
+      const heroUsedCats = new Set(cachedHeroCards.map((h: FeaturedCardData) => h.experienceType));
+      const newHeroes = [...cachedHeroCards];
+
+      for (const heroCategory of TARGET_HERO_CATEGORIES) {
+        if (newHeroes.length >= 2) break;
+        if (heroUsedCats.has(heroCategory)) continue;
+        const candidate = cachedGridCards.find(
+          (c: GridCardData) => c.category === heroCategory && !heroUsedIds.has(c.id)
+        );
+        if (candidate) {
+          newHeroes.push(featuredFromGridCard(candidate));
+          heroUsedIds.add(candidate.id);
+          heroUsedCats.add(heroCategory);
+        }
+      }
+      // Fill remaining with highest-rated
+      if (newHeroes.length < 2) {
+        const remaining = cachedGridCards
+          .filter((c: GridCardData) => !heroUsedIds.has(c.id))
+          .sort((a: GridCardData, b: GridCardData) => (b.rating || 0) - (a.rating || 0));
+        for (const c of remaining) {
+          if (newHeroes.length >= 2) break;
+          newHeroes.push(featuredFromGridCard(c));
+          heroUsedIds.add(c.id);
+        }
+      }
+      // Remove heroes from grid
+      cachedGridCards = cachedGridCards.filter((c: GridCardData) => !heroUsedIds.has(c.id));
+      cachedHeroCards = newHeroes;
+      console.log(`[cache-restore] Reconstructed ${cachedHeroCards.length} heroes from grid`);
+    }
+
     if (cachedHeroCards.length > 0) {
       setSelectedHeroCards(cachedHeroCards);
     }
 
     if (hasCompleteCardState) {
-      setSelectedFeaturedCard(fallbackFeatured);
-      setSelectedGridCards(cachedData.gridCards);
+      setSelectedFeaturedCard(cachedHeroCards[0] || fallbackFeatured);
+      setSelectedGridCards(cachedGridCards);
     } else {
       const fallbackFromRecommendations = cachedData.recommendations?.[0]
         ? featuredFromRecommendation(cachedData.recommendations[0])
@@ -1454,7 +1492,7 @@ export default function DiscoverScreen({
 
     setDiscoverRecommendations(cachedData.recommendations);
     setHasCompletedDiscoverFetch(true);
-    prefetchDiscoverImages(fallbackFeatured, cachedData.gridCards || []);
+    prefetchDiscoverImages(cachedHeroCards[0] || fallbackFeatured, cachedGridCards);
   };
 
   // Fetch recommendations with ALL 10 categories for the Discover "For You" tab
@@ -1536,14 +1574,13 @@ export default function DiscoverScreen({
 
         hasFetchedRef.current = true;
 
-        // Use new discoverExperiences method that calls discover-experiences edge function
-        // Returns category cards (filtered by user prefs) + hero cards matching user's top preferences
-        const heroCategories = userSelectedCategories?.slice(0, 2) || undefined;
+        // For You: always fetch ALL 12 categories with Fine Dining + Play heroes
+        // User preferences do NOT filter the For You view — it shows best-of-the-best across ALL categories
         const { cards: generatedCards, heroCards: heroCardsRaw, featuredCard } = await ExperienceGenerationService.discoverExperiences(
           { lat: locationLat, lng: locationLng },
           10000, // 10km radius
-          userSelectedCategories || undefined, // Pass user's selected categories
-          heroCategories,                      // Pass user's top 2 as hero categories
+          undefined,              // For You: always ALL categories (never filtered by user prefs)
+          ["Fine Dining", "Play"], // For You: always these 2 hero categories
         );
 
         if (!generatedCards || generatedCards.length === 0) {
@@ -1602,7 +1639,7 @@ export default function DiscoverScreen({
           strollData: exp.strollData,
         }));
 
-        // Transform hero cards (2 heroes: user's top preferred categories or Fine Dining + Play default)
+        // Transform hero cards from server response
         const transformedHeroes: FeaturedCardData[] = (heroCardsRaw || []).map((hc: any) => ({
           id: hc.id,
           placeId: hc.placeId || hc.id,
@@ -1623,28 +1660,108 @@ export default function DiscoverScreen({
           openingHours: hc.openingHours || null,
         }));
 
+        // CLIENT-SIDE FALLBACK: If server returned < 2 hero cards, extract from grid cards
+        // This handles stale server caches that were built before the hero card system
+        if (transformedHeroes.length < 2 && generatedCards.length > 0) {
+          const TARGET_HERO_CATEGORIES = ["Fine Dining", "Play"];
+          const existingHeroIds = new Set(transformedHeroes.map((h: FeaturedCardData) => h.id));
+          const existingHeroCats = new Set(transformedHeroes.map((h: FeaturedCardData) => h.experienceType));
+
+          for (const heroCategory of TARGET_HERO_CATEGORIES) {
+            if (transformedHeroes.length >= 2) break;
+            if (existingHeroCats.has(heroCategory)) continue;
+
+            const candidate = generatedCards.find(
+              (c: any) => c.category === heroCategory && !existingHeroIds.has(c.id)
+            );
+            if (candidate) {
+              transformedHeroes.push({
+                id: candidate.id,
+                placeId: candidate.placeId || candidate.id,
+                title: candidate.title,
+                experienceType: candidate.category,
+                description: candidate.description,
+                image: candidate.heroImage,
+                images: candidate.images || [candidate.heroImage],
+                priceRange: candidate.priceRange,
+                rating: candidate.rating,
+                reviewCount: candidate.reviewCount,
+                address: candidate.address,
+                travelTime: candidate.travelTime,
+                distance: candidate.distance,
+                highlights: candidate.highlights || [],
+                tags: candidate.highlights || [],
+                location: candidate.lat && candidate.lng ? { lat: candidate.lat, lng: candidate.lng } : undefined,
+                openingHours: candidate.openingHours || null,
+              });
+              existingHeroIds.add(candidate.id);
+              existingHeroCats.add(heroCategory);
+              console.log(`[For You] Extracted hero from grid for ${heroCategory}: "${candidate.title}"`);
+            } else {
+              console.log(`[For You] No grid card found for hero category: ${heroCategory}`);
+            }
+          }
+
+          // If still less than 2 heroes, fill from highest-rated remaining cards
+          if (transformedHeroes.length < 2) {
+            const remaining = generatedCards
+              .filter((c: any) => !existingHeroIds.has(c.id))
+              .sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0));
+            for (const candidate of remaining) {
+              if (transformedHeroes.length >= 2) break;
+              transformedHeroes.push({
+                id: candidate.id,
+                placeId: candidate.placeId || candidate.id,
+                title: candidate.title,
+                experienceType: candidate.category,
+                description: candidate.description,
+                image: candidate.heroImage,
+                images: candidate.images || [candidate.heroImage],
+                priceRange: candidate.priceRange,
+                rating: candidate.rating,
+                reviewCount: candidate.reviewCount,
+                address: candidate.address,
+                travelTime: candidate.travelTime,
+                distance: candidate.distance,
+                highlights: candidate.highlights || [],
+                tags: candidate.highlights || [],
+                location: candidate.lat && candidate.lng ? { lat: candidate.lat, lng: candidate.lng } : undefined,
+                openingHours: candidate.openingHours || null,
+              });
+              existingHeroIds.add(candidate.id);
+              console.log(`[For You] Filled hero slot with "${candidate.title}" (${candidate.category})`);
+            }
+          }
+        }
+
+        console.log(`[For You] Final hero cards: ${transformedHeroes.length}, categories: ${transformedHeroes.map((h: FeaturedCardData) => h.experienceType).join(', ')}`);
+
         // Backward compat: featuredCard = first hero
         const transformedFeatured = transformedHeroes[0] || null;
-        // Transform ALL 10 cards to grid cards (no removal)
-        const gridCards: GridCardData[] = generatedCards.map((exp: any) => ({
-          id: exp.id,
-          placeId: exp.placeId || exp.id,
-          title: exp.title,
-          category: exp.category,
-          description: exp.description,
-          image: exp.heroImage,
-          images: exp.images || [exp.heroImage],
-          priceRange: exp.priceRange,
-          rating: exp.rating,
-          reviewCount: exp.reviewCount,
-          address: exp.address,
-          travelTime: exp.travelTime,
-          distance: exp.distance,
-          highlights: exp.highlights || [],
-          tags: exp.highlights || [],
-          location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
-          openingHours: exp.openingHours || null,
-        }));
+
+        // Build grid cards — EXCLUDE hero card IDs to avoid duplicates
+        const heroIds = new Set(transformedHeroes.map((h: FeaturedCardData) => h.id));
+        const gridCards: GridCardData[] = generatedCards
+          .filter((exp: any) => !heroIds.has(exp.id))
+          .map((exp: any) => ({
+            id: exp.id,
+            placeId: exp.placeId || exp.id,
+            title: exp.title,
+            category: exp.category,
+            description: exp.description,
+            image: exp.heroImage,
+            images: exp.images || [exp.heroImage],
+            priceRange: exp.priceRange,
+            rating: exp.rating,
+            reviewCount: exp.reviewCount,
+            address: exp.address,
+            travelTime: exp.travelTime,
+            distance: exp.distance,
+            highlights: exp.highlights || [],
+            tags: exp.highlights || [],
+            location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
+            openingHours: exp.openingHours || null,
+          }));
 
         const finalFeatured = transformedFeatured || (gridCards[0] ? featuredFromGridCard(gridCards[0]) : null);
         setSelectedHeroCards(transformedHeroes);
