@@ -645,6 +645,8 @@ Start every implementation by listing the files you'll touch, reading them, then
 ## Migration File Naming
 Before creating any new Supabase migration file, always check the latest existing migration version by listing the supabase/migrations/ directory sorted by name. Use the next sequential number after the highest existing version. Never reuse an existing version number. Format: YYYYMMDDNNNNNN_description.sql (e.g., 20260303000010_my_migration.sql). If the last file is 000009, the next must be 000010.
 
+If multiple migrations are being created in a single session, increment sequentially from the first one created (e.g., 000016, 000017, 000018). Always re-check the directory before each new file.
+
 ---
 
 ## Output Rules

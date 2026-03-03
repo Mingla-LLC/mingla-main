@@ -754,7 +754,8 @@ Every table has RLS enabled with policies enforcing:
 | 2026-03-02 | `20260302000005` | Saved people + person experiences tables (Add Person → curated experiences) |
 | 2026-03-02 | `20260302000006` | Pool pagination: add `next_page_token` (TEXT) and `pages_fetched` (INTEGER) to `google_places_cache` |
 | 2026-03-03 | `20260303000015` | Voice reviews: `place_reviews` table, `calendar_entries` feedback columns, `voice-reviews` storage bucket |
-| 2026-03-03 | `20260303000010` | Engagement analytics: `user_engagement_stats` table, 8 analytics columns on `place_pool`, 2 atomic increment RPC functions |
+| 2026-03-03 | `20260303000003` | Engagement analytics: `user_engagement_stats` table, 8 analytics columns on `place_pool`, 2 atomic increment RPC functions |
+| 2026-03-03 | `20260303000016` | Add `processed_at` (TIMESTAMPTZ) to `place_reviews` for tracking when voice review processing completed |
 
 ---
 
@@ -797,6 +798,7 @@ Every table has RLS enabled with policies enforcing:
 |----------|------|---------------|---------|
 | `enhance-cards` | No | OpenAI GPT-4o-mini | Card enrichment with personalization context (group size, intents, time window, budget, travel mode). Returns enhanced matchScore, description, highlights |
 | `ai-reason` | JWT | OpenAI GPT-4o-mini | Weather-aware recommendations. Returns: `weather_badge`, `adjusted_duration`, `safety_notes`, `indoor_alternative` |
+| `process-voice-review` | No (service) | OpenAI GPT-4o-mini-audio-preview | Background voice review processor. Accepts `reviewId`, fetches audio clips from Storage signed URLs, sends to GPT as `input_audio` for combined transcription + sentiment analysis + theme extraction in a single call. Updates `place_reviews` row with results, recalculates `place_pool` analytics, increments `user_engagement_stats`. Graceful fallback: if GPT fails, infers sentiment from star rating |
 
 ### Maps & Location
 
@@ -1799,7 +1801,8 @@ npx supabase functions serve function-name --env-file .env.local
 ## Recent Changes (2026-03-03)
 
 - **Voice Reviews Database Layer:** New `place_reviews` table for storing voice reviews with star ratings (1-5), audio file Storage paths, AI-processed transcription, sentiment classification, theme extraction, and processing lifecycle tracking. New `voice-reviews` private storage bucket with per-user folder isolation and RLS policies. `calendar_entries` extended with `feedback_status` and `review_id` columns for post-experience review prompting. Migration: `20260303000015`.
-- **Engagement Analytics Database Layer:** New `user_engagement_stats` table for per-user lifetime totals (cards seen/saved/scheduled, reviews given). 8 analytics columns added to `place_pool` (total_impressions, total_saves, total_schedules, review counts, ratings, themes). Two SECURITY DEFINER RPC functions (`increment_user_engagement`, `increment_place_engagement`) for atomic counter increments. Migration: `20260303000010`.
+- **Voice Review Processing Edge Function:** New `process-voice-review` edge function that runs in the background after a user submits a voice review. Downloads audio clips from Supabase Storage, sends them to GPT-4o-mini-audio-preview as `input_audio` for combined transcription + sentiment analysis + theme extraction in a single API call. Updates `place_reviews` with results, recalculates `place_pool` aggregate analytics (review count, avg rating, sentiment counts, top themes), and increments `user_engagement_stats.total_reviews_given`. Graceful fallback on GPT failure: infers sentiment from star rating, marks processing as completed. Migration `20260303000016` adds `processed_at` column.
+- **Engagement Analytics Database Layer:** New `user_engagement_stats` table for per-user lifetime totals (cards seen/saved/scheduled, reviews given). 8 analytics columns added to `place_pool` (total_impressions, total_saves, total_schedules, review counts, ratings, themes). Two SECURITY DEFINER RPC functions (`increment_user_engagement`, `increment_place_engagement`) for atomic counter increments. Migration: `20260303000003`.
 - **Session-Scoped Impressions:** Replaced the 200-card sliding window with preference-session scoping. Cards seen since the last preference change are excluded; changing any preference makes all previous cards eligible again. Impressions now recorded via `record_card_impressions` RPC with `view_count` and `first_seen_at` analytics columns. Covering index `idx_impressions_user_session` added for session-scoped queries. Both `cardPoolService.ts` and `discover-experiences` updated.
 - **Preference History Trigger Fix:** Migration `20260303000005` restores the correct JSONB-based `create_preference_history()` trigger function.
 - **Policies & Reservations Button Fix:** Fixed compound data pipeline failure at 9 independent points that prevented the "Policies & Reservations" button from appearing on regular cards.
