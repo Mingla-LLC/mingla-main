@@ -1113,11 +1113,12 @@ defaultOptions: {
 |---------|---------|
 | `messagingService.ts` | Direct message operations |
 
-### Feedback (1)
+### Feedback & Reviews (2)
 
 | Service | Purpose |
 |---------|---------|
 | `experienceFeedbackService.ts` | `getPendingReviewEntries(userId)` — unreviewed scheduled experiences |
+| `voiceReviewService.ts` | Voice review recording, upload, and submission. `VoiceReviewRecorder` singleton (expo-av): `initialize()`, `startRecording()`, `stopRecording()`, `cancelRecording()`, `isRecording()`. `voiceReviewService`: `submitVoiceReview(userId, submission)` → parallel audio upload to private `voice-reviews` bucket → `place_reviews` insert → calendar update → fire-and-forget edge function. `markRescheduled(userId, calendarEntryId)`. Exports: `VoiceClip`, `VoiceReviewSubmission`, `VoiceReviewResult`, `MAX_CLIP_DURATION_MS`, `MAX_CLIPS` |
 
 ### Device & System (6)
 
@@ -1800,6 +1801,7 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-03)
 
+- **Voice Review Mobile Service:** New `voiceReviewService.ts` provides audio recording via `expo-av` (`VoiceReviewRecorder` singleton class with `initialize`, `startRecording`, `stopRecording`, `cancelRecording`), parallel audio upload to private `voice-reviews` Supabase Storage bucket with 1-year signed URLs, `submitVoiceReview` orchestrating upload → `place_reviews` insert → `calendar_entries` status update → fire-and-forget `process-voice-review` edge function invocation, and `markRescheduled` for deferred feedback. Exports `VoiceClip`, `VoiceReviewSubmission`, `VoiceReviewResult` types and `MAX_CLIP_DURATION_MS` / `MAX_CLIPS` constants.
 - **Voice Reviews Database Layer:** New `place_reviews` table for storing voice reviews with star ratings (1-5), audio file Storage paths, AI-processed transcription, sentiment classification, theme extraction, and processing lifecycle tracking. New `voice-reviews` private storage bucket with per-user folder isolation and RLS policies. `calendar_entries` extended with `feedback_status` and `review_id` columns for post-experience review prompting. Migration: `20260303000015`.
 - **Voice Review Processing Edge Function:** New `process-voice-review` edge function that runs in the background after a user submits a voice review. Downloads audio clips from Supabase Storage, sends them to GPT-4o-mini-audio-preview as `input_audio` for combined transcription + sentiment analysis + theme extraction in a single API call. Updates `place_reviews` with results, recalculates `place_pool` aggregate analytics (review count, avg rating, sentiment counts, top themes), and increments `user_engagement_stats.total_reviews_given`. Graceful fallback on GPT failure: infers sentiment from star rating, marks processing as completed. Migration `20260303000016` adds `processed_at` column.
 - **Engagement Analytics Database Layer:** New `user_engagement_stats` table for per-user lifetime totals (cards seen/saved/scheduled, reviews given). 8 analytics columns added to `place_pool` (total_impressions, total_saves, total_schedules, review counts, ratings, themes). Two SECURITY DEFINER RPC functions (`increment_user_engagement`, `increment_place_engagement`) for atomic counter increments. Migration: `20260303000003`.
