@@ -641,7 +641,7 @@ Runs daily to keep `place_pool` data fresh:
 | `collaboration_sessions` | Named sessions with status lifecycle (pending → active → completed). `created_by` FK |
 | `session_participants` | Session membership with `is_admin` flags and acceptance status |
 | `collaboration_invites` | Invite lifecycle tracking (pending → accepted/declined) |
-| `board_session_preferences` | Per-session preference overrides |
+| `board_session_preferences` | Per-session preference overrides (separate `categories` and `intents` columns) |
 | `board_saved_cards` | Cards added to boards with `card_data` JSONB |
 | `board_votes` | User votes on board cards |
 | `board_card_rsvps` | RSVP responses for scheduled board cards |
@@ -1785,7 +1785,7 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-03)
 
-- **Preferences Save Performance Fix:** Replaced ~80 sequential DB round-trips in `serveCardsFromPipeline()` with 2 batched upserts (1 for `place_pool`, 1 for `card_pool`), dropping cold-pool response time from ~16s to ~2s. Added short-circuit guard in `discover-cards` to prevent redundant Google API searches when the pipeline already fetched results. Removed premature optimistic cache write from `PreferencesSheet` so `["userPreferences"]` is written exactly once per save. Fixed categories/intents separation in `AppHandlers` — intent strings are no longer merged into the `categories` array.
+- **Preferences Save Reliability (6-fix batch):** Triple-fire save button fixed with `useRef` synchronous guard; competing 30s timeouts resolved (PreferencesSheet bumped to 35s so Supabase fetch timeout fires first); `people_count: undefined` in cache write fixed; dead code (`nextUserPreferences`, `previousPrefs`) removed; offline cache priority reversed to DB-first; `board_session_preferences` now stores `intents` in a separate column (migration `20260303000002`).
 - **Dismissed Cards Review UI:** New `DismissedCardsSheet` bottom sheet lets users review left-swiped cards on deck exhaustion.
 - **Pool Pagination (batchSeed Offset + nextPageToken):** Each swipe batch now gets a distinct slice of the card pool via offset-based pagination.
 - **Legacy Code Cleanup:** Deleted 11 dead per-category service files (~715 lines) and 1 dead hook.

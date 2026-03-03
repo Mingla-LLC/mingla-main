@@ -206,6 +206,7 @@ export default function PreferencesSheet({
   // Loading states
   const [isSaving, setIsSaving] = useState(false);
 
+  const isSavingRef = useRef(false);
   const isInternalUpdate = useRef(false);
   const { keyboardHeight: kbHeight } = useKeyboard();
   const kbHeightRef = useRef(0);
@@ -721,7 +722,8 @@ export default function PreferencesSheet({
   }, []);
 
   const handleApplyPreferences = useCallback(async () => {
-    if (isSaving) return;
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
 
     const customLocationValue = useGpsLocation
       ? null
@@ -753,34 +755,7 @@ export default function PreferencesSheet({
       ? selectedCategories
       : ['Nature', 'Casual Eats', 'Drink'];
 
-    const nextUserPreferences = {
-      mode: "explore",
-      budget_min: typeof budgetMin === "number" ? budgetMin : 0,
-      budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
-      people_count: 1,
-      categories: finalCategories,
-      intents: selectedIntents,
-      travel_mode: travelMode,
-      travel_constraint_type: constraintType,
-      travel_constraint_value:
-        typeof constraintValue === "number" ? constraintValue : 20,
-      datetime_pref: selectedDate ? selectedDate.toISOString() : new Date().toISOString(),
-      date_option: selectedDateOption
-        ? {
-            Now: "now",
-            Today: "today",
-            "This Weekend": "weekend",
-            "Pick a Date": "custom",
-          }[selectedDateOption]
-        : null,
-      exact_time: exactTime || null,
-    } as any;
-
-    const previousPrefs = user?.id
-      ? queryClient.getQueryData(["userPreferences", user.id])
-      : undefined;
-
-    setIsSaving(true);
+    setIsSaving(true); // UI-only — ref guard above is the real mutex
     try {
       // === CRITICAL PATH: Save to DB with 30s timeout ===
       const savePromise = (async () => {
@@ -811,11 +786,16 @@ export default function PreferencesSheet({
         }
       })();
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Save timeout after 30s')), 30000)
-      );
+      let timeoutId: ReturnType<typeof setTimeout>;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Save timeout after 35s')), 35000);
+      });
 
-      await Promise.race([savePromise, timeoutPromise]);
+      try {
+        await Promise.race([savePromise, timeoutPromise]);
+      } finally {
+        clearTimeout(timeoutId!);
+      }
 
       // === SUCCESS: Non-blocking cache invalidation ===
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
@@ -844,10 +824,10 @@ export default function PreferencesSheet({
         [{ text: 'OK' }]
       );
     } finally {
+      isSavingRef.current = false;
       setIsSaving(false); // ALWAYS resets, even on timeout/error
     }
   }, [
-    isSaving,
     selectedIntents,
     budgetMin,
     budgetMax,

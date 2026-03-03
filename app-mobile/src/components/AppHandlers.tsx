@@ -139,13 +139,12 @@ export function useAppHandlers(state: any) {
 
     if (sessionId) {
       // Transform preferences to database format
-      // Include both intents AND categories — mirrors how handleSavePreferences
-      // builds the categories array for the solo preferences table.
+      // Separate intents and categories — matches solo preferences table schema.
       const dbPreferences: any = {
-        categories: [
-          ...(preferences.selectedIntents || []),
-          ...(preferences.selectedCategories || []),
-        ],
+        categories: preferences.selectedCategories?.length > 0
+          ? preferences.selectedCategories
+          : ['Nature', 'Casual Eats', 'Drink'],
+        intents: preferences.selectedIntents || [],
         budget_min:
           typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
         budget_max:
@@ -190,6 +189,7 @@ export function useAppHandlers(state: any) {
     if (user?.id) {
       const soloDB: any = {
         mode: preferences.selectedIntents?.length > 0 ? "custom" : "explore",
+        people_count: 1,
         budget_min: typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
         budget_max: typeof preferences.budgetMax === "number" ? preferences.budgetMax : 1000,
         categories: preferences.selectedCategories || ['Nature', 'Casual Eats', 'Drink'],
@@ -605,6 +605,7 @@ export function useAppHandlers(state: any) {
       // Convert PreferencesSheet format to database format
       const dbPreferences: any = {
         mode: preferences.selectedIntents?.length > 0 ? "custom" : "explore",
+        people_count: 1,
         budget_min:
           typeof preferences.budgetMin === "number"
             ? preferences.budgetMin

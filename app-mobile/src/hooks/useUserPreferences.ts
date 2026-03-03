@@ -9,29 +9,30 @@ const fetchUserPreferences = async (
     return null;
   }
 
-  // First, try to get preferences from cache
+  // Try database first — authoritative source of truth
+  try {
+    const prefs = await ExperiencesService.getUserPreferences(userId);
+    if (prefs) {
+      // Update offline cache with fresh data (fire-and-forget)
+      offlineService.cacheUserPreferences(prefs).catch(() => {});
+      return prefs;
+    }
+  } catch (error) {
+    console.log('DB fetch failed, falling back to offline cache:', error);
+  }
+
+  // Fallback: offline cache (only when DB is unreachable)
   try {
     const cachedPrefs = await offlineService.getOfflineUserPreferences();
     if (cachedPrefs) {
-      console.log('Using cached preferences');
+      console.log('Using cached preferences (offline fallback)');
       return cachedPrefs as UserPreferences;
     }
   } catch (error) {
-    console.log('No cached preferences found, fetching from database');
+    console.error('Offline cache also failed:', error);
   }
 
-  // If not found in cache, fetch from database
-  try {
-    const prefs = await ExperiencesService.getUserPreferences(userId);
-    // Cache the preferences for next time
-    if (prefs) {
-      await offlineService.cacheUserPreferences(prefs);
-    }
-    return prefs;
-  } catch (error) {
-    console.error('Error loading preferences from database:', error);
-    return null;
-  }
+  return null;
 };
 
 export const useUserPreferences = (userId: string | undefined) => {
