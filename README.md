@@ -756,6 +756,8 @@ Every table has RLS enabled with policies enforcing:
 | 2026-03-03 | `20260303000015` | Voice reviews: `place_reviews` table, `calendar_entries` feedback columns, `voice-reviews` storage bucket |
 | 2026-03-03 | `20260303000003` | Engagement analytics: `user_engagement_stats` table, 8 analytics columns on `place_pool`, 2 atomic increment RPC functions |
 | 2026-03-03 | `20260303000016` | Add `processed_at` (TIMESTAMPTZ) to `place_reviews` for tracking when voice review processing completed |
+| 2026-03-03 | `20260303000017` | Secure engagement RPCs: field whitelisting + auth.uid() ownership check on `increment_user_engagement` and `increment_place_engagement` |
+| 2026-03-03 | `20260303000018` | Fix tautological partial index on `calendar_entries` (feedback_status) |
 
 ---
 
@@ -860,7 +862,7 @@ Every table has RLS enabled with policies enforcing:
 1. **Supabase Auth (JWT)** — Every API call carries a JWT; `auth.uid()` is the single source of identity
 2. **Row Level Security (RLS)** — All tables have RLS enabled. Policies enforce ownership, session membership, friendship-based visibility
 3. **Service Role Isolation** — Pipeline tables (`place_pool`, `card_pool`) are write-only for `service_role`; mobile clients get read-only access
-4. **SECURITY DEFINER Functions** — Trigger functions that cross RLS boundaries (e.g., writing to `user_preference_learning` from interaction inserts) use explicit `search_path`. Engagement analytics RPCs (`increment_user_engagement`, `increment_place_engagement`) run as SECURITY DEFINER for atomic counter increments without user write policies
+4. **SECURITY DEFINER Functions** — Trigger functions that cross RLS boundaries (e.g., writing to `user_preference_learning` from interaction inserts) use explicit `search_path`. Engagement analytics RPCs (`increment_user_engagement`, `increment_place_engagement`) run as SECURITY DEFINER for atomic counter increments — secured with explicit field whitelists (only known analytics columns accepted) and `auth.uid()` ownership checks (users can only increment their own stats)
 5. **Edge Function JWT Verification** — Critical functions (AI reasoning, API key retrieval, email sending, user deletion) require valid JWT. Discovery/weather endpoints are public
 6. **OAuth Redirect Page** — Dedicated static page (`oauth-redirect/`) handles OAuth callback token extraction
 7. **API Key Proxy** — Google Maps key served via `get-google-maps-key` edge function (JWT-required), never embedded in client code
@@ -1504,7 +1506,7 @@ Mingla/
 │   │   │   ├── useFriends.ts               # Friend management
 │   │   │   ├── useMessages.ts              # Messaging
 │   │   │   ├── useCalendarHolidays.ts      # Device calendar holidays
-│   │   │   ├── usePostExperienceCheck.ts   # Post-experience review prompts (replaces usePendingReviews)
+│   │   │   ├── usePostExperienceCheck.ts   # Post-experience review prompts
 │   │   │   ├── useEnhancedProfile.ts       # Gamified profile
 │   │   │   └── ... (22 more)
 │   │   ├── services/                        # 65+ service modules
@@ -1817,7 +1819,10 @@ npx supabase functions serve function-name --env-file .env.local
 - **Dismissed Cards Review UI:** New `DismissedCardsSheet` bottom sheet lets users review left-swiped cards on deck exhaustion.
 - **Pool Pagination (batchSeed Offset + nextPageToken):** Each swipe batch now gets a distinct slice of the card pool via offset-based pagination.
 - **For You Hero Card Personalization:** Hero cards display user's top 2 preferred categories.
-- **App Integration — Voice Review Wiring:** Swapped `ExperienceReviewModal` + `usePendingReviews` for `PostExperienceModal` + `usePostExperienceCheck` in `app/index.tsx`. Patched `experienceFeedbackService.getPendingReviewEntries()` with `.is("feedback_status", null)` filter for backward compatibility. Added `expo-av` to `app.json` plugins for native audio recording support.
+- **App Integration — Voice Review Wiring:** Swapped `ExperienceReviewModal` for `PostExperienceModal` + `usePostExperienceCheck` in `app/index.tsx`. Patched `experienceFeedbackService.getPendingReviewEntries()` with `.is("feedback_status", null)` filter for backward compatibility. Added `expo-av` to `app.json` plugins for native audio recording support.
+- **Security Hardening — Engagement RPCs:** Added field whitelisting and `auth.uid()` ownership check to both `increment_user_engagement` and `increment_place_engagement` SECURITY DEFINER functions. Previously any authenticated user could increment arbitrary columns on any user's stats. Migration: `20260303000017`.
+- **Dead Code Removal:** Deleted `usePendingReviews.ts` (93 lines, zero imports) — fully replaced by `usePostExperienceCheck.ts`.
+- **Tautological Index Fix:** Dropped and recreated `idx_calendar_entries_feedback` without the always-true `WHERE feedback_status IS NOT NULL OR feedback_status IS NULL` clause. Migration: `20260303000018`.
 
 ---
 
