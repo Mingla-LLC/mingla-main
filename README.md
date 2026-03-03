@@ -609,12 +609,13 @@ Runs daily to keep `place_pool` data fresh:
 | `user_sessions` | Analytics sessions grouping related interactions |
 | `app_feedback` | In-app feedback submissions (rating, message, category) |
 | `experience_feedback` | Per-experience feedback |
+| `user_engagement_stats` | Per-user lifetime engagement totals: total_cards_seen, total_cards_saved, total_cards_scheduled, total_reviews_given. PK: user_id (FK to auth.users). RLS: users read own, service_role all. Writes via `increment_user_engagement` SECURITY DEFINER RPC only |
 
 ### Pipeline Tables
 
 | Table | Purpose |
 |---|---|
-| `place_pool` | Shared enriched Google Places data. `google_place_id` UNIQUE. Includes: name, address, lat/lng, types[], rating, review_count, price_level, opening_hours, photos, website, raw_google_data, is_active |
+| `place_pool` | Shared enriched Google Places data. `google_place_id` UNIQUE. Includes: name, address, lat/lng, types[], rating, review_count, price_level, opening_hours, photos, website, raw_google_data, is_active. **Analytics columns:** total_impressions, total_saves, total_schedules, mingla_review_count, mingla_avg_rating, mingla_positive_count, mingla_negative_count, mingla_top_themes[] |
 | `card_pool` | Pre-built cards (`single` or `curated`). Links to `place_pool` via `place_pool_id` FK. Includes: title, categories[], description, highlights, images, address, lat/lng, rating, popularity_score, base_match_score |
 | `user_card_impressions` | Per-user "seen" tracking. PK: `(user_id, card_pool_id)`. Includes `batch_number` and `created_at` |
 | `google_places_cache` | Google Places API response cache. Composite key: `(place_type, location_key, radius_bucket, search_strategy, text_query)`. Includes `next_page_token` (TEXT) for pagination and `pages_fetched` (INTEGER) counter. 24h TTL |
@@ -699,6 +700,8 @@ auth.users ──┐
 
 place_pool ──→ card_pool (1:M via place_pool_id FK)
 card_pool ──→ user_card_impressions (1:M)
+
+auth.users ──→ user_engagement_stats (1:1, CASCADE delete)
 ```
 
 ### Row Level Security
@@ -723,6 +726,7 @@ Every table has RLS enabled with policies enforcing:
 | `auto_create_profile` | Creates profile row on new user sign-up |
 | `cleanup_session_under_two_participants` | AFTER DELETE on `session_participants` → auto-deletes sessions below 2 members |
 | `sync_invite_inviter_ids` | Keeps `inviter_id` and `invited_by` columns in sync |
+| `update_user_engagement_stats_updated_at` | Auto-updates `updated_at` on `user_engagement_stats` row modification |
 
 ### Migrations
 
@@ -742,6 +746,7 @@ Every table has RLS enabled with policies enforcing:
 | 2026-03-02 | `20260302000004` | Card pool dedup (partial unique index on google_place_id for single cards) |
 | 2026-03-02 | `20260302000005` | Saved people + person experiences tables (Add Person → curated experiences) |
 | 2026-03-02 | `20260302000006` | Pool pagination: add `next_page_token` (TEXT) and `pages_fetched` (INTEGER) to `google_places_cache` |
+| 2026-03-03 | `20260303000010` | Engagement analytics: `user_engagement_stats` table, 8 analytics columns on `place_pool`, 2 atomic increment RPC functions |
 
 ---
 
@@ -845,7 +850,7 @@ Every table has RLS enabled with policies enforcing:
 1. **Supabase Auth (JWT)** — Every API call carries a JWT; `auth.uid()` is the single source of identity
 2. **Row Level Security (RLS)** — All tables have RLS enabled. Policies enforce ownership, session membership, friendship-based visibility
 3. **Service Role Isolation** — Pipeline tables (`place_pool`, `card_pool`) are write-only for `service_role`; mobile clients get read-only access
-4. **SECURITY DEFINER Functions** — Trigger functions that cross RLS boundaries (e.g., writing to `user_preference_learning` from interaction inserts) use explicit `search_path`
+4. **SECURITY DEFINER Functions** — Trigger functions that cross RLS boundaries (e.g., writing to `user_preference_learning` from interaction inserts) use explicit `search_path`. Engagement analytics RPCs (`increment_user_engagement`, `increment_place_engagement`) run as SECURITY DEFINER for atomic counter increments without user write policies
 5. **Edge Function JWT Verification** — Critical functions (AI reasoning, API key retrieval, email sending, user deletion) require valid JWT. Discovery/weather endpoints are public
 6. **OAuth Redirect Page** — Dedicated static page (`oauth-redirect/`) handles OAuth callback token extraction
 7. **API Key Proxy** — Google Maps key served via `get-google-maps-key` edge function (JWT-required), never embedded in client code
@@ -1785,6 +1790,7 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-03)
 
+- **Engagement Analytics Database Layer:** New `user_engagement_stats` table for per-user lifetime totals (cards seen/saved/scheduled, reviews given). 8 analytics columns added to `place_pool` (total_impressions, total_saves, total_schedules, review counts, ratings, themes). Two SECURITY DEFINER RPC functions (`increment_user_engagement`, `increment_place_engagement`) for atomic counter increments. Migration: `20260303000010`.
 - **Session-Scoped Impressions:** Replaced the 200-card sliding window with preference-session scoping. Cards seen since the last preference change are excluded; changing any preference makes all previous cards eligible again. Impressions now recorded via `record_card_impressions` RPC with `view_count` and `first_seen_at` analytics columns. Covering index `idx_impressions_user_session` added for session-scoped queries. Both `cardPoolService.ts` and `discover-experiences` updated.
 - **Preference History Trigger Fix:** Migration `20260303000005` restores the correct JSONB-based `create_preference_history()` trigger function.
 - **Policies & Reservations Button Fix:** Fixed compound data pipeline failure at 9 independent points that prevented the "Policies & Reservations" button from appearing on regular cards.
