@@ -45,7 +45,7 @@ const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 const DISCOVER_CACHE_KEY = "mingla_discover_cache_v4";
 const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v3";
 const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
-const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-hero-cards-v2";
+const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-hero-cards-v3-force";
 
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
@@ -148,6 +148,9 @@ interface DiscoverCache {
 }
 
 const discoverSessionCache = new Map<string, DiscoverCache>();
+
+// Clear in-memory session cache on module load to ensure fresh state after code updates
+discoverSessionCache.clear();
 
 const getDiscoverExactCacheKey = (
   userId: string,
