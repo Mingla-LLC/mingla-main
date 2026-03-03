@@ -23,7 +23,8 @@
         "NSCameraUsageDescription": "Mingla needs camera access to capture photos for your experiences.",
         "NSPhotoLibraryUsageDescription": "Mingla needs photo library access to select images for your experiences.",
         "NSCalendarsUsageDescription": "Mingla needs calendar access to add scheduled experiences to your device calendar.",
-        "NSRemindersUsageDescription": "Mingla needs reminders access to add scheduled experiences to your device calendar."
+        "NSRemindersUsageDescription": "Mingla needs reminders access to add scheduled experiences to your device calendar.",
+        "NSMicrophoneUsageDescription": "Mingla needs microphone access to record voice reviews about your experiences."
       }
     },
     "android": {
@@ -58,6 +59,7 @@
       "expo-camera",
       "expo-calendar",
       "expo-apple-authentication",
+      "expo-av",
       [
         "@react-native-google-signin/google-signin",
         {

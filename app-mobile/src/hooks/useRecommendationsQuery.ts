@@ -97,15 +97,15 @@ const fetchRecommendations = async (
       title: exp.title,
       category: exp.category,
       categoryIcon: exp.categoryIcon,
-      timeAway: exp.travelTime,
-      description: exp.description,
-      budget: exp.priceRange,
-      rating: exp.rating,
+      timeAway: exp.travelTime || '0 min',
+      description: exp.description || '',
+      budget: exp.priceRange || 'Free',
+      rating: exp.rating ?? 0,
       image: exp.heroImage,
       images: exp.images || [exp.heroImage],
-      priceRange: exp.priceRange,
-      distance: exp.distance,
-      travelTime: exp.travelTime,
+      priceRange: exp.priceRange || 'Free',
+      distance: exp.distance || '0 km',
+      travelTime: exp.travelTime || '0 min',
       experienceType: exp.category,
       highlights: exp.highlights || [],
       fullDescription: exp.description,
@@ -131,6 +131,9 @@ const fetchRecommendations = async (
       },
       // Preserve strollData if it exists
       strollData: exp.strollData,
+      // Preserve website/phone for Policies & Reservations button
+      website: exp.website || undefined,
+      phone: exp.phone || undefined,
     };
   });
 

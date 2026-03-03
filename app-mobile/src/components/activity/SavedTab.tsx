@@ -1494,6 +1494,8 @@ const SavedTab = ({
         : "N/A",
       strollData: (card as any).strollData,
       picnicData: (card as any).picnicData,
+      website: (card as any).website || undefined,
+      phone: (card as any).phone || undefined,
       // Curated fields — pass through if present
       ...(isCurated && {
         cardType: 'curated' as const,

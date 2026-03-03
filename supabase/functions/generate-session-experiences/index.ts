@@ -408,6 +408,7 @@ serve(async (req) => {
               userRatingCount: card.reviewCount,
               types: [],
               photos: [],
+              websiteUri: card.website || null,
             }, GOOGLE_API_KEY!);
 
             const cardId = await insertCardToPool(supabaseAdmin, {
@@ -427,6 +428,7 @@ serve(async (req) => {
               rating: card.rating,
               reviewCount: card.reviewCount,
               openingHours: card.openingHours,
+              website: card.website || null,
             });
             if (cardId) cardPoolIds.push(cardId);
           }
@@ -865,6 +867,7 @@ async function fetchGooglePlaces(
             }
           : null,
         placeTypes: place.types || [],
+        website: place.websiteUri || null,
         price_min:
           place.priceLevel === undefined || place.priceLevel === null
             ? 0
@@ -1431,6 +1434,7 @@ function convertToCard(place: any, preferences: UserPreferences): any {
     placeId: place.placeId,
     matchFactors: place.matchFactors || {},
     openingHours: place.openingHours || null,
+    website: place.website || null,
   };
 }
 

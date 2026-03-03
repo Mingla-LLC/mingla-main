@@ -207,6 +207,7 @@ export default function PreferencesSheet({
   // Loading states
   const [isSaving, setIsSaving] = useState(false);
 
+  const isSavingRef = useRef(false);
   const isInternalUpdate = useRef(false);
   const { keyboardHeight: kbHeight } = useKeyboard();
   const kbHeightRef = useRef(0);
@@ -283,13 +284,17 @@ export default function PreferencesSheet({
 
     if (isCollaborationMode) {
       // Load from board session preferences
-      // Intents and categories are both stored in the `categories` column —
-      // split them the same way solo mode does.
+      // Prefer dedicated `intents` field; fall back to parsing from `categories`
       const intentIds = new Set([
         "adventurous", "first-date", "romantic",
         "friendly", "group-fun", "picnic-dates", "take-a-stroll",
       ]);
-      if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
+      if (Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0) {
+        setSelectedIntents((loadedPreferences as any).intents);
+        setSelectedCategories(
+          Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
+        );
+      } else if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
         const loadedIntents: string[] = [];
         const loadedCats: string[] = [];
         loadedPreferences.categories.forEach((item: string) => {
@@ -338,15 +343,20 @@ export default function PreferencesSheet({
         setUseLocation(isCoordinates ? "gps" : "search");
       }
 
+      const collabHasIntents = Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0;
       setInitialPreferences({
-        selectedIntents: (loadedPreferences.categories || []).filter((item: string) =>
-          ["adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"].includes(item)
-        ),
+        selectedIntents: collabHasIntents
+          ? (loadedPreferences as any).intents
+          : (loadedPreferences.categories || []).filter((item: string) =>
+              intentIds.has(item)
+            ),
         budgetMin: (loadedPreferences as any).budget_min || 0,
         budgetMax: (loadedPreferences as any).budget_max || 200,
-        selectedCategories: (loadedPreferences.categories || []).filter((item: string) =>
-          !["adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll"].includes(item)
-        ),
+        selectedCategories: collabHasIntents
+          ? (loadedPreferences.categories || [])
+          : (loadedPreferences.categories || []).filter((item: string) =>
+              !intentIds.has(item)
+            ),
         selectedDateOption: "Now",
         selectedTimeSlot: (loadedPreferences as any).time_of_day || null,
         selectedDate: (loadedPreferences as any).datetime_pref
@@ -362,7 +372,13 @@ export default function PreferencesSheet({
       });
     } else {
       // Load from solo preferences
-      if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
+      // Prefer dedicated `intents` field (post-migration); fall back to parsing from `categories`
+      if (Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0) {
+        setSelectedIntents((loadedPreferences as any).intents);
+        setSelectedCategories(
+          Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
+        );
+      } else if (loadedPreferences.categories && Array.isArray(loadedPreferences.categories)) {
         const intentIds = new Set([
           "adventurous",
           "first-date",
@@ -446,32 +462,21 @@ export default function PreferencesSheet({
         setUseLocation(isCoordinates ? "gps" : "search");
       }
 
+      const hasIntentsField = Array.isArray((loadedPreferences as any).intents) && (loadedPreferences as any).intents.length > 0;
+      const intentIdSet = new Set([
+        "adventurous", "first-date", "romantic", "friendly",
+        "group-fun", "picnic-dates", "take-a-stroll",
+      ]);
+
       setInitialPreferences({
-        selectedIntents: (loadedPreferences.categories || []).filter((item: string) =>
-          [
-            "adventurous",
-            "first-date",
-            "romantic",
-            "friendly",
-            "group-fun",
-            "picnic-dates",
-            "take-a-stroll",
-          ].includes(item)
-        ),
+        selectedIntents: hasIntentsField
+          ? (loadedPreferences as any).intents
+          : (loadedPreferences.categories || []).filter((item: string) => intentIdSet.has(item)),
         budgetMin: loadedPreferences.budget_min || 0,
         budgetMax: loadedPreferences.budget_max || 200,
-        selectedCategories: (loadedPreferences.categories || []).filter(
-          (item: string) =>
-            ![
-              "adventurous",
-              "first-date",
-              "romantic",
-              "friendly",
-              "group-fun",
-              "picnic-dates",
-              "take-a-stroll",
-            ].includes(item)
-        ),
+        selectedCategories: hasIntentsField
+          ? (loadedPreferences.categories || [])
+          : (loadedPreferences.categories || []).filter((item: string) => !intentIdSet.has(item)),
         selectedDateOption: loadedPreferences.date_option
           ? ({
               now: "Now",
@@ -719,7 +724,8 @@ export default function PreferencesSheet({
   }, []);
 
   const handleApplyPreferences = useCallback(async () => {
-    if (isSaving) return;
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
 
     const customLocationValue = useGpsLocation
       ? null
@@ -751,54 +757,7 @@ export default function PreferencesSheet({
       ? selectedCategories
       : ['Nature', 'Casual Eats', 'Drink'];
 
-    const nextUserPreferences = {
-      mode: "explore",
-      budget_min: typeof budgetMin === "number" ? budgetMin : 0,
-      budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
-      people_count: 1,
-      categories: finalCategories,
-      intents: selectedIntents,
-      travel_mode: travelMode,
-      travel_constraint_type: constraintType,
-      travel_constraint_value:
-        typeof constraintValue === "number" ? constraintValue : 20,
-      datetime_pref: selectedDate ? selectedDate.toISOString() : new Date().toISOString(),
-      date_option: selectedDateOption
-        ? {
-            Now: "now",
-            Today: "today",
-            "This Weekend": "weekend",
-            "Pick a Date": "custom",
-          }[selectedDateOption]
-        : null,
-      exact_time: exactTime || null,
-    } as any;
-
-    const previousPrefs = user?.id
-      ? queryClient.getQueryData(["userPreferences", user.id])
-      : undefined;
-
-    if (user?.id) {
-      queryClient.setQueryData(["userPreferences", user.id], nextUserPreferences);
-    }
-
-    // Track the update in Mixpanel
-    mixpanelService.trackPreferencesUpdated({
-      isCollaborationMode,
-      changesCount: countChanges(),
-      intents: selectedIntents,
-      categories: selectedCategories,
-      budgetMin: typeof budgetMin === "number" ? budgetMin : 0,
-      budgetMax: typeof budgetMax === "number" ? budgetMax : 1000,
-      travelMode,
-      constraintType,
-      constraintValue: typeof constraintValue === "number" ? constraintValue : 20,
-      dateOption: selectedDateOption,
-      timeSlot: selectedTimeSlot,
-      location: searchLocation || undefined,
-    });
-
-    setIsSaving(true);
+    setIsSaving(true); // UI-only — ref guard above is the real mutex
     try {
       // === CRITICAL PATH: Save to DB with 30s timeout ===
       const savePromise = (async () => {
@@ -829,11 +788,16 @@ export default function PreferencesSheet({
         }
       })();
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Save timeout after 30s')), 30000)
-      );
+      let timeoutId: ReturnType<typeof setTimeout>;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Save timeout after 15s')), 15000);
+      });
 
-      await Promise.race([savePromise, timeoutPromise]);
+      try {
+        await Promise.race([savePromise, timeoutPromise]);
+      } finally {
+        clearTimeout(timeoutId!);
+      }
 
       // === SUCCESS: Non-blocking cache invalidation ===
       queryClient.invalidateQueries({ queryKey: ["recommendations"] });
@@ -855,10 +819,6 @@ export default function PreferencesSheet({
       }
 
     } catch (error) {
-      // Rollback optimistic update on failure
-      if (previousPrefs !== undefined && user?.id) {
-        queryClient.setQueryData(["userPreferences", user.id], previousPrefs);
-      }
       console.error("[PreferencesSheet] Save failed:", error);
       Alert.alert(
         'Save Failed',
@@ -866,10 +826,10 @@ export default function PreferencesSheet({
         [{ text: 'OK' }]
       );
     } finally {
+      isSavingRef.current = false;
       setIsSaving(false); // ALWAYS resets, even on timeout/error
     }
   }, [
-    isSaving,
     selectedIntents,
     budgetMin,
     budgetMax,
@@ -1409,13 +1369,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#d1d5db",
     backgroundColor: "white",
-    width: "31%",
+    minWidth: "31%",
+    flexGrow: 0,
+    flexShrink: 0,
   },
   categoryButtonSelected: {
     backgroundColor: "#fff7ed",

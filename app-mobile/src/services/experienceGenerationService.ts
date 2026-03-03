@@ -63,6 +63,8 @@ export interface GeneratedExperience {
       duration: number;
     }>;
   };
+  website?: string | null;
+  phone?: string | null;
 }
 
 export interface ExperienceGenerationRequest {
@@ -161,11 +163,13 @@ export class ExperienceGenerationService {
   static async discoverExperiences(
     location: { lat: number; lng: number },
     radius?: number,
-    selectedCategories?: string[]
+    selectedCategories?: string[],
+    heroCategories?: string[],
   ): Promise<{
     cards: GeneratedExperience[];
     heroCards: GeneratedExperience[];
     featuredCard: GeneratedExperience | null;
+    expiresAt: string | null;
   }> {
     try {
       console.log("Fetching discover experiences for location:", location, "categories:", selectedCategories);
@@ -176,6 +180,9 @@ export class ExperienceGenerationService {
       };
       if (selectedCategories && selectedCategories.length > 0) {
         body.selectedCategories = selectedCategories;
+      }
+      if (heroCategories && heroCategories.length > 0) {
+        body.heroCategories = heroCategories;
       }
 
       const { data, error } = await supabase.functions.invoke(
@@ -195,7 +202,7 @@ export class ExperienceGenerationService {
 
       if (!data || !data.cards || data.cards.length === 0) {
         console.log("No discover experiences found");
-        return { cards: [], heroCards: [], featuredCard: null };
+        return { cards: [], heroCards: [], featuredCard: null, expiresAt: null };
       }
 
       console.log(`Found ${data.cards.length} discover experiences`);
@@ -215,7 +222,10 @@ export class ExperienceGenerationService {
         ? this.transformToGeneratedExperience(data.featuredCard)
         : null);
 
-      return { cards, heroCards, featuredCard };
+      // 24h expiry timestamp from server
+      const expiresAt: string | null = data.expiresAt || null;
+
+      return { cards, heroCards, featuredCard, expiresAt };
     } catch (error) {
       console.error("Failed to fetch discover experiences:", error);
       throw error;
@@ -265,6 +275,9 @@ export class ExperienceGenerationService {
       openingHours: card.openingHours || null,
       // Preserve strollData if available
       strollData: card.strollData,
+      // Preserve website/phone for Policies & Reservations button
+      website: card.website || null,
+      phone: card.phone || null,
     };
   }
 

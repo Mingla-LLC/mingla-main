@@ -105,6 +105,7 @@ export async function searchPlacesWithCache(params: SearchParams): Promise<Cache
   console.log(`[places-cache] MISS: ${placeType} @ ${locKey} r=${radBucket}`);
 
   let places: any[] = [];
+  let nextPageToken: string | null = null;
 
   try {
     if (strategy === 'text' && textQuery) {
@@ -133,6 +134,7 @@ export async function searchPlacesWithCache(params: SearchParams): Promise<Cache
       if (res.ok) {
         const data = await res.json();
         places = data.places ?? [];
+        nextPageToken = data.nextPageToken || null;
       } else {
         console.error(`[places-cache] Text Search API error: ${res.status}`);
       }
@@ -165,6 +167,7 @@ export async function searchPlacesWithCache(params: SearchParams): Promise<Cache
       if (res.ok) {
         const data = await res.json();
         places = data.places ?? [];
+        nextPageToken = data.nextPageToken || null;
       } else {
         console.error(`[places-cache] Nearby Search API error: ${res.status}`);
       }
@@ -187,14 +190,98 @@ export async function searchPlacesWithCache(params: SearchParams): Promise<Cache
         text_query: textQuery,
         places: places,
         result_count: places.length,
+        next_page_token: nextPageToken,
+        pages_fetched: 1,
         expires_at: expiresAt,
         hit_count: 0,
       }, { onConflict: 'place_type,location_key,radius_bucket,search_strategy,text_query' })
-      .then(() => console.log(`[places-cache] Written: ${placeType} @ ${locKey}`))
+      .then(() => console.log(`[places-cache] Written: ${placeType} @ ${locKey}${nextPageToken ? ' (has nextPageToken)' : ''}`))
       .catch((err: any) => console.warn('[places-cache] Write failed:', err));
   }
 
   return { places, cacheHit: false };
+}
+
+/**
+ * Fetches the next page of Google Places results using a stored nextPageToken.
+ * Appends new results to the existing cache entry.
+ * Returns the new places and whether more pages are available.
+ *
+ * IMPORTANT: When using pageToken, the request body must contain ONLY { pageToken }.
+ * Including other search params (includedTypes, locationRestriction, etc.) causes a 400.
+ */
+export async function fetchNextPage(
+  supabaseAdmin: SupabaseClient,
+  apiKey: string,
+  cacheId: string,
+): Promise<{ newPlaces: any[]; hasMore: boolean }> {
+  // 1. Read the cache entry to get the stored nextPageToken and search_strategy
+  const { data: cacheEntry, error } = await supabaseAdmin
+    .from('google_places_cache')
+    .select('id, places, next_page_token, pages_fetched, place_type, search_strategy')
+    .eq('id', cacheId)
+    .single();
+
+  if (error || !cacheEntry || !cacheEntry.next_page_token) {
+    return { newPlaces: [], hasMore: false };
+  }
+
+  // 2. Call Google Places API with ONLY the pageToken — use the correct endpoint
+  //    based on the original search strategy (text vs nearby)
+  const endpoint = cacheEntry.search_strategy === 'text'
+    ? 'https://places.googleapis.com/v1/places:searchText'
+    : 'https://places.googleapis.com/v1/places:searchNearby';
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': DEFAULT_FIELD_MASK,
+      },
+      body: JSON.stringify({
+        pageToken: cacheEntry.next_page_token,
+      }),
+    });
+  } catch (fetchErr) {
+    console.error('[placesCache] nextPage fetch threw:', fetchErr);
+    return { newPlaces: [], hasMore: false };
+  }
+
+  if (!res.ok) {
+    console.error(`[placesCache] nextPage fetch failed: ${res.status}`);
+
+    // Handle expired token (Google returns 400 for INVALID_PAGE_TOKEN)
+    if (res.status === 400) {
+      console.warn('[placesCache] pageToken likely expired — clearing from cache');
+      await supabaseAdmin
+        .from('google_places_cache')
+        .update({ next_page_token: null })
+        .eq('id', cacheId);
+    }
+
+    return { newPlaces: [], hasMore: false };
+  }
+
+  const data = await res.json();
+  const newPlaces = data.places ?? [];
+  const nextToken = data.nextPageToken || null;
+
+  // 3. Append new places to existing cache entry
+  const allPlaces = [...(cacheEntry.places || []), ...newPlaces];
+  await supabaseAdmin
+    .from('google_places_cache')
+    .update({
+      places: allPlaces,
+      result_count: allPlaces.length,
+      next_page_token: nextToken,
+      pages_fetched: (cacheEntry.pages_fetched || 1) + 1,
+    })
+    .eq('id', cacheId);
+
+  console.log(`[placesCache] nextPage: got ${newPlaces.length} new places (total now ${allPlaces.length}), hasMore=${!!nextToken}`);
+  return { newPlaces, hasMore: !!nextToken };
 }
 
 /**

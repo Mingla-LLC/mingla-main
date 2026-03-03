@@ -46,10 +46,10 @@ const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
 const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 
 // Storage key for cached discover experiences (refreshes daily)
-const DISCOVER_CACHE_KEY = "mingla_discover_cache_v3";
-const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v2";
+const DISCOVER_CACHE_KEY = "mingla_discover_cache_v5";
+const DISCOVER_DAILY_CACHE_KEY = "mingla_discover_cache_daily_v4";
 const DISCOVER_CACHE_MIGRATION_KEY = "mingla_discover_cache_migration";
-const DISCOVER_CACHE_MIGRATION_VERSION = "2026-02-27-cache-reset-1";
+const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-02-per-category-diversity-v5";
 
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
@@ -69,6 +69,7 @@ interface CustomHoliday {
 const { width: screenWidth } = Dimensions.get("window");
 const CARD_WIDTH = screenWidth - 32; // 16px padding on each side
 const GRID_CARD_WIDTH = (screenWidth - 48) / 2; // 16px padding + 16px gap between cards
+const HERO_CARD_WIDTH = (screenWidth - 44) / 2; // 16px padding + 12px gap between hero cards
 const ANIMATION_DURATION = 400;
 
 // Month names for custom day picker
@@ -144,12 +145,17 @@ const ALL_CATEGORIES = [
 
 interface DiscoverCache {
   date: string;
+  expiresAt: string | null; // ISO timestamp for 24h expiry (null for legacy entries)
   recommendations: Recommendation[];
   featuredCard: FeaturedCardData | null;
   gridCards: GridCardData[];
+  heroCards: FeaturedCardData[];
 }
 
 const discoverSessionCache = new Map<string, DiscoverCache>();
+
+// Clear in-memory session cache on module load to ensure fresh state after code updates
+discoverSessionCache.clear();
 
 const getDiscoverExactCacheKey = (
   userId: string,
@@ -157,8 +163,8 @@ const getDiscoverExactCacheKey = (
   lng: number | null
 ): string => `${DISCOVER_CACHE_KEY}_${userId}_${lat?.toFixed(2)}_${lng?.toFixed(2)}`;
 
-const getDiscoverDailyCacheKey = (userId: string): string =>
-  `${DISCOVER_DAILY_CACHE_KEY}_${userId}`;
+const getDiscoverDailyCacheKey = (userId: string, prefsFingerprint?: string): string =>
+  `${DISCOVER_DAILY_CACHE_KEY}_${userId}${prefsFingerprint ? `_${prefsFingerprint}` : ''}`;
 
 const US_TIMEZONE = "America/New_York";
 const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -247,6 +253,7 @@ interface DiscoverTabsProps {
 // Featured card data interface
 interface FeaturedCardData {
   id: string;
+  placeId?: string;
   title: string;
   experienceType: string;
   description: string;
@@ -262,6 +269,8 @@ interface FeaturedCardData {
   tags?: string[];
   location?: { lat: number; lng: number };
   openingHours?: string | { open_now?: boolean; weekday_text?: string[] } | null;
+  website?: string | null;
+  phone?: string | null;
 }
 
 interface FeaturedCardProps {
@@ -273,6 +282,7 @@ interface FeaturedCardProps {
 
 interface GridCardData {
   id: string;
+  placeId?: string;
   title: string;
   category: string;
   description: string;
@@ -288,6 +298,8 @@ interface GridCardData {
   tags?: string[];
   location?: { lat: number; lng: number };
   openingHours?: string | { open_now?: boolean; weekday_text?: string[] } | null;
+  website?: string | null;
+  phone?: string | null;
 }
 
 interface GridCardProps {
@@ -510,6 +522,54 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", mea
           <View style={styles.ratingContainer}>
             <Ionicons name="star" size={16} color="#eb7825" />
             <Text style={styles.ratingText}>{card.rating.toFixed(1)}</Text>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// Hero Card Component (side-by-side at top of For You view)
+interface HeroCardProps {
+  card: FeaturedCardData;
+  currency?: string;
+  measurementSystem?: "Metric" | "Imperial";
+  onPress?: () => void;
+}
+
+const HeroCard: React.FC<HeroCardProps> = ({ card, currency = "USD", measurementSystem = "Imperial", onPress }) => {
+  const formattedPrice = formatPriceRange(card.priceRange, currency);
+  const categoryIcon = categoryIcons[card.experienceType] || "ellipse-outline";
+
+  return (
+    <TouchableOpacity
+      style={styles.heroCard}
+      onPress={onPress}
+      activeOpacity={0.9}
+    >
+      {/* Hero Image */}
+      <View style={styles.heroCardImageContainer}>
+        <Image
+          source={{ uri: card.image }}
+          style={styles.heroCardImage}
+          resizeMode="cover"
+        />
+        {/* Category Badge */}
+        <View style={styles.heroCardCategoryBadge}>
+          <Ionicons name={categoryIcon as any} size={14} color="#eb7825" />
+          <Text style={styles.heroCardCategoryText}>{card.experienceType}</Text>
+        </View>
+      </View>
+
+      {/* Hero Content */}
+      <View style={styles.heroCardContent}>
+        <Text style={styles.heroCardTitle} numberOfLines={2}>{card.title}</Text>
+        <Text style={styles.heroCardDescription} numberOfLines={2}>{card.description}</Text>
+        <View style={styles.heroCardFooter}>
+          <Text style={styles.heroCardPrice}>{formattedPrice}</Text>
+          <View style={styles.heroCardRating}>
+            <Ionicons name="star" size={13} color="#eb7825" />
+            <Text style={styles.heroCardRatingText}>{card.rating.toFixed(1)}</Text>
           </View>
         </View>
       </View>
@@ -918,6 +978,12 @@ export default function DiscoverScreen({
   const [userSelectedCategories, setUserSelectedCategories] = useState<string[] | null>(null);
   const prevRefreshKeyRef = useRef<number | undefined>(undefined);
 
+  // Stable fingerprint of user's selected categories — used to partition caches per preference set
+  const prefsFingerprint = useMemo(() => {
+    if (!userSelectedCategories || userSelectedCategories.length === 0) return 'all';
+    return [...userSelectedCategories].sort().join(',');
+  }, [userSelectedCategories]);
+
   useEffect(() => {
     const loadUserCategories = async () => {
       if (!user?.id) return;
@@ -943,17 +1009,12 @@ export default function DiscoverScreen({
   }, [user?.id, preferencesRefreshKey]);
 
   // When preferences change (refreshKey bumps), invalidate local caches so discover re-fetches
+  // Per-fingerprint cache keys mean old entries expire naturally — no need to delete them.
   useEffect(() => {
     if (prevRefreshKeyRef.current !== undefined && prevRefreshKeyRef.current !== preferencesRefreshKey) {
-      console.log("[Discover] Preferences changed – invalidating discover cache");
+      console.log("[Discover] Preferences changed – resetting fetch guard for new preference set");
       hasFetchedRef.current = false;
       discoverSessionCache.clear();
-      // Clear async-storage discover caches for this user
-      if (user?.id) {
-        const exactCacheKey = getDiscoverExactCacheKey(user.id, deviceGpsLat, deviceGpsLng);
-        const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
-        AsyncStorage.multiRemove([exactCacheKey, dailyCacheKey]).catch(() => {});
-      }
     }
     prevRefreshKeyRef.current = preferencesRefreshKey;
   }, [preferencesRefreshKey]);
@@ -1180,8 +1241,12 @@ export default function DiscoverScreen({
           const keysToRemove = allKeys.filter((key) =>
             key.startsWith(`mingla_discover_cache_v2_${user.id}_`) ||
             key.startsWith(`mingla_discover_cache_v3_${user.id}_`) ||
+            key.startsWith(`mingla_discover_cache_v4_${user.id}_`) ||
+            key.startsWith(`mingla_discover_cache_v5_${user.id}_`) ||
             key.startsWith(`mingla_discover_cache_daily_v1_${user.id}`) ||
-            key.startsWith(`mingla_discover_cache_daily_v2_${user.id}`)
+            key.startsWith(`mingla_discover_cache_daily_v2_${user.id}`) ||
+            key.startsWith(`mingla_discover_cache_daily_v3_${user.id}`) ||
+            key.startsWith(`mingla_discover_cache_daily_v4_${user.id}`)
           );
 
           if (keysToRemove.length > 0) {
@@ -1213,7 +1278,9 @@ export default function DiscoverScreen({
   const saveDiscoverCache = async (
     recommendations: Recommendation[],
     featuredCard: FeaturedCardData | null,
-    gridCards: GridCardData[]
+    gridCards: GridCardData[],
+    heroCards: FeaturedCardData[] = [],
+    expiresAt: string | null = null
   ) => {
     if (!user?.id) {
       return;
@@ -1221,12 +1288,14 @@ export default function DiscoverScreen({
     try {
       const cacheData: DiscoverCache = {
         date: getTodayDateString(),
+        expiresAt: expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         recommendations,
         featuredCard,
         gridCards,
+        heroCards,
       };
       const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
-      const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+      const dailyCacheKey = getDiscoverDailyCacheKey(user.id, prefsFingerprint);
       const serialized = JSON.stringify(cacheData);
 
       discoverSessionCache.set(exactCacheKey, cacheData);
@@ -1236,7 +1305,7 @@ export default function DiscoverScreen({
         [exactCacheKey, serialized],
         [dailyCacheKey, serialized],
       ]);
-      console.log("Saved discover cache for date:", cacheData.date);
+      console.log("Saved discover cache for date:", cacheData.date, "prefs:", prefsFingerprint);
     } catch (error) {
       console.error("Error saving discover cache:", error);
     }
@@ -1249,7 +1318,7 @@ export default function DiscoverScreen({
     }
     try {
       const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
-      const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+      const dailyCacheKey = getDiscoverDailyCacheKey(user.id, prefsFingerprint);
 
       const cachedExactInMemory = discoverSessionCache.get(exactCacheKey);
       if (cachedExactInMemory) {
@@ -1289,7 +1358,7 @@ export default function DiscoverScreen({
     }
 
     const exactCacheKey = getDiscoverExactCacheKey(user.id, locationLat, locationLng);
-    const dailyCacheKey = getDiscoverDailyCacheKey(user.id);
+    const dailyCacheKey = getDiscoverDailyCacheKey(user.id, prefsFingerprint);
 
     return discoverSessionCache.get(exactCacheKey) || discoverSessionCache.get(dailyCacheKey) || null;
   };
@@ -1311,7 +1380,7 @@ export default function DiscoverScreen({
   };
 
   const featuredFromGridCard = (card: GridCardData): FeaturedCardData => ({
-    id: `${card.id}_featured_fallback`,
+    id: card.id,
     title: card.title,
     experienceType: card.category,
     description: card.description,
@@ -1374,9 +1443,53 @@ export default function DiscoverScreen({
 
     loadedFromCacheRef.current = hasCompleteCardState;
 
+    // Restore hero cards from cache (backward compat: default to empty array)
+    let cachedHeroCards = cachedData.heroCards || [];
+    let cachedGridCards = cachedData.gridCards || [];
+
+    // CLIENT-SIDE FALLBACK: If cached hero cards are missing, extract from grid
+    if (cachedHeroCards.length < 2 && cachedGridCards.length > 0) {
+      const TARGET_HERO_CATEGORIES = ["Fine Dining", "Play"];
+      const heroUsedIds = new Set(cachedHeroCards.map((h: FeaturedCardData) => h.id));
+      const heroUsedCats = new Set(cachedHeroCards.map((h: FeaturedCardData) => h.experienceType));
+      const newHeroes = [...cachedHeroCards];
+
+      for (const heroCategory of TARGET_HERO_CATEGORIES) {
+        if (newHeroes.length >= 2) break;
+        if (heroUsedCats.has(heroCategory)) continue;
+        const candidate = cachedGridCards.find(
+          (c: GridCardData) => c.category === heroCategory && !heroUsedIds.has(c.id)
+        );
+        if (candidate) {
+          newHeroes.push(featuredFromGridCard(candidate));
+          heroUsedIds.add(candidate.id);
+          heroUsedCats.add(heroCategory);
+        }
+      }
+      // Fill remaining with highest-rated
+      if (newHeroes.length < 2) {
+        const remaining = cachedGridCards
+          .filter((c: GridCardData) => !heroUsedIds.has(c.id))
+          .sort((a: GridCardData, b: GridCardData) => (b.rating || 0) - (a.rating || 0));
+        for (const c of remaining) {
+          if (newHeroes.length >= 2) break;
+          newHeroes.push(featuredFromGridCard(c));
+          heroUsedIds.add(c.id);
+        }
+      }
+      // Remove heroes from grid
+      cachedGridCards = cachedGridCards.filter((c: GridCardData) => !heroUsedIds.has(c.id));
+      cachedHeroCards = newHeroes;
+      console.log(`[cache-restore] Reconstructed ${cachedHeroCards.length} heroes from grid`);
+    }
+
+    if (cachedHeroCards.length > 0) {
+      setSelectedHeroCards(cachedHeroCards);
+    }
+
     if (hasCompleteCardState) {
-      setSelectedFeaturedCard(fallbackFeatured);
-      setSelectedGridCards(cachedData.gridCards);
+      setSelectedFeaturedCard(cachedHeroCards[0] || fallbackFeatured);
+      setSelectedGridCards(cachedGridCards);
     } else {
       const fallbackFromRecommendations = cachedData.recommendations?.[0]
         ? featuredFromRecommendation(cachedData.recommendations[0])
@@ -1391,11 +1504,20 @@ export default function DiscoverScreen({
 
     setDiscoverRecommendations(cachedData.recommendations);
     setHasCompletedDiscoverFetch(true);
-    prefetchDiscoverImages(fallbackFeatured, cachedData.gridCards || []);
+    prefetchDiscoverImages(cachedHeroCards[0] || fallbackFeatured, cachedGridCards);
   };
 
-  // Fetch recommendations with ALL 10 categories for the Discover "For You" tab
-  // Only fetches once per day - uses cached data if available for today
+  // Helper: check if a cached batch is still within its 24h window
+  const isCacheStillValid = (cache: DiscoverCache): boolean => {
+    if (cache.expiresAt) {
+      return new Date(cache.expiresAt) > new Date();
+    }
+    // Legacy fallback: date-based check
+    return cache.date === getTodayDateString();
+  };
+
+  // Fetch recommendations with ALL 12 categories for the Discover "For You" tab
+  // Cached for 24 hours - uses persisted data until expiry
   useEffect(() => {
     const fetchDiscoverRecommendations = async () => {
       if (!user?.id) {
@@ -1426,11 +1548,11 @@ export default function DiscoverScreen({
         let cachedData = getDiscoverCacheFromMemory();
 
         if (cachedData && cachedData.recommendations.length > 0) {
-          console.log("Using in-memory discover cache from:", cachedData.date);
+          console.log("Using in-memory discover cache from:", cachedData.date, "expires:", cachedData.expiresAt);
           applyCachedDiscoverData(cachedData);
           setDiscoverLoading(false);
 
-          if (cachedData.date === today) {
+          if (isCacheStillValid(cachedData)) {
             hasFetchedRef.current = true;
             lastDiscoverFetchDateRef.current = today;
             return;
@@ -1444,11 +1566,11 @@ export default function DiscoverScreen({
         }
 
         if (cachedData && cachedData.recommendations.length > 0) {
-          console.log("Using cached discover data from:", cachedData.date);
+          console.log("Using cached discover data from:", cachedData.date, "expires:", cachedData.expiresAt);
           applyCachedDiscoverData(cachedData);
           setDiscoverLoading(false);
 
-          if (cachedData.date === today) {
+          if (isCacheStillValid(cachedData)) {
             hasFetchedRef.current = true;
             lastDiscoverFetchDateRef.current = today;
             return;
@@ -1464,8 +1586,8 @@ export default function DiscoverScreen({
         }
 
         // If we already hydrated stale cache, refresh in background without blocking UI
-        if (cachedData && cachedData.date !== today) {
-          console.log("Refreshing stale discover cache in background from:", cachedData.date);
+        if (cachedData && !isCacheStillValid(cachedData)) {
+          console.log("Refreshing stale discover cache in background (expired)");
         } else {
           setDiscoverLoading(true);
           console.log("Cache miss or stale. Fetching fresh discover data...");
@@ -1473,12 +1595,13 @@ export default function DiscoverScreen({
 
         hasFetchedRef.current = true;
 
-        // Use new discoverExperiences method that calls discover-experiences edge function
-        // Returns category cards (filtered by user prefs) + a featured card
-        const { cards: generatedCards, heroCards: heroCardsRaw, featuredCard } = await ExperienceGenerationService.discoverExperiences(
+        // For You: always fetch ALL 12 categories with Fine Dining + Play heroes
+        // User preferences do NOT filter the For You view — it shows best-of-the-best across ALL categories
+        const { cards: generatedCards, heroCards: heroCardsRaw, featuredCard, expiresAt: serverExpiresAt } = await ExperienceGenerationService.discoverExperiences(
           { lat: locationLat, lng: locationLng },
           10000, // 10km radius
-          userSelectedCategories || undefined // pass user-selected categories (or undefined for all)
+          undefined,              // For You: always ALL categories (never filtered by user prefs)
+          ["Fine Dining", "Play"], // For You: always these 2 hero categories
         );
 
         if (!generatedCards || generatedCards.length === 0) {
@@ -1537,9 +1660,10 @@ export default function DiscoverScreen({
           strollData: exp.strollData,
         }));
 
-        // Transform hero cards (2 heroes: Fine Dining + Play)
+        // Transform hero cards from server response
         const transformedHeroes: FeaturedCardData[] = (heroCardsRaw || []).map((hc: any) => ({
           id: hc.id,
+          placeId: hc.placeId || hc.id,
           title: hc.title,
           experienceType: hc.category,
           description: hc.description,
@@ -1557,27 +1681,108 @@ export default function DiscoverScreen({
           openingHours: hc.openingHours || null,
         }));
 
+        // CLIENT-SIDE FALLBACK: If server returned < 2 hero cards, extract from grid cards
+        // This handles stale server caches that were built before the hero card system
+        if (transformedHeroes.length < 2 && generatedCards.length > 0) {
+          const TARGET_HERO_CATEGORIES = ["Fine Dining", "Play"];
+          const existingHeroIds = new Set(transformedHeroes.map((h: FeaturedCardData) => h.id));
+          const existingHeroCats = new Set(transformedHeroes.map((h: FeaturedCardData) => h.experienceType));
+
+          for (const heroCategory of TARGET_HERO_CATEGORIES) {
+            if (transformedHeroes.length >= 2) break;
+            if (existingHeroCats.has(heroCategory)) continue;
+
+            const candidate = generatedCards.find(
+              (c: any) => c.category === heroCategory && !existingHeroIds.has(c.id)
+            );
+            if (candidate) {
+              transformedHeroes.push({
+                id: candidate.id,
+                placeId: candidate.placeId || candidate.id,
+                title: candidate.title,
+                experienceType: candidate.category,
+                description: candidate.description,
+                image: candidate.heroImage,
+                images: candidate.images || [candidate.heroImage],
+                priceRange: candidate.priceRange,
+                rating: candidate.rating,
+                reviewCount: candidate.reviewCount,
+                address: candidate.address,
+                travelTime: candidate.travelTime,
+                distance: candidate.distance,
+                highlights: candidate.highlights || [],
+                tags: candidate.highlights || [],
+                location: candidate.lat && candidate.lng ? { lat: candidate.lat, lng: candidate.lng } : undefined,
+                openingHours: candidate.openingHours || null,
+              });
+              existingHeroIds.add(candidate.id);
+              existingHeroCats.add(heroCategory);
+              console.log(`[For You] Extracted hero from grid for ${heroCategory}: "${candidate.title}"`);
+            } else {
+              console.log(`[For You] No grid card found for hero category: ${heroCategory}`);
+            }
+          }
+
+          // If still less than 2 heroes, fill from highest-rated remaining cards
+          if (transformedHeroes.length < 2) {
+            const remaining = generatedCards
+              .filter((c: any) => !existingHeroIds.has(c.id))
+              .sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0));
+            for (const candidate of remaining) {
+              if (transformedHeroes.length >= 2) break;
+              transformedHeroes.push({
+                id: candidate.id,
+                placeId: candidate.placeId || candidate.id,
+                title: candidate.title,
+                experienceType: candidate.category,
+                description: candidate.description,
+                image: candidate.heroImage,
+                images: candidate.images || [candidate.heroImage],
+                priceRange: candidate.priceRange,
+                rating: candidate.rating,
+                reviewCount: candidate.reviewCount,
+                address: candidate.address,
+                travelTime: candidate.travelTime,
+                distance: candidate.distance,
+                highlights: candidate.highlights || [],
+                tags: candidate.highlights || [],
+                location: candidate.lat && candidate.lng ? { lat: candidate.lat, lng: candidate.lng } : undefined,
+                openingHours: candidate.openingHours || null,
+              });
+              existingHeroIds.add(candidate.id);
+              console.log(`[For You] Filled hero slot with "${candidate.title}" (${candidate.category})`);
+            }
+          }
+        }
+
+        console.log(`[For You] Final hero cards: ${transformedHeroes.length}, categories: ${transformedHeroes.map((h: FeaturedCardData) => h.experienceType).join(', ')}`);
+
         // Backward compat: featuredCard = first hero
         const transformedFeatured = transformedHeroes[0] || null;
-        // Transform ALL 10 cards to grid cards (no removal)
-        const gridCards: GridCardData[] = generatedCards.map((exp: any) => ({
-          id: exp.id,
-          title: exp.title,
-          category: exp.category,
-          description: exp.description,
-          image: exp.heroImage,
-          images: exp.images || [exp.heroImage],
-          priceRange: exp.priceRange,
-          rating: exp.rating,
-          reviewCount: exp.reviewCount,
-          address: exp.address,
-          travelTime: exp.travelTime,
-          distance: exp.distance,
-          highlights: exp.highlights || [],
-          tags: exp.highlights || [],
-          location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
-          openingHours: exp.openingHours || null,
-        }));
+
+        // Build grid cards — EXCLUDE hero card IDs to avoid duplicates
+        const heroIds = new Set(transformedHeroes.map((h: FeaturedCardData) => h.id));
+        const gridCards: GridCardData[] = generatedCards
+          .filter((exp: any) => !heroIds.has(exp.id))
+          .map((exp: any) => ({
+            id: exp.id,
+            placeId: exp.placeId || exp.id,
+            title: exp.title,
+            category: exp.category,
+            description: exp.description,
+            image: exp.heroImage,
+            images: exp.images || [exp.heroImage],
+            priceRange: exp.priceRange,
+            rating: exp.rating,
+            reviewCount: exp.reviewCount,
+            address: exp.address,
+            travelTime: exp.travelTime,
+            distance: exp.distance,
+            highlights: exp.highlights || [],
+            tags: exp.highlights || [],
+            location: exp.lat && exp.lng ? { lat: exp.lat, lng: exp.lng } : undefined,
+            openingHours: exp.openingHours || null,
+          }));
 
         const finalFeatured = transformedFeatured || (gridCards[0] ? featuredFromGridCard(gridCards[0]) : null);
         setSelectedHeroCards(transformedHeroes);
@@ -1592,7 +1797,7 @@ export default function DiscoverScreen({
         lastDiscoverFetchDateRef.current = today;
         
         // Save to cache for 24-hour persistence
-        saveDiscoverCache(transformed, finalFeatured, gridCards);
+        saveDiscoverCache(transformed, finalFeatured, gridCards, transformedHeroes, serverExpiresAt);
         
         // Mark as loaded from cache to skip the card selection useEffect
         loadedFromCacheRef.current = true;
@@ -1677,6 +1882,14 @@ export default function DiscoverScreen({
       console.log("Skipping card selection - loaded from cache");
       previousRecommendationsLengthRef.current = recommendations.length;
       loadedFromCacheRef.current = false; // Reset flag for future updates
+      return;
+    }
+
+    // Skip re-randomization if hero cards were already set by the API fetch path
+    // (the fetch path sets selectedHeroCards directly — this useEffect must not overwrite them)
+    if (selectedHeroCards.length > 0) {
+      console.log("Skipping card selection - hero cards already set by API fetch");
+      previousRecommendationsLengthRef.current = recommendations.length;
       return;
     }
 
@@ -1925,6 +2138,7 @@ export default function DiscoverScreen({
     ) || null;
     const expandedCardData: ExpandedCardData = {
       id: card.id,
+      placeId: card.placeId || card.id,
       title: card.title,
       category: card.experienceType,
       categoryIcon: "walk",
@@ -1957,6 +2171,8 @@ export default function DiscoverScreen({
       location: card.location,
       openingHours,
       selectedDateTime: new Date(),
+      website: card.website || undefined,
+      phone: card.phone || undefined,
     };
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
@@ -1970,6 +2186,7 @@ export default function DiscoverScreen({
     ) || null;
     const expandedCardData: ExpandedCardData = {
       id: card.id,
+      placeId: card.placeId || card.id,
       title: card.title,
       category: card.category,
       categoryIcon: categoryIcons[card.category] || "ellipse-outline",
@@ -2002,6 +2219,8 @@ export default function DiscoverScreen({
       location: card.location,
       openingHours,
       selectedDateTime: new Date(),
+      website: card.website || undefined,
+      phone: card.phone || undefined,
     };
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
@@ -3347,27 +3566,26 @@ export default function DiscoverScreen({
                   {/* Content - Hero Cards and Grid */}
                   {(selectedHeroCards.length > 0 || featuredCard || gridCards.length > 0) && (
                     <>
-                      {/* Hero Cards — 2 full-width, stacked vertically */}
+                      {/* Hero Cards — 2 side-by-side at the top (Fine Dining + Play) */}
                       {selectedHeroCards.length > 0 ? (
-                        <View style={styles.heroCardsContainer}>
-                          {selectedHeroCards.map((heroCard, index) => (
-                            <Animated.View
-                              key={heroCard.id}
-                              style={{
-                                opacity: featuredCardOpacity,
-                                transform: [{ translateY: featuredCardSlide }],
-                                marginBottom: index < selectedHeroCards.length - 1 ? 12 : 0,
-                              }}
-                            >
-                              <FeaturedCard
+                        <Animated.View
+                          style={{
+                            opacity: featuredCardOpacity,
+                            transform: [{ translateY: featuredCardSlide }],
+                          }}
+                        >
+                          <View style={styles.heroCardsRow}>
+                            {selectedHeroCards.slice(0, 2).map((heroCard) => (
+                              <HeroCard
+                                key={heroCard.id}
                                 card={heroCard}
                                 currency={accountPreferences?.currency}
                                 measurementSystem={accountPreferences?.measurementSystem}
                                 onPress={() => handleCardPress(heroCard)}
                               />
-                            </Animated.View>
-                          ))}
-                        </View>
+                            ))}
+                          </View>
+                        </Animated.View>
                       ) : featuredCard ? (
                         <Animated.View
                           style={{
@@ -3392,7 +3610,7 @@ export default function DiscoverScreen({
                           
                           return (
                             <Animated.View
-                              key={card.id}
+                              key={`${card.id}-${index}`}
                               style={{
                                 opacity: isRightColumn ? gridCardsRightOpacity : gridCardsLeftOpacity,
                                 transform: [
@@ -3562,7 +3780,7 @@ export default function DiscoverScreen({
           <View
             style={[
               styles.addPersonBottomSheetContent,
-              { paddingBottom: Platform.OS === "ios" ? 48 + insets.bottom : 48 },
+              { paddingBottom: Math.max(insets.bottom, 16) + 16 },
             ]}
           >
             <View style={styles.addPersonSheetHandleContainer}>
@@ -3578,126 +3796,133 @@ export default function DiscoverScreen({
               <View style={styles.addPersonCloseButtonPlaceholder} />
             </View>
 
-            {/* Description */}
-            <Text style={styles.addPersonDescription}>
-              Add a partner, friend, or family member to get personalized recommendations.
-            </Text>
+            {/* Scrollable form content */}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+            >
+              {/* Description */}
+              <Text style={styles.addPersonDescription}>
+                Add a partner, friend, or family member to get personalized recommendations.
+              </Text>
 
-            {/* Name Field */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>Name</Text>
-              <TextInput
-                style={[
-                  styles.addPersonInput,
-                  nameError && styles.addPersonInputError,
-                ]}
-                value={personName}
-                onChangeText={(text) => {
-                  setPersonName(text);
-                  if (nameError) setNameError(null);
-                }}
-                placeholder="Enter their name"
-                placeholderTextColor="#9ca3af"
-              />
-              {nameError && (
-                <Text style={styles.errorText}>{nameError}</Text>
-              )}
-            </View>
-
-            {/* Birthday Field */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>Birthday</Text>
-              <TouchableOpacity
-                style={styles.addPersonBirthdayInput}
-                onPress={() => setShowBirthdayPicker(true)}
-                activeOpacity={0.7}
-              >
-                {personBirthday ? (
-                  <Text style={styles.birthdayText}>
-                    {formatBirthdayForDisplay(personBirthday)}
-                  </Text>
-                ) : (
-                  <Text style={styles.birthdayPlaceholder}>dd/mm/yyyy</Text>
+              {/* Name Field */}
+              <View style={styles.addPersonFieldContainer}>
+                <Text style={styles.addPersonFieldLabel}>Name</Text>
+                <TextInput
+                  style={[
+                    styles.addPersonInput,
+                    nameError && styles.addPersonInputError,
+                  ]}
+                  value={personName}
+                  onChangeText={(text) => {
+                    setPersonName(text);
+                    if (nameError) setNameError(null);
+                  }}
+                  placeholder="Enter their name"
+                  placeholderTextColor="#9ca3af"
+                />
+                {nameError && (
+                  <Text style={styles.errorText}>{nameError}</Text>
                 )}
-                <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-              </TouchableOpacity>
-              {showBirthdayPicker && (
-                Platform.OS === "ios" ? (
-                  <View style={styles.datePickerContainer}>
+              </View>
+
+              {/* Birthday Field */}
+              <View style={styles.addPersonFieldContainer}>
+                <Text style={styles.addPersonFieldLabel}>Birthday</Text>
+                <TouchableOpacity
+                  style={styles.addPersonBirthdayInput}
+                  onPress={() => setShowBirthdayPicker(true)}
+                  activeOpacity={0.7}
+                >
+                  {personBirthday ? (
+                    <Text style={styles.birthdayText}>
+                      {formatBirthdayForDisplay(personBirthday)}
+                    </Text>
+                  ) : (
+                    <Text style={styles.birthdayPlaceholder}>dd/mm/yyyy</Text>
+                  )}
+                  <Ionicons name="calendar-outline" size={20} color="#6b7280" />
+                </TouchableOpacity>
+                {showBirthdayPicker && (
+                  Platform.OS === "ios" ? (
+                    <View style={styles.datePickerContainer}>
+                      <DateTimePicker
+                        value={personBirthday || new Date()}
+                        mode="date"
+                        display="spinner"
+                        onChange={handleBirthdayChange}
+                        maximumDate={new Date()}
+                      />
+                      <TouchableOpacity
+                        style={styles.datePickerDoneButton}
+                        onPress={() => setShowBirthdayPicker(false)}
+                      >
+                        <Text style={styles.datePickerDoneText}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
                     <DateTimePicker
                       value={personBirthday || new Date()}
                       mode="date"
-                      display="spinner"
+                      display="default"
                       onChange={handleBirthdayChange}
                       maximumDate={new Date()}
                     />
-                    <TouchableOpacity
-                      style={styles.datePickerDoneButton}
-                      onPress={() => setShowBirthdayPicker(false)}
-                    >
-                      <Text style={styles.datePickerDoneText}>Done</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <DateTimePicker
-                    value={personBirthday || new Date()}
-                    mode="date"
-                    display="default"
-                    onChange={handleBirthdayChange}
-                    maximumDate={new Date()}
-                  />
-                )
-              )}
-            </View>
-
-            {/* Gender Selection */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>Gender</Text>
-              <View style={styles.genderOptionsContainer}>
-                {(["male", "female", "other"] as const).map((gender) => (
-                  <TouchableOpacity
-                    key={gender}
-                    style={[
-                      styles.genderOption,
-                      personGender === gender && styles.genderOptionSelected,
-                    ]}
-                    onPress={() => setPersonGender(gender)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.genderOptionText,
-                        personGender === gender && styles.genderOptionTextSelected,
-                      ]}
-                    >
-                      {gender.charAt(0).toUpperCase() + gender.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                  )
+                )}
               </View>
-            </View>
 
-            {/* Description field */}
-            <View style={styles.addPersonFieldContainer}>
-              <Text style={styles.addPersonFieldLabel}>Describe them</Text>
-              <Text style={styles.addPersonHint}>
-                What do they enjoy? What's their vibe? The more detail, the better the recommendations.
-              </Text>
-              <TextInput
-                style={styles.personDescriptionInput}
-                value={personDescription}
-                onChangeText={setPersonDescription}
-                placeholder="They love outdoor dining, jazz music, wine tasting, and cozy bookshops..."
-                placeholderTextColor="#9CA3AF"
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-                maxLength={500}
-              />
-              <Text style={styles.charCount}>{personDescription.length}/500</Text>
-            </View>
+              {/* Gender Selection */}
+              <View style={styles.addPersonFieldContainer}>
+                <Text style={styles.addPersonFieldLabel}>Gender</Text>
+                <View style={styles.genderOptionsContainer}>
+                  {(["male", "female", "other"] as const).map((gender) => (
+                    <TouchableOpacity
+                      key={gender}
+                      style={[
+                        styles.genderOption,
+                        personGender === gender && styles.genderOptionSelected,
+                      ]}
+                      onPress={() => setPersonGender(gender)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.genderOptionText,
+                          personGender === gender && styles.genderOptionTextSelected,
+                        ]}
+                      >
+                        {gender.charAt(0).toUpperCase() + gender.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
 
-            {/* Action Buttons */}
+              {/* Description field */}
+              <View style={styles.addPersonFieldContainer}>
+                <Text style={styles.addPersonFieldLabel}>Describe them</Text>
+                <Text style={styles.addPersonHint}>
+                  What do they enjoy? What's their vibe? The more detail, the better the recommendations.
+                </Text>
+                <TextInput
+                  style={styles.personDescriptionInput}
+                  value={personDescription}
+                  onChangeText={setPersonDescription}
+                  placeholder="They love outdoor dining, jazz music, wine tasting, and cozy bookshops..."
+                  placeholderTextColor="#9CA3AF"
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                  maxLength={500}
+                />
+                <Text style={styles.charCount}>{personDescription.length}/500</Text>
+              </View>
+            </ScrollView>
+
+            {/* Action Buttons — pinned below scroll area, above safe area */}
             <View style={styles.addPersonButtonsContainer}>
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -3738,7 +3963,7 @@ export default function DiscoverScreen({
             style={[
               styles.addPersonBottomSheetContent,
               styles.customDayBottomSheetContent,
-              { paddingBottom: Platform.OS === "ios" ? 48 + insets.bottom : 48 },
+              { paddingBottom: Math.max(insets.bottom, 16) + 16 },
             ]}
           >
             <View style={styles.addPersonSheetHandleContainer}>
@@ -4163,6 +4388,84 @@ const styles = StyleSheet.create({
   heroCardsContainer: {
     marginBottom: 16,
     gap: 12,
+  },
+  heroCardsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    gap: 12,
+  },
+  heroCard: {
+    width: HERO_CARD_WIDTH,
+    backgroundColor: "white",
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  heroCardImageContainer: {
+    position: "relative",
+    height: 180,
+  },
+  heroCardImage: {
+    width: "100%",
+    height: "100%",
+  },
+  heroCardCategoryBadge: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    gap: 4,
+  },
+  heroCardCategoryText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  heroCardContent: {
+    padding: 12,
+  },
+  heroCardTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 4,
+    lineHeight: 20,
+  },
+  heroCardDescription: {
+    fontSize: 12,
+    color: "#6b7280",
+    lineHeight: 16,
+    marginBottom: 8,
+  },
+  heroCardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  heroCardPrice: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  heroCardRating: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  heroCardRatingText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1f2937",
   },
   container: {
     flex: 1,

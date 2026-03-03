@@ -521,7 +521,7 @@ async function fetchGooglePlaces(
 
   try {
     // Field mask for Places API (New) - specify which fields we need
-    const fieldMask = "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours,nextPageToken";
+    const fieldMask = "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours,places.websiteUri,nextPageToken";
 
 
     // Text Search API doesn't support includedTypes/excludedTypes in request
@@ -676,6 +676,7 @@ async function fetchGooglePlaces(
           }
           : null,
         placeTypes: place.types || [],
+        website: place.websiteUri || null,
         price_min,
         price_max,
       };
@@ -1318,6 +1319,7 @@ function convertToCard(place: any, preferences: UserPreferences): any {
     placeId: place.placeId,
     matchFactors: place.matchFactors || {},
     openingHours: place.openingHours || null,
+    website: place.website || null,
   };
 }
 
