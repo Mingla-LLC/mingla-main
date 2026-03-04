@@ -64,7 +64,7 @@ import {
   shadows,
 } from '../constants/designSystem'
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window')
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
 
 interface OnboardingFlowProps {
   onComplete: () => void
@@ -814,10 +814,10 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       ]
       const beat = beats[valuePropBeat]
       return (
-        <View style={styles.centerContent}>
+        <View style={styles.valuePropCenter}>
           <Ionicons name={beat.icon} size={64} color={colors.primary[500]} style={styles.stepIcon} />
-          <Text style={styles.headline}>{beat.headline}</Text>
-          <Text style={styles.body}>{beat.sub}</Text>
+          <Text style={[styles.headline, styles.textCenter]}>{beat.headline}</Text>
+          <Text style={[styles.body, styles.textCenter]}>{beat.sub}</Text>
           <View style={styles.dotIndicator}>
             {beats.map((_, i) => (
               <View key={i} style={[styles.dot, i === valuePropBeat && styles.dotActive]} />
@@ -1289,6 +1289,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: spacing.xxl,
+  },
+  valuePropCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: SCREEN_HEIGHT * 0.55,
+  },
+  textCenter: {
+    textAlign: 'center',
   },
   // ─── Welcome Screen (Cinematic Text Reveal) ───
   welcomeGreeting: {

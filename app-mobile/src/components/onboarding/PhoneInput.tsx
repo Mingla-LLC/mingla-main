@@ -6,6 +6,9 @@ import {
   TouchableOpacity,
   Animated,
   StyleSheet,
+  Keyboard,
+  Platform,
+  InputAccessoryView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -18,6 +21,8 @@ import {
 } from '../../constants/designSystem';
 import { getCountryByCode } from '../../constants/countries';
 import { CountryPickerModal } from './CountryPickerModal';
+
+const PHONE_ACCESSORY_ID = 'phoneInputDone';
 
 interface PhoneInputProps {
   value: string;
@@ -129,12 +134,16 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           value={value}
           onChangeText={onChangePhone}
           keyboardType="phone-pad"
+          returnKeyType="done"
           maxLength={15}
           placeholder="(555) 123-4567"
           placeholderTextColor={colors.gray[400]}
           editable={!disabled}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onSubmitEditing={Keyboard.dismiss}
+          blurOnSubmit
+          inputAccessoryViewID={Platform.OS === 'ios' ? PHONE_ACCESSORY_ID : undefined}
           accessibilityLabel="Phone number"
         />
       </Animated.View>
@@ -149,6 +158,22 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
         onSelect={handleCountrySelect}
         onClose={() => setPickerVisible(false)}
       />
+
+      {/* iOS Done toolbar — phone-pad keyboard has no return key */}
+      {Platform.OS === 'ios' && (
+        <InputAccessoryView nativeID={PHONE_ACCESSORY_ID}>
+          <View style={styles.accessoryBar}>
+            <TouchableOpacity
+              onPress={Keyboard.dismiss}
+              style={styles.doneButton}
+              accessibilityRole="button"
+              accessibilityLabel="Done"
+            >
+              <Text style={styles.doneButtonText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </InputAccessoryView>
+      )}
     </View>
   );
 };
@@ -207,5 +232,24 @@ const styles = StyleSheet.create({
     color: colors.error[500],
     marginTop: spacing.xs,
     paddingLeft: spacing.xs,
+  },
+  accessoryBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    height: 44,
+    backgroundColor: colors.gray[100],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.gray[300],
+  },
+  doneButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  doneButtonText: {
+    fontSize: 17,
+    fontWeight: fontWeights.semibold,
+    color: colors.primary[500],
   },
 });

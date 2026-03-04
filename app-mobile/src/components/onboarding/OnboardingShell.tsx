@@ -255,7 +255,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {/* Progress bar */}
         <View style={styles.progressContainer}>
