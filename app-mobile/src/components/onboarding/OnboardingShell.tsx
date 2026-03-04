@@ -38,6 +38,7 @@ interface OnboardingShellProps {
   onPrimaryCta: () => void;
   hidePrimaryCta?: boolean;
   hideBottomBar?: boolean;
+  scrollEnabled?: boolean;
   onBackToWelcome?: () => void;
   children: React.ReactNode;
 }
@@ -53,6 +54,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   onPrimaryCta,
   hidePrimaryCta = false,
   hideBottomBar = false,
+  scrollEnabled = true,
   onBackToWelcome,
   children,
 }) => {
@@ -272,7 +274,9 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
           contentContainerStyle={[
             styles.scrollContent,
             hideBottomBar && { paddingBottom: 160 + insets.bottom },
+            !scrollEnabled && styles.scrollContentFixed,
           ]}
+          scrollEnabled={scrollEnabled}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -306,6 +310,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: 160,
+  },
+  scrollContentFixed: {
+    flexGrow: 1,
   },
   bottomBar: {
     flexDirection: 'column',

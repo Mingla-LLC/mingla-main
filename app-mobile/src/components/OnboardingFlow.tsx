@@ -172,6 +172,150 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   const tagAccentAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(15) }).current
   const welcomeAnimRan = useRef(false)
 
+  // ─── Intent Card Stagger Animations ───
+  const intentAnims = useRef(
+    ONBOARDING_INTENTS.map(() => ({
+      opacity: new Animated.Value(0),
+      scale: new Animated.Value(0.85),
+    }))
+  ).current
+
+  useEffect(() => {
+    if (navState.subStep !== 'intents') return
+
+    // Reset all
+    intentAnims.forEach((a) => {
+      a.opacity.setValue(0)
+      a.scale.setValue(0.85)
+    })
+
+    // Stagger in
+    const animations = intentAnims.map((a, i) =>
+      Animated.parallel([
+        Animated.timing(a.opacity, {
+          toValue: 1,
+          duration: 300,
+          delay: i * 70,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.spring(a.scale, {
+          toValue: 1,
+          tension: 120,
+          friction: 14,
+          delay: i * 70,
+          useNativeDriver: true,
+        }),
+      ])
+    )
+
+    Animated.parallel(animations).start()
+  }, [navState.subStep])
+
+  // ─── Value Prop Icon Animations ───
+  const vpIconScale = useRef(new Animated.Value(0.3)).current
+  const vpIconOpacity = useRef(new Animated.Value(0)).current
+  const vpFlashOpacity = useRef(new Animated.Value(0)).current
+  const vpGlowScale = useRef(new Animated.Value(1)).current
+  const vpGlowRef = useRef<Animated.CompositeAnimation | null>(null)
+
+  useEffect(() => {
+    if (navState.subStep !== 'value_prop') return
+
+    // Stop any running glow loop
+    vpGlowRef.current?.stop()
+    vpGlowRef.current = null
+
+    // Reset
+    vpIconScale.setValue(0.3)
+    vpIconOpacity.setValue(0)
+    vpFlashOpacity.setValue(0)
+    vpGlowScale.setValue(1)
+
+    const isLightning = valuePropBeat === 2
+
+    if (isLightning) {
+      // Lightning strike: fast scale burst + white flash + glow pulse
+      Animated.sequence([
+        // Strike in
+        Animated.parallel([
+          Animated.spring(vpIconScale, {
+            toValue: 1.2,
+            tension: 300,
+            friction: 8,
+            useNativeDriver: true,
+          }),
+          Animated.timing(vpIconOpacity, {
+            toValue: 1,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.sequence([
+            Animated.timing(vpFlashOpacity, {
+              toValue: 0.9,
+              duration: 80,
+              useNativeDriver: true,
+            }),
+            Animated.timing(vpFlashOpacity, {
+              toValue: 0,
+              duration: 200,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+        // Settle
+        Animated.spring(vpIconScale, {
+          toValue: 1,
+          tension: 120,
+          friction: 6,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Continuous subtle pulse
+        const pulse = Animated.loop(
+          Animated.sequence([
+            Animated.timing(vpGlowScale, {
+              toValue: 1.08,
+              duration: 1200,
+              easing: Easing.inOut(Easing.sin),
+              useNativeDriver: true,
+            }),
+            Animated.timing(vpGlowScale, {
+              toValue: 1,
+              duration: 1200,
+              easing: Easing.inOut(Easing.sin),
+              useNativeDriver: true,
+            }),
+          ])
+        )
+        vpGlowRef.current = pulse
+        pulse.start()
+      })
+    } else {
+      // Standard entrance: smooth scale + fade
+      Animated.parallel([
+        Animated.spring(vpIconScale, {
+          toValue: 1,
+          tension: 80,
+          friction: 10,
+          useNativeDriver: true,
+        }),
+        Animated.timing(vpIconOpacity, {
+          toValue: 1,
+          duration: 350,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start()
+    }
+
+    return () => {
+      vpGlowRef.current?.stop()
+      vpGlowRef.current = null
+    }
+  }, [navState.subStep, valuePropBeat])
+
   // ─── Resume Logic ───
   useEffect(() => {
     async function loadResume() {
@@ -663,7 +807,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       case 'phone':
         return { label: 'Send code', disabled: !isPhoneValid(), loading: sendingOtp, onPress: handleSendOtp, hide: false }
       case 'otp':
-        return { label: 'Verify', disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: false }
+        return { label: 'Verify', disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: true }
       case 'value_prop':
         return { label: 'Next', disabled: false, loading: false, onPress: () => { logger.action(`Value prop beat advance`, { beat: valuePropBeat }); setValuePropBeat(Math.min(valuePropBeat + 1, 2)); if (valuePropBeat >= 2) handleGoNext() }, hide: false }
       case 'intents':
@@ -787,19 +931,25 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
               disabled={otpLoading}
             />
           </View>
-          <View style={styles.resendRow}>
-            {resendCountdown > 0 ? (
-              <Text style={styles.caption}>Resend in {resendCountdown}s</Text>
-            ) : (
-              <Pressable onPress={handleResendOtp}>
-                <Text style={styles.linkText}>Resend code</Text>
-              </Pressable>
-            )}
-          </View>
-          {otpError && (
-            <Text style={styles.errorText}>
-              {otpAttempts >= 3 ? 'Three tries, no luck. Sending a fresh code.' : "That code didn't land. Try again."}
-            </Text>
+          {otpLoading ? (
+            <Text style={[styles.caption, styles.textCenter]}>Verifying...</Text>
+          ) : (
+            <>
+              <View style={styles.resendRow}>
+                {resendCountdown > 0 ? (
+                  <Text style={styles.caption}>Resend in {resendCountdown}s</Text>
+                ) : (
+                  <Pressable onPress={handleResendOtp}>
+                    <Text style={styles.linkText}>Resend code</Text>
+                  </Pressable>
+                )}
+              </View>
+              {otpError && (
+                <Text style={styles.errorText}>
+                  {otpAttempts >= 3 ? 'Three tries, no luck. Sending a fresh code.' : "That code didn't land. Try again."}
+                </Text>
+              )}
+            </>
           )}
         </View>
       )
@@ -813,9 +963,25 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
         { icon: 'flash-outline' as const, headline: 'Find it fast. Go.', sub: 'Swipe. Save. Go.' },
       ]
       const beat = beats[valuePropBeat]
+      const isLightning = valuePropBeat === 2
       return (
         <View style={styles.valuePropCenter}>
-          <Ionicons name={beat.icon} size={64} color={colors.primary[500]} style={styles.stepIcon} />
+          <Animated.View style={[
+            styles.vpIconWrap,
+            {
+              opacity: vpIconOpacity,
+              transform: [
+                { scale: Animated.multiply(vpIconScale, vpGlowScale) },
+              ],
+            },
+          ]}>
+            <Ionicons name={beat.icon} size={64} color={colors.primary[500]} />
+            {isLightning && (
+              <Animated.View style={[styles.vpFlashOverlay, { opacity: vpFlashOpacity }]}>
+                <Ionicons name="flash" size={64} color="#FFFFFF" />
+              </Animated.View>
+            )}
+          </Animated.View>
           <Text style={[styles.headline, styles.textCenter]}>{beat.headline}</Text>
           <Text style={[styles.body, styles.textCenter]}>{beat.sub}</Text>
           <View style={styles.dotIndicator}>
@@ -829,39 +995,46 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
 
     if (subStep === 'intents') {
       return (
-        <View>
-          <Text style={styles.headline}>What are you into?</Text>
-          <Text style={styles.body}>Pick all that fit.</Text>
+        <View style={styles.intentContainer}>
+          <Text style={[styles.headline, styles.textCenter, styles.intentHeadline]}>Now the fun part.</Text>
+          <Text style={[styles.body, styles.textCenter, styles.intentBody]}>Tap every vibe that sounds like you.</Text>
           <View style={styles.intentGrid}>
-            {ONBOARDING_INTENTS.map((intent) => {
+            {ONBOARDING_INTENTS.map((intent, idx) => {
               const selected = data.selectedIntents.includes(intent.id)
               return (
-                <Pressable
+                <Animated.View
                   key={intent.id}
-                  style={[styles.intentCard, selected && styles.intentCardSelected]}
-                  onPress={() => {
-                    logger.action(`Intent ${selected ? 'deselected' : 'selected'}: ${intent.id}`)
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                    setData((p) => ({
-                      ...p,
-                      selectedIntents: selected
-                        ? p.selectedIntents.filter((i) => i !== intent.id)
-                        : [...p.selectedIntents, intent.id],
-                    }))
+                  style={{
+                    opacity: intentAnims[idx].opacity,
+                    transform: [{ scale: intentAnims[idx].scale }],
                   }}
                 >
-                  <Ionicons
-                    name={intent.icon as any}
-                    size={24}
-                    color={selected ? colors.text.inverse : colors.primary[500]}
-                  />
-                  <Text style={[styles.intentLabel, selected && styles.intentLabelSelected]}>{intent.label}</Text>
-                  <Text style={[styles.intentDesc, selected && styles.intentDescSelected]}>{intent.description}</Text>
-                </Pressable>
+                  <Pressable
+                    style={[styles.intentCard, selected && styles.intentCardSelected]}
+                    onPress={() => {
+                      logger.action(`Intent ${selected ? 'deselected' : 'selected'}: ${intent.id}`)
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                      setData((p) => ({
+                        ...p,
+                        selectedIntents: selected
+                          ? p.selectedIntents.filter((i) => i !== intent.id)
+                          : [...p.selectedIntents, intent.id],
+                      }))
+                    }}
+                  >
+                    <Ionicons
+                      name={intent.icon as any}
+                      size={20}
+                      color={selected ? colors.text.inverse : colors.primary[500]}
+                    />
+                    <Text style={[styles.intentLabel, selected && styles.intentLabelSelected]}>{intent.label}</Text>
+                    <Text style={[styles.intentDesc, selected && styles.intentDescSelected]}>{intent.description}</Text>
+                  </Pressable>
+                </Animated.View>
               )
             })}
           </View>
-          <Text style={styles.caption}>You can always change these later.</Text>
+          <Text style={[styles.caption, styles.textCenter]}>Go overboard. We won't tell.</Text>
         </View>
       )
     }
@@ -1257,6 +1430,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       onPrimaryCta={ctaConfig.onPress}
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={false}
+      scrollEnabled={navState.subStep !== 'intents'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
@@ -1351,7 +1525,7 @@ const styles = StyleSheet.create({
     ...typography.sm,
     fontWeight: fontWeights.regular,
     color: colors.text.tertiary,
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
   },
   errorText: {
     ...typography.sm,
@@ -1366,6 +1540,16 @@ const styles = StyleSheet.create({
   },
   stepIcon: {
     marginBottom: spacing.md,
+  },
+  vpIconWrap: {
+    marginBottom: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vpFlashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   inputSpacing: {
     marginTop: spacing.lg,
@@ -1395,15 +1579,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary[500],
   },
   // ─── Intent Cards ───
+  intentContainer: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  intentHeadline: {
+    ...(Platform.OS === 'android' && { fontSize: 24, lineHeight: 32, marginBottom: spacing.xs }),
+  },
+  intentBody: {
+    ...(Platform.OS === 'android' && { fontSize: 14, lineHeight: 20, marginBottom: spacing.sm }),
+  },
   intentGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: spacing.md,
   },
   intentCard: {
-    width: (SCREEN_WIDTH - 48 - 8) / 2,
-    paddingVertical: spacing.md,
+    width: (SCREEN_WIDTH - 48 - 6) / 2,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1.5,
@@ -1417,6 +1612,7 @@ const styles = StyleSheet.create({
   },
   intentLabel: {
     ...typography.sm,
+    ...(Platform.OS === 'android' && { fontSize: 12 }),
     fontWeight: fontWeights.semibold,
     color: colors.text.primary,
     marginTop: spacing.xs,
@@ -1426,6 +1622,7 @@ const styles = StyleSheet.create({
   },
   intentDesc: {
     ...typography.xs,
+    ...(Platform.OS === 'android' && { fontSize: 10 }),
     color: colors.text.tertiary,
     textAlign: 'center',
     marginTop: 2,
