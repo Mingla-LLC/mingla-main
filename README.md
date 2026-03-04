@@ -502,11 +502,11 @@ The `oauth-redirect/` directory contains a static site deployed to Vercel/Netlif
 
 ## Recent Changes
 
+- **expo-document-picker Fix:** Installed missing `expo-document-picker` dependency (~14.0.8, SDK 54 compatible) that was imported in `personAudioService.ts` but never added to package.json, causing a fatal Metro resolution crash at bundle time.
+
 - **Onboarding V2:** Complete replacement of the old 10-step onboarding with a 5-step guided experience. Phone verification via Twilio Verify OTP (2 new edge functions: send-otp, verify-otp). State machine hook replaces single-integer step tracking. Intents stored in dedicated `preferences.intents` column. Background card generation during Step 5 ensures 20+ cards ready at launch.
 
 - **New Onboarding UI Components:** SegmentedProgressBar, PhoneInput, OTPInput, CountryPickerModal, OnboardingAudioRecorder, OnboardingShell, CategoryTile, PulseDotLoader. Six old step components deleted (VibeSelectionStep, BudgetRangeStep, DateTimePrefStep, MagicStep, TravelConstraintStep, WelcomeStep).
-
-- **Country Data Expansion:** Countries constant expanded from 58 to 240+ countries with proper dial codes, flag emojis, and locale-based default selection.
 
 ---
 

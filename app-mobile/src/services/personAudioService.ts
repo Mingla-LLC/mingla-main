@@ -1,5 +1,4 @@
 import { Audio } from "expo-av";
-import * as DocumentPicker from "expo-document-picker";
 import { supabase } from "./supabase";
 import { PersonAudioClip } from "../types/personAudio";
 
@@ -189,6 +188,7 @@ export async function pickAudioFile(): Promise<{
   fileName: string;
   durationSeconds: number;
 } | null> {
+  const DocumentPicker = await import("expo-document-picker");
   const result = await DocumentPicker.getDocumentAsync({
     type: "audio/*",
     copyToCacheDirectory: true,

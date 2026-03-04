@@ -41,6 +41,9 @@ interface WelcomeScreenProps {
   onAppleSignIn: () => Promise<void>;
 }
 
+// Staggered word-by-word headline
+const HEADLINE_WORDS = ["Dates,", "hangouts,", "and", "everything", "in", "between", "\u2014", "sorted."];
+
 export default function WelcomeScreen({
   onGoogleSignIn,
   onAppleSignIn,
@@ -55,8 +58,15 @@ export default function WelcomeScreen({
   // Animated values for entrance animation
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(0.85)).current;
-  const taglineOpacity = useRef(new Animated.Value(0)).current;
-  const taglineTranslateY = useRef(new Animated.Value(15)).current;
+
+  // Per-word animated values for the headline
+  const wordAnims = useRef(
+    HEADLINE_WORDS.map(() => ({
+      opacity: new Animated.Value(0),
+      translateY: new Animated.Value(18),
+    }))
+  ).current;
+
   const appleOpacity = useRef(new Animated.Value(0)).current;
   const appleTranslateY = useRef(new Animated.Value(25)).current;
   const googleOpacity = useRef(new Animated.Value(0)).current;
@@ -74,11 +84,12 @@ export default function WelcomeScreen({
       }
 
       if (reducedMotion) {
-        // Skip all animations — set final values immediately
         logoOpacity.setValue(1);
         logoScale.setValue(1);
-        taglineOpacity.setValue(1);
-        taglineTranslateY.setValue(0);
+        wordAnims.forEach((w) => {
+          w.opacity.setValue(1);
+          w.translateY.setValue(0);
+        });
         appleOpacity.setValue(1);
         appleTranslateY.setValue(0);
         googleOpacity.setValue(1);
@@ -87,84 +98,88 @@ export default function WelcomeScreen({
         return;
       }
 
-      // Orchestrated entrance animation sequence (1.2s total)
-      Animated.stagger(200, [
-        // Logo: fade + scale simultaneously
-        Animated.parallel([
-          Animated.timing(logoOpacity, {
-            toValue: 1,
-            duration: 600,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.timing(logoScale, {
-            toValue: 1,
-            duration: 600,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-        ]),
-
-        // Tagline: fade + slide up
-        Animated.parallel([
-          Animated.timing(taglineOpacity, {
-            toValue: 1,
-            duration: 500,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.timing(taglineTranslateY, {
-            toValue: 0,
-            duration: 500,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-        ]),
-
-        // Apple button (iOS only): fade + slide up with spring
-        ...(Platform.OS === "ios"
-          ? [
-              Animated.parallel([
-                Animated.timing(appleOpacity, {
-                  toValue: 1,
-                  duration: 400,
-                  easing: Easing.out(Easing.cubic),
-                  useNativeDriver: true,
-                }),
-                Animated.spring(appleTranslateY, {
-                  toValue: 0,
-                  tension: 80,
-                  friction: 10,
-                  useNativeDriver: true,
-                }),
-              ]),
-            ]
-          : []),
-
-        // Google button: fade + slide up with spring
-        Animated.parallel([
-          Animated.timing(googleOpacity, {
-            toValue: 1,
-            duration: 400,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.spring(googleTranslateY, {
-            toValue: 0,
-            tension: 80,
-            friction: 10,
-            useNativeDriver: true,
-          }),
-        ]),
-
-        // Terms: gentle fade (to 0.8, not 1 — de-emphasize)
-        Animated.timing(termsOpacity, {
-          toValue: 0.8,
-          duration: 300,
+      // 1. Logo fade + scale
+      Animated.parallel([
+        Animated.timing(logoOpacity, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoScale, {
+          toValue: 1,
+          duration: 600,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
       ]).start();
+
+      // 2. Staggered word-by-word reveal (starts 400ms after logo begins)
+      setTimeout(() => {
+        Animated.stagger(
+          70,
+          wordAnims.map((w) =>
+            Animated.parallel([
+              Animated.timing(w.opacity, {
+                toValue: 1,
+                duration: 350,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true,
+              }),
+              Animated.spring(w.translateY, {
+                toValue: 0,
+                tension: 100,
+                friction: 12,
+                useNativeDriver: true,
+              }),
+            ])
+          )
+        ).start();
+      }, 400);
+
+      // 3. Buttons appear after words finish (~400 + 70*8 + 350 ≈ 1.3s)
+      setTimeout(() => {
+        Animated.stagger(120, [
+          ...(Platform.OS === "ios"
+            ? [
+                Animated.parallel([
+                  Animated.timing(appleOpacity, {
+                    toValue: 1,
+                    duration: 400,
+                    easing: Easing.out(Easing.cubic),
+                    useNativeDriver: true,
+                  }),
+                  Animated.spring(appleTranslateY, {
+                    toValue: 0,
+                    tension: 80,
+                    friction: 10,
+                    useNativeDriver: true,
+                  }),
+                ]),
+              ]
+            : []),
+          Animated.parallel([
+            Animated.timing(googleOpacity, {
+              toValue: 1,
+              duration: 400,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.spring(googleTranslateY, {
+              toValue: 0,
+              tension: 80,
+              friction: 10,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.timing(termsOpacity, {
+            toValue: 0.8,
+            duration: 300,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }, 1300);
     };
 
     runAnimation();
@@ -251,8 +266,8 @@ export default function WelcomeScreen({
           translucent
         />
 
-        {/* Brand Zone */}
-        <View style={styles.brandZone}>
+        {/* Center Zone — logo + animated headline */}
+        <View style={styles.centerZone}>
           <Animated.View
             style={[
               styles.logoContainer,
@@ -271,20 +286,32 @@ export default function WelcomeScreen({
             />
           </Animated.View>
 
-          <Animated.Text
-            style={[
-              styles.tagline,
-              {
-                opacity: taglineOpacity,
-                transform: [{ translateY: taglineTranslateY }],
-              },
-            ]}
+          {/* Word-by-word animated headline */}
+          <View
+            style={styles.headlineRow}
+            accessibilityLabel="Dates, hangouts, and everything in between — sorted."
+            accessibilityRole="header"
           >
-            Dates, hangouts, and everything in between {"\u2014"} sorted.
-          </Animated.Text>
+            {HEADLINE_WORDS.map((word, i) => (
+              <Animated.Text
+                key={i}
+                style={[
+                  styles.headlineWord,
+                  // Emphasise the last word
+                  i === HEADLINE_WORDS.length - 1 && styles.headlineAccent,
+                  {
+                    opacity: wordAnims[i].opacity,
+                    transform: [{ translateY: wordAnims[i].translateY }],
+                  },
+                ]}
+              >
+                {word}{" "}
+              </Animated.Text>
+            ))}
+          </View>
         </View>
 
-        {/* Action Zone */}
+        {/* Action Zone — centred buttons */}
         <View style={styles.actionZone}>
           {/* Apple Sign-In Button — iOS only */}
           {Platform.OS === "ios" && (
@@ -374,11 +401,8 @@ export default function WelcomeScreen({
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Flex spacer */}
-          <View style={styles.spacer} />
-
           {/* Terms & Privacy */}
-          <Animated.View style={{ opacity: termsOpacity }}>
+          <Animated.View style={[styles.termsWrapper, { opacity: termsOpacity }]}>
             <Text style={styles.termsText}>
               By continuing, you agree to our{" "}
               <Text
@@ -416,34 +440,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  brandZone: {
-    flex: 1.2,
+  centerZone: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.xl,
   },
   logoContainer: {
     alignItems: "center",
+    marginBottom: vs(28),
   },
   logo: {
-    width: s(200),
-    maxWidth: "60%",
+    width: s(180),
+    maxWidth: "55%",
   },
-  tagline: {
-    fontSize: 17,
-    lineHeight: 26,
-    fontWeight: fontWeights.regular,
-    color: colors.text.secondary,
-    textAlign: "center",
-    maxWidth: s(300),
-    letterSpacing: 0.2,
-    marginTop: spacing.md,
+  headlineRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    maxWidth: s(320),
+  },
+  headlineWord: {
+    fontSize: 22,
+    lineHeight: 34,
+    fontWeight: fontWeights.medium,
+    color: colors.text.primary,
+    letterSpacing: 0.1,
+  },
+  headlineAccent: {
+    fontWeight: fontWeights.bold,
+    color: colors.primary[500],
   },
   actionZone: {
-    flex: 1,
     paddingHorizontal: spacing.lg,
+    paddingBottom: vs(24),
     alignItems: "center",
-    gap: vs(16),
+    gap: vs(14),
   },
   buttonAnimWrapper: {
     width: "100%",
@@ -494,8 +526,8 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.4,
   },
-  spacer: {
-    flex: 1,
+  termsWrapper: {
+    marginTop: vs(8),
   },
   termsText: {
     fontSize: 12,
@@ -504,7 +536,6 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     textAlign: "center",
     paddingHorizontal: spacing.xl,
-    marginBottom: spacing.sm,
   },
   termsLink: {
     color: colors.primary[700],
