@@ -11,7 +11,8 @@ DELETE FROM public.card_pool a
 USING public.card_pool b
 WHERE a.google_place_id IS NOT NULL
   AND a.google_place_id = b.google_place_id
-  AND a.popularity_score < b.popularity_score;
+  AND (a.popularity_score < b.popularity_score
+       OR (a.popularity_score = b.popularity_score AND a.id < b.id));
 
 -- Step 2: Add the unique index (partial — only where google_place_id is not null)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_card_pool_unique_google_place_id
