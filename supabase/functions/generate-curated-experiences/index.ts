@@ -5,6 +5,9 @@ import { serveCuratedCardsFromPool, upsertPlaceToPool, insertCardToPool, recordI
 import {
   MINGLA_CATEGORY_PLACE_TYPES,
   resolveCategory,
+  GLOBAL_EXCLUDED_PLACE_TYPES,
+  ROMANTIC_EXCLUDED_PLACE_TYPES,
+  filterExcludedPlaces,
 } from '../_shared/categoryPlaceTypes.ts';
 
 
@@ -256,7 +259,7 @@ const PLACES_FIELD_MASK =
   'places.types,places.primaryType,' +
   'places.regularOpeningHours,places.websiteUri,places.photos';
 
-async function searchNearby(includedType: string, lat: number, lng: number, radiusMeters: number): Promise<any[]> {
+async function searchNearby(includedType: string, lat: number, lng: number, radiusMeters: number, excludedTypes?: string[]): Promise<any[]> {
   const { places } = await searchPlacesWithCache({
     supabaseAdmin,
     apiKey: GOOGLE_PLACES_API_KEY,
@@ -267,11 +270,12 @@ async function searchNearby(includedType: string, lat: number, lng: number, radi
     maxResults: 5,
     strategy: 'nearby',
     ttlHours: 24,
+    excludedTypes,
   });
   return places;
 }
 
-async function searchByText(textQuery: string, lat: number, lng: number, radiusMeters: number): Promise<any[]> {
+async function searchByText(textQuery: string, lat: number, lng: number, radiusMeters: number, excludedTypes?: string[]): Promise<any[]> {
   const { places } = await searchPlacesWithCache({
     supabaseAdmin,
     apiKey: GOOGLE_PLACES_API_KEY,
@@ -283,6 +287,7 @@ async function searchByText(textQuery: string, lat: number, lng: number, radiusM
     strategy: 'text',
     textQuery,
     ttlHours: 24,
+    excludedTypes,
   });
   return places;
 }
@@ -300,9 +305,14 @@ async function fetchPlacesForCategory(
   lat: number,
   lng: number,
   radiusMeters: number,
+  experienceType?: string,
 ): Promise<any[]> {
   const allTypes = MINGLA_CATEGORY_PLACE_TYPES[categoryName] || [];
   if (allTypes.length === 0) return [];
+
+  const excludedTypes = experienceType === 'romantic'
+    ? ROMANTIC_EXCLUDED_PLACE_TYPES
+    : GLOBAL_EXCLUDED_PLACE_TYPES;
 
   const nearbyTypes = allTypes.filter(t => !TEXT_SEARCH_TYPES.has(t));
   const textTypes   = allTypes.filter(t => TEXT_SEARCH_TYPES.has(t));
@@ -313,7 +323,7 @@ async function fetchPlacesForCategory(
   if (nearbyTypes.length > 0) {
     const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
     const nearbyResults = await Promise.allSettled(
-      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters))
+      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
     );
     for (const r of nearbyResults) {
       if (r.status === 'fulfilled' && r.value) {
@@ -327,7 +337,7 @@ async function fetchPlacesForCategory(
     const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
     const query = nicheType.replace(/_/g, ' ');
     try {
-      const textResults = await searchByText(query, lat, lng, radiusMeters);
+      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
       results.push(...textResults);
     } catch (err) {
       console.warn(`[fetchPlacesForCategory] Text search failed for ${nicheType}:`, err);
@@ -343,7 +353,13 @@ async function fetchPlacesForCategory(
     return true;
   });
 
-  return deduped.sort((a, b) => scorePlace(b) - scorePlace(a));
+  // Post-fetch filter: remove any places with excluded types
+  const filtered = filterExcludedPlaces(
+    deduped,
+    experienceType === 'romantic' ? ROMANTIC_EXCLUDED_PLACE_TYPES : undefined,
+  );
+
+  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
 }
 
 function generateCategoryCombos(pool: string[], count: number): string[][] {
@@ -487,7 +503,7 @@ async function generateStandardCards(
   const categoryPlaces: Record<string, any[]> = {};
   await Promise.all(
     pool.map(async (category) => {
-      const places = await fetchPlacesForCategory(category, lat, lng, clampedRadius);
+      const places = await fetchPlacesForCategory(category, lat, lng, clampedRadius, experienceType);
       categoryPlaces[category] = places;
     })
   );
@@ -599,7 +615,7 @@ async function generatePicnicCards(
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Find groceries near user
-  const groceryPlaces = await fetchPlacesForCategory('Groceries & Flowers', lat, lng, clampedRadius);
+  const groceryPlaces = await fetchPlacesForCategory('Groceries & Flowers', lat, lng, clampedRadius, 'picnic-dates');
 
   if (groceryPlaces.length === 0) {
     console.warn('[generatePicnicCards] No grocery stores found');
@@ -632,6 +648,7 @@ async function generatePicnicCards(
       'Picnic',
       groceryLat, groceryLng,
       parkSearchRadius,
+      'picnic-dates',
     );
 
     if (parkPlaces.length === 0) continue;
@@ -694,7 +711,7 @@ async function generateStrollCards(
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Find nature spots near user
-  const naturePlaces = await fetchPlacesForCategory('Nature', lat, lng, clampedRadius);
+  const naturePlaces = await fetchPlacesForCategory('Nature', lat, lng, clampedRadius, 'take-a-stroll');
 
   if (naturePlaces.length === 0) {
     console.warn('[generateStrollCards] No nature spots found');
@@ -727,6 +744,7 @@ async function generateStrollCards(
       'Casual Eats',
       natureLat, natureLng,
       eatsSearchRadius,
+      'take-a-stroll',
     );
 
     if (eatsPlaces.length === 0) continue;

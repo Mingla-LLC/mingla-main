@@ -7,7 +7,6 @@ import {
   StatusBar,
   ScrollView,
   Image,
-  Dimensions,
   Modal,
   TextInput,
   Platform,
@@ -66,10 +65,11 @@ interface CustomHoliday {
   createdAt: string;
 }
 
-const { width: screenWidth } = Dimensions.get("window");
-const CARD_WIDTH = screenWidth - 32; // 16px padding on each side
-const GRID_CARD_WIDTH = (screenWidth - 48) / 2; // 16px padding + 16px gap between cards
-const HERO_CARD_WIDTH = (screenWidth - 44) / 2; // 16px padding + 12px gap between hero cards
+import { SCREEN_WIDTH, s } from "../utils/responsive";
+
+const CARD_WIDTH = SCREEN_WIDTH - s(32); // 16px padding on each side
+const GRID_CARD_WIDTH = (SCREEN_WIDTH - s(48)) / 2; // 16px padding + 16px gap between cards
+const HERO_CARD_WIDTH = (SCREEN_WIDTH - s(44)) / 2; // 16px padding + 12px gap between hero cards
 const ANIMATION_DURATION = 400;
 
 // Month names for custom day picker

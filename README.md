@@ -1244,16 +1244,31 @@ interface Recommendation {
 ### Design System Tokens (`src/constants/designSystem.ts`)
 
 ```
-Spacing:     xs(4) sm(8) md(16) lg(24) xl(32) xxl(48)
-Radius:      sm(8) md(12) lg(16) xl(24) full(999)
-Typography:  xs(12) sm(14) base(16) lg(18) xl(20) xxl(24) xxxl(32)
-FontWeights: regular(400) medium(500) semibold(600) bold(700)
-Shadows:     sm/md/lg/xl with shadowColor, offset, opacity, radius, elevation
-Animations:  fast(150ms) normal(300ms) slow(500ms) with easing curves
-TouchTargets: minimum(44) comfortable(48) large(56)
+Spacing:              xs(4) sm(8) md(16) lg(24) xl(32) xxl(48)
+Responsive Spacing:   xs(vs(4)) sm(vs(8)) md(vs(16)) lg(vs(24)) xl(vs(32)) xxl(vs(48))
+Radius:               sm(8) md(12) lg(16) xl(24) full(999)
+Typography:           xs(12) sm(14) base(16) lg(18) xl(20) xxl(24) xxxl(32)
+Responsive Typography: xs(ms(12)) sm(ms(14)) md(ms(16)) lg(ms(18)) xl(ms(20)) xxl(ms(24)) xxxl(ms(32))
+FontWeights:          regular(400) medium(500) semibold(600) bold(700)
+Shadows:              sm/md/lg/xl with shadowColor, offset, opacity, radius, elevation
+Animations:           fast(150ms) normal(300ms) slow(500ms) with easing curves
+TouchTargets:         minimum(44) comfortable(48) large(56)
 ```
 
 Common pre-configured styles: card, button, input, heading, body, caption.
+
+### Responsive Scaling (`src/utils/responsive.ts`)
+
+Pure-math proportional scaling based on iPhone 14 reference (390×844):
+- `scale(size)` / `s()` — horizontal scaling (widths, horizontal padding)
+- `verticalScale(size)` / `vs()` — vertical scaling (heights, vertical padding)
+- `moderateScale(size, factor)` / `ms()` — gentle scaling (font sizes, icons, touch targets)
+- `moderateVerticalScale(size, factor)` / `mvs()` — gentle vertical scaling
+- `SCREEN_WIDTH`, `SCREEN_HEIGHT` — device dimensions (single import source)
+
+### App Layout Hook (`src/hooks/useAppLayout.ts`)
+
+Single source of truth for the app's spatial geometry: safe area insets, header height, bottom nav height, content area height. Used by root shell and any component that needs layout-aware positioning.
 
 ### CURATED_EXPERIENCES Constant
 
@@ -1817,7 +1832,23 @@ npx supabase functions serve function-name --env-file .env.local
 
 ---
 
-## Recent Changes (2026-03-03 — Website Button Data Fix)
+## Recent Changes (2026-03-03 — Universal Responsive System)
+
+- **Proportional Scaling Foundation:** New `responsive.ts` utility provides `scale()`, `verticalScale()`, `moderateScale()` functions for continuous device adaptation (iPhone SE to Pro Max, Galaxy A14 to S25 Ultra). All values scale from iPhone 14 (390×844) reference — zero runtime overhead, pure math.
+- **Full-Bleed Root Shell:** Root `SafeAreaView` replaced with raw `View` + manual safe area management. Header background now extends behind status bar/notch to screen top pixel. Bottom nav background extends behind gesture bar/home indicator to screen bottom pixel. `StatusBar` set to translucent with transparent background.
+- **`useAppLayout()` Hook:** Single source of truth for app spatial geometry — insets, header height, bottom nav height, content area height. Used by root shell, floating button, and preference sheets.
+- **Responsive Nav & Header:** Bottom navigation icons, text, badges, and padding all use proportional scaling. HomePage header buttons, logo container, and notification dot scale with device dimensions.
+- **Responsive Sheets & Cards:** PreferencesSheet height now adapts to device (fills from bottom minus notch area). SwipeableCards and DiscoverScreen card widths use centralized `SCREEN_WIDTH` from responsive module. ExpandedCardModal migrated to responsive imports.
+
+### Previous Changes (2026-03-03 — UI/UX Responsiveness & Consistency Audit)
+
+- **Card Viewport Fix:** Cards now fill the screen on all modern iPhones. Removed `maxWidth: 400` cap and `width: 0.92` scaling, replaced with `screenWidth - 32` (16pt margin each side) and raised cap to 500. Container alignment changed from `center` to `flex-start` to push cards to top of viewport.
+- **Batch Button Relocation:** The "Batch X" history button moved from a standalone row above the card into an overlay chip (top-left corner of the card), only visible when 2+ decks exist. Matches the existing matchBadge pattern.
+- **Collaboration Pills Cleanup:** Container background changed from opaque white to transparent. All pill shadows reduced from `shadowOpacity: 0.95` / `elevation: 12` (nuclear-level glow) to `0.25` / `3`. Touch targets increased from 32pt to 36pt. Pill background changed from white to `#F3F4F6` for visibility on the off-white home background.
+- **PreferencesSheet Standardization:** Section card shadows reduced from `opacity: 0.15` / `elevation: 5` to `0.06` / `2` across all 3 section files. Header shadow reduced and border-bottom separator added. Category pills switched from rigid `width: 31%` grid to natural flex wrap with increased padding. Bottom sheet corner radius standardized to 24pt (was 36pt). All modal button border radii standardized to 12pt (was 9pt).
+- **HomePage Animation Fix:** Removed disorienting `scaleX` stretch animation on collaboration bar mount — now uses clean opacity fade-in only. Inline style extracted to StyleSheet.
+
+### Previous Changes (2026-03-03 — Website Button Data Fix)
 
 - **Website Button Data Fix:** Fixed data propagation gap where `refresh-place-pool` updated `place_pool.website` but never propagated it to `card_pool.website`, causing the "Policies & Reservations" button to be hidden on >90% of cards. One-line fix in `refresh-place-pool/index.ts` adds `website` to the card_pool update. New DB trigger (`trg_propagate_place_website`) auto-propagates `place_pool.website` → `card_pool.website` on any update. New `backfill-place-websites` edge function fetches `websiteUri` from Google for all existing place_pool entries with NULL website ($0.003/place, one-time cost). No frontend changes — the button, modal, and WebView were already fully wired.
 - **Fluidity & Stability Fix — Auth Lag, iOS Spacing, Preferences Stutter:** Eliminated all artificial delays and double-renders from the auth flow, cutting Google/Apple sign-in from 3-5s to under 1.5s. Removed 3-iteration polling loop (500ms/1000ms/1500ms escalating delays) and replaced with single 200ms check. Removed two unconditional 500ms post-auth delays. Consolidated duplicate profile loading — `onAuthStateChange` listener is now the single source of truth, OAuth handlers no longer fetch profiles. Apple name update converted from 3-call chain (fetch+update+re-fetch) to single fire-and-forget `.update().is("first_name", null)`. Preferences sheet now closes instantly by calling `onClose()` before `requestAnimationFrame`-deferred cache invalidation. iOS SafeAreaView double-inset fixed by switching to `edges={[]}` with manual `paddingTop: insets.top` and `Math.max(insets.bottom, 8)` on bottom nav. WelcomeScreen flash eliminated — authenticated users with pending profile load now see a white screen instead of flashing back to sign-in. AppStateManager's competing 5-second auth timeout removed (useAuthSimple's 8-second timeout is the single source of truth). Files: `useAuthSimple.ts`, `PreferencesSheet.tsx`, `index.tsx`, `AppStateManager.tsx`.

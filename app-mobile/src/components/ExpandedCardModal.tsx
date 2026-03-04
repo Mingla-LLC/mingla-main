@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Dimensions,
   Image,
   Linking,
   Platform,
@@ -41,8 +40,7 @@ import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
 import * as WebBrowser from 'expo-web-browser';
 import { colors } from "../constants/colors";
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+import { SCREEN_HEIGHT } from "../utils/responsive";
 
 const curatedStyles = StyleSheet.create({
   container: {

@@ -1,6 +1,8 @@
 // Design System Constants for Mingla App
 // Phase 1: Foundation & Core Polish
 
+import { vs, ms } from '../utils/responsive';
+
 export const spacing = {
   xs: 4,    // 4px
   sm: 8,    // 8px  
@@ -216,6 +218,27 @@ export const backgroundWarmGlow = '#fff9f5' as const;
 export const taglineTypography = {
   fontSize: 17,
   lineHeight: 26,
+} as const;
+
+// Responsive spacing — same scale, proportionally adapted
+export const responsiveSpacing = {
+  xs: vs(4),
+  sm: vs(8),
+  md: vs(16),
+  lg: vs(24),
+  xl: vs(32),
+  xxl: vs(48),
+} as const;
+
+// Responsive typography — font sizes scale gently
+export const responsiveTypography = {
+  xs: { fontSize: ms(12), lineHeight: ms(16) },
+  sm: { fontSize: ms(14), lineHeight: ms(20) },
+  md: { fontSize: ms(16), lineHeight: ms(24) },
+  lg: { fontSize: ms(18), lineHeight: ms(28) },
+  xl: { fontSize: ms(20), lineHeight: ms(32) },
+  xxl: { fontSize: ms(24), lineHeight: ms(36) },
+  xxxl: { fontSize: ms(32), lineHeight: ms(48) },
 } as const;
 
 // Export commonly used combinations

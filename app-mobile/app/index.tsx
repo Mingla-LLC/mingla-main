@@ -11,7 +11,8 @@ import {
   Modal,
   Image,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { vs, ms, s } from "../src/utils/responsive";
+import { useAppLayout } from "../src/hooks/useAppLayout";
 import * as Linking from "expo-linking";
 import { useAppHandlers } from "../src/components/AppHandlers";
 import { useAppState } from "../src/components/AppStateManager";
@@ -69,12 +70,12 @@ import { useDebugGesture } from "../src/hooks/useDebugGesture";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
 import { mixpanelService } from "../src/services/mixpanelService";
 
-const TAB_BAR_ICON_SIZE = 19;
+const TAB_BAR_ICON_SIZE = ms(20);
 
 function AppContent() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
-  const insets = useSafeAreaInsets();
+  const layout = useAppLayout();
   const [coachMapCurrentTarget, setCoachMapCurrentTarget] = useState<
     string | null
   >(null);
@@ -1460,7 +1461,7 @@ function AppContent() {
   if (user && !profile) {
     return (
       <View style={{ flex: 1, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center' }}>
-        <StatusBar barStyle="dark-content" backgroundColor="white" />
+        <StatusBar barStyle="dark-content" translucent={true} backgroundColor="transparent" />
       </View>
     );
   }
@@ -1899,13 +1900,11 @@ function AppContent() {
             <MobileFeaturesProvider>
               <NavigationProvider>
                 <ErrorBoundary>
-                  <SafeAreaView
-                    style={[styles.safeArea, { paddingTop: insets.top }]}
-                    edges={[]}
-                  >
+                  <View style={styles.safeArea}>
                     <StatusBar
                       barStyle="dark-content"
-                      backgroundColor="white"
+                      translucent={true}
+                      backgroundColor="transparent"
                     />
                     {/* Invisible tap zone: tap 5 times quickly to open debug console */}
                     <TouchableOpacity
@@ -1914,8 +1913,8 @@ function AppContent() {
                       style={{ position: 'absolute', top: 0, right: 0, width: 44, height: 44, zIndex: 9999 }}
                     />
                     <View style={styles.container}>
-                      {/* Main Content */}
-                      <View style={styles.mainContent}>
+                      {/* Main Content — paddingTop for safe area since we use a raw View root */}
+                      <View style={[styles.mainContent, { paddingTop: layout.insets.top }]}>
                         {showTermsOfService ? (
                           <TermsOfService onNavigateBack={() => setShowTermsOfService(false)} />
                         ) : showPrivacyPolicy ? (
@@ -1963,11 +1962,11 @@ function AppContent() {
                         }}
                       />
 
-                      {/* Bottom Navigation - keep visible and above overlay when tabs are highlighted */}
+                      {/* Bottom Navigation — full-bleed: bg extends behind gesture bar */}
                       <View
                         style={[
                           styles.bottomNavigation,
-                          { paddingBottom: Math.max(insets.bottom, 8) },
+                          { paddingBottom: layout.bottomNavPadding },
                           isHighlightingTabs && {
                             zIndex: 1000,
                             elevation: 1000,
@@ -2255,7 +2254,7 @@ function AppContent() {
 
                     {/* Floating Help Button */}
                     {showHelpButton && !showCoachMap && (
-                      <View style={styles.floatingButtonContainer}>
+                      <View style={[styles.floatingButtonContainer, { bottom: layout.bottomNavTotalHeight + vs(24) }]}>
                         {/* Dismiss X button */}
                         <TouchableOpacity
                           style={styles.dismissButton}
@@ -2280,7 +2279,7 @@ function AppContent() {
                       onGiveFeedback={handleGiveFeedback}
                       onClose={() => setShowWelcomeDialog(false)}
                     />
-                  </SafeAreaView>
+                  </View>
                 </ErrorBoundary>
               </NavigationProvider>
             </MobileFeaturesProvider>
@@ -2357,18 +2356,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-evenly",
     alignItems: "center",
-    paddingHorizontal: 8,
+    paddingHorizontal: s(8),
+    height: vs(56),
   },
   navItem: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 5,
+    justifyContent: "center",
+    paddingVertical: vs(5),
     borderRadius: 8,
   },
   navIconContainer: {
     position: "relative",
-    width: 22,
-    height: 22,
+    width: ms(22),
+    height: ms(22),
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2376,10 +2377,10 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -6,
     right: -8,
-    minWidth: 18,
-    height: 18,
+    minWidth: ms(18),
+    height: ms(18),
     backgroundColor: "#eb7825",
-    borderRadius: 9,
+    borderRadius: ms(9),
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 4,
@@ -2387,13 +2388,13 @@ const styles = StyleSheet.create({
     borderColor: "white",
   },
   tabBadgeText: {
-    fontSize: 10,
+    fontSize: ms(10),
     color: "white",
     fontWeight: "700",
   },
   navText: {
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: ms(10),
+    marginTop: vs(2),
   },
   navTextActive: {
     color: "#eb7825",
@@ -2405,8 +2406,8 @@ const styles = StyleSheet.create({
   // Floating Help Button styles
   floatingButtonContainer: {
     position: "absolute",
-    bottom: 130,
-    right: 24,
+    // bottom is applied inline via layout.bottomNavTotalHeight + vs(24)
+    right: s(24),
   },
   floatingButton: {
     width: 56,

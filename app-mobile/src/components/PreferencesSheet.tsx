@@ -12,12 +12,13 @@ import {
   Platform,
   Modal,
   Alert,
-  Dimensions,
 } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { SCREEN_WIDTH, SCREEN_HEIGHT, vs } from "../utils/responsive";
+import { useAppLayout } from "../hooks/useAppLayout";
 import { KeyboardAwareView } from "./ui/KeyboardAwareView";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { Ionicons } from "@expo/vector-icons";
@@ -140,6 +141,7 @@ export default function PreferencesSheet({
   const { user } = useAuthSimple();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+  const appLayout = useAppLayout();
 
   // Only load preferences data if modal is visible
   const {
@@ -232,10 +234,9 @@ export default function PreferencesSheet({
       try {
         (scrollViewRef.current as any).measureInWindow((svX: number, svY: number, svW: number, svH: number) => {
           (fieldRef.current as any).measureInWindow((fX: number, fY: number, fW: number, fH: number) => {
-            const { height: screenHeight } = Dimensions.get('window');
             const fieldYRelativeToScrollView = fY - svY;
             const fieldBottomRelativeToScrollView = fieldYRelativeToScrollView + fH;
-            const keyboardStartOnScreen = screenHeight - kbH;
+            const keyboardStartOnScreen = SCREEN_HEIGHT - kbH;
             const scrollViewBottomOnScreen = svY + svH;
             const visibleHeightOfScrollView = Math.min(svH, keyboardStartOnScreen - svY);
             const BOTTOM_OFFSET = 48;
@@ -1097,7 +1098,7 @@ export default function PreferencesSheet({
       >
         <View style={styles.sheetOverlay}>
           <Pressable style={styles.backdropTouch} onPress={onClose} />
-          <View style={styles.sheetContent}>
+          <View style={[styles.sheetContent, { height: appLayout.screenHeight - appLayout.insets.top - vs(20) }]}>
             {preferencesLoading ? (
               <LoadingShimmer />
             ) : (
@@ -1127,9 +1128,11 @@ export default function PreferencesSheet({
   );
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+// SCREEN_WIDTH and SCREEN_HEIGHT are now imported from responsive.ts
 
-// Match SessionViewModal: 88% height bottom-sheet
+// Sheet fills from bottom, accounting for status bar area
+// Actual height is computed dynamically when useAppLayout is available;
+// this static fallback is used only for legacy full-screen overlay styles.
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 
 const styles = StyleSheet.create({
@@ -1147,14 +1150,14 @@ const styles = StyleSheet.create({
     height: SHEET_HEIGHT,
     width: "100%",
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 30,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 6,
   },
   // --- Legacy full-screen styles (used when `visible` prop is not provided) ---
   overlayContainer: {
@@ -1190,7 +1193,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 110,
+    paddingBottom: 120,
   },
   header: {
     flexDirection: "row",
@@ -1198,14 +1201,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 16,
+    paddingBottom: 12,
     backgroundColor: "#ffffff",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
     zIndex: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
   },
   titleContainer: {
     flex: 1,
@@ -1228,15 +1233,17 @@ const styles = StyleSheet.create({
   },
   section: {
     backgroundColor: "white",
-    marginHorizontal: 12,
+    marginHorizontal: 16,
     marginBottom: 12,
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#f3f4f6",
   },
   sectionTitle: {
     fontSize: 14,

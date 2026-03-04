@@ -9,7 +9,13 @@
 
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { batchSearchPlaces } from './placesCache.ts';
-import { getPlaceTypesForCategory, resolveCategories } from './categoryPlaceTypes.ts';
+import {
+  getPlaceTypesForCategory,
+  resolveCategories,
+  GLOBAL_EXCLUDED_PLACE_TYPES,
+  ROMANTIC_EXCLUDED_PLACE_TYPES,
+  filterExcludedPlaces,
+} from './categoryPlaceTypes.ts';
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -655,9 +661,28 @@ export async function serveCardsFromPipeline(
   const prefUpdatedAt = await getPreferencesUpdatedAt(supabaseAdmin, userId);
 
   // ── STEP 2: Query pool ────────────────────────────────────────────────
-  const { poolCards, totalPoolSize } = await queryPoolCards(params, prefUpdatedAt);
+  let { poolCards, totalPoolSize } = await queryPoolCards(params, prefUpdatedAt);
 
   console.log(`[card-pool] Pool query: ${poolCards.length} unseen of ${totalPoolSize} total matching`);
+
+  // Filter excluded place types from pool results
+  const excludedTypes = experienceType === 'romantic'
+    ? ROMANTIC_EXCLUDED_PLACE_TYPES
+    : GLOBAL_EXCLUDED_PLACE_TYPES;
+  const excludedSet = new Set(excludedTypes);
+
+  poolCards = poolCards.filter((card: any) => {
+    // For curated cards, check every stop's types
+    if (card.card_type === 'curated' && card.stops) {
+      return !card.stops.some((stop: any) => {
+        const stopTypes = stop.placeType ? [stop.placeType] : (stop.types ?? []);
+        return stopTypes.some((t: string) => excludedSet.has(t));
+      });
+    }
+    // For single cards, check the card's types
+    const types = card.types ?? card.place_types ?? [];
+    return !types.some((t: string) => excludedSet.has(t));
+  });
 
   // ── STEP 3: If pool has enough → serve directly ───────────────────────
   if (poolCards.length >= limit) {

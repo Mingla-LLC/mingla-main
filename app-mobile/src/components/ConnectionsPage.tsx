@@ -6,29 +6,36 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  FlatList,
+  TextInput,
   Clipboard,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons, Feather } from "@expo/vector-icons";
-import { Friend, Conversation, Message } from "../services/connectionsService";
-import { ConnectionsService } from "../services/connectionsService";
-import CollaborationFriendsTab from "./collaboration/CollaborationFriendsTab";
-import { useFriends } from "../hooks/useFriends";
-import MessagesTab from "./connections/MessagesTab";
-import FriendSelectionModal from "./FriendSelectionModal";
-import AddFriendModal from "./AddFriendModal";
-import FriendRequestsModal from "./FriendRequestsModal";
+import { Ionicons } from "@expo/vector-icons";
+import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
+import { useAuthSimple } from "../hooks/useAuthSimple";
+import { messagingService, DirectMessage } from "../services/messagingService";
+import { blockService, BlockReason } from "../services/blockService";
+import { muteService } from "../services/muteService";
+import { reportService, ReportReason } from "../services/reportService";
+import { supabase } from "../services/supabase";
+import { mixpanelService } from "../services/mixpanelService";
+import { Conversation } from "../hooks/useMessages";
+import { Friend, Message } from "../services/connectionsService";
+
+// Sub-components
+import { ChatListItem } from "./connections/ChatListItem";
+import { PillFilters, PillId } from "./connections/PillFilters";
+import { FriendPickerSheet } from "./connections/FriendPickerSheet";
+import { AddFriendView } from "./connections/AddFriendView";
+import { RequestsView } from "./connections/RequestsView";
+import { BlockedUsersView } from "./connections/BlockedUsersView";
+import MessageInterface from "./MessageInterface";
+
+// Modals kept for MessageInterface actions
 import AddToBoardModal from "./AddToBoardModal";
 import ReportUserModal from "./ReportUserModal";
 import BlockUserModal from "./BlockUserModal";
-import BlockedUsersModal from "./BlockedUsersModal";
-import { useAuthSimple } from "../hooks/useAuthSimple";
-import { messagingService, DirectMessage } from "../services/messagingService";
-import { supabase } from "../services/supabase";
-import { BlockReason, blockService } from "../services/blockService";
-import { muteService } from "../services/muteService";
-import { reportService, ReportReason } from "../services/reportService";
-import { mixpanelService } from "../services/mixpanelService";
 
 interface ConnectionsPageProps {
   onSendCollabInvite?: (friend: any) => void;
@@ -54,9 +61,6 @@ interface ConnectionsPageProps {
 
 const CONNECTIONS_CACHE_VERSION = "v1";
 
-const getFriendsCacheKey = (userId: string) =>
-  `mingla:connections:friends:${CONNECTIONS_CACHE_VERSION}:${userId}`;
-
 const getConversationsCacheKey = (userId: string) =>
   `mingla:connections:conversations:${CONNECTIONS_CACHE_VERSION}:${userId}`;
 
@@ -74,30 +78,34 @@ export default function ConnectionsPageRefactored({
   onUpdateBoardSession,
   onCreateSession,
   onNavigateToBoard,
-  friendsList = [],
   onUnreadCountChange,
 }: ConnectionsPageProps) {
   const { user } = useAuthSimple();
-  const [activeTab, setActiveTab] = useState<"friends" | "messages">("friends");
-  const [showQRCode, setShowQRCode] = useState(false);
-  const [inviteCopied, setInviteCopied] = useState(false);
 
-  // Use useFriends hook for friends data (blocked users from Supabase)
+  // ── UI state ─────────────────────────────────────────────
+  const [activePill, setActivePill] = useState<PillId | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [friendPickerVisible, setFriendPickerVisible] = useState(false);
+
+  // ── Friends data via useFriends hook ─────────────────────
   const {
     friends: dbFriends,
     fetchFriends,
     friendRequests,
     loadFriendRequests,
+    acceptFriendRequest,
+    declineFriendRequest,
     removeFriend,
     blockFriend,
+    unblockFriend,
     blockedUsers = [],
+    loading: friendsLoading,
+    fetchBlockedUsers,
   } = useFriends();
 
-  // Mute functionality state
+  // ── Mute tracking ────────────────────────────────────────
   const [mutedUserIds, setMutedUserIds] = useState<string[]>([]);
-  const [muteLoadingFriendId, setMuteLoadingFriendId] = useState<string | null>(null);
 
-  // Fetch muted users
   const fetchMutedUsers = useCallback(async () => {
     const { data, error } = await muteService.getMutedUserIds();
     if (!error && data) {
@@ -105,179 +113,108 @@ export default function ConnectionsPageRefactored({
     }
   }, []);
 
-  // Fetch muted users on mount
   useEffect(() => {
     fetchMutedUsers();
   }, [fetchMutedUsers]);
 
-  // Real data state
+  // ── Conversations data ───────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [cachedFriends, setCachedFriends] = useState<Friend[]>([]);
-  const [hasHydratedFriendsCache, setHasHydratedFriendsCache] = useState(false);
-  const [friendsFetchedFromNetwork, setFriendsFetchedFromNetwork] = useState(false);
-  const [friendsLoading, setFriendsLoading] = useState(true);
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentConversationId, setCurrentConversationId] = useState<
-    string | null
-  >(null);
+
+  // ── Messaging state ──────────────────────────────────────
+  const [activeChat, setActiveChat] = useState<Friend | null>(null);
+  const [showMessageInterface, setShowMessageInterface] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({});
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
   const conversationChannelRef = useRef<any>(null);
 
-  // Transform database friends to match CollaborationFriendsTab interface
-  const transformedFriends = useMemo(() => {
-    return dbFriends.map((friend) => ({
-      id: friend.friend_user_id || friend.id,
-      name:
-        friend.display_name ||
-        `${friend.first_name || ""} ${friend.last_name || ""}`.trim() ||
-        friend.username ||
-        "Unknown",
-      username: friend.username,
-      avatar: friend.avatar_url,
-      status: "offline" as const, // Default to offline, can be enhanced with presence later
-      mutualFriends: 0, // Can be calculated later if needed
-      isMuted: mutedUserIds.includes(friend.friend_user_id || friend.id),
-    }));
-  }, [dbFriends, mutedUserIds]);
+  // ── Modal state (for MessageInterface actions) ───────────
+  const [showAddToBoardModal, setShowAddToBoardModal] = useState(false);
+  const [selectedFriendForBoard, setSelectedFriendForBoard] = useState<Friend | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [selectedUserToReport, setSelectedUserToReport] = useState<Friend | null>(null);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [selectedUserToBlock, setSelectedUserToBlock] = useState<Friend | null>(null);
+  const [blockLoading, setBlockLoading] = useState(false);
+  const [muteLoadingFriendId, setMuteLoadingFriendId] = useState<string | null>(null);
 
+  // ── Derived data ─────────────────────────────────────────
+  const incomingRequests = useMemo(
+    () => friendRequests.filter((r) => r.type === "incoming" && r.status === "pending"),
+    [friendRequests]
+  );
+
+  const existingFriendIds = useMemo(
+    () => dbFriends.map((f) => f.friend_user_id || f.id),
+    [dbFriends]
+  );
+
+  // Sort conversations by most recent message
+  const sortedConversations = useMemo(() => {
+    const sorted = [...conversations].sort((a, b) => {
+      const aTime = a.last_message?.created_at || a.created_at;
+      const bTime = b.last_message?.created_at || b.created_at;
+      return new Date(bTime).getTime() - new Date(aTime).getTime();
+    });
+    return sorted;
+  }, [conversations]);
+
+  // Search-filtered conversations
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery.trim()) return sortedConversations;
+    const q = searchQuery.toLowerCase();
+    return sortedConversations.filter((conv) => {
+      // Filter by participant name
+      const nameMatch = conv.participants.some((p) => {
+        const name = (
+          p.display_name ||
+          (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username) ||
+          ""
+        ).toLowerCase();
+        return name.includes(q);
+      });
+      // Filter by last message content
+      const contentMatch = (conv.last_message?.content || "").toLowerCase().includes(q);
+      return nameMatch || contentMatch;
+    });
+  }, [sortedConversations, searchQuery]);
+
+  // ── Fetch conversations on mount ─────────────────────────
   useEffect(() => {
-    let cancelled = false;
+    if (!user?.id) return;
 
-    const hydrateConnectionsCache = async () => {
-      if (!user?.id) {
-        if (!cancelled) {
-          setCachedFriends([]);
-          setConversations([]);
-          setFriendsLoading(false);
-          setConversationsLoading(false);
-        }
-        return;
-      }
-
+    // Hydrate from cache first
+    (async () => {
       try {
-        const [friendsResult, conversationsResult] = await AsyncStorage.multiGet([
-          getFriendsCacheKey(user.id),
-          getConversationsCacheKey(user.id),
-        ]);
-
-        const [, friendsValue] = friendsResult;
-        if (friendsValue) {
-          const parsedFriends = JSON.parse(friendsValue);
-          if (Array.isArray(parsedFriends) && !cancelled) {
-            setCachedFriends(parsedFriends);
-            setFriendsLoading(false);
-          }
-        }
-
-        if (!cancelled) {
-          setHasHydratedFriendsCache(true);
-        }
-
-        const [, conversationsValue] = conversationsResult;
-        if (conversationsValue) {
-          const parsedConversations = JSON.parse(conversationsValue);
-          if (Array.isArray(parsedConversations) && !cancelled) {
-            setConversations(parsedConversations);
+        const cached = await AsyncStorage.getItem(getConversationsCacheKey(user.id));
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setConversations(parsed);
             setConversationsLoading(false);
           }
         }
-      } catch (cacheError) {
-        console.warn("[ConnectionsPage] Cache hydration failed:", cacheError);
-        if (!cancelled) {
-          setHasHydratedFriendsCache(true);
-        }
+      } catch (e) {
+        console.warn("[ConnectionsPage] Cache hydration failed:", e);
       }
-    };
+    })();
 
-    hydrateConnectionsCache();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    if (transformedFriends.length === 0 && !friendsFetchedFromNetwork) {
-      return;
-    }
-
-    AsyncStorage.setItem(
-      getFriendsCacheKey(user.id),
-      JSON.stringify(transformedFriends)
-    ).catch((error) => {
-      console.warn("[ConnectionsPage] Failed to persist friends cache:", error);
-    });
-  }, [transformedFriends, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    AsyncStorage.setItem(
-      getConversationsCacheKey(user.id),
-      JSON.stringify(conversations)
-    ).catch((error) => {
-      console.warn("[ConnectionsPage] Failed to persist conversations cache:", error);
-    });
-  }, [conversations, user?.id]);
-
-  // Fetch friends and friend requests (fast, show UI early)
-  useEffect(() => {
-    const fetchFriendsData = async () => {
-      if (!user?.id) {
-        setFriendsLoading(false);
-        setFriendsFetchedFromNetwork(true);
-        return;
-      }
-
-      if (hasHydratedFriendsCache && cachedFriends.length > 0) {
-        setFriendsLoading(false);
-      } else {
-        try {
-          await fetchFriends();
-        } catch (err) {
-          console.error("Error fetching friends data:", err);
-        } finally {
-          setFriendsLoading(false);
-          setFriendsFetchedFromNetwork(true);
-        }
-      }
-
-      loadFriendRequests().catch((err) => {
-        console.error("Error fetching friend requests:", err);
-      });
-    };
-    fetchFriendsData();
-  }, [
-    user?.id,
-    loadFriendRequests,
-    fetchFriends,
-    hasHydratedFriendsCache,
-    cachedFriends.length,
-  ]);
-
-  // Fetch conversations separately (heavier, loads in background)
-  useEffect(() => {
-    const fetchConversations = async () => {
-      if (!user?.id) {
-        setConversationsLoading(false);
-        return;
-      }
-
+    // Then fetch fresh data
+    (async () => {
       try {
         setError(null);
-
-        // Fetch conversations using real-time messaging service
-        const { conversations: conversationsData, error: convError } =
+        const { conversations: rawConversations, error: convError } =
           await messagingService.getConversations(user.id);
 
         if (convError) throw new Error(convError);
 
-        // Batch-fetch all unique participant profiles in a single query
+        // Batch-fetch all participant profiles
         const allParticipantIds = new Set<string>();
-        (conversationsData || []).forEach((conv) =>
+        (rawConversations || []).forEach((conv) =>
           conv.participants.forEach((p) => allParticipantIds.add(p.user_id))
         );
 
@@ -290,487 +227,378 @@ export default function ConnectionsPageRefactored({
           (allProfiles || []).map((p) => [p.id, p])
         );
 
-        // Helper function to clean email-like names
-        const cleanName = (name: string): string => {
-          if (!name) return "Unknown";
-          const atIndex = name.indexOf("@");
-          if (atIndex !== -1) {
-            return name.substring(0, atIndex).trim();
-          }
-          return name.trim();
-        };
-
-        // Format timestamp
-        const formatTimestamp = (timestamp: string) => {
-          if (!timestamp) return "";
-          const date = new Date(timestamp);
-          const now = new Date();
-          const diff = now.getTime() - date.getTime();
-          const minutes = Math.floor(diff / 60000);
-          const hours = Math.floor(diff / 3600000);
-          const days = Math.floor(diff / 86400000);
-
-          if (minutes < 1) return "Just now";
-          if (minutes < 60) return `${minutes}m`;
-          if (hours < 24) return `${hours}h`;
-          if (days < 7) return `${days}d`;
-          return date.toLocaleDateString();
-        };
-
-        // Transform to match Conversation interface (no extra queries per conversation)
-        const transformedConversations: Conversation[] = (conversationsData || []).map((conv) => {
-          // Find the other participant (not the current user)
-          const otherParticipant = conv.participants.find(
-            (p) => p.user_id !== user.id
-          );
-          const otherParticipantProfile = otherParticipant
-            ? profilesMap.get(otherParticipant.user_id)
-            : undefined;
-
-          // Get participant info
-          const participantProfiles = conv.participants.map((p) => {
+        // Transform to Conversation type (matching useMessages format for ChatListItem)
+        const transformed: Conversation[] = (rawConversations || []).map((conv) => {
+          const participants = conv.participants.map((p) => {
             const profile = profilesMap.get(p.user_id);
-            const rawName =
-              profile?.display_name ||
-              (profile?.first_name && profile?.last_name
-                ? `${profile.first_name} ${profile.last_name}`
-                : profile?.username) ||
-              "Unknown";
             return {
               id: p.user_id,
-              name: cleanName(rawName),
               username: profile?.username || "unknown",
-              avatar: profile?.avatar_url,
-              status: "offline" as const,
-              isOnline: false,
+              display_name: profile?.display_name,
+              first_name: profile?.first_name,
+              last_name: profile?.last_name,
+              avatar_url: profile?.avatar_url,
+              is_online: false,
             };
           });
 
-          // Get conversation name (other participant's name for direct messages)
-          const rawConversationName = otherParticipantProfile
-            ? otherParticipantProfile.display_name ||
-              (otherParticipantProfile.first_name &&
-              otherParticipantProfile.last_name
-                ? `${otherParticipantProfile.first_name} ${otherParticipantProfile.last_name}`
-                : otherParticipantProfile.username) ||
-              "Unknown"
-            : "Unknown";
-
-          const conversationName = cleanName(rawConversationName);
-
           return {
             id: conv.id,
-            name: conversationName,
-            type: conv.type,
-            participants: participantProfiles,
-            avatar: otherParticipantProfile?.avatar_url,
-            isOnline: false,
-            lastMessage: conv.last_message
-              ? {
-                  id: conv.last_message.id,
-                  senderId: conv.last_message.sender_id,
-                  senderName: conv.last_message.sender_name || "Unknown",
-                  content: conv.last_message.content,
-                  timestamp: formatTimestamp(conv.last_message.created_at),
-                  type: conv.last_message.message_type,
-                  fileUrl: conv.last_message.file_url,
-                  fileName: conv.last_message.file_name,
-                  fileSize: conv.last_message.file_size?.toString(),
-                  isMe: conv.last_message.sender_id === user.id,
-                  unread:
-                    !conv.last_message.is_read &&
-                    conv.last_message.sender_id !== user.id,
-                }
-              : {
-                  id: "",
-                  senderId: "",
-                  senderName: "",
-                  content: "",
-                  timestamp: "",
-                  type: "text",
-                  isMe: false,
-                },
-            unreadCount: conv.unread_count || 0,
+            created_by: conv.created_by,
+            created_at: conv.created_at,
+            participants,
+            last_message: conv.last_message || undefined,
+            unread_count: conv.unread_count || 0,
+            messages: [],
           };
         });
 
-        setConversations(transformedConversations);
+        setConversations(transformed);
+
+        // Persist to cache
+        AsyncStorage.setItem(
+          getConversationsCacheKey(user.id),
+          JSON.stringify(transformed)
+        ).catch((e) => console.warn("[ConnectionsPage] Cache persist failed:", e));
       } catch (err) {
         console.error("Error fetching conversations:", err);
         setError("Failed to load conversations");
       } finally {
         setConversationsLoading(false);
       }
-    };
-
-    fetchConversations();
+    })();
   }, [user?.id]);
 
-  // Update total unread count whenever conversations change (excluding muted users)
+  // ── Fetch friends & requests on mount ────────────────────
   useEffect(() => {
-    const totalUnread = conversations.reduce(
-      (sum, conv) => {
-        // Check if any participant in this conversation is muted
-        const isMuted = conv.participants?.some(
-          (p) => mutedUserIds.includes(p.id)
-        );
-        // Only count unread messages from non-muted users
-        return sum + (isMuted ? 0 : (conv.unreadCount || 0));
-      },
-      0
-    );
+    if (!user?.id) return;
+    fetchFriends().catch((e) => console.error("Error fetching friends:", e));
+    loadFriendRequests().catch((e) => console.error("Error fetching requests:", e));
+  }, [user?.id, fetchFriends, loadFriendRequests]);
+
+  // ── Unread count reporting ───────────────────────────────
+  useEffect(() => {
+    const totalUnread = conversations.reduce((sum, conv) => {
+      const isMuted = conv.participants?.some((p) => mutedUserIds.includes(p.id));
+      return sum + (isMuted ? 0 : (conv.unread_count || 0));
+    }, 0);
     onUnreadCountChange?.(totalUnread);
   }, [conversations, onUnreadCountChange, mutedUserIds]);
 
-  // Messaging state
-  const [showFriendSelection, setShowFriendSelection] = useState(false);
-  const [activeChat, setActiveChat] = useState<Friend | null>(null);
-  const [showMessageInterface, setShowMessageInterface] = useState(false);
-  const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>(
-    {}
-  );
-  const [uploadingFile, setUploadingFile] = useState(false);
-  const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
+  // ── Pill handler ─────────────────────────────────────────
+  const handlePillPress = (id: PillId) => {
+    if (id === "invite") {
+      // Immediately copy invite link — do not set activePill
+      try {
+        const inviteLink = `https://mingla.app/invite/${user?.id || ""}`;
+        Clipboard.setString(inviteLink);
+        Alert.alert("Invite link copied!", "Share it with your friends.");
+      } catch (e) {
+        console.error("Error copying invite link:", e);
+        Alert.alert("Error", "Failed to copy invite link");
+      }
+      return;
+    }
+    // Toggle pill — tapping active pill deactivates it
+    setActivePill((prev) => (prev === id ? null : id));
+  };
 
-  // Add friend modal state
-  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
-  const [showFriendRequests, setShowFriendRequests] = useState(false);
-  const [showAddToBoardModal, setShowAddToBoardModal] = useState(false);
-  const [selectedFriendForBoard, setSelectedFriendForBoard] =
-    useState<Friend | null>(null);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [selectedUserToReport, setSelectedUserToReport] =
-    useState<Friend | null>(null);
-  const [showBlockModal, setShowBlockModal] = useState(false);
-  const [selectedUserToBlock, setSelectedUserToBlock] =
-    useState<Friend | null>(null);
-  const [blockLoading, setBlockLoading] = useState(false);
-  const [showBlockedUsersModal, setShowBlockedUsersModal] = useState(false);
-
-  // Use transformed friends from useFriends hook
-  const currentFriends =
-    transformedFriends.length > 0
-      ? transformedFriends
-      : friendsFetchedFromNetwork
-      ? transformedFriends
-      : cachedFriends;
-  const currentConversations = conversations;
-
-  // Get friend requests count
-  const friendRequestsCount = friendRequests.filter(
-    (req) => req.type === "incoming" && req.status === "pending"
-  ).length;
-
-  const handleCopyInvite = () => {
+  // ── Friend request actions ───────────────────────────────
+  const handleAcceptRequest = async (requestId: string) => {
     try {
-      const inviteLink = `https://mingla.app/invite/${user?.id || ''}`;
-      Clipboard.setString(inviteLink);
-      setInviteCopied(true);
-      setTimeout(() => setInviteCopied(false), 2000);
-    } catch (error) {
-      console.error('Error copying invite link:', error);
-      Alert.alert('Error', 'Failed to copy invite link');
+      await acceptFriendRequest(requestId);
+      await loadFriendRequests();
+      await fetchFriends();
+    } catch (e) {
+      console.error("Error accepting request:", e);
+      Alert.alert("Error", "Failed to accept friend request.");
     }
   };
 
-  // Messaging handlers
-  const handleStartNewConversation = () => {
-    setShowFriendSelection(true);
+  const handleDeclineRequest = async (requestId: string) => {
+    try {
+      await declineFriendRequest(requestId);
+      await loadFriendRequests();
+    } catch (e) {
+      console.error("Error declining request:", e);
+      Alert.alert("Error", "Failed to decline friend request.");
+    }
   };
 
-  const handleSelectFriend = async (friend: Friend) => {
+  // ── Unblock handler ──────────────────────────────────────
+  const handleUnblock = async (blockedUserId: string) => {
+    try {
+      await unblockFriend(blockedUserId);
+      await fetchBlockedUsers();
+    } catch (e) {
+      console.error("Error unblocking user:", e);
+      Alert.alert("Error", "Failed to unblock user.");
+    }
+  };
+
+  // ── Transform message from DirectMessage to MessageInterface format ──
+  const transformMessage = useCallback(
+    (msg: DirectMessage, userId: string): Message => ({
+      id: msg.id,
+      senderId: msg.sender_id,
+      senderName: msg.sender_name || "Unknown",
+      content: msg.content,
+      timestamp: msg.created_at,
+      type: msg.message_type,
+      fileUrl: msg.file_url,
+      fileName: msg.file_name,
+      fileSize: msg.file_size?.toString(),
+      isMe: msg.sender_id === userId,
+      unread: !msg.is_read && msg.sender_id !== userId,
+    }),
+    []
+  );
+
+  // ── Select conversation from chat list ───────────────────
+  const handleSelectConversation = async (conversation: Conversation) => {
     if (!user?.id) return;
 
-    // Check if there's a block between users
+    const otherParticipant = conversation.participants.find((p) => p.id !== user.id);
+    const rawName =
+      otherParticipant?.display_name ||
+      (otherParticipant?.first_name && otherParticipant?.last_name
+        ? `${otherParticipant.first_name} ${otherParticipant.last_name}`
+        : otherParticipant?.username) ||
+      "Unknown";
+
+    // Clean email-like names
+    const cleanedName = rawName.includes("@")
+      ? rawName.substring(0, rawName.indexOf("@")).trim()
+      : rawName;
+
+    const friend: Friend = {
+      id: otherParticipant?.id || "",
+      name: cleanedName,
+      username: otherParticipant?.username || "unknown",
+      avatar: otherParticipant?.avatar_url,
+      status: "offline",
+      isOnline: otherParticipant?.is_online || false,
+    };
+
+    // Check block status
     const hasBlock = await blockService.hasBlockBetween(friend.id);
     setActiveChatIsBlocked(hasBlock);
 
-    // Show UI immediately - optimistic update
     setActiveChat(friend);
-    setShowFriendSelection(false);
-    setActiveTab("messages");
+    setCurrentConversationId(conversation.id);
 
-    // Check if we already have conversation data cached
-    const existingConversation = conversations.find((conv) =>
-      conv.participants?.some((p) => p.id === friend.id)
-    );
-
-    // If we have cached conversation, use its ID immediately
-    let conversationId = existingConversation?.id;
-
-    if (!conversationId) {
-      // Need to create/fetch conversation first
-      const { conversation, error: convError } =
-        await messagingService.getOrCreateDirectConversation(
-          user.id,
-          friend.id
-        );
-
-      if (convError || !conversation) {
-        console.error("Error getting conversation:", convError);
-        return;
-      }
-
-      conversationId = conversation.id;
-    }
-
-    setCurrentConversationId(conversationId!);
-
-    // Check if we have cached messages for this conversation
-    const cachedMessages = conversationId
-      ? messagesCache[conversationId]
-      : null;
+    // Load messages from cache or network
+    const cachedMessages = messagesCache[conversation.id];
 
     if (cachedMessages && cachedMessages.length > 0) {
-      // Show all cached messages immediately
       setMessages(cachedMessages);
-      // Show UI immediately with cached messages
       setShowMessageInterface(true);
 
-      // Refresh messages in background to ensure we have the latest
+      // Refresh in background
       (async () => {
         try {
-          const { messages: conversationMessages, error: messagesError } =
-            await messagingService.getMessages(conversationId!, user.id);
-
-          if (!messagesError && conversationMessages) {
-            const transformedMessages: Message[] = conversationMessages.map(
-              (msg) => ({
-                id: msg.id,
-                senderId: msg.sender_id,
-                senderName: msg.sender_name || "Unknown",
-                content: msg.content,
-                timestamp: msg.created_at,
-                type: msg.message_type,
-                fileUrl: msg.file_url,
-                fileName: msg.file_name,
-                fileSize: msg.file_size?.toString(),
-                isMe: msg.sender_id === user.id,
-                unread: !msg.is_read && msg.sender_id !== user.id,
-              })
-            );
-
-            setMessages(transformedMessages);
-            setMessagesCache((prev) => ({
-              ...prev,
-              [conversationId!]: transformedMessages,
-            }));
+          const { messages: freshMsgs, error: msgError } =
+            await messagingService.getMessages(conversation.id, user.id);
+          if (!msgError && freshMsgs) {
+            const transformed = freshMsgs.map((m) => transformMessage(m, user.id));
+            setMessages(transformed);
+            setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
           }
-        } catch (err) {
-          console.error("Error refreshing messages:", err);
+        } catch (e) {
+          console.error("Error refreshing messages:", e);
         }
       })();
     } else {
-      // No cached messages - load them synchronously before showing UI
       try {
-        const { messages: conversationMessages, error: messagesError } =
-          await messagingService.getMessages(conversationId!, user.id);
-
-        if (messagesError) {
-          console.error("Error loading messages:", messagesError);
+        const { messages: freshMsgs, error: msgError } =
+          await messagingService.getMessages(conversation.id, user.id);
+        if (msgError) {
+          console.error("Error loading messages:", msgError);
           setMessages([]);
         } else {
-          const transformedMessages: Message[] = (
-            conversationMessages || []
-          ).map((msg) => ({
-            id: msg.id,
-            senderId: msg.sender_id,
-            senderName: msg.sender_name || "Unknown",
-            content: msg.content,
-            timestamp: msg.created_at,
-            type: msg.message_type,
-            fileUrl: msg.file_url,
-            fileName: msg.file_name,
-            fileSize: msg.file_size?.toString(),
-            isMe: msg.sender_id === user.id,
-            unread: !msg.is_read && msg.sender_id !== user.id,
-          }));
-
-          setMessages(transformedMessages);
-          setMessagesCache((prev) => ({
-            ...prev,
-            [conversationId!]: transformedMessages,
-          }));
+          const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
+          setMessages(transformed);
+          setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
         }
-      } catch (err) {
-        console.error("Error loading messages:", err);
+      } catch (e) {
+        console.error("Error loading messages:", e);
         setMessages([]);
       }
-
-      // Show UI after messages are loaded
       setShowMessageInterface(true);
     }
 
-    // Set up real-time subscription and mark as read in background
-    (async () => {
-      try {
-        // Mark messages as read (non-blocking)
-        const currentMessages = messagesCache[conversationId!] || [];
-        const unreadMessageIds = currentMessages
-          .filter((msg) => !msg.isMe && msg.unread)
-          .map((msg) => msg.id);
-
-        if (unreadMessageIds.length > 0) {
-          messagingService
-            .markAsRead(unreadMessageIds, user.id)
-            .catch((err) => console.error("Error marking as read:", err));
-        }
-
-        // Subscribe to real-time updates
-        if (conversationChannelRef.current) {
-          messagingService.unsubscribeFromConversation(conversationId);
-        }
-
-        conversationChannelRef.current =
-          messagingService.subscribeToConversation(conversationId, user.id, {
-            onMessage: (newMessage: DirectMessage) => {
-              const transformedMsg: Message = {
-                id: newMessage.id,
-                senderId: newMessage.sender_id,
-                senderName: newMessage.sender_name || "Unknown",
-                content: newMessage.content,
-                timestamp: newMessage.created_at,
-                type: newMessage.message_type,
-                fileUrl: newMessage.file_url,
-                fileName: newMessage.file_name,
-                fileSize: newMessage.file_size?.toString(),
-                isMe: newMessage.sender_id === user.id,
-                unread: !newMessage.is_read && newMessage.sender_id !== user.id,
-              };
-              // Replace optimistic message (tempId) or add if doesn't exist
-              setMessages((prev) => {
-                const exists = prev.some((msg) => msg.id === transformedMsg.id);
-                if (exists) return prev; // Already exists with real ID
-
-                // Check if there's an optimistic message (tempId) that should be replaced
-                // Match by content and sender to identify the optimistic message
-                const optimisticIndex = prev.findIndex(
-                  (msg) =>
-                    msg.id.startsWith("temp-") &&
-                    msg.senderId === transformedMsg.senderId &&
-                    msg.content === transformedMsg.content &&
-                    Math.abs(
-                      new Date(msg.timestamp).getTime() -
-                        new Date(transformedMsg.timestamp).getTime()
-                    ) < 5000 // Within 5 seconds
-                );
-
-                if (optimisticIndex !== -1) {
-                  // Replace optimistic message with real one
-                  const updated = [...prev];
-                  updated[optimisticIndex] = transformedMsg;
-                  return updated;
-                }
-
-                // No optimistic message found, add new message
-                return [...prev, transformedMsg];
-              });
-
-              // Update cache (replace optimistic or add if doesn't exist)
-              setMessagesCache((prev) => {
-                const existing = prev[conversationId!] || [];
-                const exists = existing.some(
-                  (msg) => msg.id === transformedMsg.id
-                );
-                if (exists) return prev; // Already exists with real ID
-
-                // Check if there's an optimistic message to replace
-                const optimisticIndex = existing.findIndex(
-                  (msg) =>
-                    msg.id.startsWith("temp-") &&
-                    msg.senderId === transformedMsg.senderId &&
-                    msg.content === transformedMsg.content &&
-                    Math.abs(
-                      new Date(msg.timestamp).getTime() -
-                        new Date(transformedMsg.timestamp).getTime()
-                    ) < 5000
-                );
-
-                if (optimisticIndex !== -1) {
-                  // Replace optimistic message with real one
-                  const updated = [...existing];
-                  updated[optimisticIndex] = transformedMsg;
-                  return {
-                    ...prev,
-                    [conversationId!]: updated,
-                  };
-                }
-
-                // No optimistic message found, add new message
-                return {
-                  ...prev,
-                  [conversationId!]: [...existing, transformedMsg],
-                };
-              });
-
-              // Format timestamp helper
-              const formatTimestampForConv = (timestamp: string) => {
-                if (!timestamp) return "";
-                const date = new Date(timestamp);
-                const now = new Date();
-                const diff = now.getTime() - date.getTime();
-                const minutes = Math.floor(diff / 60000);
-                const hours = Math.floor(diff / 3600000);
-                const days = Math.floor(diff / 86400000);
-
-                if (minutes < 1) return "Just now";
-                if (minutes < 60) return `${minutes}m`;
-                if (hours < 24) return `${hours}h`;
-                if (days < 7) return `${days}d`;
-                return date.toLocaleDateString();
-              };
-
-              // Update conversation list with new message
-              setConversations((prev) =>
-                prev.map((conv) => {
-                  if (conv.id === conversationId!) {
-                    return {
-                      ...conv,
-                      lastMessage: {
-                        id: newMessage.id,
-                        senderId: newMessage.sender_id,
-                        senderName: newMessage.sender_name || "Unknown",
-                        content: newMessage.content,
-                        timestamp: formatTimestampForConv(
-                          newMessage.created_at
-                        ),
-                        type: newMessage.message_type,
-                        fileUrl: newMessage.file_url,
-                        fileName: newMessage.file_name,
-                        fileSize: newMessage.file_size?.toString(),
-                        isMe: newMessage.sender_id === user.id,
-                        unread:
-                          !newMessage.is_read &&
-                          newMessage.sender_id !== user.id,
-                      },
-                      unreadCount:
-                        newMessage.sender_id !== user.id
-                          ? (conv.unreadCount || 0) + 1
-                          : conv.unreadCount,
-                    };
-                  }
-                  return conv;
-                })
-              );
-
-              // Mark as read if it's from the current user viewing
-              if (newMessage.sender_id !== user.id) {
-                messagingService
-                  .markAsRead([newMessage.id], user.id)
-                  .catch((err) =>
-                    console.error("Error marking new message as read:", err)
-                  );
-              }
-            },
-          });
-      } catch (error) {
-        console.error("Error selecting friend:", error);
-      }
-    })();
+    // Real-time subscription
+    setupRealtimeSubscription(conversation.id, user.id);
   };
 
-  const handleBackFromMessage = () => {
-    // Unsubscribe from conversation
+  // ── Start new conversation from friend picker ────────────
+  const handlePickFriend = async (friend: UseFriend) => {
+    if (!user?.id) return;
+
+    const friendUserId = friend.friend_user_id || friend.id;
+
+    // Check block status
+    const hasBlock = await blockService.hasBlockBetween(friendUserId);
+    setActiveChatIsBlocked(hasBlock);
+
+    const displayName =
+      friend.display_name ||
+      (friend.first_name && friend.last_name
+        ? `${friend.first_name} ${friend.last_name}`
+        : friend.username) ||
+      "Unknown";
+
+    const chatFriend: Friend = {
+      id: friendUserId,
+      name: displayName,
+      username: friend.username || "unknown",
+      avatar: friend.avatar_url,
+      status: "offline",
+      isOnline: false,
+    };
+
+    setActiveChat(chatFriend);
+    setFriendPickerVisible(false);
+
+    try {
+      const { conversation, error: convError } =
+        await messagingService.getOrCreateDirectConversation(user.id, friendUserId);
+
+      if (convError || !conversation) {
+        console.error("Error getting conversation:", convError);
+        setActiveChat(null);
+        return;
+      }
+
+      setCurrentConversationId(conversation.id);
+
+      // Load messages
+      const { messages: freshMsgs, error: msgError } =
+        await messagingService.getMessages(conversation.id, user.id);
+      if (msgError) {
+        setMessages([]);
+      } else {
+        const transformed = (freshMsgs || []).map((m) => transformMessage(m, user.id));
+        setMessages(transformed);
+        setMessagesCache((prev) => ({ ...prev, [conversation.id]: transformed }));
+      }
+
+      setShowMessageInterface(true);
+      setupRealtimeSubscription(conversation.id, user.id);
+    } catch (e) {
+      console.error("Error creating conversation:", e);
+      setActiveChat(null);
+    }
+  };
+
+  // ── Realtime subscription setup ──────────────────────────
+  const setupRealtimeSubscription = (conversationId: string, userId: string) => {
+    // Mark unread as read
+    (async () => {
+      try {
+        const cached = messagesCache[conversationId] || [];
+        const unreadIds = cached
+          .filter((msg) => !msg.isMe && msg.unread)
+          .map((msg) => msg.id);
+        if (unreadIds.length > 0) {
+          messagingService.markAsRead(unreadIds, userId).catch(console.error);
+        }
+      } catch (e) {
+        console.error("Error marking as read:", e);
+      }
+    })();
+
+    // Cleanup existing subscription
+    if (conversationChannelRef.current) {
+      messagingService.unsubscribeFromConversation(conversationId);
+    }
+
+    conversationChannelRef.current = messagingService.subscribeToConversation(
+      conversationId,
+      userId,
+      {
+        onMessage: (newMessage: DirectMessage) => {
+          const transformedMsg = transformMessage(newMessage, userId);
+
+          // Add to messages (replace optimistic or add new)
+          setMessages((prev) => {
+            const exists = prev.some((msg) => msg.id === transformedMsg.id);
+            if (exists) return prev;
+
+            const optimisticIndex = prev.findIndex(
+              (msg) =>
+                msg.id.startsWith("temp-") &&
+                msg.senderId === transformedMsg.senderId &&
+                msg.content === transformedMsg.content &&
+                Math.abs(
+                  new Date(msg.timestamp).getTime() -
+                    new Date(transformedMsg.timestamp).getTime()
+                ) < 5000
+            );
+
+            if (optimisticIndex !== -1) {
+              const updated = [...prev];
+              updated[optimisticIndex] = transformedMsg;
+              return updated;
+            }
+
+            return [...prev, transformedMsg];
+          });
+
+          // Update cache
+          setMessagesCache((prev) => {
+            const existing = prev[conversationId] || [];
+            const exists = existing.some((msg) => msg.id === transformedMsg.id);
+            if (exists) return prev;
+
+            const optimisticIndex = existing.findIndex(
+              (msg) =>
+                msg.id.startsWith("temp-") &&
+                msg.senderId === transformedMsg.senderId &&
+                msg.content === transformedMsg.content &&
+                Math.abs(
+                  new Date(msg.timestamp).getTime() -
+                    new Date(transformedMsg.timestamp).getTime()
+                ) < 5000
+            );
+
+            if (optimisticIndex !== -1) {
+              const updated = [...existing];
+              updated[optimisticIndex] = transformedMsg;
+              return { ...prev, [conversationId]: updated };
+            }
+
+            return { ...prev, [conversationId]: [...existing, transformedMsg] };
+          });
+
+          // Update conversation list
+          setConversations((prev) =>
+            prev.map((conv) => {
+              if (conv.id === conversationId) {
+                return {
+                  ...conv,
+                  last_message: newMessage,
+                  unread_count:
+                    newMessage.sender_id !== userId
+                      ? (conv.unread_count || 0) + 1
+                      : conv.unread_count,
+                };
+              }
+              return conv;
+            })
+          );
+
+          // Auto-mark as read
+          if (newMessage.sender_id !== userId) {
+            messagingService.markAsRead([newMessage.id], userId).catch(console.error);
+          }
+        },
+      }
+    );
+  };
+
+  // ── Back from MessageInterface ───────────────────────────
+  const handleBackFromMessage = useCallback(() => {
     if (currentConversationId && conversationChannelRef.current) {
       messagingService.unsubscribeFromConversation(currentConversationId);
       conversationChannelRef.current = null;
@@ -781,8 +609,59 @@ export default function ConnectionsPageRefactored({
     setCurrentConversationId(null);
     setMessages([]);
     setActiveChatIsBlocked(false);
-  };
 
+    // Refresh conversations to get updated unread counts
+    if (user?.id) {
+      (async () => {
+        try {
+          const { conversations: rawConversations, error: convError } =
+            await messagingService.getConversations(user.id);
+          if (!convError && rawConversations) {
+            const allParticipantIds = new Set<string>();
+            rawConversations.forEach((conv) =>
+              conv.participants.forEach((p) => allParticipantIds.add(p.user_id))
+            );
+            const { data: allProfiles } = await supabase
+              .from("profiles")
+              .select("id, display_name, username, first_name, last_name, avatar_url")
+              .in("id", Array.from(allParticipantIds));
+            const profilesMap = new Map(
+              (allProfiles || []).map((p) => [p.id, p])
+            );
+            const transformed: Conversation[] = rawConversations.map((conv) => ({
+              id: conv.id,
+              created_by: conv.created_by,
+              created_at: conv.created_at,
+              participants: conv.participants.map((p) => {
+                const profile = profilesMap.get(p.user_id);
+                return {
+                  id: p.user_id,
+                  username: profile?.username || "unknown",
+                  display_name: profile?.display_name,
+                  first_name: profile?.first_name,
+                  last_name: profile?.last_name,
+                  avatar_url: profile?.avatar_url,
+                  is_online: false,
+                };
+              }),
+              last_message: conv.last_message || undefined,
+              unread_count: conv.unread_count || 0,
+              messages: [],
+            }));
+            setConversations(transformed);
+            AsyncStorage.setItem(
+              getConversationsCacheKey(user.id),
+              JSON.stringify(transformed)
+            ).catch(() => {});
+          }
+        } catch (e) {
+          console.error("Error refreshing conversations:", e);
+        }
+      })();
+    }
+  }, [currentConversationId, user?.id]);
+
+  // ── Send message ─────────────────────────────────────────
   const handleSendMessage = async (
     content: string,
     type: "text" | "image" | "video" | "file",
@@ -790,20 +669,16 @@ export default function ConnectionsPageRefactored({
   ) => {
     if (!activeChat || !user?.id || !currentConversationId) return;
 
-    // Check if there's a block between the users before attempting to send
-    const otherParticipant = activeChat.participants?.find((p) => p.id !== user.id);
-    if (otherParticipant) {
-      const hasBlock = await blockService.hasBlockBetween(otherParticipant.id);
-      if (hasBlock) {
-        Alert.alert(
-          "Message Not Sent",
-          "Messaging is not available with this user. One of you may have blocked the other."
-        );
-        return;
-      }
+    // Check block before sending
+    const hasBlock = await blockService.hasBlockBetween(activeChat.id);
+    if (hasBlock) {
+      Alert.alert(
+        "Message Not Sent",
+        "Messaging is not available with this user. One of you may have blocked the other."
+      );
+      return;
     }
 
-    // Generate temporary ID for optimistic update
     const tempId = `temp-${Date.now()}-${Math.random()}`;
     const now = new Date().toISOString();
 
@@ -815,28 +690,17 @@ export default function ConnectionsPageRefactored({
     if (file && type !== "text") {
       setUploadingFile(true);
       try {
-        // Upload file to Supabase Storage
-        // File from expo-image-picker has structure: { uri, type, name, size }
         const fileUri = file.uri || file;
         const fileExt =
           file.name?.split(".").pop() ||
-          (file.type === "image"
-            ? "jpg"
-            : file.type === "video"
-            ? "mp4"
-            : fileUri.split(".").pop() || "bin");
+          (file.type === "image" ? "jpg" : file.type === "video" ? "mp4" : fileUri.split(".").pop() || "bin");
         const fileNameWithExt = `${user.id}_${Date.now()}.${fileExt}`;
         const filePath = `${currentConversationId}/${fileNameWithExt}`;
 
-        // Determine content type
         let contentType = "application/octet-stream";
-        if (type === "image") {
-          contentType = file.type === "image" ? "image/jpeg" : "image/png";
-        } else if (type === "video") {
-          contentType = "video/mp4";
-        }
+        if (type === "image") contentType = file.type === "image" ? "image/jpeg" : "image/png";
+        else if (type === "video") contentType = "video/mp4";
 
-        // Create FormData for React Native
         const formData = new FormData();
         formData.append("file", {
           uri: fileUri,
@@ -844,83 +708,50 @@ export default function ConnectionsPageRefactored({
           name: fileNameWithExt,
         } as any);
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from("messages")
-          .upload(filePath, formData, {
-            contentType: contentType,
-            upsert: false,
-          });
+          .upload(filePath, formData, { contentType, upsert: false });
 
         if (uploadError) {
           console.error("Error uploading file:", uploadError);
           setUploadingFile(false);
-          Alert.alert(
-            "Upload Error",
-            "Failed to upload file. Please try again."
-          );
+          Alert.alert("Upload Error", "Failed to upload file. Please try again.");
           return;
         }
 
-        // Get public URL
-        const { data: urlData } = supabase.storage
-          .from("messages")
-          .getPublicUrl(filePath);
-
+        const { data: urlData } = supabase.storage.from("messages").getPublicUrl(filePath);
         fileUrl = urlData.publicUrl;
         fileName = file.name || fileNameWithExt;
         fileSize = file.size || 0;
         setUploadingFile(false);
-      } catch (error) {
-        console.error("Error uploading file:", error);
+      } catch (e) {
+        console.error("Error uploading file:", e);
         setUploadingFile(false);
         Alert.alert("Upload Error", "Failed to upload file. Please try again.");
         return;
       }
     }
 
-    // Create optimistic message
+    // Optimistic message
     const optimisticMsg: Message = {
       id: tempId,
       senderId: user.id,
       senderName: "Me",
-      content: content,
+      content,
       timestamp: now,
-      type: type,
-      fileUrl: fileUrl,
-      fileName: fileName,
+      type,
+      fileUrl,
+      fileName,
       fileSize: fileSize?.toString(),
       isMe: true,
       unread: false,
     };
 
-    // Format timestamp helper
-    const formatTimestamp = (timestamp: string) => {
-      if (!timestamp) return "";
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diff = now.getTime() - date.getTime();
-      const minutes = Math.floor(diff / 60000);
-      const hours = Math.floor(diff / 3600000);
-      const days = Math.floor(diff / 86400000);
-
-      if (minutes < 1) return "Just now";
-      if (minutes < 60) return `${minutes}m`;
-      if (hours < 24) return `${hours}h`;
-      if (days < 7) return `${days}d`;
-      return date.toLocaleDateString();
-    };
-
-    // Add message optimistically to UI immediately
     setMessages((prev) => [...prev, optimisticMsg]);
-
-    // Update cache optimistically
-    setMessagesCache((prev) => {
-      const existing = prev[currentConversationId] || [];
-      return {
-        ...prev,
-        [currentConversationId]: [...existing, optimisticMsg],
-      };
-    });
+    setMessagesCache((prev) => ({
+      ...prev,
+      [currentConversationId]: [...(prev[currentConversationId] || []), optimisticMsg],
+    }));
 
     // Update conversation list optimistically
     setConversations((prev) =>
@@ -928,18 +759,18 @@ export default function ConnectionsPageRefactored({
         if (conv.id === currentConversationId) {
           return {
             ...conv,
-            lastMessage: {
+            last_message: {
               id: tempId,
-              senderId: user.id,
-              senderName: "Me",
-              content: content,
-              timestamp: formatTimestamp(now),
-              type: type,
-              fileUrl: fileUrl,
-              fileName: fileName,
-              fileSize: fileSize?.toString(),
-              isMe: true,
-              unread: false,
+              conversation_id: currentConversationId,
+              sender_id: user.id,
+              content,
+              message_type: type as "text" | "image" | "file",
+              file_url: fileUrl,
+              file_name: fileName,
+              file_size: fileSize,
+              created_at: now,
+              sender_name: "Me",
+              is_read: true,
             },
           };
         }
@@ -948,7 +779,6 @@ export default function ConnectionsPageRefactored({
     );
 
     try {
-      // Send message via real-time service
       const { message: sentMessage, error: sendError } =
         await messagingService.sendMessage(
           currentConversationId,
@@ -963,54 +793,20 @@ export default function ConnectionsPageRefactored({
       if (sendError || !sentMessage) {
         console.error("Error sending message:", sendError);
 
-        // Remove optimistic message on error
+        // Remove optimistic message
         setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
-        setMessagesCache((prev) => {
-          const existing = prev[currentConversationId] || [];
-          return {
-            ...prev,
-            [currentConversationId]: existing.filter(
-              (msg) => msg.id !== tempId
-            ),
-          };
-        });
+        setMessagesCache((prev) => ({
+          ...prev,
+          [currentConversationId]: (prev[currentConversationId] || []).filter(
+            (msg) => msg.id !== tempId
+          ),
+        }));
 
-        // Revert conversation list update on error
-        setConversations((prev) =>
-          prev.map((conv) => {
-            if (conv.id === currentConversationId) {
-              // Restore previous last message or empty
-              const cachedMessages = messagesCache[currentConversationId] || [];
-              const previousLastMsg =
-                cachedMessages.length > 0
-                  ? cachedMessages[cachedMessages.length - 1]
-                  : null;
-
-              return {
-                ...conv,
-                lastMessage: previousLastMsg
-                  ? {
-                      id: previousLastMsg.id,
-                      senderId: previousLastMsg.senderId,
-                      senderName: previousLastMsg.senderName,
-                      content: previousLastMsg.content,
-                      timestamp: formatTimestamp(previousLastMsg.timestamp),
-                      type: previousLastMsg.type,
-                      fileUrl: previousLastMsg.fileUrl,
-                      fileName: previousLastMsg.fileName,
-                      fileSize: previousLastMsg.fileSize,
-                      isMe: previousLastMsg.isMe,
-                      unread: false,
-                    }
-                  : conv.lastMessage,
-              };
-            }
-            return conv;
-          })
-        );
-
-        // Show user-friendly error message
-        if (sendError?.includes("Cannot") || sendError?.includes("blocked") || sendError?.includes("policy")) {
+        if (
+          sendError?.includes("Cannot") ||
+          sendError?.includes("blocked") ||
+          sendError?.includes("policy")
+        ) {
           Alert.alert(
             "Message Not Sent",
             "You cannot send messages to this user. They may have blocked you or you may have blocked them."
@@ -1024,47 +820,21 @@ export default function ConnectionsPageRefactored({
         return;
       }
 
-      // Replace optimistic message with real message from server
-      const realMsg: Message = {
-        id: sentMessage.id,
-        senderId: sentMessage.sender_id,
-        senderName: sentMessage.sender_name || "Me",
-        content: sentMessage.content,
-        timestamp: sentMessage.created_at,
-        type: sentMessage.message_type,
-        fileUrl: sentMessage.file_url,
-        fileName: sentMessage.file_name,
-        fileSize: sentMessage.file_size?.toString(),
-        isMe: true,
-        unread: false,
-      };
+      // Replace optimistic with real message
+      const realMsg = transformMessage(sentMessage, user.id);
 
-      // Replace temporary message with real one (if tempId still exists)
-      // If real-time handler already replaced it, this will be a no-op
       setMessages((prev) => {
         const hasTempId = prev.some((msg) => msg.id === tempId);
         const hasRealId = prev.some((msg) => msg.id === realMsg.id);
-
-        if (!hasTempId && hasRealId) {
-          // Real-time handler already replaced it, no need to do anything
-          return prev;
-        }
-
-        // Replace tempId with real message
+        if (!hasTempId && hasRealId) return prev;
         return prev.map((msg) => (msg.id === tempId ? realMsg : msg));
       });
 
-      // Update cache with real message
       setMessagesCache((prev) => {
         const existing = prev[currentConversationId] || [];
         const hasTempId = existing.some((msg) => msg.id === tempId);
         const hasRealId = existing.some((msg) => msg.id === realMsg.id);
-
-        if (!hasTempId && hasRealId) {
-          // Real-time handler already replaced it, no need to do anything
-          return prev;
-        }
-
+        if (!hasTempId && hasRealId) return prev;
         return {
           ...prev,
           [currentConversationId]: existing.map((msg) =>
@@ -1073,67 +843,63 @@ export default function ConnectionsPageRefactored({
         };
       });
 
-      // Update conversation list with real message
+      // Update conversation with real message
       setConversations((prev) =>
         prev.map((conv) => {
           if (conv.id === currentConversationId) {
-            return {
-              ...conv,
-              lastMessage: {
-                id: sentMessage.id,
-                senderId: sentMessage.sender_id,
-                senderName: sentMessage.sender_name || "Me",
-                content: sentMessage.content,
-                timestamp: formatTimestamp(sentMessage.created_at),
-                type: sentMessage.message_type,
-                fileUrl: sentMessage.file_url,
-                fileName: sentMessage.file_name,
-                fileSize: sentMessage.file_size?.toString(),
-                isMe: true,
-                unread: false,
-              },
-            };
+            return { ...conv, last_message: sentMessage };
           }
           return conv;
         })
       );
-    } catch (error) {
-      console.error("Error sending message:", error);
-
-      // Remove optimistic message on error
+    } catch (e) {
+      console.error("Error sending message:", e);
       setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
-      setMessagesCache((prev) => {
-        const existing = prev[currentConversationId] || [];
-        return {
-          ...prev,
-          [currentConversationId]: existing.filter((msg) => msg.id !== tempId),
-        };
-      });
+      setMessagesCache((prev) => ({
+        ...prev,
+        [currentConversationId]: (prev[currentConversationId] || []).filter(
+          (msg) => msg.id !== tempId
+        ),
+      }));
     }
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  // ── Collaboration session cleanup ────────────────────────
+  const cleanupSharedSessions = async (otherUserId: string) => {
+    try {
+      if (!user) return;
+      const { data: otherUserSessions, error: fetchError } = await supabase
+        .from("session_participants")
+        .select("session_id")
+        .eq("user_id", otherUserId);
+      if (fetchError || !otherUserSessions?.length) return;
+
+      const sessionIds = otherUserSessions.map((s: any) => s.session_id);
+      const { data: mySharedSessions, error: myError } = await supabase
+        .from("session_participants")
+        .select("session_id")
+        .eq("user_id", user.id)
+        .in("session_id", sessionIds);
+      if (myError || !mySharedSessions?.length) return;
+
+      const sharedSessionIds = mySharedSessions.map((s: any) => s.session_id);
+      for (const sessionId of sharedSessionIds) {
+        const { count, error: countError } = await supabase
+          .from("session_participants")
+          .select("id", { count: "exact", head: true })
+          .eq("session_id", sessionId);
+        if (countError) continue;
+        if (count !== null && count <= 2) {
+          await supabase.from("collaboration_invites").delete().eq("session_id", sessionId);
+          await supabase.from("collaboration_sessions").delete().eq("id", sessionId);
+        }
+      }
+    } catch (e) {
+      console.error("Error cleaning up shared sessions:", e);
+    }
   };
 
-  const getRandomReply = () => {
-    const replies = [
-      "That sounds great! 👍",
-      "Thanks for sharing that!",
-      "Interesting! Tell me more.",
-      "Absolutely! When works for you?",
-      "I love that idea!",
-      "Can't wait to see it!",
-      "Perfect timing!",
-      "That's awesome! 😄",
-    ];
-    return replies[Math.floor(Math.random() * replies.length)];
-  };
-
+  // ── MessageInterface callback handlers ───────────────────
   const handleSendCollabInvite = (friend: Friend) => {
     onSendCollabInvite?.(friend);
   };
@@ -1153,71 +919,6 @@ export default function ConnectionsPageRefactored({
     onShareSavedCard?.(friend);
   };
 
-  /**
-   * Clean up collaboration sessions that only have the current user and the
-   * given other user as participants. Sessions with more participants are left intact.
-   */
-  const cleanupSharedSessions = async (otherUserId: string) => {
-    try {
-      if (!user) return;
-
-      // Find all sessions where the other user is a participant
-      const { data: otherUserSessions, error: fetchError } = await supabase
-        .from("session_participants")
-        .select("session_id")
-        .eq("user_id", otherUserId);
-
-      if (fetchError || !otherUserSessions?.length) return;
-
-      const sessionIds = otherUserSessions.map((s: any) => s.session_id);
-
-      // Find which of those sessions the current user is also in
-      const { data: mySharedSessions, error: myError } = await supabase
-        .from("session_participants")
-        .select("session_id")
-        .eq("user_id", user.id)
-        .in("session_id", sessionIds);
-
-      if (myError || !mySharedSessions?.length) return;
-
-      const sharedSessionIds = mySharedSessions.map((s: any) => s.session_id);
-
-      // For each shared session, count total participants
-      for (const sessionId of sharedSessionIds) {
-        const { count, error: countError } = await supabase
-          .from("session_participants")
-          .select("id", { count: "exact", head: true })
-          .eq("session_id", sessionId);
-
-        if (countError) {
-          console.error("Error counting participants:", countError);
-          continue;
-        }
-
-        // Only delete if exactly 2 participants (just the two of us)
-        if (count !== null && count <= 2) {
-          // Delete invites first
-          await supabase
-            .from("collaboration_invites")
-            .delete()
-            .eq("session_id", sessionId);
-
-          // Delete session (cascades to participants)
-          const { error: deleteError } = await supabase
-            .from("collaboration_sessions")
-            .delete()
-            .eq("id", sessionId);
-
-          if (deleteError) {
-            console.error("Error deleting session:", deleteError);
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error cleaning up shared sessions:", error);
-    }
-  };
-
   const handleRemoveFriend = (friend: Friend) => {
     Alert.alert(
       "Remove Friend",
@@ -1229,19 +930,16 @@ export default function ConnectionsPageRefactored({
           style: "destructive",
           onPress: async () => {
             try {
-              // Clean up collaboration sessions with just the two of us
               await cleanupSharedSessions(friend.id);
               await removeFriend(friend.id);
               await fetchFriends();
               onRemoveFriend?.(friend);
-
-              // Track friend removed
               mixpanelService.trackFriendRemoved({
                 friendName: friend.name,
                 friendUsername: friend.username,
               });
-            } catch (error) {
-              console.error("Error removing friend:", error);
+            } catch (e) {
+              console.error("Error removing friend:", e);
               Alert.alert("Error", "Failed to remove friend. Please try again.");
             }
           },
@@ -1251,149 +949,96 @@ export default function ConnectionsPageRefactored({
   };
 
   const handleMuteUser = async (friend: Friend) => {
-    // Prevent duplicate calls while loading
     if (muteLoadingFriendId) return;
-    
     setMuteLoadingFriendId(friend.id);
     try {
-      const { success, isMuted, error } = await muteService.toggleMuteUser(friend.id);
-      
+      const { success, isMuted, error: muteError } = await muteService.toggleMuteUser(friend.id);
       if (success) {
-        // Update local state immediately for better UX
-        setMutedUserIds(prev => 
-          isMuted 
-            ? [...prev, friend.id]
-            : prev.filter(id => id !== friend.id)
+        setMutedUserIds((prev) =>
+          isMuted ? [...prev, friend.id] : prev.filter((id) => id !== friend.id)
         );
-        
-        // Show confirmation toast/alert
         Alert.alert(
           isMuted ? "Friend Muted" : "Friend Unmuted",
-          isMuted 
+          isMuted
             ? `You will no longer receive notifications from ${friend.name}.`
             : `You will now receive notifications from ${friend.name}.`,
           [{ text: "OK" }]
         );
       } else {
-        Alert.alert("Error", error || "Failed to update mute status. Please try again.");
+        Alert.alert("Error", muteError || "Failed to update mute status.");
       }
-    } catch (error) {
-      console.error("Error toggling mute:", error);
-      Alert.alert("Error", "Failed to update mute status. Please try again.");
+    } catch (e) {
+      console.error("Error toggling mute:", e);
+      Alert.alert("Error", "Failed to update mute status.");
     } finally {
       setMuteLoadingFriendId(null);
     }
   };
 
   const handleBlockUser = (friend: Friend) => {
-    // Show block confirmation modal instead of blocking immediately
     setSelectedUserToBlock(friend);
     setShowBlockModal(true);
   };
 
   const handleBlockConfirm = async (reason?: BlockReason) => {
     if (!selectedUserToBlock) return;
-    
     setBlockLoading(true);
     try {
-      // Clean up collaboration sessions with just the two of us
       await cleanupSharedSessions(selectedUserToBlock.id);
       await blockFriend(selectedUserToBlock.id, reason);
       onBlockUser?.(selectedUserToBlock);
       await fetchFriends();
-
-      // Track friend blocked
+      await fetchBlockedUsers();
       mixpanelService.trackFriendBlocked({
         blockedUserName: selectedUserToBlock.name,
         blockedUserUsername: selectedUserToBlock.username,
-        reason: reason,
+        reason,
       });
-
       setShowBlockModal(false);
       setSelectedUserToBlock(null);
-    } catch (error) {
-      console.error("Error blocking user:", error);
+    } catch (e) {
+      console.error("Error blocking user:", e);
       Alert.alert("Error", "Failed to block user. Please try again.");
     } finally {
       setBlockLoading(false);
     }
   };
 
-  const handleBlockModalClose = () => {
-    if (!blockLoading) {
-      setShowBlockModal(false);
-      setSelectedUserToBlock(null);
-    }
-  };
-
   const handleReportUser = (friend: Friend) => {
-    // First block the user
-    onBlockUser?.(friend, true); // Pass true to suppress notification since we'll show report confirmation
-
-    // Then open report modal
+    onBlockUser?.(friend, true);
     setSelectedUserToReport(friend);
     setShowReportModal(true);
   };
 
-  const handleReportSubmit = async (
-    userId: string,
-    reason: string,
-    details?: string
-  ) => {
+  const handleReportSubmit = async (userId: string, reason: string, details?: string) => {
     try {
-      // Submit report to database
-      const result = await reportService.submitReport(
-        userId,
-        reason as ReportReason,
-        details
-      );
-
-      // Close modal and reset state
+      const result = await reportService.submitReport(userId, reason as ReportReason, details);
       setShowReportModal(false);
       setSelectedUserToReport(null);
-
       if (result.success) {
-        // Show success confirmation
         Alert.alert(
           "Report Submitted",
           "Thank you for your report. Our moderation team will review it shortly.",
           [{ text: "OK" }]
         );
-        
-        // Also call the prop callback if provided (suppress notification since we show our own)
         onReportUser?.(selectedUserToReport, true);
       } else {
-        // Show error message
-        Alert.alert(
-          "Report Failed",
-          result.error || "Unable to submit report. Please try again later.",
-          [{ text: "OK" }]
-        );
+        Alert.alert("Report Failed", result.error || "Unable to submit report.", [{ text: "OK" }]);
       }
-    } catch (error) {
-      console.error("Error submitting report:", error);
+    } catch (e) {
+      console.error("Error submitting report:", e);
       setShowReportModal(false);
       setSelectedUserToReport(null);
-      
-      Alert.alert(
-        "Error",
-        "An unexpected error occurred. Please try again.",
-        [{ text: "OK" }]
-      );
+      Alert.alert("Error", "An unexpected error occurred.", [{ text: "OK" }]);
     }
   };
 
-  const handleReportModalClose = () => {
-    setShowReportModal(false);
-    setSelectedUserToReport(null);
-  };
-
-  // Error state (only show full-screen error if both failed)
-  if (error && conversations.length === 0 && dbFriends.length === 0) {
+  // ── Error state ──────────────────────────────────────────
+  if (error && conversations.length === 0) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Connections</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>Chats</Text>
         </View>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
@@ -1401,7 +1046,6 @@ export default function ConnectionsPageRefactored({
             style={styles.retryButton}
             onPress={() => {
               setError(null);
-              setFriendsLoading(true);
               setConversationsLoading(true);
               fetchFriends();
               loadFriendRequests();
@@ -1414,204 +1058,199 @@ export default function ConnectionsPageRefactored({
     );
   }
 
+  // ── When viewing a conversation ──────────────────────────
+  if (showMessageInterface && activeChat) {
+    return (
+      <>
+        <View style={styles.container}>
+          <MessageInterface
+            friend={activeChat}
+            onBack={handleBackFromMessage}
+            onSendMessage={handleSendMessage}
+            messages={messages}
+            onSendCollabInvite={handleSendCollabInvite}
+            onAddToBoard={onAddToBoard}
+            onShareSavedCard={handleShareSavedCard}
+            onRemoveFriend={handleRemoveFriend}
+            onBlockUser={handleBlockUser}
+            onReportUser={handleReportUser}
+            boardsSessions={boardsSessions}
+            currentMode={currentMode}
+            onModeChange={onModeChange}
+            onUpdateBoardSession={onUpdateBoardSession}
+            onCreateSession={onCreateSession}
+            onNavigateToBoard={onNavigateToBoard}
+            availableFriends={[]}
+            isBlocked={activeChatIsBlocked}
+          />
+        </View>
+
+        <AddToBoardModal
+          isOpen={showAddToBoardModal}
+          onClose={() => {
+            setShowAddToBoardModal(false);
+            setSelectedFriendForBoard(null);
+          }}
+          friend={selectedFriendForBoard}
+          boardsSessions={boardsSessions}
+          onConfirm={handleAddToBoardConfirm}
+        />
+        <ReportUserModal
+          isOpen={showReportModal}
+          onClose={() => {
+            setShowReportModal(false);
+            setSelectedUserToReport(null);
+          }}
+          user={
+            selectedUserToReport
+              ? { id: selectedUserToReport.id, name: selectedUserToReport.name, username: selectedUserToReport.username }
+              : { id: "", name: "", username: "" }
+          }
+          onReport={handleReportSubmit}
+        />
+        <BlockUserModal
+          visible={showBlockModal}
+          onClose={() => {
+            if (!blockLoading) {
+              setShowBlockModal(false);
+              setSelectedUserToBlock(null);
+            }
+          }}
+          onConfirm={handleBlockConfirm}
+          userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
+          loading={blockLoading}
+        />
+      </>
+    );
+  }
+
+  // ── Main chat list view ──────────────────────────────────
   return (
     <>
       <View style={styles.container}>
-        <View style={[styles.content, showMessageInterface && { paddingHorizontal: 0 }]}>
-          {/* Header - Only show when not in message interface */}
-          {!showMessageInterface && (
-            <View style={styles.header}>
-              {/* Tab Navigation */}
-              <View style={styles.tabContainer}>
-                <TouchableOpacity
-                  onPress={() => {
-                    setActiveTab("friends");
-                    mixpanelService.trackTabViewed({ screen: "Connections", tab: "Friends" });
-                  }}
-                  style={[
-                    styles.tab,
-                    activeTab === "friends" && styles.activeTab,
-                  ]}
-                >
-                  <View style={styles.tabContent}>
-                    <Feather
-                      name="users"
-                      size={20}
-                      color={activeTab === "friends" ? "#eb7825" : "#6B7280"}
-                    />
-                    <Text
-                      style={[
-                        styles.tabText,
-                        activeTab === "friends" && styles.activeTabText,
-                      ]}
-                    >
-                      Friends
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
-                    setActiveTab("messages");
-                    mixpanelService.trackTabViewed({ screen: "Connections", tab: "Messages" });
-                  }}
-                  style={[
-                    styles.tab,
-                    activeTab === "messages" && styles.activeTab,
-                  ]}
-                >
-                  <View style={styles.tabContent}>
-                    <Feather
-                      name="message-square"
-                      size={20}
-                      color={activeTab === "messages" ? "#eb7825" : "#6B7280"}
-                    />
-                    <Text
-                      style={[
-                        styles.tabText,
-                        activeTab === "messages" && styles.activeTabText,
-                      ]}
-                    >
-                      Messages
-                    </Text>
-                  </View>
-                  {conversations.some((conv) => {
-                    const isMuted = conv.participants?.some(
-                      (p) => mutedUserIds.includes(p.id)
-                    );
-                    return !isMuted && conv.unreadCount > 0;
-                  }) && (
-                    <View style={styles.notificationBadge}>
-                      <Text style={styles.notificationBadgeText}>
-                        {conversations.reduce(
-                          (sum, conv) => {
-                            const isMuted = conv.participants?.some(
-                              (p) => mutedUserIds.includes(p.id)
-                            );
-                            return sum + (isMuted ? 0 : conv.unreadCount);
-                          },
-                          0
-                        )}
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </View>
+        <View style={styles.content}>
+          {/* Header: "Chats" + "+" button */}
+          <View style={styles.headerRow}>
+            <Text style={styles.title}>Chats</Text>
+            <TouchableOpacity
+              onPress={() => setFriendPickerVisible(true)}
+              style={styles.plusButton}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add" size={28} color="#eb7825" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Pill Filters */}
+          <PillFilters
+            activePill={activePill}
+            onPillPress={handlePillPress}
+            requestCount={incomingRequests.length}
+          />
+
+          {/* Conditional pill content */}
+          {activePill === "add" && (
+            <View style={styles.pillContent}>
+              <AddFriendView
+                currentUserId={user?.id || ""}
+                existingFriendIds={existingFriendIds}
+                onRequestSent={() => loadFriendRequests()}
+              />
+            </View>
+          )}
+          {activePill === "requests" && (
+            <View style={styles.pillContent}>
+              <RequestsView
+                requests={incomingRequests}
+                loading={friendsLoading}
+                onAccept={handleAcceptRequest}
+                onDecline={handleDeclineRequest}
+              />
+            </View>
+          )}
+          {activePill === "blocked" && (
+            <View style={styles.pillContent}>
+              <BlockedUsersView
+                blockedUsers={blockedUsers}
+                loading={friendsLoading}
+                onUnblock={handleUnblock}
+              />
             </View>
           )}
 
-          {/* Tab Content */}
-          <View style={styles.tabContentContainer}>
-            {activeTab === "friends" ? (
-              <CollaborationFriendsTab
-                friends={currentFriends}
-                onSelectFriend={handleSelectFriend}
-                onSendCollabInvite={handleSendCollabInvite}
-                onAddToBoard={handleAddToBoard}
-                onShareSavedCard={handleShareSavedCard}
-                onMuteUser={handleMuteUser}
-                onRemoveFriend={handleRemoveFriend}
-                onBlockUser={handleBlockUser}
-                onReportUser={handleReportUser}
-                onShowAddFriendModal={() => setShowAddFriendModal(true)}
-                onShowFriendRequests={() => setShowFriendRequests(true)}
-                onShowBlockedFriends={() => setShowBlockedUsersModal(true)}
-                onCopyInvite={handleCopyInvite}
-                inviteCopied={inviteCopied}
-                friendRequestsCount={friendRequestsCount}
-                muteLoadingFriendId={muteLoadingFriendId}
-                loading={friendsLoading}
-              />
-            ) : (
-              <MessagesTab
-                conversations={currentConversations}
-                onSelectFriend={handleSelectFriend}
-                onStartNewConversation={handleStartNewConversation}
-                onBackFromMessage={handleBackFromMessage}
-                onSendMessage={handleSendMessage}
-                activeChat={activeChat}
-                showMessageInterface={showMessageInterface}
-                conversationsData={conversations}
-                messages={messages}
-                isBlocked={activeChatIsBlocked}
-                accountPreferences={accountPreferences}
-                boardsSessions={boardsSessions}
-                currentMode={currentMode}
-                onModeChange={onModeChange}
-                onUpdateBoardSession={onUpdateBoardSession}
-                onCreateSession={onCreateSession}
-                onNavigateToBoard={onNavigateToBoard}
-                availableFriends={currentFriends}
-                currentUserId={user?.id}
-                mutedUserIds={mutedUserIds}
-                loading={conversationsLoading}
-              />
-            )}
+          {/* Search bar */}
+          <View style={styles.searchContainer}>
+            <Ionicons
+              name="search"
+              size={18}
+              color="#9ca3af"
+              style={styles.searchIcon}
+            />
+            <TextInput
+              placeholder="Search chats..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              style={styles.searchInput}
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="none"
+            />
           </View>
+
+          {/* Chat list */}
+          {conversationsLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#eb7825" />
+            </View>
+          ) : filteredConversations.length === 0 && !searchQuery.trim() ? (
+            // Empty state — no conversations at all
+            <View style={styles.emptyContainer}>
+              <Ionicons name="chatbubbles-outline" size={64} color="#d1d5db" />
+              <Text style={styles.emptyTitle}>No conversations yet</Text>
+              <TouchableOpacity
+                onPress={() => setFriendPickerVisible(true)}
+                style={styles.emptyCtaButton}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.emptyCtaText}>Message a friend</Text>
+              </TouchableOpacity>
+            </View>
+          ) : filteredConversations.length === 0 && searchQuery.trim() ? (
+            // Search returned no results
+            <View style={styles.emptyContainer}>
+              <Ionicons name="search" size={48} color="#d1d5db" />
+              <Text style={styles.emptyTitle}>No results</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredConversations}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => {
+                const isMuted = item.participants?.some((p) =>
+                  mutedUserIds.includes(p.id)
+                );
+                return (
+                  <ChatListItem
+                    conversation={item}
+                    currentUserId={user?.id || ""}
+                    onPress={handleSelectConversation}
+                    isMuted={isMuted}
+                  />
+                );
+              }}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.chatListContent}
+            />
+          )}
         </View>
       </View>
 
-      {/* Modals */}
-      <FriendSelectionModal
-        isOpen={showFriendSelection}
-        onClose={() => setShowFriendSelection(false)}
-        onSelectFriend={handleSelectFriend}
-        friends={currentFriends}
-      />
-
-      <AddFriendModal
-        isOpen={showAddFriendModal}
-        onClose={() => {
-          setShowAddFriendModal(false);
-          fetchFriends(); // Reload friends after adding
-        }}
-      />
-
-      <FriendRequestsModal
-        isOpen={showFriendRequests}
-        onClose={() => {
-          setShowFriendRequests(false);
-          fetchFriends(); // Reload friends after accepting/declining
-          loadFriendRequests(); // Reload friend requests
-        }}
-      />
-
-      <AddToBoardModal
-        isOpen={showAddToBoardModal}
-        onClose={() => {
-          setShowAddToBoardModal(false);
-          setSelectedFriendForBoard(null);
-        }}
-        friend={selectedFriendForBoard}
-        boardsSessions={boardsSessions}
-        onConfirm={handleAddToBoardConfirm}
-      />
-
-      <ReportUserModal
-        isOpen={showReportModal}
-        onClose={handleReportModalClose}
-        user={
-          selectedUserToReport
-            ? {
-                id: selectedUserToReport.id,
-                name: selectedUserToReport.name,
-                username: selectedUserToReport.username,
-              }
-            : { id: "", name: "", username: "" }
-        }
-        onReport={handleReportSubmit}
-      />
-
-      <BlockUserModal
-        visible={showBlockModal}
-        onClose={handleBlockModalClose}
-        onConfirm={handleBlockConfirm}
-        userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
-        loading={blockLoading}
-      />
-
-      <BlockedUsersModal
-        visible={showBlockedUsersModal}
-        onClose={() => setShowBlockedUsersModal(false)}
+      {/* Friend Picker Sheet */}
+      <FriendPickerSheet
+        visible={friendPickerVisible}
+        onClose={() => setFriendPickerVisible(false)}
+        onSelectFriend={handlePickFriend}
+        friends={dbFriends}
+        loadingFriends={friendsLoading}
       />
     </>
   );
@@ -1624,77 +1263,84 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
   },
-  header: {
-    marginBottom: 24,
-    marginHorizontal: -16,
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+    backgroundColor: "#ffffff",
   },
   title: {
     fontSize: 24,
-    fontWeight: "bold",
+    fontWeight: "700",
     color: "#111827",
-    marginBottom: 16,
   },
-  tabContainer: {
+  plusButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff7ed",
+  },
+  pillContent: {
+    marginTop: 8,
+  },
+  searchContainer: {
     flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    paddingHorizontal: 12,
   },
-  tab: {
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    position: "relative",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
+    paddingVertical: 10,
+    fontSize: 16,
+    color: "#111827",
   },
-  activeTab: {
-    borderBottomColor: "#eb7825",
+  chatListContent: {
+    paddingBottom: 16,
   },
-  tabContent: {
-    flexDirection: "column",
-    alignItems: "center",
+  loadingContainer: {
+    flex: 1,
     justifyContent: "center",
-    gap: 4,
-    position: "relative",
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#6B7280",
-  },
-  activeTabText: {
-    color: "#eb7825",
-  },
-  notificationBadge: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    backgroundColor: "#EF4444",
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 6,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
   },
-  notificationBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 12,
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+  },
+  emptyTitle: {
+    fontSize: 18,
     fontWeight: "600",
+    color: "#111827",
+    marginTop: 16,
   },
-  tabContentContainer: {
-    flex: 1,
+  emptyCtaButton: {
+    marginTop: 16,
+    backgroundColor: "#eb7825",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
   },
-  fullscreenLoader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
+  emptyCtaText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "600",
   },
   errorContainer: {
     flex: 1,
@@ -1715,7 +1361,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: "white",
+    color: "#ffffff",
     fontSize: 16,
     fontWeight: "500",
   },

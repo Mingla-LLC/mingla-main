@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { s, vs, ms } from "../utils/responsive";
 import SwipeableCards from "./SwipeableCards";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import NotificationsModal from "./NotificationsModal";
@@ -182,7 +183,6 @@ export default function HomePage({
   // Animation values
   const headerSlideAnim = useRef(new Animated.Value(-60)).current;
   const sessionsOpacity = useRef(new Animated.Value(0.3)).current;
-  const sessionsScale = useRef(new Animated.Value(0.9)).current;
 
   // Run entrance animations on mount
   useEffect(() => {
@@ -193,13 +193,8 @@ export default function HomePage({
         duration: ANIMATION_DURATION,
         useNativeDriver: true,
       }),
-      // Sessions row fades in and scales up
+      // Sessions row fades in
       Animated.timing(sessionsOpacity, {
-        toValue: 1,
-        duration: ANIMATION_DURATION,
-        useNativeDriver: true,
-      }),
-      Animated.timing(sessionsScale, {
         toValue: 1,
         duration: ANIMATION_DURATION,
         useNativeDriver: true,
@@ -280,13 +275,10 @@ export default function HomePage({
           {/* Collaboration Sessions Bar with fade-in and scale animation */}
           {onSessionSelect && onSoloSelect && onCreateSession && (
             <Animated.View
-              style={{
-                opacity: sessionsOpacity,
-                transform: [{ scaleX: sessionsScale }],
-                width: '100%',
-                backgroundColor: '#FFFFFF',
-                zIndex: 20,
-              }}
+              style={[
+                styles.sessionsAnimatedWrapper,
+                { opacity: sessionsOpacity },
+              ]}
             >
               <CollaborationSessions
                 sessions={collaborationSessions}
@@ -367,13 +359,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
-    paddingHorizontal: 16,
+    paddingHorizontal: s(16),
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     position: "relative",
     zIndex: 100,
-    paddingVertical: 8,
+    paddingVertical: vs(8),
   },
   headerLeft: {
     flexDirection: "row",
@@ -381,13 +373,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   preferencesButton: {
-    padding: 7,
-    minWidth: 38,
-    minHeight: 38,
+    padding: ms(7),
+    minWidth: ms(38),
+    minHeight: ms(38),
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#ffffff",
-    borderRadius: 19,
+    borderRadius: ms(19),
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -399,7 +391,7 @@ const styles = StyleSheet.create({
   },
   preferencesButtonActive: {
     backgroundColor: "#FEF3E7",
-    borderRadius: 19,
+    borderRadius: ms(19),
     shadowColor: "#eb7825",
     shadowOffset: {
       width: 0,
@@ -416,15 +408,15 @@ const styles = StyleSheet.create({
     /*  aspectRatio: 3.4, */
   },
   logoContainer: {
-    height: 50, // Smaller than logo height to crop top/bottom
-    width: 180, // Smaller than logo width to crop left/right
+    height: vs(46),
+    width: s(170),
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
   logo: {
-    height: 100,
-    width: 220,
+    height: vs(92),
+    width: s(210),
     resizeMode: "contain",
   },
   headerRight: {
@@ -433,14 +425,14 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   notificationButton: {
-    padding: 7,
-    minWidth: 38,
-    minHeight: 38,
+    padding: ms(7),
+    minWidth: ms(38),
+    minHeight: ms(38),
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
     backgroundColor: "#ffffff",
-    borderRadius: 19,
+    borderRadius: ms(19),
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -454,10 +446,10 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -4,
     right: -4,
-    width: 14,
-    height: 14,
+    width: ms(14),
+    height: ms(14),
     backgroundColor: "#eb7825",
-    borderRadius: 7,
+    borderRadius: ms(7),
     borderWidth: 2,
     borderColor: "#ffffff",
   },
@@ -477,6 +469,11 @@ const styles = StyleSheet.create({
     position: "relative",
     overflow: "hidden",
     // marginHorizontal: 10
+  },
+  sessionsAnimatedWrapper: {
+    width: '100%',
+    backgroundColor: 'transparent',
+    zIndex: 20,
   },
   innerShadowTop: {
     position: "absolute",

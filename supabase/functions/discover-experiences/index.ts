@@ -91,9 +91,6 @@ const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
   ],
   "Fine Dining": [
     "fine_dining_restaurant",
-    "steak_house",
-    "french_restaurant",
-    "italian_restaurant",
   ],
   "Watch": [
     "movie_theater",
@@ -116,8 +113,10 @@ const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
   ],
   "Wellness": [
     "spa",
+    "massage",
     "sauna",
-    "hot_spring",
+    "resort_hotel",
+    "public_bath",
   ],
   "Groceries & Flowers": [
     "grocery_store",
@@ -157,6 +156,8 @@ const EXCLUDED_TYPES = new Set([
   "bus_station",
   "train_station",
   "transit_station",
+  "gym",
+  "fitness_center",
 ]);
 
 /**

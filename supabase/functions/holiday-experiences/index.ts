@@ -35,11 +35,11 @@ const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
   "Picnic": ["park", "beach", "marina"],
   "Drink": ["bar", "cafe", "wine_bar"],
   "Casual Eats": ["restaurant", "cafe", "fast_food_restaurant"],
-  "Fine Dining": ["restaurant", "fine_dining_restaurant"],
+  "Fine Dining": ["fine_dining_restaurant"],
   "Watch": ["movie_theater", "performing_arts_theater"],
   "Creative & Arts": ["art_gallery", "museum"],
-  "Play": ["bowling_alley", "amusement_park", "gym"],
-  "Wellness": ["spa", "gym", "yoga_studio"],
+  "Play": ["bowling_alley", "amusement_park"],
+  "Wellness": ["spa", "massage", "sauna", "resort_hotel", "public_bath"],
 };
 
 // Excluded place types
@@ -67,6 +67,8 @@ const EXCLUDED_TYPES = new Set([
   "insurance_agency",
   "real_estate_agency",
   "travel_agency",
+  "gym",
+  "fitness_center",
 ]);
 
 // Hardcoded holidays with categories, descriptions, and gender targeting

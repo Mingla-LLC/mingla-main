@@ -134,10 +134,6 @@ const CATEGORY_MAPPINGS = {
   fine_dining: {
     places: [
       "fine_dining_restaurant",
-      "steak_house",
-      "french_restaurant",
-      "greek_restaurant",
-      "italian_restaurant",
     ],
     keywords: [
       "tasting menu",
@@ -262,16 +258,16 @@ const CATEGORY_MAPPINGS = {
     ],
   },
   wellness: {
-    places: ["spa", "sauna", "hot_spring"],
+    places: ["spa", "massage", "sauna", "resort_hotel", "public_bath"],
     keywords: [
       "spa",
       "sauna",
       "massage",
-      "yoga",
-      "meditation",
-      "wellness",
       "relaxation",
+      "wellness",
       "hot spring",
+      "bathhouse",
+      "thermal bath",
     ],
     activities: ["spa", "sauna", "massage", "yoga", "meditation"],
   },
@@ -587,10 +583,16 @@ serve(async (req) => {
     });
 
     // Combine and normalize candidates
-    const allCandidates = [
+    const allCandidatesRaw = [
       ...(places.status === "fulfilled" ? places.value : []),
       ...(events.status === "fulfilled" ? events.value : []),
     ];
+
+    // Filter out gym/fitness places globally
+    const gymTypes = new Set(['gym', 'fitness_center']);
+    const allCandidates = allCandidatesRaw.filter(
+      (p: any) => !p.placeTypes?.some((t: string) => gymTypes.has(t))
+    );
 
     if (allCandidates.length === 0) {
       return new Response(
@@ -1191,7 +1193,7 @@ function matchesExperienceTypeForScoring(
   // Simplified experience type matching
   const experienceTypeMappings: Record<string, string[]> = {
     business: ["restaurant", "cafe", "coffee_shop"],
-    romantic: ["restaurant", "bar", "cocktail_lounge", "park", "garden"],
+    romantic: ["fine_dining_restaurant", "spa", "massage", "sauna", "resort_hotel", "public_bath", "art_gallery", "museum", "art_studio", "performing_arts_theater", "cultural_center"],
     group_fun: ["bowling_alley", "arcade", "amusement_park", "sports_complex"],
     solo_adventure: ["park", "garden", "museum", "art_gallery"],
     first_date: ["restaurant", "bar", "coffee_shop", "park", "museum"],

@@ -6,7 +6,6 @@ import {
   Pressable,
   Image,
   StyleSheet,
-  Dimensions,
   Animated,
   PanResponder,
   StatusBar,
@@ -44,9 +43,8 @@ import {
 import { DeckHistorySheet } from "./DeckHistorySheet";
 import { DismissedCardsSheet } from "./DismissedCardsSheet";
 import { getReadableCategoryName } from "../utils/categoryUtils";
+import { SCREEN_WIDTH } from "../utils/responsive";
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
-const CARD_HEIGHT = Math.min(screenHeight * 0.72, 800);
 const IMAGE_SECTION_RATIO = 0.88;
 const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
 const CARD_ANIMATION_DURATION = 400;
@@ -335,19 +333,19 @@ export default function SwipeableCards({
   // Swipe animation values
   const position = useRef(new Animated.ValueXY()).current;
   const rotate = position.x.interpolate({
-    inputRange: [-screenWidth, 0, screenWidth],
+    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
     outputRange: ["-30deg", "0deg", "30deg"],
   });
   const likeOpacity = position.x.interpolate({
-    inputRange: [0, screenWidth / 4],
+    inputRange: [0, SCREEN_WIDTH / 4],
     outputRange: [0, 1],
   });
   const nopeOpacity = position.x.interpolate({
-    inputRange: [-screenWidth / 4, 0],
+    inputRange: [-SCREEN_WIDTH / 4, 0],
     outputRange: [1, 0],
   });
   const nextCardOpacity = position.x.interpolate({
-    inputRange: [-screenWidth / 2, 0, screenWidth / 2],
+    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
     outputRange: [1, 0, 1],
   });
 
@@ -755,7 +753,7 @@ export default function SwipeableCards({
           // Animate card off the screen edge
           Animated.timing(position, {
             toValue: {
-              x: direction === "right" ? screenWidth : -screenWidth,
+              x: direction === "right" ? SCREEN_WIDTH : -SCREEN_WIDTH,
               y: gestureState.dy,
             },
             duration: 250,
@@ -1422,23 +1420,21 @@ export default function SwipeableCards({
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
-        {/* Deck header with History button */}
-        {deckBatches.length > 0 && (
-          <View style={styles.deckHeader}>
+        <View style={styles.cardContainer}>
+          {/* Batch chip overlay — only when multiple decks exist */}
+          {deckBatches.length > 1 && (
             <TouchableOpacity
-              style={styles.historyButton}
+              style={styles.batchChip}
               onPress={() => setHistoryVisible(true)}
               activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="time-outline" size={18} color="#6b7280" />
-              <Text style={styles.historyButtonText}>
-                Batch {currentDeckBatchIndex + 1}
+              <Ionicons name="layers-outline" size={14} color="#6b7280" />
+              <Text style={styles.batchChipText}>
+                Deck {currentDeckBatchIndex + 1}
               </Text>
             </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={styles.cardContainer}>
+          )}
           {showNextBatchLoader && (
             <View style={styles.nextBatchOverlay} pointerEvents="none">
               <Animated.View
@@ -1783,17 +1779,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     width: "100%",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingTop: 4,
+    paddingBottom: 0,
   },
   cardContainer: {
-    width: screenWidth * 0.92,
-    /*   height: CARD_HEIGHT, */
-    maxWidth: 400,
+    width: SCREEN_WIDTH - 32,
+    maxWidth: 500,
     position: "relative",
     flex: 1,
-    padding: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   card: {
     position: "absolute",
@@ -2040,15 +2037,15 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   spinnerContainer: {
-    width: 100,
-    height: 100,
+    width: 72,
+    height: 72,
     justifyContent: "center",
     alignItems: "center",
   },
   spinnerOuter: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     borderWidth: 4,
     borderColor: "#ffedd5",
     borderTopColor: "#eb7825",
@@ -2056,9 +2053,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   spinnerInner: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "#fff7ed",
     justifyContent: "center",
     alignItems: "center",
@@ -2425,24 +2422,25 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "600",
   },
-  deckHeader: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    width: "100%",
-    paddingHorizontal: 20,
-    paddingBottom: 4,
-  },
-  historyButton: {
+  batchChip: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 20,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingVertical: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
     paddingHorizontal: 10,
-    borderRadius: 16,
-    backgroundColor: "#f3f4f6",
+    paddingVertical: 6,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  historyButtonText: {
+  batchChipText: {
     fontSize: 12,
     fontWeight: "600",
     color: "#6b7280",

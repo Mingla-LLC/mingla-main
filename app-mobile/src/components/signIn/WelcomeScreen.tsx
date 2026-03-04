@@ -27,6 +27,7 @@ import {
   fontWeights,
   backgroundWarmGlow,
 } from "../../constants/designSystem";
+import { s, vs } from "../../utils/responsive";
 
 const googleIcon = require("../../../assets/google_icon.png");
 const logo = require("../../../assets/mobile_logo.png");
@@ -425,7 +426,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logo: {
-    width: 200,
+    width: s(200),
     maxWidth: "60%",
   },
   tagline: {
@@ -434,7 +435,7 @@ const styles = StyleSheet.create({
     fontWeight: fontWeights.regular,
     color: colors.text.secondary,
     textAlign: "center",
-    maxWidth: 300,
+    maxWidth: s(300),
     letterSpacing: 0.2,
     marginTop: spacing.md,
   },
@@ -442,7 +443,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.lg,
     alignItems: "center",
-    gap: spacing.md,
+    gap: vs(16),
   },
   buttonAnimWrapper: {
     width: "100%",
@@ -450,8 +451,8 @@ const styles = StyleSheet.create({
   },
   appleButton: {
     width: "100%",
-    maxWidth: 400,
-    height: 56,
+    maxWidth: s(400),
+    height: vs(56),
     backgroundColor: "#000000",
     borderRadius: radius.lg,
     flexDirection: "row",
@@ -468,8 +469,8 @@ const styles = StyleSheet.create({
   },
   googleButton: {
     width: "100%",
-    maxWidth: 400,
-    height: 56,
+    maxWidth: s(400),
+    height: vs(56),
     backgroundColor: colors.background.primary,
     borderWidth: 1.5,
     borderColor: colors.gray[200],

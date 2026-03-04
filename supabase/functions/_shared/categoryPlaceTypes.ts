@@ -43,10 +43,7 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'afghani_restaurant', 'african_restaurant',
   ],
   'Fine Dining': [
-    'fine_dining_restaurant', 'french_restaurant', 'italian_restaurant',
-    'steak_house', 'seafood_restaurant', 'mediterranean_restaurant',
-    'greek_restaurant', 'spanish_restaurant', 'tapas_restaurant',
-    'fondue_restaurant', 'bistro', 'gastropub',
+    'fine_dining_restaurant',
   ],
   'Watch': [
     'movie_theater', 'performing_arts_theater', 'comedy_club',
@@ -65,8 +62,7 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'roller_coaster', 'ferris_wheel', 'planetarium',
   ],
   'Wellness': [
-    'spa', 'massage', 'sauna', 'wellness_center',
-    'yoga_studio', 'massage_spa',
+    'spa', 'massage', 'sauna', 'resort_hotel', 'public_bath',
   ],
   'Groceries & Flowers': [
     'grocery_store', 'supermarket', 'farmers_market', 'garden_center',
@@ -75,6 +71,49 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'cafe', 'coffee_shop', 'tea_house',
   ],
 };
+
+/**
+ * Place types that must NEVER appear in any card, stop, or recommendation.
+ * Applied as `excludedTypes` in every Google Places API call AND as a
+ * post-fetch filter on results.
+ */
+export const GLOBAL_EXCLUDED_PLACE_TYPES: string[] = [
+  'gym',
+  'fitness_center',
+];
+
+/**
+ * Additional place types excluded specifically for the Romantic intent.
+ * These are kid/family-oriented venues inappropriate for intimate dates.
+ * Applied on top of GLOBAL_EXCLUDED_PLACE_TYPES.
+ */
+export const ROMANTIC_EXCLUDED_PLACE_TYPES: string[] = [
+  ...GLOBAL_EXCLUDED_PLACE_TYPES,
+  'indoor_playground',
+  'amusement_park',
+  'water_park',
+  'amusement_center',
+  'playground',
+  'children_store',
+  'child_care_agency',
+  'preschool',
+];
+
+/**
+ * Filters out places whose `types` array contains any globally or
+ * intent-specifically excluded type. Call this on EVERY batch of
+ * Google Places results before scoring, caching, or returning.
+ */
+export function filterExcludedPlaces(
+  places: Array<{ types?: string[] }>,
+  intentExcluded?: string[],
+): Array<{ types?: string[] }> {
+  const excluded = new Set(intentExcluded ?? GLOBAL_EXCLUDED_PLACE_TYPES);
+  return places.filter((place) => {
+    if (!place.types) return true;
+    return !place.types.some((t) => excluded.has(t));
+  });
+}
 
 // ── Alias mapping: handles all case/format variations ────────────────────────
 // Maps every known variation to the canonical display name above.
