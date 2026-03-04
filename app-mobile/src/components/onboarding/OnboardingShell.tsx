@@ -12,10 +12,11 @@ import {
   AccessibilityInfo,
   StyleSheet,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { SegmentedProgressBar } from './SegmentedProgressBar';
+import { logger } from '../../utils/logger';
 import {
   colors,
   typography,
@@ -105,16 +106,20 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
     runEntrance();
   }, [primaryCtaLabel]);
 
+  const insets = useSafeAreaInsets();
+
   const isFirstScreen = step === 1 && !showBackButton;
   const showBackToWelcome = isFirstScreen && !!onBackToWelcome;
   const hasSecondaryButton = showBackToWelcome || showBackButton;
 
   const handleBack = () => {
+    logger.action('Back button pressed', { step });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onBack();
   };
 
   const handleBackToWelcome = () => {
+    logger.action('Back to sign in pressed');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onBackToWelcome?.();
   };
@@ -157,6 +162,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
 
   const handlePrimaryCta = () => {
     if (primaryCtaDisabled || primaryCtaLoading) return;
+    logger.action(`Primary CTA pressed: "${primaryCtaLabel}"`, { step, disabled: primaryCtaDisabled, loading: primaryCtaLoading });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onPrimaryCta();
   };
@@ -246,7 +252,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -263,7 +269,10 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
         {/* Scrollable content */}
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            hideBottomBar && { paddingBottom: 160 + insets.bottom },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -272,7 +281,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
 
         {/* Fixed bottom bar — frosted glass panel */}
         {!hideBottomBar && (
-          <View style={styles.bottomBar}>
+          <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
             {renderBottomBarContent()}
           </View>
         )}
@@ -302,7 +311,6 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
     borderTopWidth: 0.5,
     borderTopColor: 'rgba(255, 255, 255, 0.45)',
     backgroundColor: 'rgba(255, 255, 255, 0.92)',

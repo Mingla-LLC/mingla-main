@@ -179,7 +179,7 @@ export default function FriendRequestsModal({
           onPress={onClose}
         />
 
-        <View style={[styles.sheetContent, { paddingBottom: insets.bottom }]}>
+        <View style={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           {/* Drag Handle */}
           <View style={styles.dragHandleContainer}>
             <View style={styles.dragHandle} />

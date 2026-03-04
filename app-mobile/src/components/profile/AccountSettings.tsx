@@ -12,7 +12,7 @@ import {
   Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatCurrency } from "../utils/formatters";
 import { fetchExchangeRates, getRate } from "../../services/currencyService";
 import { PreferencesService } from "../../services/preferencesService";

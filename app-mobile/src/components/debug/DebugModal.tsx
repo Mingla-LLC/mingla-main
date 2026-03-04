@@ -9,8 +9,8 @@ import {
   Alert,
   Clipboard,
   Dimensions,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { debugService } from '../../services/debugService';
 
 interface DebugModalProps {
@@ -24,6 +24,7 @@ export const DebugModal: React.FC<DebugModalProps> = ({
   onClose,
   viewShotRef,
 }) => {
+  const insets = useSafeAreaInsets();
   const [logs, setLogs] = useState<any[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -106,7 +107,7 @@ export const DebugModal: React.FC<DebugModalProps> = ({
 
   return (
     <Modal visible={isVisible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>🐛 Debug Console</Text>
@@ -154,7 +155,7 @@ export const DebugModal: React.FC<DebugModalProps> = ({
         </ScrollView>
 
         {/* Actions */}
-        <View style={styles.actions}>
+        <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, 8) }]}>
           <TouchableOpacity
             style={[styles.button, styles.copyButton]}
             onPress={handleCopyLogs}

@@ -440,7 +440,7 @@ export default function CollaborationSessions({
             activeOpacity={1}
             onPress={handleCloseCreateModal}
           />
-          <View style={[styles.createSheetContent, { paddingBottom: insets.bottom }]}>
+          <View style={[styles.createSheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
             {/* Drag Handle */}
             <View style={styles.createDragHandleContainer}>
               <View style={styles.createDragHandle} />
@@ -647,7 +647,7 @@ export default function CollaborationSessions({
             activeOpacity={1}
             onPress={() => setShowInviteModal(false)}
           />
-          <View style={[styles.inviteSheetContent, { paddingBottom: insets.bottom }]}>
+          <View style={[styles.inviteSheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
             <View style={styles.inviteDragHandleContainer}>
               <View style={styles.inviteDragHandle} />
             </View>

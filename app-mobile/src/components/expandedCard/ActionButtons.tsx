@@ -19,7 +19,7 @@ import { CalendarService } from "../../services/calendarService";
 import { useAppStore } from "../../store/appStore";
 import { useCalendarEntries } from "../../hooks/useCalendarEntries";
 import { toastManager } from "../ui/Toast";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 
 interface ActionButtonsProps {
@@ -51,6 +51,7 @@ export default function ActionButtons({
   onScheduleSuccess,
   onOpenBrowser,
 }: ActionButtonsProps) {
+  const insets = useSafeAreaInsets();
   const [isSaving, setIsSaving] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
   const [showDateTimePicker, setShowDateTimePicker] = useState(false);
@@ -642,7 +643,7 @@ export default function ActionButtons({
                   activeOpacity={1}
                   onPress={() => setShowDateTimePicker(false)}
                 />
-                <SafeAreaView style={styles.modalContent}>
+                <SafeAreaView style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 20) }]} edges={['bottom', 'left', 'right']}>
                   <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>
                       {pickerMode === "date" ? "Select Date" : "Select Time"}
@@ -989,7 +990,6 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 20,
   },
   modalHeader: {
     flexDirection: "row",

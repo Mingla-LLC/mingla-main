@@ -258,7 +258,9 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     }
     setPhoneError(null)
     setSendingOtp(true)
-    const result = await sendOtp(buildE164())
+    const e164 = buildE164()
+    logger.onboarding('Sending OTP', { phone: e164.slice(0, 4) + '****' })
+    const result = await sendOtp(e164)
     setSendingOtp(false)
     if (result.success) {
       setResendCountdown(30)
@@ -271,6 +273,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
 
   // ─── Resend OTP (does NOT advance state — used for auto-resend after 3 failures) ───
   const handleResendOtp = useCallback(async () => {
+    logger.action('Resend OTP pressed')
     setSendingOtp(true)
     const result = await sendOtp(buildE164())
     setSendingOtp(false)
@@ -371,6 +374,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   }, [goNext, persistStep])
 
   const handleSkipLocation = useCallback(async () => {
+    logger.action('Skip location pressed — setting manually')
     setLocationStatus('denied')
     setHasGpsPermission(false)
     setData((prev) => ({ ...prev, locationGranted: false, useGpsLocation: false }))
@@ -381,6 +385,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   // ─── Manual Location Geocode ───
   const handleManualLocation = useCallback(async () => {
     if (!manualLocationText.trim()) return
+    logger.action('Manual location submitted', { text: manualLocationText.trim() })
     setSavingPrefs(true)
     try {
       const results = await Location.geocodeAsync(manualLocationText.trim())
@@ -564,10 +569,11 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   }, [onComplete, revealScale, revealOpacity])
 
   const handleLaunchRetry = useCallback(() => {
+    logger.action('Launch retry pressed', { attempt: launchRetries + 1 })
     setLaunchRetries((r) => r + 1)
     setLaunchState('loading')
     handleLaunch()
-  }, [handleLaunch])
+  }, [handleLaunch, launchRetries])
 
   // ─── Welcome Text Entrance Animation ───
   useEffect(() => {
@@ -659,7 +665,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       case 'otp':
         return { label: 'Verify', disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: false }
       case 'value_prop':
-        return { label: 'Next', disabled: false, loading: false, onPress: () => { setValuePropBeat(Math.min(valuePropBeat + 1, 2)); if (valuePropBeat >= 2) handleGoNext() }, hide: false }
+        return { label: 'Next', disabled: false, loading: false, onPress: () => { logger.action(`Value prop beat advance`, { beat: valuePropBeat }); setValuePropBeat(Math.min(valuePropBeat + 1, 2)); if (valuePropBeat >= 2) handleGoNext() }, hide: false }
       case 'intents':
         return { label: 'Next', disabled: data.selectedIntents.length === 0, loading: false, onPress: async () => { await persistStep(3); handleGoNext() }, hide: false }
       case 'location':
@@ -834,6 +840,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
                   key={intent.id}
                   style={[styles.intentCard, selected && styles.intentCardSelected]}
                   onPress={() => {
+                    logger.action(`Intent ${selected ? 'deselected' : 'selected'}: ${intent.id}`)
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                     setData((p) => ({
                       ...p,
@@ -875,7 +882,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
             <Ionicons name="location-outline" size={64} color={colors.primary[500]} />
             <Text style={styles.headline}>Better spots start here</Text>
             <Text style={styles.body}>Location is turned off for Mingla. Tap below to fix it.</Text>
-            <Pressable style={styles.primaryButton} onPress={() => Linking.openSettings()}>
+            <Pressable style={styles.primaryButton} onPress={() => { logger.action('Open device settings pressed'); Linking.openSettings() }}>
               <Text style={styles.primaryButtonText}>Open settings</Text>
             </Pressable>
             <Pressable onPress={handleSkipLocation}>
@@ -946,6 +953,8 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
                 activeColor={cat.ux.activeColor}
                 selected={data.selectedCategories.includes(cat.name)}
                 onPress={() => {
+                  const selected = data.selectedCategories.includes(cat.name)
+                  logger.action(`Category ${selected ? 'deselected' : 'selected'}: ${cat.name}`)
                   setData((p) => ({
                     ...p,
                     selectedCategories: p.selectedCategories.includes(cat.name)
@@ -971,6 +980,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
                 key={amount}
                 style={[styles.selectionTile, data.budgetMax === amount && styles.selectionTileActive]}
                 onPress={() => {
+                  logger.action(`Budget selected: $${amount}`)
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                   setData((p) => ({ ...p, budgetMax: amount }))
                 }}
@@ -995,6 +1005,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
                 key={mode.value}
                 style={[styles.selectionTile, styles.selectionTileTall, data.travelMode === mode.value && styles.selectionTileActive]}
                 onPress={() => {
+                  logger.action(`Transport selected: ${mode.label}`)
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                   setData((p) => ({ ...p, travelMode: mode.value }))
                 }}
@@ -1023,6 +1034,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
                 key={mins}
                 style={[styles.selectionTile, data.travelTimeMinutes === mins && styles.selectionTileActive]}
                 onPress={() => {
+                  logger.action(`Travel time selected: ${mins} min`)
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                   setData((p) => ({ ...p, travelTimeMinutes: mins }))
                 }}
@@ -1043,17 +1055,17 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
           <Text style={styles.headline}>Got someone in mind?</Text>
           <Text style={styles.body}>Add a friend, partner, or date — we'll find places you'll both love.</Text>
           <View style={styles.pathCards}>
-            <Pressable style={styles.pathCard} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'invite' })); choosePath('invite') }}>
+            <Pressable style={styles.pathCard} onPress={() => { logger.action('Path selected: invite'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'invite' })); choosePath('invite') }}>
               <Ionicons name="paper-plane-outline" size={24} color={colors.primary[500]} />
               <Text style={styles.pathCardTitle}>Invite them to Mingla</Text>
               <Text style={styles.pathCardDesc}>They get their own account. Recs get smarter together.</Text>
             </Pressable>
-            <Pressable style={styles.pathCard} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'add' })); choosePath('add') }}>
+            <Pressable style={styles.pathCard} onPress={() => { logger.action('Path selected: add'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'add' })); choosePath('add') }}>
               <Ionicons name="person-add-outline" size={24} color={colors.primary[500]} />
               <Text style={styles.pathCardTitle}>Just add them</Text>
               <Text style={styles.pathCardDesc}>We'll factor them in. No invite needed.</Text>
             </Pressable>
-            <Pressable style={styles.pathCard} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'skip' })); choosePath('skip') }}>
+            <Pressable style={styles.pathCard} onPress={() => { logger.action('Path selected: skip'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'skip' })); choosePath('skip') }}>
               <Ionicons name="arrow-forward-outline" size={24} color={colors.gray[400]} />
               <Text style={styles.pathCardTitle}>Skip for now</Text>
               <Text style={styles.pathCardDesc}>You can add people anytime.</Text>
@@ -1102,7 +1114,10 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
               minimumDate={minDate}
               maximumDate={maxDate}
               onChange={(_, date) => {
-                if (date) setData((p) => ({ ...p, personBirthday: date }))
+                if (date) {
+                  logger.action('Birthday date changed', { date: date.toISOString().split('T')[0] })
+                  setData((p) => ({ ...p, personBirthday: date }))
+                }
               }}
             />
           </View>
@@ -1120,6 +1135,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
               key={g}
               style={[styles.genderRow, data.personGender === g && styles.genderRowSelected]}
               onPress={() => {
+                logger.action(`Gender selected: ${GENDER_DISPLAY_LABELS[g]}`)
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                 setData((p) => ({ ...p, personGender: g }))
               }}
@@ -1155,13 +1171,13 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
           <View style={styles.segmentedControl}>
             <Pressable
               style={[styles.segmentTab, data.contactMethod === 'phone' && styles.segmentTabActive]}
-              onPress={() => setData((p) => ({ ...p, contactMethod: 'phone', contactValue: null }))}
+              onPress={() => { logger.action('Contact method toggled: phone'); setData((p) => ({ ...p, contactMethod: 'phone', contactValue: null })) }}
             >
               <Text style={[styles.segmentTabText, data.contactMethod === 'phone' && styles.segmentTabTextActive]}>Phone</Text>
             </Pressable>
             <Pressable
               style={[styles.segmentTab, data.contactMethod === 'username' && styles.segmentTabActive]}
-              onPress={() => setData((p) => ({ ...p, contactMethod: 'username', contactValue: null }))}
+              onPress={() => { logger.action('Contact method toggled: username'); setData((p) => ({ ...p, contactMethod: 'username', contactValue: null })) }}
             >
               <Text style={[styles.segmentTabText, data.contactMethod === 'username' && styles.segmentTabTextActive]}>Username</Text>
             </Pressable>

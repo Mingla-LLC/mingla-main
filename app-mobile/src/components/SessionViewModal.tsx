@@ -9,11 +9,11 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  SafeAreaView,
   StatusBar,
   Platform,
   Image,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -69,6 +69,7 @@ export default function SessionViewModal({
   onSessionDeleted,
   onSessionExited,
 }: SessionViewModalProps) {
+  const insets = useSafeAreaInsets();
   const {
     session,
     loading: sessionLoading,
@@ -812,7 +813,7 @@ export default function SessionViewModal({
       <View style={styles.modalOverlay}>
         <Pressable style={styles.backdropTouch} onPress={onClose} />
         <View style={styles.modalContent}>
-          <SafeAreaView style={styles.container}>
+          <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
         <StatusBar barStyle="dark-content" />
 
         {/* Header */}

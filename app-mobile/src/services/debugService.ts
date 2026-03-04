@@ -11,6 +11,22 @@ export interface LogEntry {
 const MAX_LOGS = 200;
 let logs: LogEntry[] = [];
 
+/** Serialize any value — extracts stack traces from Error objects */
+function serialize(arg: any): string {
+  if (arg instanceof Error) {
+    return `${arg.name}: ${arg.message}${arg.stack ? '\n' + arg.stack : ''}`;
+  }
+  if (typeof arg === 'string') return arg;
+  if (typeof arg === 'object' && arg !== null) {
+    try {
+      return JSON.stringify(arg, null, 2);
+    } catch {
+      return String(arg);
+    }
+  }
+  return String(arg);
+}
+
 class DebugService {
   private originalLog: any;
   private originalWarn: any;
@@ -20,7 +36,7 @@ class DebugService {
 
   initialize() {
     if (this.isInitialized) return;
-    
+
     // Store original console methods
     this.originalLog = console.log;
     this.originalWarn = console.warn;
@@ -34,13 +50,56 @@ class DebugService {
     console.info = this.createLogWrapper('info');
     console.debug = this.createLogWrapper('debug');
 
+    // Catch unhandled JS exceptions (red screen errors)
+    this.installGlobalErrorHandlers();
+
     this.isInitialized = true;
-    this.originalLog('🐛 Debug Service initialized');
+    this.originalLog('🐛 Debug Service initialized (global error handlers active)');
+  }
+
+  /** Install global handlers for uncaught errors + unhandled promise rejections */
+  private installGlobalErrorHandlers() {
+    // 1. Uncaught JS exceptions via React Native's ErrorUtils
+    const g = global as any;
+    if (g.ErrorUtils) {
+      const prevHandler = g.ErrorUtils.getGlobalHandler();
+      g.ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
+        const tag = isFatal ? 'FATAL' : 'UNCAUGHT';
+        this.originalError(
+          `[${tag}] ${error.name}: ${error.message}\n${error.stack ?? '(no stack)'}`
+        );
+        this.addLog('error', `[${tag}] ${serialize(error)}`);
+        // Forward to the previous handler so the red screen still shows
+        if (prevHandler) prevHandler(error, isFatal);
+      });
+    }
+
+    // 2. Unhandled promise rejections
+    // RN's default handler sends these to LogBox (device overlay) in dev mode,
+    // which does NOT appear in Metro terminal. We re-enable tracking so
+    // rejections are also printed to console.error → Metro terminal.
+    try {
+      const tracking = require('promise/setimmediate/rejection-tracking');
+      tracking.disable(); // Clear RN's existing handler to avoid double-fire
+      tracking.enable({
+        allRejections: true,
+        onUnhandled: (id: number, error: any) => {
+          const msg = error instanceof Error ? serialize(error) : String(error);
+          this.originalError(`[UNHANDLED_PROMISE id=${id}] ${msg}`);
+          this.addLog('error', `[UNHANDLED_PROMISE id=${id}] ${msg}`);
+        },
+        onHandled: (_id: number) => {
+          // Rejection was handled late — no action needed
+        },
+      });
+    } catch {
+      // If promise tracking module isn't available, skip silently
+    }
   }
 
   private createLogWrapper(level: LogEntry['level']) {
     return (...args: any[]) => {
-      const originalMethod = 
+      const originalMethod =
         level === 'log' ? this.originalLog :
         level === 'warn' ? this.originalWarn :
         level === 'error' ? this.originalError :
@@ -50,20 +109,8 @@ class DebugService {
       // Call original console method
       originalMethod(...args);
 
-      // Format message
-      const message = args
-        .map(arg => {
-          if (typeof arg === 'string') return arg;
-          if (typeof arg === 'object') {
-            try {
-              return JSON.stringify(arg, null, 2);
-            } catch {
-              return String(arg);
-            }
-          }
-          return String(arg);
-        })
-        .join(' ');
+      // Format message — use serialize() so Error stacks are captured
+      const message = args.map(serialize).join(' ');
 
       // Add to logs
       this.addLog(level, message);

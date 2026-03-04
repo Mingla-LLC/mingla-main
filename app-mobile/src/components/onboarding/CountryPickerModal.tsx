@@ -8,7 +8,7 @@ import {
   Modal,
   StyleSheet,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { COUNTRIES } from '../../constants/countries';
@@ -37,6 +37,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
   onSelect,
   onClose,
 }) => {
+  const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
 
   const filteredCountries = useMemo(() => {
@@ -107,7 +108,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
         <View style={styles.header}>
           <Text style={styles.title}>Select Country</Text>
           <TouchableOpacity

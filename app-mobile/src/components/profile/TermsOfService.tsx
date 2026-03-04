@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "@/src/constants/colors";
 
 interface TermsOfServiceProps {
@@ -20,6 +20,7 @@ interface TermsOfServiceProps {
 export default function TermsOfService({
   onNavigateBack,
 }: TermsOfServiceProps) {
+  const insets = useSafeAreaInsets();
   const handleEmailPress = () => {
     Linking.openURL("mailto:support@mingla.app");
   };
@@ -41,7 +42,7 @@ export default function TermsOfService({
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={true}>
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }} showsVerticalScrollIndicator={true}>
         <View style={styles.contentContainer}>
           <View style={styles.sectionsContainer}>
             {/* Header */}

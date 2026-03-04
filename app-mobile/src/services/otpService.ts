@@ -11,6 +11,24 @@ interface VerifyOtpResult {
 }
 
 /**
+ * Extract the real error message from a Supabase FunctionsHttpError.
+ * supabase-js v2 wraps non-2xx responses in a FunctionsHttpError with
+ * the generic message "Edge Function returned a non-2xx status code".
+ * The actual error body is in error.context (the raw Response object).
+ */
+async function extractFunctionError(error: any, fallback: string): Promise<string> {
+  try {
+    if (error?.context && typeof error.context.json === 'function') {
+      const body = await error.context.json()
+      if (body?.error) return body.error
+    }
+  } catch {
+    // Response body couldn't be parsed — fall through
+  }
+  return fallback
+}
+
+/**
  * Send OTP to the given phone number via Twilio Verify (proxied through edge function).
  */
 export async function sendOtp(phone: string): Promise<SendOtpResult> {
@@ -19,7 +37,10 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
   })
 
   if (error) {
-    return { success: false, error: error.message ?? "Couldn't send code. Try again." }
+    console.error('[sendOtp] Edge function error:', error.name, error.message)
+    const msg = await extractFunctionError(error, "Couldn't send code. Try again.")
+    console.error('[sendOtp] Actual error:', msg)
+    return { success: false, error: msg }
   }
 
   if (data?.error) {
@@ -38,7 +59,10 @@ export async function verifyOtp(phone: string, code: string): Promise<VerifyOtpR
   })
 
   if (error) {
-    return { success: false, error: error.message ?? 'Verification failed. Try again.' }
+    console.error('[verifyOtp] Edge function error:', error.name, error.message)
+    const msg = await extractFunctionError(error, 'Verification failed. Try again.')
+    console.error('[verifyOtp] Actual error:', msg)
+    return { success: false, error: msg }
   }
 
   if (data?.error) {

@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "@/src/constants/colors";
 
 interface PrivacyPolicyProps {
@@ -18,6 +18,7 @@ interface PrivacyPolicyProps {
 }
 
 export default function PrivacyPolicy({ onNavigateBack }: PrivacyPolicyProps) {
+  const insets = useSafeAreaInsets();
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" />
@@ -35,7 +36,7 @@ export default function PrivacyPolicy({ onNavigateBack }: PrivacyPolicyProps) {
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}>
         <View style={styles.contentContainer}>
           <View style={styles.contentInner}>
             {/* Header */}

@@ -15,7 +15,7 @@ import {
   AccessibilityInfo,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as WebBrowser from "expo-web-browser";
 import { HapticFeedback } from "../../utils/hapticFeedback";
@@ -30,7 +30,7 @@ import {
 import { s, vs } from "../../utils/responsive";
 
 const googleIcon = require("../../../assets/google_icon.png");
-const logo = require("../../../assets/mobile_logo.png");
+const logo = require("../../../assets/mingla_official_logo.png");
 
 // Placeholder URLs — replace with actual URLs when provided by product
 const TERMS_URL = "https://mingla.app/terms";
@@ -48,6 +48,7 @@ export default function WelcomeScreen({
   onGoogleSignIn,
   onAppleSignIn,
 }: WelcomeScreenProps) {
+  const insets = useSafeAreaInsets();
   const [isGoogleSignInInProgress, setIsGoogleSignInInProgress] =
     useState(false);
   const [isAppleSignInInProgress, setIsAppleSignInInProgress] = useState(false);
@@ -259,7 +260,7 @@ export default function WelcomeScreen({
       colors={[colors.background.primary, backgroundWarmGlow]}
       style={styles.gradient}
     >
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <StatusBar
           barStyle="dark-content"
           backgroundColor="transparent"
@@ -312,7 +313,7 @@ export default function WelcomeScreen({
         </View>
 
         {/* Action Zone — centred buttons */}
-        <View style={styles.actionZone}>
+        <View style={[styles.actionZone, { paddingBottom: Math.max(insets.bottom, vs(24)) }]}>
           {/* Apple Sign-In Button — iOS only */}
           {Platform.OS === "ios" && (
             <Animated.View
@@ -445,14 +446,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.xl,
+    paddingBottom: vs(64),
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: vs(28),
+    marginBottom: vs(20),
+    flexShrink: 1,
   },
   logo: {
     width: s(180),
-    maxWidth: "55%",
+    maxWidth: "50%",
+    aspectRatio: 1356 / 480,
   },
   headlineRow: {
     flexDirection: "row",
@@ -473,7 +477,6 @@ const styles = StyleSheet.create({
   },
   actionZone: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: vs(24),
     alignItems: "center",
     gap: vs(14),
   },

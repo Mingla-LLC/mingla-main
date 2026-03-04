@@ -11,7 +11,7 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -52,6 +52,7 @@ export default function PostExperienceModal({
   onComplete,
 }: PostExperienceModalProps) {
   const { user } = useAppStore();
+  const insets = useSafeAreaInsets();
 
   // Step state machine
   const [step, setStep] = useState<Step>("prompt");
@@ -746,7 +747,7 @@ export default function PostExperienceModal({
       transparent={false}
       onRequestClose={() => {}}
     >
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
         {step === "prompt" && renderPromptStep()}
         {step === "rate" && renderRateStep()}
         {step === "record" && renderRecordStep()}

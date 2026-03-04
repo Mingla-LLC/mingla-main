@@ -391,6 +391,7 @@ function AppContent() {
   // Handle notification tap → navigate to the relevant page
   const handleNotificationNavigate = (notification: InAppNotification) => {
     const nav = notification.navigation;
+    logger.action('Notification tapped', { page: nav.page, type: notification.type });
     switch (nav.page) {
       case "home":
         setCurrentPage("home");
@@ -433,6 +434,7 @@ function AppContent() {
 
   // Session handlers for the CollaborationSessions bar
   const handleSessionSelect = (sessionId: string | null) => {
+    logger.action('Session selected', { sessionId });
     if (sessionId) {
       const session = boardsSessions?.find((s: any) => s.id === sessionId || s.session_id === sessionId);
       if (session) {
@@ -443,6 +445,7 @@ function AppContent() {
   };
 
   const handleSoloSelect = () => {
+    logger.action('Solo mode selected');
     handlers.handleModeChange('solo');
     setCurrentSessionId(null);
   };
@@ -560,6 +563,7 @@ function AppContent() {
 
   const handleCreateSession = async (sessionName: string, selectedFriends: Friend[] = []) => {
     if (!user?.id) return;
+    logger.action('Create session pressed', { name: sessionName, friendCount: selectedFriends.length });
     setIsCreatingSession(true);
     let createdSessionId: string | null = null;
     let successfulParticipantAdds = 0;
@@ -729,6 +733,7 @@ function AppContent() {
 
   const handleAcceptInvite = async (sessionId: string) => {
     if (!user?.id) return;
+    logger.action('Accept invite pressed', { sessionId });
     try {
       // First, find the invite by session_id and user_id
       const { data: invite, error: fetchError } = await supabase
@@ -860,6 +865,7 @@ function AppContent() {
 
   const handleDeclineInvite = async (sessionId: string) => {
     if (!user?.id) return;
+    logger.action('Decline invite pressed', { sessionId });
     try {
       // Find the invite by session_id and user_id
       const { data: invite, error: fetchError } = await supabase
@@ -916,6 +922,7 @@ function AppContent() {
 
   const handleCancelInvite = async (sessionId: string) => {
     if (!user?.id) return;
+    logger.action('Cancel invite pressed', { sessionId });
     try {
       // Cancel sent invite - remove the session if creator
       const { error } = await supabase
@@ -1211,6 +1218,7 @@ function AppContent() {
 
   // Function to dismiss the help button permanently
   const dismissHelpButton = async () => {
+    logger.action('Help button dismissed');
     try {
       await AsyncStorage.setItem("mingla_help_button_dismissed", "true");
       helpButtonDismissedRef.current = true;
@@ -1222,6 +1230,7 @@ function AppContent() {
 
   // Function to handle starting the tour
   const handleStartTour = () => {
+    logger.action('Start coach mark tour');
     setShowWelcomeDialog(false);
     setShowCoachMap(true);
     mixpanelService.trackCoachMarkTourStarted();
@@ -1229,6 +1238,7 @@ function AppContent() {
 
   // Function to handle giving feedback from welcome dialog
   const handleGiveFeedback = () => {
+    logger.action('Give feedback pressed');
     setShowWelcomeDialog(false);
     setTimeout(() => setShowGiveFeedbackModal(true), 100);
   };
@@ -1287,6 +1297,7 @@ function AppContent() {
     message: string;
     category: string;
   }) => {
+    logger.action('Feedback submitted', { rating: feedback.rating, category: feedback.category });
     try {
       // Store feedback in Supabase
       const { error } = await supabase.from("app_feedback").insert({
@@ -1319,6 +1330,7 @@ function AppContent() {
   };
 
   const handleFeedbackClose = async () => {
+    logger.action('Feedback modal closed');
     setShowFeedbackModal(false);
     try {
       const raw = await AsyncStorage.getItem(FEEDBACK_STORAGE_KEY);
@@ -1474,10 +1486,11 @@ function AppContent() {
         return (
           <HomePage
             onOpenPreferences={() => {
+              logger.action('Open preferences pressed');
               setShowPreferences(true);
             }}
             onOpenCollaboration={handlers.handleCollaborationOpen}
-            onOpenCollabPreferences={() => setShowCollabPreferences(true)}
+            onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
             currentMode={currentMode ?? "solo"}
             isHighlightingHeader={isHighlightingHeader}
             userPreferences={userPreferences}
@@ -1804,19 +1817,21 @@ function AppContent() {
         return (
           <ProfilePage
             onSignOut={async () => {
+              logger.action('Sign out pressed');
               await handleSignOut();
             }}
             onNavigateToActivity={handlers.handleNavigateToActivity}
             onNavigateToConnections={() => {
-              console.log("Navigate to connections");
+              logger.action('Navigate to connections from profile');
               setCurrentPage("connections");
             }}
             onNavigateToProfileSettings={() => {
+              logger.action('Open profile settings');
               setShowProfileSettings(true);
             }}
-            onNavigateToAccountSettings={() => setShowAccountSettings(true)}
-            onNavigateToPrivacyPolicy={() => setShowPrivacyPolicy(true)}
-            onNavigateToTermsOfService={() => setShowTermsOfService(true)}
+            onNavigateToAccountSettings={() => { logger.action('Open account settings'); setShowAccountSettings(true) }}
+            onNavigateToPrivacyPolicy={() => { logger.action('Open privacy policy'); setShowPrivacyPolicy(true) }}
+            onNavigateToTermsOfService={() => { logger.action('Open terms of service'); setShowTermsOfService(true) }}
             savedExperiences={savedCards?.length || 0}
             boardsCount={boardsSessions?.length || 0}
             connectionsCount={friendsList?.length || 0}
@@ -1833,10 +1848,11 @@ function AppContent() {
         return (
           <HomePage
             onOpenPreferences={() => {
+              logger.action('Open preferences pressed');
               setShowPreferences(true);
             }}
             onOpenCollaboration={handlers.handleCollaborationOpen}
-            onOpenCollabPreferences={() => setShowCollabPreferences(true)}
+            onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
             currentMode={currentMode ?? "solo"}
             isHighlightingHeader={isHighlightingHeader}
             userPreferences={userPreferences}
@@ -1977,7 +1993,7 @@ function AppContent() {
                         <View style={styles.navigationContainer}>
                           <TouchableOpacity
                             onPress={() => {
-                              console.log("Navigating to home");
+                              logger.action('Tab pressed: home');
                               closeProfileOverlays();
                               setCurrentPage("home");
                             }}
@@ -2005,7 +2021,7 @@ function AppContent() {
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => {
-                              console.log("Navigating to discover");
+                              logger.action('Tab pressed: discover');
                               closeProfileOverlays();
                               setCurrentPage("discover");
                             }}
@@ -2033,7 +2049,7 @@ function AppContent() {
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => {
-                              console.log("Navigating to connections");
+                              logger.action('Tab pressed: connections');
                               closeProfileOverlays();
                               setCurrentPage("connections");
                             }}
@@ -2072,6 +2088,7 @@ function AppContent() {
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => {
+                              logger.action('Tab pressed: likes');
                               closeProfileOverlays();
                               setCurrentPage("likes");
                             }}
@@ -2137,7 +2154,7 @@ function AppContent() {
                             </TouchableOpacity> */}
                           <TouchableOpacity
                             onPress={() => {
-                              console.log("Navigating to profile");
+                              logger.action('Tab pressed: profile');
                               closeProfileOverlays();
                               setCurrentPage("profile");
                             }}
@@ -2217,7 +2234,7 @@ function AppContent() {
                     {/* Share Modal */}
                     <ShareModal
                       isOpen={showShareModal}
-                      onClose={() => setShowShareModal(false)}
+                      onClose={() => { logger.action('Share modal closed'); setShowShareModal(false) }}
                       experienceData={shareData?.experienceData}
                       dateTimePreferences={shareData?.dateTimePreferences}
                       userPreferences={userPreferences}
@@ -2266,7 +2283,7 @@ function AppContent() {
                         {/* Main help button */}
                         <TouchableOpacity
                           style={styles.floatingButton}
-                          onPress={() => setShowWelcomeDialog(true)}
+                          onPress={() => { logger.action('Help button pressed'); setShowWelcomeDialog(true) }}
                         >
                           <Feather name="help-circle" size={24} color="white" />
                         </TouchableOpacity>
@@ -2291,6 +2308,7 @@ function AppContent() {
             <PreferencesSheet
               visible={true}
               onClose={() => {
+                logger.action('Close collab preferences');
                 setShowCollabPreferences(false);
               }}
               onSave={handlers.handleCollabPreferencesSave}
@@ -2310,6 +2328,7 @@ function AppContent() {
             <PreferencesSheet
               visible={true}
               onClose={() => {
+                logger.action('Close preferences');
                 setShowPreferences(false);
               }}
               onSave={handlers.handleSavePreferences}
