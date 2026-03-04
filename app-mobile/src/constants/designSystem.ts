@@ -241,6 +241,42 @@ export const responsiveTypography = {
   xxxl: { fontSize: ms(32), lineHeight: ms(48) },
 } as const;
 
+// Glassmorphism tokens (scoped to onboarding)
+export const glass = {
+  surface: {
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    borderWidth: 1,
+    borderRadius: radius.xl,
+  },
+  surfaceElevated: {
+    backgroundColor: 'rgba(255, 255, 255, 0.70)',
+    borderColor: 'rgba(255, 255, 255, 0.45)',
+    borderWidth: 1,
+    borderTopWidth: 0.5,
+  },
+  buttonPrimary: {
+    backgroundColor: colors.primary[500],
+    borderRadius: radius.lg,
+    height: 56,
+  },
+  buttonSecondary: {
+    backgroundColor: 'rgba(255, 255, 255, 0.40)',
+    borderColor: 'rgba(255, 255, 255, 0.50)',
+    borderWidth: 1.5,
+    borderRadius: radius.lg,
+  },
+  blurIntensity: 40,
+  blurTint: 'light' as const,
+  shadow: {
+    shadowColor: 'rgba(0, 0, 0, 0.08)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 6,
+  },
+} as const;
+
 // Export commonly used combinations
 export const commonStyles = {
   // Card styles

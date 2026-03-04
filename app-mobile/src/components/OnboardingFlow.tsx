@@ -5,6 +5,7 @@ import {
   TextInput,
   Pressable,
   Animated,
+  Easing,
   StyleSheet,
   Dimensions,
   Linking,
@@ -24,6 +25,7 @@ import { supabase } from '../services/supabase'
 import { PreferencesService } from '../services/preferencesService'
 import { locationService } from '../services/locationService'
 import { sendOtp, verifyOtp } from '../services/otpService'
+import { logger } from '../utils/logger'
 import { createSavedPerson } from '../services/savedPeopleService'
 import { startRecording, stopRecording, uploadAudioClip } from '../services/personAudioService'
 import { searchUsers, sendFriendLink } from '../services/friendLinkService'
@@ -66,6 +68,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window')
 
 interface OnboardingFlowProps {
   onComplete: () => void
+  onBackToWelcome?: () => void
 }
 
 const INITIAL_DATA: OnboardingData = {
@@ -110,7 +113,7 @@ const SkipAutoAdvance = ({ goNext }: { goNext: () => void }) => {
   )
 }
 
-const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
+const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) => {
   const { user } = useAuthSimple()
   const { profile } = useAppStore()
   const queryClient = useQueryClient()
@@ -161,6 +164,13 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const slideAnim = useRef(new Animated.Value(0)).current
   const revealScale = useRef(new Animated.Value(0.8)).current
   const revealOpacity = useRef(new Animated.Value(0)).current
+
+  // ─── Welcome Screen Animations (4-phase text reveal) ───
+  const heyAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(20) }).current
+  const nameAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(30), scale: new Animated.Value(0.92) }).current
+  const tagTopAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(15) }).current
+  const tagAccentAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(15) }).current
+  const welcomeAnimRan = useRef(false)
 
   // ─── Resume Logic ───
   useEffect(() => {
@@ -240,7 +250,9 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
 
   // ─── Send OTP ───
   const handleSendOtp = useCallback(async () => {
+    logger.action('Send OTP pressed')
     if (!isPhoneValid()) {
+      logger.onboarding('OTP send blocked — phone invalid')
       setPhoneError('Check that number — something looks off.')
       return
     }
@@ -270,16 +282,19 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   // ─── Verify OTP ───
   const handleVerifyOtp = useCallback(
     async (code: string) => {
+      logger.action('Verify OTP pressed')
       setOtpLoading(true)
       setOtpError(false)
       const result = await verifyOtp(buildE164(), code)
       setOtpLoading(false)
       if (result.success) {
+        logger.onboarding('OTP verified successfully')
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
         setData((prev) => ({ ...prev, phoneVerified: true }))
         await persistStep(2)
         setTimeout(() => goNext(), 800) // pause for success animation
       } else {
+        logger.onboarding('OTP verification failed', { attempts: otpAttempts + 1 })
         setOtpError(true)
         setOtpAttempts((a) => a + 1)
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
@@ -296,23 +311,28 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
 
   // ─── Location Permission ───
   const handleLocationRequest = useCallback(async () => {
+    logger.action('Location permission requested')
     setLocationStatus('requesting')
     const { status, canAskAgain } = await Location.getForegroundPermissionsAsync()
 
     if (status === 'granted') {
+      logger.onboarding('Location: already granted')
       await captureLocation()
       return
     }
 
     if (!canAskAgain) {
+      logger.onboarding('Location: cannot ask again — showing settings prompt')
       setLocationStatus('settings')
       return
     }
 
     const result = await Location.requestForegroundPermissionsAsync()
     if (result.status === 'granted') {
+      logger.onboarding('Location: permission granted')
       await captureLocation()
     } else {
+      logger.onboarding('Location: permission denied')
       setLocationStatus('denied')
       setHasGpsPermission(false)
       setData((prev) => ({ ...prev, locationGranted: false, useGpsLocation: false }))
@@ -339,6 +359,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         }))
         setHasGpsPermission(true)
         setLocationStatus('granted')
+        logger.onboarding('Location captured', { city, lat: loc.latitude, lng: loc.longitude })
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
         await persistStep(4)
         setTimeout(() => goNext(), 1200) // show confirmation briefly
@@ -380,6 +401,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   // ─── Save Preferences (Step 4 → 5 transition) ───
   const handleSavePreferences = useCallback(async () => {
     if (!user?.id) return
+    logger.action('Save preferences pressed', { categories: data.selectedCategories.length, budget: data.budget, transport: data.transportMode })
     setSavingPrefs(true)
     try {
       await PreferencesService.updateUserPreferences(user.id, {
@@ -436,6 +458,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   // ─── Step 5 Save Person ───
   const handleSavePerson = useCallback(async () => {
     if (!user?.id) return
+    logger.action('Save person pressed')
     setSaving(true)
     try {
       const personData: any = {
@@ -476,6 +499,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   // ─── Launch Handler ───
   const handleLaunch = useCallback(async () => {
     if (!user?.id) return
+    logger.onboarding('Launch sequence started')
     // Mark complete
     try {
       await supabase.from('profiles').update({ has_completed_onboarding: true, onboarding_step: 0 }).eq('id', user.id)
@@ -545,6 +569,67 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     handleLaunch()
   }, [handleLaunch])
 
+  // ─── Welcome Text Entrance Animation ───
+  useEffect(() => {
+    if (navState.subStep !== 'welcome' || welcomeAnimRan.current) return
+    welcomeAnimRan.current = true
+
+    const runWelcomeAnim = async () => {
+      let reducedMotion = false
+      try {
+        reducedMotion = await AccessibilityInfo.isReduceMotionEnabled()
+      } catch {
+        reducedMotion = false
+      }
+
+      if (reducedMotion) {
+        heyAnim.opacity.setValue(1)
+        heyAnim.translateY.setValue(0)
+        nameAnim.opacity.setValue(1)
+        nameAnim.translateY.setValue(0)
+        nameAnim.scale.setValue(1)
+        tagTopAnim.opacity.setValue(1)
+        tagTopAnim.translateY.setValue(0)
+        tagAccentAnim.opacity.setValue(1)
+        tagAccentAnim.translateY.setValue(0)
+        return
+      }
+
+      // T+0ms: "Hey" fades in
+      Animated.parallel([
+        Animated.timing(heyAnim.opacity, { toValue: 1, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.spring(heyAnim.translateY, { toValue: 0, tension: 120, friction: 12, useNativeDriver: true }),
+      ]).start()
+
+      // T+150ms: "{firstName}." slides up
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(nameAnim.opacity, { toValue: 1, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.spring(nameAnim.translateY, { toValue: 0, tension: 100, friction: 12, useNativeDriver: true }),
+          Animated.spring(nameAnim.scale, { toValue: 1, tension: 100, friction: 12, useNativeDriver: true }),
+        ]).start()
+      }, 150)
+
+      // T+550ms: "Good taste" fades in
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(tagTopAnim.opacity, { toValue: 1, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.spring(tagTopAnim.translateY, { toValue: 0, tension: 120, friction: 12, useNativeDriver: true }),
+        ]).start()
+      }, 550)
+
+      // T+700ms: "just walked in." fades in
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(tagAccentAnim.opacity, { toValue: 1, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.spring(tagAccentAnim.translateY, { toValue: 0, tension: 120, friction: 12, useNativeDriver: true }),
+        ]).start()
+      }, 700)
+    }
+
+    runWelcomeAnim()
+  }, [navState.subStep])
+
   // ─── Step-Level Nav Handlers ───
   const handleGoNext = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
@@ -555,6 +640,12 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     goBack()
   }, [goBack])
+
+  const handleBackToWelcome = useCallback(async () => {
+    logger.action('Back to welcome — signing out')
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    await supabase.auth.signOut()
+  }, [])
 
   // ─── CTA Config ───
   const getCtaConfig = useCallback(() => {
@@ -610,16 +701,47 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   // ─── Render Step Content ───
   const renderContent = () => {
     const { step, subStep } = navState
+    logger.onboarding(`Rendering: Step ${step} / ${subStep}`)
     const firstName = profile?.first_name || profile?.display_name || user?.email?.split('@')[0] || 'there'
 
     // ─── STEP 1 ───
     if (subStep === 'welcome') {
       return (
         <View style={styles.centerContent}>
-          <Ionicons name="sparkles" size={48} color={colors.primary[500]} style={styles.stepIcon} />
-          <Text style={styles.headline}>Hey {firstName}.</Text>
-          <Text style={styles.subheadline}>Good taste just walked in.</Text>
-          <Text style={styles.body}>Quick thing — let's verify it's really you.</Text>
+          <Animated.Text
+            style={[
+              styles.welcomeGreeting,
+              { opacity: heyAnim.opacity, transform: [{ translateY: heyAnim.translateY }] },
+            ]}
+          >
+            Hey
+          </Animated.Text>
+          <Animated.Text
+            style={[
+              styles.welcomeName,
+              { opacity: nameAnim.opacity, transform: [{ translateY: nameAnim.translateY }, { scale: nameAnim.scale }] },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {firstName}.
+          </Animated.Text>
+          <Animated.Text
+            style={[
+              styles.welcomeTaglineTop,
+              { opacity: tagTopAnim.opacity, transform: [{ translateY: tagTopAnim.translateY }] },
+            ]}
+          >
+            Good taste
+          </Animated.Text>
+          <Animated.Text
+            style={[
+              styles.welcomeTaglineAccent,
+              { opacity: tagAccentAnim.opacity, transform: [{ translateY: tagAccentAnim.translateY }] },
+            ]}
+          >
+            just walked in.
+          </Animated.Text>
         </View>
       )
     }
@@ -1119,6 +1241,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       onPrimaryCta={ctaConfig.onPress}
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={false}
+      onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
     </OnboardingShell>
@@ -1150,6 +1273,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: spacing.xxl,
+  },
+  // ─── Welcome Screen (Cinematic Text Reveal) ───
+  welcomeGreeting: {
+    ...typography.xl,
+    fontWeight: fontWeights.medium,
+    color: colors.text.secondary,
+    textAlign: 'center',
+  },
+  welcomeName: {
+    fontSize: 40,
+    lineHeight: 48,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    letterSpacing: -1.0,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  welcomeTaglineTop: {
+    ...typography.lg,
+    fontWeight: fontWeights.regular,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+  },
+  welcomeTaglineAccent: {
+    ...typography.lg,
+    fontWeight: fontWeights.semibold,
+    color: colors.primary[500],
+    textAlign: 'center',
+    marginTop: 2,
   },
   headline: {
     ...typography.xxxl,

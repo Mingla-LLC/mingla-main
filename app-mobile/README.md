@@ -1,362 +1,128 @@
-# Mingla Mobile App
+# Mingla
 
-A cross-platform mobile application for collaborative experience discovery and planning, built with React Native and Expo. This mobile app mirrors the web application functionality while providing native mobile features and optimized user experience.
+A mobile-first experience discovery and planning app — swipe, save, and go. Built with React Native (Expo), TypeScript, Supabase, and 25 Deno edge functions.
 
-## 🚀 Features
+## Tech Stack
 
-### Core Features
-- **AI-Powered Recommendations**: Weather-aware and personalized experience suggestions with 18+ recommendations
-- **Real-time Collaboration**: Live session management and board collaboration
-- **Location Services**: GPS tracking with city name display (not raw coordinates)
-- **Tinder-style Interface**: Swipeable experience cards for intuitive discovery
-- **Board Management**: Create, manage, and collaborate on experience boards
-- **Authentication**: Real Supabase authentication with profile sync
+| Layer | Technology |
+|-------|-----------|
+| Mobile | React Native (Expo SDK 54), TypeScript strict |
+| Server state | React Query |
+| Client state | Zustand + AsyncStorage persistence |
+| Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
+| Edge functions | 25 Deno edge functions |
+| AI | OpenAI GPT-4o-mini (structured JSON output) |
+| Maps | Google Places API (New) |
+| Events | Ticketmaster Discovery API v2 |
+| Payments | Stripe Connect |
+| Styling | StyleSheet.create only (no inline styles) |
+| Navigation | Custom state-driven (no React Navigation) |
+| Blur effects | expo-blur (iOS frosted glass, Android solid fallback) |
 
-### Mobile-Specific Features
-- **Cross-platform**: Works seamlessly on iOS and Android
-- **Responsive Design**: Optimized for all screen sizes with dynamic layouts
-- **Native Integration**: Camera, location, notifications, and calendar
-- **Geocoding Service**: Converts coordinates to readable city names
-- **Performance Optimized**: Efficient rendering with caching and fallbacks
+## Project Structure
 
-## 📱 Screens
-
-### Home Screen
-- **AI Recommendations**: Intelligent experience suggestions with Tinder-style swipe interface
-- **Location Discovery**: Real-time location-based discovery with city name display
-- **Quick Actions**: Easy access to connections, collaborate, saved items, and scheduling
-- **Session Status**: Current collaboration session information
-- **Time-specific Greetings**: Personalized greetings based on time of day
-
-### Connections Screen
-- **Friends Tab**: Add friends, search, and manage friend relationships
-- **Inbox Tab**: Message conversations with search functionality
-- **Real-time Updates**: Live friend status and message notifications
-- **Demo Data**: Comprehensive demo data for testing and development
-
-### Activity Screen
-- **Board Management**: Create and manage collaborative boards
-- **Saved Experiences**: View and manage saved experiences with full details
-- **Calendar Integration**: Schedule and view planned experiences
-- **Session Integration**: Connect boards to collaboration sessions
-
-### Profile Screen
-- **User Statistics**: View activity and engagement metrics
-- **Settings Management**: Configure app preferences and notifications
-- **Account Management**: Update profile information and preferences
-- **Profile Settings**: Detailed settings page with comprehensive options
-
-## 🏗️ Architecture
-
-### Technology Stack
-- **React Native**: Cross-platform mobile development
-- **Expo**: Development platform and build tools
-- **TypeScript**: Type-safe development
-- **Supabase**: Backend as a Service (database, auth, real-time)
-- **Zustand**: State management with AsyncStorage persistence
-- **React Navigation**: Bottom tab and stack navigation
-- **React Native Gesture Handler**: Swipe gestures for Tinder-style interface
-
-### Project Structure
 ```
-src/
-├── components/          # Reusable UI components
-│   ├── ui/             # Base UI components (shadcn/ui)
-│   ├── AuthGuard.tsx   # Authentication guard
-│   ├── SimpleAuthGuard.tsx # Simplified auth guard
-│   ├── SwipeableExperienceCard.tsx # Tinder-style cards
-│   ├── AIRecommendationEngine.tsx
-│   ├── LocationAwareDiscovery.tsx
-│   ├── SessionSwitcher.tsx
-│   ├── CreateSessionModal.tsx
-│   └── ...
-├── screens/            # Screen components
-│   ├── HomeScreen.tsx
-│   ├── ConnectionsScreenTest.tsx # Connections with demo data
-│   ├── ActivityScreen.tsx
-│   ├── ProfileScreen.tsx
-│   ├── ProfileSettingsScreen.tsx
-│   └── AuthScreen.tsx
-├── hooks/              # Custom React hooks
-│   ├── useAuth.ts
-│   ├── useUserProfile.ts # Real user profile management
-│   ├── useExperiences.ts
-│   ├── useBoards.ts
-│   ├── useEnhancedBoards.ts
-│   ├── useRealtimeSession.ts
-│   ├── useFriends.ts
-│   ├── useMessages.ts
-│   └── ...
-├── services/           # External service integrations
-│   ├── supabase.ts
-│   ├── authService.ts # Real authentication service
-│   ├── geocodingService.ts # Coordinate to city name conversion
-│   ├── realtimeService.ts
-│   ├── enhancedLocationService.ts
-│   ├── enhancedNotificationService.ts
-│   ├── aiReasoningService.ts # Fixed AI recommendations
-│   ├── experienceService.ts # Direct experience fetching
-│   └── cameraService.ts
-├── store/              # State management
-│   └── appStore.ts
-├── types/              # TypeScript type definitions
-│   └── index.ts
-├── constants/          # App constants
-│   └── categories.ts
-└── contexts/           # React contexts
-    ├── NavigationContext.tsx
-    └── MobileFeaturesProvider.tsx
+app-mobile/
+  app/
+    index.tsx              # Entry point (AppContent)
+  src/
+    components/            # ~80+ UI components
+      onboarding/          # OnboardingShell, PhoneInput, OTPInput, AudioRecorder
+      signIn/              # WelcomeScreen (Google/Apple auth)
+      ui/                  # CategoryTile, PulseDotLoader, etc.
+      OnboardingFlow.tsx   # 5-step onboarding state machine
+      SwipeableCards.tsx    # Tinder-style swipe interface
+      ExpandedCardModal.tsx # Full card detail view
+      DiscoverScreen.tsx   # Explore + Night Out tabs
+      AppStateManager.tsx  # Root state orchestrator
+    hooks/                 # ~28 React Query hooks
+    services/              # ~53 service files (Supabase + API)
+    contexts/              # 3 React contexts (Recommendations, Navigation, etc.)
+    store/                 # Zustand store (appStore.ts)
+    types/                 # TypeScript types (database + domain)
+    constants/             # Design tokens, config, categories
+      designSystem.ts      # Spacing, colors, typography, glass tokens
+      categories.ts        # 12 experience categories
+    utils/                 # 12 utility files
+
+supabase/
+  functions/               # 25 Deno edge functions
+  migrations/              # 30+ SQL migration files
 ```
 
-## 🔧 Setup & Installation
+## Features
 
-### Prerequisites
-- Node.js (v20.19.4+)
-- npm or yarn
-- Expo CLI
-- iOS Simulator (for iOS development)
-- Android Studio (for Android development)
+- **AI-powered swipe discovery** — preference-driven cards served from a card pool pipeline (zero API cost on cache hit)
+- **12 experience categories** — Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business
+- **5 intent types** — Romantic, First Dates, Group Fun, Business, Solo Adventure (with curated multi-stop itineraries)
+- **Ticketmaster Night Out** — real event cards with genre/date/price filtering and in-app ticketing
+- **Collaboration sessions** — real-time boards with live participant updates
+- **5-step onboarding** — cinematic animated welcome, phone verification, intent/category/budget/transport preferences, person import
+- **Glassmorphism onboarding UI** — frosted glass bottom bar (expo-blur on iOS), full-width CTA with orange glow shadow, staggered text reveal animation
+- **Holiday experiences** — seasonal curated content with archive/delete
+- **Card pool pipeline** — place_pool + card_pool + user_card_impressions for efficient serving
+- **GPS + manual location** — with city name geocoding and preference toggle
 
-### Installation
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd app-mobile
-   ```
+## Database Schema (Key Tables)
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+| Table | Purpose |
+|-------|---------|
+| profiles | User profiles (auth-linked) |
+| preferences | User preferences (categories, budget, transport, travel time) |
+| boards / board_members | Collaborative experience boards |
+| experiences / saved_experiences | Place data and user saves |
+| collaboration_sessions | Real-time collaboration |
+| place_pool / card_pool | Pre-enriched card serving pipeline |
+| user_card_impressions | Tracks seen cards for freshness |
+| ticketmaster_events_cache | 2-hour TTL event cache |
+| holidays | Seasonal experiences with archive |
 
-3. **Configure environment**
-   - Update Supabase configuration in `src/services/supabase.ts`
-   - Configure Expo project settings in `app.json`
-   - Ensure Supabase project is properly configured
+## Edge Functions (Key)
 
-4. **Start development server**
-   ```bash
-   npm start
-   # or
-   npx expo start
-   ```
+| Function | Purpose |
+|----------|---------|
+| generate-experiences | Main card generation (Google Places + OpenAI) |
+| generate-curated-experiences | Multi-stop itinerary cards |
+| generate-session-experiences | Collaboration session cards |
+| discover-experiences | Explore tab discovery |
+| ticketmaster-events | Ticketmaster API proxy |
+| refresh-place-pool | Daily pool refresh (free Place Details) |
+| holiday-experiences | Seasonal content |
+| night-out-experiences | Legacy night out (replaced by Ticketmaster) |
 
-5. **Run on device/simulator**
-   - iOS: Press `i` in terminal or scan QR code with Camera app
-   - Android: Press `a` in terminal or scan QR code with Expo Go app
-   - Web: Press `w` in terminal for web development
+## Environment Variables
 
-## 🐛 Recent Fixes & Improvements
+### Mobile (app.json / .env)
+- `EXPO_PUBLIC_SUPABASE_URL` — Supabase project URL
+- `EXPO_PUBLIC_SUPABASE_ANON_KEY` — Supabase anon key
 
-### Authentication & Data Sync
-- ✅ **Real Authentication**: Implemented proper Supabase authentication
-- ✅ **Profile Sync**: User profiles now sync between web and mobile apps
-- ✅ **Profile Pictures**: Avatar images display correctly from web app
-- ✅ **User Data**: Real user data instead of mock data
+### Supabase Secrets (edge functions)
+- `GOOGLE_PLACES_API_KEY` — Google Places API (New)
+- `OPENAI_API_KEY` — OpenAI GPT-4o-mini
+- `TICKETMASTER_API_KEY` — Ticketmaster Discovery API v2
+- `STRIPE_SECRET_KEY` — Stripe Connect
+- `RESEND_API_KEY` — Email service
 
-### AI Recommendations
-- ✅ **Fixed AI Errors**: Resolved "FunctionsHttpError" issues
-- ✅ **18+ Recommendations**: App now shows same number of recommendations as web app
-- ✅ **Fallback System**: Robust fallback when AI service is unavailable
-- ✅ **Performance**: Improved loading times and error handling
+## Setup
 
-### Database & Queries
-- ✅ **Fixed Board Queries**: Resolved "PGRST200" relationship errors
-- ✅ **Simplified Queries**: Optimized database queries for better performance
-- ✅ **Error Handling**: Graceful handling of database connection issues
+```bash
+cd app-mobile
+npm install
+npx expo start
+```
 
-### Location Services
-- ✅ **City Names**: Location now shows "New York, NY, USA" instead of coordinates
-- ✅ **Geocoding Service**: Reverse geocoding with caching and fallbacks
-- ✅ **Common Locations**: Pre-defined locations for major cities
-- ✅ **Permission Handling**: Improved location permission management
+Scan QR code with Expo Go (Android) or Camera (iOS).
 
-### UI/UX Improvements
-- ✅ **Tinder Interface**: Swipeable experience cards with proper sizing
-- ✅ **Responsive Layout**: Dynamic layouts that work on all screen sizes
-- ✅ **Action Buttons**: Properly positioned action buttons below cards
-- ✅ **Time Greetings**: Personalized greetings based on time of day
-- ✅ **Loading States**: Better loading indicators and error states
+For Supabase edge functions:
+```bash
+cd supabase
+supabase functions serve
+```
 
-## 📱 Mobile Features
+## Recent Changes
 
-### Location Services
-- **GPS Tracking**: Real-time location monitoring with city name display
-- **Geocoding**: Automatic conversion of coordinates to readable locations
-- **Permission Management**: Comprehensive location permission handling
-- **Caching**: 24-hour cache for geocoding results to improve performance
-
-### Authentication
-- **Real Supabase Auth**: Full authentication with sign-in/sign-up
-- **Profile Management**: Real-time profile updates and sync
-- **Session Management**: Automatic session refresh and management
-- **Secure Storage**: Encrypted local storage for user data
-
-### AI Integration
-- **Weather-aware Recommendations**: AI suggestions based on current weather
-- **Personalized Suggestions**: User preference-based recommendations
-- **Fallback System**: Robust fallback when AI service is unavailable
-- **Performance**: Optimized with caching and timeout handling
-
-### Tinder-style Interface
-- **Swipeable Cards**: Intuitive swipe left/right interface
-- **Dynamic Sizing**: Cards adapt to different screen sizes
-- **Action Buttons**: Like, pass, and save actions
-- **Smooth Animations**: Fluid swipe animations and transitions
-
-## 🔄 Real-time Features
-
-### Collaboration Sessions
-- **Live Session Management**: Real-time participant updates
-- **Session Messaging**: Live chat functionality
-- **Session Switching**: Seamless switching between solo and collaborative modes
-- **Invite Management**: Real-time collaboration invitations
-
-### Board Collaboration
-- **Live Board Updates**: Real-time board modifications
-- **Experience Sharing**: Live experience additions and removals
-- **Collaborator Management**: Real-time collaborator updates
-- **Activity Tracking**: Live activity monitoring
-
-## 🎨 UI/UX Features
-
-### Design System
-- **Mobile-first Design**: Optimized for mobile devices
-- **Consistent Theming**: Unified color scheme and typography
-- **Responsive Layout**: Adapts to different screen sizes
-- **Tinder-style Interface**: Intuitive swipe-based discovery
-
-### User Experience
-- **Intuitive Navigation**: Bottom tab navigation with clear hierarchy
-- **Smooth Animations**: Fluid transitions and micro-interactions
-- **Loading States**: Clear feedback during data loading
-- **Error Handling**: User-friendly error messages and recovery
-
-## 🚀 Performance
-
-### Optimization Features
-- **Efficient Rendering**: Optimized component rendering
-- **Memory Management**: Proper cleanup and memory optimization
-- **Network Optimization**: Efficient API calls and caching
-- **Bundle Optimization**: Code splitting and lazy loading
-
-### Caching Strategy
-- **Geocoding Cache**: 24-hour cache for location names
-- **AI Recommendations**: 5-minute cache for recommendations
-- **User Data**: Persistent storage with AsyncStorage
-- **Image Caching**: Optimized image loading and caching
-
-## 🔐 Security
-
-### Authentication
-- **Supabase Auth**: Secure authentication with JWT tokens
-- **Session Management**: Automatic session refresh and management
-- **Permission-based Access**: Role-based access control
-- **Secure Storage**: Encrypted local storage for sensitive data
-
-### Data Protection
-- **HTTPS**: All network communications encrypted
-- **Input Validation**: Comprehensive input sanitization
-- **SQL Injection Prevention**: Parameterized queries
-- **XSS Protection**: Content Security Policy implementation
-
-## 🧪 Testing
-
-### Current Status
-- **Manual Testing**: Comprehensive manual testing across features
-- **Error Handling**: Robust error handling and fallback systems
-- **Cross-platform**: Tested on iOS and Android
-- **Performance**: Optimized for smooth user experience
-
-### Quality Assurance
-- **TypeScript**: Compile-time type checking
-- **ESLint**: Code quality and consistency
-- **Error Logging**: Comprehensive error logging and debugging
-- **User Feedback**: Real-time user experience monitoring
-
-## 🚀 Deployment
-
-### Build Process
-- **Expo Build**: Optimized production builds
-- **Code Signing**: Automatic iOS and Android code signing
-- **Asset Optimization**: Image and asset optimization
-- **Bundle Analysis**: Bundle size optimization
-
-### Distribution
-- **App Store**: iOS App Store deployment ready
-- **Google Play**: Android Play Store deployment ready
-- **Over-the-Air Updates**: Instant updates via Expo Updates
-- **Beta Testing**: Internal and external beta distribution
-
-## 📈 Current Status
-
-### ✅ Completed Features
-- Real authentication with Supabase
-- AI-powered recommendations (18+ experiences)
-- Location services with city name display
-- Tinder-style swipeable interface
-- Board management and collaboration
-- Profile management and settings
-- Real-time data sync with web app
-- Comprehensive error handling
-- Performance optimizations
-
-### 🔄 In Progress
-- Advanced search filters
-- Enhanced real-time chat
-- Push notifications
-- Offline mode capabilities
-- Advanced analytics
-
-### 📋 Roadmap
-- **Phase 1**: Core functionality (✅ Complete)
-- **Phase 2**: Advanced features (🔄 In Progress)
-- **Phase 3**: Polish and optimization (📋 Planned)
-
-## 🤝 Contributing
-
-### Development Guidelines
-- **Code Style**: Follow established coding conventions
-- **Commit Messages**: Use conventional commit format
-- **Pull Requests**: Comprehensive PR descriptions
-- **Testing**: Ensure all features work before merging
-
-### Getting Started
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly on both iOS and Android
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-### Documentation
-- **API Documentation**: Comprehensive API reference
-- **Component Library**: UI component documentation
-- **Setup Guide**: Step-by-step setup instructions
-- **Troubleshooting**: Common issues and solutions
-
-### Community
-- **GitHub Issues**: Bug reports and feature requests
-- **Discord**: Community discussions and support
-- **Stack Overflow**: Technical questions and answers
-- **Email**: Direct support for critical issues
-
----
-
-**Built with ❤️ using React Native, Expo, and Supabase**
-
-## 🎯 Key Achievements
-
-- ✅ **Mirrored Web App**: Mobile app now matches web app functionality
-- ✅ **Real Data Sync**: User profiles and data sync between platforms
-- ✅ **18+ Recommendations**: Same number of experiences as web app
-- ✅ **City Name Display**: User-friendly location names instead of coordinates
-- ✅ **Tinder Interface**: Intuitive swipe-based experience discovery
-- ✅ **Error-free Operation**: Resolved all major database and API errors
-- ✅ **Cross-platform**: Works seamlessly on iOS and Android
-- ✅ **Performance Optimized**: Fast loading with caching and fallbacks
+- Onboarding glassmorphism overhaul — frosted glass bottom bar, full-width CTA with orange glow shadow, 4-phase cinematic text reveal animation on welcome screen
+- "Back to sign in" escape hatch on first onboarding screen (signs out and returns to WelcomeScreen)
+- expo-blur added for iOS backdrop blur (Android uses solid semi-transparent fallback)
+- Glass design tokens added to designSystem.ts
+- CTA button press animation (spring scale 0.97) with per-screen entrance animation

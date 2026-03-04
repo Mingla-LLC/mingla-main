@@ -65,6 +65,7 @@ import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
 import { debugService } from "../src/services/debugService";
+import { logger } from "../src/utils/logger";
 import { DebugModal } from "../src/components/debug/DebugModal";
 import { useDebugGesture } from "../src/hooks/useDebugGesture";
 import { inAppNotificationService, InAppNotification } from "../src/services/inAppNotificationService";
@@ -319,26 +320,26 @@ function AppContent() {
 
   // Email verification removed — all users are now OAuth (inherently verified)
 
-  // Log current page for debugging
+  // Structured navigation logging
   useEffect(() => {
     if (isLoadingAuth) {
-      console.log(`📄 Current screen: loading`);
+      logger.nav('Screen: AuthLoading');
     } else if (!isAuthenticated) {
-      console.log(`📄 Current screen: welcome (sign-in)`);
+      logger.nav('Screen: WelcomeScreen (not authenticated)');
     } else if (showOnboardingFlow || needsOnboarding) {
-      console.log(`📄 Current screen: onboarding`);
+      logger.nav('Screen: OnboardingFlow', { showOnboardingFlow, needsOnboarding, hasCompletedOnboarding: profile?.has_completed_onboarding });
     } else if (showPreferences) {
-      console.log(`📄 Current screen: preferences`);
+      logger.nav('Modal: PreferencesSheet');
     } else if (showTermsOfService) {
-      console.log(`📄 Current screen: terms-of-service`);
+      logger.nav('Modal: TermsOfService');
     } else if (showPrivacyPolicy) {
-      console.log(`📄 Current screen: privacy-policy`);
+      logger.nav('Modal: PrivacyPolicy');
     } else if (showAccountSettings) {
-      console.log(`📄 Current screen: account-settings`);
+      logger.nav('Modal: AccountSettings');
     } else if (showProfileSettings) {
-      console.log(`📄 Current screen: profile-settings`);
+      logger.nav('Modal: ProfileSettings');
     } else {
-      console.log(`📄 Current page: ${currentPage}`);
+      logger.nav(`Page: ${currentPage}`, { userId: user?.id });
     }
   }, [
     currentPage,
@@ -1379,6 +1380,7 @@ function AppContent() {
 
   // Show loading while checking authentication status
   if (isLoadingAuth) {
+    logger.nav('Render: AuthLoading screen');
     return (
       <View
         style={{
@@ -1414,11 +1416,7 @@ function AppContent() {
   }
   // Show onboarding flow if it's active OR if user needs onboarding
   if (showOnboardingFlow || needsOnboarding) {
-    /*   console.log("Showing onboarding flow", {
-      showOnboardingFlow,
-      needsOnboarding,
-      hasCompletedOnboarding: profile?.has_completed_onboarding,
-    }); */
+    logger.nav('Render: OnboardingFlow', { showOnboardingFlow, needsOnboarding, hasCompletedOnboarding: profile?.has_completed_onboarding });
 
     // Ensure onboarding flow is shown (only if not navigating to sign-up)
     if (!showOnboardingFlow && needsOnboarding) {
@@ -1429,6 +1427,7 @@ function AppContent() {
       <ErrorBoundary>
         <OnboardingFlow
           onComplete={(data) => {
+            logger.nav('OnboardingFlow completed — transitioning to home');
             setOnboardingData(data);
             // has_completed_onboarding is already set in database by OnboardingFlow
             // Just update local state
@@ -1446,6 +1445,7 @@ function AppContent() {
   // If user exists but profile hasn't loaded yet, keep showing the loading state —
   // do NOT flash the WelcomeScreen.
   if (!isAuthenticated) {
+    logger.nav('Render: WelcomeScreen (not authenticated)');
     return (
       <ErrorBoundary>
         <WelcomeScreen
@@ -1459,6 +1459,7 @@ function AppContent() {
   // User is authenticated but profile hasn't loaded yet — show a loading indicator,
   // NOT the WelcomeScreen
   if (user && !profile) {
+    logger.nav('Render: ProfileLoading (user exists, waiting for profile)', { userId: user.id });
     return (
       <View style={{ flex: 1, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center' }}>
         <StatusBar barStyle="dark-content" translucent={true} backgroundColor="transparent" />

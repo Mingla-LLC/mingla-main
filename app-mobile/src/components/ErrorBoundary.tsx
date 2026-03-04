@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text, View, TouchableOpacity } from 'react-native';
+import { logger } from '../utils/logger';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -22,6 +23,8 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    logger.error('ErrorBoundary caught', { message: error.message, name: error.name });
+    logger.error('Component stack', { stack: errorInfo.componentStack?.slice(0, 500) });
     console.error('Error Boundary caught an error:', error, errorInfo);
   }
 

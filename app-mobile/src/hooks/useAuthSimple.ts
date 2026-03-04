@@ -9,6 +9,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { User } from "../types";
+import { logger } from "../utils/logger";
 
 // Configure Google Sign-In
 const webClientId =
@@ -51,6 +52,7 @@ export const useAuthSimple = () => {
 
     const initializeAuth = async () => {
       try {
+        logger.auth('Initializing — fetching session...');
         // Get initial session
         const {
           data: { session },
@@ -58,12 +60,14 @@ export const useAuthSimple = () => {
         } = await supabase.auth.getSession();
 
         if (error) {
+          logger.error('Failed to get session', { message: error.message });
           console.error("Error getting session:", error);
           if (mounted) setLoading(false);
           return;
         }
 
         if (session?.user) {
+          logger.auth('Session found', { userId: session.user.id, email: session.user.email });
           setAuth(session.user as User);
 
           // Load profile
@@ -75,6 +79,7 @@ export const useAuthSimple = () => {
               .single();
 
             if (profileError) {
+              logger.error('Profile load failed', { code: profileError.code, message: profileError.message });
               console.error("Error loading profile:", profileError);
               console.error("Profile error details:", {
                 code: profileError.code,
@@ -86,6 +91,7 @@ export const useAuthSimple = () => {
               // If profile doesn't exist (PGRST116), check if user actually exists
               // User might have been deleted from Supabase but session still cached
               if (profileError.code === "PGRST116") {
+                logger.auth('Profile not found (PGRST116) — validating user exists');
                 // Validate that user actually exists by trying to get user info
                 const {
                   data: { user: authUser },
@@ -93,6 +99,7 @@ export const useAuthSimple = () => {
                 } = await supabase.auth.getUser();
 
                 if (userError || !authUser || authUser.id !== session.user.id) {
+                  logger.auth('User deleted or session invalid — signing out');
                   // User was deleted or session is invalid - sign out and clear
                   await supabase.auth.signOut();
                   setAuth(null);
@@ -102,6 +109,7 @@ export const useAuthSimple = () => {
                 }
 
                 // User exists but profile doesn't - create one
+                logger.auth('User exists but no profile — creating new profile');
                 try {
                   const emailName = session.user.email?.split("@")[0] || "User";
                   const { data: newProfile, error: createError } =
@@ -131,12 +139,15 @@ export const useAuthSimple = () => {
                 }
               }
             } else if (profile) {
+              logger.auth('Profile loaded', { displayName: profile.display_name, onboarding: profile.has_completed_onboarding });
               setProfile(profile);
             }
           } catch (profileError) {
+            logger.error('Profile load exception', { error: String(profileError) });
             console.error("Error loading profile:", profileError);
           }
         } else {
+          logger.auth('No session — user not authenticated');
           setAuth(null);
         }
 
@@ -157,6 +168,7 @@ export const useAuthSimple = () => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      logger.auth(`Auth state change: ${event}`, { hasSession: !!session, userId: session?.user?.id });
       if (session?.user) {
         setAuth(session.user as User);
 
@@ -208,6 +220,7 @@ export const useAuthSimple = () => {
 
   const signOut = async () => {
     try {
+      logger.auth('Sign out requested');
       const { error } = await supabase.auth.signOut();
       if (error) {
         Alert.alert(
@@ -256,6 +269,7 @@ export const useAuthSimple = () => {
 
   const signInWithGoogle = async () => {
     try {
+      logger.auth('Google sign-in started');
       // Check if Google Sign-In is configured
       const webClientId =
         Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
@@ -423,9 +437,11 @@ export const useAuthSimple = () => {
       // Profile loading is handled by onAuthStateChange listener.
       // Do not fetch here — it causes double queries and double re-renders.
 
+      logger.auth('Google sign-in completed successfully');
       return { data: data.session, error: null };
     } catch (error: any) {
-      /*   console.error("Google sign-in error:", error); */
+      logger.error('Google sign-in failed', { code: error.code, message: error.message });
+      console.error("Google sign-in error:", error.code, error.message, error);
 
       // Handle specific error cases
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
@@ -456,6 +472,7 @@ export const useAuthSimple = () => {
 
   const signInWithApple = async () => {
     try {
+      logger.auth('Apple sign-in started');
       // Check if Apple Authentication is available (iOS 13+)
       if (Platform.OS !== "ios") {
         Alert.alert(
@@ -535,8 +552,10 @@ export const useAuthSimple = () => {
         }
       }
 
+      logger.auth('Apple sign-in completed successfully');
       return { data: data.session, error: null };
     } catch (error: any) {
+      logger.error('Apple sign-in failed', { code: error.code, message: error.message });
       console.error("Apple sign-in error:", error);
 
       // Handle specific error cases

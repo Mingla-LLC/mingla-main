@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Animated,
+  Easing,
+  AccessibilityInfo,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,6 +37,7 @@ interface OnboardingShellProps {
   onPrimaryCta: () => void;
   hidePrimaryCta?: boolean;
   hideBottomBar?: boolean;
+  onBackToWelcome?: () => void;
   children: React.ReactNode;
 }
 
@@ -48,11 +52,107 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   onPrimaryCta,
   hidePrimaryCta = false,
   hideBottomBar = false,
+  onBackToWelcome,
   children,
 }) => {
+  // CTA press animation
+  const ctaScale = useRef(new Animated.Value(1)).current;
+  const secondaryScale = useRef(new Animated.Value(1)).current;
+
+  // CTA entrance animation (per screen transition)
+  const ctaEntrance = useRef({
+    opacity: new Animated.Value(0),
+    translateY: new Animated.Value(16),
+  }).current;
+
+  // Re-run CTA entrance when primaryCtaLabel changes (proxy for subStep change)
+  useEffect(() => {
+    const runEntrance = async () => {
+      let reducedMotion = false;
+      try {
+        reducedMotion = await AccessibilityInfo.isReduceMotionEnabled();
+      } catch {
+        reducedMotion = false;
+      }
+
+      if (reducedMotion) {
+        ctaEntrance.opacity.setValue(1);
+        ctaEntrance.translateY.setValue(0);
+        return;
+      }
+
+      ctaEntrance.opacity.setValue(0);
+      ctaEntrance.translateY.setValue(16);
+
+      Animated.parallel([
+        Animated.timing(ctaEntrance.opacity, {
+          toValue: 1,
+          duration: 250,
+          delay: 200,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(ctaEntrance.translateY, {
+          toValue: 0,
+          duration: 250,
+          delay: 200,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    };
+
+    runEntrance();
+  }, [primaryCtaLabel]);
+
+  const isFirstScreen = step === 1 && !showBackButton;
+  const showBackToWelcome = isFirstScreen && !!onBackToWelcome;
+  const hasSecondaryButton = showBackToWelcome || showBackButton;
+
   const handleBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onBack();
+  };
+
+  const handleBackToWelcome = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onBackToWelcome?.();
+  };
+
+  const handlePrimaryPressIn = () => {
+    Animated.spring(ctaScale, {
+      toValue: 0.97,
+      tension: 200,
+      friction: 12,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePrimaryPressOut = () => {
+    Animated.spring(ctaScale, {
+      toValue: 1,
+      tension: 200,
+      friction: 12,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleSecondaryPressIn = () => {
+    Animated.spring(secondaryScale, {
+      toValue: 0.97,
+      tension: 200,
+      friction: 12,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleSecondaryPressOut = () => {
+    Animated.spring(secondaryScale, {
+      toValue: 1,
+      tension: 200,
+      friction: 12,
+      useNativeDriver: true,
+    }).start();
   };
 
   const handlePrimaryCta = () => {
@@ -60,6 +160,90 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onPrimaryCta();
   };
+
+  const secondaryLabel = showBackToWelcome ? 'Back to sign in' : 'Back';
+  const secondaryAccessibilityLabel = showBackToWelcome ? 'Back to sign in' : 'Go back';
+  const secondaryHandler = showBackToWelcome ? handleBackToWelcome : handleBack;
+
+  const renderBottomBarContent = () => (
+    <>
+      {/* Primary CTA — full width, solid orange */}
+      {!hidePrimaryCta && (
+        <Animated.View
+          style={{
+            opacity: ctaEntrance.opacity,
+            transform: [
+              { translateY: ctaEntrance.translateY },
+              { scale: ctaScale },
+            ],
+          }}
+        >
+          <TouchableOpacity
+            style={[
+              styles.primaryCta,
+              primaryCtaLoading
+                ? styles.primaryCtaLoading
+                : primaryCtaDisabled
+                  ? styles.primaryCtaDisabled
+                  : styles.primaryCtaEnabled,
+            ]}
+            onPress={handlePrimaryCta}
+            onPressIn={handlePrimaryPressIn}
+            onPressOut={handlePrimaryPressOut}
+            disabled={primaryCtaDisabled || primaryCtaLoading}
+            activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel={primaryCtaLabel}
+          >
+            {primaryCtaLoading ? (
+              <>
+                <ActivityIndicator
+                  size="small"
+                  color={colors.text.inverse}
+                  style={styles.ctaSpinner}
+                />
+                <Text style={styles.primaryCtaTextEnabled}>Saving...</Text>
+              </>
+            ) : (
+              <Text
+                style={[
+                  styles.primaryCtaText,
+                  primaryCtaDisabled
+                    ? styles.primaryCtaTextDisabled
+                    : styles.primaryCtaTextEnabled,
+                ]}
+              >
+                {primaryCtaLabel}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* Secondary button — full width, glass/outline style */}
+      {hasSecondaryButton && (
+        <Animated.View style={{ transform: [{ scale: secondaryScale }] }}>
+          <TouchableOpacity
+            style={styles.secondaryCta}
+            onPress={secondaryHandler}
+            onPressIn={handleSecondaryPressIn}
+            onPressOut={handleSecondaryPressOut}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={secondaryAccessibilityLabel}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={18}
+              color={colors.text.secondary}
+              style={styles.secondaryIcon}
+            />
+            <Text style={styles.secondaryCtaText}>{secondaryLabel}</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+    </>
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -86,69 +270,10 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
           {children}
         </ScrollView>
 
-        {/* Fixed bottom bar */}
+        {/* Fixed bottom bar — frosted glass panel */}
         {!hideBottomBar && (
           <View style={styles.bottomBar}>
-            {/* Back button */}
-            {showBackButton ? (
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={handleBack}
-                activeOpacity={0.6}
-                accessibilityRole="button"
-                accessibilityLabel="Go back"
-              >
-                <Ionicons
-                  name="arrow-back"
-                  size={18}
-                  color={colors.text.primary}
-                />
-                <Text style={styles.backButtonText}>Back</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.backPlaceholder} />
-            )}
-
-            {/* Primary CTA */}
-            {!hidePrimaryCta && (
-              <TouchableOpacity
-                style={[
-                  styles.primaryCta,
-                  primaryCtaLoading
-                    ? styles.primaryCtaLoading
-                    : primaryCtaDisabled
-                      ? styles.primaryCtaDisabled
-                      : styles.primaryCtaEnabled,
-                ]}
-                onPress={handlePrimaryCta}
-                disabled={primaryCtaDisabled || primaryCtaLoading}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel={primaryCtaLabel}
-              >
-                {primaryCtaLoading ? (
-                  <>
-                    <ActivityIndicator
-                      size="small"
-                      color={colors.text.inverse}
-                      style={styles.ctaSpinner}
-                    />
-                    <Text style={styles.primaryCtaTextEnabled}>Saving...</Text>
-                  </>
-                ) : (
-                  <Text
-                    style={[
-                      styles.primaryCtaText,
-                      primaryCtaDisabled
-                        ? styles.primaryCtaTextDisabled
-                        : styles.primaryCtaTextEnabled,
-                    ]}
-                  >
-                    {primaryCtaLabel}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
+            {renderBottomBarContent()}
           </View>
         )}
       </KeyboardAvoidingView>
@@ -171,62 +296,51 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: 120,
+    paddingBottom: 160,
   },
   bottomBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.gray[100],
-    backgroundColor: backgroundWarmGlow,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(255, 255, 255, 0.45)',
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    gap: 10,
   },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: touchTargets.comfortable,
-    width: touchTargets.comfortable,
-    justifyContent: 'center',
-  },
-  backButtonText: {
-    ...typography.md,
-    fontWeight: fontWeights.medium,
-    color: colors.text.primary,
-    marginLeft: spacing.xs,
-  },
-  backPlaceholder: {
-    width: touchTargets.comfortable,
-    height: touchTargets.comfortable,
-  },
+  // ─── Primary Button ───
   primaryCta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: touchTargets.comfortable,
-    minWidth: 120,
-    borderRadius: radius.md,
-    paddingVertical: 12,
-    paddingHorizontal: spacing.lg,
+    width: '100%',
+    height: 56,
+    borderRadius: radius.lg,
   },
   primaryCtaEnabled: {
     backgroundColor: colors.primary[500],
+    shadowColor: colors.primary[500],
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 4,
   },
   primaryCtaDisabled: {
     backgroundColor: colors.gray[200],
   },
   primaryCtaLoading: {
     backgroundColor: colors.primary[500],
-    opacity: 0.8,
+    opacity: 0.85,
   },
   primaryCtaText: {
-    ...typography.md,
+    fontSize: 17,
     fontWeight: fontWeights.semibold,
+    letterSpacing: 0.3,
   },
   primaryCtaTextEnabled: {
-    ...typography.md,
+    fontSize: 17,
     fontWeight: fontWeights.semibold,
+    letterSpacing: 0.3,
     color: colors.text.inverse,
   },
   primaryCtaTextDisabled: {
@@ -234,5 +348,26 @@ const styles = StyleSheet.create({
   },
   ctaSpinner: {
     marginRight: spacing.sm,
+  },
+  // ─── Secondary Button (glass outline) ───
+  secondaryCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: 48,
+    borderRadius: radius.lg,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  secondaryCtaText: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.secondary,
+    letterSpacing: 0.2,
+  },
+  secondaryIcon: {
+    marginRight: 4,
   },
 });

@@ -4,6 +4,7 @@ import {
   OnboardingStep,
   SubStep,
 } from '../types/onboarding'
+import { logger } from '../utils/logger'
 
 // ─── Step Sub-Step Sequences ───
 
@@ -75,17 +76,22 @@ export function useOnboardingStateMachine({
 
       // If not at end of current step's sub-steps, advance within step
       if (idx < seq.length - 1) {
-        return { step: prev.step, subStep: seq[idx + 1] }
+        const next = { step: prev.step, subStep: seq[idx + 1] }
+        logger.onboarding(`goNext: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
+        return next
       }
 
       // At end of step — advance to next step
       if (prev.step < 5) {
         const nextStep = (prev.step + 1) as OnboardingStep
         const nextSeq = getSequence(nextStep)
-        return { step: nextStep, subStep: nextSeq[0] }
+        const next = { step: nextStep, subStep: nextSeq[0] }
+        logger.onboarding(`goNext: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
+        return next
       }
 
       // At end of Step 5 — LAUNCH
+      logger.onboarding('LAUNCH triggered from end of Step 5')
       setIsLaunch(true)
       return prev
     })
@@ -98,17 +104,22 @@ export function useOnboardingStateMachine({
 
       // If not at start of current step, go back within step
       if (idx > 0) {
-        return { step: prev.step, subStep: seq[idx - 1] }
+        const next = { step: prev.step, subStep: seq[idx - 1] }
+        logger.onboarding(`goBack: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
+        return next
       }
 
       // At start of step — go to previous step's last sub-step
       if (prev.step > 1) {
         const prevStep = (prev.step - 1) as OnboardingStep
         const prevSeq = getSequence(prevStep)
-        return { step: prevStep, subStep: prevSeq[prevSeq.length - 1] }
+        const next = { step: prevStep, subStep: prevSeq[prevSeq.length - 1] }
+        logger.onboarding(`goBack: Step ${prev.step}/${prev.subStep} → Step ${next.step}/${next.subStep}`)
+        return next
       }
 
       // At Step 1 welcome — can't go back further
+      logger.onboarding(`goBack: already at Step 1/welcome — no-op`)
       return prev
     })
   }, [getSequence])
@@ -118,6 +129,7 @@ export function useOnboardingStateMachine({
   }, [])
 
   const choosePath = useCallback((path: 'invite' | 'add' | 'skip') => {
+    logger.onboarding(`choosePath: ${path}`)
     setChosenPath(path)
     if (path === 'skip') {
       // Skip path: show skip transition screen, then launch
