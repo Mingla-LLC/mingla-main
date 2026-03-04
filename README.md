@@ -138,12 +138,12 @@ Mingla/
 - 5-step guided onboarding with phone verification via Twilio Verify OTP:
   - **Step 1 — Welcome & Phone:** Country picker (240+ countries), phone input with E.164 formatting, 6-digit OTP verification with auto-submit
   - **Step 2 — Intents:** Value proposition beats with animated transitions, multi-select intent cards (Adventurous, First Dates, Romantic, Friendly, Group Fun, Picnic Dates, Take a Stroll)
-  - **Step 3 — Location:** GPS permission request with fallback to manual city input
+  - **Step 3 — Location:** GPS permission request with fallback to manual city input. Back-navigation shows persisted "Locked in" state instead of re-prompting for GPS
   - **Step 4 — Preferences:** Category grid (12 categories), budget slider ($25–$150), transport mode (walking/biking/transit/driving), travel time (15–60 min). Background card generation fires at Step 4→5 transition
   - **Step 5 — Add Someone:** Three paths — Invite (birthday→gender→audio→contact), Add (name→birthday→gender→audio), or Skip. Cards finish generating during this step
   - **Launch:** Grand reveal with rotating loading text, card deck animation
 - Intents stored separately from categories in `preferences.intents` column
-- Resume-aware: major step persists to DB, sub-steps are ephemeral
+- Resume-aware: major step persists to DB, sub-steps are ephemeral. One-shot resume guard prevents auth re-initialization cycles from overwriting in-progress selections
 - Account types: Explorer (consumer) or Curator (content creator)
 
 ### Home / Explore Tab -- Swipeable Card Deck
@@ -503,17 +503,17 @@ The `oauth-redirect/` directory contains a static site deployed to Vercel/Netlif
 
 ## Recent Changes
 
-- **Romantic Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic category-pool pipeline for the `romantic` intent with 2 dedicated Romantic Groups (Romance Start: galleries, museums, cultural landmarks, theaters; Romance Finish: upscale restaurants, wine bars). Each card is a 2-stop itinerary with budget split evenly across stops, romantic-toned AI descriptions, and intent-specific excluded place types (fast food, kid venues, arcades). Also fixed two pre-existing bugs: `performing_arts_theater` and `sushi_restaurant` missing from the global duration map.
+- **Friendly Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic 3-stop category-pool pipeline for the `friendly` intent with a dedicated 2-stop pipeline using 4 starting groups (Adrenaline, Entertainment, Outdoor, Cultural) → 1 Finish group (Casual Dining, 19 restaurant types). Starting groups rotate strictly (0→1→2→3→0) with cascading fallback when a group is exhausted. Minimal exclude list (indoor_playground, childrens_camp only). Added 8 new types to the global duration map and friendly-specific duration overrides for all 42 place types.
 
-- **First Date Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic category-pool pipeline for the `first-date` intent with 3 dedicated First Date Groups (Fun Activity, Cultural, Fine Dining). Each card is a 2-stop itinerary: ice-breaker activity or cultural outing → upscale dinner. Cards strictly alternate between Fun Activity and Cultural starting groups. Fallback to the other starting group when one is empty in the area.
+- **Romantic Intent — Dedicated Place Type Groups (2026-03-04):** 2 dedicated Romantic Groups (Romance Start → Romance Finish) for intimate 2-stop date itineraries with romantic-toned AI descriptions.
 
-- **Adventure Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic category-pool pipeline for the `adventurous` intent with 4 hand-picked Adventure Groups (Outdoor, Exotic Eats, Adrenaline, Culture). Each 3-stop itinerary picks 3 of 4 groups with round-robin rotation across all 4 possible combos.
+- **First Date Intent — Dedicated Place Type Groups (2026-03-04):** 3 dedicated First Date Groups for 2-stop cards with strict Fun Activity / Cultural alternation → upscale dinner.
 
-- **Location Step Freeze Fix (2026-03-04):** Fixed compound defect that caused the onboarding location step to freeze at "Locked in — {city}". Eliminated 4 root causes and 3 contributing factors.
+- **Adventure Intent — Dedicated Place Type Groups (2026-03-04):** 4 hand-picked Adventure Groups for 3-stop itineraries with round-robin rotation.
 
-- **Auto Locale Detection (hardened):** Currency and measurement system automatically detected from user location via GPS or reverse geocode.
+- **Location Step Freeze Fix (2026-03-04):** Fixed compound defect causing onboarding location step freeze.
 
-- **Account Settings Cleanup:** Only App Information and Delete Account sections remain.
+- **Onboarding State Persistence (2026-03-04):** Fixed two bugs causing onboarding selections to be lost during back-navigation. Auth re-initialization cycles no longer overwrite in-progress selections (one-shot resume guard). Location step now shows persisted "Locked in" state on return instead of re-prompting for GPS.
 
 ---
 

@@ -1606,6 +1606,7 @@ async function generateFriendlyCards(
     // Try starting groups in rotation order, with cascading fallback
     let startingGroup: FriendlyGroup | null = null;
     let availableStarts: any[] = [];
+    let usedGroupIdx = nextGroupIndex;
 
     for (let offset = 0; offset < FRIENDLY_STARTING_GROUPS.length; offset++) {
       const candidateIdx = (nextGroupIndex + offset) % FRIENDLY_STARTING_GROUPS.length;
@@ -1621,6 +1622,7 @@ async function generateFriendlyCards(
       if (candidateStarts.length > 0) {
         startingGroup = candidateGroup;
         availableStarts = candidateStarts;
+        usedGroupIdx = candidateIdx;
         break;
       }
     }
@@ -1667,7 +1669,7 @@ async function generateFriendlyCards(
     globalUsedPlaceIds.add(startId);
     globalUsedPlaceIds.add(finishId);
     cards.push(card);
-    nextGroupIndex = (nextGroupIndex + 1) % FRIENDLY_STARTING_GROUPS.length; // Advance rotation on successful build
+    nextGroupIndex = (usedGroupIdx + 1) % FRIENDLY_STARTING_GROUPS.length; // Advance from the group actually used, not the original target
 
     // Safety: if we've iterated way past the limit without filling, break
     if (cardIndex > limit * 4) break;

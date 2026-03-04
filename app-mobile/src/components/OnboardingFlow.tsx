@@ -146,6 +146,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   const goNextRef = useRef(goNext)
   goNextRef.current = goNext
   const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasResumedRef = useRef(false)
 
   // Cleanup auto-advance timeout on unmount
   useEffect(() => {
@@ -237,11 +238,17 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   const locPulse = useRef(new Animated.Value(1)).current
   const locPulseRef = useRef<Animated.CompositeAnimation | null>(null)
 
-  // Reset locationStatus to idle whenever we enter the location sub-step.
-  // This ensures navigating away (Back) and returning doesn't leave stale denied/requesting state.
+  // When entering the location sub-step, reflect the captured data state.
+  // If location was already captured, show 'granted' so the user sees their choice persisted.
+  // Otherwise, reset to 'idle' so they can try fresh (clears stale 'denied'/'requesting').
+  // Dep array is [navState.subStep] only — do NOT add data fields (see spec §9.1).
   useEffect(() => {
     if (navState.subStep === 'location') {
-      setLocationStatus('idle')
+      if (data.locationGranted && data.coordinates) {
+        setLocationStatus('granted')
+      } else {
+        setLocationStatus('idle')
+      }
     }
   }, [navState.subStep])
 
@@ -411,16 +418,18 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     }
   }, [navState.subStep, valuePropBeat])
 
-  // ─── Resume Logic ───
+  // ─── Resume Logic (one-shot: auth re-inits must NOT overwrite in-progress selections) ───
   useEffect(() => {
+    if (hasResumedRef.current) return
+
     async function loadResume() {
       if (!user?.id) return
+      hasResumedRef.current = true
       try {
         const savedStep = profile?.onboarding_step
         if (savedStep && savedStep >= 1 && savedStep <= 5) {
           setInitialStep(savedStep as OnboardingStep)
         }
-        // Load existing preferences
         const prefs = await PreferencesService.getUserPreferences(user.id)
         if (prefs) {
           setData((prev) => ({
