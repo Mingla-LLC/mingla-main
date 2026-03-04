@@ -1930,6 +1930,7 @@ async function generateGroupFunCards(
     // Try starting groups in alternation order, with fallback to the other group
     let startingGroup: GroupFunGroup | null = null;
     let availableStarts: any[] = [];
+    let usedGroupIdx = nextGroupIndex;
 
     for (let offset = 0; offset < GROUP_FUN_STARTING_GROUPS.length; offset++) {
       const candidateIdx = (nextGroupIndex + offset) % GROUP_FUN_STARTING_GROUPS.length;
@@ -1945,6 +1946,7 @@ async function generateGroupFunCards(
       if (candidateStarts.length > 0) {
         startingGroup = candidateGroup;
         availableStarts = candidateStarts;
+        usedGroupIdx = candidateIdx;
         break;
       }
     }
@@ -1991,7 +1993,7 @@ async function generateGroupFunCards(
     globalUsedPlaceIds.add(startId);
     globalUsedPlaceIds.add(finishId);
     cards.push(card);
-    nextGroupIndex = (nextGroupIndex + 1) % GROUP_FUN_STARTING_GROUPS.length; // Advance alternation on successful build
+    nextGroupIndex = (usedGroupIdx + 1) % GROUP_FUN_STARTING_GROUPS.length; // Advance from the group actually used, not the original target
 
     // Safety: if we've iterated way past the limit without filling, break
     if (cardIndex > limit * 4) break;

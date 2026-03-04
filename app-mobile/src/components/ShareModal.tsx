@@ -3,7 +3,7 @@ import { Text, View, TouchableOpacity, StyleSheet, Modal, ScrollView, Alert, Cli
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useAppState } from './AppStateManager';
-import { formatPriceRange } from './utils/formatters';
+import { formatPriceRange, parseAndFormatDistance } from './utils/formatters';
 import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
 
@@ -65,7 +65,10 @@ export default function ShareModal({
   // Extract data with fallbacks
   const title = experienceData.title || experienceData.name || 'Experience';
   const image = experienceData.image || experienceData.images?.[0] || '';
-  const distance = experienceData.distance || experienceData.travelTime || '3.8 km away';
+  const rawDistance = experienceData.distance || experienceData.travelTime;
+  const distance = rawDistance
+    ? parseAndFormatDistance(rawDistance, accountPreferences?.measurementSystem)
+    : 'Nearby';
   const priceRange = formatPriceRange(experienceData.priceRange, accountPreferences?.currency) || experienceData.price || '';
   const rating = experienceData.rating || experienceData.ratingValue || '4.8';
   const address = experienceData.address || experienceData.location?.address || experienceData.location || '';

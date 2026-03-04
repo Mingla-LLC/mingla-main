@@ -478,7 +478,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
                 </View>
                 <View style={styles.metadataItem}>
                   <Ionicons name="cash-outline" size={16} color="#6B7280" />
-                  <Text style={styles.metadataText}>{formatCurrency(card.estimatedCostPerPerson, currency)}/person</Text>
+                  <Text style={styles.metadataText}>{formatCurrency(Number(card.estimatedCostPerPerson) || 0, currency)}/person</Text>
                 </View>
               </View>
 

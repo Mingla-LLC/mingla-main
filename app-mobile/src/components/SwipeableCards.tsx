@@ -1257,7 +1257,7 @@ export default function SwipeableCards({
               <Text style={styles.filterLabel}>Budget:</Text>
               <View style={styles.filterTag}>
                 <Text style={styles.filterTagText}>
-                  Up to {getCurrencySymbol(accountPreferences?.currency || 'USD')}{displayBudgetMax}
+                  Up to {getCurrencySymbol(accountPreferences?.currency || 'USD')}{Number(displayBudgetMax).toLocaleString('en-US')}
                 </Text>
               </View>
             </View>

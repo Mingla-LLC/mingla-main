@@ -2246,7 +2246,9 @@ export default function DiscoverScreen({
       rating: 0,
       reviewCount: 0,
       priceRange: card.price,
-      distance: card.distance ? `${card.distance.toFixed(1)} km` : "",
+      distance: card.distance
+        ? parseAndFormatDistance(`${card.distance.toFixed(1)} km`, accountPreferences?.measurementSystem)
+        : "",
       travelTime: "",
       address: card.address || card.location,
       highlights: [card.venueName, card.artistName, card.price].filter(Boolean),

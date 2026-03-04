@@ -1339,7 +1339,7 @@ const SavedTab = ({
         images: cardToSchedule.images || [cardToSchedule.image],
         rating: cardToSchedule.rating || 4.5,
         reviewCount: cardToSchedule.reviewCount || 0,
-        priceRange: cardToSchedule.priceRange || "$25-50",
+        priceRange: cardToSchedule.priceRange || "Varies",
         distance: (cardToSchedule as any).distance || "",
         travelTime: cardToSchedule.travelTime || "15 min",
         address: cardToSchedule.address || "",
@@ -1869,7 +1869,7 @@ const SavedTab = ({
                     </Text>
                   </View>
                   <Text style={styles.priceText}>
-                    {formatPriceRange(card.priceRange || "$25-50", accountPreferences?.currency || "USD")}
+                    {card.priceRange ? formatPriceRange(card.priceRange, accountPreferences?.currency || "USD") : 'Varies'}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
