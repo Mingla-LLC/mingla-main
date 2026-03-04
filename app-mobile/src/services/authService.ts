@@ -19,61 +19,6 @@ export interface UserProfile {
 class AuthService {
   private appStore = useAppStore.getState();
 
-  async signIn(email: string, password: string) {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      if (data.user) {
-        await this.loadUserProfile(data.user.id);
-        this.appStore.setAuth(data.user as any);
-      }
-
-      return { user: data.user, error: null };
-    } catch (error) {
-      console.error("Sign in error:", error);
-      return { user: null, error };
-    }
-  }
-
-  async signUp(
-    email: string,
-    password: string,
-    userData?: Partial<UserProfile>
-  ) {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: userData,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data.user) {
-        // Create user profile
-        await this.createUserProfile(data.user.id, {
-          email: data.user.email!,
-          ...userData,
-        });
-
-        await this.loadUserProfile(data.user.id);
-        this.appStore.setAuth(data.user as any);
-      }
-
-      return { user: data.user, error: null };
-    } catch (error) {
-      console.error("Sign up error:", error);
-      return { user: null, error };
-    }
-  }
-
   async signOut() {
     try {
       const { error } = await supabase.auth.signOut();

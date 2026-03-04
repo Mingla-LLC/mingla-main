@@ -558,9 +558,9 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
           continue;
         }
 
-        // Send email and push notification via Edge Function
+        // Send push notification via Edge Function
         try {
-          const { data: emailData, error: emailError } =
+          const { data: notifyData, error: notifyError } =
             await supabase.functions.invoke('bright-responder', {
               body: {
                 inviterId: user.id,
@@ -572,14 +572,14 @@ const CreateTab = ({ preSelectedFriend, availableFriends = [], onCreateSession, 
               },
             });
 
-          if (emailError) {
-            console.error(`Error sending invite email to ${friend.name}:`, emailError);
+          if (notifyError) {
+            console.error(`Error sending invite notification to ${friend.name}:`, notifyError);
           } else {
-            console.log(`Invite email sent successfully to ${friend.name}:`, emailData);
+            console.log(`Invite notification sent to ${friend.name}:`, notifyData);
           }
-        } catch (emailErr: any) {
-          console.error(`Failed to send invite email to ${friend.name}:`, emailErr);
-          // Don't fail the whole process if email fails
+        } catch (notifyErr: any) {
+          console.error(`Failed to send invite notification to ${friend.name}:`, notifyErr);
+          // Don't fail the whole process if notification fails
         }
       }
 

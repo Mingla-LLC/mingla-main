@@ -1,13 +1,11 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { StyleSheet, Alert, View, ActivityIndicator } from "react-native";
+import { StyleSheet, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuthSimple } from "../hooks/useAuthSimple";
 import { useAppStore } from "../store/appStore";
 import { locationService } from "../services/locationService";
 import { mixpanelService } from "../services/mixpanelService";
 import { PreferencesService } from "../services/preferencesService";
-import WelcomeStep from "./onboarding/WelcomeStep";
-import AccountSetupStep from "./onboarding/AccountSetupStep";
 import IntentSelectionStep from "./onboarding/IntentSelectionStep";
 import VibeSelectionStep from "./onboarding/VibeSelectionStep";
 import LocationSetupStep from "./onboarding/LocationSetupStep";
@@ -17,42 +15,17 @@ import BudgetRangeStep from "./onboarding/BudgetRangeStep";
 import DateTimePrefStep from "./onboarding/DateTimePrefStep";
 import InviteFriendsStep from "./onboarding/InviteFriendsStep";
 import MagicStep from "./onboarding/MagicStep";
-import PhoneSignUpForm from "./signIn/PhoneSignUpForm";
-import OTPScreen from "./signIn/OTPScreen";
 
 interface OnboardingFlowProps {
   onComplete: (onboardingData: any) => void;
-  onNavigateToSignUp?: (accountType?: string) => void;
-  onBackToWelcome?: () => void;
-  onNavigateToSignUpForm?: (accountType?: string) => void;
-  onGoogleSignInComplete?: () => void;
-  initialAccountType?: string;
 }
 
 const OnboardingFlow = ({
   onComplete,
-  onNavigateToSignUp,
-  onBackToWelcome,
-  onNavigateToSignUpForm,
-  onGoogleSignInComplete,
-  initialAccountType,
 }: OnboardingFlowProps) => {
-  const {
-    user,
-    signUpWithPhone,
-    verifyPhoneOTP,
-    resendPhoneOTP,
-    signInWithGoogle,
-    signInWithApple,
-    handleOAuthTokens,
-  } = useAuthSimple();
+  const { user } = useAuthSimple();
   const { profile } = useAppStore();
-  const [currentStep, setCurrentStep] = useState(1);
-  const [showPhoneSignUp, setShowPhoneSignUp] = useState(false);
-  const [
-    isSigningInWithCompletedOnboarding,
-    setIsSigningInWithCompletedOnboarding,
-  ] = useState(false);
+  const [currentStep, setCurrentStep] = useState(2);
 
   // Helper function to update onboarding_step in profile
   const updateOnboardingStep = useCallback(
@@ -94,54 +67,15 @@ const OnboardingFlow = ({
     [user?.id]
   );
 
-  // If user is authenticated AND hasn't completed onboarding, skip AccountSetupStep and go directly to IntentSelectionStep
-  // BUT only if there's no saved onboarding_step (first time user, not resuming)
-  // This runs when user/profile changes, but only if we're still on step 1
-  useEffect(() => {
-    // Only skip to Step 2 if:
-    // 1. User is authenticated (user and profile exist)
-    // 2. User hasn't completed onboarding
-    // 3. We're currently on Step 1
-    // 4. There's no saved onboarding_step (first time, not resuming)
-    if (user && profile && profile.has_completed_onboarding === false) {
-      // Check if there's a saved onboarding_step - if so, let the resume logic handle it
-      const savedStep = profile.onboarding_step;
-      if (
-        savedStep !== null &&
-        savedStep !== undefined &&
-        savedStep >= 2 &&
-        savedStep <= 10
-      ) {
-        // There's a saved step - let the resume logic handle it
-        return;
-      }
-
-      // No saved step - first time user, skip to Step 2
-      setCurrentStep((prevStep) => {
-        if (prevStep === 1) {
-          return 2;
-        }
-        return prevStep;
-      });
-    } else if (!user || !profile) {
-      // User is not authenticated - ensure we're on Step 1 (AccountSetupStep)
-      setCurrentStep((prevStep) => {
-        if (prevStep !== 1) {
-          return 1;
-        }
-        return prevStep;
-      });
-    }
-  }, [user, profile]);
-  const [showOTP, setShowOTP] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState("");
+  // No skip-to-step-2 useEffect needed — onboarding now starts at step 2 (IntentSelection)
+  // since auth is handled entirely by WelcomeScreen before OnboardingFlow renders
   const [onboardingData, setOnboardingData] = useState<any>({
     userProfile: {
       name: user?.email?.split("@")[0] || "User",
       email: user?.email || "",
       profileImage: null,
     },
-    account_type: initialAccountType || null, // Account type from SignUpAsStep
+    account_type: null, // Legacy field, no longer used
     intents: [], // Step 2: Intent Selection
     vibes: [], // Step 3: Vibe/Category Selection
     location: "", // Step 4: Location Setup
@@ -454,12 +388,6 @@ const OnboardingFlow = ({
       flex: 1,
       backgroundColor: "white",
     },
-    loaderContainer: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: "white",
-    },
   });
 
   const handleNext = async () => {
@@ -550,15 +478,10 @@ const OnboardingFlow = ({
       // Track step completion in Mixpanel
       mixpanelService.trackOnboardingStepCompleted(currentStep, buildStepExtras(currentStep));
 
-      // Update onboarding_step to the next step (only for tracked steps 2-10)
-      // Step 1 (Account Setup) is not tracked, so we start tracking from step 2
+      // Update onboarding_step to the next step (tracked steps 2-10)
       // When completing step 2, update to 3; when completing step 3, update to 4, etc.
       if (currentStep >= 2 && currentStep <= 9) {
-        // Current step is a tracked step (2-9), update to next step
         await updateOnboardingStep(nextStep);
-      } else if (currentStep === 1) {
-        // Completing step 1 (Account Setup), next step is 2 (first tracked step)
-        await updateOnboardingStep(2);
       }
       // Step 10 (Magic Step) handles its own completion and sets onboarding_step to 0
 
@@ -571,15 +494,9 @@ const OnboardingFlow = ({
   };
 
   const handleBack = () => {
-    if (currentStep > 0) {
+    if (currentStep > 2) {
       mixpanelService.trackOnboardingStepBack(currentStep);
-      setCurrentStep(Math.max(1, currentStep - 1));
-    }
-  };
-
-  const handleBackToWelcome = () => {
-    if (onBackToWelcome) {
-      onBackToWelcome();
+      setCurrentStep(currentStep - 1);
     }
   };
 
@@ -704,24 +621,7 @@ const OnboardingFlow = ({
 
   const renderStep = () => {
     switch (currentStep) {
-      case 0: // Welcome Screen
-        return <WelcomeStep onNext={handleNext} onBack={handleBackToWelcome} />;
-
-      case 1: // Account Setup
-        return (
-          <AccountSetupStep
-            onNext={handleNext}
-            onBack={handleBackToWelcome}
-            onNavigateToSignUp={onNavigateToSignUpForm || onNavigateToSignUp}
-            onNavigateToPhoneSignUp={() => setShowPhoneSignUp(true)}
-            onNavigateToGoogleSignIn={handleGoogleSignIn}
-            onNavigateToAppleSignIn={handleAppleSignIn}
-            userProfile={onboardingData.userProfile}
-            accountType={onboardingData.account_type}
-          />
-        );
-
-      case 2: // Intent Selection
+      case 2: // Intent Selection (Step 1 visible to user)
         return (
           <IntentSelectionStep
             onNext={handleNext} // Will save Step 2 preferences before moving
@@ -842,66 +742,6 @@ const OnboardingFlow = ({
 
       default:
         return null;
-    }
-  };
-
-  // Handle phone signup
-  const handlePhoneSignUp = async (userData: {
-    phone: string;
-    password: string;
-    username: string;
-  }) => {
-    try {
-      const result = await signUpWithPhone(
-        userData.phone,
-        userData.password,
-        userData.username,
-        onboardingData.account_type || undefined // Pass account_type from onboardingData
-      );
-
-      if (result.error) {
-        throw new Error(result.error.message || "Failed to send OTP");
-      }
-
-      // Store phone number and show OTP screen
-      setPhoneNumber(userData.phone);
-      setShowPhoneSignUp(false);
-      setShowOTP(true);
-    } catch (error: any) {
-      console.error("Phone signup error:", error);
-      alert(error.message || "Failed to send OTP. Please try again.");
-    }
-  };
-
-  // Handle OTP verification
-  const handleOTPVerify = async (otp: string) => {
-    try {
-      const result = await verifyPhoneOTP(phoneNumber, otp);
-
-      if (result.error) {
-        throw new Error(result.error.message || "Invalid OTP");
-      }
-
-      // OTP verified successfully, continue with onboarding
-      setShowOTP(false);
-      // User is now authenticated, onboarding will continue
-      // The useAuthSimple hook will update the user state
-    } catch (error: any) {
-      console.error("OTP verification error:", error);
-      throw error; // Let OTPScreen handle the error display
-    }
-  };
-
-  // Handle OTP resend
-  const handleOTPResend = async () => {
-    try {
-      const result = await resendPhoneOTP(phoneNumber);
-      if (result.error) {
-        throw new Error(result.error.message || "Failed to resend OTP");
-      }
-    } catch (error: any) {
-      console.error("Resend OTP error:", error);
-      throw error;
     }
   };
 
@@ -1581,214 +1421,6 @@ const OnboardingFlow = ({
       console.error("Error updating onboarding status:", error);
     }
   }, [user?.id]);
-
-  const handleGoogleSignIn = async () => {
-    // Show loader immediately when sign-in starts
-    setIsSigningInWithCompletedOnboarding(true);
-
-    try {
-      const result = await signInWithGoogle();
-
-      if (result.error) {
-        // Hide loader on error
-        setIsSigningInWithCompletedOnboarding(false);
-
-        // Only show error if it's not a cancellation
-        if (result.error.message !== "Sign-in cancelled") {
-          console.error("Google sign-in error:", result.error);
-          Alert.alert(
-            "Error",
-            result.error.message ||
-              "Failed to sign in with Google. Please try again."
-          );
-        }
-        return;
-      }
-
-      // Google sign-in successful
-      // Wait a moment for profile to be loaded by useAuthSimple
-      // Try multiple times to get the updated profile
-      let currentProfile = useAppStore.getState().profile;
-      let currentUser = useAppStore.getState().user;
-      let attempts = 0;
-
-      while ((!currentProfile || !currentUser) && attempts < 5) {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        currentProfile = useAppStore.getState().profile;
-        currentUser = useAppStore.getState().user;
-        attempts++;
-      }
-
-      // Check if user has completed onboarding
-      if (
-        currentUser &&
-        currentProfile &&
-        currentProfile.has_completed_onboarding === true
-      ) {
-        // User has completed onboarding - close onboarding flow and let app redirect to home
-        if (onBackToWelcome) {
-          onBackToWelcome();
-        }
-        // Also call onComplete to ensure state is updated
-        if (onComplete) {
-          onComplete(onboardingData || {});
-        }
-
-        // Hide loader after a short delay to allow navigation
-        setTimeout(() => {
-          setIsSigningInWithCompletedOnboarding(false);
-        }, 1000);
-
-        return;
-      }
-
-      // If user is authenticated and hasn't completed onboarding, hide loader and continue onboarding
-      if (
-        currentUser &&
-        currentProfile &&
-        currentProfile.has_completed_onboarding === false
-      ) {
-        // Hide loader and skip OTP screen, go directly to IntentSelectionStep (step 2)
-        setIsSigningInWithCompletedOnboarding(false);
-        setCurrentStep(2);
-      } else {
-        // Profile not loaded yet, keep loader showing
-        // It will be hidden when profile loads or after timeout
-      }
-
-      // The app/index.tsx will check profile.has_completed_onboarding and redirect accordingly
-    } catch (error: any) {
-      // Hide loader on error
-      setIsSigningInWithCompletedOnboarding(false);
-      console.error("Google sign-in error:", error);
-      Alert.alert(
-        "Error",
-        error.message || "Failed to sign in with Google. Please try again."
-      );
-    }
-  };
-
-  const handleAppleSignIn = async () => {
-    // Show loader immediately when sign-in starts
-    setIsSigningInWithCompletedOnboarding(true);
-
-    try {
-      const result = await signInWithApple();
-
-      if (result.error) {
-        // Hide loader on error
-        setIsSigningInWithCompletedOnboarding(false);
-
-        // Only show error if it's not a cancellation
-        if (result.error.message !== "Sign-in cancelled") {
-          console.error("Apple sign-in error:", result.error);
-          Alert.alert(
-            "Error",
-            result.error.message ||
-              "Failed to sign in with Apple. Please try again."
-          );
-        }
-        return;
-      }
-
-      // Apple sign-in successful
-      // Wait a moment for profile to be loaded by useAuthSimple
-      // Try multiple times to get the updated profile
-      let currentProfile = useAppStore.getState().profile;
-      let currentUser = useAppStore.getState().user;
-      let attempts = 0;
-
-      while ((!currentProfile || !currentUser) && attempts < 5) {
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        currentProfile = useAppStore.getState().profile;
-        currentUser = useAppStore.getState().user;
-        attempts++;
-      }
-
-      // Check if user has completed onboarding
-      if (
-        currentUser &&
-        currentProfile &&
-        currentProfile.has_completed_onboarding === true
-      ) {
-        // User has completed onboarding - close onboarding flow and let app redirect to home
-        if (onBackToWelcome) {
-          onBackToWelcome();
-        }
-        // Also call onComplete to ensure state is updated
-        if (onComplete) {
-          onComplete(onboardingData || {});
-        }
-
-        // Hide loader after a short delay to allow navigation
-        setTimeout(() => {
-          setIsSigningInWithCompletedOnboarding(false);
-        }, 1000);
-
-        return;
-      }
-
-      // If user is authenticated and hasn't completed onboarding, hide loader and continue onboarding
-      if (
-        currentUser &&
-        currentProfile &&
-        currentProfile.has_completed_onboarding === false
-      ) {
-        // Hide loader and skip OTP screen, go directly to IntentSelectionStep (step 2)
-        setIsSigningInWithCompletedOnboarding(false);
-        setCurrentStep(2);
-      } else {
-        // Profile not loaded yet, keep loader showing
-        // It will be hidden when profile loads or after timeout
-      }
-
-      // The app/index.tsx will check profile.has_completed_onboarding and redirect accordingly
-    } catch (error: any) {
-      // Hide loader on error
-      setIsSigningInWithCompletedOnboarding(false);
-      console.error("Apple sign-in error:", error);
-      Alert.alert(
-        "Error",
-        error.message || "Failed to sign in with Apple. Please try again."
-      );
-    }
-  };
-
-  // Show full-screen loader if signing in with completed onboarding
-  if (isSigningInWithCompletedOnboarding) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color="#eb7825" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Show phone signup form if active
-  if (showPhoneSignUp) {
-    return (
-      <PhoneSignUpForm
-        onSignUp={handlePhoneSignUp}
-        onBack={() => setShowPhoneSignUp(false)}
-      />
-    );
-  }
-
-  // Show OTP screen if active
-  if (showOTP) {
-    return (
-      <OTPScreen
-        phone={phoneNumber}
-        onVerify={handleOTPVerify}
-        onResend={handleOTPResend}
-        onBack={() => {
-          setShowOTP(false);
-          setShowPhoneSignUp(true);
-        }}
-      />
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>

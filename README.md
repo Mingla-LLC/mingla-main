@@ -73,11 +73,10 @@ Mingla combines **location-aware discovery**, **AI personalization**, **real-tim
 │                                                                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────────┐  │
 │  │  Auth (JWT)   │  │  Realtime    │  │  Storage (avatars,        │  │
-│  │  Email/Pass   │  │  Presence    │  │  voice-reviews) RLS buckets│  │
-│  │  Phone OTP    │  │  Broadcasts  │  └───────────────────────────┘  │
-│  │  Google OAuth │  │  Typing      │                                 │
-│  │  Apple Sign-In│  └──────────────┘                                 │
-│  └──────────────┘                                                    │
+│  │  Google OAuth │  │  Presence    │  │  voice-reviews) RLS buckets│  │
+│  │  Apple Sign-In│  │  Broadcasts  │  └───────────────────────────┘  │
+│  │  (OAuth only) │  │  Typing      │                                 │
+│  └──────────────┘  └──────────────┘                                 │
 │                                                                      │
 │  ┌──────────────────────────────────────────────────────────────┐    │
 │  │  PostgreSQL Database (Row Level Security · Triggers)          │    │
@@ -95,7 +94,8 @@ Mingla combines **location-aware discovery**, **AI personalization**, **real-tim
 │  │  Pipeline: new-generate-experience- · discover-[category]-    │    │
 │  │  AI: enhance-cards · ai-reason · generate-curated-experiences │    │
 │  │  Events: ticketmaster-events · holiday-experiences            │    │
-│  │  Social: send-collaboration-invite · send-friend-request-email│    │
+│  │  Social: send-collaboration-invite · send-friend-request-email│  │
+│  │  (Push notifications only — Resend email removed)           │    │
 │  │  Maintenance: refresh-place-pool (daily)                      │    │
 │  └──────────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────────┘
@@ -190,7 +190,7 @@ User Request (batchSeed=N) → Edge Function (Deno)
 | **Welcome Screen** | Branded entry with sign-in / sign-up options |
 | **Email + Password** | Traditional auth via Supabase Auth |
 | **Phone (OTP)** | Phone number sign-up with SMS verification code |
-| **Google OAuth** | Google sign-in via WebView-based OAuth flow with `expo-web-browser` |
+| **Google OAuth** | Google sign-in via `@react-native-google-signin`. Android uses `webClientId` from `google-services.json`; iOS receives `iosClientId` from `app.json` extra (`IOS_CLIENT_ID`) for programmatic configuration without `GoogleService-Info.plist` |
 | **Apple Sign-In** | Native Apple authentication on iOS (uses `expo-apple-authentication`) |
 | **Email OTP Verification** | Post-signup email verification screen (skipped for OAuth users) |
 | **11-Step Onboarding** | Welcome → Account Setup (name, username, photo) → Intent Selection (adventurous, romantic, business, etc.) → Vibe Selection (12 categories) → Location Setup (GPS permission) → Travel Mode (walking/driving/transit/cycling) → Travel Constraint (time or distance) → Budget Range ($25/$50/$100/$150 presets) → Date/Time Preference → Invite Friends → Magic (loading animation) |
@@ -234,7 +234,7 @@ User Request (batchSeed=N) → Edge Function (Deno)
 | Feature | Description |
 |---|---|
 | **Friends List** | All connections with online/offline/away status indicators |
-| **Friend Requests** | Send (by username or email), receive, accept, decline friend requests. Email notification via `send-friend-request-email` edge function |
+| **Friend Requests** | Send (by username or email), receive, accept, decline friend requests. Push notification via `send-friend-request-email` edge function |
 | **Add Friend Modal** | Search by username or email with suggestion list |
 | **Direct Messaging** | Real-time 1:1 chat with friends. Supports text, images, and file attachments |
 | **Conversation List** | All active conversations with unread counts, last message preview, timestamps |
@@ -290,7 +290,7 @@ User Request (batchSeed=N) → Edge Function (Deno)
 |---|---|
 | **Session Pills Bar** | Horizontal scrollable bar at top of Home showing: Solo button (always available), active sessions (orange), sent invites (grey), received invites (pulsing) |
 | **Create Session** | Named sessions with multi-friend selection from connections list. 3-step flow: details → friends → confirm |
-| **Invite Flow** | Send invitations to friends. Email notification via `send-collaboration-invite`. Invitee sees pending pill, inviter sees active pill |
+| **Invite Flow** | Send invitations to friends. Push notification via `send-collaboration-invite`. Invitee sees pending pill, inviter sees active pill |
 | **Accept / Decline / Cancel** | Full invite lifecycle management. Accept → update status → add participant → create board (idempotent) |
 | **Session-Scoped Cards** | Cards generated for group's combined preferences (widest budget, union of categories, majority travel mode, centroid location) |
 | **Real-time Sync** | Session state, votes, messages, presence, and typing indicators sync via Supabase Realtime channels |
@@ -823,10 +823,10 @@ Every table has RLS enabled with policies enforcing:
 
 | Function | Auth | External APIs | Purpose |
 |----------|------|---------------|---------|
-| `send-collaboration-invite` | JWT | Resend | Email invite to join collaboration session. Dynamic HTML template with inviter name, session name, accept/decline links |
-| `send-friend-request-email` | JWT | Resend | Friend request email notification. Different templates for existing users vs. signup invitations |
-| `send-message-email` | JWT | Resend | DM/mention email notification. Orange-highlighted @mentions, hashtag highlighting |
-| `notify-invite-response` | JWT | Resend | Notify inviter of session invite accept/decline |
+| `send-collaboration-invite` | JWT | Expo Push | Push notification for session invites. Notifies both inviter and invitee |
+| `send-friend-request-email` | JWT | Expo Push | Push notification for friend requests. Falls back gracefully if no push token |
+| `send-message-email` | JWT | Expo Push | Push notification for DMs and @mentions. Strips markdown from message preview |
+| `notify-invite-response` | JWT | Expo Push | Push notification to inviter on session invite accept/decline |
 
 ### User Management
 
@@ -847,15 +847,14 @@ Every table has RLS enabled with policies enforcing:
 
 ## Authentication & Security
 
-### Auth Methods
+### Auth Methods (OAuth Only)
 
 | Method | Implementation | Status |
 |---|---|---|
-| Email + Password | Supabase Auth | Active |
-| Phone + OTP (SMS) | Supabase Auth | Active |
-| Google OAuth | WebView flow via `expo-web-browser` → callback to `oauth-redirect/index.html` | Active |
-| Apple Sign-In | Native via `expo-apple-authentication` (iOS 13+) | Active |
-| Email OTP Verification | Post-signup 6-digit code via `input-otp` component | Active (skipped for OAuth) |
+| Google OAuth | Native via `@react-native-google-signin/google-signin` + `signInWithIdToken` | Active |
+| Apple Sign-In | Native via `expo-apple-authentication` (iOS only) + `signInWithIdToken` | Active |
+
+Email/password sign-up, phone OTP, and email OTP verification have been removed. All authentication flows through OAuth, which handles both sign-up (new users) and sign-in (returning users) transparently. The `handle_new_user` database trigger creates profiles automatically on first OAuth sign-in.
 
 ### Security Layers
 
@@ -863,11 +862,10 @@ Every table has RLS enabled with policies enforcing:
 2. **Row Level Security (RLS)** — All tables have RLS enabled. Policies enforce ownership, session membership, friendship-based visibility
 3. **Service Role Isolation** — Pipeline tables (`place_pool`, `card_pool`) are write-only for `service_role`; mobile clients get read-only access
 4. **SECURITY DEFINER Functions** — Trigger functions that cross RLS boundaries (e.g., writing to `user_preference_learning` from interaction inserts) use explicit `search_path`. Engagement analytics RPCs (`increment_user_engagement`, `increment_place_engagement`) run as SECURITY DEFINER for atomic counter increments — secured with explicit field whitelists (only known analytics columns accepted) and `auth.uid()` ownership checks (users can only increment their own stats)
-5. **Edge Function JWT Verification** — Critical functions (AI reasoning, API key retrieval, email sending, user deletion) require valid JWT. Discovery/weather endpoints are public
-6. **OAuth Redirect Page** — Dedicated static page (`oauth-redirect/`) handles OAuth callback token extraction
-7. **API Key Proxy** — Google Maps key served via `get-google-maps-key` edge function (JWT-required), never embedded in client code
-8. **Account Deletion** — `delete-user` cascade removes all user data across every table
-9. **Blocked User Isolation** — Blocking cascades to hide profiles, prevent messages, and remove from conversation views via RLS policies
+5. **Edge Function JWT Verification** — Critical functions (AI reasoning, API key retrieval, notification sending, user deletion) require valid JWT. Discovery/weather endpoints are public
+6. **API Key Proxy** — Google Maps key served via `get-google-maps-key` edge function (JWT-required), never embedded in client code
+7. **Account Deletion** — `delete-user` cascade removes all user data across every table
+8. **Blocked User Isolation** — Blocking cascades to hide profiles, prevent messages, and remove from conversation views via RLS policies
 
 ---
 
@@ -939,8 +937,8 @@ defaultOptions: {
 
 | Hook | Purpose | Key Functions |
 |------|---------|---------------|
-| `useAuth` | Legacy auth hook with manual session management | `signUp()`, `signIn()`, `signOut()`, `updateProfile()` |
-| `useAuthSimple` | Enhanced auth with OTP, Google, Apple Sign-In | `signUp()`, `signIn()`, `verifyEmailOTP()`, `signUpWithPhone()`, `verifyPhoneOTP()`, `signInWithGoogle()`, `signInWithApple()`, `signOut()` |
+| `useAuth` | Legacy auth hook with manual session management | `signOut()`, `updateProfile()` |
+| `useAuthSimple` | OAuth-only auth (Google + Apple Sign-In) | `signInWithGoogle()`, `signInWithApple()`, `signOut()`, `updateProfile()` |
 | `useUserProfile` | Profile loading and updates | `loadProfile()`, `updateProfile()`, `uploadAvatar()`, `refreshProfile()` |
 | `useUserPreferences` | React Query hook for preferences | Cached with 5-min stale time, 24h cache duration |
 
@@ -1133,10 +1131,11 @@ defaultOptions: {
 | `translationService.ts` | Translation service |
 | `networkMonitor.ts` | Network connectivity state tracking |
 
-### Analytics & Testing (2)
+### Analytics & Testing (3)
 
 | Service | Purpose |
 |---------|---------|
+| `mixpanelService.ts` | Mixpanel analytics singleton — 39 convenience event trackers (login, onboarding, preferences, collaboration, cards, etc.). Gracefully degrades to silent no-ops when `EXPO_PUBLIC_MIXPANEL_TOKEN` is not set. |
 | `debugService.ts` | Debug utilities |
 | `abTestingService.ts` | A/B testing framework |
 
@@ -1582,10 +1581,10 @@ Mingla/
 │   │   ├── recommendations-enhanced/       # Scoring-based recommendations
 │   │   ├── recommendations/                # Legacy recommendations
 │   │   ├── weather/                        # OpenWeather proxy (5min cache)
-│   │   ├── send-collaboration-invite/      # Session invite emails (Resend)
-│   │   ├── send-friend-request-email/      # Friend request emails
-│   │   ├── send-message-email/             # DM/mention notification emails
-│   │   ├── notify-invite-response/         # Invite response emails
+│   │   ├── send-collaboration-invite/      # Session invite push notifications
+│   │   ├── send-friend-request-email/      # Friend request push notifications
+│   │   ├── send-message-email/             # DM/mention push notifications
+│   │   ├── notify-invite-response/         # Invite response push notifications
 │   │   ├── delete-user/                    # Cascade user deletion
 │   │   ├── events/                         # Generic event fetch
 │   │   └── versions/                       # App version checking
@@ -1628,6 +1627,9 @@ Mingla/
 
 **Media & Content:**
 - `expo-image` ~3.0.8, `react-native-qrcode-svg` ^6.3.21, `react-native-webview` ^13.16.0
+
+**Analytics:**
+- `mixpanel-react-native` ^3.3.0 (graceful no-op when token not configured)
 
 **Storage:**
 - `@react-native-async-storage/async-storage` ^2.2.0
@@ -1804,6 +1806,10 @@ npx supabase functions serve function-name --env-file .env.local
 
 ## Recent Changes (2026-03-03)
 
+- **Auth Simplification & Email Notification Phase-Out:** Eliminated all email-based authentication (email+password sign-up/sign-in, OTP verification, phone sign-up). The app now uses OAuth only (Google + Apple Sign-In). WelcomeScreen redesigned with two-zone layout, entrance animation sequence, and platform-specific button rendering (Apple on iOS only). Onboarding starts directly at IntentSelection (step 2). All 4 notification edge functions (`send-friend-request-email`, `send-message-email`, `send-collaboration-invite`, `notify-invite-response`) converted from Resend email to Expo Push API. 9 obsolete files deleted (SignInForm, SignUpForm, OTPScreen, PhoneSignUpForm, SignUpAsStep, AccountSetupStep, GoogleOAuthWebView, SignInPage, EmailOTPVerificationScreen). `handle_new_user` trigger updated to always set `email_verified = TRUE`. Migration: `20260303000020`.
+- **Apple/Google Sign-In Username Collision Fix:** The `handle_new_user()` database trigger now generates collision-safe usernames. Previously, if two users shared an email prefix (e.g., `john@gmail.com` and `john@icloud.com`), the second sign-up crashed with "Database error saving new user" because `ON CONFLICT (id) DO NOTHING` didn't catch `profiles_username_key` UNIQUE violations. The trigger now retries with a random 4-char hex suffix (e.g., `john_a7x3`) up to 5 times, then falls back to a UUID-based username. Also fixed the bare `'user'` fallback to include a UUID prefix. Migration: `20260303000019`. **Manual step required:** Enable "Automatically link accounts with the same email" in Supabase Dashboard → Authentication → Settings.
+- **Mixpanel Crash Guard:** `mixpanelService.ts` no longer crashes the entire app when `EXPO_PUBLIC_MIXPANEL_TOKEN` is not set. The `MixpanelService` singleton now gracefully degrades — all 4 base methods (`track`, `identify`, `setUserProperties`, `reset`) become silent no-ops when the token is missing. Zero changes to any of the 19 consuming files. The "missing default export" expo-router warning (a cascading side-effect of the crash) is eliminated.
+- **iOS Google Sign-In Fix:** `useAuthSimple.ts` now passes `iosClientId` (from `app.json` extra `IOS_CLIENT_ID`) to `GoogleSignin.configure()` on iOS, enabling Google authentication without a baked-in `GoogleService-Info.plist`. Android behavior unchanged. Production console.log lines that leaked config values removed.
 - **Engagement Counter Wiring:** Wired `increment_user_engagement` and `increment_place_engagement` RPC functions into the three main user action paths. `cardPoolService.ts` now increments `total_cards_seen` (user) and `total_impressions` (place) on every card serve — pool-only, pool+fresh, and fresh-only paths all covered. `savedCardsService.ts` increments `total_cards_saved` (user) and `total_saves` (place) on successful saves (duplicate saves excluded). `calendarService.ts` increments `total_cards_scheduled` (user) and `total_schedules` (place) on successful schedule. All counter calls are fire-and-forget (never awaited, errors silently swallowed) to guarantee zero impact on main operation latency and reliability.
 - **Post-Experience Modal:** New `PostExperienceModal.tsx` — fully locked modal (no dismiss, no X, Android back disabled) with two completion paths: review (star rating → voice recording → submit) and reschedule (date picker → calendar update). Supports up to 5 voice clips (60s each, auto-stop), playback/delete, skip recording, retry on submit error. Integrates `voiceReviewService`, `CalendarService`, and `voiceReviewRecorder`.
 - **Post-Experience Check Hook:** New `usePostExperienceCheck` hook replaces `usePendingReviews`. Queries `calendar_entries` directly (single query with `feedback_status IS NULL` filter instead of cross-referencing `experience_feedback`). 3-second modal delay (down from 10s), 60-second periodic interval check (new), rich `PendingExperienceReview` interface with full place data for the voice review modal, `recheckPending()` for chained reviews, concurrent-check prevention via `isCheckingRef`.

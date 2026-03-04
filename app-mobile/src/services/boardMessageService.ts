@@ -735,7 +735,7 @@ export class BoardMessageService {
           },
         });
 
-        // Send email notification if mentioned
+        // Send push notification if mentioned (edge function handles push delivery)
         if (isMentioned) {
           await this.sendMentionEmailNotification(recipientId, senderName, messagePreview, sessionId, sessionName);
         }
@@ -746,7 +746,8 @@ export class BoardMessageService {
   }
 
   /**
-   * Send email notification for mentions
+   * Send push notification for mentions via edge function
+   * (Edge function sends push notification — email was removed in auth simplification)
    */
   private static async sendMentionEmailNotification(
     recipientId: string,
@@ -767,9 +768,10 @@ export class BoardMessageService {
         return;
       }
 
-      // Call Supabase Edge Function to send email
+      // Call Supabase Edge Function to send push notification
       const { error } = await supabase.functions.invoke('send-message-email', {
         body: {
+          recipientId,
           recipientEmail: recipientProfile.email,
           recipientName: recipientProfile.first_name || 'User',
           senderName,
@@ -782,10 +784,10 @@ export class BoardMessageService {
       });
 
       if (error) {
-        console.log('Email notification via Edge Function not available:', error.message);
+        console.log('Push notification via Edge Function not available:', error.message);
       }
     } catch (error) {
-      console.log('Email notification error (non-critical):', error);
+      console.log('Push notification error (non-critical):', error);
     }
   }
 }

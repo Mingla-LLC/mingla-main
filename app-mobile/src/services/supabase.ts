@@ -12,6 +12,12 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
  * Both mechanisms are kept: AbortController for actual socket cleanup when it
  * works, Promise.race as the reliable rejection path.
  */
+const createAbortError = (message: string): Error => {
+  const error = new Error(message);
+  error.name = 'AbortError';
+  return error;
+};
+
 const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
   const TIMEOUT_MS = 30000;
   const controller = new AbortController();
@@ -19,18 +25,23 @@ const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit): Promis
   // If the caller already provided a signal, respect it
   const existingSignal = options?.signal;
   if (existingSignal?.aborted) {
-    return Promise.reject(new DOMException('Aborted', 'AbortError'));
+    return Promise.reject(createAbortError('Aborted'));
   }
+
+  let timeoutId: ReturnType<typeof setTimeout>;
 
   const fetchPromise = fetch(url, {
     ...options,
     signal: controller.signal,
+  }).then((response) => {
+    clearTimeout(timeoutId);
+    return response;
   });
 
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       controller.abort();
-      reject(new DOMException('Network request timed out', 'AbortError'));
+      reject(createAbortError('Network request timed out'));
     }, TIMEOUT_MS);
   });
 

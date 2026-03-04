@@ -209,6 +209,15 @@ export const touchTargets = {
   large: 56, // 56px large touch target
 } as const;
 
+// Welcome screen background warm glow (subtle warm gradient endpoint)
+export const backgroundWarmGlow = '#fff9f5' as const;
+
+// Tagline typography (between md and lg — for secondary headlines)
+export const taglineTypography = {
+  fontSize: 17,
+  lineHeight: 26,
+} as const;
+
 // Export commonly used combinations
 export const commonStyles = {
   // Card styles

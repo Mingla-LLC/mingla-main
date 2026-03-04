@@ -24,6 +24,8 @@ export interface NotificationData {
 class EnhancedNotificationService {
   private expoPushToken: string | null = null;
   private isInitialized = false;
+  private pushTokenStored = false;
+  private pushTokenStoreFailed = false;
 
   async initialize(): Promise<boolean> {
     if (this.isInitialized) return true;
@@ -91,9 +93,12 @@ class EnhancedNotificationService {
 
   async registerForPushNotifications(userId: string): Promise<boolean> {
     try {
+      // Don't retry if we already stored or if the table doesn't exist
+      if (this.pushTokenStored || this.pushTokenStoreFailed) return true;
+
       const initialized = await this.initialize();
       if (!initialized) return false;
-      
+
       // If no push token (e.g., running on simulator), return true to allow app to continue
       if (!this.expoPushToken) {
         return true;
@@ -111,10 +116,16 @@ class EnhancedNotificationService {
         });
 
       if (error) {
+        // Table doesn't exist yet — stop retrying to avoid log spam
+        if (error.code === 'PGRST205') {
+          this.pushTokenStoreFailed = true;
+          return true;
+        }
         console.error('Error storing push token:', error);
         return false;
       }
 
+      this.pushTokenStored = true;
       return true;
     } catch (error) {
       console.error('Error registering for push notifications:', error);
@@ -146,6 +157,9 @@ class EnhancedNotificationService {
     notification: NotificationData
   ): Promise<boolean> {
     try {
+      // Table doesn't exist yet — skip silently
+      if (this.pushTokenStoreFailed) return false;
+
       // Get user's push token
       const { data: tokenData, error: tokenError } = await supabase
         .from('user_push_tokens')

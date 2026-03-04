@@ -23,7 +23,7 @@ import DiscoverScreen from "../src/components/DiscoverScreen";
 import { CollaborationSession, getInitials, Friend } from "../src/components/CollaborationSessions";
 import PreferencesSheet from "../src/components/PreferencesSheet";
 import ProfilePage from "../src/components/ProfilePage";
-import SignInPage from "../src/components/SignInPage";
+import WelcomeScreen from "../src/components/signIn/WelcomeScreen";
 import TermsOfService from "../src/components/profile/TermsOfService";
 import PrivacyPolicy from "../src/components/profile/PrivacyPolicy";
 import AccountSettings from "../src/components/profile/AccountSettings";
@@ -37,7 +37,6 @@ import { NavigationProvider } from "../src/contexts/NavigationContext";
 import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider";
 import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
 import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
-import EmailOTPVerificationScreen from "../src/components/EmailOTPVerificationScreen";
 import CoachMap from "../src/components/CoachMap";
 import CoachMarkWelcome from "../src/components/coachmark";
 import CoachMarkTour from "../src/components/coachmark/CoachMarkTour";
@@ -135,9 +134,9 @@ function AppContent() {
     authTimeout,
     user,
     profile,
-    handleSignIn,
-    handleSignUp,
     handleSignOut,
+    handleGoogleSignIn,
+    handleAppleSignIn,
     currentPage,
     setCurrentPage,
     showPreferences,
@@ -208,8 +207,6 @@ function AppContent() {
     setHasCompletedOnboarding,
     onboardingData,
     setOnboardingData,
-    showSignUpForm,
-    setShowSignUpForm,
   } = state;
 
   // Transform boardsSessions to CollaborationSession format for the sessions bar
@@ -319,29 +316,16 @@ function AppContent() {
     profile &&
     profile.has_completed_onboarding === false;
 
-  // Check if user needs email verification before onboarding
-  // Block onboarding if user is authenticated but email is not verified
-  // Skip email verification for Google and Apple sign-in users (they already verify emails)
-  const isGoogleUser = user?.app_metadata?.provider === "google";
-  const isAppleUser = user?.app_metadata?.provider === "apple";
-  const needsEmailVerification =
-    isAuthenticated &&
-    user &&
-    profile &&
-    profile.email_verified === false &&
-    !isGoogleUser &&
-    !isAppleUser; // Skip verification for Google and Apple users
+  // Email verification removed — all users are now OAuth (inherently verified)
 
   // Log current page for debugging
   useEffect(() => {
     if (isLoadingAuth && !authTimeout) {
       console.log(`📄 Current screen: loading`);
     } else if (!isAuthenticated || (user && !profile && !isLoadingAuth)) {
-      console.log(`📄 Current screen: sign-in/sign-up (showSignUpForm=${showSignUpForm})`);
+      console.log(`📄 Current screen: welcome (sign-in)`);
     } else if (showOnboardingFlow || needsOnboarding) {
       console.log(`📄 Current screen: onboarding`);
-    } else if (needsEmailVerification && !showSignUpForm) {
-      console.log(`📄 Current screen: email-verification`);
     } else if (showPreferences) {
       console.log(`📄 Current screen: preferences`);
     } else if (showTermsOfService) {
@@ -364,8 +348,6 @@ function AppContent() {
     user,
     showOnboardingFlow,
     needsOnboarding,
-    needsEmailVerification,
-    showSignUpForm,
     showPreferences,
     showTermsOfService,
     showPrivacyPolicy,
@@ -1430,23 +1412,6 @@ function AppContent() {
       </View>
     );
   }
-  // jsieidjdj
-
-  // Show email verification screen if needed (before onboarding)
-  if (needsEmailVerification && !showSignUpForm) {
-    return (
-      <ErrorBoundary>
-        <EmailOTPVerificationScreen
-          email={user?.email || ""}
-          onVerificationComplete={() => {
-            // Email verified - user can proceed to onboarding
-            // The profile will be reloaded automatically via onAuthStateChange
-          }}
-        />
-      </ErrorBoundary>
-    );
-  }
-
   // Show onboarding flow if it's active OR if user needs onboarding
   if (showOnboardingFlow || needsOnboarding) {
     /*   console.log("Showing onboarding flow", {
@@ -1456,7 +1421,7 @@ function AppContent() {
     }); */
 
     // Ensure onboarding flow is shown (only if not navigating to sign-up)
-    if (!showOnboardingFlow && needsOnboarding && !showSignUpForm) {
+    if (!showOnboardingFlow && needsOnboarding) {
       setShowOnboardingFlow(true);
     }
 
@@ -1471,79 +1436,20 @@ function AppContent() {
             setShowOnboardingFlow(false);
             setCurrentPage("home");
           }}
-          onNavigateToSignUp={(accountType) => {
-            setShowOnboardingFlow(false);
-            setShowSignUpForm(true);
-            // Store account_type for signup
-            if (accountType) {
-              setOnboardingData((prev: any) => ({
-                ...prev,
-                account_type: accountType,
-              }));
-            }
-            // This will trigger the SignInPage to show sign-up form
-          }}
-          onBackToWelcome={() => {
-            setShowOnboardingFlow(false);
-            // Reset sign-up form flag to ensure we show welcome screen
-            setShowSignUpForm(false);
-            // If user has completed onboarding, mark it as complete in local state
-            if (profile?.has_completed_onboarding === true) {
-              setHasCompletedOnboarding(true);
-            }
-          }}
-          onNavigateToSignUpForm={(accountType) => {
-            setShowOnboardingFlow(false);
-            setShowSignUpForm(true);
-            // Store account_type for signup
-            if (accountType) {
-              setOnboardingData((prev: any) => ({
-                ...prev,
-                account_type: accountType,
-              }));
-            }
-            // This will show the sign-up form
-          }}
-          onGoogleSignInComplete={() => {
-            // Google sign-in completed - user is authenticated
-            // Check onboarding status will be handled by the navigation logic below
-            // Don't set onboarding state here - let the profile check handle it
-          }}
           initialAccountType={onboardingData?.account_type}
         />
       </ErrorBoundary>
     );
   }
 
-  // Show sign in page if user is not authenticated
-  // Also show sign in if authenticated but profile hasn't loaded yet (to avoid flash)
+  // Show welcome screen if user is not authenticated
+  // Also show if authenticated but profile hasn't loaded yet (to avoid flash)
   if (!isAuthenticated || (user && !profile && !isLoadingAuth)) {
     return (
       <ErrorBoundary>
-        <SignInPage
-          onSignInRegular={(credentials) =>
-            handleSignIn(credentials, "explorer")
-          }
-          onSignUpRegular={(userData) => {
-            const accountType = (userData.account_type || "explorer") as "explorer" | "curator";
-            handleSignUp(userData, accountType);
-          }}
-          onSignInCurator={(credentials) =>
-            handleSignIn(credentials, "curator")
-          }
-          onSignUpCurator={(userData) => {
-            const accountType = (userData.account_type || "curator") as "explorer" | "curator";
-            handleSignUp(userData, accountType);
-          }}
-          onStartOnboarding={(accountType) => {
-            setOnboardingData((prev: any) => ({
-              ...prev,
-              account_type: accountType,
-            }));
-            setShowOnboardingFlow(true);
-          }}
-          initialMode={showSignUpForm ? "sign-up" : "welcome"}
-          onResetSignUpForm={() => setShowSignUpForm(false)}
+        <WelcomeScreen
+          onGoogleSignIn={handleGoogleSignIn}
+          onAppleSignIn={handleAppleSignIn}
         />
       </ErrorBoundary>
     );

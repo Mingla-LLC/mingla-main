@@ -206,220 +206,6 @@ export const useAuthSimple = () => {
     };
   }, []);
 
-  const signUp = async (
-    email: string,
-    password: string,
-    displayName?: string,
-    firstName?: string,
-    lastName?: string,
-    username?: string,
-    accountType?: string
-  ) => {
-    try {
-      // Sign up user - this will send OTP email automatically if configured in Supabase
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: undefined, // Mobile app doesn't need redirect
-          data: {
-            display_name: displayName || email.split("@")[0],
-            first_name: firstName || displayName?.split(" ")[0] || "",
-            last_name:
-              lastName || displayName?.split(" ").slice(1).join(" ") || "",
-            username: username || email.split("@")[0],
-            account_type: accountType || undefined, // Include account_type in metadata
-          },
-        },
-      });
-
-      if (error) {
-        Alert.alert(
-          "Sign Up Failed",
-          error.message || "An error occurred during sign up. Please try again."
-        );
-        throw error;
-      }
-
-      // Send OTP email immediately after signup for email verification
-      // Use signInWithOtp to send OTP code (not magic link) since email template is configured for OTP
-      if (data.user && data.user.email) {
-        try {
-          const { error: otpError } = await supabase.auth.signInWithOtp({
-            email: data.user.email,
-            options: {
-              shouldCreateUser: false, // User already created by signUp
-              emailRedirectTo: undefined, // Mobile app doesn't need redirect
-            },
-          });
-
-          if (otpError) {
-            console.error("Error sending OTP:", otpError);
-            Alert.alert(
-              "OTP Email Error",
-              otpError.message ||
-                "Failed to send verification email. You can request a new code from the verification screen."
-            );
-          } else {
-          }
-        } catch (otpErr: any) {
-          console.error("Exception sending OTP:", otpErr);
-          Alert.alert(
-            "OTP Email Error",
-            otpErr?.message ||
-              "Failed to send verification email. You can request a new code from the verification screen."
-          );
-          // Continue even if OTP send fails
-        }
-      }
-
-      // Profile will be automatically created by database trigger
-      // Check if we have a session (user might need email confirmation)
-      if (data.user) {
-        // Use session from signUp response, or get current session
-        let session = data.session;
-        if (!session) {
-          const {
-            data: { session: currentSession },
-          } = await supabase.auth.getSession();
-          session = currentSession;
-        }
-
-        if (session) {
-          // Session exists, wait for trigger and load profile
-          await new Promise((resolve) => setTimeout(resolve, 500));
-
-          // Try to load the profile that was created by the trigger
-          const { data: profile, error: profileError } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", data.user.id)
-            .single();
-
-          if (profileError) {
-            console.error("Error loading profile after signup:", profileError);
-            // Don't fail signup if profile loading fails - trigger should have created it
-          } else if (profile) {
-            setProfile(profile);
-          }
-        } else {
-          // No session - email confirmation might be required
-          // The onAuthStateChange listener will handle loading the profile when user confirms email
-        }
-      }
-
-      return { data, error: null };
-    } catch (error: any) {
-      Alert.alert(
-        "Sign Up Failed",
-        error.message || "An error occurred during sign up. Please try again."
-      );
-      return { data: null, error };
-    }
-  };
-
-  // Verify email OTP code
-  const verifyEmailOTP = async (email: string, token: string) => {
-    try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: "email",
-      });
-
-      if (error) {
-        Alert.alert(
-          "Verification Failed",
-          error.message ||
-            "Invalid or expired verification code. Please try again."
-        );
-        throw error;
-      }
-
-      // After successful OTP verification, update email_verified in profile
-      if (data.user) {
-        const { error: updateError } = await supabase
-          .from("profiles")
-          .update({ email_verified: true })
-          .eq("id", data.user.id);
-
-        if (updateError) {
-          console.error("Error updating email_verified:", updateError);
-          Alert.alert(
-            "Update Error",
-            "Email verified but failed to update profile. Please refresh the app."
-          );
-        }
-
-        // Reload profile to get updated email_verified status
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", data.user.id)
-          .single();
-
-        if (!profileError && profile) {
-          setProfile(profile);
-        }
-      }
-
-      return { data, error: null };
-    } catch (error: any) {
-      return { data: null, error };
-    }
-  };
-
-  // Resend OTP email
-  const resendEmailOTP = async (email: string) => {
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: undefined,
-        },
-      });
-
-      if (error) {
-        Alert.alert(
-          "Failed to Resend Code",
-          error.message ||
-            "Unable to send a new verification code. Please try again later."
-        );
-        throw error;
-      }
-
-      Alert.alert(
-        "Code Sent",
-        "A new verification code has been sent to your email."
-      );
-      return { error: null };
-    } catch (error: any) {
-      return { error };
-    }
-  };
-
-  const signIn = async (email: string, password: string) => {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        Alert.alert(
-          "Sign In Failed",
-          error.message ||
-            "Invalid email or password. Please check your credentials and try again."
-        );
-        throw error;
-      }
-      return { data, error: null };
-    } catch (error: any) {
-      return { data: null, error };
-    }
-  };
-
   const signOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -463,184 +249,6 @@ export const useAuthSimple = () => {
       }
 
       return { data, error: null };
-    } catch (error: any) {
-      return { data: null, error };
-    }
-  };
-
-  const signUpWithPhone = async (
-    phone: string,
-    password: string,
-    username: string,
-    accountType?: string
-  ) => {
-    try {
-      // Send OTP to phone number
-      // Store password, username, and account_type in metadata for later use
-      const { data, error } = await supabase.auth.signInWithOtp({
-        phone,
-        options: {
-          data: {
-            username: username,
-            temp_password: password, // Store temporarily in metadata
-            account_type: accountType || undefined, // Include account_type in metadata
-          },
-        },
-      });
-
-      if (error) {
-        Alert.alert(
-          "Failed to Send Code",
-          error.message ||
-            "Unable to send verification code to your phone. Please try again."
-        );
-        throw error;
-      }
-
-      return { data, error: null };
-    } catch (error: any) {
-      return { data: null, error };
-    }
-  };
-
-  const verifyPhoneOTP = async (phone: string, otp: string) => {
-    try {
-      // Verify OTP
-      const { data, error } = await supabase.auth.verifyOtp({
-        phone,
-        token: otp,
-        type: "sms",
-      });
-
-      if (error) {
-        Alert.alert(
-          "Verification Failed",
-          error.message ||
-            "Invalid or expired verification code. Please try again."
-        );
-        throw error;
-      }
-
-      // If verification successful, user should have a session
-      if (data.user) {
-        // Set password if it was stored in metadata
-        const tempPassword = data.user.user_metadata?.temp_password;
-        if (tempPassword) {
-          try {
-            const { error: passwordError } = await supabase.auth.updateUser({
-              password: tempPassword,
-            });
-            if (passwordError) {
-              console.error("Error setting password:", passwordError);
-              Alert.alert(
-                "Password Setup Warning",
-                "Your account was created but password setup failed. You can set it later in settings."
-              );
-              // Continue anyway - user can set password later
-            }
-          } catch (err: any) {
-            console.error("Error setting password:", err);
-            Alert.alert(
-              "Password Setup Warning",
-              "Your account was created but password setup failed. You can set it later in settings."
-            );
-          }
-        }
-
-        // Wait for trigger to create profile
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // Try to load the profile
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", data.user.id)
-          .single();
-
-        if (profileError) {
-          console.error(
-            "Error loading profile after phone verification:",
-            profileError
-          );
-          Alert.alert(
-            "Profile Loading Error",
-            "Account created but profile loading failed. Please refresh the app."
-          );
-        } else if (profile) {
-          setProfile(profile);
-        }
-      }
-
-      return { data, error: null };
-    } catch (error: any) {
-      return { data: null, error };
-    }
-  };
-
-  const resendPhoneOTP = async (phone: string) => {
-    try {
-      const { data, error } = await supabase.auth.signInWithOtp({
-        phone,
-      });
-
-      if (error) {
-        Alert.alert(
-          "Failed to Resend Code",
-          error.message ||
-            "Unable to send a new verification code. Please try again later."
-        );
-        throw error;
-      }
-
-      Alert.alert(
-        "Code Sent",
-        "A new verification code has been sent to your phone."
-      );
-      return { data, error: null };
-    } catch (error: any) {
-      return { data: null, error };
-    }
-  };
-
-  // Helper function to handle OAuth tokens and set session
-  const handleOAuthTokens = async (
-    accessToken: string,
-    refreshToken: string
-  ) => {
-    try {
-      // Set the session manually from the tokens
-      const { data: sessionData, error: sessionError } =
-        await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-
-      if (sessionError) throw sessionError;
-
-      // Wait for profile to be created/loaded
-      if (sessionData.session?.user) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // Load profile
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", sessionData.session.user.id)
-          .single();
-
-        if (profileError) {
-          console.error(
-            "Error loading profile after Google sign-in:",
-            profileError
-          );
-        } else if (profile) {
-          setProfile(profile);
-        }
-
-        return { data: sessionData.session, error: null };
-      }
-
-      return { data: null, error: { message: "Failed to create session" } };
     } catch (error: any) {
       return { data: null, error };
     }
@@ -849,31 +457,7 @@ export const useAuthSimple = () => {
           .single();
 
         if (!profileError && profile) {
-          // Ensure email_verified is set to true for Google users
-          if (profile.email_verified === false) {
-            const { error: updateError } = await supabase
-              .from("profiles")
-              .update({ email_verified: true })
-              .eq("id", data.session.user.id);
-
-            if (!updateError) {
-              // Reload profile with updated email_verified
-              const { data: updatedProfile } = await supabase
-                .from("profiles")
-                .select("*")
-                .eq("id", data.session.user.id)
-                .single();
-
-              if (updatedProfile) {
-                setProfile(updatedProfile);
-              }
-            } else {
-              console.error("Error updating email_verified:", updateError);
-              setProfile(profile);
-            }
-          } else {
-            setProfile(profile);
-          }
+          setProfile(profile);
         }
       }
 
@@ -971,7 +555,7 @@ export const useAuthSimple = () => {
 
         if (!profileError && profile) {
           // Update profile with Apple user info if available (first time only)
-          const updates: any = {};
+          const updates: Record<string, string> = {};
 
           // Apple only provides name/email on first sign-in
           if (credential.fullName) {
@@ -988,11 +572,6 @@ export const useAuthSimple = () => {
             ) {
               updates.display_name = `${credential.fullName.givenName} ${credential.fullName.familyName}`;
             }
-          }
-
-          // Ensure email_verified is set to true for Apple users
-          if (profile.email_verified === false) {
-            updates.email_verified = true;
           }
 
           if (Object.keys(updates).length > 0) {
@@ -1014,24 +593,10 @@ export const useAuthSimple = () => {
               }
             } else {
               console.error("Error updating profile:", updateError);
-              setProfile({ ...profile, email_verified: true });
-            }
-          } else {
-            // Just ensure email_verified is true
-            if (profile.email_verified === false) {
-              const { error: updateError } = await supabase
-                .from("profiles")
-                .update({ email_verified: true })
-                .eq("id", profile.id);
-
-              if (!updateError) {
-                setProfile({ ...profile, email_verified: true });
-              } else {
-                setProfile(profile);
-              }
-            } else {
               setProfile(profile);
             }
+          } else {
+            setProfile(profile);
           }
         }
       }
@@ -1056,17 +621,9 @@ export const useAuthSimple = () => {
   return {
     user,
     loading,
-    signUp,
-    signIn,
     signOut,
     updateProfile,
-    verifyEmailOTP,
-    resendEmailOTP,
-    signUpWithPhone,
-    verifyPhoneOTP,
-    resendPhoneOTP,
     signInWithGoogle,
     signInWithApple,
-    handleOAuthTokens, // Export for WebView component
   };
 };

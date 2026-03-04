@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Text,
   View,
@@ -7,169 +7,40 @@ import {
   StatusBar,
   Image,
   ActivityIndicator,
+  Animated,
+  Easing,
+  Platform,
+  Alert,
+  BackHandler,
+  AccessibilityInfo,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import * as WebBrowser from "expo-web-browser";
+import { HapticFeedback } from "../../utils/hapticFeedback";
+import {
+  spacing,
+  radius,
+  shadows,
+  colors,
+  fontWeights,
+  backgroundWarmGlow,
+} from "../../constants/designSystem";
 
 const googleIcon = require("../../../assets/google_icon.png");
 const logo = require("../../../assets/mobile_logo.png");
 
+// Placeholder URLs — replace with actual URLs when provided by product
+const TERMS_URL = "https://mingla.app/terms";
+const PRIVACY_URL = "https://mingla.app/privacy";
+
 interface WelcomeScreenProps {
-  onSignUp: () => void;
-  onNavigateToSignIn: () => void;
-  onStartOnboarding?: (accountType?: string) => void;
-  onGoogleSignIn?: () => Promise<void>;
-  onAppleSignIn?: () => Promise<void>;
+  onGoogleSignIn: () => Promise<void>;
+  onAppleSignIn: () => Promise<void>;
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "white",
-  },
-  mainContent: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  titleContainer: {
-    alignItems: "center",
-  },
-  logo: {
-    width: 150,
-    /*  height: 150, */
-  },
-  tagline: {
-    color: "#4B5563",
-    fontSize: 16,
-    textAlign: "center",
-    lineHeight: 24,
-    maxWidth: 300,
-    letterSpacing: 0.025,
-  },
-  buttonContainer: {
-    width: "100%",
-    maxWidth: 400,
-    gap: 16,
-  },
-  primaryButton: {
-    width: "100%",
-    backgroundColor: "#eb7825",
-    paddingVertical: 10,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryButtonText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 16,
-  },
-  continueWithText: {
-    color: "#6b7280",
-    fontSize: 14,
-    textAlign: "center",
-    marginVertical: 16,
-  },
-  providerButton: {
-    width: "100%",
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    paddingVertical: 10,
-    borderRadius: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  providerButtonDisabled: {
-    opacity: 0.5,
-  },
-  providerButtonText: {
-    color: "#111827",
-    fontWeight: "500",
-    fontSize: 16,
-  },
-  appleButton: {
-    width: "100%",
-    backgroundColor: "#111827",
-    paddingVertical: 10,
-    borderRadius: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  appleButtonDisabled: {
-    opacity: 0.5,
-  },
-  appleButtonText: {
-    color: "white",
-    fontWeight: "500",
-    fontSize: 16,
-  },
-  googleIcon: {
-    width: 20,
-    height: 20,
-  },
-  separatorContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 16,
-    width: "100%",
-  },
-  separatorLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#e5e7eb",
-  },
-  separatorText: {
-    color: "#6b7280",
-    fontSize: 14,
-    marginHorizontal: 12,
-  },
-  emailSignInButton: {
-    width: "100%",
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    paddingVertical: 10,
-    borderRadius: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  emailSignInButtonDisabled: {
-    opacity: 0.5,
-  },
-  emailSignInButtonText: {
-    color: "#111827",
-    fontWeight: "500",
-    fontSize: 16,
-  },
-  termsText: {
-    color: "#1f2937",
-    fontSize: 12,
-    textAlign: "center",
-
-    paddingHorizontal: 24,
-    lineHeight: 18,
-  },
-  termsLink: {
-    color: "#eb7825",
-  },
-  loadingIndicator: {
-    marginRight: 8,
-  },
-});
-
 export default function WelcomeScreen({
-  onSignUp,
-  onNavigateToSignIn,
-  onStartOnboarding,
   onGoogleSignIn,
   onAppleSignIn,
 }: WelcomeScreenProps) {
@@ -180,154 +51,461 @@ export default function WelcomeScreen({
   const isAnyAuthInProgress =
     isGoogleSignInInProgress || isAppleSignInInProgress;
 
-  const handleSignUp = () => {
-    if (isAnyAuthInProgress) return;
+  // Animated values for entrance animation
+  const logoOpacity = useRef(new Animated.Value(0)).current;
+  const logoScale = useRef(new Animated.Value(0.85)).current;
+  const taglineOpacity = useRef(new Animated.Value(0)).current;
+  const taglineTranslateY = useRef(new Animated.Value(15)).current;
+  const appleOpacity = useRef(new Animated.Value(0)).current;
+  const appleTranslateY = useRef(new Animated.Value(25)).current;
+  const googleOpacity = useRef(new Animated.Value(0)).current;
+  const googleTranslateY = useRef(new Animated.Value(25)).current;
+  const termsOpacity = useRef(new Animated.Value(0)).current;
 
-    // Hardcode "explorer" as account type and navigate directly to onboarding
-    if (onStartOnboarding) {
-      onStartOnboarding("explorer");
-    } else if (onSignUp) {
-      onSignUp();
-    }
-  };
+  // Entrance animation on mount
+  useEffect(() => {
+    const runAnimation = async () => {
+      let reducedMotion = false;
+      try {
+        reducedMotion = await AccessibilityInfo.isReduceMotionEnabled();
+      } catch {
+        reducedMotion = false;
+      }
+
+      if (reducedMotion) {
+        // Skip all animations — set final values immediately
+        logoOpacity.setValue(1);
+        logoScale.setValue(1);
+        taglineOpacity.setValue(1);
+        taglineTranslateY.setValue(0);
+        appleOpacity.setValue(1);
+        appleTranslateY.setValue(0);
+        googleOpacity.setValue(1);
+        googleTranslateY.setValue(0);
+        termsOpacity.setValue(0.8);
+        return;
+      }
+
+      // Orchestrated entrance animation sequence (1.2s total)
+      Animated.stagger(200, [
+        // Logo: fade + scale simultaneously
+        Animated.parallel([
+          Animated.timing(logoOpacity, {
+            toValue: 1,
+            duration: 600,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(logoScale, {
+            toValue: 1,
+            duration: 600,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ]),
+
+        // Tagline: fade + slide up
+        Animated.parallel([
+          Animated.timing(taglineOpacity, {
+            toValue: 1,
+            duration: 500,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(taglineTranslateY, {
+            toValue: 0,
+            duration: 500,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ]),
+
+        // Apple button (iOS only): fade + slide up with spring
+        ...(Platform.OS === "ios"
+          ? [
+              Animated.parallel([
+                Animated.timing(appleOpacity, {
+                  toValue: 1,
+                  duration: 400,
+                  easing: Easing.out(Easing.cubic),
+                  useNativeDriver: true,
+                }),
+                Animated.spring(appleTranslateY, {
+                  toValue: 0,
+                  tension: 80,
+                  friction: 10,
+                  useNativeDriver: true,
+                }),
+              ]),
+            ]
+          : []),
+
+        // Google button: fade + slide up with spring
+        Animated.parallel([
+          Animated.timing(googleOpacity, {
+            toValue: 1,
+            duration: 400,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.spring(googleTranslateY, {
+            toValue: 0,
+            tension: 80,
+            friction: 10,
+            useNativeDriver: true,
+          }),
+        ]),
+
+        // Terms: gentle fade (to 0.8, not 1 — de-emphasize)
+        Animated.timing(termsOpacity, {
+          toValue: 0.8,
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    };
+
+    runAnimation();
+  }, []);
+
+  // Handle Android back button — stay on WelcomeScreen
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => true
+    );
+    return () => backHandler.remove();
+  }, []);
 
   const handleGoogleSignIn = async () => {
-    if (isGoogleSignInInProgress || isAppleSignInInProgress || !onGoogleSignIn)
-      return;
+    if (isAnyAuthInProgress) return;
 
+    HapticFeedback.buttonPress();
     setIsGoogleSignInInProgress(true);
     try {
       await onGoogleSignIn();
-    } catch (error) {
-      /*  console.error("Google sign-in error:", error); */
+    } catch (error: any) {
+      // Silent return for cancellation
+      if (
+        error?.message?.includes("cancelled") ||
+        error?.message?.includes("canceled") ||
+        error?.code === "ERR_REQUEST_CANCELED"
+      ) {
+        return;
+      }
+      Alert.alert(
+        "Couldn't sign you in",
+        "Something didn't connect. Give it another tap.",
+        [{ text: "Got it" }]
+      );
     } finally {
       setIsGoogleSignInInProgress(false);
     }
   };
 
   const handleAppleSignIn = async () => {
-    if (isAppleSignInInProgress || isGoogleSignInInProgress || !onAppleSignIn)
-      return;
+    if (isAnyAuthInProgress) return;
 
+    HapticFeedback.buttonPress();
     setIsAppleSignInInProgress(true);
     try {
       await onAppleSignIn();
-    } catch (error) {
-      console.error("Apple sign-in error:", error);
+    } catch (error: any) {
+      // Silent return for cancellation
+      if (
+        error?.message?.includes("cancelled") ||
+        error?.message?.includes("canceled") ||
+        error?.code === "ERR_REQUEST_CANCELED"
+      ) {
+        return;
+      }
+      Alert.alert(
+        "Couldn't sign you in",
+        "Something didn't connect. Give it another tap.",
+        [{ text: "Got it" }]
+      );
     } finally {
       setIsAppleSignInInProgress(false);
     }
   };
 
-  const handleEmailSignIn = () => {
-    if (isAnyAuthInProgress) return;
-    onNavigateToSignIn();
+  const openTerms = async () => {
+    await WebBrowser.openBrowserAsync(TERMS_URL);
+  };
+
+  const openPrivacy = async () => {
+    await WebBrowser.openBrowserAsync(PRIVACY_URL);
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/*    <StatusBar barStyle="dark-content" backgroundColor="white" /> */}
+    <LinearGradient
+      colors={[colors.background.primary, backgroundWarmGlow]}
+      style={styles.gradient}
+    >
+      <SafeAreaView style={styles.container}>
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor="transparent"
+          translucent
+        />
 
-      <View style={styles.mainContent}>
-        {/* Minglå Logo */}
-        <View style={styles.titleContainer}>
-          <Image source={logo} style={styles.logo} resizeMode="contain" />
+        {/* Brand Zone */}
+        <View style={styles.brandZone}>
+          <Animated.View
+            style={[
+              styles.logoContainer,
+              {
+                opacity: logoOpacity,
+                transform: [{ scale: logoScale }],
+              },
+            ]}
+          >
+            <Image
+              source={logo}
+              style={styles.logo}
+              resizeMode="contain"
+              accessibilityLabel="Mingla logo"
+              accessibilityRole="image"
+            />
+          </Animated.View>
+
+          <Animated.Text
+            style={[
+              styles.tagline,
+              {
+                opacity: taglineOpacity,
+                transform: [{ translateY: taglineTranslateY }],
+              },
+            ]}
+          >
+            Dates, hangouts, and everything in between {"\u2014"} sorted.
+          </Animated.Text>
         </View>
 
-        {/* Tagline */}
+        {/* Action Zone */}
+        <View style={styles.actionZone}>
+          {/* Apple Sign-In Button — iOS only */}
+          {Platform.OS === "ios" && (
+            <Animated.View
+              style={[
+                styles.buttonAnimWrapper,
+                {
+                  opacity: appleOpacity,
+                  transform: [{ translateY: appleTranslateY }],
+                },
+              ]}
+            >
+              <TouchableOpacity
+                onPress={handleAppleSignIn}
+                style={[
+                  styles.appleButton,
+                  isAnyAuthInProgress &&
+                    !isAppleSignInInProgress &&
+                    styles.buttonDisabled,
+                ]}
+                disabled={isAnyAuthInProgress}
+                activeOpacity={0.85}
+                accessibilityLabel="Continue with Apple"
+                accessibilityRole="button"
+                accessibilityHint="Signs you in or creates an account using your Apple ID"
+                accessibilityState={{
+                  disabled: isAnyAuthInProgress,
+                  busy: isAppleSignInInProgress,
+                }}
+              >
+                {isAppleSignInInProgress ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Ionicons name="logo-apple" size={22} color="#ffffff" />
+                )}
+                <Text style={styles.appleButtonText}>
+                  {isAppleSignInInProgress
+                    ? "Connecting..."
+                    : "Continue with Apple"}
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
 
-        {/* Sign Up Button */}
-        <View style={styles.buttonContainer}>
-          <Text style={styles.tagline}>
-            The easiest way to figure out what to do on dates and hangouts.
-          </Text>
-          <TouchableOpacity
-            onPress={handleSignUp}
+          {/* Google Sign-In Button */}
+          <Animated.View
             style={[
-              styles.primaryButton,
-              isAnyAuthInProgress && styles.providerButtonDisabled,
+              styles.buttonAnimWrapper,
+              {
+                opacity: googleOpacity,
+                transform: [{ translateY: googleTranslateY }],
+              },
             ]}
-            disabled={isAnyAuthInProgress}
           >
-            <Text style={styles.primaryButtonText}>Sign Up</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleGoogleSignIn}
+              style={[
+                styles.googleButton,
+                isAnyAuthInProgress &&
+                  !isGoogleSignInInProgress &&
+                  styles.buttonDisabled,
+              ]}
+              disabled={isAnyAuthInProgress}
+              activeOpacity={0.9}
+              accessibilityLabel="Continue with Google"
+              accessibilityRole="button"
+              accessibilityHint="Signs you in or creates an account using your Google account"
+              accessibilityState={{
+                disabled: isAnyAuthInProgress,
+                busy: isGoogleSignInInProgress,
+              }}
+            >
+              {isGoogleSignInInProgress ? (
+                <ActivityIndicator size="small" color="#111827" />
+              ) : (
+                <Image
+                  source={googleIcon}
+                  style={styles.googleIcon}
+                  resizeMode="contain"
+                />
+              )}
+              <Text style={styles.googleButtonText}>
+                {isGoogleSignInInProgress
+                  ? "Connecting..."
+                  : "Continue with Google"}
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
 
-          {/* Continue with Text */}
-          <View style={styles.separatorContainer}>
-            <View style={styles.separatorLine} />
-            <Text style={styles.separatorText}>or continue with</Text>
-            <View style={styles.separatorLine} />
-          </View>
+          {/* Flex spacer */}
+          <View style={styles.spacer} />
 
-          {/* Google Sign In Button */}
-          <TouchableOpacity
-            onPress={handleGoogleSignIn}
-            style={[
-              styles.providerButton,
-              isAnyAuthInProgress && styles.providerButtonDisabled,
-            ]}
-            disabled={isAnyAuthInProgress}
-          >
-            {isGoogleSignInInProgress ? (
-              <ActivityIndicator
-                size="small"
-                color="#111827"
-                style={styles.loadingIndicator}
-              />
-            ) : (
-              <Image source={googleIcon} style={styles.googleIcon} />
-            )}
-            <Text style={styles.providerButtonText}>Continue with Google</Text>
-          </TouchableOpacity>
-
-          {/* Apple Sign In Button */}
-          <TouchableOpacity
-            onPress={handleAppleSignIn}
-            style={[
-              styles.appleButton,
-              isAnyAuthInProgress && styles.appleButtonDisabled,
-            ]}
-            disabled={isAnyAuthInProgress}
-          >
-            {isAppleSignInInProgress ? (
-              <ActivityIndicator
-                size="small"
-                color="white"
-                style={styles.loadingIndicator}
-              />
-            ) : (
-              <Ionicons name="logo-apple" size={20} color="white" />
-            )}
-            <Text style={styles.appleButtonText}>Continue with Apple</Text>
-          </TouchableOpacity>
-
-          {/* Separator */}
-          <View style={styles.separatorContainer}>
-            <View style={styles.separatorLine} />
-            <Text style={styles.separatorText}>or</Text>
-            <View style={styles.separatorLine} />
-          </View>
-
-          {/* Sign In with Email Button */}
-          <TouchableOpacity
-            onPress={handleEmailSignIn}
-            style={[
-              styles.emailSignInButton,
-              isAnyAuthInProgress && styles.emailSignInButtonDisabled,
-            ]}
-            disabled={isAnyAuthInProgress}
-          >
-            <Ionicons name="mail-outline" size={20} color="#111827" />
-            <Text style={styles.emailSignInButtonText}>Sign In with Email</Text>
-          </TouchableOpacity>
-
-          {/* Terms of Service */}
-          <Text style={styles.termsText}>
-            By continuing, you agree to our <Text>Terms of Service</Text> and{" "}
-            <Text>Privacy Policy</Text>
-          </Text>
+          {/* Terms & Privacy */}
+          <Animated.View style={{ opacity: termsOpacity }}>
+            <Text style={styles.termsText}>
+              By continuing, you agree to our{" "}
+              <Text
+                style={styles.termsLink}
+                onPress={openTerms}
+                accessibilityLabel="Terms of Service"
+                accessibilityRole="link"
+                accessibilityHint="Opens Mingla's Terms of Service"
+              >
+                Terms of Service
+              </Text>{" "}
+              and{" "}
+              <Text
+                style={styles.termsLink}
+                onPress={openPrivacy}
+                accessibilityLabel="Privacy Policy"
+                accessibilityRole="link"
+                accessibilityHint="Opens Mingla's Privacy Policy"
+              >
+                Privacy Policy
+              </Text>
+              .
+            </Text>
+          </Animated.View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
+
+const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+  },
+  brandZone: {
+    flex: 1.2,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+  },
+  logoContainer: {
+    alignItems: "center",
+  },
+  logo: {
+    width: 200,
+    maxWidth: "60%",
+  },
+  tagline: {
+    fontSize: 17,
+    lineHeight: 26,
+    fontWeight: fontWeights.regular,
+    color: colors.text.secondary,
+    textAlign: "center",
+    maxWidth: 300,
+    letterSpacing: 0.2,
+    marginTop: spacing.md,
+  },
+  actionZone: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  buttonAnimWrapper: {
+    width: "100%",
+    alignItems: "center",
+  },
+  appleButton: {
+    width: "100%",
+    maxWidth: 400,
+    height: 56,
+    backgroundColor: "#000000",
+    borderRadius: radius.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    ...shadows.md,
+  },
+  appleButtonText: {
+    color: colors.text.inverse,
+    fontSize: 17,
+    fontWeight: fontWeights.semibold,
+    letterSpacing: 0.3,
+  },
+  googleButton: {
+    width: "100%",
+    maxWidth: 400,
+    height: 56,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    borderRadius: radius.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    ...shadows.sm,
+  },
+  googleButtonText: {
+    color: colors.text.primary,
+    fontSize: 17,
+    fontWeight: fontWeights.semibold,
+    letterSpacing: 0.3,
+  },
+  googleIcon: {
+    width: 22,
+    height: 22,
+  },
+  buttonDisabled: {
+    opacity: 0.4,
+  },
+  spacer: {
+    flex: 1,
+  },
+  termsText: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: fontWeights.regular,
+    color: colors.text.tertiary,
+    textAlign: "center",
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.sm,
+  },
+  termsLink: {
+    color: colors.primary[700],
+  },
+});

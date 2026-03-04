@@ -507,7 +507,7 @@ export class MessagingService {
   }
 
   /**
-   * Send notifications (push and email) to message recipients
+   * Send push notifications to message recipients
    */
   private async sendMessageNotifications(
     conversationId: string,
@@ -556,8 +556,8 @@ export class MessagingService {
         // Send push notification
         await this.sendPushNotification(recipientId, senderName, messagePreview, conversationId);
 
-        // Send email notification
-        await this.sendEmailNotification(recipientId, senderName, messagePreview, conversationId, senderProfile?.email);
+        // Send push notification via edge function (email removed — push only)
+        await this.sendEdgeFunctionNotification(recipientId, senderName, messagePreview, conversationId, senderProfile?.email);
       }
     } catch (error) {
       console.error('Error sending message notifications:', error);
@@ -592,9 +592,10 @@ export class MessagingService {
   }
 
   /**
-   * Send email notification to recipient
+   * Send push notification to recipient via edge function
+   * (Edge function now sends push notifications — email was removed in auth simplification)
    */
-  private async sendEmailNotification(
+  private async sendEdgeFunctionNotification(
     recipientId: string,
     senderName: string,
     messagePreview: string,
@@ -614,10 +615,10 @@ export class MessagingService {
         return;
       }
 
-      // Call Supabase Edge Function to send email
-      // If Edge Function doesn't exist, this will fail gracefully
+      // Call Supabase Edge Function to send push notification
       const { error } = await supabase.functions.invoke('send-message-email', {
         body: {
+          recipientId,
           recipientEmail: recipientProfile.email,
           recipientName: recipientProfile.first_name || 'User',
           senderName,
@@ -628,13 +629,11 @@ export class MessagingService {
       });
 
       if (error) {
-        // Edge Function might not exist yet - log but don't fail
-        console.log('Email notification via Edge Function not available:', error.message);
-        // Fallback: Could use a database trigger or webhook here
+        console.log('Push notification via Edge Function not available:', error.message);
       }
     } catch (error) {
-      // Silently fail - email notifications are optional
-      console.log('Email notification error (non-critical):', error);
+      // Silently fail — push notifications are non-critical
+      console.log('Push notification error (non-critical):', error);
     }
   }
 }

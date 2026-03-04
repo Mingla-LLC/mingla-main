@@ -591,8 +591,7 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           }
         }
 
-        // Call Edge Function to send email (and push notification if user exists)
-        // Log the values being sent to help debug
+        // Call Edge Function to send push notification
         console.log("Calling Edge Function with:", {
           senderId: user.id,
           receiverId: receiverId,
@@ -603,9 +602,9 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
           userExists: userExists,
         });
 
-        let emailSent = false;
+        let notificationSent = false;
         try {
-          const { data: emailData, error: emailError } =
+          const { data: notifyData, error: notifyError } =
             await supabase.functions.invoke("smart-task", {
               body: {
                 senderId: user.id,
@@ -619,25 +618,20 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
               },
             });
 
-          if (emailError) {
-            console.error("Error calling email function:", emailError);
-            console.error(
-              "Function URL:",
-              `https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/smart-task`
-            );
+          if (notifyError) {
+            console.error("Error calling notification function:", notifyError);
             throw new Error(
-              `Failed to send email: ${emailError.message || "Unknown error"}`
+              `Failed to send notification: ${notifyError.message || "Unknown error"}`
             );
           } else {
-            console.log("Email sent successfully:", emailData);
-            emailSent = true;
+            console.log("Notification sent successfully:", notifyData);
+            notificationSent = true;
           }
-        } catch (emailErr: any) {
-          console.error("Email function call failed:", emailErr);
-          // Re-throw so the UI knows the email failed
+        } catch (notifyErr: any) {
+          console.error("Notification function call failed:", notifyErr);
           throw new Error(
-            `Email notification failed: ${
-              emailErr.message || "Could not send email. Please try again."
+            `Notification failed: ${
+              notifyErr.message || "Could not send notification. Please try again."
             }`
           );
         }

@@ -163,9 +163,9 @@ export function useAppState() {
   const {
     user,
     loading: authLoading,
-    signIn,
-    signUp,
     signOut,
+    signInWithGoogle,
+    signInWithApple,
   } = useAuthSimple();
   const {
     profile,
@@ -179,7 +179,6 @@ export function useAppState() {
   const [onboardingData, setOnboardingData] = useState(null);
   const [isLoadingOnboarding, setIsLoadingOnboarding] = useState(true);
   const [showOnboardingFlow, setShowOnboardingFlow] = useState(false);
-  const [showSignUpForm, setShowSignUpForm] = useState(false);
 
   // UI state
   const [currentPage, setCurrentPage] = useState<
@@ -413,7 +412,6 @@ export function useAppState() {
       setShowPrivacyPolicy(false);
       setShowShareModal(false);
       setShowOnboardingFlow(false);
-      setShowSignUpForm(false);
       setHasCompletedOnboarding(false);
       setOnboardingData(null);
     }
@@ -760,102 +758,26 @@ export function useAppState() {
     safeAsyncStorageSet("mingla_account_preferences", updatedPreferences);
   };
 
-  // Authentication handlers - now using Supabase
-  const handleSignIn = async (
-    credentials: { email: string; password: string },
-    role: "explorer" | "curator"
-  ) => {
+  // OAuth sign-in handlers (called by WelcomeScreen)
+  const handleGoogleSignIn = async () => {
     try {
-      // Use the signIn function from useAuthSimple
-      const { data, error } = await signIn(
-        credentials.email,
-        credentials.password
-      );
-
-      if (error) {
-        console.error("Sign in error:", error);
-        // TODO: Show error message to user
-        alert(`Sign in failed: ${error.message}`);
-        return;
-      }
-
-      if (data?.user) {
-        // Always land users on Explore (home tab) after successful sign-in
-        setCurrentPage("home");
-
-        // The useAuthSimple hook will automatically update the user state
-        // and the app will re-render with the authenticated user
+      const result = await signInWithGoogle();
+      if (result.error) {
+        // Error is already handled by signInWithGoogle (shows Alert)
       }
     } catch (error) {
-      console.error("Sign in failed:", error);
+      console.error("Unexpected error during Google sign-in:", error);
     }
   };
 
-  const handleSignUp = async (
-    userData: {
-      email: string;
-      password: string;
-      name: string;
-      username: string;
-      organization?: string;
-      account_type?: string;
-    },
-    role: "explorer" | "curator"
-  ) => {
-    // Use account_type from userData if provided, otherwise use role
-    const accountType = userData.account_type || role;
-
+  const handleAppleSignIn = async () => {
     try {
-      // Split name into first and last name
-      const firstName = userData.name.split(" ")[0] || "";
-      const lastName = userData.name.split(" ").slice(1).join(" ") || "";
-
-      // Use the signUp function from useAuthSimple
-      // signUp now handles profile creation with firstName, lastName, username, and account_type
-      const result = await signUp(
-        userData.email,
-        userData.password,
-        userData.name, // displayName
-        firstName,
-        lastName,
-        userData.username,
-        accountType // account_type
-      );
-
-      if (!result) {
-        console.error("Sign up failed: No result returned");
-        alert("Sign up failed: No result returned");
-        return;
-      }
-
-      const { data, error } = result;
-
-      if (error) {
-        console.error("Sign up error:", error);
-        // Check if it's a username uniqueness error
-        if (
-          error.message?.includes("username") ||
-          error.message?.includes("unique") ||
-          error.code === "23505"
-        ) {
-          alert("This username is already taken. Please choose another one.");
-        } else {
-          alert(`Sign up failed: ${error.message}`);
-        }
-        return;
-      }
-
-      if (data?.user) {
-        // Reset showSignUpForm so onboarding can show properly
-        setShowSignUpForm(false);
-
-        // The useAuthSimple hook will automatically update the user state
-        // and the app will re-render with the authenticated user
-        // OnboardingFlow will automatically show when profile loads with has_completed_onboarding = false
+      const result = await signInWithApple();
+      if (result.error) {
+        // Error is already handled by signInWithApple (shows Alert)
       }
     } catch (error) {
-      console.error("Sign up failed:", error);
-      alert("An unexpected error occurred during sign up. Please try again.");
+      console.error("Unexpected error during Apple sign-in:", error);
     }
   };
 
@@ -872,7 +794,6 @@ export function useAppState() {
       setShowPrivacyPolicy(false);
       setShowShareModal(false);
       setShowOnboardingFlow(false);
-      setShowSignUpForm(false);
 
       // Clear all user data from the store immediately
       const store = useAppStore.getState();
@@ -938,8 +859,6 @@ export function useAppState() {
     setIsLoadingOnboarding,
     showOnboardingFlow,
     setShowOnboardingFlow,
-    showSignUpForm,
-    setShowSignUpForm,
     currentPage,
     setCurrentPage,
     showPreferences,
@@ -1010,9 +929,9 @@ export function useAppState() {
     safeLocalStorageSet: safeAsyncStorageSet,
     unblockFriend,
 
-    // Authentication Handlers
-    handleSignIn,
-    handleSignUp,
+    // Authentication Handlers (OAuth only)
     handleSignOut,
+    handleGoogleSignIn,
+    handleAppleSignIn,
   };
 }
