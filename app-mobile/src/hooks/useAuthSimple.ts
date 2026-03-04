@@ -353,69 +353,42 @@ export const useAuthSimple = () => {
         if (isExistingUserError) {
           console.log("User already exists, checking for session...");
 
-          // Wait a bit for Supabase to process the sign-in
-          // Sometimes the session is created even if there's a database error
-          // Try multiple times with increasing delays
-          let sessionFound = false;
-          for (let attempt = 0; attempt < 3; attempt++) {
-            await new Promise((resolve) =>
-              setTimeout(resolve, 500 * (attempt + 1))
-            );
+          // Existing user — session is usually available immediately.
+          // One short delay + one check is sufficient.
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          const { data: sessionData } = await supabase.auth.getSession();
 
-            const { data: sessionData } = await supabase.auth.getSession();
-
-            if (sessionData?.session && sessionData.session.user) {
-              // Session was created successfully, ignore the error
-              data = {
-                session: sessionData.session,
-                user: sessionData.session.user,
-              };
-              error = null;
-              sessionFound = true;
-              console.log("Successfully signed in existing user via Google");
-              break;
-            }
-          }
-
-          if (!sessionFound) {
-            // No session found after waiting
-            // The user exists but Supabase didn't create a session
-            // This might mean the Google provider isn't linked to their account
-            // For now, let's try one more time with the OAuth flow
-            console.log("No session found, retrying OAuth sign-in...");
-
+          if (sessionData?.session && sessionData.session.user) {
+            data = {
+              session: sessionData.session,
+              user: sessionData.session.user,
+            };
+            error = null;
+            console.log("Successfully signed in existing user via Google");
+          } else {
+            // Session not available — retry the OAuth call once
             const retryResult = await supabase.auth.signInWithIdToken({
               provider: "google",
               token: tokens.idToken,
             });
 
             if (!retryResult.error && retryResult.data?.session) {
-              // Success on retry
               data = retryResult.data;
               error = null;
               console.log("Successfully signed in existing user on retry");
             } else {
-              // Still no session - Supabase might need account linking
-              // But the user should be able to sign in, so let's check one more time
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              const { data: finalSessionData } =
-                await supabase.auth.getSession();
-
+              // Final session check after retry
+              const { data: finalSessionData } = await supabase.auth.getSession();
               if (finalSessionData?.session && finalSessionData.session.user) {
                 data = {
                   session: finalSessionData.session,
                   user: finalSessionData.session.user,
                 };
                 error = null;
-                console.log("Session found on final check");
               } else {
-                // No session - the account needs to be linked
-                // But instead of throwing an error, let's proceed and see if Supabase handles it
                 console.warn(
                   "Could not create session for existing user, but continuing..."
                 );
-                // Don't throw error - let the flow continue
-                // The error might be from the trigger, but Supabase might handle it
               }
             }
           }
@@ -447,19 +420,8 @@ export const useAuthSimple = () => {
         }
       }
 
-      // Load profile after successful sign-in
-      if (data.session.user) {
-        await new Promise((r) => setTimeout(r, 500));
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", data.session.user.id)
-          .single();
-
-        if (!profileError && profile) {
-          setProfile(profile);
-        }
-      }
+      // Profile loading is handled by onAuthStateChange listener.
+      // Do not fetch here — it causes double queries and double re-renders.
 
       return { data: data.session, error: null };
     } catch (error: any) {
@@ -544,60 +506,32 @@ export const useAuthSimple = () => {
         throw new Error("Failed to create session");
       }
 
-      // Load profile after successful sign-in
-      if (data.session.user) {
-        await new Promise((r) => setTimeout(r, 500));
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", data.session.user.id)
-          .single();
+      // Profile loading is handled by onAuthStateChange listener.
+      // Apple name update: if Apple provided name data, fire-and-forget the update.
+      // The onAuthStateChange listener will pick up the final profile state.
+      if (data.session.user && credential.fullName) {
+        const updates: Record<string, string> = {};
+        if (credential.fullName.givenName) {
+          updates.first_name = credential.fullName.givenName;
+        }
+        if (credential.fullName.familyName) {
+          updates.last_name = credential.fullName.familyName;
+        }
+        if (credential.fullName.givenName && credential.fullName.familyName) {
+          updates.display_name = `${credential.fullName.givenName} ${credential.fullName.familyName}`;
+        }
 
-        if (!profileError && profile) {
-          // Update profile with Apple user info if available (first time only)
-          const updates: Record<string, string> = {};
-
-          // Apple only provides name/email on first sign-in
-          if (credential.fullName) {
-            if (credential.fullName.givenName && !profile.first_name) {
-              updates.first_name = credential.fullName.givenName;
-            }
-            if (credential.fullName.familyName && !profile.last_name) {
-              updates.last_name = credential.fullName.familyName;
-            }
-            if (
-              credential.fullName.givenName &&
-              credential.fullName.familyName &&
-              !profile.display_name
-            ) {
-              updates.display_name = `${credential.fullName.givenName} ${credential.fullName.familyName}`;
-            }
-          }
-
-          if (Object.keys(updates).length > 0) {
-            const { error: updateError } = await supabase
-              .from("profiles")
-              .update(updates)
-              .eq("id", profile.id);
-
-            if (!updateError) {
-              // Reload profile with updated info
-              const { data: updatedProfile } = await supabase
-                .from("profiles")
-                .select("*")
-                .eq("id", profile.id)
-                .single();
-
-              if (updatedProfile) {
-                setProfile(updatedProfile);
-              }
-            } else {
-              console.error("Error updating profile:", updateError);
-              setProfile(profile);
-            }
-          } else {
-            setProfile(profile);
-          }
+        if (Object.keys(updates).length > 0) {
+          // Fire-and-forget: update only if fields are empty (server-side).
+          // Use a single update+select instead of fetch+update+re-fetch (CF-003).
+          supabase
+            .from("profiles")
+            .update(updates)
+            .eq("id", data.session.user.id)
+            .is("first_name", null)
+            .then(({ error }) => {
+              if (error) console.error("Apple name update failed:", error);
+            });
         }
       }
 

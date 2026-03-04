@@ -141,9 +141,7 @@ export function useAppHandlers(state: any) {
       // Transform preferences to database format
       // Separate intents and categories — matches solo preferences table schema.
       const dbPreferences: any = {
-        categories: preferences.selectedCategories?.length > 0
-          ? preferences.selectedCategories
-          : ['Nature', 'Casual Eats', 'Drink'],
+        categories: preferences.selectedCategories || [],
         intents: preferences.selectedIntents || [],
         budget_min:
           typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
@@ -192,7 +190,7 @@ export function useAppHandlers(state: any) {
         people_count: 1,
         budget_min: typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
         budget_max: typeof preferences.budgetMax === "number" ? preferences.budgetMax : 1000,
-        categories: preferences.selectedCategories || ['Nature', 'Casual Eats', 'Drink'],
+        categories: preferences.selectedCategories || [],
         intents: preferences.selectedIntents || [],
         travel_mode: preferences.travelMode || "walking",
         travel_constraint_type: preferences.constraintType || "time",
@@ -609,9 +607,7 @@ export function useAppHandlers(state: any) {
             : preferences.budgetMax !== ""
             ? Number(preferences.budgetMax)
             : 1000,
-        categories: preferences.selectedCategories?.length > 0
-          ? preferences.selectedCategories
-          : ['Nature', 'Casual Eats', 'Drink'],
+        categories: preferences.selectedCategories || [],
         intents: preferences.selectedIntents || [],
         travel_mode: normalizedTravelMode,
         travel_constraint_type: preferences.constraintType || "time",

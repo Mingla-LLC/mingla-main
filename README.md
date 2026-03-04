@@ -205,7 +205,7 @@ User Request (batchSeed=N) → Edge Function (Deno)
 | **Swipe Mechanics** | Swipe right = like/save, swipe left = dislike/skip, swipe up = expand details. Pan responder with gesture handler. |
 | **Card Stack Preview** | Visual card stack showing next cards behind the current one |
 | **Curated Multi-Stop Cards** | 3-stop itinerary cards (e.g., "Solo Adventure") interleaved every 3rd regular card. Discriminated via `cardType: 'curated'` |
-| **Expanded Card Modal** | Rich detail view: image gallery, description, highlights, practical details (hours, parking, transit), match breakdown, weather forecast, busyness forecast, companion stops, timeline, action buttons |
+| **Expanded Card Modal** | Rich detail view: image gallery, description, highlights, practical details (hours, parking, transit), match breakdown, weather forecast, busyness forecast, companion stops, timeline, action buttons. Curated multi-stop cards also show weather and busyness data for the first stop. |
 | **Companion Stops** | AI-suggested nearby stops paired with the main experience |
 | **Weather Section** | Real-time weather for outdoor recommendations (from OpenWeather API) |
 | **Busyness Forecast** | Crowd level predictions by time of day |
@@ -302,7 +302,7 @@ User Request (batchSeed=N) → Edge Function (Deno)
 | Feature | Description |
 |---|---|
 | **Preferences Sheet** | Bottom sheet modal with collapsible sections |
-| **Categories** | 12 experience categories with Ionicon icons and brand colors. All categories always visible regardless of intent selection — curated pills and category pills are fully independent selection layers |
+| **Categories** | 12 experience categories with Ionicon icons and brand colors. All categories always visible regardless of intent selection — curated pills and category pills are fully independent selection layers. Users can select intents only (zero categories) for curated-only decks. |
 | **Experience Types** | Intent-based: adventurous, romantic, friendly, group-fun, business, first-dates, solo-adventure, picnic-dates |
 | **Budget Presets** | Quick-select: $25 / $50 / $100 / $150 (updated from old $100/$200/$500 presets) |
 | **Group Size** | People count selector |
@@ -1804,7 +1804,9 @@ npx supabase functions serve function-name --env-file .env.local
 
 ---
 
-## Recent Changes (2026-03-03)
+## Recent Changes (2026-03-03 — Cards Parity Fix)
+
+- **Fluidity & Stability Fix — Auth Lag, iOS Spacing, Preferences Stutter:** Eliminated all artificial delays and double-renders from the auth flow, cutting Google/Apple sign-in from 3-5s to under 1.5s. Removed 3-iteration polling loop (500ms/1000ms/1500ms escalating delays) and replaced with single 200ms check. Removed two unconditional 500ms post-auth delays. Consolidated duplicate profile loading — `onAuthStateChange` listener is now the single source of truth, OAuth handlers no longer fetch profiles. Apple name update converted from 3-call chain (fetch+update+re-fetch) to single fire-and-forget `.update().is("first_name", null)`. Preferences sheet now closes instantly by calling `onClose()` before `requestAnimationFrame`-deferred cache invalidation. iOS SafeAreaView double-inset fixed by switching to `edges={[]}` with manual `paddingTop: insets.top` and `Math.max(insets.bottom, 8)` on bottom nav. WelcomeScreen flash eliminated — authenticated users with pending profile load now see a white screen instead of flashing back to sign-in. AppStateManager's competing 5-second auth timeout removed (useAuthSimple's 8-second timeout is the single source of truth). Files: `useAuthSimple.ts`, `PreferencesSheet.tsx`, `index.tsx`, `AppStateManager.tsx`.
 
 - **Auth Simplification & Email Notification Phase-Out:** Eliminated all email-based authentication (email+password sign-up/sign-in, OTP verification, phone sign-up). The app now uses OAuth only (Google + Apple Sign-In). WelcomeScreen redesigned with two-zone layout, entrance animation sequence, and platform-specific button rendering (Apple on iOS only). Onboarding starts directly at IntentSelection (step 2). All 4 notification edge functions (`send-friend-request-email`, `send-message-email`, `send-collaboration-invite`, `notify-invite-response`) converted from Resend email to Expo Push API. 9 obsolete files deleted (SignInForm, SignUpForm, OTPScreen, PhoneSignUpForm, SignUpAsStep, AccountSetupStep, GoogleOAuthWebView, SignInPage, EmailOTPVerificationScreen). `handle_new_user` trigger updated to always set `email_verified = TRUE`. Migration: `20260303000020`.
 - **Apple/Google Sign-In Username Collision Fix:** The `handle_new_user()` database trigger now generates collision-safe usernames. Previously, if two users shared an email prefix (e.g., `john@gmail.com` and `john@icloud.com`), the second sign-up crashed with "Database error saving new user" because `ON CONFLICT (id) DO NOTHING` didn't catch `profiles_username_key` UNIQUE violations. The trigger now retries with a random 4-char hex suffix (e.g., `john_a7x3`) up to 5 times, then falls back to a UUID-based username. Also fixed the bare `'user'` fallback to include a UUID prefix. Migration: `20260303000019`. **Manual step required:** Enable "Automatically link accounts with the same email" in Supabase Dashboard → Authentication → Settings.
@@ -1829,6 +1831,9 @@ npx supabase functions serve function-name --env-file .env.local
 - **Security Hardening — Engagement RPCs:** Added field whitelisting and `auth.uid()` ownership check to both `increment_user_engagement` and `increment_place_engagement` SECURITY DEFINER functions. Previously any authenticated user could increment arbitrary columns on any user's stats. Migration: `20260303000017`.
 - **Dead Code Removal:** Deleted `usePendingReviews.ts` (93 lines, zero imports) — fully replaced by `usePostExperienceCheck.ts`.
 - **Tautological Index Fix:** Dropped and recreated `idx_calendar_entries_feedback` without the always-true `WHERE feedback_status IS NOT NULL OR feedback_status IS NULL` clause. Migration: `20260303000018`.
+- **Cards Parity Fix — Website Button (RC-001):** Fixed `card_pool` batch upsert (`ignoreDuplicates: true` → `false`) so pre-existing cards get their `website` column updated on re-encounter. Backfill migration populates website from `place_pool` for all existing cards. The "Policies & Reservations" button now appears on pool-served cards whose venues have websites.
+- **Cards Parity Fix — Curated Weather & Busyness (RC-002):** Curated multi-stop cards now fetch and display weather and busyness data for the first stop's location. WeatherSection and BusynessSection render between CuratedPlanView and TimelineSection.
+- **Cards Parity Fix — Preference Filtering (RC-003):** Removed three independent fallback layers that injected `['Nature', 'Casual Eats', 'Drink']` when the user selected only curated intents. Users can now have intent-only decks (zero categories) that show only curated experience cards. The zero-pills safety net (for corrupted/empty preference rows) is preserved.
 
 ---
 

@@ -751,11 +751,9 @@ export default function PreferencesSheet({
       custom_location: customLocationValue,
     };
 
-    // Enforce at least one category pill alongside any intents.
-    // Prevents the case where DB has only intents (e.g., ['adventurous']) → 0 cards.
-    const finalCategories = selectedCategories.length > 0
-      ? selectedCategories
-      : ['Nature', 'Casual Eats', 'Drink'];
+    // Allow empty categories when intents are selected — user wants curated-only.
+    // The deck will show only curated cards for the selected intents.
+    const finalCategories = selectedCategories;
 
     setIsSaving(true); // UI-only — ref guard above is the real mutex
     try {
@@ -799,15 +797,17 @@ export default function PreferencesSheet({
         clearTimeout(timeoutId!);
       }
 
-      // === SUCCESS: Non-blocking cache invalidation ===
-      queryClient.invalidateQueries({ queryKey: ["recommendations"] });
-      queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
-      queryClient.invalidateQueries({ queryKey: ["nature-cards"] });
-      queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
-      queryClient.invalidateQueries({ queryKey: ["userLocation"] });
-
-      // === CLOSE SHEET IMMEDIATELY ===
+      // === CLOSE SHEET FIRST — user sees instant response ===
       onClose?.();
+
+      // === THEN invalidate caches (deferred to next frame to not block close animation) ===
+      requestAnimationFrame(() => {
+        queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+        queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
+        queryClient.invalidateQueries({ queryKey: ["nature-cards"] });
+        queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
+        queryClient.invalidateQueries({ queryKey: ["userLocation"] });
+      });
 
       // === FIRE-AND-FORGET: Non-critical post-save operations ===
       if (user?.id) {

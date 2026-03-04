@@ -201,21 +201,13 @@ class DeckService {
       pills.push({ id: intent, type: 'curated' });
     }
 
-    // If we have curated intent pills but no category pills, add default categories
-    // so the user always gets single-place cards alongside curated itineraries.
-    const hasCategoryPill = pills.some(p => p.type === 'category');
-    if (!hasCategoryPill) {
+    // Final fallback: if NO pills at all (no categories AND no intents), add defaults.
+    // This only triggers when the user somehow has zero selections everywhere.
+    if (pills.length === 0) {
       const DEFAULT_CATEGORIES = ['nature', 'casual_eats', 'drink'];
       for (const cat of DEFAULT_CATEGORIES) {
         pills.push({ id: cat, type: 'category' });
       }
-    }
-
-    // Final fallback: if STILL nothing (shouldn't happen), add defaults
-    if (pills.length === 0) {
-      pills.push({ id: 'nature', type: 'category' });
-      pills.push({ id: 'casual_eats', type: 'category' });
-      pills.push({ id: 'drink', type: 'category' });
     }
 
     return { pills, categoryFilters };

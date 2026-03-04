@@ -314,23 +314,13 @@ export function useAppState() {
   const isAuthenticated = !!user; // Use Supabase user state
   const userRole = "explorer"; // Default role, can be extended later
 
-  // Add timeout to prevent infinite loading
-  const [authTimeout, setAuthTimeout] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setAuthTimeout(true);
-    }, 5000); // 5 second timeout - reduced for faster response
-
-    return () => clearTimeout(timer);
-  }, []);
-
   // Preload exchange rates so prices use real rates app-wide
   useEffect(() => {
     preloadRates();
   }, []);
 
   // Force loading to false after timeout or if authLoading is false
-  const isLoadingAuth = authLoading && !authTimeout;
+  const isLoadingAuth = authLoading;
 
   // Load onboarding data from profile (authentication handled by Supabase)
   useEffect(() => {
@@ -846,7 +836,6 @@ export function useAppState() {
     isAuthenticated,
     userRole,
     isLoadingAuth,
-    authTimeout,
     user,
     profile,
 

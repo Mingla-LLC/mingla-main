@@ -752,7 +752,46 @@ export default function ExpandedCardModal({
 
   const fetchAdditionalData = async () => {
     if (!card) return;
-    if ((card as any).cardType === 'curated') return;
+    if ((card as any).cardType === 'curated') {
+      // For curated cards, fetch weather and busyness for the first stop's location
+      const curatedCard = card as any;
+      const firstStop = curatedCard.stops?.[0];
+      if (firstStop?.lat && firstStop?.lng) {
+        // Fetch weather for first stop
+        setLoadingWeather(true);
+        try {
+          const weather = await weatherService.getWeatherForecast(
+            firstStop.lat,
+            firstStop.lng,
+            new Date()
+          );
+          setWeatherData(weather);
+        } catch (error) {
+          console.error('Error fetching curated weather:', error);
+          setWeatherData(null);
+        } finally {
+          setLoadingWeather(false);
+        }
+
+        // Fetch busyness for first stop
+        setLoadingBusyness(true);
+        try {
+          const busyness = await busynessService.getVenueBusyness(
+            firstStop.placeName,
+            firstStop.lat,
+            firstStop.lng,
+            firstStop.address,
+            firstStop.placeId
+          );
+          setBusynessData(busyness);
+        } catch (error) {
+          console.error('Error fetching curated busyness:', error);
+        } finally {
+          setLoadingBusyness(false);
+        }
+      }
+      return; // Still return — skip booking fetch (curated cards have per-stop links)
+    }
 
     // Fetch weather data
     if (card.location) {
@@ -994,6 +1033,22 @@ export default function ExpandedCardModal({
                   isSaved={isSaved}
                   onSave={onSave}
                   onClose={onClose}
+                />
+
+                {/* Weather for first stop */}
+                <WeatherSection
+                  weatherData={weatherData}
+                  loading={loadingWeather}
+                  category={curatedCard.categoryLabel || curatedCard.experienceType || 'adventurous'}
+                  selectedDateTime={undefined}
+                  measurementSystem={accountPreferences?.measurementSystem}
+                />
+
+                {/* Busyness for first stop */}
+                <BusynessSection
+                  busynessData={busynessData}
+                  loading={loadingBusyness}
+                  travelTime={undefined}
                 />
 
                 {/* Animated Timeline for Curated Cards */}

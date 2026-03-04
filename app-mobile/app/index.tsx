@@ -11,7 +11,7 @@ import {
   Modal,
   Image,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 import { useAppHandlers } from "../src/components/AppHandlers";
 import { useAppState } from "../src/components/AppStateManager";
@@ -74,6 +74,7 @@ const TAB_BAR_ICON_SIZE = 19;
 function AppContent() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
+  const insets = useSafeAreaInsets();
   const [coachMapCurrentTarget, setCoachMapCurrentTarget] = useState<
     string | null
   >(null);
@@ -131,7 +132,6 @@ function AppContent() {
   const {
     isAuthenticated,
     isLoadingAuth,
-    authTimeout,
     user,
     profile,
     handleSignOut,
@@ -320,9 +320,9 @@ function AppContent() {
 
   // Log current page for debugging
   useEffect(() => {
-    if (isLoadingAuth && !authTimeout) {
+    if (isLoadingAuth) {
       console.log(`📄 Current screen: loading`);
-    } else if (!isAuthenticated || (user && !profile && !isLoadingAuth)) {
+    } else if (!isAuthenticated) {
       console.log(`📄 Current screen: welcome (sign-in)`);
     } else if (showOnboardingFlow || needsOnboarding) {
       console.log(`📄 Current screen: onboarding`);
@@ -344,7 +344,6 @@ function AppContent() {
     isAuthenticated,
     profile,
     isLoadingAuth,
-    authTimeout,
     user,
     showOnboardingFlow,
     needsOnboarding,
@@ -1377,8 +1376,8 @@ function AppContent() {
     getSessionId();
   }, [currentMode, user?.id]);
 
-  // Show loading while checking authentication status (with fallback)
-  if (isLoadingAuth && !authTimeout) {
+  // Show loading while checking authentication status
+  if (isLoadingAuth) {
     return (
       <View
         style={{
@@ -1442,9 +1441,10 @@ function AppContent() {
     );
   }
 
-  // Show welcome screen if user is not authenticated
-  // Also show if authenticated but profile hasn't loaded yet (to avoid flash)
-  if (!isAuthenticated || (user && !profile && !isLoadingAuth)) {
+  // Show welcome screen ONLY if truly not authenticated.
+  // If user exists but profile hasn't loaded yet, keep showing the loading state —
+  // do NOT flash the WelcomeScreen.
+  if (!isAuthenticated) {
     return (
       <ErrorBoundary>
         <WelcomeScreen
@@ -1452,6 +1452,16 @@ function AppContent() {
           onAppleSignIn={handleAppleSignIn}
         />
       </ErrorBoundary>
+    );
+  }
+
+  // User is authenticated but profile hasn't loaded yet — show a loading indicator,
+  // NOT the WelcomeScreen
+  if (user && !profile) {
+    return (
+      <View style={{ flex: 1, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center' }}>
+        <StatusBar barStyle="dark-content" backgroundColor="white" />
+      </View>
     );
   }
 
@@ -1890,8 +1900,8 @@ function AppContent() {
               <NavigationProvider>
                 <ErrorBoundary>
                   <SafeAreaView
-                    style={styles.safeArea}
-                    edges={["top", "bottom"]}
+                    style={[styles.safeArea, { paddingTop: insets.top }]}
+                    edges={[]}
                   >
                     <StatusBar
                       barStyle="dark-content"
@@ -1957,6 +1967,7 @@ function AppContent() {
                       <View
                         style={[
                           styles.bottomNavigation,
+                          { paddingBottom: Math.max(insets.bottom, 8) },
                           isHighlightingTabs && {
                             zIndex: 1000,
                             elevation: 1000,
@@ -2338,7 +2349,6 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
-    paddingBottom: 8,
     paddingTop: 8,
     zIndex: 1,
     elevation: 1,

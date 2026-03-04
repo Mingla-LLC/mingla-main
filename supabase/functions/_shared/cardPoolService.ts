@@ -853,7 +853,7 @@ export async function serveCardsFromPipeline(
     if (cardRows.length > 0) {
       const { data: insertedCards, error: cardError } = await supabaseAdmin
         .from('card_pool')
-        .upsert(cardRows, { onConflict: 'google_place_id', ignoreDuplicates: true })
+        .upsert(cardRows, { onConflict: 'google_place_id', ignoreDuplicates: false })
         .select('id, google_place_id');
 
       if (cardError) {
