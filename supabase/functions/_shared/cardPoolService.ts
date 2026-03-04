@@ -238,6 +238,7 @@ export async function insertCardToPool(
     totalPriceMin?: number;
     totalPriceMax?: number;
     estimatedDurationMinutes?: number;
+    shoppingList?: string[] | null;
     website?: string | null;
   }
 ): Promise<string | null> {
@@ -278,6 +279,7 @@ export async function insertCardToPool(
     row.total_price_min = cardData.totalPriceMin ?? 0;
     row.total_price_max = cardData.totalPriceMax ?? 0;
     row.estimated_duration_minutes = cardData.estimatedDurationMinutes ?? 0;
+    row.shopping_list = cardData.shoppingList || null;
   }
 
   const { data, error } = await supabaseAdmin
@@ -498,6 +500,7 @@ function poolCardToApiCard(
       lat: card.lat,
       lng: card.lng,
       stops: card.stops || [],
+      shoppingList: card.shopping_list || null,
       experienceType: card.experience_type || '',
       openingHours: resolveOpeningHours(card.opening_hours).hours,
       website: card.website || null,

@@ -38,6 +38,7 @@ import ActionButtons from "./expandedCard/ActionButtons";
 import FeedbackModal from "./expandedCard/FeedbackModal";
 import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
+import { PicnicShoppingList } from './PicnicShoppingList';
 import * as WebBrowser from 'expo-web-browser';
 import { colors } from "../constants/colors";
 import { SCREEN_HEIGHT } from "../utils/responsive";
@@ -648,6 +649,11 @@ function MultiStopPlanView({
                       <Text style={curatedStyles.directionsText}>Get Directions</Text>
                     </TouchableOpacity>
                   </View>
+                )}
+
+                {/* Shopping List — only under stop 1 (grocery) for picnic cards */}
+                {stop.stopNumber === 1 && card.shoppingList && card.shoppingList.length > 0 && (
+                  <PicnicShoppingList items={card.shoppingList} />
                 )}
               </View>
             </Animated.View>

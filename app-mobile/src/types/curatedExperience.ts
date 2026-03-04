@@ -37,4 +37,5 @@ export interface CuratedExperienceCard {
   totalPriceMax: number;
   estimatedDurationMinutes: number;
   matchScore: number;
+  shoppingList?: string[];  // AI-generated picnic shopping checklist (picnic-dates only)
 }

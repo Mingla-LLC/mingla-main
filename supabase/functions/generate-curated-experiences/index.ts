@@ -152,6 +152,8 @@ const STOP_DURATION_MINUTES: Record<string, number> = {
   amusement_park: 180, hamburger_restaurant: 30, barbecue_restaurant: 75,
   fast_food_restaurant: 20, buffet_restaurant: 60, asian_restaurant: 60,
   chinese_restaurant: 60, art_studio: 60,
+  // Picnic-related types (added for Picnic Dates Intent feature)
+  grocery_store: 30, supermarket: 30,
 };
 const DEFAULT_STOP_DURATION = 45;
 
@@ -639,6 +641,69 @@ const GROUP_FUN_STOP_DURATIONS: Record<string, number> = {
   vietnamese_restaurant: 60,
   chinese_restaurant: 60,
   food_court: 30,
+};
+
+// ── Picnic Dates Intent — Dedicated Place Type Groups ─────────────────────
+// Replaces the old generatePicnicCards() which used broad 'Groceries & Flowers' + 'Picnic'
+// category pools. Now uses narrower, hand-picked types for more precise results.
+// 2-stop itinerary: Grocery → Park/Picnic Spot.
+// No alternation — single starting group, single finish group.
+
+interface PicnicGroup {
+  id: string;
+  label: string;
+  types: string[];
+}
+
+const PICNIC_START: PicnicGroup = {
+  id: 'grocery',
+  label: 'Grocery',
+  types: [
+    'grocery_store',
+    'supermarket',
+  ],
+};
+
+const PICNIC_FINISH: PicnicGroup = {
+  id: 'picnic_spot',
+  label: 'Picnic Spot',
+  types: [
+    'park',
+    'picnic_ground',
+    'beach',
+  ],
+};
+
+const PICNIC_EXCLUDED_PLACE_TYPES: string[] = [
+  'department_store',
+  'electronics_store',
+  'furniture_store',
+  'warehouse_store',
+];
+
+// Static shopping list fallback — single source of truth for all picnic code paths
+const PICNIC_STATIC_SHOPPING_LIST: string[] = [
+  '🥖 Fresh baguette or ciabatta',
+  '🧀 Soft cheese (brie or camembert)',
+  '🍇 Seasonal fruit (grapes, strawberries)',
+  '🥗 Pre-made salad or hummus & crackers',
+  '🍫 Dark chocolate or brownies',
+  '💧 Sparkling water',
+  '🍷 Bottle of wine or lemonade',
+  '🧃 Juice boxes or iced tea',
+  '💐 Small bouquet of wildflowers',
+  '🧻 Napkins and a picnic blanket',
+];
+
+// Stop durations specific to picnic dates
+const PICNIC_STOP_DURATIONS: Record<string, number> = {
+  // Start — Grocery
+  grocery_store: 30,
+  supermarket: 30,
+  // Finish — Picnic Spot
+  park: 120,
+  picnic_ground: 120,
+  beach: 150,
 };
 
 // ── Curated Type -> Mingla Category Pools ─────────────────────────
@@ -1129,6 +1194,132 @@ async function fetchPlacesForGroupFunGroup(
   const filtered = filterExcludedPlaces(deduped, GROUP_FUN_EXCLUDED_PLACE_TYPES);
 
   return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
+}
+
+/**
+ * Fetch places for a single Picnic Group.
+ * Uses PICNIC_EXCLUDED_PLACE_TYPES for filtering.
+ */
+async function fetchPlacesForPicnicGroup(
+  group: PicnicGroup,
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+): Promise<any[]> {
+  const excludedTypes = PICNIC_EXCLUDED_PLACE_TYPES;
+
+  const nearbyTypes = group.types.filter(t => !TEXT_SEARCH_TYPES.has(t));
+  const textTypes = group.types.filter(t => TEXT_SEARCH_TYPES.has(t));
+
+  const results: any[] = [];
+
+  if (nearbyTypes.length > 0) {
+    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
+    const nearbyResults = await Promise.allSettled(
+      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
+    );
+    for (const r of nearbyResults) {
+      if (r.status === 'fulfilled' && r.value) {
+        results.push(...r.value);
+      }
+    }
+  }
+
+  if (results.length < 5 && textTypes.length > 0) {
+    const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
+    const query = nicheType.replace(/_/g, ' ');
+    try {
+      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
+      results.push(...textResults);
+    } catch (err) {
+      console.warn(`[fetchPlacesForPicnicGroup] Text search failed for ${nicheType}:`, err);
+    }
+  }
+
+  const seen = new Set<string>();
+  const deduped = results.filter(p => {
+    const id = p.id || p.name;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+
+  const filtered = filterExcludedPlaces(deduped, PICNIC_EXCLUDED_PLACE_TYPES);
+
+  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
+}
+
+/**
+ * Generate an AI picnic shopping list using OpenAI.
+ * Returns 8-12 items across food, drinks, and flowers categories.
+ * Falls back to a static list if OpenAI is unavailable.
+ */
+async function generatePicnicShoppingList(
+  groceryName: string,
+  picnicSpotName: string,
+  picnicSpotType: string,
+): Promise<string[]> {
+  if (!OPENAI_API_KEY) {
+    return [...PICNIC_STATIC_SHOPPING_LIST];
+  }
+
+  try {
+    const spotContext = picnicSpotType === 'beach' ? 'at the beach' : 'in the park';
+    const prompt = `You are a picnic planner. Generate a shopping list for a spontaneous picnic ${spotContext} at "${picnicSpotName}". The shopper is at "${groceryName}".
+
+Return exactly 10 items as a JSON array of strings. Each item should be:
+- A specific, actionable shopping item (not a category)
+- Prefixed with one relevant emoji
+- Mix of: 5-6 food items, 2-3 drink items, 1 flowers item, 1 practical item (napkins/blanket/utensils)
+- Assume 2 people, casual and fun
+- Items should be easy to find at any grocery store
+
+Output ONLY a JSON array of 10 strings. No markdown, no keys, no explanation.
+
+Example format: ["🥖 Sourdough baguette", "🧀 Brie and crackers", ...]`;
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 300,
+        temperature: 0.9,
+      }),
+    });
+    const json = await res.json();
+    let content = json.choices?.[0]?.message?.content?.trim() ?? '[]';
+    // Strip markdown code fences if OpenAI wraps the response (e.g. ```json\n[...]\n```)
+    content = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+    const parsed: string[] = JSON.parse(content);
+
+    if (Array.isArray(parsed) && parsed.length >= 8 && parsed.length <= 12) {
+      return parsed;
+    }
+    // If the model returns a valid array but short, pad with fallback items to reach 10
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      if (parsed.length > 12) return parsed.slice(0, 12);
+      if (parsed.length < 8) {
+        const existingSet = new Set(parsed.map(s => s.toLowerCase()));
+        for (const fallbackItem of PICNIC_STATIC_SHOPPING_LIST) {
+          if (parsed.length >= 10) break;
+          if (!existingSet.has(fallbackItem.toLowerCase())) {
+            parsed.push(fallbackItem);
+            existingSet.add(fallbackItem.toLowerCase());
+          }
+        }
+      }
+      return parsed;
+    }
+    throw new Error('Unexpected shape');
+  } catch (err) {
+    console.warn('[generatePicnicShoppingList] AI generation failed, using fallback:', err);
+    return [...PICNIC_STATIC_SHOPPING_LIST];
+  }
 }
 
 /**
@@ -2309,7 +2500,17 @@ async function generateStandardCards(
   return cards;
 }
 
-async function generatePicnicCards(
+/**
+ * Generate curated picnic-dates cards using dedicated Picnic Groups.
+ * 2-stop itineraries: Grocery → Picnic Spot.
+ * No alternation — single starting group, single finish group.
+ * Includes AI-generated shopping list on each card.
+ *
+ * Key architectural difference from other intents:
+ * Finish (park) is searched NEAR THE GROCERY, not near the user.
+ * This ensures the grocery and park are walkable from each other.
+ */
+async function generatePicnicDatesCards(
   lat: number,
   lng: number,
   budgetMax: number,
@@ -2328,16 +2529,16 @@ async function generatePicnicCards(
     : travelConstraintValue * 1000;
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
-  // 1. Find groceries near user
-  const groceryPlaces = await fetchPlacesForCategory('Groceries & Flowers', lat, lng, clampedRadius);
+  // 1. Fetch grocery stores near user
+  const groceryPlaces = await fetchPlacesForPicnicGroup(PICNIC_START, lat, lng, clampedRadius);
 
   if (groceryPlaces.length === 0) {
-    console.warn('[generatePicnicCards] No grocery stores found');
+    console.warn('[generatePicnicDatesCards] No grocery stores found');
     return [];
   }
 
-  // Sort by distance (nearest first)
-  groceryPlaces.sort((a, b) => {
+  // Sort by distance from user (nearest first) — users want the closest grocery
+  groceryPlaces.sort((a: any, b: any) => {
     const distA = haversineKm(lat, lng, a.location?.latitude ?? 0, a.location?.longitude ?? 0);
     const distB = haversineKm(lat, lng, b.location?.latitude ?? 0, b.location?.longitude ?? 0);
     return distA - distB;
@@ -2345,7 +2546,7 @@ async function generatePicnicCards(
 
   const cards: any[] = [];
   const usedGroceryIds = new Set<string>();
-  const parkSearchRadius = 3000; // 3km around the grocery
+  const parkSearchRadius = 3000; // 3km around the grocery — preserved from original implementation
 
   for (const grocery of groceryPlaces) {
     if (cards.length >= limit) break;
@@ -2357,52 +2558,97 @@ async function generatePicnicCards(
     const groceryLat = grocery.location?.latitude ?? 0;
     const groceryLng = grocery.location?.longitude ?? 0;
 
-    // 2. Find picnic park near this grocery (NOT near user)
-    const parkPlaces = await fetchPlacesForCategory(
-      'Picnic',
+    // 2. Find picnic spot near this grocery (NOT near user)
+    const picnicPlaces = await fetchPlacesForPicnicGroup(
+      PICNIC_FINISH,
       groceryLat, groceryLng,
       parkSearchRadius,
-      'picnic-dates',
     );
 
-    if (parkPlaces.length === 0) continue;
+    if (picnicPlaces.length === 0) continue;
 
     // Sort parks by distance from grocery (nearest first)
-    parkPlaces.sort((a, b) => {
+    picnicPlaces.sort((a: any, b: any) => {
       const distA = haversineKm(groceryLat, groceryLng, a.location?.latitude ?? 0, a.location?.longitude ?? 0);
       const distB = haversineKm(groceryLat, groceryLng, b.location?.latitude ?? 0, b.location?.longitude ?? 0);
       return distA - distB;
     });
 
-    const park = parkPlaces[0];
+    const picnicSpot = picnicPlaces[0];
 
     // Build 2 stops
-    const stop1 = buildStopFromPlace(grocery, 1, 2, 'Groceries & Flowers', lat, lng, null, null, travelMode);
-    const stop2 = buildStopFromPlace(
-      park, 2, 2, 'Picnic',
-      lat, lng, groceryLat, groceryLng, travelMode,
-    );
+    const stop1 = buildPicnicStop(grocery, 1, PICNIC_START, lat, lng, null, null, travelMode);
+    const stop2 = buildPicnicStop(picnicSpot, 2, PICNIC_FINISH, lat, lng, groceryLat, groceryLng, travelMode);
 
     // Budget validation
     const totalMin = stop1.priceMin + stop2.priceMin;
     if (totalMin > budgetMax) continue;
 
-    const card = buildCardFromStops([stop1, stop2], 'picnic-dates', ['Groceries & Flowers', 'Picnic']);
+    // Travel constraint validation
+    if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+      continue;
+    }
 
+    const card = buildCardFromStops([stop1, stop2], 'picnic-dates', [PICNIC_START.label, PICNIC_FINISH.label]);
+
+    // Generate AI descriptions and shopping list
     if (!skipDescriptions) {
-      try {
-        const descriptions = await generateStopDescriptions([stop1, stop2]);
-        if (descriptions[0]) stop1.aiDescription = descriptions[0];
-        if (descriptions[1]) stop2.aiDescription = descriptions[1];
-      } catch (err) {
-        console.warn('[generatePicnicCards] Description failed:', err);
-      }
+      // Run descriptions and shopping list in parallel
+      const [descriptions, shoppingList] = await Promise.all([
+        generateStopDescriptions([stop1, stop2]).catch((err) => {
+          console.warn('[generatePicnicDatesCards] Description failed:', err);
+          return [] as string[];
+        }),
+        generatePicnicShoppingList(
+          stop1.placeName,
+          stop2.placeName,
+          stop2.placeType,
+        ).catch((err) => {
+          console.warn('[generatePicnicDatesCards] Shopping list failed:', err);
+          return [...PICNIC_STATIC_SHOPPING_LIST];
+        }),
+      ]);
+
+      if (descriptions[0]) stop1.aiDescription = descriptions[0];
+      if (descriptions[1]) stop2.aiDescription = descriptions[1];
+      card.shoppingList = shoppingList;
+    } else {
+      // skipDescriptions mode — still provide static shopping list
+      card.shoppingList = [...PICNIC_STATIC_SHOPPING_LIST];
     }
 
     cards.push(card);
   }
 
   return cards;
+}
+
+/**
+ * Build a stop for a picnic card with picnic-specific duration.
+ */
+function buildPicnicStop(
+  place: any,
+  stopNumber: number,
+  group: PicnicGroup,
+  userLat: number,
+  userLng: number,
+  prevLat: number | null,
+  prevLng: number | null,
+  travelMode: string,
+): any {
+  const stop = buildStopFromPlace(
+    place, stopNumber, 2, group.label,
+    userLat, userLng, prevLat, prevLng, travelMode,
+  );
+
+  // Override duration with picnic-specific value
+  const placeType = place.primaryType || group.types[0];
+  const picnicDuration = PICNIC_STOP_DURATIONS[placeType];
+  if (picnicDuration) {
+    stop.estimatedDurationMinutes = picnicDuration;
+  }
+
+  return stop;
 }
 
 async function generateStrollCards(
@@ -2819,7 +3065,7 @@ serve(async (req) => {
     const generateLimit = warmPool ? 50 : limit;
 
     if (experienceType === 'picnic-dates') {
-      cards = await generatePicnicCards(
+      cards = await generatePicnicDatesCards(
         location.lat, location.lng, budgetMax, travelMode,
         travelConstraintType, travelConstraintValue,
         generateLimit, skipDescriptions,
@@ -2888,6 +3134,7 @@ serve(async (req) => {
               totalPriceMin: card.totalPriceMin || 0,
               totalPriceMax: card.totalPriceMax || 0,
               estimatedDurationMinutes: card.estimatedDurationMinutes || 0,
+              shoppingList: card.shoppingList || null,
             });
             if (cardId) poolIds.push(cardId);
           }
