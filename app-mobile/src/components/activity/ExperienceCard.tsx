@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import { useLocalePreferences } from '../../hooks/useLocalePreferences';
+import { formatPriceRange } from '../utils/formatters';
 
 interface ExperienceCardProps {
   experience: {
@@ -58,6 +60,7 @@ const ExperienceCard = ({
   showActions = true,
   variant = 'saved'
 }: ExperienceCardProps) => {
+  const { currency } = useLocalePreferences();
   const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
 
   const styles = StyleSheet.create({
@@ -433,7 +436,9 @@ const ExperienceCard = ({
                   <Ionicons name="navigate" size={16} color="#eb7825" />
                   <Text style={styles.statText}>{experience.travelTime || '15 min'}</Text>
                 </View>
-                <Text style={styles.priceText}>{experience.priceRange || '$25-50'}</Text>
+                <Text style={styles.priceText}>
+                  {experience.priceRange ? formatPriceRange(experience.priceRange, currency) : 'Varies'}
+                </Text>
               </View>
               
               {onToggleExpand && (

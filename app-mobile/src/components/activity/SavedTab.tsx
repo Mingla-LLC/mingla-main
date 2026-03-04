@@ -28,7 +28,7 @@ import { savedCardsService } from "../../services/savedCardsService";
 import { toastManager } from "../ui/Toast";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import ProposeDateTimeModal from "./ProposeDateTimeModal"; // dark bottom sheet
-import { formatPriceRange } from "../utils/formatters";
+import { formatPriceRange, formatCurrency } from "../utils/formatters";
 import type { CuratedStop } from "../../types/curatedExperience";
 
 interface SavedCard {
@@ -1655,9 +1655,10 @@ const SavedTab = ({
       : '–';
     const totalPriceMin = (card as any).totalPriceMin ?? 0;
     const totalPriceMax = (card as any).totalPriceMax ?? 0;
+    const currencyCode = accountPreferences?.currency || 'USD';
     const totalPrice = totalPriceMin === 0 && totalPriceMax === 0
       ? 'Free'
-      : `$${totalPriceMin}–$${totalPriceMax}`;
+      : `${formatCurrency(totalPriceMin, currencyCode)}–${formatCurrency(totalPriceMax, currencyCode)}`;
     const totalMin = (card as any).estimatedDurationMinutes ?? 0;
     const hrs = Math.floor(totalMin / 60);
     const mins = totalMin % 60;

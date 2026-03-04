@@ -21,6 +21,8 @@ import { PopularityIndicators } from './PopularityIndicators';
 import { userInteractionService } from '../services/userInteractionService';
 import { formatToOneDecimal } from '../utils/numberFormatter';
 import { getReadableCategoryName } from '../utils/categoryUtils';
+import { useLocalePreferences } from '../hooks/useLocalePreferences';
+import { formatCurrency } from './utils/formatters';
 
 interface SingleCardDisplayProps {
   card: RecommendationCard;
@@ -45,6 +47,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
   userTimePreference,
   specificTime
 }) => {
+  const { currency } = useLocalePreferences();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -475,7 +478,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
                 </View>
                 <View style={styles.metadataItem}>
                   <Ionicons name="cash-outline" size={16} color="#6B7280" />
-                  <Text style={styles.metadataText}>${card.estimatedCostPerPerson}/person</Text>
+                  <Text style={styles.metadataText}>{formatCurrency(card.estimatedCostPerPerson, currency)}/person</Text>
                 </View>
               </View>
 

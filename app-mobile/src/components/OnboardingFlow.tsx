@@ -134,6 +134,18 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   const [isReady, setIsReady] = useState(false)
   const [showCustomBudget, setShowCustomBudget] = useState(false)
 
+  // Sync showCustomBudget when budgetMax is restored from saved prefs on resume
+  useEffect(() => {
+    if (data.budgetMax !== null && data.budgetMax > 0) {
+      const code = profile?.currency || 'USD'
+      const r = getRate(code)
+      const presets = BUDGET_PRESETS.map(a => Math.round(a * r))
+      if (!presets.includes(data.budgetMax)) {
+        setShowCustomBudget(true)
+      }
+    }
+  }, [data.budgetMax, profile?.currency])
+
   // ─── State Machine ───
   const {
     state: navState,
@@ -441,7 +453,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
           setData((prev) => ({
             ...prev,
             selectedCategories: prefs.categories?.length ? prefs.categories : DEFAULT_CATEGORIES,
-            budgetMax: prefs.budget_max || DEFAULT_BUDGET,
+            budgetMax: prefs.budget_max ?? DEFAULT_BUDGET,
             travelMode: (prefs.travel_mode as any) || DEFAULT_TRANSPORT,
             travelTimeMinutes: prefs.travel_constraint_value || DEFAULT_TRAVEL_TIME,
             selectedIntents: (prefs as any).intents || [],
@@ -1478,11 +1490,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
               onValueChange={(val) => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                 setShowCustomBudget(val)
-                if (val) {
-                  setData((p) => ({ ...p, budgetMax: null }))
-                } else {
-                  setData((p) => ({ ...p, budgetMax: null }))
-                }
+                setData((p) => ({ ...p, budgetMax: null }))
               }}
               trackColor={{ false: colors.gray[300], true: '#fdba74' }}
               thumbColor={showCustomBudget ? colors.primary[500] : colors.gray[100]}

@@ -139,7 +139,7 @@ Mingla/
   - **Step 1 — Welcome & Phone:** Country picker (240+ countries), phone input with E.164 formatting, 6-digit OTP verification with auto-submit
   - **Step 2 — Intents:** Value proposition beats with animated transitions, multi-select intent cards (Adventurous, First Dates, Romantic, Friendly, Group Fun, Picnic Dates, Take a Stroll)
   - **Step 3 — Location:** GPS permission request with fallback to manual city input. Back-navigation shows persisted "Locked in" state instead of re-prompting for GPS
-  - **Step 4 — Preferences:** Category grid (12 categories), budget slider ($25–$150), transport mode (walking/biking/transit/driving), travel time (15–60 min). Background card generation fires at Step 4→5 transition
+  - **Step 4 — Preferences:** Category grid (12 categories), budget presets in user's local currency with custom amount toggle (mandatory selection), transport mode (walking/biking/transit/driving), travel time (15–60 min). Background card generation fires at Step 4→5 transition
   - **Step 5 — Add Someone:** Three paths — Invite (birthday→gender→audio→contact), Add (name→birthday→gender→audio), or Skip. Cards finish generating during this step
   - **Launch:** Grand reveal with rotating loading text, card deck animation
 - Intents stored separately from categories in `preferences.intents` column
@@ -151,7 +151,7 @@ Mingla/
 - AI-generated experience cards built from real Google Places data, enriched by GPT-4o-mini with descriptions, highlights, and match scores
 - Swipe right to save, left to skip, up to expand full details
 - Pool-first card pipeline with SQL-level pagination serves pre-built cards with zero API calls; falls back to Google Places only when the pool is exhausted. Synchronous impression recording prevents cross-batch duplicates
-- Curated multi-stop itinerary cards interleaved every 3rd regular card. Adventure intent uses 4 dedicated groups (Outdoor, Exotic Eats, Adrenaline, Culture) for 3-stop itineraries. First Date intent uses 3 dedicated groups (Fun Activity, Cultural, Fine Dining) for 2-stop itineraries with strict alternation between ice-breaker activities and cultural outings paired with upscale dining. Romantic intent uses 2 dedicated groups (Romance Start: galleries, museums, landmarks, theaters → Romance Finish: upscale restaurants, wine bars) for intimate 2-stop date itineraries with romantic-toned AI descriptions. Friendly intent uses 4 starting groups (Adrenaline, Entertainment, Outdoor, Cultural) → 1 Finish group (Casual Dining, 19 restaurant types) for 2-stop hangout itineraries with strict 4-way rotation for maximum diversity and cascading fallback when a group is exhausted
+- Curated multi-stop itinerary cards interleaved every 3rd regular card. Adventure intent uses 4 dedicated groups (Outdoor, Exotic Eats, Adrenaline, Culture) for 3-stop itineraries. First Date intent uses 3 dedicated groups (Fun Activity, Cultural, Fine Dining) for 2-stop itineraries with strict alternation between ice-breaker activities and cultural outings paired with upscale dining. Romantic intent uses 2 dedicated groups (Romance Start: galleries, museums, landmarks, theaters → Romance Finish: upscale restaurants, wine bars) for intimate 2-stop date itineraries with romantic-toned AI descriptions. Friendly intent uses 4 starting groups (Adrenaline, Entertainment, Outdoor, Cultural) → 1 Finish group (Casual Dining, 19 restaurant types) for 2-stop hangout itineraries with strict 4-way rotation for maximum diversity and cascading fallback when a group is exhausted. Group Fun intent uses 2 starting groups (Activity: bowling, arcades, go-karts, karaoke; Entertainment: movies, concerts, comedy clubs) → 1 Finish group (Casual Dining, 19 restaurant types) for 2-stop group activity itineraries with strict 2-way alternation and dedicated exclude list (water parks, libraries, coworking spaces, business centers)
 - Expanded card modal with image gallery, weather forecast, busyness predictions, match score breakdown, companion stops, and timeline
 - Deck batch navigation with forward/backward history persisted across sessions
 - Dismissed cards review sheet for reconsidering left-swiped cards (persisted across app restarts via AsyncStorage)
@@ -236,7 +236,7 @@ Mingla/
 ### Preferences System
 
 - 12 category pills with intent-based filtering (romantic, adventurous, group-fun, business, first-dates, solo-adventure, picnic-dates)
-- Budget presets: $25 / $50 / $100 / $150
+- Budget: 4 preset tiers ($25/$50/$100/$150) displayed in user's detected currency with real-time exchange rate conversion, plus custom amount input with toggle switch. Budget selection is mandatory during onboarding
 - Travel mode: walking, driving, transit, cycling
 - Travel constraint: time-based or distance-based
 - Date/time: Now, Tonight, This Weekend, or exact date/time picker
@@ -321,7 +321,7 @@ Mingla/
 |----------|---------|
 | `new-generate-experience-` | Core pool-first card generation engine. Serves pre-built cards from card_pool, gap-fills from Google Places |
 | `discover-cards` | Unified card discovery with SQL-level pagination (`query_pool_cards` function), impression exclusion, and nextPageToken pool expansion |
-| `generate-curated-experiences` | Multi-stop itinerary builder with AI descriptions and travel time estimates. Adventure intent: 3-stop cards from 4 dedicated groups with round-robin combos. First Date intent: 2-stop cards (ice-breaker activity or cultural outing → upscale dinner) with strict alternation. Romantic intent: 2-stop cards (cultural/artistic venue → upscale restaurant) with romantic-toned AI descriptions. Friendly intent: 2-stop cards (activity → casual dining) with 4-way starting group rotation |
+| `generate-curated-experiences` | Multi-stop itinerary builder with AI descriptions and travel time estimates. Adventure intent: 3-stop cards from 4 dedicated groups with round-robin combos. First Date intent: 2-stop cards (ice-breaker activity or cultural outing → upscale dinner) with strict alternation. Romantic intent: 2-stop cards (cultural/artistic venue → upscale restaurant) with romantic-toned AI descriptions. Friendly intent: 2-stop cards (activity → casual dining) with 4-way starting group rotation. Group Fun intent: 2-stop cards (activity/entertainment → casual dining) with 2-way alternation |
 | `generate-session-experiences` | Collaboration mode: aggregates participant preferences for group card generation |
 | `discover-experiences` | General discovery for all 12 categories with 24h daily cache |
 | `discover-casual-eats` | Category-specific discovery: Casual Eats |
@@ -503,6 +503,10 @@ The `oauth-redirect/` directory contains a static site deployed to Vercel/Netlif
 
 ## Recent Changes
 
+- **Group Fun Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic 3-stop category-pool pipeline for the `group-fun` intent with a dedicated 2-stop pipeline using 2 starting groups (Activity: 8 types, Entertainment: 5 types) → 1 Finish group (Casual Dining: 19 restaurant types). Starting groups alternate strictly (0→1→0→1) with fallback to the other group when one is exhausted. Dedicated exclude list (water_park, library, coworking_space, business_center). Group-fun-specific stop durations for all 32 place types. All 7 curated intents now have dedicated pipelines — the generic pool fallback is dead code for current intents.
+
+- **Custom Budget with Currency-Aware Onboarding (2026-03-04):** Budget presets in onboarding now display in the user's detected currency (same Math.round conversion as PreferencesSheet). Added custom budget toggle+input. Budget selection is mandatory. PreferencesSheet now auto-detects custom values on open. Fixes pre-existing bug where onboarding saved raw USD while PreferencesSheet saved converted values.
+
 - **Friendly Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic 3-stop category-pool pipeline for the `friendly` intent with a dedicated 2-stop pipeline using 4 starting groups (Adrenaline, Entertainment, Outdoor, Cultural) → 1 Finish group (Casual Dining, 19 restaurant types). Starting groups rotate strictly (0→1→2→3→0) with cascading fallback when a group is exhausted. Minimal exclude list (indoor_playground, childrens_camp only). Added 8 new types to the global duration map and friendly-specific duration overrides for all 42 place types.
 
 - **Romantic Intent — Dedicated Place Type Groups (2026-03-04):** 2 dedicated Romantic Groups (Romance Start → Romance Finish) for intimate 2-stop date itineraries with romantic-toned AI descriptions.
@@ -510,10 +514,6 @@ The `oauth-redirect/` directory contains a static site deployed to Vercel/Netlif
 - **First Date Intent — Dedicated Place Type Groups (2026-03-04):** 3 dedicated First Date Groups for 2-stop cards with strict Fun Activity / Cultural alternation → upscale dinner.
 
 - **Adventure Intent — Dedicated Place Type Groups (2026-03-04):** 4 hand-picked Adventure Groups for 3-stop itineraries with round-robin rotation.
-
-- **Location Step Freeze Fix (2026-03-04):** Fixed compound defect causing onboarding location step freeze.
-
-- **Onboarding State Persistence (2026-03-04):** Fixed two bugs causing onboarding selections to be lost during back-navigation. Auth re-initialization cycles no longer overwrite in-progress selections (one-shot resume guard). Location step now shows persisted "Locked in" state on return instead of re-prompting for GPS.
 
 ---
 

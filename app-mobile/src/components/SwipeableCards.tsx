@@ -15,7 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange } from "./utils/formatters";
+import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange, getCurrencySymbol } from "./utils/formatters";
 import {
   ExperiencesService,
   Experience,
@@ -1257,7 +1257,7 @@ export default function SwipeableCards({
               <Text style={styles.filterLabel}>Budget:</Text>
               <View style={styles.filterTag}>
                 <Text style={styles.filterTagText}>
-                  Up to ${displayBudgetMax}
+                  Up to {getCurrencySymbol(accountPreferences?.currency || 'USD')}{displayBudgetMax}
                 </Text>
               </View>
             </View>

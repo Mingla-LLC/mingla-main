@@ -543,6 +543,104 @@ const FRIENDLY_STOP_DURATIONS: Record<string, number> = {
   food_court: 30,
 };
 
+// ── Group Fun Intent — Dedicated Place Type Groups ─────────────────────────
+// Bypasses CURATED_TYPE_CATEGORIES + MINGLA_CATEGORY_PLACE_TYPES for 'group-fun'.
+// 2-stop itinerary: one of 2 starting groups → Group Fun Finish (casual dining).
+// Starting groups alternate 0→1→0→1→... for diversity.
+// NOTE: Types overlap with Friendly groups but are deliberately separate constants
+// for zero-coupling between intents.
+
+interface GroupFunGroup {
+  id: string;
+  label: string;
+  types: string[];
+}
+
+const GROUP_FUN_STARTING_1: GroupFunGroup = {
+  id: 'activity',
+  label: 'Activity',
+  types: [
+    'amusement_park', 'bowling_alley', 'video_arcade',
+    'go_karting_venue', 'miniature_golf_course', 'paintball_center',
+    'ice_skating_rink', 'karaoke',
+  ],
+};
+
+const GROUP_FUN_STARTING_2: GroupFunGroup = {
+  id: 'entertainment',
+  label: 'Entertainment',
+  types: [
+    'movie_theater', 'concert_hall', 'performing_arts_theater',
+    'opera_house', 'comedy_club',
+  ],
+};
+
+const GROUP_FUN_FINISH: GroupFunGroup = {
+  id: 'casual_dining',
+  label: 'Casual Dining',
+  types: [
+    'italian_restaurant', 'sushi_restaurant', 'mexican_restaurant',
+    'thai_restaurant', 'mediterranean_restaurant', 'pizza_restaurant',
+    'american_restaurant', 'hamburger_restaurant', 'diner',
+    'barbecue_restaurant', 'fast_food_restaurant', 'ramen_restaurant',
+    'korean_restaurant', 'buffet_restaurant', 'asian_restaurant',
+    'sandwich_shop', 'vietnamese_restaurant', 'chinese_restaurant',
+    'food_court',
+  ],
+};
+
+const GROUP_FUN_EXCLUDED_PLACE_TYPES: string[] = [
+  'water_park',
+  'library',
+  'coworking_space',
+  'business_center',
+];
+
+// Strict alternation: [Starting 1, Starting 2, Starting 1, Starting 2, ...]
+const GROUP_FUN_STARTING_GROUPS: GroupFunGroup[] = [
+  GROUP_FUN_STARTING_1,
+  GROUP_FUN_STARTING_2,
+];
+
+// Stop durations specific to group fun groups
+const GROUP_FUN_STOP_DURATIONS: Record<string, number> = {
+  // Starting 1 — Activity
+  amusement_park: 180,
+  bowling_alley: 60,
+  video_arcade: 60,
+  go_karting_venue: 60,
+  miniature_golf_course: 45,
+  paintball_center: 90,
+  ice_skating_rink: 60,
+  karaoke: 90,
+  // Starting 2 — Entertainment
+  movie_theater: 150,
+  concert_hall: 120,
+  performing_arts_theater: 120,
+  opera_house: 150,
+  comedy_club: 90,
+  // Finish — Casual Dining
+  italian_restaurant: 60,
+  sushi_restaurant: 60,
+  mexican_restaurant: 60,
+  thai_restaurant: 60,
+  mediterranean_restaurant: 60,
+  pizza_restaurant: 45,
+  american_restaurant: 60,
+  hamburger_restaurant: 30,
+  diner: 45,
+  barbecue_restaurant: 75,
+  fast_food_restaurant: 20,
+  ramen_restaurant: 45,
+  korean_restaurant: 60,
+  buffet_restaurant: 60,
+  asian_restaurant: 60,
+  sandwich_shop: 30,
+  vietnamese_restaurant: 60,
+  chinese_restaurant: 60,
+  food_court: 30,
+};
+
 // ── Curated Type -> Mingla Category Pools ─────────────────────────
 // NOTE: 'adventurous' entry is required for the validation gate in serve()
 // (line ~1264: `if (!CURATED_TYPE_CATEGORIES[experienceType])`).
@@ -595,7 +693,7 @@ const TAGLINES_BY_TYPE: Record<string, string[]> = {
   ],
   'group-fun': [
     'Rally the crew — adventure is calling',
-    'Three stops of pure group energy',
+    'Two stops of pure group energy',
     'Good times are better together',
     'A plan the whole squad will love',
   ],
@@ -976,6 +1074,59 @@ async function fetchPlacesForFriendlyGroup(
   });
 
   const filtered = filterExcludedPlaces(deduped, FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES);
+
+  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
+}
+
+/**
+ * Fetch places for a single Group Fun Group.
+ * Uses GROUP_FUN_EXCLUDED_PLACE_TYPES for filtering.
+ */
+async function fetchPlacesForGroupFunGroup(
+  group: GroupFunGroup,
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+): Promise<any[]> {
+  const excludedTypes = GROUP_FUN_EXCLUDED_PLACE_TYPES;
+
+  const nearbyTypes = group.types.filter(t => !TEXT_SEARCH_TYPES.has(t));
+  const textTypes = group.types.filter(t => TEXT_SEARCH_TYPES.has(t));
+
+  const results: any[] = [];
+
+  if (nearbyTypes.length > 0) {
+    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
+    const nearbyResults = await Promise.allSettled(
+      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
+    );
+    for (const r of nearbyResults) {
+      if (r.status === 'fulfilled' && r.value) {
+        results.push(...r.value);
+      }
+    }
+  }
+
+  if (results.length < 5 && textTypes.length > 0) {
+    const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
+    const query = nicheType.replace(/_/g, ' ');
+    try {
+      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
+      results.push(...textResults);
+    } catch (err) {
+      console.warn(`[fetchPlacesForGroupFunGroup] Text search failed for ${nicheType}:`, err);
+    }
+  }
+
+  const seen = new Set<string>();
+  const deduped = results.filter(p => {
+    const id = p.id || p.name;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+
+  const filtered = filterExcludedPlaces(deduped, GROUP_FUN_EXCLUDED_PLACE_TYPES);
 
   return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
 }
@@ -1706,6 +1857,177 @@ function buildFriendlyStop(
   return stop;
 }
 
+/**
+ * Generate curated group-fun cards using dedicated Group Fun Groups.
+ * 2-stop itineraries: one of 2 Starting groups → Finish.
+ * Strict 2-way alternation through starting groups.
+ */
+async function generateGroupFunCards(
+  lat: number,
+  lng: number,
+  budgetMax: number,
+  travelMode: string,
+  travelConstraintType: string,
+  travelConstraintValue: number,
+  limit: number,
+  skipDescriptions: boolean,
+): Promise<any[]> {
+  const TRAVEL_SPEEDS_KMH: Record<string, number> = {
+    walking: 4.5, biking: 14, transit: 20, driving: 35,
+  };
+  const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
+  const radiusMeters = travelConstraintType === 'time'
+    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
+    : travelConstraintValue * 1000;
+  const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
+
+  // 1. Fetch places for ALL 3 groups in parallel
+  const groupPlaces: Record<string, any[]> = {};
+  await Promise.all([
+    ...GROUP_FUN_STARTING_GROUPS.map(async (group) => {
+      groupPlaces[group.id] =
+        await fetchPlacesForGroupFunGroup(group, lat, lng, clampedRadius);
+    }),
+    (async () => {
+      groupPlaces[GROUP_FUN_FINISH.id] =
+        await fetchPlacesForGroupFunGroup(GROUP_FUN_FINISH, lat, lng, clampedRadius);
+    })(),
+  ]);
+
+  for (const [groupId, places] of Object.entries(groupPlaces)) {
+    console.log(`[generateGroupFunCards] ${groupId}: ${places.length} places`);
+  }
+
+  // 2. Check we have finish places (required for every card)
+  if ((groupPlaces[GROUP_FUN_FINISH.id] || []).length === 0) {
+    console.warn('[generateGroupFunCards] No finish (dining) places found');
+    return [];
+  }
+
+  // 3. Build cards with strict 2-way alternation
+  const cards: any[] = [];
+  const globalUsedPlaceIds = new Set<string>();
+  const perStopBudget = budgetMax / 2; // 2 stops
+
+  // nextGroupIndex tracks which starting group the NEXT card should TRY FIRST.
+  // Advances on every successful card build, regardless of fallback usage.
+  let nextGroupIndex = 0;
+
+  for (let cardIndex = 0; cards.length < limit; cardIndex++) {
+    // Check finish places first — if exhausted, no card possible regardless of starting group
+    const availableFinish = (groupPlaces[GROUP_FUN_FINISH.id] || []).filter(p => {
+      const id = p.id || p.name;
+      if (globalUsedPlaceIds.has(id)) return false;
+      const price = priceLevelToRange(p.priceLevel);
+      if (price.min > perStopBudget) return false;
+      return true;
+    });
+
+    if (availableFinish.length === 0) {
+      break; // Finish exhausted — no more cards possible
+    }
+
+    // Try starting groups in alternation order, with fallback to the other group
+    let startingGroup: GroupFunGroup | null = null;
+    let availableStarts: any[] = [];
+
+    for (let offset = 0; offset < GROUP_FUN_STARTING_GROUPS.length; offset++) {
+      const candidateIdx = (nextGroupIndex + offset) % GROUP_FUN_STARTING_GROUPS.length;
+      const candidateGroup = GROUP_FUN_STARTING_GROUPS[candidateIdx];
+      const candidateStarts = (groupPlaces[candidateGroup.id] || []).filter(p => {
+        const id = p.id || p.name;
+        if (globalUsedPlaceIds.has(id)) return false;
+        const price = priceLevelToRange(p.priceLevel);
+        if (price.min > perStopBudget) return false;
+        return true;
+      });
+
+      if (candidateStarts.length > 0) {
+        startingGroup = candidateGroup;
+        availableStarts = candidateStarts;
+        break;
+      }
+    }
+
+    // Both starting groups exhausted
+    if (!startingGroup || availableStarts.length === 0) {
+      break;
+    }
+
+    const startPlace = availableStarts[0]; // already sorted by score
+    const finishPlace = availableFinish[0];
+    const startId = startPlace.id || startPlace.name;
+    const finishId = finishPlace.id || finishPlace.name;
+
+    const stop1 = buildGroupFunStop(startPlace, 1, startingGroup, lat, lng, null, null, travelMode);
+    const stop2 = buildGroupFunStop(finishPlace, 2, GROUP_FUN_FINISH, lat, lng, stop1.lat, stop1.lng, travelMode);
+
+    // Validate total budget
+    const totalMin = stop1.priceMin + stop2.priceMin;
+    if (totalMin > budgetMax) {
+      globalUsedPlaceIds.add(startId); // Skip this start, try next — DON'T advance alternation
+      continue;
+    }
+
+    // Validate travel constraint
+    if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+      globalUsedPlaceIds.add(startId); // Skip — DON'T advance alternation
+      continue;
+    }
+
+    const card = buildCardFromStops([stop1, stop2], 'group-fun', [startingGroup.label, GROUP_FUN_FINISH.label]);
+
+    if (!skipDescriptions) {
+      try {
+        const descriptions = await generateStopDescriptions([stop1, stop2]);
+        for (let i = 0; i < 2 && i < descriptions.length; i++) {
+          card.stops[i].aiDescription = descriptions[i];
+        }
+      } catch (err) {
+        console.warn('[generateGroupFunCards] AI description failed:', err);
+      }
+    }
+
+    globalUsedPlaceIds.add(startId);
+    globalUsedPlaceIds.add(finishId);
+    cards.push(card);
+    nextGroupIndex = (nextGroupIndex + 1) % GROUP_FUN_STARTING_GROUPS.length; // Advance alternation on successful build
+
+    // Safety: if we've iterated way past the limit without filling, break
+    if (cardIndex > limit * 4) break;
+  }
+
+  return cards;
+}
+
+/**
+ * Build a stop for a group-fun card with group-fun-specific duration.
+ */
+function buildGroupFunStop(
+  place: any,
+  stopNumber: number,
+  group: GroupFunGroup,
+  userLat: number,
+  userLng: number,
+  prevLat: number | null,
+  prevLng: number | null,
+  travelMode: string,
+): any {
+  const stop = buildStopFromPlace(
+    place, stopNumber, 2, group.label,
+    userLat, userLng, prevLat, prevLng, travelMode,
+  );
+
+  // Override duration with group-fun-specific value
+  const placeType = place.primaryType || group.types[0];
+  const groupFunDuration = GROUP_FUN_STOP_DURATIONS[placeType];
+  if (groupFunDuration) {
+    stop.estimatedDurationMinutes = groupFunDuration;
+  }
+
+  return stop;
+}
+
 function generateCategoryCombos(pool: string[], count: number): string[][] {
   if (pool.length === 3) {
     return Array.from({ length: count }, () => [...pool]);
@@ -1861,6 +2183,15 @@ async function generateStandardCards(
   // ── Friendly intent: use dedicated groups (2-stop: start → finish, 4-way rotation) ──
   if (experienceType === 'friendly') {
     return generateFriendlyCards(
+      lat, lng, budgetMax, travelMode,
+      travelConstraintType, travelConstraintValue,
+      limit, skipDescriptions,
+    );
+  }
+
+  // ── Group Fun intent: use dedicated groups (2-stop: start → finish, 2-way alternation) ──
+  if (experienceType === 'group-fun') {
+    return generateGroupFunCards(
       lat, lng, budgetMax, travelMode,
       travelConstraintType, travelConstraintValue,
       limit, skipDescriptions,

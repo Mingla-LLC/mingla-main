@@ -8,6 +8,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { categories } from '../../constants/categories';
+import { useLocalePreferences } from '../../hooks/useLocalePreferences';
+import { getCurrencySymbol } from '../utils/formatters';
+import { getRate } from '../../services/currencyService';
+import { formatNumberWithCommas } from '../../utils/currency';
 
 export interface BoardPreferences {
   categories: string[];
@@ -32,17 +36,20 @@ const experienceTypes = [
   { id: 'take-a-stroll', label: 'Take a Stroll', icon: 'walk-outline' },
 ];
 
-const budgetPresets = [
-  { label: '$0-25', min: 0, max: 25 },
-  { label: '$25-75', min: 25, max: 75 },
-  { label: '$75-150', min: 75, max: 150 },
-  { label: '$150+', min: 150, max: 1000 },
-];
-
 export const BoardPreferencesForm: React.FC<BoardPreferencesFormProps> = ({
   initialPreferences,
   onPreferencesChange,
 }) => {
+  const { currency } = useLocalePreferences();
+  const symbol = getCurrencySymbol(currency);
+  const rate = getRate(currency);
+
+  const budgetPresets = [
+    { label: `${symbol}0-${symbol}${formatNumberWithCommas(Math.round(25 * rate))}`, min: 0, max: 25 },
+    { label: `${symbol}${formatNumberWithCommas(Math.round(25 * rate))}-${symbol}${formatNumberWithCommas(Math.round(75 * rate))}`, min: 25, max: 75 },
+    { label: `${symbol}${formatNumberWithCommas(Math.round(75 * rate))}-${symbol}${formatNumberWithCommas(Math.round(150 * rate))}`, min: 75, max: 150 },
+    { label: `${symbol}${formatNumberWithCommas(Math.round(150 * rate))}+`, min: 150, max: 1000 },
+  ];
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     initialPreferences?.categories || []
   );

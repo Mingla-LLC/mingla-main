@@ -37,6 +37,7 @@ export const BudgetSection = memo(
     if (shouldHide) return null;
 
     const currencyCode = accountPreferences?.currency || 'USD';
+    const symbol = getCurrencySymbol(currencyCode);
     const rate = getRate(currencyCode);
     const convertedPresets = budgetPresets.map((p: any) => Math.round(p.max * rate));
     const isCustomValue = typeof budgetMax === 'number' && budgetMax > 0 && !convertedPresets.includes(budgetMax);
@@ -51,9 +52,6 @@ export const BudgetSection = memo(
         </Text>
         <View style={styles.budgetPresetsContainer}>
           {budgetPresets.map((preset) => {
-            const currencyCode = accountPreferences?.currency || "USD";
-            const symbol = getCurrencySymbol(currencyCode);
-            const rate = getRate(currencyCode);
             const convertedMax = Math.round(preset.max * rate);
             const label = `Up to ${symbol}${formatNumberWithCommas(convertedMax)}`;
             const selected = isPresetSelected(convertedMax);
@@ -92,7 +90,7 @@ export const BudgetSection = memo(
         {showCustom && (
           <View style={styles.budgetInputContainer}>
             <Text style={styles.dollarSign}>
-              {getCurrencySymbol(accountPreferences?.currency || "USD")}
+              {symbol}
             </Text>
             <TextInput
               value={budgetMax?.toString() || ""}
@@ -109,7 +107,9 @@ export const BudgetSection = memo(
     );
   },
   (prev, next) =>
-    prev.budgetMax === next.budgetMax && prev.shouldHide === next.shouldHide
+    prev.budgetMax === next.budgetMax &&
+    prev.shouldHide === next.shouldHide &&
+    prev.accountPreferences?.currency === next.accountPreferences?.currency
 );
 
 BudgetSection.displayName = "BudgetSection";
