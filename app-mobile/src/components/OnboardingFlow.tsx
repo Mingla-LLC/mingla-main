@@ -1,1432 +1,1428 @@
-import React, { useState, useCallback, useEffect } from "react";
-import { StyleSheet, Alert } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useAuthSimple } from "../hooks/useAuthSimple";
-import { useAppStore } from "../store/appStore";
-import { locationService } from "../services/locationService";
-import { mixpanelService } from "../services/mixpanelService";
-import { PreferencesService } from "../services/preferencesService";
-import IntentSelectionStep from "./onboarding/IntentSelectionStep";
-import VibeSelectionStep from "./onboarding/VibeSelectionStep";
-import LocationSetupStep from "./onboarding/LocationSetupStep";
-import TravelModeStep from "./onboarding/TravelModeStep";
-import TravelConstraintStep from "./onboarding/TravelConstraintStep";
-import BudgetRangeStep from "./onboarding/BudgetRangeStep";
-import DateTimePrefStep from "./onboarding/DateTimePrefStep";
-import InviteFriendsStep from "./onboarding/InviteFriendsStep";
-import MagicStep from "./onboarding/MagicStep";
+import React, { useState, useCallback, useEffect, useRef } from 'react'
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  Animated,
+  StyleSheet,
+  Dimensions,
+  Linking,
+  Platform,
+  AccessibilityInfo,
+} from 'react-native'
+import * as Location from 'expo-location'
+import * as Haptics from 'expo-haptics'
+import { Ionicons } from '@expo/vector-icons'
+import DateTimePicker from '@react-native-community/datetimepicker'
+import { useQueryClient } from '@tanstack/react-query'
+
+import { useAuthSimple } from '../hooks/useAuthSimple'
+import { useAppStore } from '../store/appStore'
+import { useOnboardingStateMachine } from '../hooks/useOnboardingStateMachine'
+import { supabase } from '../services/supabase'
+import { PreferencesService } from '../services/preferencesService'
+import { locationService } from '../services/locationService'
+import { sendOtp, verifyOtp } from '../services/otpService'
+import { createSavedPerson } from '../services/savedPeopleService'
+import { startRecording, stopRecording, uploadAudioClip } from '../services/personAudioService'
+import { searchUsers, sendFriendLink } from '../services/friendLinkService'
+
+import { OnboardingShell } from './onboarding/OnboardingShell'
+import { PhoneInput } from './onboarding/PhoneInput'
+import { OTPInput } from './onboarding/OTPInput'
+import { CategoryTile } from './ui/CategoryTile'
+import { OnboardingAudioRecorder } from './onboarding/OnboardingAudioRecorder'
+import { PulseDotLoader } from './ui/PulseDotLoader'
+
+import {
+  OnboardingData,
+  OnboardingStep,
+  ONBOARDING_INTENTS,
+  BUDGET_PRESETS,
+  DEFAULT_BUDGET,
+  TRAVEL_TIME_PRESETS,
+  DEFAULT_TRAVEL_TIME,
+  TRANSPORT_MODES,
+  DEFAULT_TRANSPORT,
+  DEFAULT_CATEGORIES,
+  GENDER_OPTIONS,
+  GENDER_DISPLAY_LABELS,
+} from '../types/onboarding'
+import { categories } from '../constants/categories'
+import { getDefaultCountryCode, getCountryByCode } from '../constants/countries'
+import {
+  colors,
+  typography,
+  fontWeights,
+  spacing,
+  radius,
+  backgroundWarmGlow,
+  touchTargets,
+  shadows,
+} from '../constants/designSystem'
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window')
 
 interface OnboardingFlowProps {
-  onComplete: (onboardingData: any) => void;
+  onComplete: () => void
 }
 
-const OnboardingFlow = ({
-  onComplete,
-}: OnboardingFlowProps) => {
-  const { user } = useAuthSimple();
-  const { profile } = useAppStore();
-  const [currentStep, setCurrentStep] = useState(2);
+const INITIAL_DATA: OnboardingData = {
+  phoneNumber: '',
+  phoneCountryCode: 'US',
+  phoneVerified: false,
+  selectedIntents: [],
+  locationGranted: false,
+  coordinates: null,
+  cityName: null,
+  useGpsLocation: false,
+  manualLocation: null,
+  selectedCategories: [...DEFAULT_CATEGORIES],
+  budgetMax: DEFAULT_BUDGET,
+  travelMode: DEFAULT_TRANSPORT,
+  travelTimeMinutes: DEFAULT_TRAVEL_TIME,
+  invitePath: null,
+  personName: null,
+  personBirthday: null,
+  personGender: null,
+  audioClipUri: null,
+  audioClipDuration: null,
+  contactMethod: null,
+  contactValue: null,
+}
 
-  // Helper function to update onboarding_step in profile
-  const updateOnboardingStep = useCallback(
-    async (step: number): Promise<boolean> => {
-      if (!user?.id) {
-        return false;
-      }
+// Extracted to its own component so the useEffect is scoped to mount/unmount
+const SkipAutoAdvance = ({ goNext }: { goNext: () => void }) => {
+  const hasFired = useRef(false)
+  useEffect(() => {
+    if (hasFired.current) return
+    hasFired.current = true
+    const timer = setTimeout(() => goNext(), 1000)
+    return () => clearTimeout(timer)
+  }, [goNext])
 
+  return (
+    <View style={styles.centerContent}>
+      <Ionicons name="flash-outline" size={48} color={colors.primary[500]} />
+      <Text style={styles.subheadline}>Now for the good part.</Text>
+    </View>
+  )
+}
+
+const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
+  const { user } = useAuthSimple()
+  const { profile } = useAppStore()
+  const queryClient = useQueryClient()
+
+  // ─── State ───
+  const [data, setData] = useState<OnboardingData>({
+    ...INITIAL_DATA,
+    phoneCountryCode: getDefaultCountryCode(),
+  })
+  const [hasGpsPermission, setHasGpsPermission] = useState(false)
+  const [initialStep, setInitialStep] = useState<OnboardingStep>(1)
+  const [isReady, setIsReady] = useState(false)
+
+  // ─── State Machine ───
+  const {
+    state: navState,
+    goNext,
+    goBack,
+    goToSubStep,
+    choosePath,
+    isFirstScreen,
+    progress,
+    isLaunch,
+  } = useOnboardingStateMachine({ initialStep, hasGpsPermission })
+
+  // ─── UI State ───
+  const [otpCode, setOtpCode] = useState('')
+  const [otpError, setOtpError] = useState(false)
+  const [otpLoading, setOtpLoading] = useState(false)
+  const [sendingOtp, setSendingOtp] = useState(false)
+  const [phoneError, setPhoneError] = useState<string | null>(null)
+  const [resendCountdown, setResendCountdown] = useState(0)
+  const [otpAttempts, setOtpAttempts] = useState(0)
+  const [valuePropBeat, setValuePropBeat] = useState(0)
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied' | 'settings'>('idle')
+  const [manualLocationText, setManualLocationText] = useState('')
+  const [savingPrefs, setSavingPrefs] = useState(false)
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [contactSearchResults, setContactSearchResults] = useState<any[]>([])
+  const [contactSearching, setContactSearching] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [launchState, setLaunchState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [launchLoadingText, setLaunchLoadingText] = useState('Finding your kind of places...')
+  const [launchRetries, setLaunchRetries] = useState(0)
+
+  // ─── Animations ───
+  const fadeAnim = useRef(new Animated.Value(1)).current
+  const slideAnim = useRef(new Animated.Value(0)).current
+  const revealScale = useRef(new Animated.Value(0.8)).current
+  const revealOpacity = useRef(new Animated.Value(0)).current
+
+  // ─── Resume Logic ───
+  useEffect(() => {
+    async function loadResume() {
+      if (!user?.id) return
       try {
-        const { supabase } = await import("../services/supabase");
-        const { error } = await supabase
-          .from("profiles")
-          .update({ onboarding_step: step })
-          .eq("id", user.id);
-
-        if (error) {
-          console.error("Error updating onboarding_step:", error);
-          return false;
+        const savedStep = profile?.onboarding_step
+        if (savedStep && savedStep >= 1 && savedStep <= 5) {
+          setInitialStep(savedStep as OnboardingStep)
         }
-
-        // Update profile in store to reflect the change
-        const { data: updatedProfile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
-
-        if (updatedProfile) {
-          const { useAppStore } = await import("../store/appStore");
-          useAppStore.getState().setProfile(updatedProfile);
+        // Load existing preferences
+        const prefs = await PreferencesService.getUserPreferences(user.id)
+        if (prefs) {
+          setData((prev) => ({
+            ...prev,
+            selectedCategories: prefs.categories?.length ? prefs.categories : DEFAULT_CATEGORIES,
+            budgetMax: prefs.budget_max || DEFAULT_BUDGET,
+            travelMode: (prefs.travel_mode as any) || DEFAULT_TRANSPORT,
+            travelTimeMinutes: prefs.travel_constraint_value || DEFAULT_TRAVEL_TIME,
+            selectedIntents: (prefs as any).intents || [],
+          }))
         }
+      } catch (e) {
+        console.error('Resume load error:', e)
+      }
+      setIsReady(true)
+    }
+    loadResume()
+  }, [user?.id])
 
-        return true;
-      } catch (error) {
-        console.error("Error updating onboarding step:", error);
-        return false;
+  // ─── Resend Countdown Timer ───
+  useEffect(() => {
+    if (resendCountdown <= 0) return
+    const timer = setTimeout(() => setResendCountdown((c) => c - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [resendCountdown])
+
+  // ─── Value Prop Auto-Advance ───
+  useEffect(() => {
+    if (navState.subStep !== 'value_prop') return
+    if (valuePropBeat >= 2) return
+    const timer = setTimeout(() => setValuePropBeat((b) => b + 1), 3000)
+    return () => clearTimeout(timer)
+  }, [navState.subStep, valuePropBeat])
+
+  // ─── Launch Logic ───
+  useEffect(() => {
+    if (!isLaunch) return
+    handleLaunch()
+  }, [isLaunch])
+
+  // ─── Persist Major Step ───
+  const persistStep = useCallback(
+    async (step: number) => {
+      if (!user?.id) return
+      try {
+        await supabase.from('profiles').update({ onboarding_step: step }).eq('id', user.id)
+      } catch (e) {
+        console.error('Step persist error:', e)
       }
     },
     [user?.id]
-  );
+  )
 
-  // No skip-to-step-2 useEffect needed — onboarding now starts at step 2 (IntentSelection)
-  // since auth is handled entirely by WelcomeScreen before OnboardingFlow renders
-  const [onboardingData, setOnboardingData] = useState<any>({
-    userProfile: {
-      name: user?.email?.split("@")[0] || "User",
-      email: user?.email || "",
-      profileImage: null,
-    },
-    account_type: null, // Legacy field, no longer used
-    intents: [], // Step 2: Intent Selection
-    vibes: [], // Step 3: Vibe/Category Selection
-    location: "", // Step 4: Location Setup
-    travelMode: "walking", // Step 5: Travel Mode
-    travelConstraintType: "time", // Step 6: Travel Constraint
-    travelConstraintValue: 30, // Step 6: Travel Constraint value
-    budgetRange: { min: 0, max: 1000 }, // Step 7: Budget Range { min, max }
-    dateTimePref: {
-      dateOption: null,
-      timeSlot: null,
-      selectedDate: null,
-      weekendDay: null,
-      exactTime: null,
-    }, // Step 8: Date and Time Preferences
-    groupSize: 1, // Group size (people_count)
-    invitedFriends: [], // Step 9: Invite Friends (optional)
-  });
+  // ─── E.164 Phone Builder ───
+  const buildE164 = useCallback(() => {
+    const country = getCountryByCode(data.phoneCountryCode)
+    const dialCode = country?.dialCode || '+1'
+    const digits = data.phoneNumber.replace(/\D/g, '')
+    return `${dialCode}${digits}`
+  }, [data.phoneCountryCode, data.phoneNumber])
 
-  const totalSteps = 10;
+  const isPhoneValid = useCallback(() => {
+    const e164 = buildE164()
+    return /^\+[1-9]\d{1,14}$/.test(e164)
+  }, [buildE164])
 
-  // Resume logic: Load onboarding_step from profile
-  useEffect(() => {
-    const resumeFromOnboardingStep = async () => {
-      if (!user?.id || !profile) return;
-
-      // If onboarding is completed, onboarding_step should be 0
-      if (profile.has_completed_onboarding === true) {
-        // If onboarding_step is not 0, update it
-        if (profile.onboarding_step !== 0) {
-          await updateOnboardingStep(0);
-        }
-        return;
-      }
-
-      // Load saved preferences into onboardingData for display
-      try {
-        const preferences = await PreferencesService.getUserPreferences(
-          user.id
-        );
-
-        if (preferences) {
-          // Helper function to map intent IDs back to intent objects
-          const mapIntentIdsToObjects = (categoryIds: string[]): any[] => {
-            const intentOptions = [
-              {
-                id: "adventurous",
-                title: "Adventurous",
-                icon: "compass-outline",
-                description: "Explore your city — great for adventurous souls",
-                experienceType: "Adventurous",
-              },
-              {
-                id: "first-date",
-                title: "Plan First Dates",
-                icon: "heart-outline",
-                description: "Great first impression experiences",
-                experienceType: "First Date",
-              },
-              {
-                id: "romantic",
-                title: "Find Romantic Activities",
-                icon: "heart-outline",
-                description: "Intimate and romantic experiences",
-                experienceType: "Romantic",
-              },
-              {
-                id: "friendly",
-                title: "Find Friendly Activities",
-                icon: "people-outline",
-                description: "Fun activities with friends",
-                experienceType: "Friendly",
-              },
-              {
-                id: "group-fun",
-                title: "Find Activities for Groups",
-                icon: "people-outline",
-                description: "Group activities and celebrations",
-                experienceType: "Group fun",
-              },
-              {
-                id: "picnic-dates",
-                title: "Picnic Dates",
-                icon: "basket-outline",
-                description: "Outdoor picnic experiences and parks",
-                experienceType: "Picnic Dates",
-              },
-              {
-                id: "take-a-stroll",
-                title: "Take a Stroll",
-                icon: "walk-outline",
-                description: "Scenic walks and leisurely strolls",
-                experienceType: "Take a Stroll",
-              },
-            ];
-
-            const intentIds = new Set(intentOptions.map((opt) => opt.id));
-            return categoryIds
-              .filter((id) => intentIds.has(id))
-              .map((id) => intentOptions.find((opt) => opt.id === id))
-              .filter((intent) => intent !== undefined) as any[];
-          };
-
-          // Extract intent IDs from categories array and map to intent objects
-          const categories = preferences.categories || [];
-          const loadedIntents = mapIntentIdsToObjects(categories);
-
-          // Filter out intent IDs from categories to get only vibe categories
-          const intentIds = new Set([
-            "adventurous",
-            "first-date",
-            "romantic",
-            "friendly",
-            "group-fun",
-            "picnic-dates",
-            "take-a-stroll",
-          ]);
-          const vibeCategories = categories.filter(
-            (cat: string) => !intentIds.has(cat)
-          );
-
-          // Load saved preferences into onboardingData
-          setOnboardingData((prev: any) => ({
-            ...prev,
-            intents: loadedIntents,
-            vibes: vibeCategories,
-            location: prev.location || "", // Keep empty if not set
-            travelMode: preferences.travel_mode || "walking",
-            travelConstraintType: preferences.travel_constraint_type || "time",
-            travelConstraintValue: preferences.travel_constraint_value || 30,
-            budgetRange: {
-              min: preferences.budget_min || 0,
-              max: preferences.budget_max || 1000,
-            },
-            dateTimePref: (() => {
-              // Handle new structure: dateOption, timeSlot, selectedDate, weekendDay, exactTime
-              // If date_option exists, use new structure
-              if (preferences.date_option) {
-                // Map database values to component values
-                let dateOption: string | null = null;
-                if (preferences.date_option === "now") {
-                  dateOption = "Now";
-                } else if (preferences.date_option === "today") {
-                  dateOption = "Today";
-                } else if (preferences.date_option === "weekend") {
-                  dateOption = "This Weekend";
-                } else if (preferences.date_option === "custom") {
-                  dateOption = "Pick a Date";
-                }
-
-                return {
-                  dateOption: dateOption,
-                  timeSlot: (preferences as any).time_slot || null,
-                  selectedDate: preferences.datetime_pref || null,
-                  weekendDay: null, // Weekend day not stored separately, will be inferred if needed
-                  exactTime: null, // Exact time not stored, user will need to re-enter if needed
-                };
-              }
-
-              // Legacy format: try to parse as JSON or handle as timestamp
-              try {
-                if (typeof preferences.datetime_pref === "string") {
-                  // Check if it's a timestamp (ISO string) or JSON
-                  if (
-                    preferences.datetime_pref.includes("T") &&
-                    preferences.datetime_pref.includes("Z")
-                  ) {
-                    // It's a timestamp, treat as "Now" or legacy format
-                    return {
-                      dateOption: "Now",
-                      timeSlot: null,
-                      selectedDate: preferences.datetime_pref,
-                      weekendDay: null,
-                    };
-                  }
-                  // Try to parse as JSON (legacy format)
-                  const parsed = JSON.parse(preferences.datetime_pref);
-                  if (
-                    parsed &&
-                    typeof parsed === "object" &&
-                    !Array.isArray(parsed)
-                  ) {
-                    // Legacy object format - convert to new structure if possible
-                    return {
-                      dateOption: null,
-                      timeSlot: parsed.timeSlots?.[0] || null,
-                      selectedDate: null,
-                      weekendDay: null,
-                    };
-                  }
-                }
-              } catch (parseError) {
-                // If parsing fails, return default
-                console.warn(
-                  "Failed to parse datetime_pref, using default:",
-                  parseError
-                );
-              }
-
-              // Default fallback
-              return {
-                dateOption: null,
-                timeSlot: null,
-                selectedDate: null,
-                weekendDay: null,
-                exactTime: null,
-              };
-            })(),
-            groupSize: preferences.people_count || 1,
-          }));
-        }
-      } catch (error) {
-        console.error("Error loading preferences for resume:", error);
-      }
-
-      // Resume from saved onboarding_step
-      // If onboarding_step exists and is valid (2-10), use it
-      // Otherwise, default to step 2 (Intent Selection - first tracked step)
-      const savedStep = profile.onboarding_step;
-      if (savedStep !== null && savedStep !== undefined) {
-        if (savedStep === 0) {
-          // Onboarding completed, but has_completed_onboarding might be false
-          // This shouldn't happen, but handle it gracefully
-          return;
-        }
-        if (savedStep >= 2 && savedStep <= 10) {
-          // Valid step, resume from here - this takes priority
-          setCurrentStep(savedStep);
-          return;
-        }
-      }
-
-      // No valid onboarding_step found
-      // The other useEffect will handle skipping to step 2 for first-time users
-      // But if we're already past step 1, don't change it
-    };
-
-    if (user && profile) {
-      resumeFromOnboardingStep();
+  // ─── Send OTP ───
+  const handleSendOtp = useCallback(async () => {
+    if (!isPhoneValid()) {
+      setPhoneError('Check that number — something looks off.')
+      return
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, profile]); // updateOnboardingStep is stable (only depends on user?.id)
-
-  // Update onboarding data when user/profile changes
-  useEffect(() => {
-    if (user || profile) {
-      const displayName =
-        profile?.display_name ||
-        profile?.first_name ||
-        user?.email?.split("@")[0] ||
-        "User";
-      setOnboardingData((prev: any) => ({
-        ...prev,
-        userProfile: {
-          name: displayName,
-          email: user?.email || "",
-          profileImage: profile?.avatar_url || null,
-        },
-      }));
-    }
-  }, [user, profile]);
-
-  // Track every step view in Mixpanel
-  useEffect(() => {
-    mixpanelService.trackOnboardingStepViewed(currentStep);
-  }, [currentStep]);
-
-  // Build extra properties to attach when a step is completed
-  const buildStepExtras = (step: number): Record<string, any> | undefined => {
-    switch (step) {
-      case 2:
-        return {
-          intents_selected: onboardingData.intents?.map((i: any) => i.id ?? i) ?? [],
-          intents_count: onboardingData.intents?.length ?? 0,
-        };
-      case 3:
-        return {
-          vibes_selected: onboardingData.vibes ?? [],
-          vibes_count: onboardingData.vibes?.length ?? 0,
-        };
-      case 4:
-        return { location: onboardingData.location };
-      case 5:
-        return { travel_mode: onboardingData.travelMode };
-      case 6:
-        return {
-          constraint_type: onboardingData.travelConstraintType,
-          constraint_value: onboardingData.travelConstraintValue,
-        };
-      case 7:
-        return {
-          budget_min: onboardingData.budgetRange?.min,
-          budget_max: onboardingData.budgetRange?.max,
-        };
-      case 8:
-        return {
-          date_option: onboardingData.dateTimePref?.dateOption ?? null,
-          time_slot: onboardingData.dateTimePref?.timeSlot ?? null,
-        };
-      case 9:
-        return {
-          invited_friends_count: onboardingData.invitedFriends?.length ?? 0,
-        };
-      default:
-        return undefined;
-    }
-  };
-
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: "white",
-    },
-  });
-
-  const handleNext = async () => {
-    // Validate step 2: require at least one intent to be selected
-    if (currentStep === 2) {
-      if (!onboardingData.intents || onboardingData.intents.length === 0) {
-        Alert.alert(
-          "Selection Required",
-          "Please select at least one intent to continue.",
-          [{ text: "OK" }]
-        );
-        return;
-      }
-    }
-
-    // Validate step 3: require at least one vibe to be selected
-    if (currentStep === 3) {
-      if (!onboardingData.vibes || onboardingData.vibes.length === 0) {
-        Alert.alert(
-          "Selection Required",
-          "Please select at least one vibe to continue.",
-          [{ text: "OK" }]
-        );
-        return;
-      }
-    }
-
-    // Validate step 4: require location to be entered
-    if (currentStep === 4) {
-      if (
-        !onboardingData.location ||
-        onboardingData.location.trim().length === 0
-      ) {
-        Alert.alert(
-          "Location Required",
-          "Please enter your location to continue.",
-          [{ text: "OK" }]
-        );
-        return;
-      }
-    }
-
-    // Save preferences for current step before moving to next
-    let saveSuccess = true;
-
-    if (currentStep === 2) {
-      // Step 2: Intent Selection - Create preferences record
-      saveSuccess = await saveStep2Preferences();
-    } else if (currentStep === 3) {
-      // Step 3: Vibe Selection - Merge with existing categories
-      saveSuccess = await saveStep3Preferences();
-    } else if (currentStep === 4) {
-      // Step 4: Location Setup
-      saveSuccess = await saveStep4Preferences();
-    } else if (currentStep === 5) {
-      // Step 5: Travel Mode
-      saveSuccess = await saveStep5Preferences();
-    } else if (currentStep === 6) {
-      // Step 6: Travel Constraint
-      saveSuccess = await saveStep6Preferences();
-    } else if (currentStep === 7) {
-      // Step 7: Budget Range
-      saveSuccess = await saveStep7Preferences();
-    } else if (currentStep === 8) {
-      // Step 8: Date/Time Preferences
-      try {
-        saveSuccess = await saveStep8Preferences();
-      } catch (error: any) {
-        console.error("Error in saveStep8Preferences:", error);
-        alert(
-          error?.message ||
-            "Failed to save date/time preferences. Please try again."
-        );
-        saveSuccess = false;
-      }
-    }
-
-    // If save failed, prevent moving to next step
-    if (!saveSuccess) {
-      // Error alert already shown in catch block above
-      return;
-    }
-
-    // Move to next step or complete
-    if (currentStep < totalSteps) {
-      const nextStep = currentStep + 1;
-
-      // Track step completion in Mixpanel
-      mixpanelService.trackOnboardingStepCompleted(currentStep, buildStepExtras(currentStep));
-
-      // Update onboarding_step to the next step (tracked steps 2-10)
-      // When completing step 2, update to 3; when completing step 3, update to 4, etc.
-      if (currentStep >= 2 && currentStep <= 9) {
-        await updateOnboardingStep(nextStep);
-      }
-      // Step 10 (Magic Step) handles its own completion and sets onboarding_step to 0
-
-      setCurrentStep(nextStep);
+    setPhoneError(null)
+    setSendingOtp(true)
+    const result = await sendOtp(buildE164())
+    setSendingOtp(false)
+    if (result.success) {
+      setResendCountdown(30)
+      setOtpAttempts(0)
+      goNext() // advance to OTP sub-step
     } else {
-      // Complete onboarding - this shouldn't happen as totalSteps is 10
-      // The Magic Step (step 10) handles completion separately
-      onComplete(onboardingData);
+      setPhoneError(result.error || "Couldn't send code. Try again.")
     }
-  };
+  }, [isPhoneValid, buildE164, goNext])
 
-  const handleBack = () => {
-    if (currentStep > 2) {
-      mixpanelService.trackOnboardingStepBack(currentStep);
-      setCurrentStep(currentStep - 1);
+  // ─── Resend OTP (does NOT advance state — used for auto-resend after 3 failures) ───
+  const handleResendOtp = useCallback(async () => {
+    setSendingOtp(true)
+    const result = await sendOtp(buildE164())
+    setSendingOtp(false)
+    if (result.success) {
+      setResendCountdown(30)
     }
-  };
+  }, [buildE164])
 
-  const updateOnboardingData = useCallback((key: string, value: any) => {
-    setOnboardingData((prev: any) => ({
-      ...prev,
-      [key]: value,
-    }));
-  }, []);
-
-  const handleIntentToggle = useCallback((intent: any) => {
-    setOnboardingData((prev: any) => {
-      const currentIntents = prev.intents || [];
-      let updatedIntents;
-
-      if (currentIntents.find((i: any) => i.id === intent.id)) {
-        // Remove if already selected
-        updatedIntents = currentIntents.filter((i: any) => i.id !== intent.id);
+  // ─── Verify OTP ───
+  const handleVerifyOtp = useCallback(
+    async (code: string) => {
+      setOtpLoading(true)
+      setOtpError(false)
+      const result = await verifyOtp(buildE164(), code)
+      setOtpLoading(false)
+      if (result.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        setData((prev) => ({ ...prev, phoneVerified: true }))
+        await persistStep(2)
+        setTimeout(() => goNext(), 800) // pause for success animation
       } else {
-        // Add if not selected (no limit)
-        updatedIntents = [...currentIntents, intent];
+        setOtpError(true)
+        setOtpAttempts((a) => a + 1)
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+        if (otpAttempts >= 2) {
+          // Auto-resend after 3 failures — does NOT advance past OTP
+          setOtpCode('')
+          setOtpAttempts(0)
+          handleResendOtp()
+        }
       }
+    },
+    [buildE164, goNext, persistStep, otpAttempts, handleResendOtp]
+  )
 
-      return {
-        ...prev,
-        intents: updatedIntents,
-      };
-    });
-  }, []);
+  // ─── Location Permission ───
+  const handleLocationRequest = useCallback(async () => {
+    setLocationStatus('requesting')
+    const { status, canAskAgain } = await Location.getForegroundPermissionsAsync()
 
-  const handleVibeToggle = useCallback((vibeId: string) => {
-    setOnboardingData((prev: any) => {
-      const currentVibes = prev.vibes || [];
-      let updatedVibes;
+    if (status === 'granted') {
+      await captureLocation()
+      return
+    }
 
-      if (currentVibes.includes(vibeId)) {
-        updatedVibes = currentVibes.filter((id: string) => id !== vibeId);
-      } else {
-        // Add if not selected (no limit)
-        updatedVibes = [...currentVibes, vibeId];
-      }
+    if (!canAskAgain) {
+      setLocationStatus('settings')
+      return
+    }
 
-      return {
-        ...prev,
-        vibes: updatedVibes,
-      };
-    });
-  }, []);
+    const result = await Location.requestForegroundPermissionsAsync()
+    if (result.status === 'granted') {
+      await captureLocation()
+    } else {
+      setLocationStatus('denied')
+      setHasGpsPermission(false)
+      setData((prev) => ({ ...prev, locationGranted: false, useGpsLocation: false }))
+      await persistStep(4)
+      goNext()
+    }
+  }, [goNext, persistStep])
 
-  const handleFriendInvite = useCallback((friend: any) => {
-    setOnboardingData((prev: any) => {
-      const currentInvited = prev.invitedFriends || [];
-      const isAlreadyInvited = currentInvited.some(
-        (f: any) => f.id === friend.id
-      );
-
-      if (isAlreadyInvited) {
-        return {
+  const captureLocation = useCallback(async () => {
+    try {
+      const loc = await locationService.getCurrentLocation()
+      if (loc) {
+        const geo = await Location.reverseGeocodeAsync({
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+        })
+        const city = geo[0]?.city || geo[0]?.region || 'your area'
+        setData((prev) => ({
           ...prev,
-          invitedFriends: currentInvited.filter((f: any) => f.id !== friend.id),
-        };
-      } else {
-        return {
+          locationGranted: true,
+          coordinates: { lat: loc.latitude, lng: loc.longitude },
+          cityName: city,
+          useGpsLocation: true,
+        }))
+        setHasGpsPermission(true)
+        setLocationStatus('granted')
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        await persistStep(4)
+        setTimeout(() => goNext(), 1200) // show confirmation briefly
+      }
+    } catch (e) {
+      console.error('Location capture error:', e)
+      setLocationStatus('denied')
+    }
+  }, [goNext, persistStep])
+
+  const handleSkipLocation = useCallback(async () => {
+    setLocationStatus('denied')
+    setHasGpsPermission(false)
+    setData((prev) => ({ ...prev, locationGranted: false, useGpsLocation: false }))
+    await persistStep(4)
+    goNext()
+  }, [goNext, persistStep])
+
+  // ─── Manual Location Geocode ───
+  const handleManualLocation = useCallback(async () => {
+    if (!manualLocationText.trim()) return
+    setSavingPrefs(true)
+    try {
+      const results = await Location.geocodeAsync(manualLocationText.trim())
+      if (results.length > 0) {
+        setData((prev) => ({
           ...prev,
-          invitedFriends: [...currentInvited, friend],
-        };
+          manualLocation: manualLocationText.trim(),
+          coordinates: { lat: results[0].latitude, lng: results[0].longitude },
+        }))
+        goNext()
       }
-    });
-  }, []);
+    } catch (e) {
+      console.error('Geocode error:', e)
+    }
+    setSavingPrefs(false)
+  }, [manualLocationText, goNext])
 
-  const requestLocationPermission = useCallback(async () => {
+  // ─── Save Preferences (Step 4 → 5 transition) ───
+  const handleSavePreferences = useCallback(async () => {
+    if (!user?.id) return
+    setSavingPrefs(true)
     try {
-      // Request location permissions
-      const hasPermission = await locationService.requestPermissions();
-
-      if (hasPermission) {
-        // Try to get current location
-        const locationData = await locationService.getCurrentLocation();
-
-        if (locationData) {
-          // Reverse geocode to get city name
-          const cityName = await locationService.reverseGeocode(
-            locationData.latitude,
-            locationData.longitude
-          );
-
-          if (cityName) {
-            // Update onboarding data with city name
-            updateOnboardingData("location", cityName);
-          } else {
-            // Fallback to coordinates if reverse geocode fails
-            const locationString = `${locationData.latitude.toFixed(
-              4
-            )}, ${locationData.longitude.toFixed(4)}`;
-            updateOnboardingData("location", locationString);
-          }
-        } else {
-          updateOnboardingData("location", "San Francisco, CA");
-        }
-      } else {
-        updateOnboardingData("location", "San Francisco, CA");
-      }
-    } catch (error: any) {
-      console.error("Error requesting location permission:", error);
-
-      // Check if it's a configuration error
-      if (error.message && error.message.includes("NSLocation")) {
-        // Show a more user-friendly message
-        alert(
-          "Location services are not properly configured. Using default location for demo purposes."
-        );
-      } else if (error.message && error.message.includes("Info.plist")) {
-        alert(
-          "Location permissions are not configured in the app. Using default location for demo purposes."
-        );
-      }
-
-      // Fallback to default location
-      updateOnboardingData("location", "San Francisco, CA");
-    }
-  }, [updateOnboardingData]);
-
-  const renderStep = () => {
-    switch (currentStep) {
-      case 2: // Intent Selection (Step 1 visible to user)
-        return (
-          <IntentSelectionStep
-            onNext={handleNext} // Will save Step 2 preferences before moving
-            onBack={handleBack}
-            intents={onboardingData.intents}
-            onIntentToggle={handleIntentToggle}
-          />
-        );
-
-      case 3: // Vibe Selection
-        return (
-          <VibeSelectionStep
-            onNext={handleNext}
-            onBack={handleBack}
-            vibes={onboardingData.vibes}
-            onVibeToggle={handleVibeToggle}
-            intents={onboardingData.intents}
-          />
-        );
-
-      case 4: // Location Setup
-        return (
-          <LocationSetupStep
-            onNext={handleNext}
-            onBack={handleBack}
-            location={onboardingData.location}
-            onLocationChange={(location) =>
-              updateOnboardingData("location", location)
-            }
-            onRequestLocationPermission={requestLocationPermission}
-          />
-        );
-
-      case 5: // Travel Mode
-        return (
-          <TravelModeStep
-            onNext={handleNext}
-            onBack={handleBack}
-            travelMode={onboardingData.travelMode}
-            onTravelModeChange={(mode) =>
-              updateOnboardingData("travelMode", mode)
-            }
-          />
-        );
-
-      case 6: // Travel Constraint
-        return (
-          <TravelConstraintStep
-            onNext={handleNext}
-            onBack={handleBack}
-            constraintType={onboardingData.travelConstraintType}
-            constraintValue={onboardingData.travelConstraintValue}
-            onConstraintTypeChange={(type: string) =>
-              updateOnboardingData("travelConstraintType", type)
-            }
-            onConstraintValueChange={(value: number) =>
-              updateOnboardingData("travelConstraintValue", value)
-            }
-          />
-        );
-
-      case 7: // Budget Range
-        return (
-          <BudgetRangeStep
-            onNext={handleNext}
-            onBack={handleBack}
-            budgetRange={onboardingData.budgetRange}
-            onBudgetRangeChange={(range) =>
-              updateOnboardingData("budgetRange", range)
-            }
-          />
-        );
-
-      case 8: // Date/Time Preferences
-        return (
-          <DateTimePrefStep
-            onNext={handleNext}
-            onBack={handleBack}
-            dateTimePref={onboardingData.dateTimePref}
-            onDateTimePrefChange={(pref) => {
-              updateOnboardingData("dateTimePref", pref);
-            }}
-          />
-        );
-
-      case 9: // Invite Friends (Optional - can skip)
-        return (
-          <InviteFriendsStep
-            onNext={handleNext}
-            onBack={handleBack}
-            invitedFriends={onboardingData.invitedFriends}
-            onFriendInvite={handleFriendInvite}
-          />
-        );
-
-      case 10: // Magic Step (Completion)
-        return (
-          <MagicStep
-            onComplete={async (data: any) => {
-              // Mark onboarding as complete only at the final step
-              mixpanelService.trackOnboardingStepCompleted(10);
-              mixpanelService.trackOnboardingCompleted({
-                intents_count: onboardingData.intents?.length ?? 0,
-                vibes_count: onboardingData.vibes?.length ?? 0,
-                travel_mode: onboardingData.travelMode,
-                invited_friends_count: onboardingData.invitedFriends?.length ?? 0,
-              });
-              await handleMarkOnboardingComplete();
-              onComplete(data || onboardingData);
-            }}
-            onBack={handleBack}
-            onboardingData={onboardingData}
-            onNavigateToStep={(step: number) => {
-              setCurrentStep(step);
-            }}
-          />
-        );
-
-      default:
-        return null;
-    }
-  };
-
-  // Step 2: Save intents to categories (creates preferences record if doesn't exist)
-  const saveStep2Preferences = useCallback(async (): Promise<boolean> => {
-    if (!user?.id) {
-      console.error("Cannot save Step 2 preferences: No user ID");
-      return false;
-    }
-
-    try {
-      const { supabase } = await import("../services/supabase");
-
-      // Validate that at least one intent is selected
-      if (!onboardingData.intents || onboardingData.intents.length === 0) {
-        console.error("Cannot save Step 2 preferences: No intents selected");
-        Alert.alert(
-          "Selection Required",
-          "Please select at least one intent to continue."
-        );
-        return false;
-      }
-
-      // Map intents to category names (intent IDs)
-      const intentCategories =
-        onboardingData.intents?.map((intent: any) =>
-          typeof intent === "string"
-            ? intent
-            : intent.name || intent.id || intent.category || intent
-        ) || [];
-
-      // Get existing preferences to preserve vibe categories
-      const { data: existingPrefs } = await supabase
-        .from("preferences")
-        .select("categories")
-        .eq("profile_id", user.id)
-        .single();
-
-      const existingCategories = existingPrefs?.categories || [];
-
-      // Known intent IDs - filter these out to preserve only vibe categories
-      const intentIds = new Set([
-        "adventurous",
-        "first-date",
-        "romantic",
-        "friendly",
-        "group-fun",
-        "picnic-dates",
-        "take-a-stroll",
-      ]);
-
-      // Extract existing vibe categories (non-intent IDs)
-      const existingVibeCategories = existingCategories.filter(
-        (cat: string) => !intentIds.has(cat)
-      );
-
-      // Combine new intent IDs with existing vibe categories
-      const allCategories = [
-        ...new Set([...intentCategories, ...existingVibeCategories]),
-      ];
-
-      // Create or update preferences with Step 2 data
-      const { data, error } = await supabase
-        .from("preferences")
-        .upsert(
-          {
-            profile_id: user.id,
-            categories: allCategories,
-            updated_at: new Date().toISOString(),
-          },
-          {
-            onConflict: "profile_id",
-          }
-        )
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Error saving Step 2 preferences:", error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Error saving Step 2 preferences:", error);
-      return false;
-    }
-  }, [user?.id, onboardingData.intents]);
-
-  // Step 3: Merge vibes with existing categories
-  const saveStep3Preferences = useCallback(async (): Promise<boolean> => {
-    if (!user?.id) {
-      console.error("Cannot save Step 3 preferences: No user ID");
-      return false;
-    }
-
-    try {
-      const { supabase } = await import("../services/supabase");
-
-      // Get existing preferences to merge with
-      const { data: existingPrefs } = await supabase
-        .from("preferences")
-        .select("categories")
-        .eq("profile_id", user.id)
-        .single();
-
-      // Validate that at least one vibe is selected
-      if (!onboardingData.vibes || onboardingData.vibes.length === 0) {
-        console.error("Cannot save Step 3 preferences: No vibes selected");
-        Alert.alert(
-          "Selection Required",
-          "Please select at least one vibe to continue."
-        );
-        return false;
-      }
-
-      const existingCategories = existingPrefs?.categories || [];
-
-      // Map vibes to category names (vibe IDs)
-      const vibeCategories =
-        onboardingData.vibes?.map((vibe: any) =>
-          typeof vibe === "string" ? vibe : vibe.name || vibe.id || vibe
-        ) || [];
-
-      // Known intent IDs - filter these out to preserve only intent categories
-      const intentIds = new Set([
-        "adventurous",
-        "first-date",
-        "romantic",
-        "friendly",
-        "group-fun",
-        "picnic-dates",
-        "take-a-stroll",
-      ]);
-
-      // Extract existing intent categories (preserve intent IDs from step 2)
-      const existingIntentCategories = existingCategories.filter(
-        (cat: string) => intentIds.has(cat)
-      );
-
-      // Combine new vibe categories with existing intent categories and remove duplicates
-      const mergedCategories = [
-        ...new Set([...existingIntentCategories, ...vibeCategories]),
-      ];
-
-      // Update only categories field
-      const { data, error } = await supabase
-        .from("preferences")
-        .update({
-          categories: mergedCategories,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("profile_id", user.id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Error saving Step 3 preferences:", error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Error saving Step 3 preferences:", error);
-      return false;
-    }
-  }, [user?.id, onboardingData.vibes]);
-
-  // Step 4: Save location to custom_location
-  const saveStep4Preferences = useCallback(async (): Promise<boolean> => {
-    if (!user?.id) {
-      console.error("Cannot save Step 4 preferences: No user ID");
-      return false;
-    }
-
-    try {
-      const { supabase } = await import("../services/supabase");
-
-      // Update only custom_location field
-      const { data, error } = await supabase
-        .from("preferences")
-        .update({
-          custom_location: onboardingData.location || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("profile_id", user.id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Error saving Step 4 preferences:", error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Error saving Step 4 preferences:", error);
-      return false;
-    }
-  }, [user?.id, onboardingData.location]);
-
-  // Step 5: Save travel mode
-  const saveStep5Preferences = useCallback(async (): Promise<boolean> => {
-    if (!user?.id) {
-      console.error("Cannot save Step 5 preferences: No user ID");
-      return false;
-    }
-
-    try {
-      const { supabase } = await import("../services/supabase");
-
-      // Update only travel_mode field
-      const { data, error } = await supabase
-        .from("preferences")
-        .update({
-          travel_mode: onboardingData.travelMode || "walking",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("profile_id", user.id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Error saving Step 5 preferences:", error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Error saving Step 5 preferences:", error);
-      return false;
-    }
-  }, [user?.id, onboardingData.travelMode]);
-
-  // Step 6: Save travel constraint
-  const saveStep6Preferences = useCallback(async (): Promise<boolean> => {
-    if (!user?.id) {
-      console.error("Cannot save Step 6 preferences: No user ID");
-      return false;
-    }
-
-    try {
-      const { supabase } = await import("../services/supabase");
-
-      // Update only travel constraint fields
-      const { data, error } = await supabase
-        .from("preferences")
-        .update({
-          travel_constraint_type: onboardingData.travelConstraintType || "time",
-          travel_constraint_value: onboardingData.travelConstraintValue ?? 30,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("profile_id", user.id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Error saving Step 6 preferences:", error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Error saving Step 6 preferences:", error);
-      return false;
-    }
-  }, [
-    user?.id,
-    onboardingData.travelConstraintType,
-    onboardingData.travelConstraintValue,
-  ]);
-
-  // Step 7: Save budget range
-  const saveStep7Preferences = useCallback(async (): Promise<boolean> => {
-    if (!user?.id) {
-      console.error("Cannot save Step 7 preferences: No user ID");
-      return false;
-    }
-
-    try {
-      const { supabase } = await import("../services/supabase");
-
-      // Update only budget fields
-      const budgetRange = onboardingData.budgetRange || { min: 0, max: 1000 };
-      const { data, error } = await supabase
-        .from("preferences")
-        .update({
-          budget_min: budgetRange.min ?? 0,
-          budget_max: budgetRange.max ?? 1000,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("profile_id", user.id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Error saving Step 7 preferences:", error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Error saving Step 7 preferences:", error);
-      return false;
-    }
-  }, [user?.id, onboardingData.budgetRange]);
-
-  // Helper function to parse HH:MM AM/PM time string to hours and minutes
-  const parseTimeString = (
-    timeStr: string
-  ): { hours: number; minutes: number } | null => {
-    if (!timeStr || !timeStr.trim()) return null;
-
-    // Remove extra spaces and convert to uppercase for easier parsing
-    const cleaned = timeStr.trim().toUpperCase();
-
-    // Match patterns like "11:30 AM", "2:15 PM", "11:30AM", etc.
-    const timePattern = /(\d{1,2}):(\d{2})\s*(AM|PM)/i;
-    const match = cleaned.match(timePattern);
-
-    if (!match) return null;
-
-    let hours = parseInt(match[1], 10);
-    const minutes = parseInt(match[2], 10);
-    const period = match[3].toUpperCase();
-
-    // Convert to 24-hour format
-    if (period === "PM" && hours !== 12) {
-      hours += 12;
-    } else if (period === "AM" && hours === 12) {
-      hours = 0;
-    }
-
-    // Validate hours and minutes
-    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-      return null;
-    }
-
-    return { hours, minutes };
-  };
-
-  // Helper function to calculate next weekend day (Saturday or Sunday)
-  const getNextWeekendDay = (): Date => {
-    const today = new Date();
-    const dayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
-
-    let targetDate = new Date(today);
-
-    if (dayOfWeek === 0) {
-      // Today is Sunday, use next Saturday (6 days away)
-      targetDate.setDate(today.getDate() + 6);
-    } else if (dayOfWeek === 6) {
-      // Today is Saturday, use next Sunday (1 day away)
-      targetDate.setDate(today.getDate() + 1);
-    } else if (dayOfWeek < 6) {
-      // Today is Monday-Friday, use next Saturday
-      const daysUntilSaturday = 6 - dayOfWeek;
-      targetDate.setDate(today.getDate() + daysUntilSaturday);
-    }
-
-    targetDate.setHours(0, 0, 0, 0);
-    return targetDate;
-  };
-
-  // Step 8: Save date/time preferences
-  const saveStep8Preferences = useCallback(async (): Promise<boolean> => {
-    if (!user?.id) {
-      console.error("Cannot save Step 8 preferences: No user ID");
-      return false;
-    }
-
-    try {
-      const { supabase } = await import("../services/supabase");
-
-      const dateTimePref = onboardingData.dateTimePref || {
-        dateOption: null,
-        timeSlot: null,
-        selectedDate: null,
-        weekendDay: null,
-        exactTime: null,
-      };
-
-      // Determine date_option and time_slot values
-      let dateOptionToSave: string | null = null;
-      let timeSlotToSave: string | null = null;
-
-      if (dateTimePref.dateOption === "Now") {
-        dateOptionToSave = "now";
-        timeSlotToSave = null;
-      } else if (dateTimePref.dateOption === "Today") {
-        dateOptionToSave = "today";
-        // Save time_slot only if exactTime is not used
-        if (
-          dateTimePref.exactTime &&
-          dateTimePref.exactTime.trim().length > 0
-        ) {
-          timeSlotToSave = null;
-        } else {
-          timeSlotToSave = dateTimePref.timeSlot || null;
-        }
-      } else if (dateTimePref.dateOption === "This Weekend") {
-        dateOptionToSave = "weekend";
-        // Save time_slot only if exactTime is not used
-        if (
-          dateTimePref.exactTime &&
-          dateTimePref.exactTime.trim().length > 0
-        ) {
-          timeSlotToSave = null;
-        } else {
-          timeSlotToSave = dateTimePref.timeSlot || null;
-        }
-      } else if (dateTimePref.dateOption === "Pick a Date") {
-        dateOptionToSave = "custom";
-        // Save time_slot only if exactTime is not used
-        if (
-          dateTimePref.exactTime &&
-          dateTimePref.exactTime.trim().length > 0
-        ) {
-          timeSlotToSave = null;
-        } else {
-          timeSlotToSave = dateTimePref.timeSlot || null;
-        }
-      }
-
-      // Calculate ISO timestamp (datetime_pref) based on selections
-      let calculatedDateTime: string;
-      const now = new Date();
-
-      if (dateTimePref.dateOption === "Now") {
-        // Current timestamp within the hour
-        calculatedDateTime = now.toISOString();
-      } else if (dateTimePref.dateOption === "Today") {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Prefer exact time over time slot
-        if (
-          dateTimePref.exactTime &&
-          dateTimePref.exactTime.trim().length > 0
-        ) {
-          const parsedTime = parseTimeString(dateTimePref.exactTime);
-          if (parsedTime) {
-            today.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
-            calculatedDateTime = today.toISOString();
-          } else {
-            // Invalid time format, fallback to current time
-            calculatedDateTime = now.toISOString();
-          }
-        } else if (dateTimePref.timeSlot) {
-          // Use time slot
-          const timeSlotHours: { [key: string]: number } = {
-            brunch: 11,
-            afternoon: 14,
-            dinner: 18,
-            lateNight: 22,
-          };
-          const startHour = timeSlotHours[dateTimePref.timeSlot] || 11;
-          today.setHours(startHour, 0, 0, 0);
-          calculatedDateTime = today.toISOString();
-        } else {
-          // Fallback to current time
-          calculatedDateTime = now.toISOString();
-        }
-      } else if (dateTimePref.dateOption === "This Weekend") {
-        // Get next weekend day (Saturday or Sunday)
-        const weekendDate = getNextWeekendDay();
-
-        // Prefer exact time over time slot
-        if (
-          dateTimePref.exactTime &&
-          dateTimePref.exactTime.trim().length > 0
-        ) {
-          const parsedTime = parseTimeString(dateTimePref.exactTime);
-          if (parsedTime) {
-            weekendDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
-            calculatedDateTime = weekendDate.toISOString();
-          } else {
-            // Invalid time format, fallback to current time
-            calculatedDateTime = now.toISOString();
-          }
-        } else if (dateTimePref.timeSlot) {
-          // Use time slot
-          const timeSlotHours: { [key: string]: number } = {
-            brunch: 11,
-            afternoon: 14,
-            dinner: 18,
-            lateNight: 22,
-          };
-          const startHour = timeSlotHours[dateTimePref.timeSlot] || 11;
-          weekendDate.setHours(startHour, 0, 0, 0);
-          calculatedDateTime = weekendDate.toISOString();
-        } else {
-          // Fallback to current time
-          calculatedDateTime = now.toISOString();
-        }
-      } else if (dateTimePref.dateOption === "Pick a Date") {
-        if (!dateTimePref.selectedDate) {
-          // No date selected, fallback to current time
-          calculatedDateTime = now.toISOString();
-        } else {
-          const selectedDate = new Date(dateTimePref.selectedDate);
-          selectedDate.setHours(0, 0, 0, 0);
-
-          // Prefer exact time over time slot
-          if (
-            dateTimePref.exactTime &&
-            dateTimePref.exactTime.trim().length > 0
-          ) {
-            const parsedTime = parseTimeString(dateTimePref.exactTime);
-            if (parsedTime) {
-              selectedDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
-              calculatedDateTime = selectedDate.toISOString();
-            } else {
-              // Invalid time format, fallback to current time
-              calculatedDateTime = now.toISOString();
-            }
-          } else if (dateTimePref.timeSlot) {
-            // Use time slot
-            const timeSlotHours: { [key: string]: number } = {
-              brunch: 11,
-              afternoon: 14,
-              dinner: 18,
-              lateNight: 22,
-            };
-            const startHour = timeSlotHours[dateTimePref.timeSlot] || 11;
-            selectedDate.setHours(startHour, 0, 0, 0);
-            calculatedDateTime = selectedDate.toISOString();
-          } else {
-            // Fallback to current time
-            calculatedDateTime = now.toISOString();
-          }
-        }
-      } else {
-        // Fallback to current time
-        calculatedDateTime = now.toISOString();
-      }
-
-      // Update date_option, time_slot, and datetime_pref fields
-      // Use upsert to ensure the record exists (in case it wasn't created in previous steps)
-      const updateData: any = {
-        profile_id: user.id,
-        date_option: dateOptionToSave,
-        datetime_pref: calculatedDateTime,
-        updated_at: new Date().toISOString(),
-      };
-
-      // Always include time_slot (even if null) - let the database handle null values
-      // If the column doesn't exist, the error handler will retry without it
-      updateData.time_slot = timeSlotToSave;
-
-      const { data, error } = await supabase
-        .from("preferences")
-        .upsert(updateData, {
-          onConflict: "profile_id",
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Error saving Step 8 preferences:", error);
-        console.error("Error code:", error.code);
-        console.error("Error message:", error.message);
-        console.error("Error details:", JSON.stringify(error, null, 2));
-
-        // Check if it's a column doesn't exist error (PostgreSQL error code 42703)
-        const isColumnError =
-          error.code === "42703" ||
-          (error.message &&
-            error.message.includes("column") &&
-            error.message.includes("does not exist")) ||
-          error.message.includes("time_slot");
-
-        if (isColumnError) {
-          console.warn(
-            "time_slot column might not exist in database. Please run migration: 20250127000005_add_time_slot_to_preferences.sql"
-          );
-          // Retry without time_slot to allow saving other fields
-          const retryData: any = {
-            profile_id: user.id,
-            date_option: dateOptionToSave,
-            datetime_pref: calculatedDateTime,
-            updated_at: new Date().toISOString(),
-          };
-
-          const { data: retryDataResult, error: retryError } = await supabase
-            .from("preferences")
-            .upsert(retryData, {
-              onConflict: "profile_id",
+      await PreferencesService.updateUserPreferences(user.id, {
+        intents: data.selectedIntents,
+        categories: data.selectedCategories,
+        budget_min: 0,
+        budget_max: data.budgetMax,
+        travel_mode: data.travelMode,
+        travel_constraint_type: 'time',
+        travel_constraint_value: data.travelTimeMinutes,
+        datetime_pref: new Date().toISOString(),
+        date_option: 'now',
+        use_gps_location: data.useGpsLocation,
+        custom_location: data.manualLocation,
+      } as any)
+
+      await persistStep(5)
+
+      // Fire-and-forget card generation
+      const coords = data.coordinates
+      if (coords) {
+        queryClient.prefetchQuery({
+          queryKey: ['onboarding-cards'],
+          queryFn: async () => {
+            const { data: cards, error } = await supabase.functions.invoke('discover-cards', {
+              body: {
+                categories: data.selectedCategories,
+                location: coords,
+                budgetMax: data.budgetMax,
+                travelMode: data.travelMode,
+                travelConstraintType: 'time',
+                travelConstraintValue: data.travelTimeMinutes,
+                datetimePref: new Date().toISOString(),
+                dateOption: 'now',
+                timeSlot: null,
+                batchSeed: 0,
+                limit: 20,
+              },
             })
-            .select()
-            .single();
-
-          if (retryError) {
-            console.error(
-              "Error saving Step 8 preferences (retry without time_slot):",
-              retryError
-            );
-            throw new Error(
-              `Failed to save preferences: ${retryError.message}. Please ensure the database migrations have been run.`
-            );
-          }
-
-          // Still return true since the main data was saved
-          return true;
-        }
-
-        // For other errors, throw with more context
-        throw new Error(
-          `Failed to save preferences: ${
-            error.message || "Unknown error"
-          }. Error code: ${error.code || "N/A"}`
-        );
-      }
-
-      return true;
-    } catch (error: any) {
-      console.error("Error saving Step 8 preferences (catch):", error);
-      console.error("Error message:", error?.message);
-      console.error("Error stack:", error?.stack);
-
-      // Check for network errors
-      if (
-        error?.message?.includes("Network request failed") ||
-        error?.message?.includes("fetch") ||
-        error?.code === "ECONNREFUSED"
-      ) {
-        console.error(
-          "Network request failed - Possible causes:",
-          "\n1. Supabase connection configuration issue",
-          "\n2. Database migrations not run (especially 20250127000005_add_time_slot_to_preferences.sql)",
-          "\n3. Network connectivity problem",
-          "\n4. Supabase service unavailable"
-        );
-        // Re-throw with user-friendly message
-        throw new Error(
-          "Network error: Unable to connect to the database. Please check your internet connection and ensure the database migrations have been run."
-        );
-      }
-
-      // Re-throw the error so it can be caught and displayed to the user
-      throw error;
-    }
-  }, [user?.id, onboardingData.dateTimePref]);
-
-  // Mark onboarding as complete in the database (preferences already saved incrementally)
-  const handleMarkOnboardingComplete = useCallback(async () => {
-    if (!user?.id) {
-      console.error("Cannot mark onboarding complete: No user ID");
-      return;
-    }
-
-    try {
-      const { supabase } = await import("../services/supabase");
-
-      // Mark onboarding as complete and set onboarding_step to 0
-      // (preferences already saved incrementally at each step)
-      const { data, error } = await supabase
-        .from("profiles")
-        .update({
-          has_completed_onboarding: true,
-          onboarding_step: 0,
+            if (error) throw error
+            return cards
+          },
+          staleTime: 10 * 60 * 1000,
         })
-        .eq("id", user.id)
-        .select()
-        .single();
+      }
 
-      if (error) {
-        console.error("Error marking onboarding complete:", error);
-      } else {
-        // Update profile in store to reflect the change
-        if (data) {
-          const { useAppStore } = await import("../store/appStore");
-          useAppStore.getState().setProfile(data);
+      goNext()
+    } catch (e) {
+      console.error('Preferences save error:', e)
+    }
+    setSavingPrefs(false)
+  }, [user?.id, data, goNext, persistStep, queryClient])
+
+  // ─── Step 5 Save Person ───
+  const handleSavePerson = useCallback(async () => {
+    if (!user?.id) return
+    setSaving(true)
+    try {
+      const personData: any = {
+        user_id: user.id,
+        name: data.personName || 'Friend',
+        initials: (data.personName || 'F').slice(0, 2).toUpperCase(),
+        birthday: data.personBirthday?.toISOString().split('T')[0] || null,
+        gender: data.personGender,
+      }
+      const person = await createSavedPerson(personData)
+
+      if (data.audioClipUri && person?.id) {
+        await uploadAudioClip(
+          user.id,
+          person.id,
+          data.audioClipUri,
+          `onboarding_${Date.now()}.m4a`,
+          data.audioClipDuration || 0,
+          0
+        )
+      }
+
+      if (data.invitePath === 'invite' && data.contactValue) {
+        if (data.contactMethod === 'username') {
+          const results = await searchUsers(data.contactValue)
+          if (results.length > 0) {
+            await sendFriendLink(results[0].id)
+          }
         }
       }
-    } catch (error) {
-      console.error("Error updating onboarding status:", error);
+    } catch (e) {
+      console.error('Save person error:', e)
     }
-  }, [user?.id]);
+    setSaving(false)
+    goNext()
+  }, [user?.id, data, goNext])
+
+  // ─── Launch Handler ───
+  const handleLaunch = useCallback(async () => {
+    if (!user?.id) return
+    // Mark complete
+    try {
+      await supabase.from('profiles').update({ has_completed_onboarding: true, onboarding_step: 0 }).eq('id', user.id)
+      useAppStore.getState().setProfile({ ...profile, has_completed_onboarding: true, onboarding_step: 0 } as any)
+    } catch (e) {
+      console.error('Launch complete error:', e)
+    }
+
+    // Check for cards
+    const cachedCards = queryClient.getQueryData(['onboarding-cards'])
+    if (cachedCards) {
+      setLaunchState('ready')
+      playRevealAnimation()
+      return
+    }
+
+    // Wait for cards with rotating text
+    const loadingTexts = ['Finding your kind of places...', 'Curating your city...', 'Almost there...']
+    let textIdx = 0
+    const textInterval = setInterval(() => {
+      textIdx = (textIdx + 1) % loadingTexts.length
+      setLaunchLoadingText(loadingTexts[textIdx])
+    }, 1500)
+
+    // Poll for cards (max 5s)
+    const startTime = Date.now()
+    const pollInterval = setInterval(() => {
+      const cards = queryClient.getQueryData(['onboarding-cards'])
+      if (cards) {
+        clearInterval(pollInterval)
+        clearInterval(textInterval)
+        setLaunchState('ready')
+        playRevealAnimation()
+        return
+      }
+      if (Date.now() - startTime > 5000) {
+        clearInterval(pollInterval)
+        clearInterval(textInterval)
+        if (launchRetries < 2) {
+          setLaunchState('error')
+        } else {
+          // After 2 retries, just proceed
+          setLaunchState('ready')
+          playRevealAnimation()
+        }
+      }
+    }, 500)
+
+    return () => {
+      clearInterval(pollInterval)
+      clearInterval(textInterval)
+    }
+  }, [user?.id, profile, queryClient, launchRetries])
+
+  const playRevealAnimation = useCallback(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    Animated.parallel([
+      Animated.spring(revealScale, { toValue: 1, tension: 80, friction: 10, useNativeDriver: true }),
+      Animated.timing(revealOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start()
+    setTimeout(() => onComplete(), 1500)
+  }, [onComplete, revealScale, revealOpacity])
+
+  const handleLaunchRetry = useCallback(() => {
+    setLaunchRetries((r) => r + 1)
+    setLaunchState('loading')
+    handleLaunch()
+  }, [handleLaunch])
+
+  // ─── Step-Level Nav Handlers ───
+  const handleGoNext = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    goNext()
+  }, [goNext])
+
+  const handleGoBack = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    goBack()
+  }, [goBack])
+
+  // ─── CTA Config ───
+  const getCtaConfig = useCallback(() => {
+    const { step, subStep } = navState
+
+    switch (subStep) {
+      case 'welcome':
+        return { label: "Let's go", disabled: false, loading: false, onPress: handleGoNext, hide: false }
+      case 'phone':
+        return { label: 'Send code', disabled: !isPhoneValid(), loading: sendingOtp, onPress: handleSendOtp, hide: false }
+      case 'otp':
+        return { label: 'Verify', disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: false }
+      case 'value_prop':
+        return { label: 'Next', disabled: false, loading: false, onPress: () => { setValuePropBeat(Math.min(valuePropBeat + 1, 2)); if (valuePropBeat >= 2) handleGoNext() }, hide: false }
+      case 'intents':
+        return { label: 'Next', disabled: data.selectedIntents.length === 0, loading: false, onPress: async () => { await persistStep(3); handleGoNext() }, hide: false }
+      case 'location':
+        return { label: 'Enable location', disabled: false, loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
+      case 'celebration':
+        return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
+      case 'manual_location':
+        return { label: 'Next', disabled: !manualLocationText.trim(), loading: savingPrefs, onPress: handleManualLocation, hide: false }
+      case 'categories':
+        return { label: 'Next', disabled: data.selectedCategories.length === 0, loading: false, onPress: handleGoNext, hide: false }
+      case 'budget':
+        return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
+      case 'transport':
+        return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
+      case 'travel_time':
+        return { label: 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
+      case 'pitch':
+        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
+      case 'pathA_birthday':
+      case 'pathB_birthday':
+        return { label: 'Next', disabled: !data.personBirthday, loading: false, onPress: handleGoNext, hide: false }
+      case 'pathA_gender':
+      case 'pathB_gender':
+        return { label: 'Next', disabled: !data.personGender, loading: false, onPress: handleGoNext, hide: false }
+      case 'pathA_audio':
+      case 'pathB_audio':
+        return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
+      case 'pathA_contact':
+        return { label: 'Send invite', disabled: !data.contactValue, loading: saving, onPress: handleSavePerson, hide: false }
+      case 'pathB_name':
+        return { label: 'Next', disabled: !data.personName?.trim(), loading: false, onPress: handleGoNext, hide: false }
+      case 'skip':
+        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
+      default:
+        return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
+    }
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, manualLocationText, savingPrefs, saving, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSavePerson, persistStep])
+
+  // ─── Render Step Content ───
+  const renderContent = () => {
+    const { step, subStep } = navState
+    const firstName = profile?.first_name || profile?.display_name || user?.email?.split('@')[0] || 'there'
+
+    // ─── STEP 1 ───
+    if (subStep === 'welcome') {
+      return (
+        <View style={styles.centerContent}>
+          <Ionicons name="sparkles" size={48} color={colors.primary[500]} style={styles.stepIcon} />
+          <Text style={styles.headline}>Hey {firstName}.</Text>
+          <Text style={styles.subheadline}>Good taste just walked in.</Text>
+          <Text style={styles.body}>Quick thing — let's verify it's really you.</Text>
+        </View>
+      )
+    }
+
+    if (subStep === 'phone') {
+      return (
+        <View>
+          <Text style={styles.headline}>What's your number?</Text>
+          <Text style={styles.body}>We'll send a code. Takes two seconds.</Text>
+          <View style={styles.inputSpacing}>
+            <PhoneInput
+              value={data.phoneNumber}
+              countryCode={data.phoneCountryCode}
+              onChangePhone={(phone) => { setData((p) => ({ ...p, phoneNumber: phone })); setPhoneError(null) }}
+              onChangeCountry={(code) => setData((p) => ({ ...p, phoneCountryCode: code }))}
+              error={phoneError}
+              disabled={sendingOtp}
+            />
+          </View>
+          <Text style={styles.caption}>Only used to verify it's you. That's it.</Text>
+        </View>
+      )
+    }
+
+    if (subStep === 'otp') {
+      return (
+        <View>
+          <Text style={styles.headline}>Enter the code</Text>
+          <Text style={styles.body}>Sent to {buildE164()}</Text>
+          <View style={styles.otpContainer}>
+            <OTPInput
+              length={6}
+              value={otpCode}
+              onChange={setOtpCode}
+              onComplete={handleVerifyOtp}
+              error={otpError}
+              disabled={otpLoading}
+            />
+          </View>
+          <View style={styles.resendRow}>
+            {resendCountdown > 0 ? (
+              <Text style={styles.caption}>Resend in {resendCountdown}s</Text>
+            ) : (
+              <Pressable onPress={handleResendOtp}>
+                <Text style={styles.linkText}>Resend code</Text>
+              </Pressable>
+            )}
+          </View>
+          {otpError && (
+            <Text style={styles.errorText}>
+              {otpAttempts >= 3 ? 'Three tries, no luck. Sending a fresh code.' : "That code didn't land. Try again."}
+            </Text>
+          )}
+        </View>
+      )
+    }
+
+    // ─── STEP 2 ───
+    if (subStep === 'value_prop') {
+      const beats = [
+        { icon: 'navigate-outline' as const, headline: 'Know exactly where to go.', sub: 'Stop guessing. Start going.' },
+        { icon: 'people-outline' as const, headline: 'For dates, friends & solo runs.', sub: 'Plans for every kind of outing.' },
+        { icon: 'flash-outline' as const, headline: 'Find it fast. Go.', sub: 'Swipe. Save. Go.' },
+      ]
+      const beat = beats[valuePropBeat]
+      return (
+        <View style={styles.centerContent}>
+          <Ionicons name={beat.icon} size={64} color={colors.primary[500]} style={styles.stepIcon} />
+          <Text style={styles.headline}>{beat.headline}</Text>
+          <Text style={styles.body}>{beat.sub}</Text>
+          <View style={styles.dotIndicator}>
+            {beats.map((_, i) => (
+              <View key={i} style={[styles.dot, i === valuePropBeat && styles.dotActive]} />
+            ))}
+          </View>
+        </View>
+      )
+    }
+
+    if (subStep === 'intents') {
+      return (
+        <View>
+          <Text style={styles.headline}>What are you into?</Text>
+          <Text style={styles.body}>Pick all that fit.</Text>
+          <View style={styles.intentGrid}>
+            {ONBOARDING_INTENTS.map((intent) => {
+              const selected = data.selectedIntents.includes(intent.id)
+              return (
+                <Pressable
+                  key={intent.id}
+                  style={[styles.intentCard, selected && styles.intentCardSelected]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                    setData((p) => ({
+                      ...p,
+                      selectedIntents: selected
+                        ? p.selectedIntents.filter((i) => i !== intent.id)
+                        : [...p.selectedIntents, intent.id],
+                    }))
+                  }}
+                >
+                  <Ionicons
+                    name={intent.icon as any}
+                    size={24}
+                    color={selected ? colors.text.inverse : colors.primary[500]}
+                  />
+                  <Text style={[styles.intentLabel, selected && styles.intentLabelSelected]}>{intent.label}</Text>
+                  <Text style={[styles.intentDesc, selected && styles.intentDescSelected]}>{intent.description}</Text>
+                </Pressable>
+              )
+            })}
+          </View>
+          <Text style={styles.caption}>You can always change these later.</Text>
+        </View>
+      )
+    }
+
+    // ─── STEP 3 ───
+    if (subStep === 'location') {
+      if (locationStatus === 'granted') {
+        return (
+          <View style={styles.centerContent}>
+            <Ionicons name="checkmark-circle" size={64} color={colors.success[500]} />
+            <Text style={styles.headline}>Locked in — {data.cityName}!</Text>
+          </View>
+        )
+      }
+      if (locationStatus === 'settings') {
+        return (
+          <View style={styles.centerContent}>
+            <Ionicons name="location-outline" size={64} color={colors.primary[500]} />
+            <Text style={styles.headline}>Better spots start here</Text>
+            <Text style={styles.body}>Location is turned off for Mingla. Tap below to fix it.</Text>
+            <Pressable style={styles.primaryButton} onPress={() => Linking.openSettings()}>
+              <Text style={styles.primaryButtonText}>Open settings</Text>
+            </Pressable>
+            <Pressable onPress={handleSkipLocation}>
+              <Text style={styles.linkText}>I'll set it manually</Text>
+            </Pressable>
+          </View>
+        )
+      }
+      return (
+        <View style={styles.centerContent}>
+          <Ionicons name="location-outline" size={64} color={colors.primary[500]} />
+          <Text style={styles.headline}>Better spots start here</Text>
+          <Text style={styles.body}>Share your location and we'll find gems nearby.</Text>
+          <Pressable style={styles.primaryButton} onPress={handleLocationRequest}>
+            <Text style={styles.primaryButtonText}>Enable location</Text>
+          </Pressable>
+          <Pressable onPress={handleSkipLocation}>
+            <Text style={styles.linkText}>I'll set it manually</Text>
+          </Pressable>
+        </View>
+      )
+    }
+
+    // ─── STEP 4 ───
+    if (subStep === 'celebration') {
+      return (
+        <View style={styles.centerContent}>
+          <Ionicons name="trophy-outline" size={64} color={colors.primary[500]} style={styles.stepIcon} />
+          <Text style={styles.headline}>Look at you go.</Text>
+          <Text style={styles.body}>Four quick picks and you're done.</Text>
+        </View>
+      )
+    }
+
+    if (subStep === 'manual_location') {
+      return (
+        <View>
+          <Text style={styles.headline}>Where are you based?</Text>
+          <Text style={styles.body}>Type your city so we can find places nearby.</Text>
+          <View style={styles.inputSpacing}>
+            <TextInput
+              style={styles.textInput}
+              value={manualLocationText}
+              onChangeText={setManualLocationText}
+              placeholder="e.g., San Francisco"
+              placeholderTextColor={colors.gray[400]}
+              autoCapitalize="words"
+              returnKeyType="done"
+              onSubmitEditing={handleManualLocation}
+            />
+          </View>
+        </View>
+      )
+    }
+
+    if (subStep === 'categories') {
+      return (
+        <View>
+          <Text style={styles.headline}>What kind of places do you love?</Text>
+          <Text style={styles.body}>Pick as many as you want.</Text>
+          <View style={styles.categoryGrid}>
+            {categories.map((cat) => (
+              <CategoryTile
+                key={cat.slug}
+                slug={cat.slug}
+                name={cat.name}
+                icon={cat.ux.activeColor ? getCategoryIcon(cat.slug) : 'ellipse-outline'}
+                activeColor={cat.ux.activeColor}
+                selected={data.selectedCategories.includes(cat.name)}
+                onPress={() => {
+                  setData((p) => ({
+                    ...p,
+                    selectedCategories: p.selectedCategories.includes(cat.name)
+                      ? p.selectedCategories.filter((c) => c !== cat.name)
+                      : [...p.selectedCategories, cat.name],
+                  }))
+                }}
+              />
+            ))}
+          </View>
+        </View>
+      )
+    }
+
+    if (subStep === 'budget') {
+      return (
+        <View>
+          <Text style={styles.headline}>What's your sweet spot?</Text>
+          <Text style={styles.body}>How much per outing, roughly?</Text>
+          <View style={styles.tileGrid}>
+            {BUDGET_PRESETS.map((amount) => (
+              <Pressable
+                key={amount}
+                style={[styles.selectionTile, data.budgetMax === amount && styles.selectionTileActive]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  setData((p) => ({ ...p, budgetMax: amount }))
+                }}
+              >
+                <Text style={[styles.tileText, data.budgetMax === amount && styles.tileTextActive]}>${amount}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.caption}>Free stuff always shows up too.</Text>
+        </View>
+      )
+    }
+
+    if (subStep === 'transport') {
+      return (
+        <View>
+          <Text style={styles.headline}>How do you get around?</Text>
+          <Text style={styles.body}>Helps us nail the travel times.</Text>
+          <View style={styles.tileGrid}>
+            {TRANSPORT_MODES.map((mode) => (
+              <Pressable
+                key={mode.value}
+                style={[styles.selectionTile, styles.selectionTileTall, data.travelMode === mode.value && styles.selectionTileActive]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  setData((p) => ({ ...p, travelMode: mode.value }))
+                }}
+              >
+                <Ionicons
+                  name={mode.icon as any}
+                  size={28}
+                  color={data.travelMode === mode.value ? colors.text.inverse : colors.gray[600]}
+                />
+                <Text style={[styles.tileLabelSm, data.travelMode === mode.value && styles.tileTextActive]}>{mode.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )
+    }
+
+    if (subStep === 'travel_time') {
+      return (
+        <View>
+          <Text style={styles.headline}>How far will you go?</Text>
+          <Text style={styles.body}>Set your comfort zone.</Text>
+          <View style={styles.tileGrid}>
+            {TRAVEL_TIME_PRESETS.map((mins) => (
+              <Pressable
+                key={mins}
+                style={[styles.selectionTile, data.travelTimeMinutes === mins && styles.selectionTileActive]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  setData((p) => ({ ...p, travelTimeMinutes: mins }))
+                }}
+              >
+                <Text style={[styles.tileText, data.travelTimeMinutes === mins && styles.tileTextActive]}>{mins} min</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.caption}>Up to {data.travelTimeMinutes} min by {data.travelMode}</Text>
+        </View>
+      )
+    }
+
+    // ─── STEP 5 ───
+    if (subStep === 'pitch') {
+      return (
+        <View>
+          <Text style={styles.headline}>Got someone in mind?</Text>
+          <Text style={styles.body}>Add a friend, partner, or date — we'll find places you'll both love.</Text>
+          <View style={styles.pathCards}>
+            <Pressable style={styles.pathCard} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'invite' })); choosePath('invite') }}>
+              <Ionicons name="paper-plane-outline" size={24} color={colors.primary[500]} />
+              <Text style={styles.pathCardTitle}>Invite them to Mingla</Text>
+              <Text style={styles.pathCardDesc}>They get their own account. Recs get smarter together.</Text>
+            </Pressable>
+            <Pressable style={styles.pathCard} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'add' })); choosePath('add') }}>
+              <Ionicons name="person-add-outline" size={24} color={colors.primary[500]} />
+              <Text style={styles.pathCardTitle}>Just add them</Text>
+              <Text style={styles.pathCardDesc}>We'll factor them in. No invite needed.</Text>
+            </Pressable>
+            <Pressable style={styles.pathCard} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'skip' })); choosePath('skip') }}>
+              <Ionicons name="arrow-forward-outline" size={24} color={colors.gray[400]} />
+              <Text style={styles.pathCardTitle}>Skip for now</Text>
+              <Text style={styles.pathCardDesc}>You can add people anytime.</Text>
+            </Pressable>
+          </View>
+        </View>
+      )
+    }
+
+    if (subStep === 'pathB_name') {
+      return (
+        <View>
+          <Text style={styles.headline}>What's their name?</Text>
+          <View style={styles.inputSpacing}>
+            <TextInput
+              style={styles.textInput}
+              value={data.personName || ''}
+              onChangeText={(t) => setData((p) => ({ ...p, personName: t }))}
+              placeholder="First name"
+              placeholderTextColor={colors.gray[400]}
+              autoCapitalize="words"
+              autoFocus
+            />
+          </View>
+        </View>
+      )
+    }
+
+    if (subStep === 'pathA_birthday' || subStep === 'pathB_birthday') {
+      const defaultDate = new Date()
+      defaultDate.setFullYear(defaultDate.getFullYear() - 25)
+      const minDate = new Date()
+      minDate.setFullYear(minDate.getFullYear() - 100)
+      const maxDate = new Date()
+      maxDate.setFullYear(maxDate.getFullYear() - 13)
+
+      return (
+        <View>
+          <Text style={styles.headline}>When's their birthday?</Text>
+          <Text style={styles.body}>So we can get the vibe right.</Text>
+          <View style={styles.datePickerContainer}>
+            <DateTimePicker
+              value={data.personBirthday || defaultDate}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              minimumDate={minDate}
+              maximumDate={maxDate}
+              onChange={(_, date) => {
+                if (date) setData((p) => ({ ...p, personBirthday: date }))
+              }}
+            />
+          </View>
+        </View>
+      )
+    }
+
+    if (subStep === 'pathA_gender' || subStep === 'pathB_gender') {
+      return (
+        <View>
+          <Text style={styles.headline}>How do they identify?</Text>
+          <Text style={styles.body}>Helps us personalize their picks.</Text>
+          {GENDER_OPTIONS.map((g) => (
+            <Pressable
+              key={g}
+              style={[styles.genderRow, data.personGender === g && styles.genderRowSelected]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                setData((p) => ({ ...p, personGender: g }))
+              }}
+            >
+              <Text style={[styles.genderText, data.personGender === g && styles.genderTextSelected]}>
+                {GENDER_DISPLAY_LABELS[g]}
+              </Text>
+              {data.personGender === g && <Ionicons name="checkmark" size={20} color={colors.text.inverse} />}
+            </Pressable>
+          ))}
+        </View>
+      )
+    }
+
+    if (subStep === 'pathA_audio' || subStep === 'pathB_audio') {
+      return (
+        <View>
+          <Text style={styles.headline}>Tell us about them</Text>
+          <Text style={styles.body}>Record a voice note — what do they love? What's their vibe?</Text>
+          <Text style={styles.caption}>Up to 60 seconds. Talk like you would to a friend.</Text>
+          <OnboardingAudioRecorder
+            onClipReady={(uri, duration) => setData((p) => ({ ...p, audioClipUri: uri, audioClipDuration: duration }))}
+            onSkip={handleGoNext}
+          />
+        </View>
+      )
+    }
+
+    if (subStep === 'pathA_contact') {
+      return (
+        <View>
+          <Text style={styles.headline}>How should we reach them?</Text>
+          <View style={styles.segmentedControl}>
+            <Pressable
+              style={[styles.segmentTab, data.contactMethod === 'phone' && styles.segmentTabActive]}
+              onPress={() => setData((p) => ({ ...p, contactMethod: 'phone', contactValue: null }))}
+            >
+              <Text style={[styles.segmentTabText, data.contactMethod === 'phone' && styles.segmentTabTextActive]}>Phone</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.segmentTab, data.contactMethod === 'username' && styles.segmentTabActive]}
+              onPress={() => setData((p) => ({ ...p, contactMethod: 'username', contactValue: null }))}
+            >
+              <Text style={[styles.segmentTabText, data.contactMethod === 'username' && styles.segmentTabTextActive]}>Username</Text>
+            </Pressable>
+          </View>
+          {data.contactMethod === 'phone' && (
+            <TextInput
+              style={[styles.textInput, styles.inputSpacing]}
+              keyboardType="phone-pad"
+              placeholder="Their phone number"
+              placeholderTextColor={colors.gray[400]}
+              value={data.contactValue || ''}
+              onChangeText={(t) => setData((p) => ({ ...p, contactValue: t }))}
+            />
+          )}
+          {data.contactMethod === 'username' && (
+            <TextInput
+              style={[styles.textInput, styles.inputSpacing]}
+              placeholder="Search Mingla"
+              placeholderTextColor={colors.gray[400]}
+              value={data.contactValue || ''}
+              onChangeText={(t) => setData((p) => ({ ...p, contactValue: t }))}
+              autoCapitalize="none"
+            />
+          )}
+        </View>
+      )
+    }
+
+    if (subStep === 'skip') {
+      return <SkipAutoAdvance goNext={goNext} />
+    }
+
+    return null
+  }
+
+  // ─── Launch Screen ───
+  if (isLaunch) {
+    return (
+      <View style={styles.launchContainer}>
+        {launchState === 'loading' && (
+          <View style={styles.centerContent}>
+            <PulseDotLoader />
+            <Text style={[styles.body, styles.launchText]}>{launchLoadingText}</Text>
+          </View>
+        )}
+        {launchState === 'ready' && (
+          <Animated.View style={[styles.centerContent, { opacity: revealOpacity, transform: [{ scale: revealScale }] }]}>
+            <Text style={styles.headline}>Your picks are ready.</Text>
+            <Text style={styles.body}>Swipe right to save. Left to skip.</Text>
+          </Animated.View>
+        )}
+        {launchState === 'error' && (
+          <View style={styles.centerContent}>
+            <Text style={styles.body}>Having trouble loading your picks. Give it another shot.</Text>
+            <Pressable style={styles.primaryButton} onPress={handleLaunchRetry}>
+              <Text style={styles.primaryButtonText}>Try again</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    )
+  }
+
+  if (!isReady) return null
+
+  const ctaConfig = getCtaConfig()
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      {renderStep()}
-    </SafeAreaView>
-  );
-};
+    <OnboardingShell
+      step={navState.step}
+      segmentFill={progress.segmentFill}
+      showBackButton={!isFirstScreen}
+      onBack={handleGoBack}
+      primaryCtaLabel={ctaConfig.label}
+      primaryCtaDisabled={ctaConfig.disabled}
+      primaryCtaLoading={ctaConfig.loading}
+      onPrimaryCta={ctaConfig.onPress}
+      hidePrimaryCta={ctaConfig.hide}
+      hideBottomBar={false}
+    >
+      {renderContent()}
+    </OnboardingShell>
+  )
+}
 
-export default OnboardingFlow;
+// ─── Helper ───
+function getCategoryIcon(slug: string): string {
+  const iconMap: Record<string, string> = {
+    nature: 'leaf-outline',
+    first_meet: 'chatbubbles-outline',
+    picnic: 'basket-outline',
+    drink: 'wine-outline',
+    casual_eats: 'fast-food-outline',
+    fine_dining: 'restaurant-outline',
+    watch: 'film-outline',
+    creative_arts: 'color-palette-outline',
+    play: 'game-controller-outline',
+    wellness: 'body-outline',
+    groceries_flowers: 'cart-outline',
+    work_business: 'briefcase-outline',
+  }
+  return iconMap[slug] || 'ellipse-outline'
+}
+
+// ─── Styles ───
+const styles = StyleSheet.create({
+  centerContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: spacing.xxl,
+  },
+  headline: {
+    ...typography.xxxl,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    letterSpacing: -0.5,
+    marginBottom: spacing.sm,
+  },
+  subheadline: {
+    ...typography.xl,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  body: {
+    ...typography.md,
+    fontWeight: fontWeights.regular,
+    color: colors.text.secondary,
+    marginBottom: spacing.md,
+  },
+  caption: {
+    ...typography.sm,
+    fontWeight: fontWeights.regular,
+    color: colors.text.tertiary,
+    marginTop: spacing.sm,
+  },
+  errorText: {
+    ...typography.sm,
+    color: colors.error[500],
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
+  linkText: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.primary[500],
+  },
+  stepIcon: {
+    marginBottom: spacing.md,
+  },
+  inputSpacing: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  otpContainer: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  resendRow: {
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  // ─── Value Prop Dots ───
+  dotIndicator: {
+    flexDirection: 'row',
+    marginTop: spacing.lg,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.gray[300],
+    marginHorizontal: 4,
+  },
+  dotActive: {
+    backgroundColor: colors.primary[500],
+  },
+  // ─── Intent Cards ───
+  intentGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  intentCard: {
+    width: (SCREEN_WIDTH - 48 - 8) / 2,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.background.primary,
+    alignItems: 'center',
+  },
+  intentCardSelected: {
+    backgroundColor: colors.primary[500],
+    borderColor: colors.primary[600],
+  },
+  intentLabel: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginTop: spacing.xs,
+  },
+  intentLabelSelected: {
+    color: colors.text.inverse,
+  },
+  intentDesc: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  intentDescSelected: {
+    color: colors.text.inverse,
+  },
+  // ─── Category Grid ───
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  // ─── Selection Tiles (Budget, Transport, Travel) ───
+  tileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  selectionTile: {
+    width: (SCREEN_WIDTH - 48 - 8) / 2,
+    height: 80,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.background.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectionTileTall: {
+    height: 96,
+  },
+  selectionTileActive: {
+    backgroundColor: colors.primary[500],
+    borderColor: colors.primary[600],
+    ...shadows.sm,
+  },
+  tileText: {
+    ...typography.xl,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+  },
+  tileTextActive: {
+    color: colors.text.inverse,
+  },
+  tileLabelSm: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginTop: spacing.xs,
+  },
+  // ─── Path Cards (Step 5) ───
+  pathCards: {
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  pathCard: {
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.background.primary,
+  },
+  pathCardTitle: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginTop: spacing.sm,
+  },
+  pathCardDesc: {
+    ...typography.sm,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+  },
+  // ─── Gender Rows ───
+  genderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 52,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.background.primary,
+    marginBottom: spacing.sm,
+  },
+  genderRowSelected: {
+    backgroundColor: colors.primary[500],
+    borderColor: colors.primary[600],
+  },
+  genderText: {
+    ...typography.md,
+    fontWeight: fontWeights.medium,
+    color: colors.text.primary,
+  },
+  genderTextSelected: {
+    color: colors.text.inverse,
+  },
+  // ─── Segmented Control ───
+  segmentedControl: {
+    flexDirection: 'row',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    overflow: 'hidden',
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  segmentTab: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    backgroundColor: colors.background.primary,
+  },
+  segmentTabActive: {
+    backgroundColor: colors.primary[500],
+  },
+  segmentTabText: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+  },
+  segmentTabTextActive: {
+    color: colors.text.inverse,
+  },
+  // ─── Text Input ───
+  textInput: {
+    height: 56,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.gray[300],
+    paddingHorizontal: spacing.lg,
+    ...typography.md,
+    color: colors.text.primary,
+    backgroundColor: colors.background.primary,
+  },
+  // ─── Date Picker ───
+  datePickerContainer: {
+    marginTop: spacing.lg,
+    alignItems: 'center',
+  },
+  // ─── Primary Button (inline, for Location step) ───
+  primaryButton: {
+    minHeight: touchTargets.comfortable,
+    minWidth: 200,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary[500],
+    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  primaryButtonText: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.inverse,
+  },
+  // ─── Launch ───
+  launchContainer: {
+    flex: 1,
+    backgroundColor: backgroundWarmGlow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  launchText: {
+    marginTop: spacing.lg,
+  },
+})
+
+export default OnboardingFlow
