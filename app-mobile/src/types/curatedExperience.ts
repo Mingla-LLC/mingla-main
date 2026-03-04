@@ -1,6 +1,6 @@
 export interface CuratedStop {
   stopNumber: number;
-  stopLabel: 'Start Here' | 'Then' | 'End With' | 'Explore';
+  stopLabel: 'Start Here' | 'Then' | 'End With' | 'Explore' | 'Optional';
   placeId: string;
   placeName: string;
   placeType: string;

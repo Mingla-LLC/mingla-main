@@ -154,6 +154,10 @@ const STOP_DURATION_MINUTES: Record<string, number> = {
   chinese_restaurant: 60, art_studio: 60,
   // Picnic-related types (added for Picnic Dates Intent feature)
   grocery_store: 30, supermarket: 30,
+  // Take-a-stroll-related types (added for Take A Stroll Intent feature)
+  cafe: 30, bakery: 20, breakfast_restaurant: 45,
+  book_store: 30, donut_shop: 15, juice_shop: 15,
+  dessert_shop: 25, ice_cream_shop: 20,
 };
 const DEFAULT_STOP_DURATION = 45;
 
@@ -706,6 +710,80 @@ const PICNIC_STOP_DURATIONS: Record<string, number> = {
   beach: 150,
 };
 
+// ── Take A Stroll Intent — Dedicated Place Type Groups ────────────
+// Bypasses CURATED_TYPE_CATEGORIES + MINGLA_CATEGORY_PLACE_TYPES for 'take-a-stroll'.
+// 3-stop itinerary: Start Point (cafe) → Stroll Place (nature, anchor) → Finish (restaurant).
+
+interface StrollGroup {
+  id: string;
+  label: string;
+  types: string[];
+}
+
+const STROLL_START_POINT: StrollGroup = {
+  id: 'start-point',
+  label: 'Start Point',
+  types: [
+    'cafe', 'coffee_shop', 'tea_house', 'dessert_shop',
+    'book_store', 'ice_cream_shop', 'bakery', 'donut_shop',
+    'juice_shop', 'breakfast_restaurant', 'brunch_restaurant',
+  ],
+};
+
+const STROLL_PLACE: StrollGroup = {
+  id: 'stroll-place',
+  label: 'Stroll Place',
+  types: [
+    'national_park', 'hiking_area', 'off_roading_area', 'mountain_peak',
+    'nature_preserve', 'wildlife_refuge', 'scenic_spot', 'state_park',
+    'campground', 'island', 'zoo', 'park',
+  ],
+};
+
+const STROLL_FINISH: StrollGroup = {
+  id: 'finish',
+  label: 'Finish',
+  types: [
+    'italian_restaurant', 'fine_dining_restaurant', 'french_restaurant',
+    'steak_house', 'seafood_restaurant', 'spanish_restaurant',
+    'tapas_restaurant', 'oyster_bar_restaurant', 'wine_bar',
+    'bistro', 'gastropub',
+  ],
+};
+
+const STROLL_EXCLUDED_TYPES: string[] = [
+  // Active/loud venues — wrong vibe for a stroll
+  'amusement_park', 'amusement_center', 'video_arcade', 'bowling_alley',
+  'paintball_center', 'go_karting_venue', 'miniature_golf_course',
+  'skateboard_park', 'water_park', 'indoor_playground',
+  // Sports/gym — not a stroll activity
+  'gym', 'fitness_center', 'sports_complex', 'sports_club', 'stadium',
+  // Retail/commercial — clutters nature results
+  'shopping_mall', 'department_store', 'electronics_store',
+  'furniture_store', 'warehouse_store',
+  // Transit/infrastructure
+  'parking', 'parking_lot', 'parking_garage',
+  'bus_station', 'train_station', 'transit_station', 'airport',
+  // Children-specific
+  'childrens_camp',
+];
+
+const STROLL_STOP_DURATIONS: Record<string, number> = {
+  // Start Point
+  cafe: 30, coffee_shop: 30, tea_house: 30, dessert_shop: 25,
+  book_store: 30, ice_cream_shop: 20, bakery: 20, donut_shop: 15,
+  juice_shop: 15, breakfast_restaurant: 45, brunch_restaurant: 60,
+  // Stroll Place
+  national_park: 90, hiking_area: 90, off_roading_area: 90, mountain_peak: 120,
+  nature_preserve: 90, wildlife_refuge: 90, scenic_spot: 45, state_park: 90,
+  campground: 60, island: 120, zoo: 120, park: 60,
+  // Finish
+  italian_restaurant: 75, fine_dining_restaurant: 90, french_restaurant: 90,
+  steak_house: 90, seafood_restaurant: 75, spanish_restaurant: 75,
+  tapas_restaurant: 75, oyster_bar_restaurant: 75, wine_bar: 60,
+  bistro: 75, gastropub: 60,
+};
+
 // ── Curated Type -> Mingla Category Pools ─────────────────────────
 // NOTE: 'adventurous' entry is required for the validation gate in serve()
 // (line ~1264: `if (!CURATED_TYPE_CATEGORIES[experienceType])`).
@@ -718,7 +796,7 @@ const CURATED_TYPE_CATEGORIES: Record<string, string[]> = {
   'friendly':      ['Play', 'Creative & Arts', 'Watch', 'Fine Dining', 'Casual Eats', 'Nature'],
   'group-fun':     ['Play', 'Watch', 'Casual Eats'],
   'picnic-dates':  ['Groceries & Flowers', 'Picnic'],
-  'take-a-stroll': ['Casual Eats', 'Nature'],
+  'take-a-stroll': ['First Meet', 'Nature', 'Fine Dining'],
 };
 
 const CURATED_TYPE_LABELS: Record<string, string> = {
@@ -769,10 +847,10 @@ const TAGLINES_BY_TYPE: Record<string, string[]> = {
     'Your curated picnic, start to finish',
   ],
   'take-a-stroll': [
-    'Eat, walk, eat — the perfect loop',
-    'A scenic stroll bookended by great food',
+    'Coffee, nature, dinner — the perfect day',
+    'A scenic stroll with great eats on each end',
     'Nature and bites, perfectly paired',
-    'The casual combo that never gets old',
+    'Walk it off, then feast',
   ],
 };
 
@@ -2651,6 +2729,118 @@ function buildPicnicStop(
   return stop;
 }
 
+/**
+ * Fetch places for a single Stroll Group.
+ * Uses STROLL_EXCLUDED_TYPES for filtering. All stroll types use standard Nearby Search.
+ */
+async function fetchStrollPlaces(
+  group: StrollGroup,
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+): Promise<any[]> {
+  const results = await Promise.allSettled(
+    group.types.map(t => searchNearby(t, lat, lng, radiusMeters, STROLL_EXCLUDED_TYPES))
+  );
+
+  const allPlaces: any[] = [];
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value) {
+      allPlaces.push(...r.value);
+    }
+  }
+
+  const seenIds = new Set<string>();
+  const deduped = allPlaces.filter(p => {
+    const id = p.id || p.name;
+    if (!id || seenIds.has(id)) return false;
+    seenIds.add(id);
+    return true;
+  });
+
+  return filterExcludedPlaces(deduped, STROLL_EXCLUDED_TYPES);
+}
+
+/**
+ * Build a stop with stroll-specific duration override and optional label override.
+ */
+function buildStrollStop(
+  place: any,
+  stopNumber: number,
+  group: StrollGroup,
+  userLat: number,
+  userLng: number,
+  prevLat: number | null,
+  prevLng: number | null,
+  travelMode: string,
+  labelOverride?: string,
+): any {
+  const stop = buildStopFromPlace(
+    place, stopNumber, 3, group.label,
+    userLat, userLng, prevLat, prevLng, travelMode,
+  );
+
+  // Override duration with stroll-specific value
+  const placeType = place.primaryType || group.types[0];
+  const strollDuration = STROLL_STOP_DURATIONS[placeType];
+  if (strollDuration) {
+    stop.estimatedDurationMinutes = strollDuration;
+  }
+
+  // Override stop label if specified (used for 'Optional' on stop 3)
+  if (labelOverride) {
+    stop.stopLabel = labelOverride;
+  }
+
+  return stop;
+}
+
+/**
+ * Generate AI descriptions toned for a leisurely stroll day.
+ * Falls back to static descriptions if OpenAI is unavailable.
+ */
+async function generateStrollStopDescriptions(
+  stops: any[],
+): Promise<string[]> {
+  if (!OPENAI_API_KEY) {
+    return stops.map(s => `${s.placeName} is a wonderful ${s.placeType.replace(/_/g, ' ')} for your stroll day.`);
+  }
+  try {
+    const stopList = stops
+      .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${s.placeType.replace(/_/g, ' ')}), rated ${s.rating.toFixed(1)}/5`)
+      .join('\n');
+    const prompt = `You are a travel writer creating short descriptions for a leisurely day out — a coffee, a walk in nature, and a nice dinner.
+Write exactly ${stops.length} short paragraphs (one per stop, 2-3 sentences each), telling the reader what to enjoy and the atmosphere.
+Emphasize the relaxed, leisurely vibe of a stroll day. Stop 1 is a meet-up spot, stop 2 is the main walk/nature experience, and stop 3 is an optional dinner.
+Be specific, warm, and inviting. Address the reader directly as "you".
+Output ONLY a JSON array of ${stops.length} strings with no markdown and no extra keys.
+
+Stops:
+${stopList}`;
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 400,
+        temperature: 0.8,
+      }),
+    });
+    const json = await res.json();
+    const content = json.choices?.[0]?.message?.content?.trim() ?? '[]';
+    const parsed: string[] = JSON.parse(content);
+    if (Array.isArray(parsed) && parsed.length === stops.length) return parsed;
+    throw new Error('Unexpected shape');
+  } catch (_) {
+    return stops.map(s => `${s.placeName} is a wonderful ${s.placeType.replace(/_/g, ' ')} for your stroll day.`);
+  }
+}
+
 async function generateStrollCards(
   lat: number,
   lng: number,
@@ -2670,84 +2860,93 @@ async function generateStrollCards(
     : travelConstraintValue * 1000;
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
-  // 1. Find nature spots near user
-  const naturePlaces = await fetchPlacesForCategory('Nature', lat, lng, clampedRadius);
+  // Step 1: Find STROLL PLACES (nature) near user — these are the anchors
+  const strollPlaces = await fetchStrollPlaces(STROLL_PLACE, lat, lng, clampedRadius);
 
-  if (naturePlaces.length === 0) {
-    console.warn('[generateStrollCards] No nature spots found');
+  if (strollPlaces.length === 0) {
+    console.warn('[generateStrollCards] No stroll places found');
     return [];
   }
 
-  // Sort by distance (nearest first)
-  naturePlaces.sort((a, b) => {
+  // Sort stroll places by distance from user (nearest first)
+  strollPlaces.sort((a, b) => {
     const distA = haversineKm(lat, lng, a.location?.latitude ?? 0, a.location?.longitude ?? 0);
     const distB = haversineKm(lat, lng, b.location?.latitude ?? 0, b.location?.longitude ?? 0);
     return distA - distB;
   });
 
   const cards: any[] = [];
-  const usedNatureIds = new Set<string>();
-  const eatsSearchRadius = 2000; // 2km around nature spot
+  const usedStrollIds = new Set<string>();
+  const startSearchRadius = 2000;  // 2km around stroll place — short walk
+  const finishSearchRadius = 3000; // 3km around stroll place — nearby restaurant
 
-  for (const nature of naturePlaces) {
+  for (const stroll of strollPlaces) {
     if (cards.length >= limit) break;
 
-    const natureId = nature.id || nature.name;
-    if (usedNatureIds.has(natureId)) continue;
-    usedNatureIds.add(natureId);
+    const strollId = stroll.id || stroll.name;
+    if (usedStrollIds.has(strollId)) continue;
+    usedStrollIds.add(strollId);
 
-    const natureLat = nature.location?.latitude ?? 0;
-    const natureLng = nature.location?.longitude ?? 0;
+    const strollLat = stroll.location?.latitude ?? 0;
+    const strollLng = stroll.location?.longitude ?? 0;
 
-    // 2. Find casual eats near this nature spot
-    const eatsPlaces = await fetchPlacesForCategory(
-      'Casual Eats',
-      natureLat, natureLng,
-      eatsSearchRadius,
+    // Step 2: Find START POINT (cafe) nearest to the stroll place
+    const startPlaces = await fetchStrollPlaces(
+      STROLL_START_POINT, strollLat, strollLng, startSearchRadius,
     );
+    if (startPlaces.length === 0) continue;
 
-    if (eatsPlaces.length === 0) continue;
-
-    // Sort eats by distance from nature (nearest first)
-    eatsPlaces.sort((a, b) => {
-      const distA = haversineKm(natureLat, natureLng, a.location?.latitude ?? 0, a.location?.longitude ?? 0);
-      const distB = haversineKm(natureLat, natureLng, b.location?.latitude ?? 0, b.location?.longitude ?? 0);
+    // Sort start points by distance from stroll place (nearest first)
+    startPlaces.sort((a, b) => {
+      const distA = haversineKm(strollLat, strollLng, a.location?.latitude ?? 0, a.location?.longitude ?? 0);
+      const distB = haversineKm(strollLat, strollLng, b.location?.latitude ?? 0, b.location?.longitude ?? 0);
       return distA - distB;
     });
+    const startPlace = startPlaces[0];
+    const startLat = startPlace.location?.latitude ?? 0;
+    const startLng = startPlace.location?.longitude ?? 0;
 
-    const eats = eatsPlaces[0];
-    const eatsLat = eats.location?.latitude ?? 0;
-    const eatsLng = eats.location?.longitude ?? 0;
+    // Step 3: Find FINISH (restaurant) near the stroll place
+    const finishPlaces = await fetchStrollPlaces(
+      STROLL_FINISH, strollLat, strollLng, finishSearchRadius,
+    );
+    if (finishPlaces.length === 0) continue;
 
-    // Build 3 stops: Casual Eats -> Nature -> Casual Eats (same place)
-    const stop1 = buildStopFromPlace(eats, 1, 3, 'Casual Eats', lat, lng, null, null, travelMode);
-    const stop2 = buildStopFromPlace(
-      nature, 2, 3, 'Nature',
-      lat, lng, eatsLat, eatsLng, travelMode,
+    // Sort finish places by score (best rated first)
+    finishPlaces.sort((a, b) => scorePlace(b) - scorePlace(a));
+    const finishPlace = finishPlaces[0];
+
+    // Build 3 stops
+    const stop1 = buildStrollStop(
+      startPlace, 1, STROLL_START_POINT,
+      lat, lng, null, null, travelMode,
+    );
+    const stop2 = buildStrollStop(
+      stroll, 2, STROLL_PLACE,
+      lat, lng, startLat, startLng, travelMode,
+    );
+    const stop3 = buildStrollStop(
+      finishPlace, 3, STROLL_FINISH,
+      lat, lng, strollLat, strollLng, travelMode,
+      'Optional', // Label override
     );
 
-    // Stop 3 is a CLONE of stop 1 with updated stopNumber and stopLabel
-    const stop3 = {
-      ...stop1,
-      stopNumber: 3,
-      stopLabel: 'End With',
-      travelTimeFromPreviousStopMin: stop2.travelTimeFromPreviousStopMin, // same distance back
-      travelModeFromPreviousStop: travelMode,
-    };
-
-    // Budget validation (stop 1 and 3 are same place, count price twice)
+    // Budget validation (all 3 stops)
     const totalMin = stop1.priceMin + stop2.priceMin + stop3.priceMin;
     if (totalMin > budgetMax) continue;
+
+    // Ensure all 3 places are different
+    if (stop1.placeId === stop2.placeId || stop1.placeId === stop3.placeId || stop2.placeId === stop3.placeId) continue;
 
     const card = buildCardFromStops(
       [stop1, stop2, stop3],
       'take-a-stroll',
-      ['Casual Eats', 'Nature', 'Casual Eats'],
+      ['Start Point', 'Stroll Place', 'Finish'],
     );
 
     if (!skipDescriptions) {
       try {
-        const descriptions = await generateStopDescriptions([stop1, stop2, stop3]);
+        const descriptions = await generateStrollStopDescriptions([stop1, stop2, stop3]);
         if (descriptions[0]) stop1.aiDescription = descriptions[0];
         if (descriptions[1]) stop2.aiDescription = descriptions[1];
         if (descriptions[2]) stop3.aiDescription = descriptions[2];
