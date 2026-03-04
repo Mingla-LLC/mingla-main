@@ -864,9 +864,12 @@ async function generateFirstDateCards(
   const globalUsedPlaceIds = new Set<string>();
   const perStopBudget = budgetMax / 2; // 2 stops, not 3
 
+  // nextGroupIndex tracks which starting group the NEXT built card should use.
+  // Only flips on successful card build — skipped cards don't shift alternation.
+  let nextGroupIndex = 0;
+
   for (let cardIndex = 0; cards.length < limit; cardIndex++) {
-    // Strict alternation: even index → Starting 1, odd index → Starting 2
-    const startingGroup = FIRST_DATE_STARTING_GROUPS[cardIndex % 2];
+    const startingGroup = FIRST_DATE_STARTING_GROUPS[nextGroupIndex];
     const finishGroup = FIRST_DATE_FINISH;
 
     // Select starting place
@@ -890,7 +893,7 @@ async function generateFirstDateCards(
     // If either group is exhausted for THIS starting type, try the other
     if (availableStarts.length === 0 || availableFinish.length === 0) {
       // Try the other starting group as fallback
-      const fallbackGroup = FIRST_DATE_STARTING_GROUPS[(cardIndex + 1) % 2];
+      const fallbackGroup = FIRST_DATE_STARTING_GROUPS[(nextGroupIndex + 1) % 2];
       const fallbackStarts = (groupPlaces[fallbackGroup.id] || []).filter(p => {
         const id = p.id || p.name;
         if (globalUsedPlaceIds.has(id)) return false;
@@ -939,6 +942,7 @@ async function generateFirstDateCards(
       globalUsedPlaceIds.add(startId);
       globalUsedPlaceIds.add(finishId);
       cards.push(card);
+      nextGroupIndex = (nextGroupIndex + 1) % 2; // Flip on successful build
       continue;
     }
 
@@ -954,13 +958,13 @@ async function generateFirstDateCards(
     // Validate total budget
     const totalMin = stop1.priceMin + stop2.priceMin;
     if (totalMin > budgetMax) {
-      globalUsedPlaceIds.add(startId); // Skip this start, try next
+      globalUsedPlaceIds.add(startId); // Skip this start, try next — DON'T flip alternation
       continue;
     }
 
     // Validate travel constraint
     if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
-      globalUsedPlaceIds.add(startId);
+      globalUsedPlaceIds.add(startId); // Skip — DON'T flip alternation
       continue;
     }
 
@@ -980,6 +984,7 @@ async function generateFirstDateCards(
     globalUsedPlaceIds.add(startId);
     globalUsedPlaceIds.add(finishId);
     cards.push(card);
+    nextGroupIndex = (nextGroupIndex + 1) % 2; // Flip on successful build
 
     // Safety: if we've iterated way past the limit without filling, break
     if (cardIndex > limit * 4) break;
@@ -1573,11 +1578,11 @@ async function generateStopDescriptions(
     const stopList = stops
       .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${s.placeType.replace(/_/g, ' ')}), rated ${s.rating.toFixed(1)}/5`)
       .join('\n');
-    const prompt = `You are a travel writer creating short descriptions for an adventurous day out.
-Write exactly 3 short paragraphs (one per stop, 2-3 sentences each), telling the visitor what to do and the vibe.
+    const prompt = `You are a travel writer creating short descriptions for a curated day out.
+Write exactly ${stops.length} short paragraphs (one per stop, 2-3 sentences each), telling the visitor what to do and the vibe.
 Emphasize the sense of adventure, discovery, and excitement. Never describe it as a solo or single-person activity — write for anyone (friends, couples, groups, or solo).
 Be specific, warm, and fun. Address the reader directly as "you".
-Output ONLY a JSON array of 3 strings with no markdown and no extra keys.
+Output ONLY a JSON array of ${stops.length} strings with no markdown and no extra keys.
 
 Stops:
 ${stopList}`;
