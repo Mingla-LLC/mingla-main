@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
-import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
+import { resolveCategories, GLOBAL_EXCLUDED_PLACE_TYPES, ROMANTIC_EXCLUDED_PLACE_TYPES } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -479,7 +479,7 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   "wellness dates": ["spa", "massage", "sauna"],
   wellness_dates: ["spa", "massage", "sauna"],
   "wellness-dates": ["spa", "massage", "sauna"],
-  wellness: ["spa", "sauna", "hot_spring", "massage"],
+  wellness: ["spa", "massage", "sauna", "resort_hotel", "public_bath"],
   // ── New PreferencesSheet category IDs ──
   nature: ["park", "botanical_garden", "hiking_area", "national_park", "state_park", "beach", "zoo", "wildlife_park"],
   first_meet: ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
@@ -495,8 +495,8 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
     "spanish_restaurant", "thai_restaurant", "turkish_restaurant", "vegan_restaurant",
     "vegetarian_restaurant", "vietnamese_restaurant", "chinese_restaurant",
   ],
-  fine_dining: ["fine_dining_restaurant", "steak_house", "french_restaurant", "greek_restaurant", "italian_restaurant"],
-  "fine-dining": ["fine_dining_restaurant", "steak_house", "french_restaurant", "greek_restaurant", "italian_restaurant"],
+  fine_dining: ["fine_dining_restaurant"],
+  "fine-dining": ["fine_dining_restaurant"],
   watch: ["movie_theater", "comedy_club", "performing_arts_theater", "opera_house"],
   creative_arts: ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
   "creative-arts": ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
@@ -568,6 +568,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "airport",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   picnics: [
     "dog_park",
@@ -610,6 +611,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "airport",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   stroll: [
     "bar",
@@ -656,6 +658,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "take a stroll": [
     "bar",
@@ -702,6 +705,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "take-a-stroll": [
     "bar",
@@ -748,6 +752,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   take_a_stroll: [
     "bar",
@@ -794,6 +799,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "sip & chill": [
     "fine_dining_restaurant",
@@ -832,6 +838,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   sip_and_chill: [
     "fine_dining_restaurant",
@@ -870,6 +877,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "sip-and-chill": [
     "fine_dining_restaurant",
@@ -908,6 +916,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "sip&chill": [
     "fine_dining_restaurant",
@@ -946,6 +955,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "sip_&_chill": [
     "fine_dining_restaurant",
@@ -984,6 +994,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "sip-&-chill": [
     "fine_dining_restaurant",
@@ -1022,6 +1033,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   sipchill: [
     "fine_dining_restaurant",
@@ -1060,6 +1072,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "casual eats": [
     "night_club",
@@ -1099,6 +1112,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   casual_eats: [
     "night_club",
@@ -1138,6 +1152,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "casual-eats": [
     "night_club",
@@ -1177,6 +1192,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "casual & eats": [
     "night_club",
@@ -1216,6 +1232,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "screen & relax": [
     "restaurant",
@@ -1254,6 +1271,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   screen_relax: [
     "restaurant",
@@ -1292,6 +1310,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "screen-relax": [
     "restaurant",
@@ -1330,6 +1349,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   screenrelax: [
     "restaurant",
@@ -1368,6 +1388,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   screenRelax: [
     "restaurant",
@@ -1406,6 +1427,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "creative & hands-on": [
     "movie_theater",
@@ -1443,6 +1465,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   creative_and_hands_on: [
     "movie_theater",
@@ -1480,6 +1503,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "creative-hands-on": [
     "movie_theater",
@@ -1517,6 +1541,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "creative & hands on": [
     "movie_theater",
@@ -1554,6 +1579,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   creative: [
     "movie_theater",
@@ -1591,6 +1617,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "play & move": [
     "fine_dining_restaurant",
@@ -1626,6 +1653,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   play_and_move: [
     "fine_dining_restaurant",
@@ -1661,6 +1689,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "play-move": [
     "fine_dining_restaurant",
@@ -1696,6 +1725,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "dining experiences": [
     "fast_food_restaurant",
@@ -1734,6 +1764,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   dining_experiences: [
     "fast_food_restaurant",
@@ -1772,6 +1803,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "dining-experiences": [
     "fast_food_restaurant",
@@ -1810,6 +1842,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   dining: [
     "fast_food_restaurant",
@@ -1848,6 +1881,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "wellness dates": [
     "gym",
@@ -2001,36 +2035,43 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "car_repair", "car_dealer", "storage", "post_office", "government_office",
     "courthouse", "police", "fire_station", "city_hall",
     "apartment_building", "housing_complex",
+    "gym", "fitness_center",
   ],
   first_meet: [
     "amusement_park", "water_park", "bowling_alley", "spa", "sauna",
     "fine_dining_restaurant", "fast_food_restaurant", "food_court",
     "night_club", "casino", "parking", "atm", "bank", "gas_station",
     "airport", "bus_station", "train_station", "transit_station",
+    "gym", "fitness_center",
   ],
   drink: [
     "fine_dining_restaurant", "spa", "sauna", "amusement_park",
     "water_park", "bowling_alley", "atm", "bank", "parking", "gas_station",
     "airport", "car_repair",
+    "gym", "fitness_center",
   ],
   fine_dining: [
     "fast_food_restaurant", "food_court", "bar", "bowling_alley",
     "amusement_park", "water_park", "video_arcade", "night_club",
     "atm", "bank", "parking", "gas_station", "car_repair",
+    "gym", "fitness_center",
   ],
   watch: [
     "spa", "sauna", "botanical_garden", "park", "beach", "restaurant",
     "atm", "bank", "parking", "gas_station", "government_office",
+    "gym", "fitness_center",
   ],
   creative_arts: [
     "fast_food_restaurant", "food_court", "bar", "bowling_alley",
     "amusement_park", "water_park", "spa", "sauna", "night_club",
     "atm", "bank", "parking", "gas_station", "government_office",
+    "gym", "fitness_center",
   ],
   play: [
     "spa", "sauna", "botanical_garden", "fine_dining_restaurant",
     "atm", "bank", "parking", "gas_station", "airport", "car_repair",
     "government_office", "courthouse", "police", "fire_station", "city_hall",
+    "gym", "fitness_center",
   ],
   freestyle: [
     "gas_station",
@@ -2063,6 +2104,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
   "free style": [
     "gas_station",
@@ -2095,6 +2137,7 @@ const EXCLUDED_TYPES: { [key: string]: string[] } = {
     "bus_station",
     "train_station",
     "transit_station",
+    "gym", "fitness_center",
   ],
 };
 
@@ -2141,6 +2184,14 @@ serve(async (req) => {
     }
 
     const { preferences, location } = request;
+
+    // Determine if romantic intent is active for exclusion rules
+    const isRomantic = (preferences?.categories ?? []).some(
+      (t: string) => t.toLowerCase() === 'romantic'
+    );
+    const excludedTypes = isRomantic
+      ? ROMANTIC_EXCLUDED_PLACE_TYPES
+      : GLOBAL_EXCLUDED_PLACE_TYPES;
 
     if (!preferences) {
       console.error("Preferences are required");
@@ -2224,7 +2275,7 @@ serve(async (req) => {
     // Fetch places from Google Places API
     let places: any[] = [];
     try {
-      places = await fetchGooglePlaces(preferences, location);
+      places = await fetchGooglePlaces(preferences, location, excludedTypes);
     } catch (error) {
       console.error("Error fetching Google Places:", error);
       // Return empty result instead of crashing
@@ -2404,7 +2455,8 @@ serve(async (req) => {
 
 async function fetchGooglePlaces(
   preferences: UserPreferences,
-  location: { lat: number; lng: number }
+  location: { lat: number; lng: number },
+  globalExcludedTypes: string[] = GLOBAL_EXCLUDED_PLACE_TYPES
 ): Promise<any[]> {
   if (!GOOGLE_API_KEY) {
     console.error("Google API key not available - check environment variables");
@@ -2445,7 +2497,7 @@ async function fetchGooglePlaces(
       location.lat,
       location.lng,
       radius,
-      { maxResultsPerType: 10, ttlHours: 24 }
+      { maxResultsPerType: 10, ttlHours: 24, excludedTypes: globalExcludedTypes }
     );
 
     // Map results back through the same transformation logic
@@ -2528,7 +2580,6 @@ async function fetchGooglePlaces(
     for (const { category, placeType } of categoryTypeMap) {
       try {
         const categoryKey = category.toLowerCase();
-        const excludedTypes = EXCLUDED_TYPES[categoryKey] || null;
         const fieldMask =
           "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours,places.websiteUri";
 
@@ -2543,8 +2594,14 @@ async function fetchGooglePlaces(
           },
         };
 
-        if (excludedTypes && excludedTypes.length > 0) {
-          requestBody.excludedTypes = excludedTypes;
+        // Merge category-specific exclusions with global/romantic exclusions
+        const categoryExcludedTypes = EXCLUDED_TYPES[categoryKey] || [];
+        const mergedExcludedTypes = Array.from(new Set([
+          ...categoryExcludedTypes,
+          ...globalExcludedTypes,
+        ]));
+        if (mergedExcludedTypes.length > 0) {
+          requestBody.excludedTypes = mergedExcludedTypes;
         }
 
         const response = await fetch(baseUrl, {
@@ -2646,7 +2703,14 @@ async function fetchGooglePlaces(
     }
   }
 
-  return allPlaces;
+  // Post-fetch filter: remove any places with globally/romantically excluded types
+  const excludedSet = new Set(globalExcludedTypes);
+  const filteredPlaces = allPlaces.filter((place) => {
+    const types: string[] = place.placeTypes || place.types || [];
+    return !types.some((t: string) => excludedSet.has(t));
+  });
+
+  return filteredPlaces;
 }
 
 async function annotateWithTravel(

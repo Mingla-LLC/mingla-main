@@ -183,6 +183,71 @@ export default function ConnectionsPageRefactored({
     });
   }, [sortedConversations, searchQuery]);
 
+  // ── Shared conversation fetch + transform ─────────────────
+  const fetchConversations = useCallback(async (userId: string) => {
+    try {
+      setError(null);
+      const { conversations: rawConversations, error: convError } =
+        await messagingService.getConversations(userId);
+
+      if (convError) throw new Error(convError);
+
+      // Batch-fetch all participant profiles
+      const allParticipantIds = new Set<string>();
+      (rawConversations || []).forEach((conv) =>
+        conv.participants.forEach((p) => allParticipantIds.add(p.user_id))
+      );
+
+      const { data: allProfiles } = await supabase
+        .from("profiles")
+        .select("id, display_name, username, first_name, last_name, avatar_url")
+        .in("id", Array.from(allParticipantIds));
+
+      const profilesMap = new Map(
+        (allProfiles || []).map((p) => [p.id, p])
+      );
+
+      // Transform to Conversation type (matching useMessages format for ChatListItem)
+      const transformed: Conversation[] = (rawConversations || []).map((conv) => {
+        const participants = conv.participants.map((p) => {
+          const profile = profilesMap.get(p.user_id);
+          return {
+            id: p.user_id,
+            username: profile?.username || "unknown",
+            display_name: profile?.display_name,
+            first_name: profile?.first_name,
+            last_name: profile?.last_name,
+            avatar_url: profile?.avatar_url,
+            is_online: false,
+          };
+        });
+
+        return {
+          id: conv.id,
+          created_by: conv.created_by,
+          created_at: conv.created_at,
+          participants,
+          last_message: conv.last_message || undefined,
+          unread_count: conv.unread_count || 0,
+          messages: [],
+        };
+      });
+
+      setConversations(transformed);
+
+      // Persist to cache
+      AsyncStorage.setItem(
+        getConversationsCacheKey(userId),
+        JSON.stringify(transformed)
+      ).catch((e) => console.warn("[ConnectionsPage] Cache persist failed:", e));
+    } catch (err) {
+      console.error("Error fetching conversations:", err);
+      setError("Failed to load conversations");
+    } finally {
+      setConversationsLoading(false);
+    }
+  }, []);
+
   // ── Fetch conversations on mount ─────────────────────────
   useEffect(() => {
     if (!user?.id) return;
@@ -204,70 +269,8 @@ export default function ConnectionsPageRefactored({
     })();
 
     // Then fetch fresh data
-    (async () => {
-      try {
-        setError(null);
-        const { conversations: rawConversations, error: convError } =
-          await messagingService.getConversations(user.id);
-
-        if (convError) throw new Error(convError);
-
-        // Batch-fetch all participant profiles
-        const allParticipantIds = new Set<string>();
-        (rawConversations || []).forEach((conv) =>
-          conv.participants.forEach((p) => allParticipantIds.add(p.user_id))
-        );
-
-        const { data: allProfiles } = await supabase
-          .from("profiles")
-          .select("id, display_name, username, first_name, last_name, avatar_url")
-          .in("id", Array.from(allParticipantIds));
-
-        const profilesMap = new Map(
-          (allProfiles || []).map((p) => [p.id, p])
-        );
-
-        // Transform to Conversation type (matching useMessages format for ChatListItem)
-        const transformed: Conversation[] = (rawConversations || []).map((conv) => {
-          const participants = conv.participants.map((p) => {
-            const profile = profilesMap.get(p.user_id);
-            return {
-              id: p.user_id,
-              username: profile?.username || "unknown",
-              display_name: profile?.display_name,
-              first_name: profile?.first_name,
-              last_name: profile?.last_name,
-              avatar_url: profile?.avatar_url,
-              is_online: false,
-            };
-          });
-
-          return {
-            id: conv.id,
-            created_by: conv.created_by,
-            created_at: conv.created_at,
-            participants,
-            last_message: conv.last_message || undefined,
-            unread_count: conv.unread_count || 0,
-            messages: [],
-          };
-        });
-
-        setConversations(transformed);
-
-        // Persist to cache
-        AsyncStorage.setItem(
-          getConversationsCacheKey(user.id),
-          JSON.stringify(transformed)
-        ).catch((e) => console.warn("[ConnectionsPage] Cache persist failed:", e));
-      } catch (err) {
-        console.error("Error fetching conversations:", err);
-        setError("Failed to load conversations");
-      } finally {
-        setConversationsLoading(false);
-      }
-    })();
-  }, [user?.id]);
+    fetchConversations(user.id);
+  }, [user?.id, fetchConversations]);
 
   // ── Fetch friends & requests on mount ────────────────────
   useEffect(() => {
@@ -612,54 +615,9 @@ export default function ConnectionsPageRefactored({
 
     // Refresh conversations to get updated unread counts
     if (user?.id) {
-      (async () => {
-        try {
-          const { conversations: rawConversations, error: convError } =
-            await messagingService.getConversations(user.id);
-          if (!convError && rawConversations) {
-            const allParticipantIds = new Set<string>();
-            rawConversations.forEach((conv) =>
-              conv.participants.forEach((p) => allParticipantIds.add(p.user_id))
-            );
-            const { data: allProfiles } = await supabase
-              .from("profiles")
-              .select("id, display_name, username, first_name, last_name, avatar_url")
-              .in("id", Array.from(allParticipantIds));
-            const profilesMap = new Map(
-              (allProfiles || []).map((p) => [p.id, p])
-            );
-            const transformed: Conversation[] = rawConversations.map((conv) => ({
-              id: conv.id,
-              created_by: conv.created_by,
-              created_at: conv.created_at,
-              participants: conv.participants.map((p) => {
-                const profile = profilesMap.get(p.user_id);
-                return {
-                  id: p.user_id,
-                  username: profile?.username || "unknown",
-                  display_name: profile?.display_name,
-                  first_name: profile?.first_name,
-                  last_name: profile?.last_name,
-                  avatar_url: profile?.avatar_url,
-                  is_online: false,
-                };
-              }),
-              last_message: conv.last_message || undefined,
-              unread_count: conv.unread_count || 0,
-              messages: [],
-            }));
-            setConversations(transformed);
-            AsyncStorage.setItem(
-              getConversationsCacheKey(user.id),
-              JSON.stringify(transformed)
-            ).catch(() => {});
-          }
-        } catch (e) {
-          console.error("Error refreshing conversations:", e);
-        }
-      })();
+      fetchConversations(user.id);
     }
-  }, [currentConversationId, user?.id]);
+  }, [currentConversationId, user?.id, fetchConversations]);
 
   // ── Send message ─────────────────────────────────────────
   const handleSendMessage = async (
@@ -1045,8 +1003,10 @@ export default function ConnectionsPageRefactored({
           <TouchableOpacity
             style={styles.retryButton}
             onPress={() => {
-              setError(null);
               setConversationsLoading(true);
+              if (user?.id) {
+                fetchConversations(user.id);
+              }
               fetchFriends();
               loadFriendRequests();
             }}

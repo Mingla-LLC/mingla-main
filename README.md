@@ -229,21 +229,22 @@ User Request (batchSeed=N) → Edge Function (Deno)
 | **City-Specific Content** | Location-aware — adapts to user's current city |
 | **Search & Filters** | Date picker, budget filters, category filters |
 
-### 4. Connections Tab
+### 4. Connect Tab — Unified Chat Page
 
 | Feature | Description |
 |---|---|
-| **Friends List** | All connections with online/offline/away status indicators |
-| **Friend Requests** | Send (by username or email), receive, accept, decline friend requests. Push notification via `send-friend-request-email` edge function |
-| **Add Friend Modal** | Search by username or email with suggestion list |
-| **Direct Messaging** | Real-time 1:1 chat with friends. Supports text, images, and file attachments |
-| **Conversation List** | All active conversations with unread counts, last message preview, timestamps |
-| **Message Read Receipts** | Track message read status via `board_message_reads` |
-| **Block User** | Block/unblock with cascading effects on messages and visibility. Reason tracking (spam, harassment, etc.) |
-| **Mute User** | Mute conversations without blocking |
-| **Report User** | In-app reporting system with category selection |
-| **Profile Visibility** | Privacy controls: visible, friends-only, hidden |
-| **Local Caching** | Connections cached with version control (`CONNECTIONS_CACHE_VERSION`) for instant rendering |
+| **WhatsApp-Style Chat List** | Single unified page with all conversations sorted by most recent message. Each row shows avatar, display name, last message preview (40 chars), relative timestamp, and unread badge count |
+| **Pill Filters** | Horizontal scrollable pills (Add, Requests, Blocked, Invite) for inline friend management without leaving the page |
+| **Friend Picker Sheet** | "+" button opens a bottom sheet showing the full accepted friends list with search. Tapping a friend creates or opens a direct conversation via `getOrCreateDirectConversation` |
+| **Add Friend (Inline)** | "Add" pill expands an inline username search with debounced queries. Send friend requests with "Already friends" detection and "Sent" confirmation |
+| **Friend Requests (Inline)** | "Requests" pill shows pending incoming requests with Accept/Decline buttons. Badge count on the pill |
+| **Blocked Users (Inline)** | "Blocked" pill shows blocked users with one-tap Unblock (with confirmation alert) |
+| **Invite** | "Invite" pill copies the user's invite link to clipboard with toast confirmation |
+| **Direct Messaging** | Real-time 1:1 chat with friends. Supports text, images, video, and file attachments with optimistic UI and temp ID reconciliation |
+| **Search** | Search bar filters the chat list by participant name or last message content (client-side, case-insensitive) |
+| **Block/Mute/Report** | Full block, mute, and report functionality accessible from within conversations |
+| **Local Caching** | Conversations cached to AsyncStorage with version control for instant rendering on mount |
+| **Empty State** | "No conversations yet" with "Message a friend" CTA that opens the friend picker |
 
 ### 5. Likes Tab
 
@@ -466,11 +467,11 @@ Mingla supports **12 richly-defined experience categories**, each with verified 
 | `picnic` | Picnic | `#84CC16` | `basket-outline` | park, picnic_ground, garden, botanical_garden, national_park |
 | `drink` | Drink | `#F59E0B` | `wine-outline` | bar, wine_bar, cocktail_bar, pub, coffee_shop, brewery, night_club |
 | `casual_eats` | Casual Eats | `#F97316` | `fast-food-outline` | restaurant, fast_food_restaurant, hamburger_restaurant, pizza_restaurant, ramen_restaurant |
-| `fine_dining` | Fine Dining | `#7C3AED` | `restaurant-outline` | fine_dining_restaurant, french_restaurant, italian_restaurant, steak_house, seafood_restaurant |
+| `fine_dining` | Fine Dining | `#7C3AED` | `restaurant-outline` | fine_dining_restaurant |
 | `watch` | Watch | `#3B82F6` | `film-outline` | movie_theater, performing_arts_theater, comedy_club, live_music_venue, concert_hall |
 | `creative_arts` | Creative & Arts | `#EC4899` | `color-palette-outline` | art_gallery, museum, art_studio, art_museum, performing_arts_theater, cultural_center |
 | `play` | Play | `#EF4444` | `game-controller-outline` | bowling_alley, amusement_park, water_park, video_arcade, amusement_center, miniature_golf_course |
-| `wellness` | Wellness | `#14B8A6` | `body-outline` | spa, massage, sauna, wellness_center, yoga_studio, massage_spa |
+| `wellness` | Wellness | `#14B8A6` | `body-outline` | spa, massage, sauna, resort_hotel, public_bath |
 | `groceries_flowers` | Groceries & Flowers | `#22C55E` | `cart-outline` | grocery_store, supermarket, farmers_market, garden_center |
 | `work_business` | Work & Business | `#64748B` | `briefcase-outline` | cafe, coffee_shop, tea_house |
 
@@ -513,6 +514,8 @@ Each category in `constants/categories.ts` includes:
 ### Intent → Category Relationship
 
 As of the Deck Pipeline Overhaul (2026-03-02), curated intent pills and category pills are **fully independent selection layers** on the mobile client. There is no compatibility matrix restricting which categories are visible when intents are selected. Users can select any combination of intents (Romantic, Group Fun, First Date, etc.) AND any combination of categories simultaneously. The curated experience engine on the server side knows which place types to pair for each intent — the mobile client does not enforce restrictions.
+
+**Romantic Rules Enforcement (2026-03-03):** Server-side hard rules ensure Romantic intent queries ONLY produce Fine Dining, Creative & Arts, and Wellness cards. Gym/fitness places are globally excluded from ALL intents. Kid-oriented venues (playgrounds, amusement parks, water parks, etc.) are additionally excluded for Romantic. Fine Dining is locked to `fine_dining_restaurant` only; Wellness is locked to `spa, massage, sauna, resort_hotel, public_bath`. All enforcement is at two layers: `excludedTypes` in Google API requests AND post-fetch filtering.
 
 ### Database Default
 
@@ -1400,7 +1403,7 @@ Filters out experience intents (adventurous, romantic, business, etc.) before Go
 | `ExpandedCardModal.tsx` (75KB) | Full-screen card detail: image gallery, weather, busyness, match factors, timeline, actions |
 | `PreferencesSheet.tsx` | Bottom sheet for preference editing (solo and collaboration modes) |
 | `ActivityPage.tsx` | Tab interface: boards, saved, calendar |
-| `ConnectionsPage.tsx` | Friends, messaging, collaboration sessions |
+| `ConnectionsPage.tsx` | Unified WhatsApp-style chat page with pill filters, friend picker, and inline friend management |
 | `ProfilePage.tsx` | User profile with stats, settings navigation, gamified data |
 | `DiscoverScreen.tsx` | Holiday/night-out/category discovery with Ticketmaster integration |
 | `SignInPage.tsx` | Auth flow orchestration: welcome → sign-in/up → account setup |
@@ -1429,9 +1432,9 @@ Filters out experience intents (adventurous, romantic, business, etc.) before Go
 
 `CreateTab` (3-step session creation), `SessionsTab`, `InvitesTab`, `SessionCard`, `InviteCard`, `CollaborationFriendsTab`
 
-### Connections Subdirectory (4)
+### Connections Subdirectory (10)
 
-`FriendsTab`, `MessagesTab`, `FriendCard`, `ConversationCard`
+`ChatListItem`, `PillFilters`, `FriendPickerSheet`, `AddFriendView`, `RequestsView`, `BlockedUsersView`, `FriendsTab` (legacy), `MessagesTab` (legacy), `FriendCard` (legacy), `ConversationCard` (legacy)
 
 ### Expanded Card Subdirectory (14)
 
@@ -1832,12 +1835,21 @@ npx supabase functions serve function-name --env-file .env.local
 
 ---
 
-## Recent Changes (2026-03-03 — Universal Responsive System)
+## Recent Changes (2026-03-03 — Romantic Rules Enforcement & Category Type Lockdown)
 
-- **Proportional Scaling Foundation:** New `responsive.ts` utility provides `scale()`, `verticalScale()`, `moderateScale()` functions for continuous device adaptation (iPhone SE to Pro Max, Galaxy A14 to S25 Ultra). All values scale from iPhone 14 (390×844) reference — zero runtime overhead, pure math.
-- **Full-Bleed Root Shell:** Root `SafeAreaView` replaced with raw `View` + manual safe area management. Header background now extends behind status bar/notch to screen top pixel. Bottom nav background extends behind gesture bar/home indicator to screen bottom pixel. `StatusBar` set to translucent with transparent background.
-- **`useAppLayout()` Hook:** Single source of truth for app spatial geometry — insets, header height, bottom nav height, content area height. Used by root shell, floating button, and preference sheets.
-- **Responsive Nav & Header:** Bottom navigation icons, text, badges, and padding all use proportional scaling. HomePage header buttons, logo container, and notification dot scale with device dimensions.
+- **Romantic Intent Lockdown:** Romantic queries across all 8 card-generating edge functions now only produce Fine Dining, Creative & Arts, and Wellness cards. No bars, parks, casual restaurants, or other categories leak through.
+- **Global Gym/Fitness Ban:** `gym` and `fitness_center` place types are excluded from every card, stop, and recommendation in every intent — not just Romantic.
+- **Fine Dining Type Lock:** Fine Dining queries now use exclusively `fine_dining_restaurant`. All restaurant subtypes (french, italian, steak_house, etc.) removed to ensure only truly upscale venues appear.
+- **Wellness Type Overhaul:** Wellness types changed from spa/sauna/yoga_studio/wellness_center to `spa, massage, sauna, resort_hotel, public_bath`. Yoga studios and generic wellness centers removed.
+- **Defense-in-Depth Filtering:** All exclusions applied at two layers — `excludedTypes` in Google Places API requests (prevents wasted quota) AND post-fetch `filterExcludedPlaces()` (catches secondary types the API missed). Shared constants (`GLOBAL_EXCLUDED_PLACE_TYPES`, `ROMANTIC_EXCLUDED_PLACE_TYPES`) in `categoryPlaceTypes.ts` with individual file updates for 4 legacy edge functions that maintain local mappings.
+
+### Previous Changes (2026-03-03 — Unified Connect & Chat Page)
+
+- **WhatsApp-Style Chat List:** Replaced the two-tab (Friends/Messages) ConnectionsPage with a single unified chat list sorted by most recent message. Conversations show avatar, name, preview, relative timestamp, and unread badges.
+- **Pill Filters:** Four horizontal pills (Add, Requests, Blocked, Invite) replace modal-based friend management. Each pill expands inline content — no page navigation required.
+- **Friend Picker Sheet:** "+" button opens a bottom sheet for starting new conversations. Searches friends, calls `getOrCreateDirectConversation`, and navigates directly into chat.
+- **6 New Sub-Components:** `ChatListItem`, `PillFilters`, `FriendPickerSheet`, `AddFriendView`, `RequestsView`, `BlockedUsersView` extracted into `connections/` directory. Old tab components kept as legacy reference.
+- **Zero Backend Changes:** Pure UI restructure — no database changes, no new edge functions, no new services. All existing messaging, friends, blocks, and realtime infrastructure reused as-is.
 - **Responsive Sheets & Cards:** PreferencesSheet height now adapts to device (fills from bottom minus notch area). SwipeableCards and DiscoverScreen card widths use centralized `SCREEN_WIDTH` from responsive module. ExpandedCardModal migrated to responsive imports.
 
 ### Previous Changes (2026-03-03 — UI/UX Responsiveness & Consistency Audit)
