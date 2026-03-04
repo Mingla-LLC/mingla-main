@@ -151,7 +151,7 @@ Mingla/
 - AI-generated experience cards built from real Google Places data, enriched by GPT-4o-mini with descriptions, highlights, and match scores
 - Swipe right to save, left to skip, up to expand full details
 - Pool-first card pipeline with SQL-level pagination serves pre-built cards with zero API calls; falls back to Google Places only when the pool is exhausted. Synchronous impression recording prevents cross-batch duplicates
-- Curated multi-stop itinerary cards (3-stop routes with travel times) interleaved every 3rd regular card
+- Curated multi-stop itinerary cards interleaved every 3rd regular card. Adventure intent uses 4 dedicated groups (Outdoor, Exotic Eats, Adrenaline, Culture) for 3-stop itineraries. First Date intent uses 3 dedicated groups (Fun Activity, Cultural, Fine Dining) for 2-stop itineraries with strict alternation between ice-breaker activities and cultural outings paired with upscale dining
 - Expanded card modal with image gallery, weather forecast, busyness predictions, match score breakdown, companion stops, and timeline
 - Deck batch navigation with forward/backward history persisted across sessions
 - Dismissed cards review sheet for reconsidering left-swiped cards (persisted across app restarts via AsyncStorage)
@@ -321,7 +321,7 @@ Mingla/
 |----------|---------|
 | `new-generate-experience-` | Core pool-first card generation engine. Serves pre-built cards from card_pool, gap-fills from Google Places |
 | `discover-cards` | Unified card discovery with SQL-level pagination (`query_pool_cards` function), impression exclusion, and nextPageToken pool expansion |
-| `generate-curated-experiences` | 3-stop itinerary builder with AI descriptions and travel time estimates |
+| `generate-curated-experiences` | Multi-stop itinerary builder with AI descriptions and travel time estimates. Adventure intent: 3-stop cards from 4 dedicated groups with round-robin combos. First Date intent: 2-stop cards (ice-breaker activity or cultural outing → upscale dinner) with strict alternation |
 | `generate-session-experiences` | Collaboration mode: aggregates participant preferences for group card generation |
 | `discover-experiences` | General discovery for all 12 categories with 24h daily cache |
 | `discover-casual-eats` | Category-specific discovery: Casual Eats |
@@ -503,13 +503,15 @@ The `oauth-redirect/` directory contains a static site deployed to Vercel/Netlif
 
 ## Recent Changes
 
-- **Location Step Freeze Fix (2026-03-04):** Fixed compound defect that caused the onboarding location step to freeze at "Locked in — {city}". Eliminated 4 root causes (animation opacity reset on status change, no manual escape from auto-advance, stale goNext closure in setTimeout, double-tap race condition), 3 contributing factors (uncancellable timeout, missing deps, silent null-location failure), and 3 hidden flaws (setState side effect, no GPS timeout, StyleSheet inside component body).
+- **First Date Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic category-pool pipeline for the `first-date` intent with 3 dedicated First Date Groups (Fun Activity, Cultural, Fine Dining). Each card is a 2-stop itinerary: ice-breaker activity or cultural outing → upscale dinner. Cards strictly alternate between Fun Activity and Cultural starting groups. Fallback to the other starting group when one is empty in the area.
 
-- **Auto Locale Detection (hardened):** Currency and measurement system automatically detected from user location. GPS onboarding uses synchronous country lookup from Expo's geocode result (zero extra network calls); manual location and preferences use async Nominatim reverse-geocode as fire-and-forget. Falls back to USD/Imperial on any failure.
+- **Adventure Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic category-pool pipeline for the `adventurous` intent with 4 hand-picked Adventure Groups (Outdoor, Exotic Eats, Adrenaline, Culture). Each 3-stop itinerary picks 3 of 4 groups with round-robin rotation across all 4 possible combos.
+
+- **Location Step Freeze Fix (2026-03-04):** Fixed compound defect that caused the onboarding location step to freeze at "Locked in — {city}". Eliminated 4 root causes and 3 contributing factors.
+
+- **Auto Locale Detection (hardened):** Currency and measurement system automatically detected from user location via GPS or reverse geocode.
 
 - **Account Settings Cleanup:** Only App Information and Delete Account sections remain.
-
-- **Locale Detection Utilities:** `detectLocaleFromCoordinates()` (async, Nominatim-based) and `detectLocaleFromCountryName()` (synchronous). Both return `measurementSystemDb` field for direct DB writes.
 
 ---
 
