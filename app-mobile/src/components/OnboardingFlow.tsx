@@ -11,6 +11,7 @@ import {
   Linking,
   Platform,
   AccessibilityInfo,
+  ActivityIndicator,
 } from 'react-native'
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
@@ -27,6 +28,7 @@ import { locationService } from '../services/locationService'
 import { sendOtp, verifyOtp } from '../services/otpService'
 import { logger } from '../utils/logger'
 import { createSavedPerson } from '../services/savedPeopleService'
+import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
 import { startRecording, stopRecording, uploadAudioClip } from '../services/personAudioService'
 import { searchUsers, sendFriendLink } from '../services/friendLinkService'
 
@@ -62,6 +64,7 @@ import {
   backgroundWarmGlow,
   touchTargets,
   shadows,
+  glass,
 } from '../constants/designSystem'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
@@ -115,7 +118,7 @@ const SkipAutoAdvance = ({ goNext }: { goNext: () => void }) => {
 
 const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) => {
   const { user } = useAuthSimple()
-  const { profile } = useAppStore()
+  const { profile, setProfile } = useAppStore()
   const queryClient = useQueryClient()
 
   // ─── State ───
@@ -138,6 +141,20 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     progress,
     isLaunch,
   } = useOnboardingStateMachine({ initialStep, hasGpsPermission })
+
+  // ─── Stable Refs (prevent stale closures in timeouts) ───
+  const goNextRef = useRef(goNext)
+  goNextRef.current = goNext
+  const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Cleanup auto-advance timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceRef.current) {
+        clearTimeout(autoAdvanceRef.current)
+      }
+    }
+  }, [])
 
   // ─── UI State ───
   const [otpCode, setOtpCode] = useState('')
@@ -210,6 +227,84 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     )
 
     Animated.parallel(animations).start()
+  }, [navState.subStep])
+
+  // ─── Location Step Entrance Animations ───
+  const locIconAnim = useRef({ opacity: new Animated.Value(0), scale: new Animated.Value(0.5), translateY: new Animated.Value(20) }).current
+  const locHeadlineAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(24) }).current
+  const locBodyAnim = useRef({ opacity: new Animated.Value(0), translateY: new Animated.Value(20) }).current
+  const locButtonAnim = useRef({ opacity: new Animated.Value(0), scale: new Animated.Value(0.85), translateY: new Animated.Value(16) }).current
+  const locPulse = useRef(new Animated.Value(1)).current
+  const locPulseRef = useRef<Animated.CompositeAnimation | null>(null)
+
+  // Reset locationStatus to idle whenever we enter the location sub-step.
+  // This ensures navigating away (Back) and returning doesn't leave stale denied/requesting state.
+  useEffect(() => {
+    if (navState.subStep === 'location') {
+      setLocationStatus('idle')
+    }
+  }, [navState.subStep])
+
+  useEffect(() => {
+    if (navState.subStep !== 'location') return
+
+    // Stop any running pulse
+    locPulseRef.current?.stop()
+    locPulseRef.current = null
+
+    // Reset all
+    locIconAnim.opacity.setValue(0)
+    locIconAnim.scale.setValue(0.5)
+    locIconAnim.translateY.setValue(20)
+    locHeadlineAnim.opacity.setValue(0)
+    locHeadlineAnim.translateY.setValue(24)
+    locBodyAnim.opacity.setValue(0)
+    locBodyAnim.translateY.setValue(20)
+    locButtonAnim.opacity.setValue(0)
+    locButtonAnim.scale.setValue(0.85)
+    locButtonAnim.translateY.setValue(16)
+    locPulse.setValue(1)
+
+    // Staggered entrance: icon → headline → body → button
+    Animated.stagger(120, [
+      // Icon: spring in with scale + fade
+      Animated.parallel([
+        Animated.spring(locIconAnim.scale, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
+        Animated.timing(locIconAnim.opacity, { toValue: 1, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(locIconAnim.translateY, { toValue: 0, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      ]),
+      // Headline: slide + fade
+      Animated.parallel([
+        Animated.timing(locHeadlineAnim.opacity, { toValue: 1, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(locHeadlineAnim.translateY, { toValue: 0, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      ]),
+      // Body: slide + fade
+      Animated.parallel([
+        Animated.timing(locBodyAnim.opacity, { toValue: 1, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(locBodyAnim.translateY, { toValue: 0, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      ]),
+      // Button: scale + slide + fade
+      Animated.parallel([
+        Animated.spring(locButtonAnim.scale, { toValue: 1, tension: 120, friction: 10, useNativeDriver: true }),
+        Animated.timing(locButtonAnim.opacity, { toValue: 1, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(locButtonAnim.translateY, { toValue: 0, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      ]),
+    ]).start(() => {
+      // Subtle continuous icon pulse after entrance
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(locPulse, { toValue: 1.06, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(locPulse, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        ])
+      )
+      locPulseRef.current = pulse
+      pulse.start()
+    })
+
+    return () => {
+      locPulseRef.current?.stop()
+      locPulseRef.current = null
+    }
   }, [navState.subStep])
 
   // ─── Value Prop Icon Animations ───
@@ -438,7 +533,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
         logger.onboarding('OTP verified successfully')
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
         setData((prev) => ({ ...prev, phoneVerified: true }))
-        await persistStep(2)
+        persistStep(2).catch(() => {})
         setTimeout(() => goNext(), 800) // pause for success animation
       } else {
         logger.onboarding('OTP verification failed', { attempts: otpAttempts + 1 })
@@ -456,46 +551,25 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     [buildE164, goNext, persistStep, otpAttempts, handleResendOtp]
   )
 
-  // ─── Location Permission ───
-  const handleLocationRequest = useCallback(async () => {
-    logger.action('Location permission requested')
-    setLocationStatus('requesting')
-    const { status, canAskAgain } = await Location.getForegroundPermissionsAsync()
-
-    if (status === 'granted') {
-      logger.onboarding('Location: already granted')
-      await captureLocation()
-      return
-    }
-
-    if (!canAskAgain) {
-      logger.onboarding('Location: cannot ask again — showing settings prompt')
-      setLocationStatus('settings')
-      return
-    }
-
-    const result = await Location.requestForegroundPermissionsAsync()
-    if (result.status === 'granted') {
-      logger.onboarding('Location: permission granted')
-      await captureLocation()
-    } else {
-      logger.onboarding('Location: permission denied')
-      setLocationStatus('denied')
-      setHasGpsPermission(false)
-      setData((prev) => ({ ...prev, locationGranted: false, useGpsLocation: false }))
-      await persistStep(4)
-      goNext()
-    }
-  }, [goNext, persistStep])
-
+  // ─── Location Capture ───
   const captureLocation = useCallback(async () => {
     try {
-      const loc = await locationService.getCurrentLocation()
+      // Race against 10s timeout to prevent indefinite hang on GPS warm-up
+      const loc = await Promise.race([
+        locationService.getCurrentLocation(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+      ])
       if (loc) {
-        const geo = await Location.reverseGeocodeAsync({
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-        })
+        // Race reverse-geocode against 5s timeout — geocode can hang on poor network
+        const geo = await Promise.race([
+          Location.reverseGeocodeAsync({
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+          }),
+          new Promise<Location.LocationGeocodedAddress[]>((resolve) =>
+            setTimeout(() => resolve([]), 5000)
+          ),
+        ])
         const city = geo[0]?.city || geo[0]?.region || 'your area'
         setData((prev) => ({
           ...prev,
@@ -508,23 +582,78 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
         setLocationStatus('granted')
         logger.onboarding('Location captured', { city, lat: loc.latitude, lng: loc.longitude })
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-        await persistStep(4)
-        setTimeout(() => goNext(), 1200) // show confirmation briefly
+
+        // Advance user immediately — locale detection must NOT block onboarding
+        persistStep(4).catch(() => {})
+        autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
+
+        // Synchronous locale detection from Expo geocode country (avoids double reverse-geocode)
+        const detected = detectLocaleFromCountryName(geo[0]?.country)
+        if (user?.id) {
+          PreferencesService.updateUserProfile(user.id, {
+            currency: detected.currency,
+            measurement_system: detected.measurementSystemDb,
+          }).catch((err) => {
+            console.warn('Locale DB write failed in captureLocation:', err?.message)
+          })
+        }
+        const currentProfile = useAppStore.getState().profile
+        if (currentProfile) {
+          setProfile({
+            ...currentProfile,
+            currency: detected.currency,
+            measurement_system: detected.measurementSystemDb,
+          })
+        }
+        logger.onboarding('Locale auto-detected', {
+          currency: detected.currency,
+          measurement: detected.measurementSystem,
+          country: detected.countryName,
+        })
+      } else {
+        // GPS returned null (warm-up timeout or no signal) — let user retry or enter manually
+        logger.onboarding('Location capture returned null — GPS timeout or warm-up failure')
+        setLocationStatus('denied')
       }
     } catch (e) {
       console.error('Location capture error:', e)
       setLocationStatus('denied')
     }
-  }, [goNext, persistStep])
+  }, [persistStep, user?.id, setProfile])
 
-  const handleSkipLocation = useCallback(async () => {
-    logger.action('Skip location pressed — setting manually')
-    setLocationStatus('denied')
-    setHasGpsPermission(false)
-    setData((prev) => ({ ...prev, locationGranted: false, useGpsLocation: false }))
-    await persistStep(4)
-    goNext()
-  }, [goNext, persistStep])
+  // ─── Location Permission ───
+  const handleLocationRequest = useCallback(async () => {
+    logger.action('Location permission requested')
+    setLocationStatus('requesting')
+    try {
+      const { status, canAskAgain } = await Location.getForegroundPermissionsAsync()
+
+      if (status === 'granted') {
+        logger.onboarding('Location: already granted')
+        await captureLocation()
+        return
+      }
+
+      if (!canAskAgain) {
+        logger.onboarding('Location: cannot ask again — showing settings prompt')
+        setLocationStatus('settings')
+        return
+      }
+
+      const result = await Location.requestForegroundPermissionsAsync()
+      if (result.status === 'granted') {
+        logger.onboarding('Location: permission granted')
+        await captureLocation()
+      } else {
+        logger.onboarding('Location: permission denied — prompting settings')
+        setLocationStatus('settings')
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+      }
+    } catch (e) {
+      console.error('Location permission request error:', e)
+      setLocationStatus('denied')
+    }
+  }, [captureLocation])
 
   // ─── Manual Location Geocode ───
   const handleManualLocation = useCallback(async () => {
@@ -534,23 +663,52 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     try {
       const results = await Location.geocodeAsync(manualLocationText.trim())
       if (results.length > 0) {
+        const lat = results[0].latitude
+        const lng = results[0].longitude
         setData((prev) => ({
           ...prev,
           manualLocation: manualLocationText.trim(),
-          coordinates: { lat: results[0].latitude, lng: results[0].longitude },
+          coordinates: { lat, lng },
         }))
+
+        // Advance user immediately — locale detection must NOT block onboarding
         goNext()
+
+        // Fire-and-forget locale detection in background
+        detectLocaleFromCoordinates(lat, lng).then((detected) => {
+          if (user?.id) {
+            PreferencesService.updateUserProfile(user.id, {
+              currency: detected.currency,
+              measurement_system: detected.measurementSystemDb,
+            }).catch((err) => {
+              console.warn('Locale DB write failed in handleManualLocation:', err?.message)
+            })
+          }
+          const currentProfile = useAppStore.getState().profile
+          if (currentProfile) {
+            setProfile({
+              ...currentProfile,
+              currency: detected.currency,
+              measurement_system: detected.measurementSystemDb,
+            })
+          }
+          logger.onboarding('Locale auto-detected (manual)', {
+            currency: detected.currency,
+            measurement: detected.measurementSystem,
+            country: detected.countryName,
+          })
+        }).catch(() => {})
       }
     } catch (e) {
       console.error('Geocode error:', e)
     }
     setSavingPrefs(false)
-  }, [manualLocationText, goNext])
+  }, [manualLocationText, goNext, user?.id, setProfile])
 
   // ─── Save Preferences (Step 4 → 5 transition) ───
   const handleSavePreferences = useCallback(async () => {
     if (!user?.id) return
-    logger.action('Save preferences pressed', { categories: data.selectedCategories.length, budget: data.budget, transport: data.transportMode })
+    logger.action('Save preferences pressed', { categories: data.selectedCategories.length, budget: data.budgetMax, transport: data.travelMode })
     setSavingPrefs(true)
     try {
       await PreferencesService.updateUserPreferences(user.id, {
@@ -567,7 +725,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
         custom_location: data.manualLocation,
       } as any)
 
-      await persistStep(5)
+      persistStep(5).catch(() => {})
 
       // Fire-and-forget card generation
       const coords = data.coordinates
@@ -652,7 +810,10 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     // Mark complete
     try {
       await supabase.from('profiles').update({ has_completed_onboarding: true, onboarding_step: 0 }).eq('id', user.id)
-      useAppStore.getState().setProfile({ ...profile, has_completed_onboarding: true, onboarding_step: 0 } as any)
+      const currentProfile = useAppStore.getState().profile
+      if (currentProfile) {
+        useAppStore.getState().setProfile({ ...currentProfile, has_completed_onboarding: true, onboarding_step: 0 })
+      }
     } catch (e) {
       console.error('Launch complete error:', e)
     }
@@ -701,7 +862,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       clearInterval(pollInterval)
       clearInterval(textInterval)
     }
-  }, [user?.id, profile, queryClient, launchRetries])
+  }, [user?.id, queryClient, launchRetries])
 
   const playRevealAnimation = useCallback(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
@@ -787,6 +948,11 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   }, [goNext])
 
   const handleGoBack = useCallback(() => {
+    // Clear any pending auto-advance timeout (prevents ghost navigation from location step)
+    if (autoAdvanceRef.current) {
+      clearTimeout(autoAdvanceRef.current)
+      autoAdvanceRef.current = null
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     goBack()
   }, [goBack])
@@ -811,7 +977,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       case 'value_prop':
         return { label: 'Next', disabled: false, loading: false, onPress: () => { logger.action(`Value prop beat advance`, { beat: valuePropBeat }); setValuePropBeat(Math.min(valuePropBeat + 1, 2)); if (valuePropBeat >= 2) handleGoNext() }, hide: false }
       case 'intents':
-        return { label: 'Next', disabled: data.selectedIntents.length === 0, loading: false, onPress: async () => { await persistStep(3); handleGoNext() }, hide: false }
+        return { label: 'Next', disabled: data.selectedIntents.length === 0, loading: false, onPress: () => { persistStep(3).catch(() => {}); handleGoNext() }, hide: false }
       case 'location':
         return { label: 'Enable location', disabled: false, loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
       case 'celebration':
@@ -1043,38 +1209,151 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     if (subStep === 'location') {
       if (locationStatus === 'granted') {
         return (
-          <View style={styles.centerContent}>
-            <Ionicons name="checkmark-circle" size={64} color={colors.success[500]} />
-            <Text style={styles.headline}>Locked in — {data.cityName}!</Text>
-          </View>
+          <Pressable
+            style={styles.locContainer}
+            onPress={() => {
+              if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null }
+              goNextRef.current()
+            }}
+          >
+            <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }] }]}>
+              <View style={styles.locIconCircleSuccess}>
+                <Ionicons name="checkmark" size={36} color={colors.text.inverse} />
+              </View>
+            </Animated.View>
+            <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
+              Locked in — {data.cityName}!
+            </Animated.Text>
+            <Text style={styles.locTapHint}>Tap to continue</Text>
+          </Pressable>
         )
       }
       if (locationStatus === 'settings') {
         return (
-          <View style={styles.centerContent}>
-            <Ionicons name="location-outline" size={64} color={colors.primary[500]} />
-            <Text style={styles.headline}>Better spots start here</Text>
-            <Text style={styles.body}>Location is turned off for Mingla. Tap below to fix it.</Text>
-            <Pressable style={styles.primaryButton} onPress={() => { logger.action('Open device settings pressed'); Linking.openSettings() }}>
-              <Text style={styles.primaryButtonText}>Open settings</Text>
-            </Pressable>
-            <Pressable onPress={handleSkipLocation}>
-              <Text style={styles.linkText}>I'll set it manually</Text>
-            </Pressable>
+          <View style={styles.locContainer}>
+            <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
+              <Animated.View style={[styles.locIconCircle, { transform: [{ scale: locPulse }] }]}>
+                <Ionicons name="settings-outline" size={36} color={colors.primary[500]} />
+              </Animated.View>
+            </Animated.View>
+            <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
+              One quick toggle
+            </Animated.Text>
+            <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
+              Location is off for Mingla.{'\n'}Turn it on in Settings so we can find{'\n'}the best spots near you.
+            </Animated.Text>
+            <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
+              <Pressable
+                style={styles.locGlassButton}
+                onPress={() => { logger.action('Open device settings pressed'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openSettings() }}
+              >
+                <Ionicons name="settings-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+                <Text style={styles.locButtonText}>Open Settings</Text>
+              </Pressable>
+            </Animated.View>
+            <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
+              <Pressable
+                style={styles.locRetryButton}
+                onPress={() => { logger.action('Retry location after settings'); handleLocationRequest() }}
+              >
+                <Ionicons name="refresh-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
+                <Text style={styles.locRetryText}>I've turned it on — retry</Text>
+              </Pressable>
+            </Animated.View>
+            <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.sm }]}>
+              <Pressable
+                style={styles.locRetryButton}
+                onPress={() => {
+                  logger.action('Skip GPS from settings — entering city manually')
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  goNextRef.current()
+                }}
+              >
+                <Ionicons name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
+                <Text style={styles.locRetryText}>Type my city instead</Text>
+              </Pressable>
+            </Animated.View>
           </View>
         )
       }
+      if (locationStatus === 'denied') {
+        return (
+          <View style={styles.locContainer}>
+            <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
+              <Animated.View style={[styles.locIconCircle, { transform: [{ scale: locPulse }] }]}>
+                <Ionicons name="cloud-offline-outline" size={36} color={colors.warning[500]} />
+              </Animated.View>
+            </Animated.View>
+            <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
+              Couldn't get your location
+            </Animated.Text>
+            <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
+              Weak signal or GPS still warming up.{'\n'}Try again or type your city instead.
+            </Animated.Text>
+            <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
+              <Pressable
+                style={styles.locGlassButton}
+                onPress={() => {
+                  logger.action('Retry location from denied state')
+                  handleLocationRequest()
+                }}
+              >
+                <Ionicons name="refresh-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+                <Text style={styles.locButtonText}>Try Again</Text>
+              </Pressable>
+            </Animated.View>
+            <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
+              <Pressable
+                style={styles.locRetryButton}
+                onPress={() => {
+                  logger.action('Skip GPS — entering city manually')
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  goNextRef.current()
+                }}
+              >
+                <Ionicons name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
+                <Text style={styles.locRetryText}>Type my city instead</Text>
+              </Pressable>
+            </Animated.View>
+          </View>
+        )
+      }
+      // Default: idle / requesting (first-time prompt)
       return (
-        <View style={styles.centerContent}>
-          <Ionicons name="location-outline" size={64} color={colors.primary[500]} />
-          <Text style={styles.headline}>Better spots start here</Text>
-          <Text style={styles.body}>Share your location and we'll find gems nearby.</Text>
-          <Pressable style={styles.primaryButton} onPress={handleLocationRequest}>
-            <Text style={styles.primaryButtonText}>Enable location</Text>
-          </Pressable>
-          <Pressable onPress={handleSkipLocation}>
-            <Text style={styles.linkText}>I'll set it manually</Text>
-          </Pressable>
+        <View style={styles.locContainer}>
+          <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
+            <Animated.View style={[styles.locIconCircle, { transform: [{ scale: locPulse }] }]}>
+              <Ionicons name="navigate" size={36} color={colors.primary[500]} />
+            </Animated.View>
+          </Animated.View>
+          <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
+            Better spots start here
+          </Animated.Text>
+          <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
+            Enable GPS so we can find hidden{'\n'}gems right around the corner.
+          </Animated.Text>
+          <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
+            <Pressable
+              style={[styles.locGlassButton, locationStatus !== 'idle' && styles.locGlassButtonDisabled]}
+              onPress={handleLocationRequest}
+              disabled={locationStatus !== 'idle'}
+            >
+              {locationStatus === 'requesting' ? (
+                <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
+              ) : (
+                <Ionicons name="location" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+              )}
+              <Text style={styles.locButtonText}>
+                {locationStatus === 'requesting' ? 'Finding you...' : 'Enable Location'}
+              </Text>
+            </Pressable>
+          </Animated.View>
+          <Animated.View style={[{ opacity: locBodyAnim.opacity }]}>
+            <View style={styles.locPrivacyRow}>
+              <Ionicons name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
+              <Text style={styles.locPrivacyText}>Your location stays private. Always.</Text>
+            </View>
+          </Animated.View>
         </View>
       )
     }
@@ -1768,7 +2047,123 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     alignItems: 'center',
   },
-  // ─── Primary Button (inline, for Location step) ───
+  // ─── Location Step (Glass Morphism) ───
+  locContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.lg,
+  },
+  locGlassCard: {
+    width: 100,
+    height: 100,
+    backgroundColor: glass.surface.backgroundColor,
+    borderColor: glass.surface.borderColor,
+    borderWidth: glass.surface.borderWidth,
+    borderRadius: 50,
+    ...glass.shadow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xl,
+  },
+  locIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primary[50],
+    borderWidth: 1.5,
+    borderColor: colors.primary[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locIconCircleSuccess: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.success[500],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locHeadline: {
+    ...typography.xxxl,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    letterSpacing: -0.5,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  locBody: {
+    ...typography.md,
+    fontWeight: fontWeights.regular,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: spacing.xl,
+    paddingHorizontal: spacing.md,
+  },
+  locTapHint: {
+    ...typography.sm,
+    fontWeight: fontWeights.regular,
+    color: colors.text.tertiary,
+    marginTop: spacing.md,
+  },
+  locGlassButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 220,
+    height: 56,
+    borderRadius: radius.lg,
+    backgroundColor: colors.primary[500],
+    shadowColor: colors.primary[500],
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  locGlassButtonDisabled: {
+    opacity: 0.6,
+  },
+  locButtonIcon: {
+    marginRight: spacing.sm,
+  },
+  locButtonText: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.inverse,
+    letterSpacing: 0.3,
+  },
+  locRetryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 220,
+    height: 48,
+    backgroundColor: glass.buttonSecondary.backgroundColor,
+    borderColor: glass.buttonSecondary.borderColor,
+    borderWidth: glass.buttonSecondary.borderWidth,
+    borderRadius: radius.lg,
+  },
+  locRetryText: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.primary[500],
+    letterSpacing: 0.2,
+  },
+  locPrivacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    gap: 6,
+  },
+  locPrivacyText: {
+    ...typography.xs,
+    fontWeight: fontWeights.medium,
+    color: colors.text.tertiary,
+  },
+  // ─── Generic Inline Button (launch retry etc.) ───
   primaryButton: {
     minHeight: touchTargets.comfortable,
     minWidth: 200,

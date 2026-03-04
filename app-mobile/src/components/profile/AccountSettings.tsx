@@ -1,56 +1,26 @@
 import * as React from "react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import {
   Text,
   View,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
   StatusBar,
   ActivityIndicator,
   Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { formatCurrency } from "../utils/formatters";
-import { fetchExchangeRates, getRate } from "../../services/currencyService";
-import { PreferencesService } from "../../services/preferencesService";
 import { supabase } from "../../services/supabase";
 import { useAppState } from "../AppStateManager";
-import {
-  countryCurrencies,
-  getCountriesByRegion,
-  regionDisplayNames,
-  getCurrencyByCountryCode,
-  getCurrencyByCountryName,
-  type CountryCurrency,
-} from "../../services/countryCurrencyService";
-import { LocationService } from "../../services/locationService";
-import { geocodingService } from "../../services/geocodingService";
 import { mixpanelService } from "../../services/mixpanelService";
-
-interface AccountSettingsProps {
-  accountPreferences: {
-    currency: string;
-    measurementSystem: "Metric" | "Imperial";
-  };
-  onUpdatePreferences: (preferences: any) => void;
-  onDeleteAccount: () => void;
-  onNavigateBack: () => void;
-}
-
-// Region display order
-const regionOrder = ['north_america', 'europe', 'africa', 'south_america', 'asia', 'middle_east', 'oceania'];
 
 export default function AccountSettings() {
   const insets = useSafeAreaInsets();
   const {
-    accountPreferences,
-    handleAccountPreferencesUpdate,
     setShowAccountSettings,
     user,
-    profile,
     handleSignOut,
   } = useAppState();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -58,150 +28,6 @@ export default function AccountSettings() {
   const [deleteStep, setDeleteStep] = useState<'confirm' | 'deleting' | 'success' | 'error'>('confirm');
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteInProgressRef = useRef(false);
-
-  // Find the country that matches the saved currency, or default to US
-  const findCountryByCurrency = (currencyCode: string): CountryCurrency | undefined => {
-    return countryCurrencies.find(c => c.currencyCode === currencyCode);
-  };
-
-  const initialCountry = findCountryByCurrency(profile?.currency || "USD") || 
-    countryCurrencies.find(c => c.countryCode === 'US');
-
-  const [selectedCountry, setSelectedCountry] = useState<CountryCurrency | undefined>(initialCountry);
-  const [selectedCurrency, setSelectedCurrency] = useState(
-    profile?.currency || "USD"
-  );
-  const [selectedMeasurement, setSelectedMeasurement] = useState(
-    profile?.measurement_system || "imperial"
-  );
-  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
-
-  // Get countries grouped by region
-  const countriesByRegion = React.useMemo(() => getCountriesByRegion(), []);
-
-  useEffect(() => {
-    fetchExchangeRates();
-  }, []);
-
-  const handleCountryChange = async (country: CountryCurrency) => {
-    setSelectedCountry(country);
-    setSelectedCurrency(country.currencyCode);
-    
-    const updatedPreferences = {
-      ...accountPreferences,
-      currency: country.currencyCode,
-    };
-    handleAccountPreferencesUpdate(updatedPreferences);
-
-    // Track account setting updated
-    mixpanelService.trackAccountSettingUpdated({
-      setting: "currency",
-      value: country.currencyCode,
-    });
-    
-    if (user?.id) {
-      try {
-        await PreferencesService.updateUserProfile(user.id, {
-          currency: country.currencyCode,
-        });
-      } catch (_e) {
-        // Local state already updated; optionally show error
-      }
-    }
-  };
-
-  const handleMeasurementChange = async (system: "Metric" | "Imperial") => {
-    setSelectedMeasurement(system.toLocaleLowerCase());
-    const updatedPreferences = {
-      ...accountPreferences,
-      measurementSystem: system,
-    };
-    handleAccountPreferencesUpdate(updatedPreferences);
-
-    // Track account setting updated
-    mixpanelService.trackAccountSettingUpdated({
-      setting: "measurement_system",
-      value: system,
-    });
-    if (user?.id) {
-      try {
-        await PreferencesService.updateUserProfile(user.id, {
-          measurement_system: system === "Metric" ? "metric" : "imperial",
-        });
-      } catch (_e) {
-        // Local state already updated; optionally show error
-      }
-    }
-  };
-
-  const handleAutoDetectCurrency = async () => {
-    setIsDetectingLocation(true);
-    try {
-      const locationService = LocationService.getInstance();
-      const location = await locationService.getCurrentLocation();
-      
-      if (!location) {
-        Alert.alert(
-          "Location Access Required",
-          "Please enable location access to auto-detect your settings.",
-          [{ text: "OK" }]
-        );
-        return;
-      }
-
-      const geocodeResult = await geocodingService.reverseGeocode(
-        location.latitude,
-        location.longitude
-      );
-
-      if (geocodeResult.country) {
-        const detectedCountry = getCurrencyByCountryName(geocodeResult.country);
-        
-        // Countries that use Imperial system (USA, Liberia, Myanmar)
-        const imperialCountries = ['US', 'USA', 'United States', 'Liberia', 'Myanmar', 'Burma'];
-        const usesImperial = imperialCountries.some(
-          c => geocodeResult.country?.toLowerCase().includes(c.toLowerCase()) ||
-               detectedCountry?.countryCode === 'US' ||
-               detectedCountry?.countryCode === 'LR' ||
-               detectedCountry?.countryCode === 'MM'
-        );
-        const detectedMeasurement: "Metric" | "Imperial" = usesImperial ? "Imperial" : "Metric";
-        
-        // Set measurement system based on country
-        await handleMeasurementChange(detectedMeasurement);
-        
-        if (detectedCountry) {
-          await handleCountryChange(detectedCountry);
-          Alert.alert(
-            "Settings Detected",
-            `Based on your location in ${geocodeResult.country}, we've set:\n\n• Currency: ${detectedCountry.currencyCode} (${detectedCountry.currencySymbol})\n• Measurement: ${detectedMeasurement}`,
-            [{ text: "OK" }]
-          );
-        } else {
-          Alert.alert(
-            "Partial Detection",
-            `We detected you're in ${geocodeResult.country} and set your measurement system to ${detectedMeasurement}, but couldn't find a matching currency. Please select currency manually.`,
-            [{ text: "OK" }]
-          );
-        }
-      } else {
-        Alert.alert(
-          "Location Detection Failed",
-          "We couldn't determine your country from your location. Please select your currency manually.",
-          [{ text: "OK" }]
-        );
-      }
-    } catch (error) {
-      console.error("Auto-detect settings error:", error);
-      Alert.alert(
-        "Error",
-        "Something went wrong while detecting your location. Please select your currency manually.",
-        [{ text: "OK" }]
-      );
-    } finally {
-      setIsDetectingLocation(false);
-    }
-  };
 
   const handleDeleteAccount = () => {
     setDeleteStep('confirm');
@@ -212,7 +38,7 @@ export default function AccountSettings() {
   const executeDeleteAccount = async () => {
     // Prevent duplicate requests
     if (deleteInProgressRef.current) return;
-    
+
     if (!user?.id) {
       setDeleteError("You must be signed in to delete your account.");
       setDeleteStep('error');
@@ -237,7 +63,7 @@ export default function AccountSettings() {
       if (error) {
         // Try to extract more details from the error
         console.error("Delete account error object:", JSON.stringify(error, null, 2));
-        
+
         // Check if there's context with the actual error message
         let errorMessage = "An error occurred while deleting your account.";
         if ((error as any)?.context?.json) {
@@ -256,7 +82,7 @@ export default function AccountSettings() {
 
       // Show success state briefly before signing out
       setDeleteStep('success');
-      
+
       // Wait a moment to show success message, then sign out
       setTimeout(async () => {
         setShowDeleteConfirmModal(false);
@@ -304,184 +130,6 @@ export default function AccountSettings() {
 
       {/* Content */}
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-        {/* Currency Preference */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="globe" size={20} color="#eb7825" />
-            <Text style={styles.sectionTitle}>Currency Preference</Text>
-          </View>
-
-          <Text style={styles.sectionDescription}>
-            Choose your preferred currency for displaying prices throughout the
-            app. All amounts are converted from USD using current exchange
-            rates.
-          </Text>
-
-          {/* Tip box - commented out
-          <View style={styles.tipBox}>
-            <View style={styles.tipContent}>
-              <Ionicons
-                name="bulb"
-                size={20}
-                color="#eab308"
-                style={styles.tipIcon}
-              />
-              <Text style={styles.tipText}>
-                <Text style={styles.tipBold}>Tip:</Text> Use "Auto-detect" to set both currency and measurement system based on your location. Exchange rates are updated regularly.
-              </Text>
-            </View>
-          </View>
-          */}
-
-          {/* Auto-detect Settings Button */}
-          <TouchableOpacity
-            onPress={handleAutoDetectCurrency}
-            style={styles.autoDetectButton}
-            disabled={isDetectingLocation}
-          >
-            {isDetectingLocation ? (
-              <ActivityIndicator size="small" color="#eb7825" />
-            ) : (
-              <Ionicons name="location" size={18} color="#eb7825" />
-            )}
-            <Text style={styles.autoDetectButtonText}>
-              {isDetectingLocation ? "Detecting..." : "Auto-detect from my location"}
-            </Text>
-          </TouchableOpacity>
-
-          <View style={styles.currencyContainer}>
-            <ScrollView
-              style={styles.currencyScrollView}
-              contentContainerStyle={styles.currencyScrollContent}
-              showsVerticalScrollIndicator={true}
-              nestedScrollEnabled={true}
-            >
-              {regionOrder.map((region) => {
-                const countries = countriesByRegion[region];
-                if (!countries || countries.length === 0) return null;
-                
-                return (
-                  <View key={region}>
-                    <Text style={styles.regionHeader}>
-                      {regionDisplayNames[region] || region}
-                    </Text>
-                    {countries.map((country) => (
-                      <TouchableOpacity
-                        key={country.countryCode}
-                        onPress={() => handleCountryChange(country)}
-                        style={[
-                          styles.currencyItem,
-                          selectedCountry?.countryCode === country.countryCode &&
-                            styles.currencyItemSelected,
-                        ]}
-                      >
-                        <View style={styles.currencyInfo}>
-                          <Text style={styles.currencySymbol}>{country.currencySymbol}</Text>
-                          <View style={styles.currencyDetails}>
-                            <Text style={styles.currencyCode}>{country.countryName}</Text>
-                            <Text style={styles.currencyName}>
-                              {country.currencyCode} ({country.currencySymbol})
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={styles.currencyExample}>
-                          <Text style={styles.currencyRate}>
-                            1 USD = {getRate(country.currencyCode)} {country.currencyCode}
-                          </Text>
-                        </View>
-                        {selectedCountry?.countryCode === country.countryCode && (
-                          <Ionicons
-                            name="checkmark"
-                            size={20}
-                            color="#eb7825"
-                            style={styles.checkIcon}
-                          />
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          {selectedCountry && selectedCountry.currencyCode !== "USD" && (
-            <View style={styles.infoBox}>
-              <Text style={styles.infoText}>
-                <Text style={styles.infoBold}>Selected:</Text>{" "}
-                {selectedCountry.countryName} - {selectedCountry.currencyCode} ({selectedCountry.currencySymbol})
-                {"\n"}
-                Exchange rates are updated regularly and may fluctuate.
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Measurement System */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="resize" size={20} color="#eb7825" />
-            <Text style={styles.sectionTitle}>Measurement System</Text>
-          </View>
-
-          <Text style={styles.sectionDescription}>
-            Choose how distances, sizes, and other measurements are displayed
-            throughout the app.
-          </Text>
-
-          <View style={styles.measurementOptions}>
-            <TouchableOpacity
-              onPress={() => handleMeasurementChange("Imperial")}
-              style={[
-                styles.measurementOption,
-                selectedMeasurement === "imperial" &&
-                  styles.measurementOptionSelected,
-              ]}
-            >
-              <View style={styles.measurementInfo}>
-                <Text style={styles.measurementTitle}>Imperial</Text>
-                <Text style={styles.measurementDescription}>
-                  Miles, feet, inches, Fahrenheit
-                </Text>
-              </View>
-              {selectedMeasurement === "imperial" && (
-                <Ionicons name="checkmark" size={20} color="#eb7825" />
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleMeasurementChange("Metric")}
-              style={[
-                styles.measurementOption,
-                selectedMeasurement === "metric" &&
-                  styles.measurementOptionSelected,
-              ]}
-            >
-              <View style={styles.measurementInfo}>
-                <Text style={styles.measurementTitle}>Metric</Text>
-                <Text style={styles.measurementDescription}>
-                  Kilometers, meters, centimeters, Celsius
-                </Text>
-              </View>
-              {selectedMeasurement === "metric" && (
-                <Ionicons name="checkmark" size={20} color="#eb7825" />
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* Selected info box - commented out
-          <View style={styles.infoBox}>
-            <Text style={styles.infoText}>
-              <Text style={styles.infoBold}>Selected:</Text>{" "}
-              {selectedMeasurement} system
-              {"\n"}
-              This will apply to all distance and measurement displays in the
-              app.
-            </Text>
-          </View>
-          */}
-        </View>
-
         {/* App Information */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -494,14 +142,10 @@ export default function AccountSettings() {
               <Text style={styles.appInfoLabel}>App Version</Text>
               <Text style={styles.appInfoValue}>1.0.0</Text>
             </View>
-            <View style={styles.appInfoRow}>
-              <Text style={styles.appInfoLabel}>Supported Currencies</Text>
-              <Text style={styles.appInfoValue}>{countryCurrencies.length}</Text>
-            </View>
           </View>
         </View>
 
-        {/* Account Lifecycle */}
+        {/* Delete Account */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="trash" size={20} color="#ef4444" />
@@ -702,172 +346,6 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     marginBottom: 16,
     lineHeight: 20,
-  },
-  tipBox: {
-    backgroundColor: "#e0f2fe",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-  },
-  tipContent: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  tipIcon: {
-    marginTop: 2,
-  },
-  tipText: {
-    flex: 1,
-    fontSize: 14,
-    color: "#1e40af",
-    lineHeight: 20,
-  },
-  tipBold: {
-    fontWeight: "600",
-  },
-  autoDetectButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#fef3e2",
-    borderWidth: 1,
-    borderColor: "#eb7825",
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  autoDetectButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#eb7825",
-  },
-  currencyContainer: {
-    marginBottom: 16,
-  },
-  currencyScrollView: {
-    height: 180, // Fixed height to show ~3 currencies
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 8,
-    backgroundColor: "#f9fafb",
-  },
-  currencyScrollContent: {
-    padding: 8,
-  },
-  regionHeader: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#6b7280",
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    marginTop: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  currencyItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 12,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    marginBottom: 4,
-    backgroundColor: "white",
-  },
-  currencyItemSelected: {
-    borderColor: "#eb7825",
-    backgroundColor: "#fef3e2",
-  },
-  currencyInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flex: 1,
-  },
-  currencySymbol: {
-    fontSize: 18,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  currencyDetails: {
-    flex: 1,
-  },
-  currencyCode: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  currencyName: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  currencyExample: {
-    alignItems: "flex-end",
-    marginRight: 8,
-  },
-  currencyExampleText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  currencyRate: {
-    fontSize: 12,
-    color: "#6b7280",
-  },
-  checkIcon: {
-    marginLeft: 8,
-  },
-  infoBox: {
-    marginTop: 16,
-    padding: 12,
-    backgroundColor: "#fef3e2",
-    borderWidth: 1,
-    borderColor: "#fed7aa",
-    borderRadius: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: "#eb7825",
-    lineHeight: 20,
-  },
-  infoBold: {
-    fontWeight: "600",
-  },
-  measurementOptions: {
-    gap: 12,
-  },
-  measurementOption: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  measurementOptionSelected: {
-    borderColor: "#eb7825",
-    backgroundColor: "#fef3e2",
-  },
-  measurementInfo: {
-    flex: 1,
-  },
-  measurementTitle: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  measurementDescription: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginTop: 2,
   },
   appInfoContainer: {
     gap: 12,

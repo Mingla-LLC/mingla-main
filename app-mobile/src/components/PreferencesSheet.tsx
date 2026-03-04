@@ -38,6 +38,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
 import { getRate } from "../services/currencyService";
 import { mixpanelService } from "../services/mixpanelService";
+import { detectLocaleFromCoordinates } from "../utils/localeDetection";
+import { useAppStore } from "../store/appStore";
 import {
   ExperienceTypesSection,
   CategoriesSection,
@@ -139,6 +141,7 @@ export default function PreferencesSheet({
   sessionName,
 }: PreferencesSheetProps) {
   const { user } = useAuthSimple();
+  const { profile, setProfile } = useAppStore();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const appLayout = useAppLayout();
@@ -633,10 +636,32 @@ export default function PreferencesSheet({
     setShowSuggestions(false);
     setIsInputFocused(false);
 
+    // Auto-detect locale from custom location coordinates (fire-and-forget)
+    if (suggestion.location) {
+      detectLocaleFromCoordinates(suggestion.location.lat, suggestion.location.lng).then((detected) => {
+        if (user?.id) {
+          PreferencesService.updateUserProfile(user.id, {
+            currency: detected.currency,
+            measurement_system: detected.measurementSystemDb,
+          }).catch((err) => {
+            console.warn('Locale DB write failed in handleSuggestionSelect:', err?.message);
+          });
+        }
+        const currentProfile = useAppStore.getState().profile;
+        if (currentProfile) {
+          setProfile({
+            ...currentProfile,
+            currency: detected.currency,
+            measurement_system: detected.measurementSystemDb,
+          });
+        }
+      }).catch(() => {});
+    }
+
     setTimeout(() => {
       isSelectingSuggestion.current = false;
     }, 300);
-  }, []);
+  }, [user?.id, setProfile]);
 
   const handleInputBlur = useCallback(() => {
     setTimeout(() => {
@@ -652,8 +677,31 @@ export default function PreferencesSheet({
     if (value) {
       setSearchLocation('');
       setSelectedCoords(null);
+
+      // Auto-detect locale from GPS coordinates (fire-and-forget)
+      locationService.getCurrentLocation().then((loc) => {
+        if (!loc) return;
+        detectLocaleFromCoordinates(loc.latitude, loc.longitude).then((detected) => {
+          if (user?.id) {
+            PreferencesService.updateUserProfile(user.id, {
+              currency: detected.currency,
+              measurement_system: detected.measurementSystemDb,
+            }).catch((err) => {
+              console.warn('Locale DB write failed in handleGpsToggle:', err?.message);
+            });
+          }
+          const currentProfile = useAppStore.getState().profile;
+          if (currentProfile) {
+            setProfile({
+              ...currentProfile,
+              currency: detected.currency,
+              measurement_system: detected.measurementSystemDb,
+            });
+          }
+        }).catch(() => {});
+      }).catch(() => {});
     }
-  }, []);
+  }, [user?.id, setProfile]);
 
   const countChanges = useCallback((): number => {
     if (!initialPreferences) return 0;

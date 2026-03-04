@@ -257,7 +257,10 @@ export function useAppState() {
     active: true,
   });
 
-  const [accountPreferences, setAccountPreferences] = useState({
+  const [accountPreferences, setAccountPreferences] = useState<{
+    currency: string;
+    measurementSystem: "Metric" | "Imperial";
+  }>({
     currency: "USD",
     measurementSystem: "Imperial",
   });
@@ -362,7 +365,7 @@ export function useAppState() {
 
       // Also sync account preferences from profile if available
       if (profile.currency || profile.measurement_system) {
-        const updatedPrefs = {
+        const updatedPrefs: { currency: string; measurementSystem: "Metric" | "Imperial" } = {
           currency: profile.currency || "USD",
           measurementSystem: profile.measurement_system === "metric" ? "Metric" : "Imperial",
         };

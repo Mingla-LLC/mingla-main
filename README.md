@@ -87,9 +87,10 @@ Mingla/
 │   │   │   ├── friendLink.ts              # Friend link request/response types
 │   │   │   ├── personAudio.ts             # Audio clip types
 │   │   │   └── holidayTypes.ts            # Holiday type definitions
-│   │   └── utils/                           # 16 utility modules
+│   │   └── utils/                           # 17 utility modules
 │   │       ├── categoryUtils.ts            # Category slug/icon/color lookups
 │   │       ├── cardConverters.ts           # Card type conversions + dedup
+│   │       ├── localeDetection.ts         # Auto currency/measurement from coordinates
 │   │       ├── responsive.ts              # Proportional scaling (iPhone 14 base)
 │   │       └── ... (13 more)
 │   ├── app.json                             # Expo config (bundle ID, permissions, plugins)
@@ -209,7 +210,7 @@ Mingla/
 ### Profile and Settings
 
 - Uploadable avatar, display name, username, gamified stats (achievements, streaks, milestones)
-- Currency selection (50+ currencies), measurement system, notification toggle
+- Auto locale detection: currency and measurement system automatically set from GPS/manual location during onboarding and preference changes (reverse geocode → country → currency + Imperial/Metric)
 - Privacy controls for profile visibility, location sharing, budget sharing
 - Account deletion with full cascade across all tables
 
@@ -502,11 +503,13 @@ The `oauth-redirect/` directory contains a static site deployed to Vercel/Netlif
 
 ## Recent Changes
 
-- **expo-document-picker Fix:** Installed missing `expo-document-picker` dependency (~14.0.8, SDK 54 compatible) that was imported in `personAudioService.ts` but never added to package.json, causing a fatal Metro resolution crash at bundle time.
+- **Location Step Freeze Fix (2026-03-04):** Fixed compound defect that caused the onboarding location step to freeze at "Locked in — {city}". Eliminated 4 root causes (animation opacity reset on status change, no manual escape from auto-advance, stale goNext closure in setTimeout, double-tap race condition), 3 contributing factors (uncancellable timeout, missing deps, silent null-location failure), and 3 hidden flaws (setState side effect, no GPS timeout, StyleSheet inside component body).
 
-- **Onboarding V2:** Complete replacement of the old 10-step onboarding with a 5-step guided experience. Phone verification via Twilio Verify OTP (2 new edge functions: send-otp, verify-otp). State machine hook replaces single-integer step tracking. Intents stored in dedicated `preferences.intents` column. Background card generation during Step 5 ensures 20+ cards ready at launch.
+- **Auto Locale Detection (hardened):** Currency and measurement system automatically detected from user location. GPS onboarding uses synchronous country lookup from Expo's geocode result (zero extra network calls); manual location and preferences use async Nominatim reverse-geocode as fire-and-forget. Falls back to USD/Imperial on any failure.
 
-- **New Onboarding UI Components:** SegmentedProgressBar, PhoneInput, OTPInput, CountryPickerModal, OnboardingAudioRecorder, OnboardingShell, CategoryTile, PulseDotLoader. Six old step components deleted (VibeSelectionStep, BudgetRangeStep, DateTimePrefStep, MagicStep, TravelConstraintStep, WelcomeStep).
+- **Account Settings Cleanup:** Only App Information and Delete Account sections remain.
+
+- **Locale Detection Utilities:** `detectLocaleFromCoordinates()` (async, Nominatim-based) and `detectLocaleFromCountryName()` (synchronous). Both return `measurementSystemDb` field for direct DB writes.
 
 ---
 

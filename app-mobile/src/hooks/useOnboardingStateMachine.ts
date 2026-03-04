@@ -70,6 +70,7 @@ export function useOnboardingStateMachine({
   }, [getStep4Sequence, getStep5Sequence])
 
   const goNext = useCallback(() => {
+    let shouldLaunch = false
     setState((prev) => {
       const seq = getSequence(prev.step)
       const idx = seq.indexOf(prev.subStep)
@@ -90,11 +91,15 @@ export function useOnboardingStateMachine({
         return next
       }
 
-      // At end of Step 5 — LAUNCH
+      // At end of Step 5 — flag for launch (side effect handled outside setState)
       logger.onboarding('LAUNCH triggered from end of Step 5')
-      setIsLaunch(true)
+      shouldLaunch = true
       return prev
     })
+    // Set launch state outside the updater — setState updaters must be pure functions
+    if (shouldLaunch) {
+      setIsLaunch(true)
+    }
   }, [getSequence])
 
   const goBack = useCallback(() => {

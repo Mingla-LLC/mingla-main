@@ -369,7 +369,7 @@ function AppContent() {
       mixpanelService.trackLogin({
         id: user.id,
         email: user.email,
-        provider: user.app_metadata?.provider ?? "email",
+        provider: (user as any).app_metadata?.provider ?? "email",
       });
     }
   }, [isAuthenticated, user?.id]);
@@ -1438,16 +1438,14 @@ function AppContent() {
     return (
       <ErrorBoundary>
         <OnboardingFlow
-          onComplete={(data) => {
+          onComplete={() => {
             logger.nav('OnboardingFlow completed — transitioning to home');
-            setOnboardingData(data);
             // has_completed_onboarding is already set in database by OnboardingFlow
             // Just update local state
             setHasCompletedOnboarding(true);
             setShowOnboardingFlow(false);
             setCurrentPage("home");
           }}
-          initialAccountType={onboardingData?.account_type}
         />
       </ErrorBoundary>
     );

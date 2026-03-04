@@ -27,6 +27,238 @@ interface LocationSetupStepProps {
   onRequestLocationPermission?: () => Promise<void>;
 }
 
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "white",
+  },
+  progressSection: {
+    paddingHorizontal: 24,
+
+    paddingBottom: 8,
+  },
+  progressBarContainer: {
+    marginBottom: 8,
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: "#e5e7eb",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: 4,
+    backgroundColor: "#eb7825",
+    borderRadius: 2,
+  },
+  progressTextContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  progressTextLeft: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  progressTextRight: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 120,
+  },
+  titleSection: {
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#111827",
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "#6b7280",
+    lineHeight: 22,
+  },
+  useLocationButton: {
+    backgroundColor: "#ffedd5",
+    borderWidth: 1.5,
+    borderColor: "#eb7825",
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+    width: "100%",
+  },
+  useLocationButtonText: {
+    color: "#eb7825",
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 10,
+  },
+  separator: {
+    alignItems: "center",
+    marginVertical: 20,
+  },
+  separatorText: {
+    fontSize: 14,
+    color: "#9ca3af",
+    fontWeight: "400",
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderWidth: 1.5,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 8,
+  },
+  inputContainerFocused: {
+    borderColor: "#eb7825",
+    borderWidth: 2,
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 16,
+    color: "#111827",
+    padding: 0,
+  },
+  helperText: {
+    fontSize: 12,
+    color: "#9ca3af",
+    marginBottom: 24,
+    lineHeight: 18,
+  },
+  popularLocationsSection: {
+    marginTop: 4,
+  },
+  popularLocationsTitle: {
+    fontSize: 14,
+    fontWeight: "400",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  popularLocationsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  popularLocationChip: {
+    backgroundColor: "#f3f4f6",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  popularLocationChipText: {
+    fontSize: 14,
+    color: "#111827",
+    fontWeight: "400",
+  },
+  navigationContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: "white",
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+  },
+  backButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 8,
+    backgroundColor: "white",
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: "#111827",
+    fontWeight: "500",
+    marginLeft: 4,
+  },
+  nextButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    minWidth: 100,
+  },
+  nextButtonEnabled: {
+    backgroundColor: "#eb7825",
+  },
+  nextButtonDisabled: {
+    backgroundColor: "#e5e7eb",
+    opacity: 0.6,
+  },
+  nextButtonText: {
+    fontSize: 16,
+    fontWeight: "500",
+    marginRight: 4,
+  },
+  nextButtonTextEnabled: {
+    color: "#ffffff",
+  },
+  nextButtonTextDisabled: {
+    color: "#6b7280",
+  },
+  suggestionsContainer: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    marginTop: 4,
+    marginBottom: 8,
+    maxHeight: 200,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  suggestionTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  suggestionText: {
+    fontSize: 15,
+    color: "#111827",
+    fontWeight: "500",
+  },
+  suggestionSubtext: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+});
+
 const LocationSetupStep = ({
   onNext,
   onBack,
@@ -61,238 +293,6 @@ const LocationSetupStep = ({
       }
     };
   }, []);
-
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: "white",
-    },
-    progressSection: {
-      paddingHorizontal: 24,
-
-      paddingBottom: 8,
-    },
-    progressBarContainer: {
-      marginBottom: 8,
-    },
-    progressBar: {
-      height: 4,
-      backgroundColor: "#e5e7eb",
-      borderRadius: 2,
-      overflow: "hidden",
-    },
-    progressFill: {
-      height: 4,
-      backgroundColor: "#eb7825",
-      borderRadius: 2,
-    },
-    progressTextContainer: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginTop: 4,
-    },
-    progressTextLeft: {
-      fontSize: 12,
-      color: "#6b7280",
-    },
-    progressTextRight: {
-      fontSize: 12,
-      color: "#6b7280",
-    },
-    scrollContent: {
-      flexGrow: 1,
-      paddingHorizontal: 24,
-      paddingTop: 32,
-      paddingBottom: 120,
-    },
-    titleSection: {
-      marginBottom: 24,
-    },
-    title: {
-      fontSize: 32,
-      fontWeight: "bold",
-      color: "#111827",
-      marginBottom: 8,
-      letterSpacing: -0.5,
-    },
-    subtitle: {
-      fontSize: 16,
-      color: "#6b7280",
-      lineHeight: 22,
-    },
-    useLocationButton: {
-      backgroundColor: "#ffedd5",
-      borderWidth: 1.5,
-      borderColor: "#eb7825",
-      borderRadius: 12,
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 20,
-      width: "100%",
-    },
-    useLocationButtonText: {
-      color: "#eb7825",
-      fontSize: 16,
-      fontWeight: "600",
-      marginLeft: 10,
-    },
-    separator: {
-      alignItems: "center",
-      marginVertical: 20,
-    },
-    separatorText: {
-      fontSize: 14,
-      color: "#9ca3af",
-      fontWeight: "400",
-    },
-    inputContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: "white",
-      borderWidth: 1.5,
-      borderColor: "#e5e7eb",
-      borderRadius: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 16,
-      marginBottom: 8,
-    },
-    inputContainerFocused: {
-      borderColor: "#eb7825",
-      borderWidth: 2,
-    },
-    inputIcon: {
-      marginRight: 12,
-    },
-    textInput: {
-      flex: 1,
-      fontSize: 16,
-      color: "#111827",
-      padding: 0,
-    },
-    helperText: {
-      fontSize: 12,
-      color: "#9ca3af",
-      marginBottom: 24,
-      lineHeight: 18,
-    },
-    popularLocationsSection: {
-      marginTop: 4,
-    },
-    popularLocationsTitle: {
-      fontSize: 14,
-      fontWeight: "400",
-      color: "#111827",
-      marginBottom: 12,
-    },
-    popularLocationsContainer: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-    },
-    popularLocationChip: {
-      backgroundColor: "#f3f4f6",
-      borderRadius: 20,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      marginRight: 8,
-      marginBottom: 8,
-    },
-    popularLocationChipText: {
-      fontSize: 14,
-      color: "#111827",
-      fontWeight: "400",
-    },
-    navigationContainer: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: 24,
-      paddingVertical: 16,
-      backgroundColor: "white",
-      borderTopWidth: 1,
-      borderTopColor: "#f3f4f6",
-    },
-    backButton: {
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      flexDirection: "row",
-      alignItems: "center",
-      borderRadius: 8,
-      backgroundColor: "white",
-    },
-    backButtonText: {
-      fontSize: 16,
-      color: "#111827",
-      fontWeight: "500",
-      marginLeft: 4,
-    },
-    nextButton: {
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: 8,
-      minWidth: 100,
-    },
-    nextButtonEnabled: {
-      backgroundColor: "#eb7825",
-    },
-    nextButtonDisabled: {
-      backgroundColor: "#e5e7eb",
-      opacity: 0.6,
-    },
-    nextButtonText: {
-      fontSize: 16,
-      fontWeight: "500",
-      marginRight: 4,
-    },
-    nextButtonTextEnabled: {
-      color: "#ffffff",
-    },
-    nextButtonTextDisabled: {
-      color: "#6b7280",
-    },
-    suggestionsContainer: {
-      backgroundColor: "white",
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: "#e5e7eb",
-      marginTop: 4,
-      marginBottom: 8,
-      maxHeight: 200,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
-    },
-    suggestionItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: "#f3f4f6",
-    },
-    suggestionTextContainer: {
-      flex: 1,
-      marginLeft: 12,
-    },
-    suggestionText: {
-      fontSize: 15,
-      color: "#111827",
-      fontWeight: "500",
-    },
-    suggestionSubtext: {
-      fontSize: 13,
-      color: "#6b7280",
-      marginTop: 2,
-    },
-  });
 
   const popularLocations = [
     "San Francisco, CA",
