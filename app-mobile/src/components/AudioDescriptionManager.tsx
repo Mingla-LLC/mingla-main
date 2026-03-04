@@ -46,6 +46,7 @@ export default function AudioDescriptionManager({
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  const recordingRef = useRef<Audio.Recording | null>(null);
   const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -87,33 +88,9 @@ export default function AudioDescriptionManager({
     };
   }, [sound]);
 
-  const handleStartRecording = useCallback(async () => {
-    if (maxReached || !editable) return;
-
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const rec = await startRecording();
-      setRecording(rec);
-      setIsRecording(true);
-      setRecordingDuration(0);
-
-      durationInterval.current = setInterval(() => {
-        setRecordingDuration((prev) => {
-          if (prev + 1 >= MAX_CLIP_DURATION_SECONDS) {
-            // Auto-stop at max duration
-            handleStopRecording();
-            return prev;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } catch (err: any) {
-      Alert.alert("Recording Error", err.message || "Could not start recording");
-    }
-  }, [maxReached, editable]);
-
   const handleStopRecording = useCallback(async () => {
-    if (!recording) return;
+    const currentRecording = recordingRef.current;
+    if (!currentRecording) return;
 
     try {
       if (durationInterval.current) {
@@ -121,7 +98,8 @@ export default function AudioDescriptionManager({
         durationInterval.current = null;
       }
 
-      const result = await stopRecording(recording);
+      const result = await stopRecording(currentRecording);
+      recordingRef.current = null;
       setRecording(null);
       setIsRecording(false);
 
@@ -140,11 +118,37 @@ export default function AudioDescriptionManager({
       onClipsChange([...clips, tempClip]);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } catch (err: any) {
+      recordingRef.current = null;
       setRecording(null);
       setIsRecording(false);
       Alert.alert("Recording Error", err.message || "Could not stop recording");
     }
-  }, [recording, personId, userId, clips, onClipsChange, recordingDuration]);
+  }, [personId, userId, clips, onClipsChange, recordingDuration]);
+
+  const handleStartRecording = useCallback(async () => {
+    if (maxReached || !editable) return;
+
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const rec = await startRecording();
+      recordingRef.current = rec;
+      setRecording(rec);
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      durationInterval.current = setInterval(() => {
+        setRecordingDuration((prev) => {
+          if (prev + 1 >= MAX_CLIP_DURATION_SECONDS) {
+            handleStopRecording();
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    } catch (err: any) {
+      Alert.alert("Recording Error", err.message || "Could not start recording");
+    }
+  }, [maxReached, editable, handleStopRecording]);
 
   const handleToggleRecording = useCallback(() => {
     if (isRecording) {

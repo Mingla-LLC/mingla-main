@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { batchSearchPlaces, fetchNextPage } from '../_shared/placesCache.ts';
+import { batchSearchPlaces, fetchNextPage, drainPaginationTokens } from '../_shared/placesCache.ts';
 import {
   serveCardsFromPipeline,
   upsertPlaceToPool,
@@ -492,22 +492,27 @@ serve(async (req: Request) => {
           { travelMode },
         );
 
-        // Serve if pool has >= 80% of limit to ensure full batches
-        if (poolResult.cards.length >= Math.ceil(limit * 0.8)) {
+        // CF-003 fix: serve any pool result > 0, not just >= 80%
+        // serveCardsFromPipeline already gap-fills from Google when pool is short
+        if (poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
-          console.log(`[discover-cards] Served ${poolResult.cards.length} from pool (offset=${poolOffset}) in ${elapsed}ms`);
+          console.log(`[discover-cards] Served ${poolResult.cards.length} from pipeline (offset=${poolOffset}) in ${elapsed}ms`);
 
-          const poolHasMoreAtNextOffset = poolResult.totalPoolSize > (poolOffset + limit);
+          // RC-003 fix: use the pipeline's hasMore (based on unseen count), not raw totalPoolSize
           return new Response(JSON.stringify({
             cards: poolResult.cards,
-            total: poolResult.totalPoolSize,
+            total: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
             source: poolResult.fromApi > 0 ? 'mixed' : 'pool',
-            metadata: { hasMore: poolResult.cards.length >= limit || poolHasMoreAtNextOffset, poolSize: poolResult.totalPoolSize, batchSeed: batchSeed ?? 0 },
+            metadata: {
+              hasMore: poolResult.hasMore,
+              poolSize: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
+              batchSeed: batchSeed ?? 0,
+            },
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
         // ── Pool exhausted at this offset — try expanding via nextPageToken ──
-        if (poolResult.cards.length < Math.ceil(limit * 0.8) && poolOffset > 0) {
+        if (poolResult.cards.length === 0 && poolOffset > 0) {
           console.log(`[discover-cards] Pool exhausted at offset ${poolOffset}, attempting nextPage expansion`);
 
           const cacheEntries = await getCacheEntriesWithTokens(supabaseAdmin, location, categories, radiusMeters);
@@ -531,16 +536,19 @@ serve(async (req: Request) => {
               GOOGLE_PLACES_API_KEY,
               { travelMode },
             );
-            if (retryResult.cards.length >= Math.ceil(limit * 0.8)) {
+            if (retryResult.cards.length > 0) {
               const elapsed = Date.now() - t0;
               console.log(`[discover-cards] Served ${retryResult.cards.length} from expanded pool in ${elapsed}ms`);
 
-              const retryHasMore = retryResult.totalPoolSize > (poolOffset + limit);
               return new Response(JSON.stringify({
                 cards: retryResult.cards,
-                total: retryResult.totalPoolSize,
+                total: retryResult.totalUnseenCount ?? retryResult.totalPoolSize,
                 source: 'pool',
-                metadata: { hasMore: retryResult.cards.length >= limit || retryHasMore, poolSize: retryResult.totalPoolSize, batchSeed: batchSeed ?? 0 },
+                metadata: {
+                  hasMore: retryResult.hasMore,
+                  poolSize: retryResult.totalUnseenCount ?? retryResult.totalPoolSize,
+                  batchSeed: batchSeed ?? 0,
+                },
               }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             }
           }
@@ -552,12 +560,15 @@ serve(async (req: Request) => {
           const elapsed = Date.now() - t0;
           console.log(`[discover-cards] Pipeline returned ${poolResult.cards.length} (${poolResult.fromPool} pool + ${poolResult.fromApi} API) in ${elapsed}ms — serving partial`);
 
-          const poolHasMoreAtNextOffset = poolResult.totalPoolSize > (poolOffset + limit);
           return new Response(JSON.stringify({
             cards: poolResult.cards,
-            total: poolResult.totalPoolSize,
+            total: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
             source: 'mixed',
-            metadata: { hasMore: poolResult.cards.length >= limit || poolHasMoreAtNextOffset, poolSize: poolResult.totalPoolSize, batchSeed: batchSeed ?? 0 },
+            metadata: {
+              hasMore: poolResult.hasMore,
+              poolSize: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
+              batchSeed: batchSeed ?? 0,
+            },
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
@@ -602,6 +613,25 @@ serve(async (req: Request) => {
     );
 
     console.log(`[discover-cards] Places search: ${cacheHits} cache hits, ${apiCallsMade} API calls`);
+
+    // RC-004 fix: proactively consume remaining Google pagination tokens
+    // Fire-and-forget — do not block the response
+    drainPaginationTokens(
+      supabaseAdmin,
+      GOOGLE_PLACES_API_KEY,
+      allPlaceTypes,
+      location.lat,
+      location.lng,
+      radiusMeters,
+    ).then(async ({ totalNewPlaces }) => {
+      if (totalNewPlaces > 0) {
+        // The places are already in the cache. Re-read them and expand the pool.
+        // On the NEXT batch request, serveCardsFromPipeline will find them in the pool.
+        // No additional work needed here — batchSearchPlaces will return cached results
+        // that include all pages on the next call.
+        console.log(`[discover-cards] Background drain complete: ${totalNewPlaces} new places now in cache for next batch`);
+      }
+    }).catch(() => {});
 
     // ── Merge & deduplicate across all types, track category per place ────
     const seen = new Set<string>();
@@ -709,7 +739,7 @@ serve(async (req: Request) => {
     // ── warmPool: return empty response after storing ─────────────────────
     if (isWarmPool) {
       // Store to pool in background then return empty
-      storeResultsInPoolBatched(supabaseAdmin, batch, cards, categories, userId);
+      storeResultsInPoolBatched(supabaseAdmin, batch, cards, categories, userId, true);
 
       return new Response(
         JSON.stringify({ cards: [], total: totalAvailable, source: 'warm' }),
@@ -740,6 +770,7 @@ function storeResultsInPoolBatched(
   cards: any[],
   categories: string[],
   userId: string | undefined,
+  isWarmPool: boolean = false,
 ): void {
   // Execute async work without awaiting (fire-and-forget)
   (async () => {
@@ -840,8 +871,8 @@ function storeResultsInPoolBatched(
         console.warn('[discover-cards] Batch card insert error (may be duplicates):', cardError.message);
       }
 
-      // ── Step 3: Record impressions for served cards ───────────────────
-      if (userId && insertedCards && insertedCards.length > 0) {
+      // ── Step 3: Record impressions for served cards (SKIP for warmPool — RC-005 fix)
+      if (!isWarmPool && userId && insertedCards && insertedCards.length > 0) {
         const cardPoolIds = insertedCards.map((c: any) => c.id);
         await recordImpressions(supabaseAdmin, userId, cardPoolIds);
       }

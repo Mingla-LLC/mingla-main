@@ -41,7 +41,14 @@ CREATE POLICY "Users can insert as requester"
   ON public.friend_links FOR INSERT
   WITH CHECK (auth.uid() = requester_id);
 
-CREATE POLICY "Users can update links they are part of"
+-- Target can only accept or decline pending links
+CREATE POLICY "Target can respond to pending links"
   ON public.friend_links FOR UPDATE
-  USING (auth.uid() = requester_id OR auth.uid() = target_id)
-  WITH CHECK (auth.uid() = requester_id OR auth.uid() = target_id);
+  USING (auth.uid() = target_id AND status = 'pending')
+  WITH CHECK (auth.uid() = target_id AND status IN ('accepted', 'declined'));
+
+-- Requester can only cancel pending links
+CREATE POLICY "Requester can cancel pending links"
+  ON public.friend_links FOR UPDATE
+  USING (auth.uid() = requester_id AND status = 'pending')
+  WITH CHECK (auth.uid() = requester_id AND status = 'cancelled');

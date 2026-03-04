@@ -7,6 +7,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ExperiencesService,
   UserPreferences,
@@ -135,6 +136,22 @@ export const RecommendationsProvider: React.FC<
   } = useSessionManagement();
 
   const shouldCheckCache = cardsCache.isCacheLoaded;
+
+  // HF-003 fix: Load dismissed cards from AsyncStorage on mount
+  useEffect(() => {
+    if (!user?.id) return;
+    const key = `dismissed_cards_${user.id}`;
+    AsyncStorage.getItem(key).then(stored => {
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setDismissedCards(parsed);
+          }
+        } catch {}
+      }
+    }).catch(() => {});
+  }, [user?.id]);
 
   // ── Session Resolution ──────────────────────────────────────────────────
   const resolvedSessionId = React.useMemo(() => {
@@ -356,8 +373,18 @@ export const RecommendationsProvider: React.FC<
 
   // ── Dismissed card callbacks ─────────────────────────────────────────────
   const addDismissedCard = useCallback((card: Recommendation) => {
-    setDismissedCards((prev) => [...prev, card]);
-  }, []);
+    setDismissedCards(prev => {
+      const updated = [...prev, card];
+      // HF-003 fix: persist to AsyncStorage
+      if (user?.id) {
+        AsyncStorage.setItem(
+          `dismissed_cards_${user.id}`,
+          JSON.stringify(updated)
+        ).catch(() => {});
+      }
+      return updated;
+    });
+  }, [user?.id]);
 
   const clearDismissedCards = useCallback(() => {
     setDismissedCards([]);
@@ -398,6 +425,10 @@ export const RecommendationsProvider: React.FC<
       previousBatchRef.current = [];
       setIsRefreshingAfterPrefChange(true);
       setDismissedCards([]);
+      // HF-003 fix: clear dismissed cards from AsyncStorage on preference change
+      if (user?.id) {
+        AsyncStorage.removeItem(`dismissed_cards_${user.id}`).catch(() => {});
+      }
       setIsSlowBatchLoad(false);
       // Reset warm pool so it re-fires with new preferences
       warmPoolFired.current = false;

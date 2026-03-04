@@ -11,7 +11,7 @@ DELETE FROM public.card_pool a
 USING public.card_pool b
 WHERE a.google_place_id IS NOT NULL
   AND a.google_place_id = b.google_place_id
-  AND a.id < b.id;
+  AND a.popularity_score < b.popularity_score;
 
 -- Step 2: Add the unique index (partial — only where google_place_id is not null)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_card_pool_unique_google_place_id
@@ -122,3 +122,8 @@ BEGIN
   OFFSET p_offset;
 END;
 $$;
+
+-- ── Security: Restrict query_pool_cards to service_role only ─────────────────
+-- Prevent end users from calling this function directly via PostgREST
+REVOKE EXECUTE ON FUNCTION public.query_pool_cards FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.query_pool_cards TO service_role;

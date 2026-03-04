@@ -76,9 +76,24 @@ serve(async (req: Request) => {
   try {
     // Parse body
     const body: RequestBody = await req.json();
-    const { linkedUserId, occasion, location, radius = 10000, isBirthday = false } = body;
+    const { linkedUserId, occasion, location, radius: rawRadius = 10000, isBirthday: rawIsBirthday = false } = body;
 
     // ── Validation ─────────────────────────────────────────────────────────
+
+    // Occasion
+    if (!occasion || typeof occasion !== "string" || occasion.length > 100) {
+      return new Response(
+        JSON.stringify({ error: "Invalid or missing occasion" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Sanitize radius and isBirthday
+    const radius = typeof rawRadius === "number" && rawRadius > 0 && rawRadius <= 50000 ? rawRadius : 10000;
+    const isBirthday = rawIsBirthday === true;
 
     // Auth
     const authHeader = req.headers.get("Authorization");

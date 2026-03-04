@@ -34,6 +34,12 @@ import { useSavedPeople, useCreatePerson, useDeletePerson, useGeneratePersonExpe
 import { generateInitials } from "../utils/stringUtils";
 import type { SavedPerson } from "../services/savedPeopleService";
 import { mixpanelService } from "../services/mixpanelService";
+import AddPersonModal from "./AddPersonModal";
+import UserSearchSheet from "./UserSearchSheet";
+import LinkRequestBanner from "./LinkRequestBanner";
+import PersonEditSheet from "./PersonEditSheet";
+import PersonHolidayView from "./PersonHolidayView";
+import { usePendingLinkRequests, useRespondToFriendLink } from "../hooks/useFriendLinks";
 
 // Storage key for saved people
 const SAVED_PEOPLE_STORAGE_KEY = "mingla_saved_people";
@@ -779,11 +785,8 @@ export default function DiscoverScreen({
   
   // Add Person Modal state
   const [isAddPersonModalVisible, setIsAddPersonModalVisible] = useState(false);
-  const [personName, setPersonName] = useState("");
-  const [personBirthday, setPersonBirthday] = useState<Date | null>(null);
-  const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
-  const [personGender, setPersonGender] = useState<"male" | "female" | "other" | null>(null);
-  const [nameError, setNameError] = useState<string | null>(null);
+  const [isUserSearchVisible, setIsUserSearchVisible] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<SavedPerson | null>(null);
 
   // Phase 2: Person selector — hooks disabled to prevent unnecessary Supabase queries.
   // The UI still renders but with stub data. Re-enable hooks when person selector UI ships.
@@ -791,7 +794,6 @@ export default function DiscoverScreen({
   const deletePersonMutation = useDeletePerson();
   const generateExperiencesMutation = useGeneratePersonExperiences();
   const [selectedPersonId, setSelectedPersonId] = useState<string>("for-you");
-  const [personDescription, setPersonDescription] = useState("");
   // const { data: personExperiences = [] } = usePersonExperiences(
   //   selectedPersonId !== "for-you" ? selectedPersonId : undefined
   // );
@@ -872,6 +874,10 @@ export default function DiscoverScreen({
   const { data: savedPeopleData = [], isLoading: isPeopleLoading } = useSavedPeople(user?.id);
   const savedPeople: SavedPerson[] = savedPeopleData;
 
+  // Friend link requests
+  const { data: pendingLinkRequests = [] } = usePendingLinkRequests(user?.id ?? "");
+  const respondToLinkMutation = useRespondToFriendLink();
+
   // Get the currently selected person (null if "for-you" is selected)
   const selectedPerson = useMemo(() => {
     if (selectedPersonId === "for-you") return null;
@@ -916,12 +922,12 @@ export default function DiscoverScreen({
     }
 
     // Check for Mother's Day (2nd Sunday of May) - within 2 weeks before
-    if (currentMonth === 4 && currentDay >= 1 && currentDay <= 14 && person?.gender === "female") {
+    if (currentMonth === 4 && currentDay >= 1 && currentDay <= 14 && person?.gender === "woman") {
       holidays.push("mothers-day");
     }
 
     // Check for Father's Day (3rd Sunday of June) - within 2 weeks before
-    if (currentMonth === 5 && currentDay >= 7 && currentDay <= 21 && person?.gender === "male") {
+    if (currentMonth === 5 && currentDay >= 7 && currentDay <= 21 && person?.gender === "man") {
       holidays.push("fathers-day");
     }
 
@@ -961,17 +967,17 @@ export default function DiscoverScreen({
   }, []);
 
   // Get gender-appropriate categories
-  const getGenderCategories = useCallback((gender: "male" | "female" | "other" | null): string[] | null => {
+  const getGenderCategories = useCallback((gender: string | null): string[] | null => {
     if (!gender) return null;
     // Return categories that tend to resonate more with specific genders
     // null means no filter (show all)
-    if (gender === "female") {
+    if (gender === "woman") {
       return ["Wellness", "Drink", "Creative & Arts", "Fine Dining", "Picnic"];
     }
-    if (gender === "male") {
+    if (gender === "man") {
       return ["Play", "Casual Eats", "Fine Dining", "Drink", "Watch"];
     }
-    return null; // "other" - show all
+    return null; // all other genders - show all
   }, []);
 
   // ── User preference categories (drives which categories the Discover API fetches) ──
@@ -1085,7 +1091,7 @@ export default function DiscoverScreen({
             name: string;
             initials: string;
             birthday: string | null;
-            gender: "male" | "female" | "other" | null;
+            gender: string | null;
             createdAt: string;
           }>;
           for (const person of oldPeople) {
@@ -2499,17 +2505,10 @@ export default function DiscoverScreen({
   // Add Person Modal handlers
   const handleOpenAddPersonModal = () => {
     setIsAddPersonModalVisible(true);
-    setNameError(null);
   };
 
   const handleCloseAddPersonModal = () => {
     setIsAddPersonModalVisible(false);
-    setPersonName("");
-    setPersonBirthday(null);
-    setShowBirthdayPicker(false);
-    setPersonGender(null);
-    setPersonDescription("");
-    setNameError(null);
   };
 
   // Build occasions for experience generation
@@ -2547,40 +2546,6 @@ export default function DiscoverScreen({
     return occasions.slice(0, 10); // Cap at 10 occasions to limit API calls
   };
 
-  const handleAddPerson = async () => {
-    const trimmedName = personName.trim();
-    if (!trimmedName) {
-      setNameError("Name is required");
-      return;
-    }
-
-    if (!user?.id) return;
-
-    try {
-      // Create person via mutation (persists to Supabase & invalidates query cache)
-      await createPersonMutation.mutateAsync({
-        user_id: user.id,
-        name: trimmedName,
-        initials: generateInitials(trimmedName),
-        birthday: personBirthday ? personBirthday.toISOString() : null,
-        gender: personGender,
-        description: null,
-      });
-
-      // Track in Mixpanel
-      mixpanelService.trackDiscoverPersonAdded({
-        personName: trimmedName,
-        hasBirthday: !!personBirthday,
-        gender: personGender,
-      });
-
-      // Close modal and reset form
-      handleCloseAddPersonModal();
-    } catch (error) {
-      console.error("Failed to add person:", error);
-    }
-  };
-
   // Handle person pill selection ("for-you" or person.id)
   const handlePersonSelect = (personId: string) => {
     setSelectedPersonId(personId);
@@ -2592,21 +2557,26 @@ export default function DiscoverScreen({
   };
 
   // Handle removing a person
-  const handleRemovePerson = async (personId: string) => {
+  const handleRemovePerson = async (person: SavedPerson) => {
     try {
-      await deletePersonMutation.mutateAsync(personId);
+      await deletePersonMutation.mutateAsync({ personId: person.id, linkId: person.link_id ?? undefined });
     } catch (error) {
       console.error("[Discover] Failed to delete person:", error);
     }
 
     // Also remove custom holidays associated with this person
-    const updatedHolidays = customHolidays.filter((h) => h.personId !== personId);
+    const updatedHolidays = customHolidays.filter((h) => h.personId !== person.id);
     setCustomHolidays(updatedHolidays);
     await saveCustomHolidaysToStorage(updatedHolidays);
 
-    if (selectedPersonId === personId) {
+    if (selectedPersonId === person.id) {
       setSelectedPersonId("for-you");
     }
+  };
+
+  // Handle long-press to edit a person
+  const handleLongPressPerson = (person: SavedPerson) => {
+    setEditingPerson(person);
   };
 
   const handleConfirmRemovePerson = (person: SavedPerson) => {
@@ -2619,7 +2589,7 @@ export default function DiscoverScreen({
           text: "Delete",
           style: "destructive",
           onPress: () => {
-            void handleRemovePerson(person.id);
+            void handleRemovePerson(person);
           },
         },
       ]
@@ -2908,8 +2878,8 @@ export default function DiscoverScreen({
 
       if (locationLat && locationLng && selectedPersonId !== "for-you") {
         const personGender = selectedPerson?.gender;
-        const gender: "male" | "female" | null =
-          personGender === "male" || personGender === "female" ? personGender : null;
+        const gender: "man" | "woman" | null =
+          personGender === "man" || personGender === "woman" ? personGender : null;
 
         const personCustomHolidays = customHolidays
           .filter((h) => h.personId === selectedPersonId)
@@ -3078,6 +3048,15 @@ export default function DiscoverScreen({
         >
           {activeTab === "for-you" && (
             <>
+              {/* Link Request Banner */}
+              {pendingLinkRequests.length > 0 && (
+                <LinkRequestBanner
+                  requests={pendingLinkRequests}
+                  onAccept={(linkId) => respondToLinkMutation.mutate({ linkId, action: 'accept' })}
+                  onDecline={(linkId) => respondToLinkMutation.mutate({ linkId, action: 'decline' })}
+                />
+              )}
+
               {/* For You Tab Header with People Pills */}
               <ScrollView
                 horizontal
@@ -3125,6 +3104,7 @@ export default function DiscoverScreen({
                     <TouchableOpacity
                       style={styles.personPillTouchable}
                       onPress={() => handlePersonSelect(person.id)}
+                      onLongPress={() => handleLongPressPerson(person)}
                       activeOpacity={0.7}
                     >
                       <View
@@ -3141,6 +3121,12 @@ export default function DiscoverScreen({
                         >
                           {person.initials}
                         </Text>
+                        {/* Link icon badge for linked persons */}
+                        {person.is_linked && (
+                          <View style={styles.linkedBadge}>
+                            <Ionicons name="link-outline" size={10} color="#eb7825" />
+                          </View>
+                        )}
                       </View>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -3163,376 +3149,10 @@ export default function DiscoverScreen({
 
               {/* Person-specific view when a person is selected */}
               {selectedPerson ? (
-                <>
-                  {/* "Showing recommendations for" text */}
-                  <Text style={styles.showingRecommendationsText}>
-                    Showing recommendations for <Text style={styles.showingRecommendationsName}>{selectedPerson.name}</Text>
-                  </Text>
-
-                  {/* Birthday Hero Card */}
-                  {selectedPerson.birthday ? (
-                    <View style={styles.birthdayHeroCard}>
-                      <View style={styles.birthdayHeroContent}>
-                        <View style={styles.birthdayHeroLeft}>
-                          <Text style={styles.birthdayHeroTitle}>
-                            {selectedPerson.name}'s Birthday
-                          </Text>
-                          <Text style={styles.birthdayHeroSubtitle}>
-                            {formatBirthdayDate(selectedPerson.birthday)} · Turning {getAgeTurning(selectedPerson.birthday)}
-                          </Text>
-                        </View>
-                        <View style={styles.birthdayHeroDaysContainer}>
-                          {getDaysUntilBirthday(selectedPerson.birthday) === 0 ? (
-                            <Text style={styles.birthdayHeroDaysText}>Today</Text>
-                          ) : getDaysUntilBirthday(selectedPerson.birthday) === 1 ? (
-                            <Text style={styles.birthdayHeroDaysText}>Tomorrow</Text>
-                          ) : (
-                            <>
-                              <Text style={styles.birthdayHeroDaysNumber}>
-                                {getDaysUntilBirthday(selectedPerson.birthday)}
-                              </Text>
-                              <Text style={styles.birthdayHeroDaysLabel}>days away</Text>
-                            </>
-                          )}
-                        </View>
-                      </View>
-
-                      {/* Animated container for age hint and recommendation */}
-                      <Animated.View
-                        style={{
-                          opacity: birthdayHeroOpacity,
-                          transform: [{ translateY: birthdayHeroSlide }],
-                        }}
-                      >
-                        {/* Age-based recommendation hint */}
-                        <Text style={styles.birthdayAgeHint}>
-                          People of {selectedPerson.name}'s age love going here
-                        </Text>
-
-                        {/* Mini recommendation card */}
-                        {featuredCard && (
-                          <TouchableOpacity 
-                            style={styles.birthdayRecommendationCard}
-                            onPress={() => handleCardPress(featuredCard)}
-                            activeOpacity={0.8}
-                          >
-                            <View style={styles.birthdayRecommendationImageContainer}>
-                              <Image 
-                                source={{ uri: featuredCard.image }} 
-                                style={styles.birthdayRecommendationImage}
-                                resizeMode="cover"
-                              />
-                              <View style={styles.birthdayRecommendationRatingBadge}>
-                                <Ionicons name="star" size={10} color="#eb7825" />
-                                <Text style={styles.birthdayRecommendationRatingText}>{featuredCard.rating}</Text>
-                              </View>
-                            </View>
-                            <View style={styles.birthdayRecommendationContent}>
-                              <View style={styles.birthdayRecommendationHeader}>
-                                <Text style={styles.birthdayRecommendationTitle} numberOfLines={1}>
-                                  {featuredCard.title}
-                                </Text>
-                                <Text style={styles.birthdayRecommendationPrice}>
-                                  {formatPriceRange(featuredCard.priceRange, accountPreferences?.currency)}
-                                </Text>
-                              </View>
-                              <Text style={styles.birthdayRecommendationDescription} numberOfLines={2}>
-                                {featuredCard.description}
-                              </Text>
-                              {featuredCard.address ? (
-                                <View style={styles.birthdayRecommendationLocation}>
-                                  <Ionicons name="location-outline" size={12} color="#6b7280" />
-                                  <Text style={styles.birthdayRecommendationLocationText} numberOfLines={1}>
-                                    {featuredCard.address}
-                                  </Text>
-                                </View>
-                              ) : null}
-                            </View>
-                          </TouchableOpacity>
-                        )}
-                      </Animated.View>
-                    </View>
-                  ) : null}
-
-                  {/* Upcoming Holidays Section */}
-                  <View style={styles.upcomingHolidaysSection}>
-                    <View style={styles.upcomingHolidaysHeader}>
-                      <Text style={styles.upcomingHolidaysTitle}>Upcoming Holidays</Text>
-                      <TouchableOpacity 
-                        style={styles.upcomingHolidaysAddButton}
-                        onPress={handleOpenAddCustomDayModal}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="add-circle" size={24} color="#eb7825" />
-                      </TouchableOpacity>
-                    </View>
-
-                    {holidaysLoading ? (
-                      <View style={styles.holidayLoadingContainer}>
-                        <ActivityIndicator size="small" color="#eb7825" />
-                        <Text style={styles.holidayLoadingText}>
-                          {hasCalendarAccess ? "Loading calendar holidays..." : "Loading holidays..."}
-                        </Text>
-                      </View>
-                    ) : (
-                      (() => {
-                        return visibleHolidays.slice(0, 20).map((holiday, index) => {
-                          const isExpanded = expandedHolidayIds.has(holiday.id);
-                          const holidayCategories = (holiday as any).categories || getCategoriesForHolidayName(holiday.name);
-                          const holidayCards = holidayCardsById[holiday.id] || [];
-                          const isHolidayCardsLoading = !!holidayCardsLoadingById[holiday.id];
-                          
-                          // Check if this is a custom holiday
-                          const isCustomHoliday = (holiday as any).isCustom === true;
-                        
-                        // Format the holiday date for display (e.g., "Feb 14")
-                        const formattedDate = formatHolidayDateForDisplay(holiday.date);
-
-                        // Get animation values for this holiday item
-                        const animationValues = holidayItemAnimations[index];
-                        const hasAnimation = !!animationValues;
-                        
-                        // Use regular View if no animation slot available
-                        const ContainerComponent = hasAnimation ? Animated.View : View;
-                        const containerStyle = hasAnimation 
-                          ? [
-                              styles.holidayItemContainer,
-                              {
-                                opacity: animationValues.opacity,
-                                transform: [{ translateX: animationValues.translateX }],
-                              },
-                            ]
-                          : [styles.holidayItemContainer];
-                        
-                        return (
-                          <ContainerComponent 
-                            key={holiday.id} 
-                            style={containerStyle as any}
-                          >
-                            {/* Holiday Header (clickable to expand/collapse) */}
-                            <TouchableOpacity 
-                              style={styles.holidayItem}
-                              onPress={() => {
-                                const willExpand = !isExpanded;
-                                toggleHolidayExpansion(holiday.id);
-                                if (willExpand) {
-                                  loadHolidayCardsOnDemand({
-                                    id: holiday.id,
-                                    name: holiday.name,
-                                    daysAway: holiday.daysAway,
-                                    categories: holidayCategories,
-                                    category: (holiday as any).category,
-                                    isCustom: isCustomHoliday,
-                                  });
-                                }
-                              }}
-                              activeOpacity={0.7}
-                            >
-                              <View style={styles.holidayItemLeft}>
-                                <View style={styles.holidayItemNameRow}>
-                                  <Text style={styles.holidayItemName}>
-                                    {holiday.daysAway === 0 
-                                      ? `Today is ${holiday.name}`
-                                      : holiday.daysAway === 1
-                                      ? `${holiday.name} is tomorrow`
-                                      : holiday.name}
-                                  </Text>
-                                  <View style={styles.holidayItemActions}>
-                                    <TouchableOpacity
-                                      onPress={() => handleArchiveHoliday(holiday as CalendarHoliday & { isCustom?: boolean })}
-                                      style={styles.holidayArchiveButton}
-                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    >
-                                      <Ionicons name="archive-outline" size={14} color="#6b7280" />
-                                    </TouchableOpacity>
-                                  {isCustomHoliday && (
-                                    <TouchableOpacity
-                                      onPress={() => handleConfirmDeleteCustomHoliday(holiday.id, holiday.name)}
-                                      style={styles.holidayDeleteButton}
-                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    >
-                                      <Ionicons name="trash-outline" size={14} color="#ef4444" />
-                                    </TouchableOpacity>
-                                  )}
-                                  </View>
-                                </View>
-                                <Text style={styles.holidayItemDate}>{formattedDate}</Text>
-                                <Text style={styles.holidayItemDescription}>{holiday.description}</Text>
-                                <View style={styles.holidayCategoryBadge}>
-                                  <Ionicons 
-                                    name={(categoryIcons[holidayCategories[0]] || "sparkles-outline") as any} 
-                                    size={12} 
-                                    color="#eb7825" 
-                                  />
-                                  <Text style={styles.holidayCategoryText}>{holidayCategories[0]}</Text>
-                                </View>
-                              </View>
-                              <View style={styles.holidayItemRight}>
-                                {holiday.daysAway === 0 ? (
-                                  <>
-                                    <Text style={styles.holidayItemDaysText}>Today</Text>
-                                  </>
-                                ) : holiday.daysAway === 1 ? (
-                                  <>
-                                    <Text style={styles.holidayItemDaysText}>Tomorrow</Text>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Text style={styles.holidayItemDays}>{holiday.daysAway}</Text>
-                                    <Text style={styles.holidayItemDaysLabel}>days</Text>
-                                  </>
-                                )}
-                                <Ionicons 
-                                  name={isExpanded ? "chevron-up" : "chevron-down"} 
-                                  size={16} 
-                                  color="#9ca3af" 
-                                />
-                              </View>
-                            </TouchableOpacity>
-
-                            {/* Expanded Holiday Cards Section */}
-                            {isExpanded && isHolidayCardsLoading && (
-                              <View style={styles.holidayLoadingContainer}>
-                                <ActivityIndicator size="small" color="#eb7825" />
-                                <Text style={styles.holidayLoadingText}>Loading cards...</Text>
-                              </View>
-                            )}
-
-                            {isExpanded && !isHolidayCardsLoading && holidayCards.length > 0 && (
-                              <View style={styles.holidayCardsContainer}>
-                                {/* Left Navigation Button */}
-                                <TouchableOpacity
-                                  style={styles.holidayNavButton}
-                                  onPress={() => scrollHolidayCards(holiday.id, 'left')}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="chevron-back" size={16} color="#6b7280" />
-                                </TouchableOpacity>
-
-                                {/* Horizontal Scrollable Cards */}
-                                <ScrollView
-                                  ref={(ref) => { holidayScrollRefs.current[holiday.id] = ref; }}
-                                  horizontal
-                                  showsHorizontalScrollIndicator={false}
-                                  contentContainerStyle={styles.holidayCardsScrollContent}
-                                  onScroll={(e) => handleHolidayScroll(holiday.id, e)}
-                                  scrollEventThrottle={16}
-                                >
-                                  {holidayCards.map((card) => (
-                                    <TouchableOpacity
-                                      key={card.id}
-                                      style={styles.holidayMiniCard}
-                                      onPress={() => handleGridCardPress(card)}
-                                      activeOpacity={0.8}
-                                    >
-                                      <Image
-                                        source={{ uri: card.image }}
-                                        style={styles.holidayMiniCardImage}
-                                        resizeMode="cover"
-                                      />
-                                      <View style={styles.holidayMiniCardContent}>
-                                        <Text style={styles.holidayMiniCardTitle} numberOfLines={2}>
-                                          {card.title}
-                                        </Text>
-                                        <Text style={styles.holidayMiniCardDescription} numberOfLines={2}>
-                                          {card.description}
-                                        </Text>
-                                        <View style={styles.holidayMiniCardFooter}>
-                                          <Text style={styles.holidayMiniCardPrice}>
-                                            {formatPriceRange(card.priceRange, accountPreferences?.currency)}
-                                          </Text>
-                                          <View style={styles.holidayMiniCardRating}>
-                                            <Ionicons name="star" size={10} color="#eb7825" />
-                                            <Text style={styles.holidayMiniCardRatingText}>{card.rating}</Text>
-                                          </View>
-                                        </View>
-                                      </View>
-                                    </TouchableOpacity>
-                                  ))}
-                                </ScrollView>
-
-                                {/* Right Navigation Button */}
-                                <TouchableOpacity
-                                  style={styles.holidayNavButton}
-                                  onPress={() => scrollHolidayCards(holiday.id, 'right')}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="chevron-forward" size={16} color="#6b7280" />
-                                </TouchableOpacity>
-                              </View>
-                            )}
-
-                            {isExpanded && !isHolidayCardsLoading && holidayCards.length === 0 && (
-                              <View style={styles.holidayLoadingContainer}>
-                                <Text style={styles.holidayLoadingText}>No cards available for this holiday yet.</Text>
-                              </View>
-                            )}
-                          </ContainerComponent>
-                        );
-                      });
-                      })()
-                    )}
-                  </View>
-
-                  <View style={styles.archivedHolidaysSection}>
-                    <TouchableOpacity
-                      style={styles.archivedHolidaysToggle}
-                      onPress={() => setIsArchivedHolidaysExpanded((prev) => !prev)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.archivedHolidaysToggleLeft}>
-                        <Ionicons name="archive-outline" size={16} color="#6b7280" />
-                        <Text style={styles.archivedHolidaysToggleTitle}>Archived Holidays</Text>
-                        <Text style={styles.archivedHolidaysToggleCount}>{archivedHolidays.length}</Text>
-                      </View>
-                      <Ionicons
-                        name={isArchivedHolidaysExpanded ? "chevron-up" : "chevron-down"}
-                        size={18}
-                        color="#9ca3af"
-                      />
-                    </TouchableOpacity>
-
-                    {isArchivedHolidaysExpanded && (
-                      archivedHolidays.length === 0 ? (
-                        <View style={styles.archivedHolidaysEmptyState}>
-                          <Text style={styles.archivedHolidaysEmptyText}>No archived holidays yet.</Text>
-                        </View>
-                      ) : (
-                        archivedHolidays.map((holiday) => {
-                          const isCustomHoliday = (holiday as any).isCustom === true;
-                          return (
-                            <View key={`archived-${holiday.id}`} style={styles.archivedHolidayItem}>
-                              <View style={styles.archivedHolidayTextWrap}>
-                                <Text style={styles.archivedHolidayName}>{holiday.name}</Text>
-                                <Text style={styles.archivedHolidayMeta}>
-                                  {formatHolidayDateForDisplay(holiday.date)} • {holiday.daysAway === 0 ? "Today" : holiday.daysAway === 1 ? "Tomorrow" : `${holiday.daysAway} days`}
-                                </Text>
-                              </View>
-                              <View style={styles.archivedHolidayActions}>
-                                <TouchableOpacity
-                                  onPress={() => handleUnarchiveHoliday(holiday as CalendarHoliday & { isCustom?: boolean })}
-                                  style={styles.archivedHolidayActionButton}
-                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                >
-                                  <Ionicons name="return-up-back-outline" size={16} color="#eb7825" />
-                                </TouchableOpacity>
-                                {isCustomHoliday && (
-                                  <TouchableOpacity
-                                    onPress={() => handleConfirmDeleteCustomHoliday(holiday.id, holiday.name)}
-                                    style={styles.archivedHolidayActionButton}
-                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                  >
-                                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                                  </TouchableOpacity>
-                                )}
-                              </View>
-                            </View>
-                          );
-                        })
-                      )
-                    )}
-                  </View>
-                </>
+                <PersonHolidayView
+                  person={selectedPerson}
+                  location={userLocation ? { latitude: userLocation.latitude, longitude: userLocation.longitude } : { latitude: 40.7128, longitude: -74.006 }}
+                />
               ) : (
                 <>
                   {/* Loading State */}
@@ -3764,187 +3384,42 @@ export default function DiscoverScreen({
         accountPreferences={accountPreferences}
       />
 
-      {/* Add Person Modal */}
-      <Modal
+      {/* Add Person Modal (new multi-step component) */}
+      <AddPersonModal
         visible={isAddPersonModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={handleCloseAddPersonModal}
-      >
-        <View style={styles.addPersonBottomSheetOverlay}>
-          <TouchableOpacity
-            style={styles.backdropTouch}
-            activeOpacity={1}
-            onPress={handleCloseAddPersonModal}
-          />
-          <View
-            style={[
-              styles.addPersonBottomSheetContent,
-              { paddingBottom: Math.max(insets.bottom, 16) + 16 },
-            ]}
-          >
-            <View style={styles.addPersonSheetHandleContainer}>
-              <View style={styles.addPersonSheetHandle} />
-            </View>
-            {/* Modal Header */}
-            <View style={styles.addPersonModalHeader}>
-              <View style={styles.addPersonCloseButtonPlaceholder} />
-              <View style={styles.addPersonHeaderCenter}>
-                <Text style={styles.addPersonModalTitle}>Add Person</Text>
-                <Text style={styles.addPersonModalSubtitle}>Never miss a special day</Text>
-              </View>
-              <View style={styles.addPersonCloseButtonPlaceholder} />
-            </View>
+        onClose={handleCloseAddPersonModal}
+        onPersonCreated={(personId) => {
+          handleCloseAddPersonModal();
+          setSelectedPersonId(personId);
+        }}
+        onStartLinkFlow={() => {
+          handleCloseAddPersonModal();
+          setIsUserSearchVisible(true);
+        }}
+      />
 
-            {/* Scrollable form content */}
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bounces={false}
-            >
-              {/* Description */}
-              <Text style={styles.addPersonDescription}>
-                Add a partner, friend, or family member to get personalized recommendations.
-              </Text>
+      {/* User Search Sheet (for friend linking) */}
+      <UserSearchSheet
+        visible={isUserSearchVisible}
+        onClose={() => setIsUserSearchVisible(false)}
+        onLinkSent={() => {
+          setIsUserSearchVisible(false);
+        }}
+      />
 
-              {/* Name Field */}
-              <View style={styles.addPersonFieldContainer}>
-                <Text style={styles.addPersonFieldLabel}>Name</Text>
-                <TextInput
-                  style={[
-                    styles.addPersonInput,
-                    nameError && styles.addPersonInputError,
-                  ]}
-                  value={personName}
-                  onChangeText={(text) => {
-                    setPersonName(text);
-                    if (nameError) setNameError(null);
-                  }}
-                  placeholder="Enter their name"
-                  placeholderTextColor="#9ca3af"
-                />
-                {nameError && (
-                  <Text style={styles.errorText}>{nameError}</Text>
-                )}
-              </View>
-
-              {/* Birthday Field */}
-              <View style={styles.addPersonFieldContainer}>
-                <Text style={styles.addPersonFieldLabel}>Birthday</Text>
-                <TouchableOpacity
-                  style={styles.addPersonBirthdayInput}
-                  onPress={() => setShowBirthdayPicker(true)}
-                  activeOpacity={0.7}
-                >
-                  {personBirthday ? (
-                    <Text style={styles.birthdayText}>
-                      {formatBirthdayForDisplay(personBirthday)}
-                    </Text>
-                  ) : (
-                    <Text style={styles.birthdayPlaceholder}>dd/mm/yyyy</Text>
-                  )}
-                  <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-                </TouchableOpacity>
-                {showBirthdayPicker && (
-                  Platform.OS === "ios" ? (
-                    <View style={styles.datePickerContainer}>
-                      <DateTimePicker
-                        value={personBirthday || new Date()}
-                        mode="date"
-                        display="spinner"
-                        onChange={handleBirthdayChange}
-                        maximumDate={new Date()}
-                      />
-                      <TouchableOpacity
-                        style={styles.datePickerDoneButton}
-                        onPress={() => setShowBirthdayPicker(false)}
-                      >
-                        <Text style={styles.datePickerDoneText}>Done</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <DateTimePicker
-                      value={personBirthday || new Date()}
-                      mode="date"
-                      display="default"
-                      onChange={handleBirthdayChange}
-                      maximumDate={new Date()}
-                    />
-                  )
-                )}
-              </View>
-
-              {/* Gender Selection */}
-              <View style={styles.addPersonFieldContainer}>
-                <Text style={styles.addPersonFieldLabel}>Gender</Text>
-                <View style={styles.genderOptionsContainer}>
-                  {(["male", "female", "other"] as const).map((gender) => (
-                    <TouchableOpacity
-                      key={gender}
-                      style={[
-                        styles.genderOption,
-                        personGender === gender && styles.genderOptionSelected,
-                      ]}
-                      onPress={() => setPersonGender(gender)}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.genderOptionText,
-                          personGender === gender && styles.genderOptionTextSelected,
-                        ]}
-                      >
-                        {gender.charAt(0).toUpperCase() + gender.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Description field */}
-              <View style={styles.addPersonFieldContainer}>
-                <Text style={styles.addPersonFieldLabel}>Describe them</Text>
-                <Text style={styles.addPersonHint}>
-                  What do they enjoy? What's their vibe? The more detail, the better the recommendations.
-                </Text>
-                <TextInput
-                  style={styles.personDescriptionInput}
-                  value={personDescription}
-                  onChangeText={setPersonDescription}
-                  placeholder="They love outdoor dining, jazz music, wine tasting, and cozy bookshops..."
-                  placeholderTextColor="#9CA3AF"
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                  maxLength={500}
-                />
-                <Text style={styles.charCount}>{personDescription.length}/500</Text>
-              </View>
-            </ScrollView>
-
-            {/* Action Buttons — pinned below scroll area, above safe area */}
-            <View style={styles.addPersonButtonsContainer}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={handleCloseAddPersonModal}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.addPersonButton, createPersonMutation.isPending && { opacity: 0.6 }]}
-                onPress={handleAddPerson}
-                activeOpacity={0.7}
-                disabled={createPersonMutation.isPending}
-              >
-                <Text style={styles.addPersonButtonText}>
-                  {createPersonMutation.isPending ? "Saving..." : "Add Person"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Person Edit Sheet (long-press on person pill) */}
+      {editingPerson && (
+        <PersonEditSheet
+          visible={!!editingPerson}
+          person={editingPerson}
+          onClose={() => setEditingPerson(null)}
+          onUpdated={() => setEditingPerson(null)}
+          onUnlinked={() => {
+            setEditingPerson(null);
+            setSelectedPersonId("for-you");
+          }}
+        />
+      )}
 
       {/* Add Custom Day Modal */}
       <Modal
@@ -5036,6 +4511,17 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  linkedBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "white",
     justifyContent: "center",
     alignItems: "center",
   },

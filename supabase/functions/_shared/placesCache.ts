@@ -37,11 +37,11 @@ interface CacheResult {
   cacheHit: boolean;
 }
 
-function locationKey(lat: number, lng: number): string {
+export function locationKey(lat: number, lng: number): string {
   return `${lat.toFixed(2)},${lng.toFixed(2)}`;
 }
 
-function radiusBucket(radiusMeters: number): number {
+export function radiusBucket(radiusMeters: number): number {
   return Math.round(radiusMeters / 1000) * 1000;
 }
 
@@ -282,6 +282,67 @@ export async function fetchNextPage(
 
   console.log(`[placesCache] nextPage: got ${newPlaces.length} new places (total now ${allPlaces.length}), hasMore=${!!nextToken}`);
   return { newPlaces, hasMore: !!nextToken };
+}
+
+/**
+ * Drains all remaining pages for cache entries that have a nextPageToken.
+ * Called after batchSearchPlaces to proactively consume all Google pagination.
+ * Stops when: no more tokens, token expired (400), or max 3 pages total reached.
+ *
+ * RC-004 fix: ensures "exhaust everything Google has" actually works.
+ */
+export async function drainPaginationTokens(
+  supabaseAdmin: SupabaseClient,
+  apiKey: string,
+  placeTypes: string[],
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+): Promise<{ totalNewPlaces: number; pagesConsumed: number }> {
+  const locKey = locationKey(lat, lng);
+  const radBucket = radiusBucket(radiusMeters);
+
+  // Find all cache entries for these place types that have unconsumed tokens
+  const { data: entries } = await supabaseAdmin
+    .from('google_places_cache')
+    .select('id, place_type, next_page_token, pages_fetched')
+    .eq('location_key', locKey)
+    .eq('radius_bucket', radBucket)
+    .in('place_type', placeTypes)
+    .not('next_page_token', 'is', null)
+    .gt('expires_at', new Date().toISOString());
+
+  if (!entries || entries.length === 0) {
+    return { totalNewPlaces: 0, pagesConsumed: 0 };
+  }
+
+  let totalNewPlaces = 0;
+  let pagesConsumed = 0;
+  const MAX_PAGES_PER_TYPE = 3; // Google max is 3 pages (60 results)
+
+  for (const entry of entries) {
+    let currentPages = entry.pages_fetched || 1;
+
+    while (currentPages < MAX_PAGES_PER_TYPE) {
+      const { newPlaces, hasMore } = await fetchNextPage(
+        supabaseAdmin,
+        apiKey,
+        entry.id,
+      );
+
+      totalNewPlaces += newPlaces.length;
+      pagesConsumed++;
+      currentPages++;
+
+      if (!hasMore || newPlaces.length === 0) break;
+    }
+  }
+
+  if (totalNewPlaces > 0) {
+    console.log(`[places-cache] Drained ${pagesConsumed} pages, got ${totalNewPlaces} new places`);
+  }
+
+  return { totalNewPlaces, pagesConsumed };
 }
 
 /**

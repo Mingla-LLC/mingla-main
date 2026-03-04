@@ -65,36 +65,57 @@ export class PreferencesService {
     userId: string,
     preferences: Partial<UserPreferences>
   ): Promise<boolean> {
-    const SERVICE_TIMEOUT_MS = 12000;
+    const SERVICE_TIMEOUT_MS = 20000; // 20s for mobile networks (was 12s)
+    const MAX_RETRIES = 1;
 
-    try {
-      const payload = {
-        profile_id: userId,
-        ...preferences,
-        updated_at: new Date().toISOString(),
-      };
+    const payload = {
+      profile_id: userId,
+      ...preferences,
+      updated_at: new Date().toISOString(),
+    };
 
-      const upsertPromise = supabase.from("preferences").upsert(payload);
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(
-          () => reject(new Error('Preferences save timed out after 12s')),
-          SERVICE_TIMEOUT_MS
-        );
-      });
+      try {
+        const upsertPromise = supabase.from("preferences").upsert(payload);
 
-      const result = await Promise.race([upsertPromise, timeoutPromise]);
-      const { error } = result as { data: any; error: any };
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(
+            () => reject(new Error(`Preferences save timed out after ${SERVICE_TIMEOUT_MS / 1000}s`)),
+            SERVICE_TIMEOUT_MS
+          );
+        });
 
-      if (error) {
-        throw error;
+        const result = await Promise.race([upsertPromise, timeoutPromise]);
+
+        // HF-004 fix: always clear the timer when upsert resolves
+        if (timeoutId !== null) clearTimeout(timeoutId);
+
+        const { error } = result as { data: any; error: any };
+
+        if (error) {
+          throw error;
+        }
+
+        return true;
+      } catch (error) {
+        // HF-004 fix: clear timer on error path too
+        if (timeoutId !== null) clearTimeout(timeoutId);
+
+        if (attempt < MAX_RETRIES) {
+          console.warn(`[PreferencesService] Attempt ${attempt + 1} failed, retrying...`, error);
+          // Brief pause before retry
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+
+        console.error("[PreferencesService] updateUserPreferences failed after retries:", error);
+        return false;
       }
-
-      return true;
-    } catch (error) {
-      console.error("[PreferencesService] updateUserPreferences failed:", error);
-      return false;
     }
+
+    return false;
   }
 
   /**

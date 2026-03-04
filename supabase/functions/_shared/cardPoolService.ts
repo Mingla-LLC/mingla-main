@@ -39,7 +39,9 @@ export interface PoolQueryResult {
   cards: any[];                    // ready-to-serve card objects
   fromPool: number;                // count served from pool
   fromApi: number;                 // count freshly generated
-  totalPoolSize: number;           // total matching cards in pool (before exclusion)
+  totalPoolSize: number;           // DEPRECATED — kept for backward compat; equals totalUnseenCount now
+  totalUnseenCount: number;        // total UNSEEN cards remaining in pool after this batch
+  hasMore: boolean;                // true if more unseen cards exist beyond this batch
 }
 
 // ── Price mapping (matches new-generate-experience- pattern) ────────────────
@@ -86,12 +88,12 @@ async function getPreferencesUpdatedAt(
   }
 }
 
-// ── Step 2: Query card_pool for matching unseen cards ───────────────────────
+// ── Step 2: Query card_pool via SQL function (RC-002 fix) ──────────────────
 
 async function queryPoolCards(
   params: PoolQueryParams,
   prefUpdatedAt: string
-): Promise<{ poolCards: any[]; totalPoolSize: number }> {
+): Promise<{ poolCards: any[]; totalUnseenCount: number }> {
   const {
     supabaseAdmin, userId, lat, lng, radiusMeters,
     categories, budgetMin, budgetMax, limit,
@@ -102,93 +104,42 @@ async function queryPoolCards(
   const lngDelta = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180));
 
   const resolvedCats = resolveCategories(categories);
-  // For curated cards, categories span multiple types — skip category filter
-  // (experienceType filter on line ~118-120 is sufficient)
   if (resolvedCats.length === 0 && cardType !== 'curated') {
-    return { poolCards: [], totalPoolSize: 0 };
+    return { poolCards: [], totalUnseenCount: 0 };
   }
 
-  // Build the query using Supabase JS client
-  // Use { count: 'exact' } to get the true total pool size without LIMIT cap
-  let query = supabaseAdmin
-    .from('card_pool')
-    .select('*', { count: 'exact' })
-    .eq('is_active', true)
-    .eq('card_type', cardType);
+  const offset = params.offset || 0;
 
-  // Only apply category filter if we have categories
-  // (curated cards span multiple categories, so skip when empty)
-  if (resolvedCats.length > 0) {
-    query = query.overlaps('categories', resolvedCats);
-  }
-
-  const startIndex = params.offset || 0;
-
-  query = query
-    .gte('lat', lat - latDelta)
-    .lte('lat', lat + latDelta)
-    .gte('lng', lng - lngDelta)
-    .lte('lng', lng + lngDelta)
-    .lte('price_min', budgetMax)
-    .order('popularity_score', { ascending: false });
-
-  if (experienceType) {
-    query = query.eq('experience_type', experienceType);
-  }
-
-  const { data: allMatching, error, count: totalPoolSize } = await query;
-
-  if (error) {
-    console.error('[card-pool] Query error:', error);
-    return { poolCards: [], totalPoolSize: 0 };
-  }
-
-  if (!allMatching || allMatching.length === 0) {
-    return { poolCards: [], totalPoolSize: 0 };
-  }
-
-  // Session-scoped: only exclude cards seen since the last preference change.
-  // When user changes preferences, prefUpdatedAt advances and previously seen
-  // cards no longer match this filter — they become eligible again naturally.
-  const { data: impressions } = await supabaseAdmin
-    .from('user_card_impressions')
-    .select('card_pool_id')
-    .eq('user_id', userId)
-    .gte('created_at', prefUpdatedAt);
-
-  const seenIds = new Set(
-    (impressions || []).map((imp: any) => imp.card_pool_id)
-  );
-
-  // Also exclude explicitly passed card IDs
-  if (excludeCardIds) {
-    for (const id of excludeCardIds) seenIds.add(id);
-  }
-
-  // Filter out seen cards
-  const unseen = allMatching.filter((card: any) => !seenIds.has(card.id));
-
-  // Dedup by google_place_id — keep highest popularity_score (already sorted desc)
-  const seenPlaces = new Set<string>();
-  const dedupedUnseen = unseen.filter((card: any) => {
-    const placeKey = card.google_place_id || card.id;
-    if (seenPlaces.has(placeKey)) return false;
-    seenPlaces.add(placeKey);
-    return true;
+  const { data, error } = await supabaseAdmin.rpc('query_pool_cards', {
+    p_user_id: userId,
+    p_categories: resolvedCats.length > 0 ? resolvedCats : [],
+    p_lat_min: lat - latDelta,
+    p_lat_max: lat + latDelta,
+    p_lng_min: lng - lngDelta,
+    p_lng_max: lng + lngDelta,
+    p_budget_max: budgetMax,
+    p_card_type: cardType,
+    p_experience_type: experienceType || null,
+    p_pref_updated_at: prefUpdatedAt,
+    p_exclude_card_ids: excludeCardIds || [],
+    p_limit: limit,
+    p_offset: offset,
   });
 
-  // Adjust offset: impressions already removed previously-served cards from the array,
-  // so applying the full offset would double-skip. Subtract the impression-filtered count
-  // to compensate. When impressions cover all prior batches, adjustedStart → 0 (correct).
-  // When the 200-card sliding window is smaller than total served, the residual offset
-  // still skips past re-emerged old cards.
-  const impressionRemoved = (allMatching?.length || 0) - unseen.length;
-  const adjustedStart = Math.max(0, startIndex - impressionRemoved);
+  if (error) {
+    console.error('[card-pool] SQL query error:', error);
+    return { poolCards: [], totalUnseenCount: 0 };
+  }
 
-  return {
-    poolCards: dedupedUnseen.slice(adjustedStart, adjustedStart + limit),
-    totalPoolSize: totalPoolSize ?? 0,
-  };
+  if (!data || data.length === 0) {
+    return { poolCards: [], totalUnseenCount: 0 };
+  }
+
+  // Each row has { card: JSONB, total_unseen: bigint }
+  const poolCards = data.map((row: any) => row.card);
+  const totalUnseenCount = Number(data[0]?.total_unseen ?? 0);
+
+  return { poolCards, totalUnseenCount };
 }
 
 // ── Step 3: Upsert a Google Place into place_pool ───────────────────────────
@@ -660,10 +611,11 @@ export async function serveCardsFromPipeline(
   // ── STEP 1: Get preference timestamp ──────────────────────────────────
   const prefUpdatedAt = await getPreferencesUpdatedAt(supabaseAdmin, userId);
 
-  // ── STEP 2: Query pool ────────────────────────────────────────────────
-  let { poolCards, totalPoolSize } = await queryPoolCards(params, prefUpdatedAt);
+  // ── STEP 2: Query pool (SQL-level pagination + impression exclusion) ──
+  let { poolCards, totalUnseenCount } = await queryPoolCards(params, prefUpdatedAt);
+  const totalPoolSize = totalUnseenCount; // backward compat alias
 
-  console.log(`[card-pool] Pool query: ${poolCards.length} unseen of ${totalPoolSize} total matching`);
+  console.log(`[card-pool] Pool query: ${poolCards.length} cards returned, ${totalUnseenCount} total unseen`);
 
   // Filter excluded place types from pool results
   const excludedTypes = experienceType === 'romantic'
@@ -672,14 +624,12 @@ export async function serveCardsFromPipeline(
   const excludedSet = new Set(excludedTypes);
 
   poolCards = poolCards.filter((card: any) => {
-    // For curated cards, check every stop's types
     if (card.card_type === 'curated' && card.stops) {
       return !card.stops.some((stop: any) => {
         const stopTypes = stop.placeType ? [stop.placeType] : (stop.types ?? []);
         return stopTypes.some((t: string) => excludedSet.has(t));
       });
     }
-    // For single cards, check the card's types
     const types = card.types ?? card.place_types ?? [];
     return !types.some((t: string) => excludedSet.has(t));
   });
@@ -690,10 +640,9 @@ export async function serveCardsFromPipeline(
     const servedIds = served.map((c: any) => c.id);
     const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
 
-    // Record impressions + update counts (fire-and-forget)
-    recordImpressions(supabaseAdmin, userId, servedIds).catch(() => {});
+    // Record impressions SYNCHRONOUSLY to prevent cross-batch duplicates (CF-002 fix)
+    await recordImpressions(supabaseAdmin, userId, servedIds);
     updateServedCounts(supabaseAdmin, servedIds).catch(() => {});
-    // Increment engagement analytics (fire-and-forget)
     supabaseAdmin.rpc('increment_user_engagement', {
       p_user_id: userId,
       p_field: 'total_cards_seen',
@@ -701,12 +650,17 @@ export async function serveCardsFromPipeline(
     }).catch(() => {});
     incrementPlaceImpressions(supabaseAdmin, servedIds).catch(() => {});
 
+    // hasMore based on UNSEEN count, not raw pool size (RC-003 fix)
+    const remainingUnseen = totalUnseenCount - served.length;
+
     console.log(`[card-pool] Served ${apiCards.length} from pool (0 API calls) in ${Date.now() - startTime}ms`);
     return {
       cards: apiCards,
       fromPool: apiCards.length,
       fromApi: 0,
       totalPoolSize,
+      totalUnseenCount: remainingUnseen,
+      hasMore: remainingUnseen > 0,
     };
   }
 
@@ -948,14 +902,13 @@ export async function serveCardsFromPipeline(
   const poolApiCards = poolCards.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode));
   const allCards = [...poolApiCards, ...gapCards].slice(0, limit);
 
-  // Record impressions for all served cards
+  // Record impressions SYNCHRONOUSLY (CF-002 fix)
   const allPoolIds = allCards
     .map((c: any) => c._poolCardId)
     .filter((id: string | undefined) => id);
   if (allPoolIds.length > 0) {
-    recordImpressions(supabaseAdmin, userId, allPoolIds).catch(() => {});
+    await recordImpressions(supabaseAdmin, userId, allPoolIds);
     updateServedCounts(supabaseAdmin, allPoolIds).catch(() => {});
-    // Increment engagement analytics (fire-and-forget)
     supabaseAdmin.rpc('increment_user_engagement', {
       p_user_id: userId,
       p_field: 'total_cards_seen',
@@ -964,7 +917,6 @@ export async function serveCardsFromPipeline(
     incrementPlaceImpressions(supabaseAdmin, allPoolIds).catch(() => {});
   }
 
-  // If some cards were served but none came from pool, still count them as seen
   if (allPoolIds.length === 0 && allCards.length > 0) {
     supabaseAdmin.rpc('increment_user_engagement', {
       p_user_id: userId,
@@ -973,6 +925,10 @@ export async function serveCardsFromPipeline(
     }).catch(() => {});
   }
 
+  // hasMore: unseen count minus what we just served, plus API cards signal
+  const remainingUnseen = Math.max(0, totalUnseenCount - poolApiCards.length);
+  const hasMoreCards = remainingUnseen > 0 || gapCards.length >= limit;
+
   console.log(`[card-pool] Pipeline done: ${poolApiCards.length} from pool + ${gapCards.length} from API (${apiCallCount} API calls) in ${Date.now() - startTime}ms`);
 
   return {
@@ -980,6 +936,8 @@ export async function serveCardsFromPipeline(
     fromPool: poolApiCards.length,
     fromApi: gapCards.length,
     totalPoolSize,
+    totalUnseenCount: remainingUnseen,
+    hasMore: hasMoreCards,
   };
 }
 

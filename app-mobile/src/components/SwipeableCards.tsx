@@ -874,10 +874,25 @@ export default function SwipeableCards({
       if (user?.id) {
         // Curated cards don't have a single place_id — skip Supabase operations
         if ((card as any).cardType === 'curated') {
+          // HF-002 fix: Track curated card interaction in DB
+          try {
+            const interactionType = direction === 'right' ? 'swipe_right' : 'swipe_left';
+            await ExperiencesService.trackInteraction(
+              user.id,
+              card.id,
+              interactionType,
+              {
+                category: card.category,
+                cardType: 'curated',
+              }
+            ).catch(err => console.warn('[SwipeableCards] Curated interaction tracking failed:', err));
+          } catch {}
+
           if (direction === 'right') {
             onCardLike(card);
           } else {
-            console.log('[SwipeableCards] Curated card left-swiped:', card.title || card.id);
+            // HF-001 fix: Add curated card to dismissed list so it appears in "Review dismissed cards"
+            addDismissedCard(card);
           }
           position.setValue({ x: 0, y: 0 });
           return;
