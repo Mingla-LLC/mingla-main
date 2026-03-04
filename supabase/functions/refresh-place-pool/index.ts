@@ -151,6 +151,7 @@ serve(async (req) => {
             image_url: imageUrl,
             images: imageUrls,
             popularity_score: popularityScore,
+            website: data.websiteUri || null,
           })
           .eq('place_pool_id', place.id)
           .eq('is_active', true);

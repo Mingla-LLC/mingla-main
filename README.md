@@ -586,9 +586,20 @@ Curated cards are discriminated by `card_type: 'curated'` and include:
 
 Runs daily to keep `place_pool` data fresh:
 - Fetches places not refreshed in 24h
-- Calls Google Place Details by ID (FREE — Basic fields only)
+- Calls Google Place Details by ID (Basic + Essential fields)
+- Propagates rating, review_count, opening_hours, images, popularity_score, and **website** to `card_pool`
 - 404/410 → deactivates place + cascades to `card_pool`
 - Increments `refresh_failures` on errors
+- A DB trigger (`trg_propagate_place_website`) auto-propagates `place_pool.website` → `card_pool.website` on any update
+
+### Website Backfill (`backfill-place-websites`)
+
+One-time admin edge function to populate `website` for existing `place_pool` entries:
+- Fetches `websiteUri` from Google Places Details (Contact SKU, $0.003/call)
+- Processes batches of up to 500 places per invocation
+- Marks places with no Google website as `''` (empty string) to avoid re-processing
+- Deactivates places that return 404/410
+- Supports `dryRun` mode for cost estimation
 
 ---
 
@@ -810,7 +821,8 @@ Every table has RLS enabled with policies enforcing:
 | `get-companion-stops` | No | Google Places | Nearby companion POIs for multi-stop experiences (default 500m radius). Builds stroll route timeline |
 | `get-picnic-grocery` | No | Google Places | Find nearby groceries for picnic planning |
 | `get-google-maps-key` | JWT | — | Securely serve Google Maps API key to client |
-| `refresh-place-pool` | No (maintenance) | Google Place Details (FREE) | Daily refresh: update stale place_pool entries, deactivate 404/410s, cascade to card_pool |
+| `refresh-place-pool` | No (maintenance) | Google Place Details (Basic+Essential) | Daily refresh: update stale place_pool entries, propagate website to card_pool, deactivate 404/410s |
+| `backfill-place-websites` | No (admin/one-time) | Google Place Details (Contact) | Batch-fetch websiteUri for place_pool entries missing website data. $0.003/call |
 
 ### Recommendations & Scoring
 
@@ -1571,7 +1583,8 @@ Mingla/
 │   │   ├── ticketmaster-events/            # Real Ticketmaster live events
 │   │   ├── holiday-experiences/            # Holiday-themed cards
 │   │   ├── night-out-experiences/          # Legacy nightlife (deprecated)
-│   │   ├── refresh-place-pool/             # Daily place data refresh (free API)
+│   │   ├── refresh-place-pool/             # Daily place data refresh (propagates website)
+│   │   ├── backfill-place-websites/       # One-time website backfill (admin)
 │   │   ├── enhance-cards/                  # AI card enrichment
 │   │   ├── ai-reason/                      # Weather-aware reasoning
 │   │   ├── places/                         # Google Maps proxy
@@ -1804,8 +1817,9 @@ npx supabase functions serve function-name --env-file .env.local
 
 ---
 
-## Recent Changes (2026-03-03 — Cards Parity Fix)
+## Recent Changes (2026-03-03 — Website Button Data Fix)
 
+- **Website Button Data Fix:** Fixed data propagation gap where `refresh-place-pool` updated `place_pool.website` but never propagated it to `card_pool.website`, causing the "Policies & Reservations" button to be hidden on >90% of cards. One-line fix in `refresh-place-pool/index.ts` adds `website` to the card_pool update. New DB trigger (`trg_propagate_place_website`) auto-propagates `place_pool.website` → `card_pool.website` on any update. New `backfill-place-websites` edge function fetches `websiteUri` from Google for all existing place_pool entries with NULL website ($0.003/place, one-time cost). No frontend changes — the button, modal, and WebView were already fully wired.
 - **Fluidity & Stability Fix — Auth Lag, iOS Spacing, Preferences Stutter:** Eliminated all artificial delays and double-renders from the auth flow, cutting Google/Apple sign-in from 3-5s to under 1.5s. Removed 3-iteration polling loop (500ms/1000ms/1500ms escalating delays) and replaced with single 200ms check. Removed two unconditional 500ms post-auth delays. Consolidated duplicate profile loading — `onAuthStateChange` listener is now the single source of truth, OAuth handlers no longer fetch profiles. Apple name update converted from 3-call chain (fetch+update+re-fetch) to single fire-and-forget `.update().is("first_name", null)`. Preferences sheet now closes instantly by calling `onClose()` before `requestAnimationFrame`-deferred cache invalidation. iOS SafeAreaView double-inset fixed by switching to `edges={[]}` with manual `paddingTop: insets.top` and `Math.max(insets.bottom, 8)` on bottom nav. WelcomeScreen flash eliminated — authenticated users with pending profile load now see a white screen instead of flashing back to sign-in. AppStateManager's competing 5-second auth timeout removed (useAuthSimple's 8-second timeout is the single source of truth). Files: `useAuthSimple.ts`, `PreferencesSheet.tsx`, `index.tsx`, `AppStateManager.tsx`.
 
 - **Auth Simplification & Email Notification Phase-Out:** Eliminated all email-based authentication (email+password sign-up/sign-in, OTP verification, phone sign-up). The app now uses OAuth only (Google + Apple Sign-In). WelcomeScreen redesigned with two-zone layout, entrance animation sequence, and platform-specific button rendering (Apple on iOS only). Onboarding starts directly at IntentSelection (step 2). All 4 notification edge functions (`send-friend-request-email`, `send-message-email`, `send-collaboration-invite`, `notify-invite-response`) converted from Resend email to Expo Push API. 9 obsolete files deleted (SignInForm, SignUpForm, OTPScreen, PhoneSignUpForm, SignUpAsStep, AccountSetupStep, GoogleOAuthWebView, SignInPage, EmailOTPVerificationScreen). `handle_new_user` trigger updated to always set `email_verified = TRUE`. Migration: `20260303000020`.
