@@ -44,6 +44,7 @@ interface AccountSettingsProps {
 const regionOrder = ['north_america', 'europe', 'africa', 'south_america', 'asia', 'middle_east', 'oceania'];
 
 export default function AccountSettings() {
+  const insets = useSafeAreaInsets();
   const {
     accountPreferences,
     handleAccountPreferencesUpdate,
@@ -302,7 +303,7 @@ export default function AccountSettings() {
       </View>
 
       {/* Content */}
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}>
         {/* Currency Preference */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>

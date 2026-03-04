@@ -159,25 +159,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 56,
     borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: colors.gray[300],
     backgroundColor: colors.background.primary,
   },
   containerDefault: {
-    borderWidth: 1.5,
     borderColor: colors.gray[300],
   },
   containerFocused: {
-    borderWidth: 2,
     borderColor: colors.primary[500],
   },
   containerError: {
-    borderWidth: 2,
     borderColor: colors.error[500],
   },
   countrySection: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: 80,
     paddingLeft: spacing.md,
+    paddingRight: spacing.sm,
     height: '100%',
   },
   flag: {
@@ -192,7 +191,8 @@ const styles = StyleSheet.create({
   },
   divider: {
     width: 1,
-    height: 24,
+    alignSelf: 'center',
+    height: 28,
     backgroundColor: colors.gray[200],
   },
   textInput: {

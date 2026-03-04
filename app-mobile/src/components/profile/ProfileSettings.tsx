@@ -15,7 +15,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import ProfileAccountSection from "./ProfileAccountSection";
 import ProfilePrivacySection from "./ProfilePrivacySection";
 // Profile photo moved to hero on ProfilePage
@@ -36,6 +36,7 @@ export default function ProfileSettings({
   // Removed unused handleKeyPress function
 
   const { userIdentity, handleUserIdentityUpdate } = useAppState();
+  const insets = useSafeAreaInsets();
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" />
@@ -54,7 +55,7 @@ export default function ProfileSettings({
         style={{ flex: 1 }}
       >
         {/* Content */}
-        <ScrollView style={styles.content}>
+        <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) }}>
           {/* Profile Photo is handled in the ProfilePage hero now. */}
 
           {/* Personal Information */}
