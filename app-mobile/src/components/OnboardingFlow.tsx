@@ -12,6 +12,7 @@ import {
   Platform,
   AccessibilityInfo,
   ActivityIndicator,
+  Switch,
 } from 'react-native'
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
@@ -31,6 +32,8 @@ import { createSavedPerson } from '../services/savedPeopleService'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
 import { startRecording, stopRecording, uploadAudioClip } from '../services/personAudioService'
 import { searchUsers, sendFriendLink } from '../services/friendLinkService'
+import { getCurrencySymbol, formatNumberWithCommas } from '../utils/currency'
+import { getRate } from '../services/currencyService'
 
 import { OnboardingShell } from './onboarding/OnboardingShell'
 import { PhoneInput } from './onboarding/PhoneInput'
@@ -129,6 +132,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   const [hasGpsPermission, setHasGpsPermission] = useState(false)
   const [initialStep, setInitialStep] = useState<OnboardingStep>(1)
   const [isReady, setIsReady] = useState(false)
+  const [showCustomBudget, setShowCustomBudget] = useState(false)
 
   // ─── State Machine ───
   const {
@@ -242,6 +246,8 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   // If location was already captured, show 'granted' so the user sees their choice persisted.
   // Otherwise, reset to 'idle' so they can try fresh (clears stale 'denied'/'requesting').
   // Dep array is [navState.subStep] only — do NOT add data fields (see spec §9.1).
+  // Adding data.locationGranted/coordinates would race with captureLocation()'s own status management.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (navState.subStep === 'location') {
       if (data.locationGranted && data.coordinates) {
@@ -724,7 +730,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
         intents: data.selectedIntents,
         categories: data.selectedCategories,
         budget_min: 0,
-        budget_max: data.budgetMax,
+        budget_max: data.budgetMax ?? 50,
         travel_mode: data.travelMode,
         travel_constraint_type: 'time',
         travel_constraint_value: data.travelTimeMinutes,
@@ -746,7 +752,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
               body: {
                 categories: data.selectedCategories,
                 location: coords,
-                budgetMax: data.budgetMax,
+                budgetMax: data.budgetMax ?? 50,
                 travelMode: data.travelMode,
                 travelConstraintType: 'time',
                 travelConstraintValue: data.travelTimeMinutes,
@@ -996,7 +1002,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       case 'categories':
         return { label: 'Next', disabled: data.selectedCategories.length === 0, loading: false, onPress: handleGoNext, hide: false }
       case 'budget':
-        return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
+        return { label: 'Next', disabled: data.budgetMax === null || data.budgetMax <= 0, loading: false, onPress: handleGoNext, hide: false }
       case 'transport':
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'travel_time':
@@ -1434,26 +1440,75 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     }
 
     if (subStep === 'budget') {
+      const currencyCode = profile?.currency || 'USD'
+      const symbol = getCurrencySymbol(currencyCode)
+      const rate = getRate(currencyCode)
+
       return (
         <View>
           <Text style={styles.headline}>What's your sweet spot?</Text>
           <Text style={styles.body}>How much per outing, roughly?</Text>
           <View style={styles.tileGrid}>
-            {BUDGET_PRESETS.map((amount) => (
-              <Pressable
-                key={amount}
-                style={[styles.selectionTile, data.budgetMax === amount && styles.selectionTileActive]}
-                onPress={() => {
-                  logger.action(`Budget selected: $${amount}`)
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                  setData((p) => ({ ...p, budgetMax: amount }))
-                }}
-              >
-                <Text style={[styles.tileText, data.budgetMax === amount && styles.tileTextActive]}>${amount}</Text>
-              </Pressable>
-            ))}
+            {BUDGET_PRESETS.map((amount) => {
+              const converted = Math.round(amount * rate)
+              const isActive = !showCustomBudget && data.budgetMax === converted
+              return (
+                <Pressable
+                  key={amount}
+                  style={[styles.selectionTile, isActive && styles.selectionTileActive]}
+                  onPress={() => {
+                    logger.action(`Budget selected: ${symbol}${converted} (base $${amount})`)
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                    setShowCustomBudget(false)
+                    setData((p) => ({ ...p, budgetMax: converted }))
+                  }}
+                >
+                  <Text style={[styles.tileText, isActive && styles.tileTextActive]}>
+                    {symbol}{formatNumberWithCommas(converted)}
+                  </Text>
+                </Pressable>
+              )
+            })}
           </View>
-          <Text style={styles.caption}>Free stuff always shows up too.</Text>
+
+          <View style={styles.customBudgetRow}>
+            <Text style={styles.customBudgetLabel}>Custom amount</Text>
+            <Switch
+              value={showCustomBudget}
+              onValueChange={(val) => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                setShowCustomBudget(val)
+                if (val) {
+                  setData((p) => ({ ...p, budgetMax: null }))
+                } else {
+                  setData((p) => ({ ...p, budgetMax: null }))
+                }
+              }}
+              trackColor={{ false: colors.gray[300], true: '#fdba74' }}
+              thumbColor={showCustomBudget ? colors.primary[500] : colors.gray[100]}
+            />
+          </View>
+
+          {showCustomBudget && (
+            <View style={styles.customBudgetInputRow}>
+              <Text style={styles.customBudgetSymbol}>{symbol}</Text>
+              <TextInput
+                value={data.budgetMax !== null ? data.budgetMax.toString() : ''}
+                onChangeText={(text) => {
+                  const cleaned = text.replace(/[^0-9]/g, '')
+                  const parsed = cleaned ? parseInt(cleaned, 10) : null
+                  setData((p) => ({ ...p, budgetMax: parsed }))
+                }}
+                keyboardType="number-pad"
+                placeholder="Enter maximum amount"
+                placeholderTextColor={colors.text.tertiary}
+                style={styles.customBudgetInput}
+                maxLength={7}
+              />
+            </View>
+          )}
+
+          <Text style={styles.captionCentered}>Free stuff always shows up too.</Text>
         </View>
       )
     }
@@ -1822,6 +1877,47 @@ const styles = StyleSheet.create({
     fontWeight: fontWeights.regular,
     color: colors.text.tertiary,
     marginTop: spacing.md,
+  },
+  captionCentered: {
+    ...typography.sm,
+    fontWeight: fontWeights.regular,
+    color: colors.text.tertiary,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+  customBudgetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+  },
+  customBudgetLabel: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.text.secondary,
+  },
+  customBudgetInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    borderRadius: radius.md,
+    backgroundColor: colors.background.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  customBudgetSymbol: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.secondary,
+    marginRight: spacing.xs,
+  },
+  customBudgetInput: {
+    flex: 1,
+    ...typography.md,
+    color: colors.text.primary,
+    padding: 0,
   },
   errorText: {
     ...typography.sm,

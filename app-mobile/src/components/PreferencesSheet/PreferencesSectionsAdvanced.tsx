@@ -36,8 +36,12 @@ export const BudgetSection = memo(
   }) => {
     if (shouldHide) return null;
 
-    const [showCustom, setShowCustom] = useState(false);
-    const isPresetSelected = (max: number) => budgetMax === max;
+    const currencyCode = accountPreferences?.currency || 'USD';
+    const rate = getRate(currencyCode);
+    const convertedPresets = budgetPresets.map((p: any) => Math.round(p.max * rate));
+    const isCustomValue = typeof budgetMax === 'number' && budgetMax > 0 && !convertedPresets.includes(budgetMax);
+    const [showCustom, setShowCustom] = useState(isCustomValue);
+    const isPresetSelected = (max: number) => !showCustom && budgetMax === max;
 
     return (
       <View style={styles.section}>

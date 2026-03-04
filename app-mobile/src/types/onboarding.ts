@@ -56,7 +56,7 @@ export interface OnboardingData {
   // Step 4
   manualLocation: string | null  // city name typed by user (when GPS denied)
   selectedCategories: string[]   // display names: 'Nature', 'Drink', etc.
-  budgetMax: number              // 25, 50, 100, or 150
+  budgetMax: number | null       // converted preset value or custom amount; null = not yet selected
   travelMode: 'walking' | 'biking' | 'transit' | 'driving'
   travelTimeMinutes: number      // 15, 30, 45, or 60
 
@@ -119,7 +119,7 @@ export const ONBOARDING_INTENTS = [
 // ─── Budget Presets ───
 
 export const BUDGET_PRESETS = [25, 50, 100, 150] as const
-export const DEFAULT_BUDGET = 50
+export const DEFAULT_BUDGET = null
 
 // ─── Travel Time Presets ───
 
