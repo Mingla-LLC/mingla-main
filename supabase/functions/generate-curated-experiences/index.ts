@@ -6,7 +6,6 @@ import {
   MINGLA_CATEGORY_PLACE_TYPES,
   resolveCategory,
   GLOBAL_EXCLUDED_PLACE_TYPES,
-  ROMANTIC_EXCLUDED_PLACE_TYPES,
   filterExcludedPlaces,
 } from '../_shared/categoryPlaceTypes.ts';
 
@@ -144,6 +143,15 @@ const STOP_DURATION_MINUTES: Record<string, number> = {
   plaza: 30, tourist_attraction: 60, garden: 45,
   spanish_restaurant: 75, tapas_restaurant: 75, oyster_bar_restaurant: 75,
   bistro: 75, gastropub: 60,
+  // Romantic-related types (added for Romantic Intent feature)
+  history_museum: 90, historical_place: 60, cultural_landmark: 45,
+  monument: 30, opera_house: 150,
+  // Belt-and-suspenders: types used by dedicated generators but missing from global map
+  performing_arts_theater: 120, sushi_restaurant: 60,
+  // Friendly-related types (added for Friendly Intent feature)
+  amusement_park: 180, hamburger_restaurant: 30, barbecue_restaurant: 75,
+  fast_food_restaurant: 20, buffet_restaurant: 60, asian_restaurant: 60,
+  chinese_restaurant: 60, art_studio: 60,
 };
 const DEFAULT_STOP_DURATION = 45;
 
@@ -336,6 +344,205 @@ const FIRST_DATE_STOP_DURATIONS: Record<string, number> = {
   gastropub: 60,
 };
 
+// ── Romantic Intent — Dedicated Place Type Groups ─────────────────────────
+// Bypasses CURATED_TYPE_CATEGORIES + MINGLA_CATEGORY_PLACE_TYPES for 'romantic'.
+// 2-stop itinerary: Romance Start (cultural/artistic) → Romance Finish (upscale dining).
+
+interface RomanticGroup {
+  id: string;
+  label: string;
+  types: string[];
+}
+
+const ROMANTIC_START: RomanticGroup = {
+  id: 'romance_start',
+  label: 'Romance Start',
+  types: [
+    'art_gallery', 'art_museum', 'museum', 'history_museum',
+    'historical_place', 'cultural_landmark', 'monument',
+    'performing_arts_theater', 'opera_house',
+  ],
+};
+
+const ROMANTIC_FINISH: RomanticGroup = {
+  id: 'romance_finish',
+  label: 'Romance Finish',
+  types: [
+    'italian_restaurant', 'french_restaurant', 'mediterranean_restaurant',
+    'spanish_restaurant', 'tapas_restaurant', 'greek_restaurant',
+    'seafood_restaurant', 'sushi_restaurant', 'wine_bar', 'bistro',
+  ],
+};
+
+const ROMANTIC_INTENT_EXCLUDED_PLACE_TYPES: string[] = [
+  // Global excludes
+  'gym', 'fitness_center',
+  // Fast food / casual chains
+  'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
+  'sandwich_shop', 'food_court', 'buffet_restaurant', 'diner',
+  // Kid / family venues
+  'indoor_playground', 'childrens_camp', 'water_park',
+  'amusement_park', 'amusement_center', 'zoo', 'aquarium',
+  // Defense-in-depth: catches multi-type places (e.g., museum with attached playground)
+  'playground', 'children_store', 'child_care_agency', 'preschool',
+  // Adrenaline / noisy
+  'video_arcade', 'bowling_alley', 'paintball_center',
+  'go_karting_venue', 'miniature_golf_course', 'skateboard_park',
+  // Casual / inappropriate
+  'coffee_stand', 'convenience_store', 'market',
+];
+
+// Stop durations specific to romantic groups
+const ROMANTIC_STOP_DURATIONS: Record<string, number> = {
+  // Romance Start — cultural/artistic
+  art_gallery: 60,
+  art_museum: 90,
+  museum: 90,
+  history_museum: 90,
+  historical_place: 60,
+  cultural_landmark: 45,
+  monument: 30,
+  performing_arts_theater: 120,
+  opera_house: 150,
+  // Romance Finish — dining
+  italian_restaurant: 75,
+  french_restaurant: 90,
+  mediterranean_restaurant: 75,
+  spanish_restaurant: 75,
+  tapas_restaurant: 75,
+  greek_restaurant: 75,
+  seafood_restaurant: 75,
+  sushi_restaurant: 60,
+  wine_bar: 60,
+  bistro: 75,
+};
+
+// ── Friendly Intent — Dedicated Place Type Groups ─────────────────────────
+// Bypasses CURATED_TYPE_CATEGORIES + MINGLA_CATEGORY_PLACE_TYPES for 'friendly'.
+// 2-stop itinerary: one of 4 starting groups → Friendly Finish (casual dining).
+// Starting groups rotate 0→1→2→3→0→... for diversity.
+
+interface FriendlyGroup {
+  id: string;
+  label: string;
+  types: string[];
+}
+
+const FRIENDLY_STARTING_1: FriendlyGroup = {
+  id: 'adrenaline',
+  label: 'Adrenaline',
+  types: [
+    'amusement_park', 'bowling_alley', 'video_arcade',
+    'go_karting_venue', 'miniature_golf_course', 'paintball_center',
+    'ice_skating_rink', 'karaoke',
+  ],
+};
+
+const FRIENDLY_STARTING_2: FriendlyGroup = {
+  id: 'entertainment',
+  label: 'Entertainment',
+  types: [
+    'movie_theater', 'concert_hall', 'performing_arts_theater',
+    'opera_house', 'comedy_club',
+  ],
+};
+
+const FRIENDLY_STARTING_3: FriendlyGroup = {
+  id: 'outdoor',
+  label: 'Outdoor',
+  types: [
+    'national_park', 'hiking_area', 'off_roading_area',
+    'state_park', 'campground',
+  ],
+};
+
+const FRIENDLY_STARTING_4: FriendlyGroup = {
+  id: 'cultural',
+  label: 'Cultural',
+  types: [
+    'art_gallery', 'art_museum', 'art_studio',
+    'cultural_center', 'museum',
+  ],
+};
+
+const FRIENDLY_FINISH: FriendlyGroup = {
+  id: 'casual_dining',
+  label: 'Casual Dining',
+  types: [
+    'italian_restaurant', 'sushi_restaurant', 'mexican_restaurant',
+    'thai_restaurant', 'mediterranean_restaurant', 'pizza_restaurant',
+    'american_restaurant', 'hamburger_restaurant', 'diner',
+    'barbecue_restaurant', 'fast_food_restaurant', 'ramen_restaurant',
+    'korean_restaurant', 'buffet_restaurant', 'asian_restaurant',
+    'sandwich_shop', 'vietnamese_restaurant', 'chinese_restaurant',
+    'food_court',
+  ],
+};
+
+const FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES: string[] = [
+  'indoor_playground',
+  'childrens_camp',
+];
+
+// Strict rotation: [Starting 1, Starting 2, Starting 3, Starting 4, ...]
+const FRIENDLY_STARTING_GROUPS: FriendlyGroup[] = [
+  FRIENDLY_STARTING_1,
+  FRIENDLY_STARTING_2,
+  FRIENDLY_STARTING_3,
+  FRIENDLY_STARTING_4,
+];
+
+// Stop durations specific to friendly groups
+const FRIENDLY_STOP_DURATIONS: Record<string, number> = {
+  // Starting 1 — Adrenaline
+  amusement_park: 180,
+  bowling_alley: 60,
+  video_arcade: 60,
+  go_karting_venue: 60,
+  miniature_golf_course: 45,
+  paintball_center: 90,
+  ice_skating_rink: 60,
+  karaoke: 90,
+  // Starting 2 — Entertainment
+  movie_theater: 150,
+  concert_hall: 120,
+  performing_arts_theater: 120,
+  opera_house: 150,
+  comedy_club: 90,
+  // Starting 3 — Outdoor
+  national_park: 120,
+  hiking_area: 120,
+  off_roading_area: 90,
+  state_park: 120,
+  campground: 120,
+  // Starting 4 — Cultural
+  art_gallery: 60,
+  art_museum: 90,
+  art_studio: 60,
+  cultural_center: 60,
+  museum: 90,
+  // Finish — Casual Dining
+  italian_restaurant: 60,
+  sushi_restaurant: 60,
+  mexican_restaurant: 60,
+  thai_restaurant: 60,
+  mediterranean_restaurant: 60,
+  pizza_restaurant: 45,
+  american_restaurant: 60,
+  hamburger_restaurant: 30,
+  diner: 45,
+  barbecue_restaurant: 75,
+  fast_food_restaurant: 20,
+  ramen_restaurant: 45,
+  korean_restaurant: 60,
+  buffet_restaurant: 60,
+  asian_restaurant: 60,
+  sandwich_shop: 30,
+  vietnamese_restaurant: 60,
+  chinese_restaurant: 60,
+  food_court: 30,
+};
+
 // ── Curated Type -> Mingla Category Pools ─────────────────────────
 // NOTE: 'adventurous' entry is required for the validation gate in serve()
 // (line ~1264: `if (!CURATED_TYPE_CATEGORIES[experienceType])`).
@@ -376,13 +583,13 @@ const TAGLINES_BY_TYPE: Record<string, string[]> = {
   ],
   'romantic': [
     'A curated route for two',
-    'Three stops to make the night unforgettable',
-    'Romance awaits around every corner',
+    'Culture and cuisine, perfectly paired',
+    'An evening worth dressing up for',
     'Set the mood with a plan worth sharing',
   ],
   'friendly': [
     'A day out worth catching up over',
-    'Three stops, good company, great vibes',
+    'Two stops, good company, great vibes',
     'The kind of plan friends remember',
     'Explore together, no planning needed',
   ],
@@ -504,14 +711,11 @@ async function fetchPlacesForCategory(
   lat: number,
   lng: number,
   radiusMeters: number,
-  experienceType?: string,
 ): Promise<any[]> {
   const allTypes = MINGLA_CATEGORY_PLACE_TYPES[categoryName] || [];
   if (allTypes.length === 0) return [];
 
-  const excludedTypes = experienceType === 'romantic'
-    ? ROMANTIC_EXCLUDED_PLACE_TYPES
-    : GLOBAL_EXCLUDED_PLACE_TYPES;
+  const excludedTypes = GLOBAL_EXCLUDED_PLACE_TYPES;
 
   const nearbyTypes = allTypes.filter(t => !TEXT_SEARCH_TYPES.has(t));
   const textTypes   = allTypes.filter(t => TEXT_SEARCH_TYPES.has(t));
@@ -553,10 +757,7 @@ async function fetchPlacesForCategory(
   });
 
   // Post-fetch filter: remove any places with excluded types
-  const filtered = filterExcludedPlaces(
-    deduped,
-    experienceType === 'romantic' ? ROMANTIC_EXCLUDED_PLACE_TYPES : undefined,
-  );
+  const filtered = filterExcludedPlaces(deduped);
 
   return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
 }
@@ -669,6 +870,112 @@ async function fetchPlacesForFirstDateGroup(
   });
 
   const filtered = filterExcludedPlaces(deduped, FIRST_DATE_EXCLUDED_PLACE_TYPES);
+
+  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
+}
+
+/**
+ * Fetch places for a single Romantic Group.
+ * Uses ROMANTIC_INTENT_EXCLUDED_PLACE_TYPES for filtering.
+ */
+async function fetchPlacesForRomanticGroup(
+  group: RomanticGroup,
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+): Promise<any[]> {
+  const excludedTypes = ROMANTIC_INTENT_EXCLUDED_PLACE_TYPES;
+
+  const nearbyTypes = group.types.filter(t => !TEXT_SEARCH_TYPES.has(t));
+  const textTypes = group.types.filter(t => TEXT_SEARCH_TYPES.has(t));
+
+  const results: any[] = [];
+
+  if (nearbyTypes.length > 0) {
+    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
+    const nearbyResults = await Promise.allSettled(
+      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
+    );
+    for (const r of nearbyResults) {
+      if (r.status === 'fulfilled' && r.value) {
+        results.push(...r.value);
+      }
+    }
+  }
+
+  if (results.length < 5 && textTypes.length > 0) {
+    const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
+    const query = nicheType.replace(/_/g, ' ');
+    try {
+      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
+      results.push(...textResults);
+    } catch (err) {
+      console.warn(`[fetchPlacesForRomanticGroup] Text search failed for ${nicheType}:`, err);
+    }
+  }
+
+  const seen = new Set<string>();
+  const deduped = results.filter(p => {
+    const id = p.id || p.name;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+
+  const filtered = filterExcludedPlaces(deduped, ROMANTIC_INTENT_EXCLUDED_PLACE_TYPES);
+
+  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
+}
+
+/**
+ * Fetch places for a single Friendly Group.
+ * Uses FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES for filtering.
+ */
+async function fetchPlacesForFriendlyGroup(
+  group: FriendlyGroup,
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+): Promise<any[]> {
+  const excludedTypes = FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES;
+
+  const nearbyTypes = group.types.filter(t => !TEXT_SEARCH_TYPES.has(t));
+  const textTypes = group.types.filter(t => TEXT_SEARCH_TYPES.has(t));
+
+  const results: any[] = [];
+
+  if (nearbyTypes.length > 0) {
+    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
+    const nearbyResults = await Promise.allSettled(
+      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
+    );
+    for (const r of nearbyResults) {
+      if (r.status === 'fulfilled' && r.value) {
+        results.push(...r.value);
+      }
+    }
+  }
+
+  if (results.length < 5 && textTypes.length > 0) {
+    const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
+    const query = nicheType.replace(/_/g, ' ');
+    try {
+      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
+      results.push(...textResults);
+    } catch (err) {
+      console.warn(`[fetchPlacesForFriendlyGroup] Text search failed for ${nicheType}:`, err);
+    }
+  }
+
+  const seen = new Set<string>();
+  const deduped = results.filter(p => {
+    const id = p.id || p.name;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+
+  const filtered = filterExcludedPlaces(deduped, FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES);
 
   return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
 }
@@ -1021,6 +1328,382 @@ function buildFirstDateStop(
   return stop;
 }
 
+/**
+ * Generate curated romantic cards using dedicated Romantic Groups.
+ * 2-stop itineraries: Romance Start → Romance Finish.
+ * No alternation needed — there's only one starting group.
+ */
+async function generateRomanticCards(
+  lat: number,
+  lng: number,
+  budgetMax: number,
+  travelMode: string,
+  travelConstraintType: string,
+  travelConstraintValue: number,
+  limit: number,
+  skipDescriptions: boolean,
+): Promise<any[]> {
+  const TRAVEL_SPEEDS_KMH: Record<string, number> = {
+    walking: 4.5, biking: 14, transit: 20, driving: 35,
+  };
+  const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
+  const radiusMeters = travelConstraintType === 'time'
+    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
+    : travelConstraintValue * 1000;
+  const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
+
+  // 1. Fetch places for both groups in parallel
+  const groupPlaces: Record<string, any[]> = {};
+  await Promise.all([
+    (async () => {
+      groupPlaces[ROMANTIC_START.id] =
+        await fetchPlacesForRomanticGroup(ROMANTIC_START, lat, lng, clampedRadius);
+    })(),
+    (async () => {
+      groupPlaces[ROMANTIC_FINISH.id] =
+        await fetchPlacesForRomanticGroup(ROMANTIC_FINISH, lat, lng, clampedRadius);
+    })(),
+  ]);
+
+  for (const [groupId, places] of Object.entries(groupPlaces)) {
+    console.log(`[generateRomanticCards] ${groupId}: ${places.length} places`);
+  }
+
+  // 2. Check we have finish places (required for every card)
+  if ((groupPlaces[ROMANTIC_FINISH.id] || []).length === 0) {
+    console.warn('[generateRomanticCards] No finish (dining) places found');
+    return [];
+  }
+
+  // 3. Check we have start places
+  if ((groupPlaces[ROMANTIC_START.id] || []).length === 0) {
+    console.warn('[generateRomanticCards] No start (cultural) places found');
+    return [];
+  }
+
+  // 4. Build cards
+  const cards: any[] = [];
+  const globalUsedPlaceIds = new Set<string>();
+  const perStopBudget = budgetMax / 2; // 2 stops
+
+  for (let cardIndex = 0; cards.length < limit; cardIndex++) {
+    // Select start place
+    const availableStarts = (groupPlaces[ROMANTIC_START.id] || []).filter(p => {
+      const id = p.id || p.name;
+      if (globalUsedPlaceIds.has(id)) return false;
+      const price = priceLevelToRange(p.priceLevel);
+      if (price.min > perStopBudget) return false;
+      return true;
+    });
+
+    // Select finish place
+    const availableFinish = (groupPlaces[ROMANTIC_FINISH.id] || []).filter(p => {
+      const id = p.id || p.name;
+      if (globalUsedPlaceIds.has(id)) return false;
+      const price = priceLevelToRange(p.priceLevel);
+      if (price.min > perStopBudget) return false;
+      return true;
+    });
+
+    // If either group is exhausted, stop
+    if (availableStarts.length === 0 || availableFinish.length === 0) {
+      break;
+    }
+
+    const startPlace = availableStarts[0]; // already sorted by score
+    const finishPlace = availableFinish[0];
+    const startId = startPlace.id || startPlace.name;
+    const finishId = finishPlace.id || finishPlace.name;
+
+    const stop1 = buildRomanticStop(startPlace, 1, ROMANTIC_START, lat, lng, null, null, travelMode);
+    const stop2 = buildRomanticStop(finishPlace, 2, ROMANTIC_FINISH, lat, lng, stop1.lat, stop1.lng, travelMode);
+
+    // Validate total budget
+    const totalMin = stop1.priceMin + stop2.priceMin;
+    if (totalMin > budgetMax) {
+      globalUsedPlaceIds.add(startId); // Skip this start, try next
+      continue;
+    }
+
+    // Validate travel constraint
+    if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+      globalUsedPlaceIds.add(startId); // Skip — too far
+      continue;
+    }
+
+    const card = buildCardFromStops([stop1, stop2], 'romantic', [ROMANTIC_START.label, ROMANTIC_FINISH.label]);
+
+    if (!skipDescriptions) {
+      try {
+        const descriptions = await generateRomanticStopDescriptions([stop1, stop2]);
+        for (let i = 0; i < 2 && i < descriptions.length; i++) {
+          card.stops[i].aiDescription = descriptions[i];
+        }
+      } catch (err) {
+        console.warn('[generateRomanticCards] AI description failed:', err);
+      }
+    }
+
+    globalUsedPlaceIds.add(startId);
+    globalUsedPlaceIds.add(finishId);
+    cards.push(card);
+
+    // Safety: if we've iterated way past the limit without filling, break
+    if (cardIndex > limit * 4) break;
+  }
+
+  return cards;
+}
+
+/**
+ * Build a stop for a romantic card with romantic-specific duration.
+ * Also overrides placeType to actual Google type (not group label fallback).
+ */
+function buildRomanticStop(
+  place: any,
+  stopNumber: number,
+  group: RomanticGroup,
+  userLat: number,
+  userLng: number,
+  prevLat: number | null,
+  prevLng: number | null,
+  travelMode: string,
+): any {
+  const stop = buildStopFromPlace(
+    place, stopNumber, 2, group.label,
+    userLat, userLng, prevLat, prevLng, travelMode,
+  );
+
+  // Override placeType to actual Google type (not group label fallback like 'romance_start')
+  const resolvedType = place.primaryType || group.types[0];
+  stop.placeType = resolvedType;
+
+  // Override duration with romantic-specific value
+  const romanticDuration = ROMANTIC_STOP_DURATIONS[resolvedType];
+  if (romanticDuration) {
+    stop.estimatedDurationMinutes = romanticDuration;
+  }
+
+  return stop;
+}
+
+/**
+ * Generate AI descriptions specifically toned for romantic outings.
+ * Uses a romantic prompt instead of the adventure-oriented generic one.
+ */
+async function generateRomanticStopDescriptions(
+  stops: any[],
+): Promise<string[]> {
+  if (!OPENAI_API_KEY) {
+    return stops.map(s => `${s.placeName} is a lovely ${s.placeType.replace(/_/g, ' ')} perfect for a romantic outing.`);
+  }
+  try {
+    const stopList = stops
+      .map((s, i) => `Stop ${i + 1}: ${s.placeName} (${s.placeType.replace(/_/g, ' ')}), rated ${s.rating.toFixed(1)}/5`)
+      .join('\n');
+    const prompt = `You are a travel writer creating short descriptions for a romantic date.
+Write exactly ${stops.length} short paragraphs (one per stop, 2-3 sentences each), telling the couple what to experience and the atmosphere.
+Emphasize romance, intimacy, and elegance. Write for a couple on a date — not friends, not a group.
+Be specific, warm, and evocative. Address the reader directly as "you".
+Output ONLY a JSON array of ${stops.length} strings with no markdown and no extra keys.
+
+Stops:
+${stopList}`;
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 400,
+        temperature: 0.8,
+      }),
+    });
+    const json = await res.json();
+    const content = json.choices?.[0]?.message?.content?.trim() ?? '[]';
+    const parsed: string[] = JSON.parse(content);
+    if (Array.isArray(parsed) && parsed.length === stops.length) return parsed;
+    throw new Error('Unexpected shape');
+  } catch (_) {
+    return stops.map(s => `${s.placeName} is a lovely ${s.placeType.replace(/_/g, ' ')} perfect for a romantic outing.`);
+  }
+}
+
+/**
+ * Generate curated friendly cards using dedicated Friendly Groups.
+ * 2-stop itineraries: one of 4 Starting groups → Finish.
+ * Strict 4-way rotation through starting groups.
+ */
+async function generateFriendlyCards(
+  lat: number,
+  lng: number,
+  budgetMax: number,
+  travelMode: string,
+  travelConstraintType: string,
+  travelConstraintValue: number,
+  limit: number,
+  skipDescriptions: boolean,
+): Promise<any[]> {
+  const TRAVEL_SPEEDS_KMH: Record<string, number> = {
+    walking: 4.5, biking: 14, transit: 20, driving: 35,
+  };
+  const speedKmh = TRAVEL_SPEEDS_KMH[travelMode] ?? 4.5;
+  const radiusMeters = travelConstraintType === 'time'
+    ? Math.round((speedKmh * 1000 / 60) * travelConstraintValue)
+    : travelConstraintValue * 1000;
+  const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
+
+  // 1. Fetch places for ALL 5 groups in parallel
+  const groupPlaces: Record<string, any[]> = {};
+  await Promise.all([
+    ...FRIENDLY_STARTING_GROUPS.map(async (group) => {
+      groupPlaces[group.id] =
+        await fetchPlacesForFriendlyGroup(group, lat, lng, clampedRadius);
+    }),
+    (async () => {
+      groupPlaces[FRIENDLY_FINISH.id] =
+        await fetchPlacesForFriendlyGroup(FRIENDLY_FINISH, lat, lng, clampedRadius);
+    })(),
+  ]);
+
+  for (const [groupId, places] of Object.entries(groupPlaces)) {
+    console.log(`[generateFriendlyCards] ${groupId}: ${places.length} places`);
+  }
+
+  // 2. Check we have finish places (required for every card)
+  if ((groupPlaces[FRIENDLY_FINISH.id] || []).length === 0) {
+    console.warn('[generateFriendlyCards] No finish (dining) places found');
+    return [];
+  }
+
+  // 3. Build cards with strict 4-way rotation
+  const cards: any[] = [];
+  const globalUsedPlaceIds = new Set<string>();
+  const perStopBudget = budgetMax / 2; // 2 stops
+
+  // nextGroupIndex tracks which starting group the NEXT card should TRY FIRST.
+  // Advances on every successful card build, regardless of fallback usage.
+  let nextGroupIndex = 0;
+
+  for (let cardIndex = 0; cards.length < limit; cardIndex++) {
+    // Check finish places first — if exhausted, no card possible regardless of starting group
+    const availableFinish = (groupPlaces[FRIENDLY_FINISH.id] || []).filter(p => {
+      const id = p.id || p.name;
+      if (globalUsedPlaceIds.has(id)) return false;
+      const price = priceLevelToRange(p.priceLevel);
+      if (price.min > perStopBudget) return false;
+      return true;
+    });
+
+    if (availableFinish.length === 0) {
+      break; // Finish exhausted — no more cards possible
+    }
+
+    // Try starting groups in rotation order, with cascading fallback
+    let startingGroup: FriendlyGroup | null = null;
+    let availableStarts: any[] = [];
+
+    for (let offset = 0; offset < FRIENDLY_STARTING_GROUPS.length; offset++) {
+      const candidateIdx = (nextGroupIndex + offset) % FRIENDLY_STARTING_GROUPS.length;
+      const candidateGroup = FRIENDLY_STARTING_GROUPS[candidateIdx];
+      const candidateStarts = (groupPlaces[candidateGroup.id] || []).filter(p => {
+        const id = p.id || p.name;
+        if (globalUsedPlaceIds.has(id)) return false;
+        const price = priceLevelToRange(p.priceLevel);
+        if (price.min > perStopBudget) return false;
+        return true;
+      });
+
+      if (candidateStarts.length > 0) {
+        startingGroup = candidateGroup;
+        availableStarts = candidateStarts;
+        break;
+      }
+    }
+
+    // All 4 starting groups exhausted
+    if (!startingGroup || availableStarts.length === 0) {
+      break;
+    }
+
+    const startPlace = availableStarts[0]; // already sorted by score
+    const finishPlace = availableFinish[0];
+    const startId = startPlace.id || startPlace.name;
+    const finishId = finishPlace.id || finishPlace.name;
+
+    const stop1 = buildFriendlyStop(startPlace, 1, startingGroup, lat, lng, null, null, travelMode);
+    const stop2 = buildFriendlyStop(finishPlace, 2, FRIENDLY_FINISH, lat, lng, stop1.lat, stop1.lng, travelMode);
+
+    // Validate total budget
+    const totalMin = stop1.priceMin + stop2.priceMin;
+    if (totalMin > budgetMax) {
+      globalUsedPlaceIds.add(startId); // Skip this start, try next — DON'T advance rotation
+      continue;
+    }
+
+    // Validate travel constraint
+    if (travelConstraintType === 'time' && stop1.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+      globalUsedPlaceIds.add(startId); // Skip — DON'T advance rotation
+      continue;
+    }
+
+    const card = buildCardFromStops([stop1, stop2], 'friendly', [startingGroup.label, FRIENDLY_FINISH.label]);
+
+    if (!skipDescriptions) {
+      try {
+        const descriptions = await generateStopDescriptions([stop1, stop2]);
+        for (let i = 0; i < 2 && i < descriptions.length; i++) {
+          card.stops[i].aiDescription = descriptions[i];
+        }
+      } catch (err) {
+        console.warn('[generateFriendlyCards] AI description failed:', err);
+      }
+    }
+
+    globalUsedPlaceIds.add(startId);
+    globalUsedPlaceIds.add(finishId);
+    cards.push(card);
+    nextGroupIndex = (nextGroupIndex + 1) % FRIENDLY_STARTING_GROUPS.length; // Advance rotation on successful build
+
+    // Safety: if we've iterated way past the limit without filling, break
+    if (cardIndex > limit * 4) break;
+  }
+
+  return cards;
+}
+
+/**
+ * Build a stop for a friendly card with friendly-specific duration.
+ */
+function buildFriendlyStop(
+  place: any,
+  stopNumber: number,
+  group: FriendlyGroup,
+  userLat: number,
+  userLng: number,
+  prevLat: number | null,
+  prevLng: number | null,
+  travelMode: string,
+): any {
+  const stop = buildStopFromPlace(
+    place, stopNumber, 2, group.label,
+    userLat, userLng, prevLat, prevLng, travelMode,
+  );
+
+  // Override duration with friendly-specific value
+  const placeType = place.primaryType || group.types[0];
+  const friendlyDuration = FRIENDLY_STOP_DURATIONS[placeType];
+  if (friendlyDuration) {
+    stop.estimatedDurationMinutes = friendlyDuration;
+  }
+
+  return stop;
+}
+
 function generateCategoryCombos(pool: string[], count: number): string[][] {
   if (pool.length === 3) {
     return Array.from({ length: count }, () => [...pool]);
@@ -1164,6 +1847,24 @@ async function generateStandardCards(
     );
   }
 
+  // ── Romantic intent: use dedicated groups (2-stop: start → finish) ──
+  if (experienceType === 'romantic') {
+    return generateRomanticCards(
+      lat, lng, budgetMax, travelMode,
+      travelConstraintType, travelConstraintValue,
+      limit, skipDescriptions,
+    );
+  }
+
+  // ── Friendly intent: use dedicated groups (2-stop: start → finish, 4-way rotation) ──
+  if (experienceType === 'friendly') {
+    return generateFriendlyCards(
+      lat, lng, budgetMax, travelMode,
+      travelConstraintType, travelConstraintValue,
+      limit, skipDescriptions,
+    );
+  }
+
   // ── All other intents: existing category pool pipeline (unchanged) ──
   const pool = CURATED_TYPE_CATEGORIES[experienceType];
   if (!pool) return [];
@@ -1181,7 +1882,7 @@ async function generateStandardCards(
   const categoryPlaces: Record<string, any[]> = {};
   await Promise.all(
     pool.map(async (category) => {
-      const places = await fetchPlacesForCategory(category, lat, lng, clampedRadius, experienceType);
+      const places = await fetchPlacesForCategory(category, lat, lng, clampedRadius);
       categoryPlaces[category] = places;
     })
   );
@@ -1293,7 +1994,7 @@ async function generatePicnicCards(
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Find groceries near user
-  const groceryPlaces = await fetchPlacesForCategory('Groceries & Flowers', lat, lng, clampedRadius, 'picnic-dates');
+  const groceryPlaces = await fetchPlacesForCategory('Groceries & Flowers', lat, lng, clampedRadius);
 
   if (groceryPlaces.length === 0) {
     console.warn('[generatePicnicCards] No grocery stores found');
@@ -1389,7 +2090,7 @@ async function generateStrollCards(
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Find nature spots near user
-  const naturePlaces = await fetchPlacesForCategory('Nature', lat, lng, clampedRadius, 'take-a-stroll');
+  const naturePlaces = await fetchPlacesForCategory('Nature', lat, lng, clampedRadius);
 
   if (naturePlaces.length === 0) {
     console.warn('[generateStrollCards] No nature spots found');
@@ -1422,7 +2123,6 @@ async function generateStrollCards(
       'Casual Eats',
       natureLat, natureLng,
       eatsSearchRadius,
-      'take-a-stroll',
     );
 
     if (eatsPlaces.length === 0) continue;

@@ -66,7 +66,7 @@ export const ExperienceTypesSection = memo(
                 <Ionicons
                   name={type.icon as any}
                   size={14}
-                  color={isSelected ? "#ffffff" : "#6b7280"}
+                  color={isSelected ? "#eb7825" : "#6b7280"}
                 />
                 <Text
                   style={[
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
   },
   experienceTypeButtonSelected: {
-    backgroundColor: "#eb7825",
+    backgroundColor: "#fff7ed",
     borderColor: "#eb7825",
   },
   experienceTypeText: {
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
     color: "#374151",
   },
   experienceTypeTextSelected: {
-    color: "#ffffff",
+    color: "#eb7825",
   },
   categoriesContainer: {
     flexDirection: "row",

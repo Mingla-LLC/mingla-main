@@ -151,7 +151,7 @@ Mingla/
 - AI-generated experience cards built from real Google Places data, enriched by GPT-4o-mini with descriptions, highlights, and match scores
 - Swipe right to save, left to skip, up to expand full details
 - Pool-first card pipeline with SQL-level pagination serves pre-built cards with zero API calls; falls back to Google Places only when the pool is exhausted. Synchronous impression recording prevents cross-batch duplicates
-- Curated multi-stop itinerary cards interleaved every 3rd regular card. Adventure intent uses 4 dedicated groups (Outdoor, Exotic Eats, Adrenaline, Culture) for 3-stop itineraries. First Date intent uses 3 dedicated groups (Fun Activity, Cultural, Fine Dining) for 2-stop itineraries with strict alternation between ice-breaker activities and cultural outings paired with upscale dining
+- Curated multi-stop itinerary cards interleaved every 3rd regular card. Adventure intent uses 4 dedicated groups (Outdoor, Exotic Eats, Adrenaline, Culture) for 3-stop itineraries. First Date intent uses 3 dedicated groups (Fun Activity, Cultural, Fine Dining) for 2-stop itineraries with strict alternation between ice-breaker activities and cultural outings paired with upscale dining. Romantic intent uses 2 dedicated groups (Romance Start: galleries, museums, landmarks, theaters → Romance Finish: upscale restaurants, wine bars) for intimate 2-stop date itineraries with romantic-toned AI descriptions. Friendly intent uses 4 starting groups (Adrenaline, Entertainment, Outdoor, Cultural) → 1 Finish group (Casual Dining, 19 restaurant types) for 2-stop hangout itineraries with strict 4-way rotation for maximum diversity and cascading fallback when a group is exhausted
 - Expanded card modal with image gallery, weather forecast, busyness predictions, match score breakdown, companion stops, and timeline
 - Deck batch navigation with forward/backward history persisted across sessions
 - Dismissed cards review sheet for reconsidering left-swiped cards (persisted across app restarts via AsyncStorage)
@@ -321,7 +321,7 @@ Mingla/
 |----------|---------|
 | `new-generate-experience-` | Core pool-first card generation engine. Serves pre-built cards from card_pool, gap-fills from Google Places |
 | `discover-cards` | Unified card discovery with SQL-level pagination (`query_pool_cards` function), impression exclusion, and nextPageToken pool expansion |
-| `generate-curated-experiences` | Multi-stop itinerary builder with AI descriptions and travel time estimates. Adventure intent: 3-stop cards from 4 dedicated groups with round-robin combos. First Date intent: 2-stop cards (ice-breaker activity or cultural outing → upscale dinner) with strict alternation |
+| `generate-curated-experiences` | Multi-stop itinerary builder with AI descriptions and travel time estimates. Adventure intent: 3-stop cards from 4 dedicated groups with round-robin combos. First Date intent: 2-stop cards (ice-breaker activity or cultural outing → upscale dinner) with strict alternation. Romantic intent: 2-stop cards (cultural/artistic venue → upscale restaurant) with romantic-toned AI descriptions. Friendly intent: 2-stop cards (activity → casual dining) with 4-way starting group rotation |
 | `generate-session-experiences` | Collaboration mode: aggregates participant preferences for group card generation |
 | `discover-experiences` | General discovery for all 12 categories with 24h daily cache |
 | `discover-casual-eats` | Category-specific discovery: Casual Eats |
@@ -502,6 +502,8 @@ The `oauth-redirect/` directory contains a static site deployed to Vercel/Netlif
 ---
 
 ## Recent Changes
+
+- **Romantic Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic category-pool pipeline for the `romantic` intent with 2 dedicated Romantic Groups (Romance Start: galleries, museums, cultural landmarks, theaters; Romance Finish: upscale restaurants, wine bars). Each card is a 2-stop itinerary with budget split evenly across stops, romantic-toned AI descriptions, and intent-specific excluded place types (fast food, kid venues, arcades). Also fixed two pre-existing bugs: `performing_arts_theater` and `sushi_restaurant` missing from the global duration map.
 
 - **First Date Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic category-pool pipeline for the `first-date` intent with 3 dedicated First Date Groups (Fun Activity, Cultural, Fine Dining). Each card is a 2-stop itinerary: ice-breaker activity or cultural outing → upscale dinner. Cards strictly alternate between Fun Activity and Cultural starting groups. Fallback to the other starting group when one is empty in the area.
 

@@ -1176,7 +1176,10 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
                   }}
                 >
                   <Pressable
-                    style={[styles.intentCard, selected && styles.intentCardSelected]}
+                    style={[
+                      styles.intentCard,
+                      selected && { backgroundColor: intent.color, borderColor: intent.color },
+                    ]}
                     onPress={() => {
                       logger.action(`Intent ${selected ? 'deselected' : 'selected'}: ${intent.id}`)
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
@@ -1191,7 +1194,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
                     <Ionicons
                       name={intent.icon as any}
                       size={20}
-                      color={selected ? colors.text.inverse : colors.primary[500]}
+                      color={selected ? colors.text.inverse : colors.gray[600]}
                     />
                     <Text style={[styles.intentLabel, selected && styles.intentLabelSelected]}>{intent.label}</Text>
                     <Text style={[styles.intentDesc, selected && styles.intentDescSelected]}>{intent.description}</Text>
@@ -1361,10 +1364,10 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     // ─── STEP 4 ───
     if (subStep === 'celebration') {
       return (
-        <View style={styles.centerContent}>
+        <View style={styles.celebrationCenter}>
           <Ionicons name="trophy-outline" size={64} color={colors.primary[500]} style={styles.stepIcon} />
-          <Text style={styles.headline}>Look at you go.</Text>
-          <Text style={styles.body}>Four quick picks and you're done.</Text>
+          <Text style={[styles.headline, styles.textCenter]}>Look at you go.</Text>
+          <Text style={[styles.body, styles.textCenter]}>Four quick picks and you're done.</Text>
         </View>
       )
     }
@@ -1709,7 +1712,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       onPrimaryCta={ctaConfig.onPress}
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={false}
-      scrollEnabled={navState.subStep !== 'intents'}
+      scrollEnabled={navState.subStep !== 'intents' && navState.subStep !== 'celebration'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
@@ -1742,6 +1745,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: spacing.xxl,
+  },
+  celebrationCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   valuePropCenter: {
     alignItems: 'center',
@@ -1884,10 +1892,6 @@ const styles = StyleSheet.create({
     borderColor: colors.gray[200],
     backgroundColor: colors.background.primary,
     alignItems: 'center',
-  },
-  intentCardSelected: {
-    backgroundColor: colors.primary[500],
-    borderColor: colors.primary[600],
   },
   intentLabel: {
     ...typography.sm,

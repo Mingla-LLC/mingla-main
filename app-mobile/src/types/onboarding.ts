@@ -107,13 +107,13 @@ export const GENDER_DISPLAY_LABELS: Record<string, string> = {
 // ─── Intent Options (matches existing codebase) ───
 
 export const ONBOARDING_INTENTS = [
-  { id: 'adventurous', label: 'Adventurous', icon: 'compass-outline', description: 'Explore the unexpected' },
-  { id: 'first-date', label: 'First Dates', icon: 'heart-outline', description: 'Nail the first impression' },
-  { id: 'romantic', label: 'Romantic', icon: 'heart-circle-outline', description: 'Turn up the spark' },
-  { id: 'friendly', label: 'Friendly', icon: 'people-outline', description: 'Good vibes, great company' },
-  { id: 'group-fun', label: 'Group Fun', icon: 'people-circle-outline', description: 'The more the merrier' },
-  { id: 'picnic-dates', label: 'Picnic Dates', icon: 'basket-outline', description: 'Sun, snacks, good times' },
-  { id: 'take-a-stroll', label: 'Take a Stroll', icon: 'walk-outline', description: 'Wander with purpose' },
+  { id: 'adventurous', label: 'Adventurous', icon: 'compass-outline', description: 'Explore the unexpected', color: '#F59E0B' },
+  { id: 'first-date', label: 'First Dates', icon: 'heart-outline', description: 'Nail the first impression', color: '#EC4899' },
+  { id: 'romantic', label: 'Romantic', icon: 'heart-circle-outline', description: 'Turn up the spark', color: '#EF4444' },
+  { id: 'friendly', label: 'Friendly', icon: 'people-outline', description: 'Plans with your people', color: '#3B82F6' },
+  { id: 'group-fun', label: 'Group Fun', icon: 'people-circle-outline', description: 'The more the merrier', color: '#8B5CF6' },
+  { id: 'picnic-dates', label: 'Picnic Dates', icon: 'basket-outline', description: 'Sun, snacks, good times', color: '#10B981' },
+  { id: 'take-a-stroll', label: 'Take a Stroll', icon: 'walk-outline', description: 'Wander with purpose', color: '#14B8A6' },
 ] as const
 
 // ─── Budget Presets ───
