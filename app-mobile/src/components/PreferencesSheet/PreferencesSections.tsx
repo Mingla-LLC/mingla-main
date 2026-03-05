@@ -110,7 +110,7 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   casual_eats: "Relaxed restaurants, street food, and quick bites",
   fine_dining: "Upscale restaurants and refined dining experiences",
   watch: "Movies, live shows, theatre, and sports events",
-  creative_arts: "Art galleries, workshops, museums, and creative studios",
+  creative_arts: "Art galleries, museums, performing arts, comedy clubs, and live music",
   play: "Games, arcades, bowling, escape rooms, and fun activities",
   wellness: "Spas, yoga, meditation, and wellness retreats",
   groceries_flowers: "Grocery stores, flower shops, and market finds",

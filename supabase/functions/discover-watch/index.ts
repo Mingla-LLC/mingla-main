@@ -33,9 +33,9 @@ const corsHeaders = {
 
 // ── Watch Place Types ───────────────────────────────────────────────────────
 const WATCH_TYPES = [
-  'movie_theater',
-  'cinema',
-  'comedy_club',
+  'movie_theater', 'performing_arts_theater', 'concert_hall',
+  'opera_house', 'philharmonic_hall', 'amphitheatre',
+  'comedy_club', 'live_music_venue', 'karaoke',
 ];
 
 // ── Time Slot Ranges ────────────────────────────────────────────────────────

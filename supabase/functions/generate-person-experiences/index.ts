@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getPlaceTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,21 +11,6 @@ const ALL_CATEGORIES = [
   'Nature', 'First Meet', 'Picnic', 'Drink', 'Casual Eats', 'Fine Dining',
   'Watch', 'Creative & Arts', 'Play', 'Wellness', 'Groceries & Flowers', 'Work & Business',
 ];
-
-const CATEGORY_TO_PLACE_TYPES: Record<string, string[]> = {
-  'Nature': ['park', 'hiking_area', 'national_park'],
-  'First Meet': ['cafe', 'coffee_shop', 'tea_house'],
-  'Picnic': ['park', 'garden'],
-  'Drink': ['bar', 'wine_bar', 'cocktail_bar'],
-  'Casual Eats': ['restaurant', 'fast_food_restaurant', 'sandwich_shop'],
-  'Fine Dining': ['restaurant'],
-  'Watch': ['movie_theater', 'performing_arts_theater'],
-  'Creative & Arts': ['art_gallery', 'museum', 'art_studio'],
-  'Play': ['bowling_alley', 'amusement_center', 'sports_complex'],
-  'Wellness': ['spa', 'gym', 'yoga_studio'],
-  'Groceries & Flowers': ['grocery_store', 'florist'],
-  'Work & Business': ['coworking_space', 'cafe'],
-};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -155,7 +141,7 @@ serve(async (req) => {
     const experiencesByOccasion: Record<string, any[]> = {};
 
     for (const idea of experienceIdeas) {
-      const placeTypes = CATEGORY_TO_PLACE_TYPES[idea.category] || ['restaurant'];
+      const placeTypes = getPlaceTypesForCategory(idea.category);
 
       try {
         const placesResponse = await fetch('https://places.googleapis.com/v1/places:searchNearby', {

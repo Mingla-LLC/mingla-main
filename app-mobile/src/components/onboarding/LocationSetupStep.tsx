@@ -418,7 +418,7 @@ const LocationSetupStep = ({
             }
           } else {
             // Could not get location, use default
-            const defaultLocation = "San Francisco, CA";
+            const defaultLocation = "";
             setLocationInput(defaultLocation);
             if (onLocationChange) {
               onLocationChange(defaultLocation);
@@ -426,7 +426,7 @@ const LocationSetupStep = ({
           }
         } else {
           // Permission denied, use default
-          const defaultLocation = "San Francisco, CA";
+          const defaultLocation = "";
           setLocationInput(defaultLocation);
           if (onLocationChange) {
             onLocationChange(defaultLocation);
@@ -436,7 +436,7 @@ const LocationSetupStep = ({
     } catch (error) {
       console.error("Error getting current location:", error);
       // On error, use default location
-      const defaultLocation = "San Francisco, CA";
+      const defaultLocation = "";
       setLocationInput(defaultLocation);
       if (onLocationChange) {
         onLocationChange(defaultLocation);

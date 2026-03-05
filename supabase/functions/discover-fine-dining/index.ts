@@ -7,6 +7,7 @@ import {
   insertCardToPool,
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
+import { getPlaceTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-fine-dining  –  Standalone Fine Dining Card System
@@ -31,12 +32,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ── Fine Dining Place Types ─────────────────────────────────────────────────
-const FINE_DINING_TYPES = [
-  'fine_dining_restaurant',
-  'chef_led_restaurant',
-  'upscale_restaurant',
-];
+// ── Fine Dining Place Types (from canonical source) ─────────────────────────
+const FINE_DINING_TYPES = getPlaceTypesForCategory('Fine Dining');
 
 // ── Time Slot Ranges ────────────────────────────────────────────────────────
 const TIME_SLOT_RANGES: Record<string, { start: number; end: number }> = {

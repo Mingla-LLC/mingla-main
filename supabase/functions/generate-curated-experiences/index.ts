@@ -159,7 +159,12 @@ const STOP_DURATION_MINUTES: Record<string, number> = {
   book_store: 30, donut_shop: 15, juice_shop: 15,
   dessert_shop: 25, ice_cream_shop: 20,
   // Nature category types (added for Nature Category Keywords update)
-  lake: 60, river: 45, woods: 60, wildlife_park: 90, picnic_ground: 60,
+  lake: 60, river: 45, woods: 60, wildlife_park: 90, picnic_ground: 60, city_park: 60,
+  // Drink category types (added for Drink Category Keywords update)
+  cocktail_bar: 60, beer_garden: 75, brewery: 60, brewpub: 60,
+  lounge_bar: 60, night_club: 90, coffee_roastery: 30, coffee_stand: 15,
+  // Watch category types (added for Watch Category Keywords update)
+  philharmonic_hall: 120, live_music_venue: 90, amphitheatre: 120,
 };
 const DEFAULT_STOP_DURATION = 45;
 
@@ -170,6 +175,7 @@ const ALWAYS_OPEN_TYPES = new Set([
   'lake', 'river', 'woods', 'mountain_peak', 'island',
   'campground', 'scenic_spot', 'nature_preserve', 'picnic_ground',
   'garden', 'wildlife_refuge',
+  'plaza', 'tourist_attraction',
 ]);
 
 // ── Adventure Intent — Dedicated Place Type Groups ───────────────────────

@@ -513,7 +513,12 @@ export class ExperienceGenerationService {
       "Casual Eats": ["restaurant", "cafe", "fast_food_restaurant"],
       "Fine Dining": ["restaurant", "fine_dining_restaurant"],
       Watch: ["movie_theater", "performing_arts_theater"],
-      "Creative & Arts": ["art_gallery", "museum"],
+      "Creative & Arts": [
+        "art_gallery", "art_museum", "art_studio", "museum", "history_museum",
+        "sculpture", "cultural_center", "cultural_landmark",
+        "performing_arts_theater", "opera_house", "auditorium",
+        "amphitheatre", "comedy_club", "live_music_venue",
+      ],
       Play: ["bowling_alley", "amusement_park", "gym"],
       Wellness: ["spa", "gym", "yoga_studio"],
       Picnic: ["park", "beach", "marina"],

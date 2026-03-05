@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserPreferences } from '../services/experiencesService';
 import { enhancedLocationService } from '../services/enhancedLocationService';
-import * as Location from 'expo-location';
+import { geocodingService } from '../services/geocodingService';
 
 export interface LocationData {
   lat: number;
@@ -29,7 +29,7 @@ const fetchUserLocation = async (
   refreshKey: number | string | undefined,
   customLocation: string | null | undefined,
   useGpsFlag: boolean | undefined
-): Promise<LocationData> => {
+): Promise<LocationData | null> => {
   if (!userId) {
     // Fallback to GPS for anonymous users
     const location = await enhancedLocationService.getCurrentLocation();
@@ -40,7 +40,7 @@ const fetchUserLocation = async (
     if (lastKnown) {
       return { lat: lastKnown.latitude, lng: lastKnown.longitude };
     }
-    return { lat: 37.7749, lng: -122.4194 }; // Default San Francisco
+    return null; // No location available for anonymous user
   }
 
   // Determine whether to use GPS or custom location
@@ -59,12 +59,14 @@ const fetchUserLocation = async (
         return { lat, lng };
       }
     } else {
-      // Geocode address string
+      // Geocode address string via HTTP API — NOT native Location.geocodeAsync
+      // (native forward geocode shares rate bucket with reverseGeocodeAsync)
       try {
-        const geocoded = await Location.geocodeAsync(customLocation);
-        if (geocoded && geocoded.length > 0) {
+        const suggestions = await geocodingService.autocomplete(customLocation);
+        const firstWithLocation = suggestions.find(s => s.location);
+        if (firstWithLocation?.location) {
           console.log('Using geocoded location from preferences:', customLocation);
-          return { lat: geocoded[0].latitude, lng: geocoded[0].longitude };
+          return { lat: firstWithLocation.location.lat, lng: firstWithLocation.location.lng };
         }
       } catch {
         // fall through to GPS
@@ -82,7 +84,10 @@ const fetchUserLocation = async (
   if (lastKnown) {
     return { lat: lastKnown.latitude, lng: lastKnown.longitude };
   }
-  return { lat: 37.7749, lng: -122.4194 }; // Default
+  // No GPS available — return null to signal "location unavailable"
+  // Callers must handle null gracefully (show prompt, use last cached, etc.)
+  // Do NOT return a hardcoded default — it corrupts location-based results
+  return null;
 };
 
 export const useUserLocation = (

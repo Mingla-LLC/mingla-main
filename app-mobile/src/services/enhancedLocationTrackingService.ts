@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import { Alert } from 'react-native';
 import { supabase } from './supabase';
+import { throttledReverseGeocode } from '../utils/throttledGeocode';
 
 export interface LocationData {
   latitude: number;
@@ -359,10 +360,7 @@ class EnhancedLocationTrackingService {
 
   async reverseGeocode(latitude: number, longitude: number): Promise<string | null> {
     try {
-      const result = await Location.reverseGeocodeAsync({
-        latitude,
-        longitude,
-      });
+      const { addresses: result } = await throttledReverseGeocode(latitude, longitude);
 
       if (result.length > 0) {
         const address = result[0];

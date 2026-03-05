@@ -43,17 +43,22 @@ app-mobile/
     constants/             # Design tokens, config, categories
       designSystem.ts      # Spacing, colors, typography, glass tokens
       categories.ts        # 12 experience categories
-    utils/                 # 12 utility files
+    utils/                 # 18 utility files
+      throttledGeocode.ts  # Centralized throttled/cached reverse geocoding wrapper
 
 supabase/
   functions/               # 25 Deno edge functions
+    _shared/               # Shared modules (categoryPlaceTypes, cardPoolService, placesCache)
   migrations/              # 30+ SQL migration files
 ```
 
 ## Features
 
 - **AI-powered swipe discovery** — preference-driven cards served from a card pool pipeline (zero API cost on cache hit)
-- **12 experience categories** — Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business
+- **12 experience categories** — Nature, First Meet (3-group: cafes + activities + culture), Picnic (7 outdoor park/garden types), Drink (2-group: alcohol + non-alcohol), Casual Eats, Fine Dining (11-type: steakhouses, French, seafood, Mediterranean, Spanish, tapas, oyster bars, bistros, gastropubs, wine bars), Watch (9-type: movie theaters, performing arts, concert halls, opera houses, philharmonic halls, amphitheatres, comedy clubs, live music, karaoke), Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business
+- **First Meet 3-group alternation** — interleaved cafe/activity/culture types produce diverse cards (bowling alleys, art galleries, parks alongside coffee shops)
+- **Drink 2-group alternation** — interleaved alcohol/non-alcohol types (bars, cocktail bars, breweries alongside coffee shops, tea houses, juice bars)
+- **Picnic unified 7-type array** — park, city_park, picnic_ground, state_park, botanical_garden, garden, nature_preserve — consistent across all 10 edge function surfaces with 38-type exclude list
 - **5 intent types** — Romantic, First Dates, Group Fun, Business, Solo Adventure (with curated multi-stop itineraries)
 - **Ticketmaster Night Out** — real event cards with genre/date/price filtering and in-app ticketing
 - **Collaboration sessions** — real-time boards with live participant updates
@@ -61,7 +66,8 @@ supabase/
 - **Glassmorphism onboarding UI** — frosted glass bottom bar (expo-blur on iOS), full-width CTA with orange glow shadow, staggered text reveal animation
 - **Holiday experiences** — seasonal curated content with archive/delete
 - **Card pool pipeline** — place_pool + card_pool + user_card_impressions for efficient serving
-- **GPS + manual location** — with city name geocoding and preference toggle
+- **Centralized geocoding** — all reverse geocoding goes through a single throttled wrapper with 1.5s rate limiting, LRU cache (50 entries, 30-min TTL), deduplication of concurrent requests, and automatic rate-limit retry
+- **GPS + manual location** — HTTP-based forward geocoding (geocodingService), null-safe location handling, error/denied state distinction in onboarding
 
 ## Database Schema (Key Tables)
 
@@ -81,14 +87,23 @@ supabase/
 
 | Function | Purpose |
 |----------|---------|
-| generate-experiences | Main card generation (Google Places + OpenAI) |
+| new-generate-experience- | Main card generation (Google Places + OpenAI) |
 | generate-curated-experiences | Multi-stop itinerary cards |
 | generate-session-experiences | Collaboration session cards |
+| generate-experiences | Solo experience generation |
 | discover-experiences | Explore tab discovery |
+| discover-picnic-park | Dedicated Picnic Park card system |
+| discover-drink | Dedicated Drink venue card system |
+| discover-fine-dining | Dedicated Fine Dining card system |
+| discover-cards | Discover tab card serving |
+| recommendations-enhanced | Recommendation scoring engine |
+| recommendations | Legacy recommendation engine |
+| generate-person-experiences | Person-based experience generation |
 | ticketmaster-events | Ticketmaster API proxy |
 | refresh-place-pool | Daily pool refresh (free Place Details) |
 | holiday-experiences | Seasonal content |
-| night-out-experiences | Legacy night out (replaced by Ticketmaster) |
+
+All edge functions import category-to-place-type mappings from `_shared/categoryPlaceTypes.ts` — the single source of truth. Zero hardcoded mappings exist in any individual function.
 
 ## Environment Variables
 
@@ -121,8 +136,8 @@ supabase functions serve
 
 ## Recent Changes
 
-- Onboarding glassmorphism overhaul — frosted glass bottom bar, full-width CTA with orange glow shadow, 4-phase cinematic text reveal animation on welcome screen
-- "Back to sign in" escape hatch on first onboarding screen (signs out and returns to WelcomeScreen)
-- expo-blur added for iOS backdrop blur (Android uses solid semi-transparent fallback)
-- Glass design tokens added to designSystem.ts
-- CTA button press animation (spring scale 0.97) with per-screen entrance animation
+- **Category place type centralization** — all 10 active edge functions now import from `_shared/categoryPlaceTypes.ts`. Zero local CATEGORY_MAPPINGS or CATEGORY_TO_PLACE_TYPES objects remain.
+- **Groceries & Flowers bug fix** — discover-experiences EXCLUDED_TYPES previously contained `grocery_store` and `supermarket`, causing zero results. Fixed by centralized DISCOVER_EXCLUDED_PLACE_TYPES that omits these valid types.
+- **Holiday experiences** now support all 12 categories (previously missing Groceries & Flowers and Work & Business).
+- **Dead code deletion** — removed 5 stale folders: `generate-session-experiences copy/`, `generate-experiences copy/`, `recommendations-backup/`, `versions/`, `gen-exp-new-keywords/`.
+- **Centralized exclusion system** — CATEGORY_EXCLUDED_PLACE_TYPES, DISCOVER_EXCLUDED_PLACE_TYPES, and getExcludedTypesForCategory() added to canonical source.

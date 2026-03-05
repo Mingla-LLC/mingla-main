@@ -76,6 +76,7 @@ const ALWAYS_OPEN_TYPES = new Set([
   'lake', 'river', 'woods', 'mountain_peak', 'island',
   'campground', 'scenic_spot', 'nature_preserve', 'picnic_ground',
   'wildlife_park', 'wildlife_refuge',
+  'plaza', 'tourist_attraction',
 ]);
 
 // ── Time Slot Ranges ────────────────────────────────────────────────────────

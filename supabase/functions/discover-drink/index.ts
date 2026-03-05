@@ -7,6 +7,7 @@ import {
   insertCardToPool,
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
+import { getPlaceTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-drink  –  Standalone Drink Card System
@@ -14,7 +15,7 @@ import {
  * A dedicated, self-contained edge function for Drink venue discovery.
  * Modeled identically on discover-first-meet.
  *
- * • Searches 5 drink-venue Google Place types via shared cache.
+ * • Searches 14 drink-venue Google Place types via shared cache.
  * • Deduplicates, filters by travel constraint, sorts by quality.
  * • Offset-based batching for "Generate Another 20".
  * • Single batch OpenAI call for AI-generated descriptions (~$0.001/batch).
@@ -31,14 +32,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ── Drink Place Types ───────────────────────────────────────────────────────
-const DRINK_TYPES = [
-  'bar',
-  'pub',
-  'wine_bar',
-  'tea_house',
-  'coffee_shop',
-];
+// ── Drink Place Types (from canonical source) ───────────────────────────────
+const DRINK_TYPES = getPlaceTypesForCategory('Drink');
 
 // ── Time Slot Ranges ────────────────────────────────────────────────────────
 const TIME_SLOT_RANGES: Record<string, { start: number; end: number }> = {

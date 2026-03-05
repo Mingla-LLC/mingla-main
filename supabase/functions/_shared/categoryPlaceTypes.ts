@@ -18,16 +18,33 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'woods', 'hiking_area', 'campground', 'picnic_ground',
   ],
   'First Meet': [
-    'cafe', 'coffee_shop', 'tea_house', 'ice_cream_shop',
-    'dessert_shop', 'bakery',
+    // Interleaved: Group1 (café), Group2 (activity), Group3 (culture/outdoor)
+    'cafe', 'bowling_alley', 'park',
+    'coffee_shop', 'miniature_golf_course', 'art_gallery',
+    'tea_house', 'video_arcade', 'museum',
+    'book_store', 'amusement_center', 'botanical_garden',
+    'bakery', 'go_karting_venue', 'cultural_center',
+    'dessert_shop', 'karaoke', 'plaza',
+    'ice_cream_shop', 'comedy_club', 'tourist_attraction',
+    'juice_shop', 'paintball_center', 'art_museum',
+    'donut_shop', 'dance_hall', 'garden',
+    'breakfast_restaurant', 'brunch_restaurant',
   ],
   'Picnic': [
-    'park', 'picnic_ground', 'garden', 'botanical_garden',
-    'national_park', 'state_park', 'city_park',
+    'park', 'city_park', 'picnic_ground', 'state_park',
+    'botanical_garden', 'garden', 'nature_preserve',
   ],
   'Drink': [
-    'bar', 'wine_bar', 'cocktail_bar', 'pub',
-    'coffee_shop', 'tea_house', 'brewery', 'night_club', 'winery',
+    // Interleaved: Group1 (alcohol), Group2 (non-alcohol)
+    'bar',             'coffee_shop',
+    'cocktail_bar',    'coffee_roastery',
+    'wine_bar',        'coffee_stand',
+    'brewery',         'tea_house',
+    'pub',             'juice_shop',
+    'beer_garden',
+    'brewpub',
+    'lounge_bar',
+    'night_club',
   ],
   'Casual Eats': [
     'restaurant', 'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
@@ -44,16 +61,21 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'afghani_restaurant', 'african_restaurant',
   ],
   'Fine Dining': [
-    'fine_dining_restaurant',
+    'fine_dining_restaurant', 'french_restaurant', 'steak_house',
+    'seafood_restaurant', 'mediterranean_restaurant', 'spanish_restaurant',
+    'tapas_restaurant', 'oyster_bar_restaurant', 'bistro',
+    'gastropub', 'wine_bar',
   ],
   'Watch': [
-    'movie_theater', 'performing_arts_theater', 'comedy_club',
-    'live_music_venue', 'concert_hall', 'amphitheatre', 'opera_house',
+    'movie_theater', 'performing_arts_theater', 'concert_hall',
+    'opera_house', 'philharmonic_hall', 'amphitheatre',
+    'comedy_club', 'live_music_venue', 'karaoke',
   ],
   'Creative & Arts': [
-    'art_gallery', 'museum', 'art_studio', 'art_museum',
-    'performing_arts_theater', 'cultural_center', 'planetarium',
-    'cultural_landmark', 'dance_hall', 'karaoke', 'coffee_roastery',
+    'art_gallery', 'art_museum', 'art_studio', 'museum', 'history_museum',
+    'sculpture', 'cultural_center', 'cultural_landmark',
+    'performing_arts_theater', 'opera_house', 'auditorium',
+    'amphitheatre', 'comedy_club', 'live_music_venue',
   ],
   'Play': [
     'bowling_alley', 'amusement_park', 'water_park', 'video_arcade',
@@ -125,6 +147,9 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'first-meet': 'First Meet',
   'firstmeet': 'First Meet',
   'picnic': 'Picnic',
+  'picnic_park': 'Picnic',
+  'picnic-park': 'Picnic',
+  'picnic park': 'Picnic',
   'drink': 'Drink',
   'casual_eats': 'Casual Eats',
   'casual-eats': 'Casual Eats',
@@ -188,6 +213,12 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'wellness dates': 'Wellness',
   'wellness_dates': 'Wellness',
   'freestyle': 'Nature',
+
+  // Short forms used by legacy recommendation endpoints
+  'sip': 'Drink',
+  'play_move': 'Play',
+  'screen_relax': 'Watch',
+  'creative': 'Creative & Arts',
 };
 
 /**
@@ -258,4 +289,154 @@ export const INTENT_IDS = new Set([
  */
 export function filterOutIntents(categories: string[]): string[] {
   return categories.filter(c => !INTENT_IDS.has(c));
+}
+
+// ── All canonical category display names ──────────────────────────────────────
+export const ALL_CATEGORY_NAMES = Object.keys(MINGLA_CATEGORY_PLACE_TYPES);
+
+// ── Per-category excluded types ───────────────────────────────────────────────
+
+/**
+ * Per-category excluded types — venues that are inappropriate
+ * for a specific category context even if Google returns them.
+ * Applied as post-fetch filter alongside GLOBAL_EXCLUDED_PLACE_TYPES.
+ */
+export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
+  'Nature': [
+    'shopping_mall', 'department_store', 'electronics_store',
+    'furniture_store', 'store', 'warehouse_store',
+    'movie_theater', 'video_arcade', 'bowling_alley', 'casino',
+    'night_club', 'karaoke', 'amusement_center', 'amusement_park',
+    'parking', 'parking_lot', 'parking_garage',
+    'bus_station', 'train_station', 'transit_station', 'airport',
+  ],
+  'First Meet': [
+    'night_club', 'bar', 'cocktail_bar', 'lounge_bar', 'brewery', 'brewpub',
+    'fine_dining_restaurant', 'french_restaurant', 'steak_house',
+    'indoor_playground', 'water_park',
+  ],
+  'Picnic': [
+    'dog_park', 'amusement_park', 'water_park',
+    'bar', 'night_club', 'casino', 'movie_theater', 'video_arcade',
+  ],
+  'Drink': [
+    'fine_dining_restaurant', 'spa', 'sauna', 'amusement_park', 'water_park',
+  ],
+  'Casual Eats': [
+    'fine_dining_restaurant', 'bar', 'night_club', 'spa',
+  ],
+  'Fine Dining': [
+    'fast_food_restaurant', 'food_court', 'bar', 'bowling_alley',
+    'amusement_park', 'water_park', 'video_arcade', 'night_club',
+    // Romantic exclusions (fine dining is often romantic context)
+    'indoor_playground', 'amusement_center', 'playground',
+    'children_store', 'child_care_agency', 'preschool',
+  ],
+  'Creative & Arts': [
+    'fast_food_restaurant', 'food_court', 'bar', 'bowling_alley',
+    'amusement_park', 'water_park', 'spa', 'sauna', 'night_club',
+    'shopping_mall', 'department_store', 'electronics_store',
+    'furniture_store', 'warehouse_store', 'store',
+    'gym', 'fitness_center', 'sports_complex', 'sports_club',
+    'stadium', 'race_course', 'tennis_court', 'swimming_pool',
+    'parking', 'parking_lot', 'parking_garage',
+    'bus_station', 'train_station', 'transit_station', 'airport',
+  ],
+};
+
+/**
+ * Get the full exclusion set for a category: global + category-specific.
+ * Use this in post-fetch filtering.
+ */
+export function getExcludedTypesForCategory(category: string): string[] {
+  const canonical = resolveCategory(category);
+  const categoryExcluded = canonical ? (CATEGORY_EXCLUDED_PLACE_TYPES[canonical] || []) : [];
+  return [...GLOBAL_EXCLUDED_PLACE_TYPES, ...categoryExcluded];
+}
+
+/**
+ * Extended exclusion set for discovery/browse contexts where
+ * utility businesses should never appear.
+ * NOTE: Does NOT include grocery_store or supermarket — those are valid
+ * for the Groceries & Flowers category.
+ */
+export const DISCOVER_EXCLUDED_PLACE_TYPES: string[] = [
+  ...GLOBAL_EXCLUDED_PLACE_TYPES,
+  'gas_station', 'atm', 'bank', 'hospital', 'pharmacy', 'dentist', 'doctor',
+  'funeral_home', 'cemetery', 'car_repair', 'car_wash', 'car_dealer',
+  'convenience_store', 'laundry', 'locksmith', 'post_office', 'storage',
+  'moving_company', 'insurance_agency', 'real_estate_agency', 'travel_agency',
+  'parking', 'government_office', 'police', 'fire_station', 'courthouse',
+  'city_hall', 'apartment_building', 'plumber', 'electrician', 'roofing_contractor',
+];
+
+// ── Category keywords (for text-based search) ─────────────────────────────────
+
+/**
+ * Search keywords for each category — used by recommendations-enhanced
+ * and any endpoint that does text-based search alongside type-based search.
+ */
+export const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  'Nature': [
+    'park', 'garden', 'trail', 'scenic', 'walk', 'botanical', 'nature',
+    'hiking', 'outdoor', 'lake', 'river', 'mountain', 'woods', 'wildlife', 'campground',
+  ],
+  'First Meet': [
+    'cafe', 'coffee', 'tea', 'bowling', 'arcade', 'park',
+    'gallery', 'museum', 'karaoke', 'mini golf', 'garden',
+    'bookstore', 'comedy', 'brunch', 'ice cream',
+  ],
+  'Picnic': [
+    'picnic', 'outdoor', 'park', 'garden', 'alfresco',
+    'nature_preserve', 'botanical_garden', 'state_park', 'city_park',
+  ],
+  'Drink': [
+    'cocktail', 'wine', 'brewery', 'bar', 'coffee', 'tea',
+    'speakeasy', 'rooftop', 'happy hour',
+    'beer_garden', 'craft_beer', 'juice', 'espresso', 'cold_brew',
+  ],
+  'Casual Eats': [
+    'pizza', 'burger', 'taco', 'food truck', 'deli', 'cafe', 'casual', 'quick bite',
+  ],
+  'Fine Dining': [
+    'tasting menu', 'prix fixe', 'chef counter', 'omakase',
+    'wine pairing', 'fine dining', 'michelin', "chef's table", 'degustation',
+  ],
+  'Watch': [
+    'cinema', 'movie', 'indie film', 'drive in', 'theater',
+    'screening', 'film festival', 'comedy', 'concert', 'live music',
+  ],
+  'Creative & Arts': [
+    'pottery', 'painting', 'workshop', 'art', 'gallery',
+    'museum', 'craft', 'sculpture', 'photography', 'ceramics',
+    'history museum', 'cultural center', 'opera', 'theater',
+    'live music', 'comedy', 'auditorium', 'performing arts',
+  ],
+  'Play': [
+    'bowling', 'climbing', 'bouldering', 'dance', 'skating',
+    'kayak', 'hike', 'pickleball', 'arcade', 'trampoline',
+    'mini golf', 'go kart', 'axe throwing', 'laser tag',
+    'escape room', 'basketball', 'tennis', 'badminton',
+  ],
+  'Wellness': [
+    'spa', 'sauna', 'massage', 'relaxation', 'wellness',
+    'hot spring', 'bathhouse', 'thermal bath',
+  ],
+  'Groceries & Flowers': [
+    'grocery', 'supermarket', 'flowers', 'florist',
+    'produce', 'fresh', 'market', 'organic', 'bouquet',
+  ],
+  'Work & Business': [
+    'work', 'business', 'meeting', 'productivity',
+    'laptop', 'wifi', 'coworking', 'quiet cafe',
+  ],
+};
+
+/**
+ * Get keywords for a category string (any format).
+ */
+export function getCategoryKeywords(category: string): string[] {
+  const canonical = resolveCategory(category);
+  if (!canonical) return [];
+  return CATEGORY_KEYWORDS[canonical] || [];
 }

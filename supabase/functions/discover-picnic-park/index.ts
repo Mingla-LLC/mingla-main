@@ -7,6 +7,7 @@ import {
   insertCardToPool,
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
+import { getPlaceTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-picnic-park  –  Standalone Picnic Park Card System
@@ -32,13 +33,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ── Picnic Park Place Types ─────────────────────────────────────────────────
-const PICNIC_PARK_TYPES = [
-  'picnic_ground',
-];
+// ── Picnic Park Place Types (from canonical source) ─────────────────────────
+const PICNIC_PARK_TYPES = getPlaceTypesForCategory('Picnic');
 
 // Types that are typically free / always open (skip hours filter)
-const ALWAYS_OPEN_TYPES = new Set(['picnic_ground']);
+const ALWAYS_OPEN_TYPES = new Set([
+  'park', 'city_park', 'picnic_ground', 'state_park',
+  'botanical_garden', 'garden', 'nature_preserve',
+]);
 
 // ── Time Slot Ranges ────────────────────────────────────────────────────────
 const TIME_SLOT_RANGES: Record<string, { start: number; end: number }> = {
@@ -343,7 +345,7 @@ serve(async (req: Request) => {
             lat: location.lat,
             lng: location.lng,
             radiusMeters,
-            categories: ['Picnic Park'],
+            categories: ['Picnic'],
             budgetMin: 0,
             budgetMax,
             limit,
@@ -498,8 +500,8 @@ serve(async (req: Request) => {
               googlePlaceId: card.placeId,
               cardType: 'single',
               title: card.title,
-              category: 'Picnic Park',
-              categories: ['Picnic Park'],
+              category: 'Picnic',
+              categories: ['Picnic'],
               description: card.description,
               imageUrl: card.image,
               images: card.images,

@@ -1,5 +1,10 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  getPlaceTypesForCategory,
+  getCategoryKeywords,
+  resolveCategory,
+} from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,248 +16,6 @@ const corsHeaders = {
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const EVENTBRITE_TOKEN = Deno.env.get("EVENTBRITE_TOKEN");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-
-// Enhanced Category Mappings with Activity Keywords
-const CATEGORY_MAPPINGS = {
-  play_move: {
-    places: [
-      "bowling_alley",
-      "gym",
-      "sports_complex",
-      "recreation_center",
-      "tennis_court",
-      "basketball_court",
-      "golf_course",
-      "mini_golf",
-      "climbing_gym",
-      "skating_rink",
-      "amusement_park",
-    ],
-    keywords: [
-      "bowling",
-      "climbing",
-      "bouldering",
-      "dance",
-      "skating",
-      "kayak",
-      "hike",
-      "pickleball",
-      "arcade",
-      "trampoline",
-      "mini golf",
-      "go kart",
-      "axe throwing",
-      "laser tag",
-      "escape room",
-      "basketball",
-      "tennis",
-      "badminton",
-      "rock climbing",
-      "indoor climbing",
-    ],
-    activities: [
-      "bowling",
-      "climbing",
-      "bouldering",
-      "dance",
-      "skating",
-      "kayak",
-      "hikes",
-      "pickleball",
-      "arcades",
-      "trampoline",
-      "mini golf",
-      "go kart",
-      "axe throwing",
-      "laser tag",
-      "escape room",
-      "basketball",
-      "tennis",
-      "badminton",
-    ],
-  },
-  dining: {
-    places: [
-      "restaurant",
-      "fine_dining_restaurant",
-      "steakhouse",
-      "seafood_restaurant",
-      "italian_restaurant",
-      "french_restaurant",
-      "sushi_restaurant",
-    ],
-    keywords: [
-      "tasting menu",
-      "prix fixe",
-      "chef counter",
-      "omakase",
-      "wine pairing",
-      "fine dining",
-      "michelin",
-      "chef's table",
-      "degustation",
-    ],
-    activities: [
-      "tasting menu",
-      "prix fixe",
-      "chef counter",
-      "omakase",
-      "wine pairing",
-    ],
-  },
-  screen_relax: {
-    places: ["movie_theater", "spa", "beauty_salon", "massage_therapist"],
-    keywords: [
-      "cinema",
-      "movie",
-      "indie film",
-      "drive in",
-      "theater",
-      "screening",
-      "film festival",
-      "documentary",
-    ],
-    activities: [
-      "cinema",
-      "movie",
-      "indie film",
-      "drive in",
-      "theater",
-      "screening",
-    ],
-  },
-  creative: {
-    places: [
-      "art_gallery",
-      "museum",
-      "pottery_studio",
-      "craft_store",
-      "art_studio",
-      "jewelry_store",
-      "library",
-    ],
-    keywords: [
-      "pottery",
-      "painting",
-      "workshop",
-      "candle making",
-      "cooking class",
-      "woodworking",
-      "glassblowing",
-      "art class",
-      "craft workshop",
-      "ceramic",
-    ],
-    activities: [
-      "pottery",
-      "painting",
-      "workshop",
-      "candle making",
-      "cooking class",
-      "woodworking",
-      "glassblowing",
-    ],
-  },
-  sip: {
-    places: ["bar", "wine_bar", "brewery", "cafe", "coffee_shop", "tea_house"],
-    keywords: [
-      "cocktail bar",
-      "wine bar",
-      "5 star hotel bar",
-      "speakeasy",
-      "brewery",
-      "tea house",
-      "coffee roastery",
-      "craft cocktail",
-      "wine tasting",
-    ],
-    activities: [
-      "cocktail bars",
-      "wine bars",
-      "5 star hotel bars",
-      "speakeasy",
-      "brewery",
-      "tea house",
-      "coffee roastery",
-    ],
-  },
-  stroll: {
-    places: [
-      "park",
-      "tourist_attraction",
-      "point_of_interest",
-      "natural_feature",
-      "zoo",
-      "aquarium",
-      "botanical_garden",
-    ],
-    keywords: [
-      "scenic walking",
-      "scenic trail",
-      "walk in park",
-      "garden",
-      "promenade",
-      "boardwalk",
-      "nature walk",
-      "hiking trail",
-    ],
-    activities: [
-      "scenic walking routes",
-      "scenic trails",
-      "walk in parks",
-      "gardens",
-      "promenade",
-      "boardwalk",
-    ],
-  },
-  casual_eats: {
-    places: [
-      "restaurant",
-      "food_court",
-      "meal_takeaway",
-      "fast_food_restaurant",
-      "food_truck",
-      "sandwich_shop",
-      "pizza_restaurant",
-    ],
-    keywords: [
-      "taco",
-      "pizza",
-      "burger",
-      "noodle",
-      "food truck",
-      "deli",
-      "cafe",
-      "casual dining",
-      "quick bite",
-    ],
-    activities: [
-      "tacos",
-      "pizza",
-      "burger",
-      "noodles",
-      "food trucks",
-      "deli",
-      "cafe",
-    ],
-  },
-  freestyle: {
-    places: [
-      "restaurant",
-      "bar",
-      "cafe",
-      "tourist_attraction",
-      "art_gallery",
-      "museum",
-      "park",
-      "movie_theater",
-      "bowling_alley",
-      "spa",
-    ],
-    keywords: [],
-    activities: [],
-  },
-};
 
 // Enhanced Experience Type System with Structured Attributes
 const EXPERIENCE_TYPE_ATTRIBUTES = {
@@ -619,10 +382,9 @@ async function fetchGooglePlaces(
       : 10000; // Default 10km radius
 
   for (const category of preferences.categories) {
-    const categoryMapping = CATEGORY_MAPPINGS[category];
-    if (!categoryMapping) continue;
+    if (!resolveCategory(category)) continue;
 
-    const placeTypes = categoryMapping.places || ["tourist_attraction"];
+    const placeTypes = getPlaceTypesForCategory(category);
 
     for (const placeType of placeTypes.slice(0, 3)) {
       try {
@@ -1459,8 +1221,7 @@ function matchesCategoryActivities(
   for (const category of selectedCategories) {
     if (candidate.category !== category) continue;
 
-    const mapping = CATEGORY_MAPPINGS[category];
-    if (!mapping) continue;
+    if (!resolveCategory(category)) continue;
 
     // For freestyle, allow everything
     if (category === "freestyle") return true;
@@ -1470,14 +1231,17 @@ function matchesCategoryActivities(
     const candidateDesc = (candidate.description || "").toLowerCase();
     const candidateTypes = candidate.placeTypes || [];
 
+    const keywords = getCategoryKeywords(category);
+    const placeTypes = getPlaceTypesForCategory(category);
+
     // Must match at least one expected activity keyword or place type
-    const hasMatchingKeyword = mapping.keywords.some(
+    const hasMatchingKeyword = keywords.some(
       (keyword) =>
         candidateName.includes(keyword.toLowerCase()) ||
         candidateDesc.includes(keyword.toLowerCase())
     );
 
-    const hasMatchingPlaceType = mapping.places.some((placeType) =>
+    const hasMatchingPlaceType = placeTypes.some((placeType) =>
       candidateTypes.includes(placeType)
     );
 

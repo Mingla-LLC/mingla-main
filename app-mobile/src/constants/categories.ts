@@ -87,38 +87,51 @@ export const categories: Category[] = [
     slug: 'first_meet',
     name: 'First Meet',
     icon: '🤝',
-    description: 'Low-pressure social settings perfect for meeting someone new or a first date',
-    detailedDescription: 'Bookstores, coffee shops, wine bars, tea houses, pubs, and planetariums — relaxed venues that enable easy conversation without the pressure of a formal date setting.',
+    description: 'Cafés, activities, and cultural spots — perfect for meeting someone new',
+    detailedDescription: 'Coffee shops, bookstores, bowling alleys, arcades, art galleries, parks, museums, and more. Low-pressure venues mixing conversation, fun activities, and cultural outings for a memorable first meeting.',
     expectedActivities: [
-      'Bookstores and coffee shops',
-      'Wine bars and pubs',
-      'Tea houses and casual lounges',
-      'Planetariums'
+      'Cafés, tea houses, bookstores, and bakeries',
+      'Bowling, mini golf, arcades, and karaoke',
+      'Parks, galleries, museums, and botanical gardens',
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['bookstore', 'bar', 'pub', 'wine_bar', 'tea_house', 'coffee_shop', 'planetarium'],
-        attributes: ['quiet', 'conversational', 'relaxed'],
-        excludedAttributes: ['amusement_park', 'water_park', 'bowling_alley', 'spa', 'massage']
+        coreAnchors: [
+          'cafe', 'bowling_alley', 'park',
+          'coffee_shop', 'miniature_golf_course', 'art_gallery',
+          'tea_house', 'video_arcade', 'museum',
+          'book_store', 'amusement_center', 'botanical_garden',
+          'bakery', 'go_karting_venue', 'cultural_center',
+          'dessert_shop', 'karaoke', 'plaza',
+          'ice_cream_shop', 'comedy_club', 'tourist_attraction',
+          'juice_shop', 'paintball_center', 'art_museum',
+          'donut_shop', 'dance_hall', 'garden',
+          'breakfast_restaurant', 'brunch_restaurant',
+        ],
+        attributes: ['quiet', 'conversational', 'relaxed', 'fun', 'cultural'],
+        excludedAttributes: [
+          'night_club', 'bar', 'fine_dining_restaurant',
+          'water_park', 'indoor_playground', 'church',
+        ],
       },
       eventbrite: {
         eventTypes: ['social_events', 'networking', 'casual_meetups']
       }
     },
     logic: {
-      hardFilter: 'Must be a conversational, low-pressure venue',
+      hardFilter: 'Must be a low-pressure venue suitable for a first meeting',
       hierarchy: {
         broad: 'First Meet',
-        niche: ['Coffee Shops', 'Wine Bars', 'Bookstores', 'Pubs', 'Tea Houses']
+        niche: ['Cafés & Coffee', 'Fun Activities', 'Culture & Outdoors']
       },
-      fallbackBehavior: 'If no bookstore or specialty venue found, show nearest coffee shop or wine bar.'
+      fallbackBehavior: 'If no activity or cultural venue found, show nearest café or coffee shop.'
     },
     ux: {
       activeColor: '#6366F1',
-      subcategories: ['Coffee Shops', 'Wine Bars', 'Bookstores', 'Pubs', 'Tea Houses'],
-      contextualPreview: 'Indie bookstore with a café corner — great for a relaxed first meet.'
+      subcategories: ['Cafés & Coffee', 'Fun Activities', 'Culture & Outdoors'],
+      contextualPreview: 'Indie bookstore with a café corner, bowling alley, or art gallery nearby — pick your vibe.'
     },
-    activityType: 'stationary',
+    activityType: 'mixed',
     duration: 'short',
     compatibleWith: ['drink', 'watch', 'creative_arts'],
     incompatibleWith: ['wellness', 'picnic_park']
@@ -127,35 +140,39 @@ export const categories: Category[] = [
     slug: 'picnic_park',
     name: 'Picnic Park',
     icon: '🧺',
-    description: 'Outdoor picnic grounds — designated areas with tables, shelters, and scenic views',
-    detailedDescription: 'Dedicated picnic grounds perfect for an outdoor meal. Tables, benches, shelters, and scenic settings for a relaxed time with friends, family, or a date.',
+    description: 'Parks, picnic grounds, botanical gardens, and nature preserves for outdoor dining',
+    detailedDescription: 'Parks, city parks, picnic grounds, state parks, botanical gardens, gardens, and nature preserves. Perfect for a relaxed outdoor meal with scenic views, walking trails, and open green spaces.',
     expectedActivities: [
-      'Designated picnic grounds with tables',
-      'Scenic outdoor areas for dining',
-      'Parks with picnic shelters'
+      'Parks and picnic grounds with tables and shelters',
+      'Botanical gardens and nature preserves for scenic picnics',
+      'State parks and city parks with open green spaces',
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['picnic_ground'],
+        coreAnchors: ['park', 'city_park', 'picnic_ground', 'state_park', 'botanical_garden', 'garden', 'nature_preserve'],
         attributes: ['outdoor', 'open_space', 'family_friendly'],
-        excludedAttributes: ['dog_park', 'amusement_park', 'water_park', 'bar', 'night_club', 'casino', 'movie_theater']
+        excludedAttributes: [
+          'gym', 'fitness_center', 'sports_complex', 'stadium',
+          'amusement_park', 'amusement_center', 'casino', 'night_club',
+          'shopping_mall', 'parking', 'zoo', 'aquarium',
+        ],
       },
       eventbrite: {
         eventTypes: ['outdoor_events', 'picnics', 'garden_events']
       }
     },
     logic: {
-      hardFilter: 'Must be a designated picnic ground with outdoor facilities',
+      hardFilter: 'Must be an outdoor park, garden, or nature preserve suitable for picnics',
       hierarchy: {
         broad: 'Picnic Park',
-        niche: ['Picnic Grounds']
+        niche: ['Parks', 'Picnic Grounds', 'Botanical Gardens', 'Nature Preserves']
       },
-      fallbackBehavior: 'If no picnic ground nearby, show closest available result.'
+      fallbackBehavior: 'If no park or picnic ground nearby, show closest available outdoor venue.'
     },
     ux: {
       activeColor: '#84CC16',
-      subcategories: ['Picnic Grounds'],
-      contextualPreview: 'Waterfront picnic ground with tables — beautiful sunset views.'
+      subcategories: ['Parks', 'Picnic Grounds', 'Botanical Gardens', 'Nature Preserves'],
+      contextualPreview: 'Scenic park with picnic tables — perfect for an outdoor meal.'
     },
     activityType: 'mixed',
     duration: 'medium',
@@ -166,16 +183,20 @@ export const categories: Category[] = [
     slug: 'drink',
     name: 'Drink',
     icon: '🍹',
-    description: 'Bars, pubs, wine bars, coffee shops, and tea houses for drinks and conversation',
-    detailedDescription: 'Relaxed venues centered on drinks — cocktail bars, pubs, wine bars, tea houses, and coffee shops. Works for first dates, group hangs, and casual social outings.',
+    description: 'Bars, cocktail bars, breweries, coffee shops, tea houses, and more',
+    detailedDescription: 'Drink-focused venues — bars, cocktail bars, beer gardens, breweries, coffee shops, coffee roasteries, tea houses, and juice bars. Works for first dates, group hangs, and casual social outings.',
     expectedActivities: [
-      'Cocktail bars and pubs',
-      'Wine bars and tea houses',
-      'Coffee shops and cafes'
+      'Bars, cocktail bars, and beer gardens',
+      'Breweries, pubs, and nightlife',
+      'Coffee shops, tea houses, and juice bars'
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['bar', 'pub', 'wine_bar', 'tea_house', 'coffee_shop'],
+        coreAnchors: [
+          'bar', 'coffee_shop', 'cocktail_bar', 'coffee_roastery',
+          'wine_bar', 'coffee_stand', 'brewery', 'tea_house',
+          'pub', 'juice_shop', 'beer_garden', 'brewpub', 'lounge_bar', 'night_club',
+        ],
         attributes: ['relaxed', 'social', 'drinks'],
         excludedAttributes: ['fine_dining_restaurant', 'spa', 'amusement_park']
       },
@@ -187,13 +208,13 @@ export const categories: Category[] = [
       hardFilter: 'Must be a drink-centered venue',
       hierarchy: {
         broad: 'Drink',
-        niche: ['Cocktail Bars', 'Wine Bars', 'Pubs', 'Tea Houses', 'Coffee Shops']
+        niche: ['Cocktail Bars', 'Wine Bars', 'Pubs', 'Breweries', 'Beer Gardens', 'Coffee Shops', 'Tea Houses', 'Juice Bars']
       },
-      fallbackBehavior: 'If no specialty bar found, show nearest cafe or pub.'
+      fallbackBehavior: 'If no specialty bar found, show nearest coffee shop or pub.'
     },
     ux: {
       activeColor: '#F59E0B',
-      subcategories: ['Cocktail Bars', 'Wine Bars', 'Pubs', 'Tea Houses', 'Coffee Shops'],
+      subcategories: ['Cocktail Bars', 'Wine Bars', 'Pubs', 'Breweries', 'Beer Gardens', 'Coffee Shops', 'Tea Houses', 'Juice Bars'],
       contextualPreview: 'Cozy wine bar with a curated list — perfect for unwinding.'
     },
     activityType: 'stationary',
@@ -254,18 +275,23 @@ export const categories: Category[] = [
     slug: 'fine_dining',
     name: 'Fine Dining',
     icon: '🍽️',
-    description: 'Elevated dining — steakhouses, French cuisine, Italian, Greek, and fine dining restaurants',
-    detailedDescription: 'Curated, sit-down dining experiences centered on quality. Fine dining restaurants, steakhouses, French, Greek, and Italian restaurants for special occasions and refined outings.',
+    description: 'Elevated dining — steakhouses, French, seafood, Mediterranean, Spanish, tapas, bistros, and fine dining restaurants',
+    detailedDescription: 'Curated, sit-down dining experiences centered on quality. Fine dining restaurants, steakhouses, French, seafood, Mediterranean, Spanish, tapas, oyster bars, bistros, gastropubs, and wine bars for special occasions and refined outings.',
     expectedActivities: [
-      'Fine dining restaurants',
-      'Steakhouses',
-      'French, Greek, and Italian restaurants'
+      'Fine dining restaurants and steakhouses',
+      'French, seafood, Mediterranean, and Spanish restaurants',
+      'Tapas, oyster bars, bistros, gastropubs, and wine bars'
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['fine_dining_restaurant', 'chef_led_restaurant', 'upscale_restaurant'],
+        coreAnchors: [
+          'fine_dining_restaurant', 'french_restaurant', 'steak_house',
+          'seafood_restaurant', 'mediterranean_restaurant', 'spanish_restaurant',
+          'tapas_restaurant', 'oyster_bar_restaurant', 'bistro',
+          'gastropub', 'wine_bar',
+        ],
         attributes: ['upscale', 'refined', 'reservation_recommended'],
-        excludedAttributes: ['fast_food_restaurant', 'food_court', 'bar', 'bowling_alley', 'amusement_park']
+        excludedAttributes: ['fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant', 'sandwich_shop', 'food_court', 'buffet_restaurant', 'diner']
       },
       eventbrite: {
         eventTypes: ['chef_led_dinners', 'wine_pairing_events', 'fine_dining_events']
@@ -275,13 +301,13 @@ export const categories: Category[] = [
       hardFilter: 'Must be upscale or chef-led dining',
       hierarchy: {
         broad: 'Fine Dining',
-        niche: ['Steakhouses', 'French', 'Italian', 'Greek', 'Fine Dining Restaurants']
+        niche: ['Steakhouses', 'French', 'Seafood', 'Mediterranean', 'Spanish', 'Tapas', 'Bistros', 'Gastropubs', 'Fine Dining Restaurants']
       },
       fallbackBehavior: 'If no fine dining options, reframe best mid-range option nearby.'
     },
     ux: {
       activeColor: '#7C3AED',
-      subcategories: ['Steakhouses', 'French', 'Italian', 'Greek', 'Fine Dining Restaurants'],
+      subcategories: ['Steakhouses', 'French', 'Seafood', 'Mediterranean', 'Spanish', 'Tapas', 'Bistros', 'Gastropubs', 'Fine Dining Restaurants'],
       contextualPreview: 'Intimate Italian bistro with a prix fixe menu — reservations recommended.'
     },
     activityType: 'stationary',
@@ -293,33 +319,53 @@ export const categories: Category[] = [
     slug: 'watch',
     name: 'Watch',
     icon: '🎬',
-    description: 'Movie theaters and comedy clubs — shared entertainment experiences',
-    detailedDescription: 'Venues centered on watching and being entertained together. Movie theaters and comedy clubs for a fun shared evening.',
+    description: 'Movie theaters, concert halls, comedy clubs, live music venues, and performing arts',
+    detailedDescription: 'Venues centered on watching and being entertained together. Movie theaters, concert halls, opera houses, comedy clubs, live music venues, amphitheatres, and karaoke for a fun shared evening.',
     expectedActivities: [
       'Movie theaters',
-      'Comedy clubs and stand-up shows'
+      'Comedy clubs and stand-up shows',
+      'Concert halls and live music',
+      'Opera houses and performing arts',
+      'Karaoke'
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['movie_theater', 'cinema', 'comedy_club'],
+        coreAnchors: [
+          'movie_theater', 'performing_arts_theater', 'concert_hall',
+          'opera_house', 'philharmonic_hall', 'amphitheatre',
+          'comedy_club', 'live_music_venue', 'karaoke',
+        ],
         attributes: ['entertainment', 'indoor', 'seated'],
-        excludedAttributes: ['spa', 'botanical_garden', 'park', 'restaurant']
+        excludedAttributes: [
+          'amusement_park', 'amusement_center', 'video_arcade',
+          'bowling_alley', 'paintball_center', 'go_karting_venue',
+          'miniature_golf_course', 'skateboard_park',
+          'gym', 'fitness_center', 'sports_complex', 'sports_club',
+          'stadium', 'race_course', 'tennis_court', 'swimming_pool',
+          'shopping_mall', 'department_store', 'electronics_store',
+          'furniture_store', 'warehouse_store', 'store', 'market',
+          'food_store', 'supermarket', 'grocery_store',
+          'parking', 'parking_lot', 'parking_garage',
+          'bus_station', 'train_station', 'transit_station', 'airport',
+          'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
+          'sandwich_shop', 'food_court', 'buffet_restaurant', 'diner',
+        ]
       },
       eventbrite: {
-        eventTypes: ['film_screenings', 'comedy_nights', 'movie_events']
+        eventTypes: ['film_screenings', 'comedy_nights', 'movie_events', 'concerts', 'opera_events', 'live_music']
       }
     },
     logic: {
-      hardFilter: 'Must be a cinema or comedy venue',
+      hardFilter: 'Must be an entertainment or performance venue',
       hierarchy: {
         broad: 'Watch',
-        niche: ['Movies', 'Comedy Shows', 'Special Screenings']
+        niche: ['Movies', 'Comedy Shows', 'Concerts', 'Opera', 'Live Music', 'Karaoke', 'Special Screenings']
       },
       fallbackBehavior: 'If no movie theater found, show nearest comedy club or performing arts venue.'
     },
     ux: {
       activeColor: '#3B82F6',
-      subcategories: ['Movies', 'Comedy Shows', 'Special Screenings'],
+      subcategories: ['Movies', 'Comedy Shows', 'Concerts', 'Opera', 'Live Music', 'Karaoke', 'Special Screenings'],
       contextualPreview: 'Comedy club with a headliner tonight — doors at 7pm.'
     },
     activityType: 'stationary',
@@ -331,19 +377,28 @@ export const categories: Category[] = [
     slug: 'creative_arts',
     name: 'Creative & Arts',
     icon: '🎨',
-    description: 'Art galleries, museums, planetariums, karaoke, and creative spaces',
-    detailedDescription: 'Inspiring venues for art lovers and curious minds. Art galleries, museums, planetariums, karaoke bars, and coffee roasteries where creativity flows freely.',
+    description: 'Art galleries, museums, cultural landmarks, performing arts, comedy clubs, and live music',
+    detailedDescription: 'Venues for art lovers and curious minds. Art galleries, museums, history museums, sculpture gardens, cultural centers, performing arts theaters, opera houses, comedy clubs, and live music venues.',
     expectedActivities: [
-      'Art galleries and museums',
-      'Planetariums',
-      'Karaoke bars',
-      'Coffee roasteries'
+      'Art galleries, museums, and history museums',
+      'Performing arts theaters and opera houses',
+      'Comedy clubs and live music venues',
+      'Cultural centers and landmarks',
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['art_gallery', 'museum', 'planetarium', 'karaoke', 'pottery', 'sip_and_paint', 'cooking_classes', 'woodworking_class', 'jewelry_making_studio', 'sewing_class', 'glass_blowing_studio', 'diy_workshop', 'perfume_lab', 'flower_arranging_studio', 'bakery_workshop', 'coffee_roastery'],
+        coreAnchors: [
+          'art_gallery', 'art_museum', 'art_studio', 'museum', 'history_museum',
+          'sculpture', 'cultural_center', 'cultural_landmark',
+          'performing_arts_theater', 'opera_house', 'auditorium',
+          'amphitheatre', 'comedy_club', 'live_music_venue',
+        ],
         attributes: ['creative', 'cultural', 'inspiring'],
-        excludedAttributes: ['fast_food_restaurant', 'bar', 'bowling_alley', 'spa']
+        excludedAttributes: [
+          'fast_food_restaurant', 'bar', 'bowling_alley', 'spa',
+          'amusement_park', 'water_park', 'night_club',
+          'shopping_mall', 'gym', 'fitness_center',
+        ]
       },
       eventbrite: {
         eventTypes: ['art_events', 'museum_nights', 'cultural_events', 'creative_workshops']
@@ -353,13 +408,13 @@ export const categories: Category[] = [
       hardFilter: 'Must be a creative or cultural venue',
       hierarchy: {
         broad: 'Creative & Arts',
-        niche: ['Art Galleries', 'Museums', 'Planetariums', 'Karaoke', 'Coffee Roasteries']
+        niche: ['Art Galleries', 'Museums', 'Performing Arts', 'Comedy & Live Music', 'Cultural Landmarks']
       },
-      fallbackBehavior: 'If no gallery or museum found, show nearest karaoke bar or roastery.'
+      fallbackBehavior: 'If no gallery or museum found, show nearest performing arts theater or cultural center.'
     },
     ux: {
       activeColor: '#EC4899',
-      subcategories: ['Art Galleries', 'Museums', 'Planetariums', 'Karaoke', 'Coffee Roasteries'],
+      subcategories: ['Art Galleries', 'Museums', 'Performing Arts', 'Comedy & Live Music', 'Cultural Landmarks'],
       contextualPreview: 'Art gallery opening tonight — free admission, wine served.'
     },
     activityType: 'stationary',

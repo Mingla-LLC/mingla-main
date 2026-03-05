@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
-import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
+import { resolveCategories, getPlaceTypesForCategory, getExcludedTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,100 +18,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const supabaseAdmin = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '');
 
-// Category to Google Places type mapping (same as generate-experiences)
-const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
-  // Nature
-  nature: [
-    "national_park", "state_park", "nature_preserve", "wildlife_refuge",
-    "wildlife_park", "scenic_spot", "garden", "botanical_garden",
-    "park", "lake", "river", "island", "mountain_peak",
-    "woods", "hiking_area", "campground", "picnic_ground",
-  ],
-  "nature-outdoor": [
-    "national_park", "state_park", "nature_preserve", "wildlife_refuge",
-    "wildlife_park", "scenic_spot", "garden", "botanical_garden",
-    "park", "lake", "river", "island", "mountain_peak",
-    "woods", "hiking_area", "campground", "picnic_ground",
-  ],
-  // First Meet
-  first_meet: ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
-  "first meet": ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
-  "First Meet": ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
-  "first-meet": ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
-  firstmeet: ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
-  // Picnic
-  picnic: ["picnic_ground", "park", "beach", "botanical_garden"],
-  Picnic: ["picnic_ground", "park", "beach", "botanical_garden"],
-  // Drink
-  drink: ["bar", "pub", "wine_bar", "tea_house", "coffee_shop"],
-  Drink: ["bar", "pub", "wine_bar", "tea_house", "coffee_shop"],
-  // Casual Eats
-  casual_eats: ["sandwich_shop", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "ramen_restaurant", "noodle_restaurant", "sushi_restaurant", "american_restaurant", "mexican_restaurant", "chinese_restaurant", "japanese_restaurant", "korean_restaurant", "thai_restaurant", "vietnamese_restaurant", "indian_restaurant", "diner", "food_court"],
-  "casual eats": ["sandwich_shop", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "ramen_restaurant", "noodle_restaurant", "sushi_restaurant", "american_restaurant", "mexican_restaurant", "chinese_restaurant", "japanese_restaurant", "korean_restaurant", "thai_restaurant", "vietnamese_restaurant", "indian_restaurant", "diner", "food_court"],
-  "Casual Eats": ["sandwich_shop", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "ramen_restaurant", "noodle_restaurant", "sushi_restaurant", "american_restaurant", "mexican_restaurant", "chinese_restaurant", "japanese_restaurant", "korean_restaurant", "thai_restaurant", "vietnamese_restaurant", "indian_restaurant", "diner", "food_court"],
-  "casual-eats": ["sandwich_shop", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "ramen_restaurant", "noodle_restaurant", "sushi_restaurant", "american_restaurant", "mexican_restaurant", "chinese_restaurant", "japanese_restaurant", "korean_restaurant", "thai_restaurant", "vietnamese_restaurant", "indian_restaurant", "diner", "food_court"],
-  casualeats: ["sandwich_shop", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "ramen_restaurant", "noodle_restaurant", "sushi_restaurant", "american_restaurant", "mexican_restaurant", "chinese_restaurant", "japanese_restaurant", "korean_restaurant", "thai_restaurant", "vietnamese_restaurant", "indian_restaurant", "diner", "food_court"],
-  // Fine Dining
-  fine_dining: ["fine_dining_restaurant"],
-  "fine dining": ["fine_dining_restaurant"],
-  "Fine Dining": ["fine_dining_restaurant"],
-  "fine-dining": ["fine_dining_restaurant"],
-  finedining: ["fine_dining_restaurant"],
-  // Watch
-  watch: ["movie_theater", "comedy_club"],
-  Watch: ["movie_theater", "comedy_club"],
-  // Creative & Arts
-  creative_arts: ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
-  "creative & arts": ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
-  "Creative & Arts": ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
-  "creative-arts": ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
-  creativearts: ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
-  "creative arts": ["art_gallery", "museum", "planetarium", "karaoke", "coffee_roastery"],
-  // Play
-  play: ["bowling_alley", "amusement_park", "water_park", "video_arcade", "karaoke", "casino", "trampoline_park", "mini_golf_course", "ice_skating_rink", "skate_park", "escape_room", "adventure_park"],
-  Play: ["bowling_alley", "amusement_park", "water_park", "video_arcade", "karaoke", "casino", "trampoline_park", "mini_golf_course", "ice_skating_rink", "skate_park", "escape_room", "adventure_park"],
-  // Wellness
-  wellness: ["spa", "massage", "sauna", "resort_hotel", "public_bath"],
-  Wellness: ["spa", "massage", "sauna", "resort_hotel", "public_bath"],
-  // Groceries & Flowers
-  groceries_flowers: ["grocery_store", "supermarket"],
-  "groceries & flowers": ["grocery_store", "supermarket"],
-  "Groceries & Flowers": ["grocery_store", "supermarket"],
-  "groceries-flowers": ["grocery_store", "supermarket"],
-  groceriesflowers: ["grocery_store", "supermarket"],
-  // Work & Business
-  work_business: ["tea_house", "coffee_shop", "cafe"],
-  "Work & Business": ["tea_house", "coffee_shop", "cafe"],
-  "work & business": ["tea_house", "coffee_shop", "cafe"],
-  "work-business": ["tea_house", "coffee_shop", "cafe"],
-  workbusiness: ["tea_house", "coffee_shop", "cafe"],
-};
 
-// Excluded types for specific categories
-const EXCLUDED_TYPES: { [key: string]: string[] } = {
-  nature: [
-    "shopping_mall", "department_store", "electronics_store",
-    "furniture_store", "store", "warehouse_store", "market",
-    "food_store", "supermarket", "grocery_store", "convenience_store",
-    "movie_theater", "video_arcade", "bowling_alley", "casino",
-    "night_club", "karaoke", "amusement_center", "amusement_park",
-    "gym", "fitness_center", "sports_complex", "sports_club",
-    "stadium", "skateboard_park", "swimming_pool", "tennis_court",
-    "parking", "parking_lot", "parking_garage",
-    "bus_station", "train_station", "transit_station", "airport",
-    "bridge", "toll_station",
-  ],
-  first_meet: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "gas_station", "car_wash", "car_repair", "parking", "atm", "bank", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "bus_station", "train_station", "transit_station", "gym", "fitness_center"],
-  picnic: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "bus_stop", "bus_station", "bar", "night_club", "casino", "movie_theater", "video_arcade", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station", "gym", "fitness_center"],
-  drink: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "gas_station", "car_wash", "car_repair", "parking", "atm", "bank", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "bus_station", "train_station", "transit_station", "gym", "fitness_center"],
-  casual_eats: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "bus_stop", "bus_station", "bar", "night_club", "casino", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station", "gym", "fitness_center"],
-  fine_dining: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "bus_stop", "bus_station", "bar", "night_club", "casino", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "diner", "food_court", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station", "gym", "fitness_center", "indoor_playground", "amusement_center", "playground", "children_store", "child_care_agency", "preschool"],
-  watch: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "bus_stop", "bus_station", "bar", "night_club", "casino", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station", "gym", "fitness_center"],
-  creative_arts: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "bus_stop", "bus_station", "bar", "night_club", "casino", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station", "gym", "fitness_center", "indoor_playground", "amusement_center", "playground", "children_store", "child_care_agency", "preschool"],
-  play: ["dog_park", "cycling_park", "park_and_ride", "bus_stop", "bus_station", "bar", "night_club", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station", "gym", "fitness_center"],
-  wellness: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "bus_stop", "bus_station", "bar", "night_club", "casino", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station", "gym", "fitness_center", "indoor_playground", "amusement_center", "playground", "children_store", "child_care_agency", "preschool"],
-  groceries_flowers: ["bar", "night_club", "casino", "movie_theater", "video_arcade", "bowling_alley", "fine_dining_restaurant", "fast_food_restaurant", "food_court", "atm", "bank", "parking", "gas_station", "airport", "car_repair", "car_dealer", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "apartment_building", "housing_complex", "gym", "fitness_center"],
-};
+// Category excluded types now centralized in _shared/categoryPlaceTypes.ts
 
 interface UserPreferences {
   mode: string;
@@ -777,12 +685,13 @@ async function fetchGooglePlaces(
 
   for (const category of preferences.categories || []) {
     const categoryKey = category.toLowerCase();
-    const placeTypes = CATEGORY_MAPPINGS[categoryKey] ||
-      CATEGORY_MAPPINGS[category] || ["tourist_attraction"];
+    let placeTypes = getPlaceTypesForCategory(categoryKey);
+    if (placeTypes.length === 0) placeTypes = getPlaceTypesForCategory(category);
+    if (placeTypes.length === 0) placeTypes = ["tourist_attraction"];
 
     allIncludedTypes.push(...placeTypes);
 
-    const excludedTypes = EXCLUDED_TYPES[categoryKey] || [];
+    const excludedTypes = getExcludedTypesForCategory(categoryKey);
     excludedTypes.forEach((type) => allExcludedTypes.add(type));
   }
 
@@ -858,8 +767,8 @@ async function fetchGooglePlaces(
 
       for (const category of preferences.categories || []) {
         const categoryKey = category.toLowerCase();
-        const categoryTypes =
-          CATEGORY_MAPPINGS[categoryKey] || CATEGORY_MAPPINGS[category] || [];
+        let categoryTypes = getPlaceTypesForCategory(categoryKey);
+        if (categoryTypes.length === 0) categoryTypes = getPlaceTypesForCategory(category);
         if (categoryTypes.some((type) => placeTypeSet.has(type))) {
           matchedCategory = category;
           break;

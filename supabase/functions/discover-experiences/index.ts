@@ -3,6 +3,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
 import { upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import {
+  getPlaceTypesForCategory,
+  ALL_CATEGORY_NAMES,
+  DISCOVER_EXCLUDED_PLACE_TYPES,
+} from '../_shared/categoryPlaceTypes.ts';
 // resolveCategories no longer used — per-category selection handles this directly
 
 const corsHeaders = {
@@ -27,134 +32,6 @@ const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
 });
 
 const getUsDateKey = (): string => usDateFormatter.format(new Date());
-
-// All 12 discover categories
-const DISCOVER_CATEGORIES = [
-  "Nature",
-  "First Meet",
-  "Picnic",
-  "Drink",
-  "Casual Eats",
-  "Fine Dining",
-  "Watch",
-  "Creative & Arts",
-  "Play",
-  "Wellness",
-  "Groceries & Flowers",
-  "Work & Business",
-];
-
-// Category to Google Places type mapping (using CONFIRMED valid Google Places API New types)
-// Reference: https://developers.google.com/maps/documentation/places/web-service/place-types
-// Each category uses distinct types where possible to avoid duplicates
-const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
-  "Nature": [
-    "national_park", "state_park", "nature_preserve", "wildlife_refuge",
-    "wildlife_park", "scenic_spot", "garden", "botanical_garden",
-    "park", "lake", "river", "island", "mountain_peak",
-    "woods", "hiking_area", "campground", "picnic_ground",
-  ],
-  "First Meet": [
-    "bookstore",
-    "bar",
-    "pub",
-    "wine_bar",
-    "tea_house",
-    "coffee_shop",
-    "planetarium",
-  ],
-  "Picnic": [
-    "picnic_ground",
-    "park",
-    "beach",
-    "botanical_garden",
-  ],
-  "Drink": [
-    "bar",
-    "pub",
-    "wine_bar",
-    "tea_house",
-    "coffee_shop",
-  ],
-  "Casual Eats": [
-    "sandwich_shop",
-    "fast_food_restaurant",
-    "pizza_restaurant",
-    "hamburger_restaurant",
-    "american_restaurant",
-    "mexican_restaurant",
-    "diner",
-  ],
-  "Fine Dining": [
-    "fine_dining_restaurant",
-  ],
-  "Watch": [
-    "movie_theater",
-    "comedy_club",
-  ],
-  "Creative & Arts": [
-    "art_gallery",
-    "museum",
-    "planetarium",
-    "karaoke",
-  ],
-  "Play": [
-    "bowling_alley",
-    "amusement_park",
-    "water_park",
-    "video_arcade",
-    "escape_room",
-    "mini_golf_course",
-    "ice_skating_rink",
-  ],
-  "Wellness": [
-    "spa",
-    "massage",
-    "sauna",
-    "resort_hotel",
-    "public_bath",
-  ],
-  "Groceries & Flowers": [
-    "grocery_store",
-    "supermarket",
-  ],
-  "Work & Business": [
-    "tea_house",
-    "coffee_shop",
-    "cafe",
-  ],
-};
-
-// Excluded types to filter out unwanted places
-const EXCLUDED_TYPES = new Set([
-  "atm",
-  "bank",
-  "gas_station",
-  "parking",
-  "car_wash",
-  "car_repair",
-  "car_dealer",
-  "post_office",
-  "government_office",
-  "police",
-  "fire_station",
-  "courthouse",
-  "city_hall",
-  "storage",
-  "moving_company",
-  "locksmith",
-  "plumber",
-  "electrician",
-  "roofing_contractor",
-  "apartment_building",
-  "housing_complex",
-  "airport",
-  "bus_station",
-  "train_station",
-  "transit_station",
-  "gym",
-  "fitness_center",
-]);
 
 /**
  * Haversine distance between two lat/lng points in km
@@ -239,11 +116,11 @@ serve(async (req) => {
     // Resolve heroCategories through the same 3-step pipeline as selectedCategories
     // (display name → slug lookup → case-insensitive fallback)
     const resolveCategory = (cat: string): string | null => {
-      if (DISCOVER_CATEGORIES.includes(cat)) return cat;
+      if (ALL_CATEGORY_NAMES.includes(cat)) return cat;
       const mapped = PREF_ID_TO_DISCOVER_CATEGORY[cat];
       if (mapped) return mapped;
       const lowerCat = cat.toLowerCase();
-      return DISCOVER_CATEGORIES.find((dc) => dc.toLowerCase() === lowerCat) || null;
+      return ALL_CATEGORY_NAMES.find((dc) => dc.toLowerCase() === lowerCat) || null;
     };
 
     // Dynamic hero categories: resolve from request param or fall back to defaults
@@ -259,7 +136,7 @@ serve(async (req) => {
     }
 
     // Resolve which categories to fetch: filter DISCOVER_CATEGORIES by user selection
-    let categoriesToFetch = DISCOVER_CATEGORIES;
+    let categoriesToFetch = ALL_CATEGORY_NAMES;
     if (selectedCategories && selectedCategories.length > 0) {
       const resolvedLabels = new Set<string>();
       for (const cat of selectedCategories) {
@@ -267,7 +144,7 @@ serve(async (req) => {
         if (resolved) resolvedLabels.add(resolved);
       }
       if (resolvedLabels.size > 0) {
-        categoriesToFetch = DISCOVER_CATEGORIES.filter((c) => resolvedLabels.has(c));
+        categoriesToFetch = ALL_CATEGORY_NAMES.filter((c) => resolvedLabels.has(c));
       }
       console.log(`Filtered categories: ${categoriesToFetch.join(", ")} (from ${selectedCategories.length} requested)`);
     } else {
@@ -1098,7 +975,7 @@ async function fetchCandidatesForCategory(
   radius: number,
   adminClient: any
 ): Promise<DiscoverPlace[]> {
-  const placeTypes = CATEGORY_TO_PLACE_TYPES[category];
+  const placeTypes = getPlaceTypesForCategory(category);
   if (!placeTypes || placeTypes.length === 0) {
     console.warn(`No place types defined for category: ${category}`);
     return [];
@@ -1176,7 +1053,7 @@ async function fetchCandidatesForCategory(
     // Filter out excluded types
     const validPlaces = allPlaces.filter((place: any) => {
       const placeTypeSet = new Set(place.types || []);
-      return !Array.from(EXCLUDED_TYPES).some((excluded) => placeTypeSet.has(excluded));
+      return !DISCOVER_EXCLUDED_PLACE_TYPES.some((excluded) => placeTypeSet.has(excluded));
     });
 
     if (validPlaces.length === 0) {

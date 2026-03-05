@@ -2,7 +2,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
-import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
+import {
+  resolveCategories,
+  getPlaceTypesForCategory,
+  DISCOVER_EXCLUDED_PLACE_TYPES,
+} from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,53 +32,6 @@ const DISCOVER_CATEGORIES = [
   "Wellness",
 ] as const;
 
-// Map categories to Google Places types (validated for Google Places API New)
-const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
-  "Nature": [
-    "national_park", "state_park", "nature_preserve", "wildlife_refuge",
-    "wildlife_park", "scenic_spot", "garden", "botanical_garden",
-    "park", "lake", "river", "island", "mountain_peak",
-    "woods", "hiking_area", "campground", "picnic_ground",
-  ],
-  "First Meet": ["cafe", "coffee_shop", "bar"],
-  "Picnic": ["park", "beach", "marina"],
-  "Drink": ["bar", "cafe", "wine_bar"],
-  "Casual Eats": ["restaurant", "cafe", "fast_food_restaurant"],
-  "Fine Dining": ["fine_dining_restaurant"],
-  "Watch": ["movie_theater", "performing_arts_theater"],
-  "Creative & Arts": ["art_gallery", "museum"],
-  "Play": ["bowling_alley", "amusement_park"],
-  "Wellness": ["spa", "massage", "sauna", "resort_hotel", "public_bath"],
-};
-
-// Excluded place types
-const EXCLUDED_TYPES = new Set([
-  "gas_station",
-  "atm",
-  "bank",
-  "hospital",
-  "pharmacy",
-  "dentist",
-  "doctor",
-  "funeral_home",
-  "cemetery",
-  "car_repair",
-  "car_wash",
-  "car_dealer",
-  "convenience_store",
-  "supermarket",
-  "grocery_store",
-  "laundry",
-  "locksmith",
-  "post_office",
-  "storage",
-  "moving_company",
-  "insurance_agency",
-  "real_estate_agency",
-  "travel_agency",
-  "gym",
-  "fitness_center",
-]);
 
 // Hardcoded holidays with categories, descriptions, and gender targeting
 interface HolidayDefinition {
@@ -718,7 +675,7 @@ async function fetchExperiencesForCategory(
 ): Promise<ExperienceCard[]> {
   const experiences: ExperienceCard[] = [];
   
-  const placeTypes = CATEGORY_TO_PLACE_TYPES[category];
+  const placeTypes = getPlaceTypesForCategory(category);
   if (!placeTypes || placeTypes.length === 0) {
     console.warn(`No place types defined for category: ${category}`);
     return experiences;
@@ -799,7 +756,7 @@ async function fetchExperiencesForCategory(
     // Filter out excluded types
     const validPlaces = allRawPlaces.filter((place: any) => {
       const placeTypeSet = new Set(place.types || []);
-      return !Array.from(EXCLUDED_TYPES).some((excluded) => placeTypeSet.has(excluded));
+      return !DISCOVER_EXCLUDED_PLACE_TYPES.some((excluded) => placeTypeSet.has(excluded));
     });
 
     // Sort by rating

@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import * as Location from "expo-location";
+import { throttledReverseGeocode } from '../utils/throttledGeocode';
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange, getCurrencySymbol } from "./utils/formatters";
 import {
@@ -269,14 +269,16 @@ export default function SwipeableCards({
   // Reverse geocode user location for "no matches" display
   useEffect(() => {
     if (!userLocation) return;
+    let cancelled = false;
     const fetchAddress = async () => {
       try {
-        const results = await Location.reverseGeocodeAsync({
-          latitude: userLocation.lat,
-          longitude: userLocation.lng,
-        });
-        if (results?.[0]) {
-          const r = results[0];
+        const { addresses } = await throttledReverseGeocode(
+          userLocation.lat,
+          userLocation.lng
+        );
+        if (cancelled) return;
+        if (addresses?.[0]) {
+          const r = addresses[0];
           const parts = [r.streetNumber, r.street, r.city].filter(Boolean);
           if (parts.length > 0) {
             setReverseGeocodedAddress(parts.join(" "));
@@ -287,6 +289,7 @@ export default function SwipeableCards({
       }
     };
     fetchAddress();
+    return () => { cancelled = true; };
   }, [userLocation?.lat, userLocation?.lng]);
 
   // Resolve session ID from currentMode if currentSession is not available

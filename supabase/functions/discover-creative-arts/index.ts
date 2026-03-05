@@ -8,6 +8,7 @@ import {
   insertCardToPool,
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
+import { getPlaceTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-creative-arts  –  Standalone Creative & Arts Card System
@@ -15,7 +16,7 @@ import {
  * A dedicated, self-contained edge function for Creative & Arts venue discovery.
  * Modeled identically on discover-first-meet with text search fallback.
  *
- * • Searches 5 valid Google Place types via shared cache.
+ * • Searches 14 valid Google Place types via shared cache (from canonical categoryPlaceTypes.ts).
  * • Falls back to text search for 11 non-Google types (pottery, sip & paint, etc.).
  * • Merges and deduplicates results from both sources.
  * • Deduplicates, filters by travel constraint, sorts by quality.
@@ -34,14 +35,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ── Creative & Arts Valid Google Place Types ─────────────────────────────────
-const VALID_TYPES = [
-  'art_gallery',
-  'museum',
-  'planetarium',
-  'karaoke',
-  'coffee_roastery',
-];
+// ── Creative & Arts Valid Google Place Types (from canonical shared source) ───
+const VALID_TYPES = getPlaceTypesForCategory('Creative & Arts');
 
 // ── Text Search Keywords (non-Google types) ─────────────────────────────────
 const TEXT_SEARCH_KEYWORDS = [

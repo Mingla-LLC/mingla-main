@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
+import { throttledReverseGeocode } from '../utils/throttledGeocode';
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -80,9 +81,7 @@ export default function ProfilePage({
     loading: recentActivityLoading,
     refetch: refetchRecentActivity,
   } = useRecentActivity(10);
-  const [currentLocation, setCurrentLocation] = useState(
-    "Raleigh, North Carolina, United States"
-  );
+  const [currentLocation, setCurrentLocation] = useState("");
   const [profileImageSrc, setProfileImageSrc] = useState(
     userIdentity?.profileImage || null
   );
@@ -236,17 +235,17 @@ export default function ProfilePage({
       if (status !== "granted") throw new Error("Location permission denied");
 
       const loc = await Location.getCurrentPositionAsync({});
-      const geocoded = await Location.reverseGeocodeAsync({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      });
+      const { addresses: geocoded } = await throttledReverseGeocode(
+        loc.coords.latitude,
+        loc.coords.longitude,
+      );
 
       const place = geocoded && geocoded[0];
       const placeString = place
         ? `${place.city || place.region || ""}${place.region ? ", " + place.region : ""}${place.country ? ", " + place.country : ""}`
         : `${loc.coords.latitude.toFixed(2)}, ${loc.coords.longitude.toFixed(2)}`;
 
-      setCurrentLocation(placeString || "San Francisco, CA, United States");
+      setCurrentLocation(placeString || "");
       await AsyncStorage.setItem("mingla_user_location", placeString || "");
     } catch (error: any) {
       setLocationError(error?.message || "Unable to fetch location");

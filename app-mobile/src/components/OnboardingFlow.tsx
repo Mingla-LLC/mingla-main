@@ -26,6 +26,8 @@ import { useOnboardingStateMachine } from '../hooks/useOnboardingStateMachine'
 import { supabase } from '../services/supabase'
 import { PreferencesService } from '../services/preferencesService'
 import { locationService } from '../services/locationService'
+import { throttledReverseGeocode, clearGeocodeCache } from '../utils/throttledGeocode'
+import { geocodingService } from '../services/geocodingService'
 import { sendOtp, verifyOtp } from '../services/otpService'
 import { logger } from '../utils/logger'
 import { createSavedPerson } from '../services/savedPeopleService'
@@ -182,7 +184,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   const [resendCountdown, setResendCountdown] = useState(0)
   const [otpAttempts, setOtpAttempts] = useState(0)
   const [valuePropBeat, setValuePropBeat] = useState(0)
-  const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied' | 'settings'>('idle')
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'settings' | 'error'>('idle')
   const [manualLocationText, setManualLocationText] = useState('')
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -586,36 +588,53 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
         locationService.getCurrentLocation(),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
       ])
-      if (loc) {
-        // Race reverse-geocode against 5s timeout — geocode can hang on poor network
-        const geo = await Promise.race([
-          Location.reverseGeocodeAsync({
-            latitude: loc.latitude,
-            longitude: loc.longitude,
-          }),
-          new Promise<Location.LocationGeocodedAddress[]>((resolve) =>
-            setTimeout(() => resolve([]), 5000)
-          ),
-        ])
-        const city = geo[0]?.city || geo[0]?.region || 'your area'
-        setData((prev) => ({
-          ...prev,
-          locationGranted: true,
-          coordinates: { lat: loc.latitude, lng: loc.longitude },
-          cityName: city,
-          useGpsLocation: true,
-        }))
-        setHasGpsPermission(true)
-        setLocationStatus('granted')
-        logger.onboarding('Location captured', { city, lat: loc.latitude, lng: loc.longitude })
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
 
-        // Advance user immediately — locale detection must NOT block onboarding
-        persistStep(4).catch(() => {})
-        autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
+      if (!loc) {
+        // GPS returned null (warm-up timeout or no signal) — show error state, not denied
+        logger.onboarding('Location capture returned null — GPS timeout or warm-up failure')
+        setLocationStatus('error')
+        return
+      }
 
-        // Synchronous locale detection from Expo geocode country (avoids double reverse-geocode)
-        const detected = detectLocaleFromCountryName(geo[0]?.country)
+      // Reverse geocode through the throttled wrapper — NOT direct Location.reverseGeocodeAsync
+      let city: string | null = null
+      try {
+        const { addresses } = await throttledReverseGeocode(loc.latitude, loc.longitude)
+        city = addresses[0]?.city || addresses[0]?.region || null
+      } catch (geocodeError: unknown) {
+        // Geocode failed (rate limit retry exhausted, network error, etc.)
+        // Proceed WITHOUT city name — coordinates are still valid
+        logger.onboarding('Reverse geocode failed, proceeding without city name', {
+          error: geocodeError instanceof Error ? geocodeError.message : String(geocodeError),
+        })
+      }
+
+      setData((prev) => ({
+        ...prev,
+        locationGranted: true,
+        coordinates: { lat: loc.latitude, lng: loc.longitude },
+        cityName: city, // null if geocode failed — NEVER 'your area'
+        useGpsLocation: true,
+      }))
+      setHasGpsPermission(true)
+      setLocationStatus('granted')
+      logger.onboarding('Location captured', { city, lat: loc.latitude, lng: loc.longitude })
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+
+      // Advance user immediately — locale detection must NOT block onboarding
+      persistStep(4).catch(() => {})
+      autoAdvanceRef.current = setTimeout(() => goNextRef.current(), 1200)
+
+      // Locale detection — use country from the geocode result we already have
+      if (city) {
+        // We got a geocode result — extract country from the same cached call
+        let detectedCountry: string | null = null
+        try {
+          const { addresses } = await throttledReverseGeocode(loc.latitude, loc.longitude) // hits cache
+          detectedCountry = addresses[0]?.country || null
+        } catch { /* already logged above */ }
+
+        const detected = detectLocaleFromCountryName(detectedCountry)
         if (user?.id) {
           PreferencesService.updateUserProfile(user.id, {
             currency: detected.currency,
@@ -638,13 +657,35 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
           country: detected.countryName,
         })
       } else {
-        // GPS returned null (warm-up timeout or no signal) — let user retry or enter manually
-        logger.onboarding('Location capture returned null — GPS timeout or warm-up failure')
-        setLocationStatus('denied')
+        // No geocode result — detect locale from coordinates in background (uses geocodingService, NOT native)
+        detectLocaleFromCoordinates(loc.latitude, loc.longitude).then((detected) => {
+          if (user?.id) {
+            PreferencesService.updateUserProfile(user.id, {
+              currency: detected.currency,
+              measurement_system: detected.measurementSystemDb,
+            }).catch((err) => {
+              console.warn('Locale DB write failed in captureLocation (fallback):', err?.message)
+            })
+          }
+          const currentProfile = useAppStore.getState().profile
+          if (currentProfile) {
+            setProfile({
+              ...currentProfile,
+              currency: detected.currency,
+              measurement_system: detected.measurementSystemDb,
+            })
+          }
+        }).catch(() => {})
       }
-    } catch (e) {
+    } catch (e: unknown) {
       console.error('Location capture error:', e)
-      setLocationStatus('denied')
+      // Distinguish rate-limit / transient errors from actual permission issues
+      const msg = (e instanceof Error ? e.message : String(e)) || ''
+      if (msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('denied')) {
+        setLocationStatus('settings')
+      } else {
+        setLocationStatus('error')
+      }
     }
   }, [persistStep, user?.id, setProfile])
 
@@ -678,7 +719,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       }
     } catch (e) {
       console.error('Location permission request error:', e)
-      setLocationStatus('denied')
+      setLocationStatus('error')
     }
   }, [captureLocation])
 
@@ -688,10 +729,14 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     logger.action('Manual location submitted', { text: manualLocationText.trim() })
     setSavingPrefs(true)
     try {
-      const results = await Location.geocodeAsync(manualLocationText.trim())
-      if (results.length > 0) {
-        const lat = results[0].latitude
-        const lng = results[0].longitude
+      // Use geocodingService (Nominatim/Google HTTP API) — NOT native Location.geocodeAsync
+      // This avoids sharing the native geocoder rate bucket with reverseGeocodeAsync
+      const suggestions = await geocodingService.autocomplete(manualLocationText.trim())
+      const firstWithLocation = suggestions.find(s => s.location)
+
+      if (firstWithLocation?.location) {
+        const lat = firstWithLocation.location.lat
+        const lng = firstWithLocation.location.lng
         setData((prev) => ({
           ...prev,
           manualLocation: manualLocationText.trim(),
@@ -725,6 +770,37 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
             country: detected.countryName,
           })
         }).catch(() => {})
+      } else {
+        // No results from HTTP API — try native as last resort (will share rate bucket but manual entry is rare)
+        const nativeResults = await Location.geocodeAsync(manualLocationText.trim())
+        if (nativeResults.length > 0) {
+          const lat = nativeResults[0].latitude
+          const lng = nativeResults[0].longitude
+          setData((prev) => ({
+            ...prev,
+            manualLocation: manualLocationText.trim(),
+            coordinates: { lat, lng },
+          }))
+          goNext()
+          detectLocaleFromCoordinates(lat, lng).then((detected) => {
+            if (user?.id) {
+              PreferencesService.updateUserProfile(user.id, {
+                currency: detected.currency,
+                measurement_system: detected.measurementSystemDb,
+              }).catch((err) => {
+                console.warn('Locale DB write failed:', err?.message)
+              })
+            }
+            const currentProfile = useAppStore.getState().profile
+            if (currentProfile) {
+              setProfile({
+                ...currentProfile,
+                currency: detected.currency,
+                measurement_system: detected.measurementSystemDb,
+              })
+            }
+          }).catch(() => {})
+        }
       }
     } catch (e) {
       console.error('Geocode error:', e)
@@ -1006,7 +1082,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       case 'intents':
         return { label: 'Next', disabled: data.selectedIntents.length === 0, loading: false, onPress: () => { persistStep(3).catch(() => {}); handleGoNext() }, hide: false }
       case 'location':
-        return { label: 'Enable location', disabled: false, loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
+        return { label: 'Enable location', disabled: locationStatus === 'requesting', loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
       case 'celebration':
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'manual_location':
@@ -1283,11 +1359,16 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
               <Pressable
-                style={styles.locRetryButton}
+                style={[styles.locRetryButton, locationStatus === 'requesting' && styles.locGlassButtonDisabled]}
                 onPress={() => { logger.action('Retry location after settings'); handleLocationRequest() }}
+                disabled={locationStatus === 'requesting'}
               >
-                <Ionicons name="refresh-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
-                <Text style={styles.locRetryText}>I've turned it on — retry</Text>
+                {locationStatus === 'requesting' ? (
+                  <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locButtonIcon} />
+                ) : (
+                  <Ionicons name="refresh-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
+                )}
+                <Text style={styles.locRetryText}>{locationStatus === 'requesting' ? 'Finding you...' : "I've turned it on — retry"}</Text>
               </Pressable>
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.sm }]}>
@@ -1306,7 +1387,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
           </View>
         )
       }
-      if (locationStatus === 'denied') {
+      if (locationStatus === 'error') {
         return (
           <View style={styles.locContainer}>
             <Animated.View style={[styles.locGlassCard, { opacity: locIconAnim.opacity, transform: [{ scale: locIconAnim.scale }, { translateY: locIconAnim.translateY }] }]}>
@@ -1322,14 +1403,21 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
             </Animated.Text>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
               <Pressable
-                style={styles.locGlassButton}
+                style={[styles.locGlassButton, locationStatus === 'requesting' && styles.locGlassButtonDisabled]}
                 onPress={() => {
-                  logger.action('Retry location from denied state')
+                  logger.action('Retry location from error state')
                   handleLocationRequest()
                 }}
+                disabled={locationStatus === 'requesting'}
               >
-                <Ionicons name="refresh-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
-                <Text style={styles.locButtonText}>Try Again</Text>
+                {locationStatus === 'requesting' ? (
+                  <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
+                ) : (
+                  <Ionicons name="refresh-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
+                )}
+                <Text style={styles.locButtonText}>
+                  {locationStatus === 'requesting' ? 'Finding you...' : 'Try Again'}
+                </Text>
               </Pressable>
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
