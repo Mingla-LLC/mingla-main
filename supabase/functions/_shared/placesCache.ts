@@ -402,3 +402,229 @@ export async function batchSearchPlaces(
   console.log(`[places-cache] Batch: ${placeTypes.length} types, ${cacheHits} hits, ${apiCallsMade} API calls`);
   return { results, apiCallsMade, cacheHits };
 }
+
+// ── Category-level search (bundles all types into one API call) ──────────────
+
+interface CategorySearchParams {
+  supabaseAdmin: SupabaseClient;
+  apiKey: string;
+  categoryKey: string;
+  includedTypes: string[];
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  maxResults?: number;
+  rankPreference?: string;
+  excludedTypes?: string[];
+  ttlHours?: number;
+  fieldMask?: string;
+}
+
+/**
+ * Search Google Places for a CATEGORY (all types bundled in one API call).
+ * Cache key uses categoryKey (e.g. "Casual Eats") in the place_type column.
+ * Up to 50 types per call (Google API limit).
+ */
+export async function searchCategoryPlaces(params: CategorySearchParams): Promise<CacheResult> {
+  const {
+    supabaseAdmin,
+    apiKey,
+    categoryKey,
+    includedTypes,
+    lat,
+    lng,
+    radiusMeters,
+    maxResults = 20,
+    rankPreference,
+    excludedTypes,
+    fieldMask = DEFAULT_FIELD_MASK,
+    ttlHours = 24,
+  } = params;
+
+  if (!includedTypes.length) return { places: [], cacheHit: false };
+
+  const locKey = locationKey(lat, lng);
+  const radBucket = radiusBucket(radiusMeters);
+  const cacheKey = `cat:${categoryKey}`;
+
+  // ── 1. CHECK CACHE ────────────────────────────────────────────────────
+  try {
+    const { data: cached, error: cacheErr } = await supabaseAdmin
+      .from('google_places_cache')
+      .select('id, places, result_count, hit_count')
+      .eq('place_type', cacheKey)
+      .eq('location_key', locKey)
+      .eq('radius_bucket', radBucket)
+      .eq('search_strategy', 'nearby')
+      .eq('text_query', '')
+      .gt('expires_at', new Date().toISOString())
+      .limit(1)
+      .maybeSingle();
+
+    if (!cacheErr && cached?.places) {
+      const newHitCount = (cached.hit_count || 0) + 1;
+      console.log(`[places-cache] CAT HIT: ${categoryKey} @ ${locKey} r=${radBucket} (hits: ${newHitCount})`);
+
+      // Fire-and-forget: increment hit count; extend TTL to 72h for popular entries (hit_count > 3)
+      const updatePayload: Record<string, unknown> = { hit_count: newHitCount };
+      if (newHitCount > 3) {
+        updatePayload.expires_at = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+      }
+      supabaseAdmin
+        .from('google_places_cache')
+        .update(updatePayload)
+        .eq('id', cached.id)
+        .then(() => {})
+        .catch(() => {});
+
+      return { places: cached.places as any[], cacheHit: true };
+    }
+  } catch (err) {
+    console.warn('[places-cache] Category cache read error, falling through to API:', err);
+  }
+
+  // ── 2. CACHE MISS → CALL GOOGLE PLACES API (all types in one call) ────
+  console.log(`[places-cache] CAT MISS: ${categoryKey} (${includedTypes.length} types) @ ${locKey} r=${radBucket}`);
+
+  let places: any[] = [];
+
+  try {
+    // Google allows max 50 includedTypes per call
+    const typeBatches: string[][] = [];
+    for (let i = 0; i < includedTypes.length; i += 50) {
+      typeBatches.push(includedTypes.slice(i, i + 50));
+    }
+
+    for (const batch of typeBatches) {
+      const body: any = {
+        includedTypes: batch,
+        maxResultCount: maxResults,
+        locationRestriction: {
+          circle: {
+            center: { latitude: lat, longitude: lng },
+            radius: radiusMeters,
+          },
+        },
+      };
+
+      if (rankPreference) body.rankPreference = rankPreference;
+      // NOTE: excludedTypes is NOT sent to Google when includedTypes has multiple entries
+      // (Google silently ignores it). We apply it as a post-fetch filter below instead.
+
+      const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': fieldMask,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        places.push(...(data.places ?? []));
+      } else {
+        console.error(`[places-cache] Category Nearby Search API error: ${res.status} for ${categoryKey}`);
+      }
+    }
+  } catch (err) {
+    console.error('[places-cache] Category Google API call threw:', err);
+    return { places: [], cacheHit: false };
+  }
+
+  // ── Post-fetch filter: remove excluded types (Google ignores excludedTypes with multiple includedTypes) ──
+  if (excludedTypes && excludedTypes.length > 0 && places.length > 0) {
+    const excludedSet = new Set(excludedTypes);
+    const beforeCount = places.length;
+    places = places.filter(p => !(p.types || []).some((t: string) => excludedSet.has(t)));
+    if (places.length < beforeCount) {
+      console.log(`[places-cache] Post-filter: removed ${beforeCount - places.length} excluded-type places for ${categoryKey}`);
+    }
+  }
+
+  // ── 3. WRITE TO CACHE (fire-and-forget) ───────────────────────────────
+  if (places.length > 0) {
+    const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000).toISOString();
+    supabaseAdmin
+      .from('google_places_cache')
+      .upsert({
+        place_type: cacheKey,
+        location_key: locKey,
+        radius_bucket: radBucket,
+        search_strategy: 'nearby',
+        text_query: '',
+        places,
+        result_count: places.length,
+        next_page_token: null,
+        pages_fetched: 1,
+        expires_at: expiresAt,
+        hit_count: 0,
+      }, { onConflict: 'place_type,location_key,radius_bucket,search_strategy,text_query' })
+      .then(() => console.log(`[places-cache] CAT written: ${categoryKey} (${places.length} places)`))
+      .catch((err: any) => console.warn('[places-cache] Category cache write failed:', err));
+  }
+
+  return { places, cacheHit: false };
+}
+
+/**
+ * Batch search by CATEGORY: one Google API call per category (not per type).
+ * Drop-in replacement for batchSearchPlaces() where callers group by category.
+ *
+ * @param categoryTypes - Map of categoryName → placeTypes[] (from getCategoryTypeMap)
+ * @returns Map of categoryName → places[]
+ */
+export async function batchSearchByCategory(
+  supabaseAdmin: SupabaseClient,
+  apiKey: string,
+  categoryTypes: Record<string, string[]>,
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  options?: {
+    maxResultsPerCategory?: number;
+    rankPreference?: string;
+    excludedTypes?: string[];
+    ttlHours?: number;
+    fieldMask?: string;
+  },
+): Promise<{ results: Record<string, any[]>; apiCallsMade: number; cacheHits: number }> {
+  const results: Record<string, any[]> = {};
+  let apiCallsMade = 0;
+  let cacheHits = 0;
+
+  const categories = Object.keys(categoryTypes);
+
+  const promises = categories.map(async (category) => {
+    const types = categoryTypes[category];
+    if (!types || types.length === 0) {
+      results[category] = [];
+      return;
+    }
+
+    const { places, cacheHit } = await searchCategoryPlaces({
+      supabaseAdmin,
+      apiKey,
+      categoryKey: category,
+      includedTypes: types,
+      lat,
+      lng,
+      radiusMeters,
+      maxResults: options?.maxResultsPerCategory ?? 20,
+      rankPreference: options?.rankPreference,
+      excludedTypes: options?.excludedTypes,
+      ttlHours: options?.ttlHours,
+      fieldMask: options?.fieldMask,
+    });
+
+    results[category] = places;
+    if (cacheHit) cacheHits++;
+    else apiCallsMade++;
+  });
+
+  await Promise.all(promises);
+
+  console.log(`[places-cache] CategoryBatch: ${categories.length} categories, ${cacheHits} hits, ${apiCallsMade} API calls`);
+  return { results, apiCallsMade, cacheHits };
+}

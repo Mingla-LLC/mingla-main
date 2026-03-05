@@ -534,3 +534,16 @@ export function getCategoryKeywords(category: string): string[] {
   if (!canonical) return [];
   return CATEGORY_KEYWORDS[canonical] || [];
 }
+
+/**
+ * Build a category → place types map for a set of categories.
+ * Used by batchSearchByCategory() to send one Google API call per category
+ * instead of one per type.
+ */
+export function getCategoryTypeMap(categories: string[]): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const cat of resolveCategories(categories)) {
+    result[cat] = MINGLA_CATEGORY_PLACE_TYPES[cat] || [];
+  }
+  return result;
+}

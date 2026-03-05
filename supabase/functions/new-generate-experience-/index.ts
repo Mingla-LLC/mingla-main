@@ -1,10 +1,10 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { batchSearchByCategory } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
-import { resolveCategories, getPlaceTypesForCategory, getExcludedTypesForCategory, GLOBAL_EXCLUDED_PLACE_TYPES, ROMANTIC_EXCLUDED_PLACE_TYPES } from '../_shared/categoryPlaceTypes.ts';
-import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
+import { resolveCategories, getExcludedTypesForCategory, getCategoryTypeMap, GLOBAL_EXCLUDED_PLACE_TYPES, ROMANTIC_EXCLUDED_PLACE_TYPES } from '../_shared/categoryPlaceTypes.ts';
+import { googleLevelToTierSlug, priceLevelToRange } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -355,50 +355,25 @@ async function fetchGooglePlaces(
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
-  // Collect primary place type per category (one type each for better caching)
-  const categoryTypeMap: { category: string; placeType: string }[] = [];
-  const uniqueTypes = new Set<string>();
+  // Build category → place types map (one Google API call per category)
+  const catTypeMap = getCategoryTypeMap(preferences.categories || []);
+  const resolvedCategories = Object.keys(catTypeMap);
 
-  for (const category of preferences.categories || []) {
-    const categoryKey = category.toLowerCase();
-    let placeTypes = getPlaceTypesForCategory(categoryKey);
-    if (placeTypes.length === 0) placeTypes = ["tourist_attraction"];
-
-    // First Meet: search 3 types (one per sub-group) for variety
-    if (categoryKey === 'first_meet' || categoryKey === 'first-meet' || categoryKey === 'first meet') {
-      const typesToSearch = placeTypes.slice(0, 3); // cafe, bowling_alley, park
-      for (const type of typesToSearch) {
-        categoryTypeMap.push({ category, placeType: type });
-        uniqueTypes.add(type);
-      }
-    } else if (categoryKey === 'drink' || categoryKey === 'sip & chill' || categoryKey === 'sip_and_chill' || categoryKey === 'sip-and-chill' || categoryKey === 'sip&chill' || categoryKey === 'sip_&_chill' || categoryKey === 'sip-&-chill' || categoryKey === 'sipchill') {
-      const typesToSearch = placeTypes.slice(0, 2); // bar, coffee_shop
-      for (const type of typesToSearch) {
-        categoryTypeMap.push({ category, placeType: type });
-        uniqueTypes.add(type);
-      }
-    } else {
-      const primaryType = placeTypes[0];
-      categoryTypeMap.push({ category, placeType: primaryType });
-      uniqueTypes.add(primaryType);
-    }
-  }
-
-  if (supabaseAdmin && uniqueTypes.size > 0) {
-    // Use batch cache lookup for all unique types at once
-    const { results: typeResults } = await batchSearchPlaces(
+  if (supabaseAdmin && resolvedCategories.length > 0) {
+    // Use batch category search: one API call per category (all types bundled)
+    const { results: catResults } = await batchSearchByCategory(
       supabaseAdmin,
       GOOGLE_API_KEY,
-      Array.from(uniqueTypes),
+      catTypeMap,
       location.lat,
       location.lng,
       radius,
-      { maxResultsPerType: 10, ttlHours: 24, excludedTypes: globalExcludedTypes }
+      { maxResultsPerCategory: 20, ttlHours: 24, excludedTypes: globalExcludedTypes }
     );
 
     // Map results back through the same transformation logic
-    for (const { category, placeType } of categoryTypeMap) {
-      const places = typeResults[placeType] || [];
+    for (const category of resolvedCategories) {
+      const places = catResults[category] || [];
       if (places.length > 0) {
         const transformed = places.map((place: any) => {
           const primaryPhoto = place.photos?.[0];
@@ -416,27 +391,7 @@ async function fetchGooglePlaces(
               })
               .filter((img: string | null) => img !== null) || [];
 
-          const priceLevel = place.priceLevel || 0;
-          const price_min =
-            priceLevel === 0
-              ? 0
-              : priceLevel === 1
-              ? 0
-              : priceLevel === 2
-              ? 15
-              : priceLevel === 3
-              ? 50
-              : 100;
-          const price_max =
-            priceLevel === 0
-              ? 0
-              : priceLevel === 1
-              ? 25
-              : priceLevel === 2
-              ? 75
-              : priceLevel === 3
-              ? 150
-              : 500;
+          const priceRange = priceLevelToRange(place.priceLevel);
 
           return {
             id: place.id,
@@ -447,7 +402,7 @@ async function fetchGooglePlaces(
               lng: place.location?.longitude || location.lng,
             },
             address: place.formattedAddress || "",
-            priceLevel: priceLevel,
+            priceLevel: place.priceLevel || null,
             rating: place.rating || 0,
             reviewCount: place.userRatingCount || 0,
             imageUrl: imageUrl,
@@ -461,8 +416,8 @@ async function fetchGooglePlaces(
                 }
               : null,
             placeTypes: place.types || [],
-            price_min,
-            price_max,
+            price_min: priceRange.min,
+            price_max: priceRange.max,
             websiteUri: place.websiteUri || null,
           };
         });
@@ -470,18 +425,20 @@ async function fetchGooglePlaces(
       }
     }
   } else {
-    // Fallback: direct API calls (no cache available)
+    // Fallback: direct API calls per category (no cache available)
     const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
 
-    for (const { category, placeType } of categoryTypeMap) {
+    for (const category of resolvedCategories) {
+      const placeTypes = catTypeMap[category] || [];
+      if (placeTypes.length === 0) continue;
+
       try {
-        const categoryKey = category.toLowerCase();
         const fieldMask =
           "places.id,places.displayName,places.location,places.formattedAddress,places.priceLevel,places.rating,places.userRatingCount,places.photos,places.types,places.regularOpeningHours,places.websiteUri";
 
         const requestBody: any = {
-          includedTypes: [placeType],
-          maxResultCount: 10,
+          includedTypes: placeTypes,
+          maxResultCount: 20,
           locationRestriction: {
             circle: {
               center: { latitude: location.lat, longitude: location.lng },
@@ -491,7 +448,7 @@ async function fetchGooglePlaces(
         };
 
         // Merge category-specific exclusions with global/romantic exclusions
-        const categoryExcludedTypes = getExcludedTypesForCategory(categoryKey);
+        const categoryExcludedTypes = getExcludedTypesForCategory(category);
         const mergedExcludedTypes = Array.from(new Set([
           ...categoryExcludedTypes,
           ...globalExcludedTypes,
@@ -513,7 +470,7 @@ async function fetchGooglePlaces(
         if (!response.ok) {
           const errorText = await response.text();
           console.error(
-            `Google Places API error for ${placeType}:`,
+            `Google Places API error for category ${category}:`,
             response.status,
             response.statusText,
             errorText
@@ -540,27 +497,7 @@ async function fetchGooglePlaces(
                 })
                 .filter((img: string | null) => img !== null) || [];
 
-            const priceLevel = place.priceLevel || 0;
-            const price_min =
-              priceLevel === 0
-                ? 0
-                : priceLevel === 1
-                ? 0
-                : priceLevel === 2
-                ? 15
-                : priceLevel === 3
-                ? 50
-                : 100;
-            const price_max =
-              priceLevel === 0
-                ? 0
-                : priceLevel === 1
-                ? 25
-                : priceLevel === 2
-                ? 75
-                : priceLevel === 3
-                ? 150
-                : 500;
+            const priceRange2 = priceLevelToRange(place.priceLevel);
 
             return {
               id: place.id,
@@ -571,7 +508,7 @@ async function fetchGooglePlaces(
                 lng: place.location?.longitude || location.lng,
               },
               address: place.formattedAddress || "",
-              priceLevel: priceLevel,
+              priceLevel: place.priceLevel || null,
               rating: place.rating || 0,
               reviewCount: place.userRatingCount || 0,
               imageUrl: imageUrl,
@@ -585,8 +522,8 @@ async function fetchGooglePlaces(
                   }
                 : null,
               placeTypes: place.types || [],
-              price_min,
-              price_max,
+              price_min: priceRange2.min,
+              price_max: priceRange2.max,
               websiteUri: place.websiteUri || null,
             };
           });
@@ -594,7 +531,7 @@ async function fetchGooglePlaces(
           allPlaces.push(...places);
         }
       } catch (error) {
-        console.error(`Error fetching ${placeType}:`, error);
+        console.error(`Error fetching category ${category}:`, error);
       }
     }
   }

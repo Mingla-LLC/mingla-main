@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { batchSearchPlaces, fetchNextPage, drainPaginationTokens } from '../_shared/placesCache.ts';
+import { batchSearchByCategory, fetchNextPage, drainPaginationTokens } from '../_shared/placesCache.ts';
 import {
   serveCardsFromPipeline,
   upsertPlaceToPool,
@@ -9,7 +9,7 @@ import {
 } from '../_shared/cardPoolService.ts';
 import {
   resolveCategories,
-  getPlaceTypesForCategory,
+  getCategoryTypeMap,
 } from '../_shared/categoryPlaceTypes.ts';
 import { priceLevelToLabel, priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from '../_shared/priceTiers.ts';
 
@@ -298,17 +298,15 @@ async function getCacheEntriesWithTokens(
   const locKey = `${location.lat.toFixed(2)},${location.lng.toFixed(2)}`;
   const radBucket = Math.round(radiusMeters / 1000) * 1000;
 
-  const placeTypes: string[] = [];
-  for (const cat of categories) {
-    placeTypes.push(...getPlaceTypesForCategory(cat));
-  }
+  // Look for category-level cache entries (new: "cat:CategoryName")
+  const catKeys = categories.map(c => `cat:${c}`);
 
   const { data } = await supabaseAdmin
     .from('google_places_cache')
     .select('id, place_type, next_page_token')
     .eq('location_key', locKey)
     .eq('radius_bucket', radBucket)
-    .in('place_type', placeTypes)
+    .in('place_type', catKeys)
     .not('next_page_token', 'is', null)
     .gt('expires_at', new Date().toISOString());
 
@@ -319,10 +317,8 @@ async function getCacheEntriesWithTokens(
 async function expandPoolWithNewPlaces(
   supabaseAdmin: any,
   newPlaces: any[],
-  placeType: string,
-  typeToCategory: Record<string, string>,
+  category: string,
 ): Promise<void> {
-  const category = typeToCategory[placeType];
   if (!category) return;
 
   for (const place of newPlaces) {
@@ -339,7 +335,7 @@ async function expandPoolWithNewPlaces(
       title: place.displayName?.text || 'Unknown Place',
       category,
       categories: [category],
-      description: getFallbackDescription(category, placeType),
+      description: getFallbackDescription(category, place.primaryType || place.types?.[0] || 'place'),
       highlights: [],
       imageUrl: getPhotoUrl(place),
       images: getAllPhotoUrls(place),
@@ -355,7 +351,7 @@ async function expandPoolWithNewPlaces(
     });
   }
 
-  console.log(`[discover-cards] Expanded pool with ${newPlaces.length} places for type ${placeType} (category: ${category})`);
+  console.log(`[discover-cards] Expanded pool with ${newPlaces.length} places for category: ${category}`);
 }
 
 // ── Main Handler ────────────────────────────────────────────────────────────
@@ -434,20 +430,8 @@ serve(async (req: Request) => {
         : travelConstraintValue;
     const radiusMeters = Math.min(Math.round(maxDistKm * 1000), 50000);
 
-    // ── Collect place types from ALL categories (needed for both pool expansion + API fallback) ──
-    const typeToCategory: Record<string, string> = {};
-    const allPlaceTypes: string[] = [];
-
-    for (const cat of categories) {
-      const types = getPlaceTypesForCategory(cat);
-      const selected = types.slice(0, 4);
-      for (const type of selected) {
-        if (!typeToCategory[type]) {
-          typeToCategory[type] = cat;
-          allPlaceTypes.push(type);
-        }
-      }
-    }
+    // ── Build category → types map (one API call per category, not per type) ──
+    const categoryTypeMap = getCategoryTypeMap(categories);
 
     // ── Pool-first serving (ALL categories in ONE query) ──────────────────
     // No batchSeed === 0 restriction; serve from pool for ANY batchSeed.
@@ -509,7 +493,11 @@ serve(async (req: Request) => {
               const { newPlaces } = await fetchNextPage(supabaseAdmin, GOOGLE_PLACES_API_KEY, entry.id);
               if (newPlaces.length > 0) {
                 // Insert new places into place_pool + card_pool
-                await expandPoolWithNewPlaces(supabaseAdmin, newPlaces, entry.place_type, typeToCategory);
+                // entry.place_type may be "cat:CategoryName" (new) or a raw type (legacy)
+                const entryCat = entry.place_type.startsWith('cat:')
+                  ? entry.place_type.slice(4)
+                  : categories[0] || 'Unknown';
+                await expandPoolWithNewPlaces(supabaseAdmin, newPlaces, entryCat);
                 expanded = true;
               }
             }
@@ -567,9 +555,9 @@ serve(async (req: Request) => {
     // ── Handle warmPool request ───────────────────────────────────────────
     const isWarmPool = !!body.warmPool;
 
-    // typeToCategory and allPlaceTypes already built above (before pool-first path)
-
-    console.log(`[discover-cards] Searching ${allPlaceTypes.length} place types across ${categories.length} categories`);
+    // categoryTypeMap already built above (before pool-first path)
+    const totalTypes = Object.values(categoryTypeMap).reduce((sum, t) => sum + t.length, 0);
+    console.log(`[discover-cards] Searching ${totalTypes} place types across ${categories.length} categories (bundled: ${categories.length} API calls)`);
 
     // ── Guard: cannot fall back to Google API if key is missing ───────────
     if (!GOOGLE_PLACES_API_KEY) {
@@ -584,57 +572,36 @@ serve(async (req: Request) => {
       );
     }
 
-    // ── Batch search all place types using shared cache ───────────────────
-    const { results, apiCallsMade, cacheHits } = await batchSearchPlaces(
+    // ── Batch search by CATEGORY (one API call per category, not per type) ──
+    const { results, apiCallsMade, cacheHits } = await batchSearchByCategory(
       supabaseAdmin,
       GOOGLE_PLACES_API_KEY,
-      allPlaceTypes,
+      categoryTypeMap,
       location.lat,
       location.lng,
       radiusMeters,
       {
-        maxResultsPerType: 20,
+        maxResultsPerCategory: 20,
         rankPreference: 'POPULARITY',
       }
     );
 
     console.log(`[discover-cards] Places search: ${cacheHits} cache hits, ${apiCallsMade} API calls`);
 
-    // RC-004 fix: proactively consume remaining Google pagination tokens
-    // Fire-and-forget — do not block the response
-    drainPaginationTokens(
-      supabaseAdmin,
-      GOOGLE_PLACES_API_KEY,
-      allPlaceTypes,
-      location.lat,
-      location.lng,
-      radiusMeters,
-    ).then(async ({ totalNewPlaces }) => {
-      if (totalNewPlaces > 0) {
-        // The places are already in the cache. Re-read them and expand the pool.
-        // On the NEXT batch request, serveCardsFromPipeline will find them in the pool.
-        // No additional work needed here — batchSearchPlaces will return cached results
-        // that include all pages on the next call.
-        console.log(`[discover-cards] Background drain complete: ${totalNewPlaces} new places now in cache for next batch`);
-      }
-    }).catch(() => {});
-
-    // ── Merge & deduplicate across all types, track category per place ────
+    // ── Merge & deduplicate across all categories, track category per place ──
     const seen = new Set<string>();
     let allPlaces: Array<any & { _matchedType: string; _category: string }> = [];
 
-    for (const [type, places] of Object.entries(results)) {
-      const category = typeToCategory[type];
-      if (!category) continue;
+    for (const [category, places] of Object.entries(results)) {
       for (const p of places) {
         if (p.id && !seen.has(p.id)) {
           seen.add(p.id);
-          allPlaces.push({ ...p, _matchedType: type, _category: category });
+          allPlaces.push({ ...p, _matchedType: p.primaryType || p.types?.[0] || 'place', _category: category });
         }
       }
     }
 
-    console.log(`[discover-cards] ${allPlaces.length} unique places across ${Object.keys(results).length} types`);
+    console.log(`[discover-cards] ${allPlaces.length} unique places across ${Object.keys(results).length} categories`);
 
     // ── Filter by distance ────────────────────────────────────────────────
     allPlaces = allPlaces.filter(p => {

@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { searchPlacesWithCache } from '../_shared/placesCache.ts';
+import { searchPlacesWithCache, searchCategoryPlaces } from '../_shared/placesCache.ts';
 import { serveCuratedCardsFromPool, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
 import {
   MINGLA_CATEGORY_PLACE_TYPES,
@@ -20,7 +20,10 @@ const GOOGLE_PLACES_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') ?? '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+// supabaseAdmin is assigned inside serve() to avoid stale client from cold-start race conditions.
+// Module-level functions access it via closure — safe because JS is single-threaded and
+// the assignment happens before any function call within the request handler.
+let supabaseAdmin: ReturnType<typeof createClient>;
 
 // ---- Session preference aggregation (for collaboration mode) ----
 const SESSION_INTENT_IDS = new Set([
@@ -899,18 +902,25 @@ const PLACES_FIELD_MASK =
   'places.types,places.primaryType,' +
   'places.regularOpeningHours,places.websiteUri,places.photos';
 
-async function searchNearby(includedType: string, lat: number, lng: number, radiusMeters: number, excludedTypes?: string[]): Promise<any[]> {
-  const { places } = await searchPlacesWithCache({
+async function searchNearbyBundled(
+  groupKey: string,
+  includedTypes: string[],
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  excludedTypes?: string[],
+): Promise<any[]> {
+  const { places } = await searchCategoryPlaces({
     supabaseAdmin,
     apiKey: GOOGLE_PLACES_API_KEY,
-    placeType: includedType,
+    categoryKey: groupKey,
+    includedTypes,
     lat,
     lng,
     radiusMeters,
-    maxResults: 5,
-    strategy: 'nearby',
-    ttlHours: 24,
+    maxResults: 20,
     excludedTypes,
+    ttlHours: 24,
   });
   return places;
 }
@@ -936,8 +946,8 @@ async function searchByText(textQuery: string, lat: number, lng: number, radiusM
 
 /**
  * Fetch places for a single Mingla category.
- * Uses multiple parallel searchNearby calls (one per type, max 10 types) since
- * the existing helper accepts a single type.
+ * Uses searchCategoryPlaces directly with canonical category name so cache
+ * is shared with discover-cards (same key format: cat:CategoryName).
  * Falls back to text search for niche types if needed.
  */
 async function fetchPlacesForCategory(
@@ -956,17 +966,20 @@ async function fetchPlacesForCategory(
 
   const results: any[] = [];
 
-  // 1. Batch Nearby Search — parallel calls for up to 10 random types
+  // 1. Bundled Nearby Search — single API call with all types
+  // Uses canonical category name as cache key (shares cache with discover-cards)
   if (nearbyTypes.length > 0) {
-    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
-    const nearbyResults = await Promise.allSettled(
-      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
-    );
-    for (const r of nearbyResults) {
-      if (r.status === 'fulfilled' && r.value) {
-        results.push(...r.value);
-      }
-    }
+    const { places: nearbyPlaces } = await searchCategoryPlaces({
+      supabaseAdmin,
+      apiKey: GOOGLE_PLACES_API_KEY,
+      categoryKey: categoryName,
+      includedTypes: nearbyTypes,
+      lat, lng, radiusMeters,
+      maxResults: 20,
+      excludedTypes,
+      ttlHours: 24,
+    });
+    results.push(...nearbyPlaces);
   }
 
   // 2. Text search fallback for niche types (only if nearby gave < 5 results)
@@ -997,38 +1010,42 @@ async function fetchPlacesForCategory(
 }
 
 /**
- * Fetch places for a single Adventure Group.
- * Similar to fetchPlacesForCategory but uses ADVENTURE_GROUPS types
- * and ADVENTURE_EXCLUDED_PLACE_TYPES instead of Mingla category mappings.
+ * Generic place fetcher for any intent group (adventure, first-date, romantic, etc.).
+ * Replaces 7 nearly-identical fetchPlacesFor*Group functions with one.
+ *
+ * Pattern: split types → bundled nearby search → text fallback → dedupe → filter → sort.
+ *
+ * @param groupKey   Unique cache key for this group (e.g., 'adventure_outdoor', 'picnic_grocery')
+ * @param types      Google Place types to search
+ * @param excludedTypes  Intent-specific types to filter out post-fetch
+ * @param lat        User latitude
+ * @param lng        User longitude
+ * @param radiusMeters  Search radius
  */
-async function fetchPlacesForAdventureGroup(
-  group: AdventureGroup,
+async function fetchPlacesForGroup(
+  groupKey: string,
+  types: string[],
+  excludedTypes: string[],
   lat: number,
   lng: number,
   radiusMeters: number,
 ): Promise<any[]> {
-  const excludedTypes = ADVENTURE_EXCLUDED_PLACE_TYPES;
+  if (types.length === 0) return [];
 
-  // Separate types into nearby-searchable and text-search-only
-  const nearbyTypes = group.types.filter(t => !TEXT_SEARCH_TYPES.has(t));
-  const textTypes = group.types.filter(t => TEXT_SEARCH_TYPES.has(t));
+  const nearbyTypes = types.filter(t => !TEXT_SEARCH_TYPES.has(t));
+  const textTypes = types.filter(t => TEXT_SEARCH_TYPES.has(t));
 
   const results: any[] = [];
 
-  // 1. Nearby Search — parallel calls, shuffle and pick up to 10
+  // 1. Bundled Nearby Search — single API call with all types
   if (nearbyTypes.length > 0) {
-    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
-    const nearbyResults = await Promise.allSettled(
-      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
+    const nearbyPlaces = await searchNearbyBundled(
+      groupKey, nearbyTypes, lat, lng, radiusMeters, excludedTypes,
     );
-    for (const r of nearbyResults) {
-      if (r.status === 'fulfilled' && r.value) {
-        results.push(...r.value);
-      }
-    }
+    results.push(...nearbyPlaces);
   }
 
-  // 2. Text search fallback for niche types if nearby gave < 5 results
+  // 2. Text search fallback for niche types (only if nearby gave < 5 results)
   if (results.length < 5 && textTypes.length > 0) {
     const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
     const query = nicheType.replace(/_/g, ' ');
@@ -1036,11 +1053,11 @@ async function fetchPlacesForAdventureGroup(
       const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
       results.push(...textResults);
     } catch (err) {
-      console.warn(`[fetchPlacesForAdventureGroup] Text search failed for ${nicheType}:`, err);
+      console.warn(`[fetchPlacesForGroup:${groupKey}] Text search failed for ${nicheType}:`, err);
     }
   }
 
-  // Dedupe by place ID, sort by score
+  // Dedupe by place ID
   const seen = new Set<string>();
   const deduped = results.filter(p => {
     const id = p.id || p.name;
@@ -1049,273 +1066,8 @@ async function fetchPlacesForAdventureGroup(
     return true;
   });
 
-  // Post-fetch filter: remove places with adventure-excluded types
-  const filtered = filterExcludedPlaces(deduped, ADVENTURE_EXCLUDED_PLACE_TYPES);
-
-  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
-}
-
-/**
- * Fetch places for a single First Date Group.
- * Uses FIRST_DATE_EXCLUDED_PLACE_TYPES for filtering.
- */
-async function fetchPlacesForFirstDateGroup(
-  group: FirstDateGroup,
-  lat: number,
-  lng: number,
-  radiusMeters: number,
-): Promise<any[]> {
-  const excludedTypes = FIRST_DATE_EXCLUDED_PLACE_TYPES;
-
-  const nearbyTypes = group.types.filter(t => !TEXT_SEARCH_TYPES.has(t));
-  const textTypes = group.types.filter(t => TEXT_SEARCH_TYPES.has(t));
-
-  const results: any[] = [];
-
-  if (nearbyTypes.length > 0) {
-    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
-    const nearbyResults = await Promise.allSettled(
-      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
-    );
-    for (const r of nearbyResults) {
-      if (r.status === 'fulfilled' && r.value) {
-        results.push(...r.value);
-      }
-    }
-  }
-
-  if (results.length < 5 && textTypes.length > 0) {
-    const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
-    const query = nicheType.replace(/_/g, ' ');
-    try {
-      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
-      results.push(...textResults);
-    } catch (err) {
-      console.warn(`[fetchPlacesForFirstDateGroup] Text search failed for ${nicheType}:`, err);
-    }
-  }
-
-  const seen = new Set<string>();
-  const deduped = results.filter(p => {
-    const id = p.id || p.name;
-    if (seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
-
-  const filtered = filterExcludedPlaces(deduped, FIRST_DATE_EXCLUDED_PLACE_TYPES);
-
-  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
-}
-
-/**
- * Fetch places for a single Romantic Group.
- * Uses ROMANTIC_INTENT_EXCLUDED_PLACE_TYPES for filtering.
- */
-async function fetchPlacesForRomanticGroup(
-  group: RomanticGroup,
-  lat: number,
-  lng: number,
-  radiusMeters: number,
-): Promise<any[]> {
-  const excludedTypes = ROMANTIC_INTENT_EXCLUDED_PLACE_TYPES;
-
-  const nearbyTypes = group.types.filter(t => !TEXT_SEARCH_TYPES.has(t));
-  const textTypes = group.types.filter(t => TEXT_SEARCH_TYPES.has(t));
-
-  const results: any[] = [];
-
-  if (nearbyTypes.length > 0) {
-    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
-    const nearbyResults = await Promise.allSettled(
-      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
-    );
-    for (const r of nearbyResults) {
-      if (r.status === 'fulfilled' && r.value) {
-        results.push(...r.value);
-      }
-    }
-  }
-
-  if (results.length < 5 && textTypes.length > 0) {
-    const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
-    const query = nicheType.replace(/_/g, ' ');
-    try {
-      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
-      results.push(...textResults);
-    } catch (err) {
-      console.warn(`[fetchPlacesForRomanticGroup] Text search failed for ${nicheType}:`, err);
-    }
-  }
-
-  const seen = new Set<string>();
-  const deduped = results.filter(p => {
-    const id = p.id || p.name;
-    if (seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
-
-  const filtered = filterExcludedPlaces(deduped, ROMANTIC_INTENT_EXCLUDED_PLACE_TYPES);
-
-  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
-}
-
-/**
- * Fetch places for a single Friendly Group.
- * Uses FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES for filtering.
- */
-async function fetchPlacesForFriendlyGroup(
-  group: FriendlyGroup,
-  lat: number,
-  lng: number,
-  radiusMeters: number,
-): Promise<any[]> {
-  const excludedTypes = FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES;
-
-  const nearbyTypes = group.types.filter(t => !TEXT_SEARCH_TYPES.has(t));
-  const textTypes = group.types.filter(t => TEXT_SEARCH_TYPES.has(t));
-
-  const results: any[] = [];
-
-  if (nearbyTypes.length > 0) {
-    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
-    const nearbyResults = await Promise.allSettled(
-      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
-    );
-    for (const r of nearbyResults) {
-      if (r.status === 'fulfilled' && r.value) {
-        results.push(...r.value);
-      }
-    }
-  }
-
-  if (results.length < 5 && textTypes.length > 0) {
-    const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
-    const query = nicheType.replace(/_/g, ' ');
-    try {
-      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
-      results.push(...textResults);
-    } catch (err) {
-      console.warn(`[fetchPlacesForFriendlyGroup] Text search failed for ${nicheType}:`, err);
-    }
-  }
-
-  const seen = new Set<string>();
-  const deduped = results.filter(p => {
-    const id = p.id || p.name;
-    if (seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
-
-  const filtered = filterExcludedPlaces(deduped, FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES);
-
-  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
-}
-
-/**
- * Fetch places for a single Group Fun Group.
- * Uses GROUP_FUN_EXCLUDED_PLACE_TYPES for filtering.
- */
-async function fetchPlacesForGroupFunGroup(
-  group: GroupFunGroup,
-  lat: number,
-  lng: number,
-  radiusMeters: number,
-): Promise<any[]> {
-  const excludedTypes = GROUP_FUN_EXCLUDED_PLACE_TYPES;
-
-  const nearbyTypes = group.types.filter(t => !TEXT_SEARCH_TYPES.has(t));
-  const textTypes = group.types.filter(t => TEXT_SEARCH_TYPES.has(t));
-
-  const results: any[] = [];
-
-  if (nearbyTypes.length > 0) {
-    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
-    const nearbyResults = await Promise.allSettled(
-      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
-    );
-    for (const r of nearbyResults) {
-      if (r.status === 'fulfilled' && r.value) {
-        results.push(...r.value);
-      }
-    }
-  }
-
-  if (results.length < 5 && textTypes.length > 0) {
-    const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
-    const query = nicheType.replace(/_/g, ' ');
-    try {
-      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
-      results.push(...textResults);
-    } catch (err) {
-      console.warn(`[fetchPlacesForGroupFunGroup] Text search failed for ${nicheType}:`, err);
-    }
-  }
-
-  const seen = new Set<string>();
-  const deduped = results.filter(p => {
-    const id = p.id || p.name;
-    if (seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
-
-  const filtered = filterExcludedPlaces(deduped, GROUP_FUN_EXCLUDED_PLACE_TYPES);
-
-  return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
-}
-
-/**
- * Fetch places for a single Picnic Group.
- * Uses PICNIC_EXCLUDED_PLACE_TYPES for filtering.
- */
-async function fetchPlacesForPicnicGroup(
-  group: PicnicGroup,
-  lat: number,
-  lng: number,
-  radiusMeters: number,
-): Promise<any[]> {
-  const excludedTypes = PICNIC_EXCLUDED_PLACE_TYPES;
-
-  const nearbyTypes = group.types.filter(t => !TEXT_SEARCH_TYPES.has(t));
-  const textTypes = group.types.filter(t => TEXT_SEARCH_TYPES.has(t));
-
-  const results: any[] = [];
-
-  if (nearbyTypes.length > 0) {
-    const typesToSearch = shuffle(nearbyTypes).slice(0, 10);
-    const nearbyResults = await Promise.allSettled(
-      typesToSearch.map(t => searchNearby(t, lat, lng, radiusMeters, excludedTypes))
-    );
-    for (const r of nearbyResults) {
-      if (r.status === 'fulfilled' && r.value) {
-        results.push(...r.value);
-      }
-    }
-  }
-
-  if (results.length < 5 && textTypes.length > 0) {
-    const nicheType = textTypes[Math.floor(Math.random() * textTypes.length)];
-    const query = nicheType.replace(/_/g, ' ');
-    try {
-      const textResults = await searchByText(query, lat, lng, radiusMeters, excludedTypes);
-      results.push(...textResults);
-    } catch (err) {
-      console.warn(`[fetchPlacesForPicnicGroup] Text search failed for ${nicheType}:`, err);
-    }
-  }
-
-  const seen = new Set<string>();
-  const deduped = results.filter(p => {
-    const id = p.id || p.name;
-    if (seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
-
-  const filtered = filterExcludedPlaces(deduped, PICNIC_EXCLUDED_PLACE_TYPES);
+  // Post-fetch filter: belt-and-suspenders with cache-layer filtering
+  const filtered = filterExcludedPlaces(deduped, excludedTypes);
 
   return filtered.sort((a: any, b: any) => scorePlace(b) - scorePlace(a));
 }
@@ -1420,7 +1172,7 @@ async function generateAdventureCards(
   const groupPlaces: Record<string, any[]> = {};
   await Promise.all(
     ADVENTURE_GROUPS.map(async (group) => {
-      const places = await fetchPlacesForAdventureGroup(group, lat, lng, clampedRadius);
+      const places = await fetchPlacesForGroup(`adventure_${group.id}`, group.types, ADVENTURE_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
       groupPlaces[group.id] = places;
     })
   );
@@ -1557,15 +1309,15 @@ async function generateFirstDateCards(
   await Promise.all([
     (async () => {
       groupPlaces[FIRST_DATE_STARTING_1.id] =
-        await fetchPlacesForFirstDateGroup(FIRST_DATE_STARTING_1, lat, lng, clampedRadius);
+        await fetchPlacesForGroup(FIRST_DATE_STARTING_1.id, FIRST_DATE_STARTING_1.types, FIRST_DATE_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
     })(),
     (async () => {
       groupPlaces[FIRST_DATE_STARTING_2.id] =
-        await fetchPlacesForFirstDateGroup(FIRST_DATE_STARTING_2, lat, lng, clampedRadius);
+        await fetchPlacesForGroup(FIRST_DATE_STARTING_2.id, FIRST_DATE_STARTING_2.types, FIRST_DATE_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
     })(),
     (async () => {
       groupPlaces[FIRST_DATE_FINISH.id] =
-        await fetchPlacesForFirstDateGroup(FIRST_DATE_FINISH, lat, lng, clampedRadius);
+        await fetchPlacesForGroup(FIRST_DATE_FINISH.id, FIRST_DATE_FINISH.types, FIRST_DATE_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
     })(),
   ]);
 
@@ -1770,11 +1522,11 @@ async function generateRomanticCards(
   await Promise.all([
     (async () => {
       groupPlaces[ROMANTIC_START.id] =
-        await fetchPlacesForRomanticGroup(ROMANTIC_START, lat, lng, clampedRadius);
+        await fetchPlacesForGroup(ROMANTIC_START.id, ROMANTIC_START.types, ROMANTIC_INTENT_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
     })(),
     (async () => {
       groupPlaces[ROMANTIC_FINISH.id] =
-        await fetchPlacesForRomanticGroup(ROMANTIC_FINISH, lat, lng, clampedRadius);
+        await fetchPlacesForGroup(ROMANTIC_FINISH.id, ROMANTIC_FINISH.types, ROMANTIC_INTENT_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
     })(),
   ]);
 
@@ -1975,11 +1727,11 @@ async function generateFriendlyCards(
   await Promise.all([
     ...FRIENDLY_STARTING_GROUPS.map(async (group) => {
       groupPlaces[group.id] =
-        await fetchPlacesForFriendlyGroup(group, lat, lng, clampedRadius);
+        await fetchPlacesForGroup(`friendly_${group.id}`, group.types, FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
     }),
     (async () => {
       groupPlaces[FRIENDLY_FINISH.id] =
-        await fetchPlacesForFriendlyGroup(FRIENDLY_FINISH, lat, lng, clampedRadius);
+        await fetchPlacesForGroup(FRIENDLY_FINISH.id, FRIENDLY_FINISH.types, FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
     })(),
   ]);
 
@@ -2148,11 +1900,11 @@ async function generateGroupFunCards(
   await Promise.all([
     ...GROUP_FUN_STARTING_GROUPS.map(async (group) => {
       groupPlaces[group.id] =
-        await fetchPlacesForGroupFunGroup(group, lat, lng, clampedRadius);
+        await fetchPlacesForGroup(`groupfun_${group.id}`, group.types, GROUP_FUN_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
     }),
     (async () => {
       groupPlaces[GROUP_FUN_FINISH.id] =
-        await fetchPlacesForGroupFunGroup(GROUP_FUN_FINISH, lat, lng, clampedRadius);
+        await fetchPlacesForGroup(GROUP_FUN_FINISH.id, GROUP_FUN_FINISH.types, GROUP_FUN_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
     })(),
   ]);
 
@@ -2602,7 +2354,7 @@ async function generatePicnicDatesCards(
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // 1. Fetch grocery stores near user
-  const groceryPlaces = await fetchPlacesForPicnicGroup(PICNIC_START, lat, lng, clampedRadius);
+  const groceryPlaces = await fetchPlacesForGroup(PICNIC_START.id, PICNIC_START.types, PICNIC_EXCLUDED_PLACE_TYPES, lat, lng, clampedRadius);
 
   if (groceryPlaces.length === 0) {
     console.warn('[generatePicnicDatesCards] No grocery stores found');
@@ -2631,8 +2383,8 @@ async function generatePicnicDatesCards(
     const groceryLng = grocery.location?.longitude ?? 0;
 
     // 2. Find picnic spot near this grocery (NOT near user)
-    const picnicPlaces = await fetchPlacesForPicnicGroup(
-      PICNIC_FINISH,
+    const picnicPlaces = await fetchPlacesForGroup(
+      PICNIC_FINISH.id, PICNIC_FINISH.types, PICNIC_EXCLUDED_PLACE_TYPES,
       groceryLat, groceryLng,
       parkSearchRadius,
     );
@@ -2723,37 +2475,7 @@ function buildPicnicStop(
   return stop;
 }
 
-/**
- * Fetch places for a single Stroll Group.
- * Uses STROLL_EXCLUDED_TYPES for filtering. All stroll types use standard Nearby Search.
- */
-async function fetchStrollPlaces(
-  group: StrollGroup,
-  lat: number,
-  lng: number,
-  radiusMeters: number,
-): Promise<any[]> {
-  const results = await Promise.allSettled(
-    group.types.map(t => searchNearby(t, lat, lng, radiusMeters, STROLL_EXCLUDED_TYPES))
-  );
-
-  const allPlaces: any[] = [];
-  for (const r of results) {
-    if (r.status === 'fulfilled' && r.value) {
-      allPlaces.push(...r.value);
-    }
-  }
-
-  const seenIds = new Set<string>();
-  const deduped = allPlaces.filter(p => {
-    const id = p.id || p.name;
-    if (!id || seenIds.has(id)) return false;
-    seenIds.add(id);
-    return true;
-  });
-
-  return filterExcludedPlaces(deduped, STROLL_EXCLUDED_TYPES);
-}
+// fetchStrollPlaces — REMOVED: replaced by generic fetchPlacesForGroup()
 
 /**
  * Build a stop with stroll-specific duration override and optional label override.
@@ -2855,7 +2577,7 @@ async function generateStrollCards(
   const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
   // Step 1: Find STROLL PLACES (nature) near user — these are the anchors
-  const strollPlaces = await fetchStrollPlaces(STROLL_PLACE, lat, lng, clampedRadius);
+  const strollPlaces = await fetchPlacesForGroup(`stroll_${STROLL_PLACE.id}`, STROLL_PLACE.types, STROLL_EXCLUDED_TYPES, lat, lng, clampedRadius);
 
   if (strollPlaces.length === 0) {
     console.warn('[generateStrollCards] No stroll places found');
@@ -2885,8 +2607,9 @@ async function generateStrollCards(
     const strollLng = stroll.location?.longitude ?? 0;
 
     // Step 2: Find START POINT (cafe) nearest to the stroll place
-    const startPlaces = await fetchStrollPlaces(
-      STROLL_START_POINT, strollLat, strollLng, startSearchRadius,
+    const startPlaces = await fetchPlacesForGroup(
+      `stroll_${STROLL_START_POINT.id}`, STROLL_START_POINT.types, STROLL_EXCLUDED_TYPES,
+      strollLat, strollLng, startSearchRadius,
     );
     if (startPlaces.length === 0) continue;
 
@@ -2901,8 +2624,9 @@ async function generateStrollCards(
     const startLng = startPlace.location?.longitude ?? 0;
 
     // Step 3: Find FINISH (restaurant) near the stroll place
-    const finishPlaces = await fetchStrollPlaces(
-      STROLL_FINISH, strollLat, strollLng, finishSearchRadius,
+    const finishPlaces = await fetchPlacesForGroup(
+      `stroll_${STROLL_FINISH.id}`, STROLL_FINISH.types, STROLL_EXCLUDED_TYPES,
+      strollLat, strollLng, finishSearchRadius,
     );
     if (finishPlaces.length === 0) continue;
 
@@ -3088,6 +2812,8 @@ ${stopList}`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  // Create client per-request to avoid stale module-level client (matches generate-session-experiences pattern)
+  supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   try {
     const body = await req.json();
     let {

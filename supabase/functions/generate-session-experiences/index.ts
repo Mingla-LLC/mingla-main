@@ -1,9 +1,9 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { batchSearchByCategory } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
-import { resolveCategories, getPlaceTypesForCategory, getExcludedTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
+import { resolveCategories, getExcludedTypesForCategory, getCategoryTypeMap } from '../_shared/categoryPlaceTypes.ts';
 import { priceLevelToRange, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
@@ -17,7 +17,6 @@ const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const supabaseAdmin = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '');
 
 
 // Category excluded types now centralized in _shared/categoryPlaceTypes.ts
@@ -55,6 +54,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const supabaseAdmin = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY ?? '');
 
   try {
     let request: SessionGenerationRequest;
@@ -680,64 +681,52 @@ async function fetchGooglePlaces(
       ? Math.min((preferences.travel_constraint_value || 5) * 1000, 50000)
       : 10000; // Default 10km
 
-  // Collect all place types from all categories
-  const allIncludedTypes: string[] = [];
-  const allExcludedTypes = new Set<string>();
+  // Build category → place types map
+  const categoryTypeMap = getCategoryTypeMap(preferences.categories || []);
 
-  for (const category of preferences.categories || []) {
-    const categoryKey = category.toLowerCase();
-    let placeTypes = getPlaceTypesForCategory(categoryKey);
-    if (placeTypes.length === 0) placeTypes = getPlaceTypesForCategory(category);
-    if (placeTypes.length === 0) placeTypes = ["tourist_attraction"];
-
-    allIncludedTypes.push(...placeTypes);
-
-    const excludedTypes = getExcludedTypesForCategory(categoryKey);
-    excludedTypes.forEach((type) => allExcludedTypes.add(type));
-  }
-
-  // Remove duplicates from included types
-  const uniqueIncludedTypes = Array.from(new Set(allIncludedTypes));
-
-  if (uniqueIncludedTypes.length === 0) {
+  if (Object.keys(categoryTypeMap).length === 0) {
     return [];
   }
 
-  // Remove any excluded types that conflict with included types
-  const includedTypesSet = new Set(uniqueIncludedTypes);
-  const filteredExcludedTypes = Array.from(allExcludedTypes).filter(
-    (type) => !includedTypesSet.has(type)
-  );
-
   try {
-    // Use batchSearchPlaces to search each type individually with caching
-    const { results: typeResults } = await batchSearchPlaces(
+    // Use batchSearchByCategory — one API call per category instead of per type
+    const { results: catResults } = await batchSearchByCategory(
       supabaseAdmin,
       GOOGLE_API_KEY,
-      uniqueIncludedTypes.slice(0, 50),
+      categoryTypeMap,
       location.lat,
       location.lng,
       radius,
       {
-        maxResultsPerType: 20,
-        excludedTypes: filteredExcludedTypes.slice(0, 50),
+        maxResultsPerCategory: 20,
         ttlHours: 24,
       }
     );
 
-    // Merge all results from all types
-    const allRawPlaces: any[] = [];
-    for (const places of Object.values(typeResults)) {
-      allRawPlaces.push(...places);
+    // Apply per-category exclusion filtering (each category has its own exclusion set)
+    for (const category of Object.keys(catResults)) {
+      const excludedTypes = getExcludedTypesForCategory(category);
+      const excludedSet = new Set(excludedTypes);
+      catResults[category] = catResults[category].filter(
+        (p: any) => !(p.types || []).some((t: string) => excludedSet.has(t))
+      );
     }
 
-    // Deduplicate by place id
+    // Merge all results, tagging each place with its category
+    const allRawPlaces: { place: any; category: string }[] = [];
+    for (const [category, places] of Object.entries(catResults)) {
+      for (const place of places) {
+        allRawPlaces.push({ place, category });
+      }
+    }
+
+    // Deduplicate by place id (first-seen category wins)
     const seenIds = new Set<string>();
-    const dedupedPlaces: any[] = [];
-    for (const place of allRawPlaces) {
-      if (!seenIds.has(place.id)) {
-        seenIds.add(place.id);
-        dedupedPlaces.push(place);
+    const dedupedPlaces: { place: any; category: string }[] = [];
+    for (const entry of allRawPlaces) {
+      if (!seenIds.has(entry.place.id)) {
+        seenIds.add(entry.place.id);
+        dedupedPlaces.push(entry);
       }
     }
 
@@ -746,7 +735,7 @@ async function fetchGooglePlaces(
     }
 
     // Map places to our format (same transformation as before)
-    const places = dedupedPlaces.map((place: any) => {
+    const places = dedupedPlaces.map(({ place, category: matchedCategory }: { place: any; category: string }) => {
       const primaryPhoto = place.photos?.[0];
       const imageUrl = primaryPhoto?.name
         ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=800&key=${GOOGLE_API_KEY}`
@@ -761,20 +750,6 @@ async function fetchGooglePlaces(
               : null
           )
           .filter((img: string | null) => img !== null) || [];
-
-      // Determine category based on place types - match to user's selected categories
-      const placeTypeSet = new Set(place.types || []);
-      let matchedCategory = preferences.categories?.[0] || "general";
-
-      for (const category of preferences.categories || []) {
-        const categoryKey = category.toLowerCase();
-        let categoryTypes = getPlaceTypesForCategory(categoryKey);
-        if (categoryTypes.length === 0) categoryTypes = getPlaceTypesForCategory(category);
-        if (categoryTypes.some((type) => placeTypeSet.has(type))) {
-          matchedCategory = category;
-          break;
-        }
-      }
 
       return {
         id: place.id,
@@ -798,6 +773,7 @@ async function fetchGooglePlaces(
             }
           : null,
         placeTypes: place.types || [],
+        placeType: place.primaryType || place.types?.[0] || 'place',
         website: place.websiteUri || null,
         price_min: priceLevelToRange(place.priceLevel).min,
         price_max: priceLevelToRange(place.priceLevel).max,

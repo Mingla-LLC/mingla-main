@@ -8,9 +8,10 @@
  */
 
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { batchSearchPlaces } from './placesCache.ts';
+import { batchSearchByCategory } from './placesCache.ts';
 import {
   getPlaceTypesForCategory,
+  getCategoryTypeMap,
   resolveCategories,
   GLOBAL_EXCLUDED_PLACE_TYPES,
   ROMANTIC_EXCLUDED_PLACE_TYPES,
@@ -678,30 +679,17 @@ export async function serveCardsFromPipeline(
   let apiCallCount = 0;
 
   if (neededCategories.length > 0 && googleApiKey) {
-    // Collect all needed place types
-    const typeMap: Record<string, string> = {}; // placeType → category
-    const allTypes: string[] = [];
+    // Build category → types map and search all in one API call per category
+    const categoryTypes = getCategoryTypeMap(neededCategories);
 
-    for (const cat of neededCategories) {
-      const types = getPlaceTypesForCategory(cat);
-      // Use first 4 types per category for diversity
-      for (const type of types.slice(0, 4)) {
-        if (!typeMap[type]) {
-          typeMap[type] = cat;
-          allTypes.push(type);
-        }
-      }
-    }
-
-    // Batch search through the existing cache layer
-    const { results: typeResults, apiCallsMade } = await batchSearchPlaces(
+    const { results: catResults, apiCallsMade } = await batchSearchByCategory(
       supabaseAdmin,
       googleApiKey,
-      allTypes,
+      categoryTypes,
       lat,
       lng,
       radiusMeters,
-      { maxResultsPerType: 10, ttlHours: 24 }
+      { maxResultsPerCategory: 20, ttlHours: 24 }
     );
     apiCallCount = apiCallsMade;
 
@@ -717,9 +705,8 @@ export async function serveCardsFromPipeline(
 
     const pendingPlaces: PendingPlace[] = [];
 
-    for (const [placeType, places] of Object.entries(typeResults)) {
-      const category = typeMap[placeType];
-      if (!category || !places || places.length === 0) continue;
+    for (const [category, places] of Object.entries(catResults)) {
+      if (!places || places.length === 0) continue;
 
       for (const place of places) {
         const googlePlaceId = place.id;
@@ -727,7 +714,7 @@ export async function serveCardsFromPipeline(
         if (!place.location?.latitude || !place.location?.longitude) continue;
         servedPlaceIds.add(googlePlaceId);
 
-        pendingPlaces.push({ place, category, placeType });
+        pendingPlaces.push({ place, category, placeType: place.primaryType || place.types?.[0] || 'place' });
       }
     }
 

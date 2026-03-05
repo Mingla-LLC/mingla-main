@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { batchSearchByCategory } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
 import {
   resolveCategories,
@@ -407,9 +407,18 @@ serve(async (req) => {
       }
     }
 
-    // Pre-fetch a large pool of experiences from ALL categories
-    // Use a shared set to prevent the same place appearing in multiple category pools
-    console.log("Pre-fetching experience pool from all categories...");
+    // Collect only the categories needed by upcoming holidays + custom holidays
+    const neededCategories = new Set<string>();
+    for (const h of upcomingHolidays) {
+      h.definition.categories.forEach(c => neededCategories.add(c));
+    }
+    if (customHolidays && customHolidays.length > 0) {
+      for (const ch of customHolidays) {
+        if (ch.category) neededCategories.add(ch.category);
+      }
+    }
+
+    console.log(`Pre-fetching experience pool for ${neededCategories.size} needed categories (of ${DISCOVER_CATEGORIES.length} total): ${[...neededCategories].join(', ')}`);
     const experiencePool: Map<string, ExperienceCard[]> = new Map();
     const poolPlaceIds = new Set<string>(); // Track ALL place IDs in the entire pool
 
@@ -417,8 +426,10 @@ serve(async (req) => {
     const supabaseAdmin = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
       ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
       : null;
-    
-    for (const category of DISCOVER_CATEGORIES) {
+
+    // Fetch needed categories in parallel (not sequentially)
+    const categoriesToFetch = [...neededCategories];
+    await Promise.all(categoriesToFetch.map(async (category) => {
       try {
         const experiences = await fetchExperiencesForCategory(
           category,
@@ -434,7 +445,7 @@ serve(async (req) => {
         console.error(`Error pre-fetching ${category}:`, error);
         experiencePool.set(category, []);
       }
-    }
+    }));
     
     // Count total pool size
     let totalPoolSize = 0;
@@ -677,67 +688,56 @@ async function fetchExperiencesForCategory(
     let allRawPlaces: any[] = [];
 
     if (supabaseAdmin) {
-      // Use batch cache for all place types in this category
-      const { results: typeResults } = await batchSearchPlaces(
+      // Use category-level batch cache (one API call per category)
+      const categoryTypeMap: Record<string, string[]> = { [category]: placeTypes };
+      const { results: categoryResults } = await batchSearchByCategory(
         supabaseAdmin,
         GOOGLE_API_KEY!,
-        placeTypes,
+        categoryTypeMap,
         location.lat,
         location.lng,
         radius,
-        { maxResultsPerType: 10, rankPreference: 'POPULARITY', ttlHours: 24 }
+        { maxResultsPerCategory: 20, rankPreference: 'POPULARITY', ttlHours: 24 }
       );
 
-      // Merge all results from typeResults, deduplicating by place.id
+      // Collect results for this category, deduplicating by place.id
       const seenIds = new Set<string>();
-      for (const places of Object.values(typeResults)) {
-        for (const place of places) {
-          if (!seenIds.has(place.id)) {
-            seenIds.add(place.id);
-            allRawPlaces.push(place);
-          }
+      for (const place of (categoryResults[category] || [])) {
+        if (!seenIds.has(place.id)) {
+          seenIds.add(place.id);
+          allRawPlaces.push(place);
         }
       }
     } else {
-      // Fallback: direct API call
-      const baseUrl = "https://places.googleapis.com/v1/places:searchNearby";
-      const fieldMask = [
-        "places.id","places.displayName","places.location","places.formattedAddress",
-        "places.priceLevel","places.rating","places.userRatingCount",
-        "places.photos","places.types","places.regularOpeningHours",
-        "places.websiteUri",
-      ].join(",");
-
-      const requestBody = {
-        includedTypes: placeTypes,
-        maxResultCount: 20,
-        locationRestriction: {
-          circle: {
-            center: { latitude: location.lat, longitude: location.lng },
-            radius: radius,
+      // Fallback: call Google directly without caching (no Supabase client available)
+      console.warn('[holiday-experiences] No supabaseAdmin — calling Google Places directly (no cache)');
+      try {
+        const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': GOOGLE_API_KEY!,
+            'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.types,places.primaryType,places.regularOpeningHours,places.photos,places.websiteUri',
           },
-        },
-        rankPreference: "POPULARITY",
-      };
-
-      const response = await fetch(baseUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": GOOGLE_API_KEY!,
-          "X-Goog-FieldMask": fieldMask,
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Google Places API error for ${category}:`, response.status, errorText);
-        return experiences;
+          body: JSON.stringify({
+            includedTypes: placeTypes,
+            maxResultCount: 20,
+            locationRestriction: {
+              circle: {
+                center: { latitude: location.lat, longitude: location.lng },
+                radius,
+              },
+            },
+            rankPreference: 'POPULARITY',
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          allRawPlaces = data.places ?? [];
+        }
+      } catch (fetchErr) {
+        console.error('[holiday-experiences] Direct Google API call failed:', fetchErr);
       }
-
-      const data = await response.json();
-      allRawPlaces = data.places || [];
     }
 
     if (allRawPlaces.length === 0) {
