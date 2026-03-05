@@ -7,6 +7,7 @@ import {
   resolveCategory,
   GLOBAL_EXCLUDED_PLACE_TYPES,
 } from '../_shared/categoryPlaceTypes.ts';
+import { googleLevelToTierSlug, PriceTierSlug, TIER_BY_SLUG } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,6 +44,7 @@ interface RecommendationsRequest {
   units?: string;
   userId?: string; // New field for user-specific recommendations
   groupSize?: number; // New group size field
+  price_tiers?: PriceTierSlug[]; // Price tier filter
 }
 
 interface UserPreferenceData {
@@ -79,7 +81,7 @@ const EXPERIENCE_TYPE_ATTRIBUTES = {
     ambience: ["romantic", "casual", "upscale", "cozy", "energetic", "relaxed"],
   },
   practicalities: {
-    price_tier: ["budget", "moderate", "upscale", "luxury"],
+    price_tier: ["chill", "comfy", "bougie", "lavish"],
     parking: ["free", "paid", "valet", "street", "none"],
     wifi: ["free", "paid", "none"],
     reservation_required: ["required", "recommended", "not_needed"],
@@ -967,9 +969,14 @@ function filterByConstraints(
   candidates: any[],
   preferences: RecommendationsRequest
 ): any[] {
-  // Simplified filtering - you can expand this
+  const priceTiers = preferences.price_tiers;
   return candidates.filter((candidate) => {
-    // Basic budget filtering
+    // Tier-based budget filtering
+    if (priceTiers && priceTiers.length > 0 && priceTiers.length < 4 && candidate.priceLevel) {
+      const tier = googleLevelToTierSlug(candidate.priceLevel);
+      return priceTiers.includes(tier);
+    }
+    // Fallback to legacy budget filtering
     if (candidate.priceLevel && preferences.budget) {
       const maxPriceLevel = Math.ceil(preferences.budget.max / 50);
       return candidate.priceLevel <= maxPriceLevel;

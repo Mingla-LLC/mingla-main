@@ -29,16 +29,41 @@ COMMENT ON COLUMN public.preferences.price_tiers IS 'User-selected price tiers: 
 ALTER TABLE public.card_pool
   ADD COLUMN IF NOT EXISTS price_tier TEXT DEFAULT NULL;
 
--- Backfill from price_level
+-- Backfill from place_pool.price_level (via join) where available,
+-- otherwise derive from card_pool.price_max (numeric dollar ranges).
+-- card_pool does NOT have a price_level column — place_pool does.
+UPDATE public.card_pool cp SET price_tier =
+  CASE
+    WHEN pp.price_level IS NOT NULL THEN
+      CASE
+        WHEN pp.price_level IN ('PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE') THEN 'chill'
+        WHEN pp.price_level = 'PRICE_LEVEL_MODERATE' THEN 'comfy'
+        WHEN pp.price_level = 'PRICE_LEVEL_EXPENSIVE' THEN 'bougie'
+        WHEN pp.price_level = 'PRICE_LEVEL_VERY_EXPENSIVE' THEN 'lavish'
+        ELSE 'chill'
+      END
+    ELSE
+      CASE
+        WHEN cp.price_max <= 50 THEN 'chill'
+        WHEN cp.price_max <= 150 THEN 'comfy'
+        WHEN cp.price_max <= 300 THEN 'bougie'
+        WHEN cp.price_max > 300 THEN 'lavish'
+        ELSE 'chill'
+      END
+  END
+  FROM public.place_pool pp
+  WHERE cp.place_pool_id = pp.id;
+
+-- Also backfill cards that have no place_pool link (curated/orphaned) from price_max
 UPDATE public.card_pool SET price_tier =
   CASE
-    WHEN price_level IN ('PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE') THEN 'chill'
-    WHEN price_level = 'PRICE_LEVEL_MODERATE' THEN 'comfy'
-    WHEN price_level = 'PRICE_LEVEL_EXPENSIVE' THEN 'bougie'
-    WHEN price_level = 'PRICE_LEVEL_VERY_EXPENSIVE' THEN 'lavish'
+    WHEN price_max <= 50 THEN 'chill'
+    WHEN price_max <= 150 THEN 'comfy'
+    WHEN price_max <= 300 THEN 'bougie'
+    WHEN price_max > 300 THEN 'lavish'
     ELSE 'chill'
   END
-  WHERE price_level IS NOT NULL;
+  WHERE place_pool_id IS NULL AND price_tier IS NULL;
 
 -- Index for tier-based queries
 CREATE INDEX IF NOT EXISTS idx_card_pool_price_tier ON public.card_pool(price_tier);
