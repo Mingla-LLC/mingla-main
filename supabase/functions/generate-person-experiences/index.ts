@@ -1,16 +1,13 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { getPlaceTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
+import { getPlaceTypesForCategory, ALL_CATEGORY_NAMES } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const ALL_CATEGORIES = [
-  'Nature', 'First Meet', 'Picnic', 'Drink', 'Casual Eats', 'Fine Dining',
-  'Watch', 'Creative & Arts', 'Play', 'Wellness', 'Groceries & Flowers', 'Work & Business',
-];
+const ALL_CATEGORIES = ALL_CATEGORY_NAMES;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })

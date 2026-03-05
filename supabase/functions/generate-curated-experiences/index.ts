@@ -137,7 +137,7 @@ const STOP_DURATION_MINUTES: Record<string, number> = {
   korean_barbecue_restaurant: 90, hot_pot_restaurant: 90,
   go_karting_venue: 60, paintball_center: 90,
   art_museum: 90, concert_hall: 120, auditorium: 90,
-  cultural_center: 60, dance_hall: 90, sculpture: 30,
+  cultural_center: 60, dance_hall: 90, cycling_park: 60, sculpture: 30,
   // First Date-related types (added for First Date Intent feature)
   miniature_golf_course: 45, amusement_center: 60, skateboard_park: 45,
   plaza: 30, tourist_attraction: 60, garden: 45,
@@ -229,7 +229,7 @@ const ADVENTURE_GROUPS: AdventureGroup[] = [
 ];
 
 const ADVENTURE_EXCLUDED_PLACE_TYPES: string[] = [
-  'gym', 'fitness_center',
+  ...GLOBAL_EXCLUDED_PLACE_TYPES,
   'grocery_store', 'supermarket', 'food_store', 'asian_grocery_store',
 ];
 
@@ -313,7 +313,7 @@ const FIRST_DATE_FINISH: FirstDateGroup = {
 };
 
 const FIRST_DATE_EXCLUDED_PLACE_TYPES: string[] = [
-  'gym', 'fitness_center',
+  ...GLOBAL_EXCLUDED_PLACE_TYPES,
   'grocery_store', 'supermarket', 'food_store', 'asian_grocery_store',
 ];
 
@@ -392,8 +392,7 @@ const ROMANTIC_FINISH: RomanticGroup = {
 };
 
 const ROMANTIC_INTENT_EXCLUDED_PLACE_TYPES: string[] = [
-  // Global excludes
-  'gym', 'fitness_center',
+  ...GLOBAL_EXCLUDED_PLACE_TYPES,
   // Fast food / casual chains
   'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
   'sandwich_shop', 'food_court', 'buffet_restaurant', 'diner',
@@ -497,6 +496,7 @@ const FRIENDLY_FINISH: FriendlyGroup = {
 };
 
 const FRIENDLY_INTENT_EXCLUDED_PLACE_TYPES: string[] = [
+  ...GLOBAL_EXCLUDED_PLACE_TYPES,
   'indoor_playground',
   'childrens_camp',
 ];
@@ -607,6 +607,7 @@ const GROUP_FUN_FINISH: GroupFunGroup = {
 };
 
 const GROUP_FUN_EXCLUDED_PLACE_TYPES: string[] = [
+  ...GLOBAL_EXCLUDED_PLACE_TYPES,
   'water_park',
   'library',
   'coworking_space',
@@ -690,6 +691,7 @@ const PICNIC_FINISH: PicnicGroup = {
 };
 
 const PICNIC_EXCLUDED_PLACE_TYPES: string[] = [
+  ...GLOBAL_EXCLUDED_PLACE_TYPES,
   'department_store',
   'electronics_store',
   'furniture_store',
@@ -763,12 +765,13 @@ const STROLL_FINISH: StrollGroup = {
 };
 
 const STROLL_EXCLUDED_TYPES: string[] = [
+  ...GLOBAL_EXCLUDED_PLACE_TYPES,
   // Active/loud venues — wrong vibe for a stroll
   'amusement_park', 'amusement_center', 'video_arcade', 'bowling_alley',
   'paintball_center', 'go_karting_venue', 'miniature_golf_course',
   'skateboard_park', 'water_park', 'indoor_playground',
-  // Sports/gym — not a stroll activity
-  'gym', 'fitness_center', 'sports_complex', 'sports_club', 'stadium',
+  // Sports — not a stroll activity
+  'sports_complex', 'sports_club', 'stadium',
   // Retail/commercial — clutters nature results
   'shopping_mall', 'department_store', 'electronics_store',
   'furniture_store', 'warehouse_store',

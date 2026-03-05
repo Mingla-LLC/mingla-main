@@ -8,6 +8,7 @@ import {
   insertCardToPool,
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
+import { getPlaceTypesForCategory, getExcludedTypesForCategory, filterExcludedPlaces } from '../_shared/categoryPlaceTypes.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-play  –  Standalone Play Card System
@@ -15,7 +16,7 @@ import {
  * A dedicated, self-contained edge function for Play venue discovery.
  * Modeled identically on discover-first-meet with text search fallback.
  *
- * • Searches 13 valid Google Place types via shared cache.
+ * • Searches 18 canonical Google Place types from shared source.
  * • Falls back to text search for 11 non-Google types (rock climbing, laser tag, etc.).
  * • Merges and deduplicates results from both sources.
  * • Deduplicates, filters by travel constraint, sorts by quality.
@@ -34,22 +35,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ── Play Valid Google Place Types ────────────────────────────────────────────
-const VALID_TYPES = [
-  'bowling_alley',
-  'amusement_park',
-  'water_park',
-  'planetarium',
-  'video_arcade',
-  'karaoke',
-  'casino',
-  'trampoline_park',
-  'mini_golf_course',
-  'ice_skating_rink',
-  'skate_park',
-  'escape_room',
-  'adventure_park',
-];
+// ── Play Valid Google Place Types (from canonical shared source) ─────────────
+const VALID_TYPES = getPlaceTypesForCategory('Play');
 
 // ── Text Search Keywords (non-Google types) ─────────────────────────────────
 const TEXT_SEARCH_KEYWORDS = [
@@ -433,6 +420,12 @@ serve(async (req: Request) => {
     }
 
     console.log(`[discover-play] ${allPlaces.length} unique places after merge`);
+
+    // ── Filter out excluded types (retail, culture, food, transport) ────
+    const playExcluded = getExcludedTypesForCategory('Play');
+    allPlaces = filterExcludedPlaces(allPlaces, playExcluded) as typeof allPlaces;
+
+    console.log(`[discover-play] ${allPlaces.length} places after excluded-type filter`);
 
     // ── Filter by distance ──────────────────────────────────────────────
     allPlaces = allPlaces.filter(p => {

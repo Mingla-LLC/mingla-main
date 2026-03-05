@@ -1,6 +1,12 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  getPlaceTypesForCategory,
+  getCategoryKeywords,
+  resolveCategory,
+  GLOBAL_EXCLUDED_PLACE_TYPES,
+} from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,287 +24,6 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // Initialize Supabase client with service role key for database access
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-// Enhanced Category Mappings with Activity Keywords
-const CATEGORY_MAPPINGS = {
-  nature: {
-    places: [
-      "national_park", "state_park", "nature_preserve", "wildlife_refuge",
-      "wildlife_park", "scenic_spot", "garden", "botanical_garden",
-      "park", "lake", "river", "island", "mountain_peak",
-      "woods", "hiking_area", "campground", "picnic_ground",
-    ],
-    keywords: [
-      "park", "garden", "trail", "scenic", "walk", "botanical", "nature",
-      "hiking", "outdoor", "lake", "river", "mountain", "woods", "wildlife", "campground",
-    ],
-    activities: [
-      "park", "garden", "trail", "scenic", "walk", "botanical",
-      "hiking", "lake", "river", "mountain", "campground",
-    ],
-  },
-  first_meet: {
-    places: [
-      "bookstore",
-      "bar",
-      "pub",
-      "wine_bar",
-      "tea_house",
-      "coffee_shop",
-      "planetarium",
-    ],
-    keywords: [
-      "bookstore",
-      "coffee",
-      "tea",
-      "bar",
-      "casual",
-      "social",
-      "meetup",
-      "conversation",
-    ],
-    activities: ["coffee", "tea", "bookstore", "bar", "social meetup"],
-  },
-  picnic: {
-    places: [
-      "picnic_ground",
-      "park",
-      "beach",
-      "botanical_garden",
-    ],
-    keywords: [
-      "picnic",
-      "outdoor",
-      "park",
-      "beach",
-      "garden",
-      "alfresco",
-    ],
-    activities: ["picnic", "outdoor dining", "park", "beach"],
-  },
-  drink: {
-    places: [
-      "bar",
-      "pub",
-      "wine_bar",
-      "tea_house",
-      "coffee_shop",
-    ],
-    keywords: [
-      "cocktail",
-      "wine",
-      "brewery",
-      "bar",
-      "coffee",
-      "tea",
-      "speakeasy",
-      "rooftop",
-      "happy hour",
-    ],
-    activities: ["cocktail", "wine", "brewery", "bar", "coffee", "tea"],
-  },
-  casual_eats: {
-    places: [
-      "sandwich_shop",
-      "fast_food_restaurant",
-      "pizza_restaurant",
-      "hamburger_restaurant",
-      "american_restaurant",
-      "mexican_restaurant",
-      "diner",
-      "food_court",
-    ],
-    keywords: [
-      "pizza",
-      "burger",
-      "taco",
-      "food truck",
-      "deli",
-      "cafe",
-      "casual",
-      "quick bite",
-    ],
-    activities: ["pizza", "burger", "taco", "food truck", "deli", "cafe"],
-  },
-  fine_dining: {
-    places: [
-      "fine_dining_restaurant",
-    ],
-    keywords: [
-      "tasting menu",
-      "prix fixe",
-      "chef counter",
-      "omakase",
-      "wine pairing",
-      "fine dining",
-      "michelin",
-      "chef's table",
-      "degustation",
-    ],
-    activities: [
-      "tasting menu",
-      "prix fixe",
-      "chef counter",
-      "omakase",
-      "wine pairing",
-    ],
-  },
-  watch: {
-    places: ["movie_theater", "comedy_club"],
-    keywords: [
-      "cinema",
-      "movie",
-      "indie film",
-      "drive in",
-      "theater",
-      "screening",
-      "film festival",
-      "documentary",
-      "comedy",
-    ],
-    activities: [
-      "cinema",
-      "movie",
-      "indie film",
-      "drive in",
-      "theater",
-      "screening",
-    ],
-  },
-  creative_arts: {
-    places: [
-      "art_gallery",
-      "museum",
-      "planetarium",
-      "karaoke",
-      "coffee_roastery",
-    ],
-    keywords: [
-      "pottery",
-      "painting",
-      "workshop",
-      "art",
-      "gallery",
-      "museum",
-      "craft",
-      "sculpture",
-      "photography",
-      "ceramics",
-      "karaoke",
-    ],
-    activities: [
-      "pottery",
-      "painting",
-      "workshop",
-      "art",
-      "gallery",
-      "museum",
-      "craft",
-      "karaoke",
-    ],
-  },
-  play: {
-    places: [
-      "bowling_alley",
-      "amusement_park",
-      "water_park",
-      "video_arcade",
-      "karaoke",
-      "casino",
-      "trampoline_park",
-      "mini_golf_course",
-      "ice_skating_rink",
-      "skate_park",
-      "escape_room",
-      "adventure_park",
-    ],
-    keywords: [
-      "bowling",
-      "climbing",
-      "bouldering",
-      "dance",
-      "skating",
-      "kayak",
-      "hike",
-      "pickleball",
-      "arcade",
-      "trampoline",
-      "mini golf",
-      "go kart",
-      "axe throwing",
-      "laser tag",
-      "escape room",
-      "basketball",
-      "tennis",
-      "badminton",
-    ],
-    activities: [
-      "bowling",
-      "climbing",
-      "bouldering",
-      "dance",
-      "skating",
-      "arcades",
-      "trampoline",
-      "mini golf",
-      "escape room",
-      "basketball",
-      "tennis",
-    ],
-  },
-  wellness: {
-    places: ["spa", "massage", "sauna", "resort_hotel", "public_bath"],
-    keywords: [
-      "spa",
-      "sauna",
-      "massage",
-      "relaxation",
-      "wellness",
-      "hot spring",
-      "bathhouse",
-      "thermal bath",
-    ],
-    activities: ["spa", "sauna", "massage", "yoga", "meditation"],
-  },
-  groceries_flowers: {
-    places: ["grocery_store", "supermarket"],
-    keywords: [
-      "grocery",
-      "supermarket",
-      "flowers",
-      "florist",
-      "produce",
-      "fresh",
-      "market",
-      "organic",
-      "bouquet",
-    ],
-    activities: [
-      "grocery shopping",
-      "flower shopping",
-      "market visit",
-      "fresh produce",
-    ],
-  },
-  work_business: {
-    places: ["tea_house", "coffee_shop", "cafe"],
-    keywords: [
-      "work",
-      "business",
-      "meeting",
-      "productivity",
-      "laptop",
-      "wifi",
-      "coworking",
-      "quiet cafe",
-    ],
-    activities: [
-      "remote work",
-      "business meeting",
-      "study session",
-      "focused work",
-    ],
-  },
-};
 
 interface RecommendationsRequest {
   budget: { min: number; max: number; perPerson: boolean };
@@ -576,10 +301,10 @@ serve(async (req) => {
       ...(events.status === "fulfilled" ? events.value : []),
     ];
 
-    // Filter out gym/fitness places globally
-    const gymTypes = new Set(['gym', 'fitness_center']);
+    // Filter out globally excluded place types
+    const globalExcludedSet = new Set(GLOBAL_EXCLUDED_PLACE_TYPES);
     const allCandidates = allCandidatesRaw.filter(
-      (p: any) => !p.placeTypes?.some((t: string) => gymTypes.has(t))
+      (p: any) => !p.placeTypes?.some((t: string) => globalExcludedSet.has(t))
     );
 
     if (allCandidates.length === 0) {
@@ -889,52 +614,7 @@ function scoreAndRankWithUserData(
     "candidates"
   );
 
-  // Category synonyms for tag overlap scoring
-  const categoryKeywords = {
-    nature: ["park", "garden", "trail", "scenic", "walk", "botanical", "hiking", "beach", "wildlife"],
-    first_meet: ["bookstore", "coffee", "tea", "bar", "casual", "social", "meetup"],
-    picnic: ["picnic", "outdoor", "park", "beach", "garden", "alfresco"],
-    drink: ["cocktail", "wine", "brewery", "bar", "coffee", "tea", "speakeasy"],
-    casual_eats: ["pizza", "burger", "taco", "food truck", "deli", "cafe"],
-    fine_dining: [
-      "tasting menu",
-      "prix fixe",
-      "chef counter",
-      "omakase",
-      "wine pairing",
-      "fine dining",
-      "restaurant",
-      "steakhouse",
-      "seafood",
-    ],
-    watch: ["cinema", "movie", "theater", "comedy", "screening"],
-    creative_arts: [
-      "pottery",
-      "painting",
-      "workshop",
-      "art",
-      "gallery",
-      "museum",
-      "craft",
-      "karaoke",
-    ],
-    play: [
-      "bowling",
-      "climbing",
-      "dance",
-      "skating",
-      "arcade",
-      "trampoline",
-      "mini golf",
-      "go kart",
-      "axe throwing",
-      "laser tag",
-      "escape room",
-      "basketball",
-      "tennis",
-    ],
-    wellness: ["spa", "sauna", "massage", "yoga", "meditation", "wellness"],
-  };
+  // Category keywords — from canonical source (handles display name keys)
 
   candidates.forEach((candidate) => {
     let score = 0;
@@ -977,7 +657,7 @@ function scoreAndRankWithUserData(
     score += 2.5 * experienceMatch;
 
     // 3. TAG OVERLAP (1.6 weight)
-    const keywords = categoryKeywords[candidate.category] || [];
+    const keywords = getCategoryKeywords(candidate.category);
     const tagOverlap =
       keywords.filter(
         (keyword) =>
@@ -1181,7 +861,7 @@ function matchesExperienceTypeForScoring(
   // Simplified experience type matching
   const experienceTypeMappings: Record<string, string[]> = {
     business: ["restaurant", "cafe", "coffee_shop"],
-    romantic: ["fine_dining_restaurant", "spa", "massage", "sauna", "resort_hotel", "public_bath", "art_gallery", "museum", "art_studio", "performing_arts_theater", "cultural_center"],
+    romantic: ["fine_dining_restaurant", "spa", "massage_spa", "massage", "sauna", "resort_hotel", "art_gallery", "museum", "art_studio", "performing_arts_theater", "cultural_center"],
     group_fun: ["bowling_alley", "arcade", "amusement_park", "sports_complex"],
     solo_adventure: ["park", "garden", "museum", "art_gallery"],
     first_date: ["restaurant", "bar", "coffee_shop", "park", "museum"],
@@ -1211,10 +891,12 @@ async function fetchGooglePlaces(
       : 10000; // Default 10km radius
 
   for (const category of preferences.categories) {
-    const categoryMapping = CATEGORY_MAPPINGS[category];
-    if (!categoryMapping) continue;
+    const resolvedCat = resolveCategory(category);
+    if (!resolvedCat) continue;
 
-    const placeTypes = categoryMapping.places || ["tourist_attraction"];
+    const placeTypes = getPlaceTypesForCategory(category);
+    if (placeTypes.length === 0) continue;
+    const keywords = getCategoryKeywords(category);
 
     for (const placeType of placeTypes.slice(0, 3)) {
       try {

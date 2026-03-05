@@ -520,7 +520,7 @@ export class ExperienceGenerationService {
         "amphitheatre", "comedy_club", "live_music_venue",
       ],
       Play: ["bowling_alley", "amusement_park", "gym"],
-      Wellness: ["spa", "gym", "yoga_studio"],
+      Wellness: ["spa", "massage_spa", "massage", "sauna", "resort_hotel"],
       Picnic: ["park", "beach", "marina"],
       // v1 backwards compat
       "Sip & Chill": ["bar", "cafe", "coffee_shop", "wine_bar", "brewery"],

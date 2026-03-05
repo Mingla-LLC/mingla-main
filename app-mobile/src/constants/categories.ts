@@ -426,25 +426,28 @@ export const categories: Category[] = [
     slug: 'play',
     name: 'Play',
     icon: '🎯',
-    description: 'Bowling, arcades, escape rooms, trampoline parks, amusement parks, and more',
-    detailedDescription: 'High-energy, fun-first venues for groups and couples who want to move, compete, and laugh. Bowling alleys, arcades, escape rooms, trampolines, mini golf, ice skating, and adventure parks.',
+    description: 'Bowling, arcades, amusement parks, go-karting, dance halls, casinos, and more',
+    detailedDescription: 'High-energy, fun-first venues for groups and couples who want to move, compete, and laugh. Bowling alleys, arcades, amusement parks, go-karting, mini golf, ice skating, dance halls, casinos, and cycling parks.',
     expectedActivities: [
-      'Bowling, mini golf, ice skating',
-      'Arcades, escape rooms, trampolines',
-      'Amusement parks, water parks',
-      'Karaoke and casinos'
+      'Bowling, mini golf, ice skating, go-karting',
+      'Arcades, paintball, skateboarding',
+      'Amusement parks, water parks, roller coasters',
+      'Dance halls, karaoke, casinos, cycling parks',
     ],
     apiMapping: {
       googleMaps: {
         coreAnchors: [
-          'bowling_alley', 'amusement_park', 'water_park', 'planetarium', 'video_arcade', 'karaoke', 'casino',
-          'roller_coaster', 'ferris_wheel', 'trampoline_park', 'rock_climbing_gym', 'mini_golf_course',
-          'ice_skating_rink', 'skate_park', 'batting_cages', 'laser_tag_center', 'paintball_center',
-          'escape_room', 'billiards_hall', 'dart_bar', 'board_game_cafe', 'virtual_reality_center',
-          'adventure_park', 'go_kart_track'
+          'amusement_center', 'amusement_park', 'bowling_alley', 'miniature_golf_course',
+          'go_karting_venue', 'paintball_center', 'video_arcade', 'skateboard_park',
+          'indoor_playground', 'karaoke', 'dance_hall', 'ice_skating_rink',
+          'cycling_park', 'roller_coaster', 'water_park', 'ferris_wheel',
+          'casino', 'planetarium',
         ],
         attributes: ['active', 'fun', 'group_friendly'],
-        excludedAttributes: ['spa', 'massage', 'botanical_garden', 'fine_dining_restaurant']
+        excludedAttributes: [
+          'shopping_mall', 'department_store', 'art_gallery', 'museum',
+          'fast_food_restaurant', 'food_court', 'parking', 'spa',
+        ]
       },
       eventbrite: {
         eventTypes: ['recreational_events', 'game_nights', 'group_activities']
@@ -454,13 +457,13 @@ export const categories: Category[] = [
       hardFilter: 'Must be an active, game-based, or entertainment venue',
       hierarchy: {
         broad: 'Play',
-        niche: ['Bowling', 'Arcades', 'Escape Rooms', 'Trampolines', 'Mini Golf', 'Amusement Parks', 'Ice Skating']
+        niche: ['Bowling', 'Arcades', 'Go-Karting', 'Mini Golf', 'Amusement Parks', 'Ice Skating', 'Dance Halls', 'Casinos']
       },
-      fallbackBehavior: 'If no dedicated play venue found, show nearest bowling alley or arcade.'
+      fallbackBehavior: 'If no dedicated play venue found, show nearest bowling alley, arcade, or amusement center.'
     },
     ux: {
       activeColor: '#EF4444',
-      subcategories: ['Bowling', 'Arcades', 'Escape Rooms', 'Trampolines', 'Mini Golf', 'Amusement Parks', 'Ice Skating'],
+      subcategories: ['Bowling', 'Arcades', 'Go-Karting', 'Mini Golf', 'Amusement Parks', 'Ice Skating', 'Dance Halls', 'Casinos'],
       contextualPreview: 'Escape room challenge for 4–6 players — book tonight.'
     },
     activityType: 'mixed',
@@ -472,18 +475,22 @@ export const categories: Category[] = [
     slug: 'wellness',
     name: 'Wellness',
     icon: '🧘',
-    description: 'Spas, saunas, and hot springs for relaxation and rejuvenation',
-    detailedDescription: 'Restorative experiences centered on calm and self-care. Spas, saunas, and hot springs for solo or shared relaxation.',
+    description: 'Spas, massage spas, saunas, and resort hotels for relaxation and rejuvenation',
+    detailedDescription: 'Restorative experiences centered on calm and self-care. Spas, massage spas, saunas, and resort hotels for solo or shared relaxation.',
     expectedActivities: [
-      'Spas and wellness centers',
-      'Saunas',
-      'Hot springs'
+      'Spas and massage spas',
+      'Saunas and steam rooms',
+      'Resort hotel wellness packages',
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['spa', 'massage', 'sauna', 'hot_spring', 'turkish_bath', 'float_tank_center', 'public_bath', 'cold_plunge_facility'],
+        coreAnchors: ['spa', 'massage_spa', 'massage', 'sauna', 'resort_hotel'],
         attributes: ['relaxing', 'restorative', 'mindful'],
-        excludedAttributes: ['bar', 'night_club', 'casino', 'bowling_alley', 'amusement_park', 'fast_food_restaurant']
+        excludedAttributes: [
+          'gym', 'fitness_center', 'night_club', 'casino',
+          'bowling_alley', 'amusement_park', 'shopping_mall',
+          'doctor', 'hospital', 'medical_clinic',
+        ]
       },
       eventbrite: {
         eventTypes: ['wellness_events', 'spa_days', 'mindfulness_workshops']
@@ -493,13 +500,13 @@ export const categories: Category[] = [
       hardFilter: 'Must be a wellness or spa venue',
       hierarchy: {
         broad: 'Wellness',
-        niche: ['Spas', 'Saunas', 'Hot Springs']
+        niche: ['Spas', 'Massage Spas', 'Saunas', 'Resort Wellness']
       },
-      fallbackBehavior: 'If no spa found, suggest nearest wellness center or sauna.'
+      fallbackBehavior: 'If no spa found, suggest nearest massage spa, sauna, or resort hotel.'
     },
     ux: {
       activeColor: '#14B8A6',
-      subcategories: ['Spas', 'Saunas', 'Hot Springs'],
+      subcategories: ['Spas', 'Massage Spas', 'Saunas', 'Resort Wellness'],
       contextualPreview: 'Spa day with sauna access — book a couples package.'
     },
     activityType: 'stationary',
@@ -511,19 +518,25 @@ export const categories: Category[] = [
     slug: 'groceries_flowers',
     name: 'Groceries & Flowers',
     icon: '🛒',
-    description: 'Grocery stores, supermarkets, and flower shops for everyday errands or special occasions.',
-    detailedDescription: 'Discover nearby grocery stores, supermarkets, and florists. Perfect for picking up ingredients for a home-cooked meal, grabbing fresh flowers for a date, or stocking up on essentials.',
+    description: 'Grocery stores, supermarkets, markets, and specialty food stores for everyday shopping.',
+    detailedDescription: 'Discover nearby grocery stores, supermarkets, Asian grocery stores, farmers markets, hypermarkets, and discount stores. Perfect for picking up ingredients, fresh produce, or stocking up on essentials.',
     expectedActivities: [
-      'Grocery shopping',
-      'Flower shopping',
-      'Fresh produce browsing',
-      'Market visits',
+      'Grocery shopping and market visits',
+      'Fresh produce and specialty food browsing',
+      'Asian grocery and international food stores',
+      'Farmers markets and discount supermarkets',
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['grocery_store', 'supermarket'],
+        coreAnchors: [
+          'grocery_store', 'supermarket', 'food_store', 'market',
+          'asian_grocery_store', 'farmers_market', 'hypermarket', 'discount_supermarket',
+        ],
         attributes: ['wheelchair_accessible_entrance'],
-        excludedAttributes: [],
+        excludedAttributes: [
+          'fast_food_restaurant', 'restaurant', 'spa', 'gym',
+          'amusement_park', 'movie_theater', 'convenience_store',
+        ],
       },
       eventbrite: {
         eventTypes: [],
@@ -531,17 +544,17 @@ export const categories: Category[] = [
       },
     },
     logic: {
-      hardFilter: 'Must be a grocery store, supermarket, or florist',
+      hardFilter: 'Must be a grocery store, supermarket, food store, or market',
       hierarchy: {
         broad: 'Shopping & Errands',
-        niche: ['Grocery Stores', 'Supermarkets', 'Florists'],
+        niche: ['Grocery Stores', 'Supermarkets', 'Markets', 'Asian Grocery', 'Farmers Markets'],
       },
-      fallbackBehavior: 'Show nearest supermarkets within expanded radius',
+      fallbackBehavior: 'If no specialty store found, show nearest grocery store or supermarket.',
     },
     ux: {
       activeColor: '#22C55E',
-      subcategories: ['Grocery Stores', 'Supermarkets', 'Flower Shops'],
-      contextualPreview: 'Fresh groceries and flowers nearby',
+      subcategories: ['Grocery Stores', 'Supermarkets', 'Markets', 'Asian Grocery', 'Farmers Markets'],
+      contextualPreview: 'Fresh groceries, produce, and market finds nearby.',
     },
     compatibleWith: ['nature', 'picnic', 'casual_eats'],
     incompatibleWith: ['fine_dining', 'play', 'watch', 'wellness'],
@@ -552,35 +565,42 @@ export const categories: Category[] = [
     slug: 'work_business',
     name: 'Work & Business',
     icon: '💼',
-    description: 'Quiet cafes and tea houses ideal for working, meetings, or productive sessions',
-    detailedDescription: 'Coffee shops, tea houses, and cafes with a work-friendly atmosphere. Ideal for remote work, business meetings, study sessions, or getting things done.',
+    description: 'Coworking spaces, business centers, libraries, cafes, and hotels for work and meetings',
+    detailedDescription: 'Coworking spaces, business centers, libraries, coffee shops, tea houses, and hotel lobbies. Ideal for remote work, business meetings, study sessions, or getting things done.',
     expectedActivities: [
-      'Coffee shops with WiFi',
-      'Tea houses for quiet meetings',
-      'Cafes for focused work sessions'
+      'Coworking spaces and business centers',
+      'Libraries for quiet focused work',
+      'Coffee shops and cafes with WiFi',
+      'Hotel lobbies for professional meetings',
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['tea_house', 'coffee_shop', 'cafe'],
+        coreAnchors: [
+          'coworking_space', 'business_center', 'library',
+          'cafe', 'coffee_shop', 'tea_house', 'hotel',
+        ],
         attributes: ['quiet', 'wifi', 'work-friendly'],
-        excludedAttributes: ['bar', 'night_club', 'casino', 'amusement_park']
+        excludedAttributes: [
+          'night_club', 'karaoke', 'gym', 'amusement_park',
+          'shopping_mall', 'grocery_store', 'stadium',
+        ],
       },
       eventbrite: {
         eventTypes: ['networking', 'business_events', 'workshops']
       }
     },
     logic: {
-      hardFilter: 'Must be a quiet, work-friendly venue with seating',
+      hardFilter: 'Must be a work-friendly venue: coworking space, business center, library, cafe, or hotel',
       hierarchy: {
         broad: 'Work & Business',
-        niche: ['Coffee Shops', 'Tea Houses', 'Cafes']
+        niche: ['Coworking Spaces', 'Business Centers', 'Libraries', 'Coffee Shops', 'Hotels'],
       },
-      fallbackBehavior: 'If no work-friendly cafe found, show nearest coffee shop.'
+      fallbackBehavior: 'If no coworking space or business center found, show nearest cafe or library.'
     },
     ux: {
       activeColor: '#64748B',
-      subcategories: ['Coffee Shops', 'Tea Houses', 'Cafes'],
-      contextualPreview: 'Quiet coffee shop with fast WiFi — perfect for a productive afternoon.'
+      subcategories: ['Coworking Spaces', 'Business Centers', 'Libraries', 'Coffee Shops', 'Hotels'],
+      contextualPreview: 'Coworking space with fast WiFi — perfect for a productive afternoon.'
     },
     activityType: 'stationary',
     duration: 'medium',

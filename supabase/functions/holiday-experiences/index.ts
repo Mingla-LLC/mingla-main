@@ -6,6 +6,7 @@ import {
   resolveCategories,
   getPlaceTypesForCategory,
   DISCOVER_EXCLUDED_PLACE_TYPES,
+  ALL_CATEGORY_NAMES,
 } from '../_shared/categoryPlaceTypes.ts';
 
 const corsHeaders = {
@@ -18,19 +19,8 @@ const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-// Experience categories available in Mingla (v2)
-const DISCOVER_CATEGORIES = [
-  "Nature",
-  "First Meet",
-  "Picnic",
-  "Drink",
-  "Casual Eats",
-  "Fine Dining",
-  "Watch",
-  "Creative & Arts",
-  "Play",
-  "Wellness",
-] as const;
+// Experience categories — imported from canonical source
+const DISCOVER_CATEGORIES = ALL_CATEGORY_NAMES;
 
 
 // Hardcoded holidays with categories, descriptions, and gender targeting

@@ -78,20 +78,22 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'amphitheatre', 'comedy_club', 'live_music_venue',
   ],
   'Play': [
-    'bowling_alley', 'amusement_park', 'water_park', 'video_arcade',
-    'amusement_center', 'miniature_golf_course', 'go_karting_venue',
-    'paintball_center', 'adventure_sports_center', 'indoor_playground',
-    'skateboard_park', 'karaoke', 'casino', 'ice_skating_rink',
-    'roller_coaster', 'ferris_wheel', 'planetarium',
+    'amusement_center', 'amusement_park', 'bowling_alley', 'miniature_golf_course',
+    'go_karting_venue', 'paintball_center', 'video_arcade', 'skateboard_park',
+    'indoor_playground', 'karaoke', 'dance_hall', 'ice_skating_rink',
+    'cycling_park', 'roller_coaster', 'water_park', 'ferris_wheel',
+    'casino', 'planetarium',
   ],
   'Wellness': [
-    'spa', 'massage', 'sauna', 'resort_hotel', 'public_bath',
+    'spa', 'massage_spa', 'massage', 'sauna', 'resort_hotel',
   ],
   'Groceries & Flowers': [
-    'grocery_store', 'supermarket', 'farmers_market', 'garden_center',
+    'grocery_store', 'supermarket', 'food_store', 'market',
+    'asian_grocery_store', 'farmers_market', 'hypermarket', 'discount_supermarket',
   ],
   'Work & Business': [
-    'cafe', 'coffee_shop', 'tea_house',
+    'coworking_space', 'business_center', 'library',
+    'cafe', 'coffee_shop', 'tea_house', 'hotel',
   ],
 };
 
@@ -337,8 +339,96 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     'amusement_park', 'water_park', 'spa', 'sauna', 'night_club',
     'shopping_mall', 'department_store', 'electronics_store',
     'furniture_store', 'warehouse_store', 'store',
-    'gym', 'fitness_center', 'sports_complex', 'sports_club',
+    'sports_complex', 'sports_club',
     'stadium', 'race_course', 'tennis_court', 'swimming_pool',
+    'parking', 'parking_lot', 'parking_garage',
+    'bus_station', 'train_station', 'transit_station', 'airport',
+  ],
+  'Watch': [
+    // Retail / commercial — irrelevant to entertainment venues
+    'shopping_mall', 'department_store', 'electronics_store',
+    'furniture_store', 'store', 'warehouse_store',
+    // Sports / active — wrong context for seated entertainment
+    'sports_complex', 'sports_club', 'stadium', 'race_course',
+    'tennis_court', 'swimming_pool', 'skateboard_park',
+    // Grocery / utility
+    'grocery_store', 'supermarket', 'convenience_store',
+    'gas_station', 'car_repair', 'car_wash',
+    // Transit / infrastructure
+    'parking', 'parking_lot', 'parking_garage',
+    'bus_station', 'train_station', 'transit_station', 'airport',
+  ],
+  'Play': [
+    // Retail
+    'shopping_mall', 'department_store', 'electronics_store',
+    'furniture_store', 'warehouse_store', 'store', 'market',
+    'food_store', 'supermarket',
+    // Culture venues (belong in Creative & Arts)
+    'art_gallery', 'museum', 'cultural_center', 'art_museum', 'history_museum',
+    // Low-end food
+    'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
+    'sandwich_shop', 'food_court', 'buffet_restaurant',
+    // Transport
+    'parking', 'parking_lot', 'parking_garage',
+    'bus_station', 'train_station', 'transit_station', 'airport',
+  ],
+  'Wellness': [
+    // Sports/fitness
+    'gym', 'fitness_center', 'sports_complex', 'sports_club',
+    'stadium', 'tennis_court', 'swimming_pool', 'race_course',
+    // Play venues
+    'amusement_park', 'amusement_center', 'video_arcade', 'bowling_alley',
+    'paintball_center', 'go_karting_venue', 'miniature_golf_course', 'skateboard_park',
+    // Nightlife
+    'night_club', 'karaoke',
+    // Retail
+    'shopping_mall', 'department_store', 'electronics_store',
+    'furniture_store', 'warehouse_store', 'store', 'market',
+    'food_store', 'supermarket', 'grocery_store',
+    // Transport
+    'parking', 'parking_lot', 'parking_garage',
+    'bus_station', 'train_station', 'transit_station', 'airport',
+    // Medical
+    'doctor', 'dentist', 'medical_clinic', 'medical_center',
+    'medical_lab', 'hospital', 'general_hospital',
+  ],
+  'Groceries & Flowers': [
+    // Low-end food / restaurants
+    'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
+    'sandwich_shop', 'buffet_restaurant', 'food_court', 'diner', 'restaurant',
+    // Play venues
+    'amusement_park', 'amusement_center', 'video_arcade', 'bowling_alley',
+    'paintball_center', 'go_karting_venue', 'miniature_golf_course', 'skateboard_park',
+    // Entertainment
+    'movie_theater',
+    // Wellness
+    'spa', 'massage_spa', 'massage', 'sauna', 'wellness_center',
+    // Personal care
+    'hair_salon', 'beauty_salon',
+    // Sports/fitness
+    'gym', 'fitness_center', 'sports_complex', 'sports_club', 'stadium',
+    // Transport
+    'parking', 'parking_lot', 'parking_garage',
+    'bus_station', 'train_station', 'transit_station', 'airport',
+    // Convenience/general (not focused grocery destinations)
+    'convenience_store', 'general_store',
+  ],
+  'Work & Business': [
+    // Play venues
+    'amusement_park', 'amusement_center', 'video_arcade', 'bowling_alley',
+    'paintball_center', 'go_karting_venue', 'miniature_golf_course', 'skateboard_park',
+    // Nightlife
+    'night_club', 'karaoke',
+    // Sports/fitness
+    'gym', 'fitness_center', 'sports_complex', 'sports_club',
+    'stadium', 'tennis_court', 'swimming_pool', 'race_course',
+    // Kids/water
+    'indoor_playground', 'childrens_camp', 'water_park',
+    // Retail
+    'shopping_mall', 'department_store', 'electronics_store',
+    'furniture_store', 'warehouse_store', 'store', 'market',
+    'food_store', 'supermarket', 'grocery_store',
+    // Transport
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
   ],
@@ -413,22 +503,26 @@ export const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'live music', 'comedy', 'auditorium', 'performing arts',
   ],
   'Play': [
-    'bowling', 'climbing', 'bouldering', 'dance', 'skating',
-    'kayak', 'hike', 'pickleball', 'arcade', 'trampoline',
-    'mini golf', 'go kart', 'axe throwing', 'laser tag',
-    'escape room', 'basketball', 'tennis', 'badminton',
+    'bowling', 'arcade', 'mini golf', 'go kart', 'paintball',
+    'skateboard', 'skating', 'ice skating', 'dance hall', 'karaoke',
+    'trampoline', 'escape room', 'laser tag', 'axe throwing',
+    'roller coaster', 'ferris wheel', 'water park', 'cycling',
+    'casino', 'planetarium', 'amusement park',
   ],
   'Wellness': [
-    'spa', 'sauna', 'massage', 'relaxation', 'wellness',
-    'hot spring', 'bathhouse', 'thermal bath',
+    'spa', 'massage spa', 'sauna', 'massage', 'relaxation', 'wellness',
+    'hot spring', 'bathhouse', 'thermal bath', 'public bath',
+    'float tank', 'cold plunge', 'turkish bath', 'resort spa',
   ],
   'Groceries & Flowers': [
-    'grocery', 'supermarket', 'flowers', 'florist',
-    'produce', 'fresh', 'market', 'organic', 'bouquet',
+    'grocery', 'supermarket', 'food store', 'market', 'asian grocery',
+    'farmers market', 'hypermarket', 'discount supermarket',
+    'flowers', 'florist', 'produce', 'fresh', 'organic', 'bouquet',
   ],
   'Work & Business': [
+    'coworking', 'coworking space', 'business center', 'library',
     'work', 'business', 'meeting', 'productivity',
-    'laptop', 'wifi', 'coworking', 'quiet cafe',
+    'laptop', 'wifi', 'quiet cafe', 'hotel lobby', 'conference room',
   ],
 };
 

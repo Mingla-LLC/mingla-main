@@ -112,8 +112,9 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   watch: "Movies, live shows, theatre, and sports events",
   creative_arts: "Art galleries, museums, performing arts, comedy clubs, and live music",
   play: "Games, arcades, bowling, escape rooms, and fun activities",
-  wellness: "Spas, yoga, meditation, and wellness retreats",
-  groceries_flowers: "Grocery stores, flower shops, and market finds",
+  wellness: "Spas, massage spas, saunas, and resort wellness",
+  groceries_flowers: "Grocery stores, supermarkets, markets, and specialty food stores",
+  work_business: "Coworking spaces, business centers, libraries, cafes, and hotels",
 };
 
 // IDs of categories that need wider pills due to long labels

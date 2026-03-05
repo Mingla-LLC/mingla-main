@@ -8,6 +8,7 @@ import {
   insertCardToPool,
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
+import { getPlaceTypesForCategory, getExcludedTypesForCategory, filterExcludedPlaces } from '../_shared/categoryPlaceTypes.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-wellness  –  Standalone Wellness Card System
@@ -15,8 +16,8 @@ import {
  * A dedicated, self-contained edge function for Wellness venue discovery.
  * Modeled identically on discover-first-meet with text search fallback.
  *
- * • Searches 3 valid Google Place types via shared cache.
- * • Falls back to text search for 5 non-Google types (turkish bath, float tank, etc.).
+ * • Searches 5 valid Google Place types via shared canonical source.
+ * • Falls back to text search for 7 non-Google keywords (hot spring, turkish bath, etc.).
  * • Merges and deduplicates results from both sources.
  * • Deduplicates, filters by travel constraint, sorts by quality.
  * • Offset-based batching for "Generate Another 20".
@@ -34,20 +35,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ── Wellness Valid Google Place Types ────────────────────────────────────────
-const VALID_TYPES = [
-  'spa',
-  'sauna',
-  'hot_spring',
-];
+// ── Wellness Valid Google Place Types (from canonical source) ────────────────
+const VALID_TYPES = getPlaceTypesForCategory('Wellness');
 
-// ── Text Search Keywords (non-Google types) ─────────────────────────────────
+// ── Text Search Keywords (venues without Table A types) ─────────────────────
 const TEXT_SEARCH_KEYWORDS = [
-  'massage therapy',
+  'hot spring',
   'turkish bath',
   'float tank',
   'public bath',
   'cold plunge',
+  'bathhouse',
+  'thermal bath',
 ];
 
 // ── Time Slot Ranges ────────────────────────────────────────────────────────
@@ -417,6 +416,12 @@ serve(async (req: Request) => {
     }
 
     console.log(`[discover-wellness] ${allPlaces.length} unique places after merge`);
+
+    // ── Filter out excluded types (medical, retail, sports, etc.) ────────
+    const wellnessExcluded = getExcludedTypesForCategory('Wellness');
+    allPlaces = filterExcludedPlaces(allPlaces, wellnessExcluded) as any[];
+
+    console.log(`[discover-wellness] ${allPlaces.length} places after excluded-type filtering`);
 
     // ── Filter by distance ──────────────────────────────────────────────
     allPlaces = allPlaces.filter(p => {

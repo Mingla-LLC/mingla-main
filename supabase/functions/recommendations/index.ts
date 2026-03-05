@@ -1313,55 +1313,8 @@ function scoreAndRank(
     "candidates"
   );
 
-  // Category synonyms for tag overlap scoring
-  const categoryKeywords = {
-    play_move: [
-      "bowling",
-      "climbing",
-      "dance",
-      "skating",
-      "kayak",
-      "hike",
-      "pickleball",
-      "arcade",
-      "trampoline",
-      "mini golf",
-      "go kart",
-      "axe throwing",
-      "laser tag",
-      "escape room",
-      "basketball",
-      "tennis",
-      "badminton",
-      "gym",
-      "sports",
-      "recreation",
-    ],
-    dining: [
-      "tasting menu",
-      "prix fixe",
-      "chef counter",
-      "omakase",
-      "wine pairing",
-      "fine dining",
-      "restaurant",
-      "steakhouse",
-      "seafood",
-    ],
-    sip: ["cocktail", "wine", "brewery", "bar", "coffee", "tea", "speakeasy"],
-    creative: [
-      "pottery",
-      "painting",
-      "workshop",
-      "art",
-      "gallery",
-      "museum",
-      "craft",
-    ],
-    screen_relax: ["cinema", "movie", "theater", "spa", "massage"],
-    stroll: ["park", "garden", "trail", "scenic", "walk", "botanical"],
-    casual_eats: ["pizza", "burger", "taco", "food truck", "deli", "cafe"],
-  };
+  // Category keywords now sourced from canonical _shared/categoryPlaceTypes.ts
+  // getCategoryKeywords() handles both slug and display-name formats via resolveCategory()
 
   candidates.forEach((candidate) => {
     let score = 0;
@@ -1401,7 +1354,7 @@ function scoreAndRank(
     score += 2.5 * experienceMatch;
 
     // 3. TAG OVERLAP (1.6 weight) - using name/address text matching
-    const keywords = categoryKeywords[candidate.category] || [];
+    const keywords = getCategoryKeywords(candidate.category);
     const tagOverlap =
       keywords.filter(
         (keyword) =>
@@ -1874,37 +1827,53 @@ function addFallbackCopyForCandidate(candidate: any): void {
     string,
     { oneLiner: string; tip: string }
   > = {
-    stroll: {
+    'Nature': {
       oneLiner: "Perfect spot for your leisurely walk",
       tip: "You'll love the golden hour views here",
     },
-    sip: {
+    'First Meet': {
+      oneLiner: "Great spot for meeting someone new",
+      tip: "Relaxed vibes make conversation easy",
+    },
+    'Picnic': {
+      oneLiner: "Beautiful outdoor spot for your picnic",
+      tip: "Pack some snacks and enjoy the scenery",
+    },
+    'Drink': {
       oneLiner: "Cozy atmosphere you'll enjoy for drinks",
       tip: "Ask about their happy hour specials",
     },
-    casual_eats: {
+    'Casual Eats': {
       oneLiner: "Delicious casual dining you'll love",
       tip: "Don't miss their most popular dish",
     },
-    screen_relax: {
-      oneLiner: "Perfect place for you to unwind",
-      tip: "Book ahead to secure your spot",
-    },
-    creative: {
-      oneLiner: "Inspiring creative space you'll adore",
-      tip: "Perfect match for your artistic side",
-    },
-    play_move: {
-      oneLiner: "Active fun that's perfect for you",
-      tip: "Wear comfortable clothes for best experience",
-    },
-    dining: {
+    'Fine Dining': {
       oneLiner: "Memorable dining experience awaits you",
       tip: "Reserve ahead for your special evening",
     },
-    freestyle: {
-      oneLiner: "Highly rated local gem you'll discover",
-      tip: "Check their latest offerings before visiting",
+    'Watch': {
+      oneLiner: "Perfect place for you to unwind",
+      tip: "Book ahead to secure your spot",
+    },
+    'Creative & Arts': {
+      oneLiner: "Inspiring creative space you'll adore",
+      tip: "Perfect match for your artistic side",
+    },
+    'Play': {
+      oneLiner: "Active fun that's perfect for you",
+      tip: "Wear comfortable clothes for best experience",
+    },
+    'Wellness': {
+      oneLiner: "Rejuvenating wellness experience awaits",
+      tip: "Arrive early to fully enjoy the session",
+    },
+    'Groceries & Flowers': {
+      oneLiner: "Quality finds for your everyday needs",
+      tip: "Check their seasonal specials",
+    },
+    'Work & Business': {
+      oneLiner: "Professional space for productive meetings",
+      tip: "Great wifi and quiet atmosphere",
     },
   };
 

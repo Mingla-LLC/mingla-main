@@ -55,7 +55,7 @@ supabase/
 ## Features
 
 - **AI-powered swipe discovery** — preference-driven cards served from a card pool pipeline (zero API cost on cache hit)
-- **12 experience categories** — Nature, First Meet (3-group: cafes + activities + culture), Picnic (7 outdoor park/garden types), Drink (2-group: alcohol + non-alcohol), Casual Eats, Fine Dining (11-type: steakhouses, French, seafood, Mediterranean, Spanish, tapas, oyster bars, bistros, gastropubs, wine bars), Watch (9-type: movie theaters, performing arts, concert halls, opera houses, philharmonic halls, amphitheatres, comedy clubs, live music, karaoke), Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business
+- **12 experience categories** — Nature, First Meet (3-group: cafes + activities + culture), Picnic (7 outdoor park/garden types), Drink (2-group: alcohol + non-alcohol), Casual Eats, Fine Dining (11-type), Watch (9-type), Creative & Arts (14-type: art, culture, museums, live performance), Play (18-type: bowling, arcades, amusement parks, go-karting, mini golf, dance halls, casinos, cycling parks, water parks, roller coasters, planetariums), Wellness (5-type: spa, massage_spa, massage, sauna, resort_hotel + 42-type exclusion + 14 text search keywords), Groceries & Flowers (8-type: grocery_store, supermarket, food_store, market, asian_grocery_store, farmers_market, hypermarket, discount_supermarket + 38-type exclusion + 14 text search keywords), Work & Business (7-type: coworking_space, business_center, library, cafe, coffee_shop, tea_house, hotel + 38-type exclusion + 13 text search keywords)
 - **First Meet 3-group alternation** — interleaved cafe/activity/culture types produce diverse cards (bowling alleys, art galleries, parks alongside coffee shops)
 - **Drink 2-group alternation** — interleaved alcohol/non-alcohol types (bars, cocktail bars, breweries alongside coffee shops, tea houses, juice bars)
 - **Picnic unified 7-type array** — park, city_park, picnic_ground, state_park, botanical_garden, garden, nature_preserve — consistent across all 10 edge function surfaces with 38-type exclude list
@@ -95,6 +95,9 @@ supabase/
 | discover-picnic-park | Dedicated Picnic Park card system |
 | discover-drink | Dedicated Drink venue card system |
 | discover-fine-dining | Dedicated Fine Dining card system |
+| discover-creative-arts | Dedicated Creative & Arts card system (14 types + 11 text search keywords) |
+| discover-play | Dedicated Play card system (18 types + 11 text search keywords + 27-type exclusion filter) |
+| discover-wellness | Dedicated Wellness card system (5 types + 7 text search keywords + 42-type exclusion filter) |
 | discover-cards | Discover tab card serving |
 | recommendations-enhanced | Recommendation scoring engine |
 | recommendations | Legacy recommendation engine |
@@ -103,7 +106,7 @@ supabase/
 | refresh-place-pool | Daily pool refresh (free Place Details) |
 | holiday-experiences | Seasonal content |
 
-All edge functions import category-to-place-type mappings from `_shared/categoryPlaceTypes.ts` — the single source of truth. Zero hardcoded mappings exist in any individual function.
+All edge functions import category-to-place-type mappings and exclusion lists from `_shared/categoryPlaceTypes.ts` — the single source of truth. All 12 categories have per-category excluded types. All intent-specific exclusion lists in generate-curated-experiences spread from `GLOBAL_EXCLUDED_PLACE_TYPES` to auto-inherit future global additions.
 
 ## Environment Variables
 
@@ -136,8 +139,6 @@ supabase functions serve
 
 ## Recent Changes
 
-- **Category place type centralization** — all 10 active edge functions now import from `_shared/categoryPlaceTypes.ts`. Zero local CATEGORY_MAPPINGS or CATEGORY_TO_PLACE_TYPES objects remain.
-- **Groceries & Flowers bug fix** — discover-experiences EXCLUDED_TYPES previously contained `grocery_store` and `supermarket`, causing zero results. Fixed by centralized DISCOVER_EXCLUDED_PLACE_TYPES that omits these valid types.
-- **Holiday experiences** now support all 12 categories (previously missing Groceries & Flowers and Work & Business).
-- **Dead code deletion** — removed 5 stale folders: `generate-session-experiences copy/`, `generate-experiences copy/`, `recommendations-backup/`, `versions/`, `gen-exp-new-keywords/`.
-- **Centralized exclusion system** — CATEGORY_EXCLUDED_PLACE_TYPES, DISCOVER_EXCLUDED_PLACE_TYPES, and getExcludedTypesForCategory() added to canonical source.
+- **Work & Business keywords overhaul** — expanded from 3 to 7 Google Place types (added coworking_space, business_center, library, hotel). Added 38-type exclusion filter (play venues, nightlife, sports/fitness, kids/water, retail, transport). Mobile coreAnchors now exactly 7 types matching server canonical (was 3). 13 text search keywords including coworking space, business center, library, hotel lobby, conference room.
+- **hotel vs resort_hotel distinction** — `hotel` (business/city hotels) added to Work & Business. `resort_hotel` (spa/resort hotels) remains in Wellness. Different Google Place types with zero overlap.
+- **Work & Business excluded types simplified** — removed redundant `casino`, `bar`, `cocktail_bar` from exclusions (Google won't return these for coworking_space/library queries). New 38-type list focuses on adjacent businesses that could appear near work venues.
