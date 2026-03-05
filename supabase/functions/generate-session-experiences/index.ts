@@ -21,8 +21,18 @@ const supabaseAdmin = createClient(SUPABASE_URL ?? '', SUPABASE_SERVICE_ROLE_KEY
 // Category to Google Places type mapping (same as generate-experiences)
 const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   // Nature
-  nature: ["park", "botanical_garden", "hiking_area", "national_park", "state_park", "beach", "zoo", "wildlife_park"],
-  "nature-outdoor": ["park", "botanical_garden", "hiking_area", "national_park", "state_park", "beach", "zoo", "wildlife_park"],
+  nature: [
+    "national_park", "state_park", "nature_preserve", "wildlife_refuge",
+    "wildlife_park", "scenic_spot", "garden", "botanical_garden",
+    "park", "lake", "river", "island", "mountain_peak",
+    "woods", "hiking_area", "campground", "picnic_ground",
+  ],
+  "nature-outdoor": [
+    "national_park", "state_park", "nature_preserve", "wildlife_refuge",
+    "wildlife_park", "scenic_spot", "garden", "botanical_garden",
+    "park", "lake", "river", "island", "mountain_peak",
+    "woods", "hiking_area", "campground", "picnic_ground",
+  ],
   // First Meet
   first_meet: ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
   "first meet": ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
@@ -79,7 +89,18 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
 
 // Excluded types for specific categories
 const EXCLUDED_TYPES: { [key: string]: string[] } = {
-  nature: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "bus_stop", "bus_station", "bar", "night_club", "casino", "movie_theater", "video_arcade", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station", "gym", "fitness_center"],
+  nature: [
+    "shopping_mall", "department_store", "electronics_store",
+    "furniture_store", "store", "warehouse_store", "market",
+    "food_store", "supermarket", "grocery_store", "convenience_store",
+    "movie_theater", "video_arcade", "bowling_alley", "casino",
+    "night_club", "karaoke", "amusement_center", "amusement_park",
+    "gym", "fitness_center", "sports_complex", "sports_club",
+    "stadium", "skateboard_park", "swimming_pool", "tennis_court",
+    "parking", "parking_lot", "parking_garage",
+    "bus_station", "train_station", "transit_station", "airport",
+    "bridge", "toll_station",
+  ],
   first_meet: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "gas_station", "car_wash", "car_repair", "parking", "atm", "bank", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "bus_station", "train_station", "transit_station", "gym", "fitness_center"],
   picnic: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "bus_stop", "bus_station", "bar", "night_club", "casino", "movie_theater", "video_arcade", "atm", "bank", "accounting", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "gas_station", "car_wash", "car_repair", "car_dealer", "parking", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "train_station", "transit_station", "gym", "fitness_center"],
   drink: ["dog_park", "cycling_park", "amusement_park", "park_and_ride", "water_park", "fast_food_restaurant", "pizza_restaurant", "hamburger_restaurant", "gas_station", "car_wash", "car_repair", "parking", "atm", "bank", "storage", "post_office", "government_office", "courthouse", "police", "fire_station", "city_hall", "electric_vehicle_charging_station", "moving_company", "courier_service", "locksmith", "plumber", "electrician", "roofing_contractor", "apartment_building", "housing_complex", "condominium_complex", "airport", "bus_station", "train_station", "transit_station", "gym", "fitness_center"],

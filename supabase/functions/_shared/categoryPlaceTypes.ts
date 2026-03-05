@@ -12,9 +12,10 @@
 // ── Primary mapping: Display Name → Google Place types ──────────────────────
 export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
   'Nature': [
-    'park', 'national_park', 'hiking_area', 'botanical_garden',
-    'state_park', 'zoo', 'wildlife_park', 'garden',
-    'tourist_attraction', 'wildlife_refuge', 'city_park', 'picnic_ground',
+    'national_park', 'state_park', 'nature_preserve', 'wildlife_refuge',
+    'wildlife_park', 'scenic_spot', 'garden', 'botanical_garden',
+    'park', 'lake', 'river', 'island', 'mountain_peak',
+    'woods', 'hiking_area', 'campground', 'picnic_ground',
   ],
   'First Meet': [
     'cafe', 'coffee_shop', 'tea_house', 'ice_cream_shop',

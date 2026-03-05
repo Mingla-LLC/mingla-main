@@ -73,6 +73,9 @@ function getFallbackDescription(category: string, placeType: string): string {
 const ALWAYS_OPEN_TYPES = new Set([
   'park', 'hiking_area', 'national_park', 'state_park', 'beach',
   'garden', 'botanical_garden',
+  'lake', 'river', 'woods', 'mountain_peak', 'island',
+  'campground', 'scenic_spot', 'nature_preserve', 'picnic_ground',
+  'wildlife_park', 'wildlife_refuge',
 ]);
 
 // ── Time Slot Ranges ────────────────────────────────────────────────────────

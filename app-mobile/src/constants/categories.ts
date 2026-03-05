@@ -43,16 +43,21 @@ export const categories: Category[] = [
     slug: 'nature',
     name: 'Nature',
     icon: '🌿',
-    description: 'Outdoor experiences in natural settings — parks, trails, beaches, and wildlife',
-    detailedDescription: 'Scenic parks, botanical gardens, hiking trails, beaches, national parks, zoos, and wildlife areas. Perfect for fresh air, calm conversation, and connection with the outdoors.',
+    description: 'Natural landscapes — parks, lakes, hiking trails, mountains, and wildlife',
+    detailedDescription: 'National parks, lakes, rivers, mountain peaks, hiking trails, botanical gardens, scenic spots, campgrounds, and wildlife areas. Perfect for fresh air, adventure, and connection with the outdoors.',
     expectedActivities: [
-      'Parks, botanical gardens, national parks',
-      'Hiking trails and nature reserves',
-      'Beaches, zoos, and wildlife parks'
+      'Parks, gardens, national parks, and state parks',
+      'Lakes, rivers, mountains, and scenic spots',
+      'Hiking trails, campgrounds, and wildlife areas',
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: ['park', 'botanical_garden', 'hiking_area', 'national_park', 'state_park', 'beach', 'zoo', 'wildlife_park'],
+        coreAnchors: [
+          'national_park', 'state_park', 'nature_preserve', 'wildlife_refuge',
+          'wildlife_park', 'scenic_spot', 'garden', 'botanical_garden',
+          'park', 'lake', 'river', 'island', 'mountain_peak',
+          'woods', 'hiking_area', 'campground', 'picnic_ground',
+        ],
         attributes: ['scenic', 'outdoor', 'peaceful'],
         excludedAttributes: ['bar', 'night_club', 'casino', 'movie_theater', 'bowling_alley', 'fine_dining_restaurant']
       },
@@ -64,14 +69,14 @@ export const categories: Category[] = [
       hardFilter: 'Must be an outdoor natural setting',
       hierarchy: {
         broad: 'Nature',
-        niche: ['Parks & Gardens', 'Hiking & Trails', 'Beaches', 'National Parks', 'Zoos & Wildlife']
+        niche: ['Parks & Gardens', 'Lakes & Rivers', 'Mountains & Hiking', 'Wildlife & Reserves']
       },
       fallbackBehavior: 'If no nature spots within range, suggest closest park or botanical garden.'
     },
     ux: {
       activeColor: '#10B981',
-      subcategories: ['Parks & Gardens', 'Hiking & Trails', 'Beaches', 'National Parks', 'Zoos & Wildlife'],
-      contextualPreview: 'Botanical garden just 10 minutes away — perfect for a peaceful walk.'
+      subcategories: ['Parks & Gardens', 'Lakes & Rivers', 'Mountains & Hiking', 'Wildlife & Reserves'],
+      contextualPreview: 'A beautiful lake just 15 minutes away — perfect for a peaceful outing.'
     },
     activityType: 'mobile',
     duration: 'medium',

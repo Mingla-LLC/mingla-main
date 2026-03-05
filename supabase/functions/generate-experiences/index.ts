@@ -18,8 +18,18 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 // Includes multiple format variations for each category
 const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
   // Nature variations
-  nature: ["park", "botanical_garden", "hiking_area", "national_park", "state_park", "beach", "zoo", "wildlife_park"],
-  "nature-outdoor": ["park", "botanical_garden", "hiking_area", "national_park", "state_park", "beach", "zoo", "wildlife_park"],
+  nature: [
+    "national_park", "state_park", "nature_preserve", "wildlife_refuge",
+    "wildlife_park", "scenic_spot", "garden", "botanical_garden",
+    "park", "lake", "river", "island", "mountain_peak",
+    "woods", "hiking_area", "campground", "picnic_ground",
+  ],
+  "nature-outdoor": [
+    "national_park", "state_park", "nature_preserve", "wildlife_refuge",
+    "wildlife_park", "scenic_spot", "garden", "botanical_garden",
+    "park", "lake", "river", "island", "mountain_peak",
+    "woods", "hiking_area", "campground", "picnic_ground",
+  ],
   // First Meet variations
   first_meet: ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
   "first meet": ["bookstore", "bar", "pub", "wine_bar", "tea_house", "coffee_shop", "planetarium"],
@@ -128,13 +138,16 @@ const CATEGORY_MAPPINGS: { [key: string]: string[] } = {
 // Excluded types for specific categories
 const EXCLUDED_TYPES: { [key: string]: string[] } = {
   nature: [
-    "bar", "night_club", "casino", "movie_theater", "video_arcade",
-    "bowling_alley", "fine_dining_restaurant", "fast_food_restaurant",
-    "food_court", "atm", "bank", "parking", "gas_station", "airport",
-    "car_repair", "car_dealer", "storage", "post_office", "government_office",
-    "courthouse", "police", "fire_station", "city_hall",
-    "apartment_building", "housing_complex",
-    "gym", "fitness_center",
+    "shopping_mall", "department_store", "electronics_store",
+    "furniture_store", "store", "warehouse_store", "market",
+    "food_store", "supermarket", "grocery_store", "convenience_store",
+    "movie_theater", "video_arcade", "bowling_alley", "casino",
+    "night_club", "karaoke", "amusement_center", "amusement_park",
+    "gym", "fitness_center", "sports_complex", "sports_club",
+    "stadium", "skateboard_park", "swimming_pool", "tennis_court",
+    "parking", "parking_lot", "parking_garage",
+    "bus_station", "train_station", "transit_station", "airport",
+    "bridge", "toll_station",
   ],
   first_meet: [
     "amusement_park", "water_park", "bowling_alley", "spa", "sauna",

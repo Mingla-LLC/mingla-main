@@ -34,19 +34,18 @@ const corsHeaders = {
 
 // ── Nature Place Types ──────────────────────────────────────────────────────
 const NATURE_TYPES = [
-  'park',
-  'botanical_garden',
-  'hiking_area',
-  'national_park',
-  'state_park',
-  'beach',
-  'zoo',
-  'wildlife_park',
+  'national_park', 'state_park', 'nature_preserve', 'wildlife_refuge',
+  'wildlife_park', 'scenic_spot', 'garden', 'botanical_garden',
+  'park', 'lake', 'river', 'island', 'mountain_peak',
+  'woods', 'hiking_area', 'campground', 'picnic_ground',
 ];
 
 // Types that are typically free / always open (skip hours filter)
 const ALWAYS_OPEN_TYPES = new Set([
   'park', 'hiking_area', 'national_park', 'state_park', 'beach',
+  'lake', 'river', 'woods', 'mountain_peak', 'island',
+  'campground', 'scenic_spot', 'nature_preserve', 'picnic_ground',
+  'garden', 'botanical_garden', 'wildlife_park', 'wildlife_refuge',
 ]);
 
 // ── Time Slot Ranges ────────────────────────────────────────────────────────

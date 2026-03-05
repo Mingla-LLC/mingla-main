@@ -49,14 +49,10 @@ const DISCOVER_CATEGORIES = [
 // Each category uses distinct types where possible to avoid duplicates
 const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
   "Nature": [
-    "park",
-    "hiking_area",
-    "botanical_garden",
-    "national_park",
-    "state_park",
-    "beach",
-    "zoo",
-    "wildlife_park",
+    "national_park", "state_park", "nature_preserve", "wildlife_refuge",
+    "wildlife_park", "scenic_spot", "garden", "botanical_garden",
+    "park", "lake", "river", "island", "mountain_peak",
+    "woods", "hiking_area", "campground", "picnic_ground",
   ],
   "First Meet": [
     "bookstore",

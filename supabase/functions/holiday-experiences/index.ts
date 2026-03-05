@@ -30,7 +30,12 @@ const DISCOVER_CATEGORIES = [
 
 // Map categories to Google Places types (validated for Google Places API New)
 const CATEGORY_TO_PLACE_TYPES: { [key: string]: string[] } = {
-  "Nature": ["park", "hiking_area", "national_park"],
+  "Nature": [
+    "national_park", "state_park", "nature_preserve", "wildlife_refuge",
+    "wildlife_park", "scenic_spot", "garden", "botanical_garden",
+    "park", "lake", "river", "island", "mountain_peak",
+    "woods", "hiking_area", "campground", "picnic_ground",
+  ],
   "First Meet": ["cafe", "coffee_shop", "bar"],
   "Picnic": ["park", "beach", "marina"],
   "Drink": ["bar", "cafe", "wine_bar"],

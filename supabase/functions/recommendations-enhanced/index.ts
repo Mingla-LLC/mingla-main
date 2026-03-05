@@ -22,31 +22,19 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const CATEGORY_MAPPINGS = {
   nature: {
     places: [
-      "park",
-      "botanical_garden",
-      "hiking_area",
-      "national_park",
-      "state_park",
-      "beach",
-      "zoo",
-      "wildlife_park",
-      "scenic_viewpoint",
-      "nature_reserve",
+      "national_park", "state_park", "nature_preserve", "wildlife_refuge",
+      "wildlife_park", "scenic_spot", "garden", "botanical_garden",
+      "park", "lake", "river", "island", "mountain_peak",
+      "woods", "hiking_area", "campground", "picnic_ground",
     ],
     keywords: [
-      "park",
-      "garden",
-      "trail",
-      "scenic",
-      "walk",
-      "botanical",
-      "nature",
-      "hiking",
-      "outdoor",
-      "beach",
-      "wildlife",
+      "park", "garden", "trail", "scenic", "walk", "botanical", "nature",
+      "hiking", "outdoor", "lake", "river", "mountain", "woods", "wildlife", "campground",
     ],
-    activities: ["park", "garden", "trail", "scenic", "walk", "botanical", "hiking", "beach"],
+    activities: [
+      "park", "garden", "trail", "scenic", "walk", "botanical",
+      "hiking", "lake", "river", "mountain", "campground",
+    ],
   },
   first_meet: {
     places: [
