@@ -76,7 +76,6 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
 
 interface OnboardingFlowProps {
   onComplete: () => void
-  onBackToWelcome?: () => void
 }
 
 const INITIAL_DATA: OnboardingData = {
@@ -121,7 +120,7 @@ const SkipAutoAdvance = ({ goNext }: { goNext: () => void }) => {
   )
 }
 
-const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) => {
+const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const { user } = useAuthSimple()
   const { profile, setProfile } = useAppStore()
   const queryClient = useQueryClient()
@@ -133,6 +132,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
   })
   const [hasGpsPermission, setHasGpsPermission] = useState(false)
   const [initialStep, setInitialStep] = useState<OnboardingStep>(1)
+  const [phonePreVerified, setPhonePreVerified] = useState(false)
   const [isReady, setIsReady] = useState(false)
   const [showCustomBudget, setShowCustomBudget] = useState(false)
 
@@ -155,10 +155,18 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     goBack,
     goToSubStep,
     choosePath,
-    isFirstScreen,
     progress,
     isLaunch,
   } = useOnboardingStateMachine({ initialStep, hasGpsPermission })
+
+  // isFirstScreen: computed locally based on whether the user's phone was
+  // already verified from a previous session. This is separate from the
+  // "resume step" concept — a user may resume at Step 4 but the "first screen"
+  // (where "Back to sign in" appears) is Step 2/value_prop if phone was pre-verified,
+  // or Step 1/welcome if it wasn't.
+  const isFirstScreen = phonePreVerified
+    ? (navState.step === 2 && navState.subStep === 'value_prop')
+    : (navState.step === 1 && navState.subStep === 'welcome')
 
   // ─── Stable Refs (prevent stale closures in timeouts) ───
   const goNextRef = useRef(goNext)
@@ -438,18 +446,42 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
     }
   }, [navState.subStep, valuePropBeat])
 
-  // ─── Resume Logic (one-shot: auth re-inits must NOT overwrite in-progress selections) ───
+  // ─── Resume Logic ───
+  // Fix D: Depend on both user?.id AND profile?.id so this runs only after
+  // BOTH are loaded. The hasResumedRef guard still prevents re-runs — once
+  // resume completes, subsequent profile/user changes are ignored.
+  // Previous bug: depended only on [user?.id], so if profile loaded after user,
+  // the effect captured stale null profile and marked itself done forever.
   useEffect(() => {
     if (hasResumedRef.current) return
 
     async function loadResume() {
-      if (!user?.id) return
+      // Wait for both user and profile to be available
+      if (!user?.id || !profile?.id) return
       hasResumedRef.current = true
+
       try {
-        const savedStep = profile?.onboarding_step
+        const savedStep = profile.onboarding_step
+
+        // If the user already has a verified phone number from a previous session,
+        // skip Step 1 (phone verification) entirely — reduces friction and SMS cost.
+        const phoneAlreadyVerified = !!profile.phone
+
         if (savedStep && savedStep >= 1 && savedStep <= 5) {
-          setInitialStep(savedStep as OnboardingStep)
+          // If phone is already verified but saved step is 1, jump to step 2
+          const resumeStep = (phoneAlreadyVerified && savedStep === 1) ? 2 : savedStep
+          setInitialStep(resumeStep as OnboardingStep)
+        } else if (phoneAlreadyVerified) {
+          // No saved step but phone exists — start at step 2
+          setInitialStep(2)
         }
+
+        // Mark phone as verified in onboarding data if already in DB
+        if (phoneAlreadyVerified) {
+          setPhonePreVerified(true)
+          setData((prev) => ({ ...prev, phoneVerified: true }))
+        }
+
         const prefs = await PreferencesService.getUserPreferences(user.id)
         if (prefs) {
           setData((prev) => ({
@@ -467,7 +499,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       setIsReady(true)
     }
     loadResume()
-  }, [user?.id])
+  }, [user?.id, profile?.id])
 
   // ─── Resend Countdown Timer ───
   useEffect(() => {
@@ -1545,7 +1577,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       const rate = getRate(currencyCode)
 
       return (
-        <View>
+        <View style={styles.budgetContainer}>
           <Text style={styles.headline}>What's your sweet spot?</Text>
           <Text style={styles.body}>How much per outing, roughly?</Text>
           <View style={styles.tileGrid}>
@@ -1872,7 +1904,7 @@ const OnboardingFlow = ({ onComplete, onBackToWelcome }: OnboardingFlowProps) =>
       onPrimaryCta={ctaConfig.onPress}
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={false}
-      scrollEnabled={navState.subStep !== 'intents' && navState.subStep !== 'celebration'}
+      scrollEnabled={navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
@@ -1980,6 +2012,10 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginTop: spacing.md,
     textAlign: 'center',
+  },
+  budgetContainer: {
+    flex: 1,
+    justifyContent: 'center',
   },
   customBudgetRow: {
     flexDirection: 'row',

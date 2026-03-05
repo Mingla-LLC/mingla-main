@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import {
   OnboardingNavState,
   OnboardingStep,
@@ -31,7 +31,6 @@ interface UseOnboardingStateMachineReturn {
   goBack: () => void
   goToSubStep: (subStep: SubStep) => void
   choosePath: (path: 'invite' | 'add' | 'skip') => void
-  isFirstScreen: boolean
   progress: { step: OnboardingStep; segmentFill: number }  // segmentFill: 0-1 within current step
   isLaunch: boolean
 }
@@ -46,6 +45,21 @@ export function useOnboardingStateMachine({
   })
   const [chosenPath, setChosenPath] = useState<'invite' | 'add' | 'skip' | null>(null)
   const [isLaunch, setIsLaunch] = useState(false)
+
+  // ─── Fix A: Sync state when initialStep changes after mount ───
+  // React's useState only uses the initial value on the first render.
+  // When the resume logic in OnboardingFlow calls setInitialStep(N),
+  // the hook receives a new prop but useState ignores it.
+  // This setState-during-render pattern is React's sanctioned approach
+  // (equivalent to getDerivedStateFromProps) — React discards the current
+  // render and immediately re-renders with the new state, so the user
+  // never sees the stale step. No flash, no extra paint.
+  const appliedInitialStep = useRef(initialStep)
+  if (appliedInitialStep.current !== initialStep) {
+    logger.onboarding(`initialStep changed: ${appliedInitialStep.current} → ${initialStep}`)
+    appliedInitialStep.current = initialStep
+    setState({ step: initialStep, subStep: STEP_SUBSTEPS[initialStep][0] })
+  }
 
   // Build the effective sub-step sequence for Step 4 (conditionally includes manual_location)
   const getStep4Sequence = useCallback((): SubStep[] => {
@@ -102,6 +116,11 @@ export function useOnboardingStateMachine({
     }
   }, [getSequence])
 
+  // ─── Fix C: goBack floor is always Step 1 ───
+  // The back button visibility is controlled by isFirstScreen + OnboardingShell,
+  // so goBack itself never needs a dynamic floor. This is simple and bulletproof:
+  // even if the component remounts and resume re-runs, goBack always allows
+  // navigating all the way back to Step 1.
   const goBack = useCallback(() => {
     setState((prev) => {
       const seq = getSequence(prev.step)
@@ -146,8 +165,6 @@ export function useOnboardingStateMachine({
     }
   }, [])
 
-  const isFirstScreen = state.step === 1 && state.subStep === 'welcome'
-
   const progress = useMemo(() => {
     const seq = getSequence(state.step)
     const idx = seq.indexOf(state.subStep)
@@ -161,7 +178,6 @@ export function useOnboardingStateMachine({
     goBack,
     goToSubStep,
     choosePath,
-    isFirstScreen,
     progress,
     isLaunch,
   }

@@ -137,6 +137,7 @@ export const TRANSPORT_MODES = [
 
 export const DEFAULT_TRANSPORT = 'walking'
 
-// ─── Default Categories (from DB default) ───
-
+// ─── Default Categories ───
+// Synced with PostgreSQL default in supabase/migrations/20260228000001_update_categories.sql
+// If you change this list, update the DB default too (and vice versa).
 export const DEFAULT_CATEGORIES = ['Nature', 'Casual Eats', 'Drink']

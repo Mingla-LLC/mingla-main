@@ -110,8 +110,12 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
 
   const insets = useSafeAreaInsets();
 
-  const isFirstScreen = step === 1 && !showBackButton;
-  const showBackToWelcome = isFirstScreen && !!onBackToWelcome;
+  // Fix B: Don't hardcode step === 1 as the first screen.
+  // OnboardingFlow controls which screen is "first" via showBackButton and
+  // onBackToWelcome. The shell trusts those props — if showBackButton is false
+  // and onBackToWelcome is provided, this is the first screen (show "Back to sign in").
+  // This works whether the user starts at Step 1 or Step 2 (phone pre-verified).
+  const showBackToWelcome = !showBackButton && !!onBackToWelcome;
   const hasSecondaryButton = showBackToWelcome || showBackButton;
 
   const handleBack = () => {
