@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "76bcd738-3658-4502-9790-10e191ecf63e"
+      }
+    },
+    "android": {
+      "package": "com.sethogieva.minglagreatdev"
+    }
+  }
+}

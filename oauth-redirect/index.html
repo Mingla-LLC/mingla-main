@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>OAuth Redirect</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <div
+      style="text-align: center; padding: 50px; font-family: Arial, sans-serif"
+    >
+      <h2>Sign-in complete!</h2>
+      <p>Please wait while we complete your sign-in...</p>
+      <p style="font-size: 12px; color: #64748b; margin-top: 20px">
+        This window will close automatically.
+      </p>
+    </div>
+
+    <script>
+      // Extract tokens from URL - Supabase puts them in the hash
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+      const error = params.get("error");
+
+      console.log("OAuth redirect page loaded");
+      console.log("Full URL:", window.location.href);
+      console.log("Hash:", hash);
+      console.log("Has tokens:", !!accessToken && !!refreshToken);
+
+      // If we have tokens, the page is ready for WebBrowser to detect
+      // WebBrowser.openAuthSessionAsync should automatically detect this URL
+      // and return it to the app
+
+      // Keep the page on this URL so WebBrowser can detect it
+      // Don't redirect or close - let WebBrowser handle it
+    </script>
+  </body>
+</html>

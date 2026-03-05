@@ -1,0 +1,25 @@
+project_id = "gqnoajqerqhnvulmnyvv"
+
+[functions.weather]
+verify_jwt = false
+
+[functions.places]
+verify_jwt = false
+
+[functions.ai-reason]
+verify_jwt = true
+
+[functions.events]
+verify_jwt = false
+
+[functions.get-google-maps-key]
+verify_jwt = true
+
+[functions.enhance-cards]
+verify_jwt = false
+
+[functions.send-message-email]
+verify_jwt = true
+
+[functions.ticketmaster-events]
+verify_jwt = false
