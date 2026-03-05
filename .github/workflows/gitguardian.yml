@@ -1,0 +1,29 @@
+# GitGuardian secrets detection on PRs
+# Scans for exposed credentials, API keys, and other sensitive data
+#
+# Setup: Add GITGUARDIAN_API_KEY to repository Secrets
+# Get your API key: https://dashboard.gitguardian.com/api/personal-access-tokens
+# Docs: https://docs.gitguardian.com/ggshield-docs/integrations/cicd-integrations/github-actions
+name: GitGuardian Scan
+
+on:
+  pull_request: {}  # Triggers on all PRs regardless of target branch
+
+jobs:
+  gitguardian-scan:
+    name: Secrets Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for multi-commit scanning
+
+      - name: GitGuardian scan
+        uses: GitGuardian/ggshield/actions/secret@v1.48.0
+        env:
+          GITHUB_PUSH_BEFORE_SHA: ${{ github.event.before }}
+          GITHUB_PUSH_BASE_SHA: ${{ github.event.base }}
+          GITHUB_PULL_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
