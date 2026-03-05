@@ -42,6 +42,7 @@ export interface Recommendation {
   website?: string | null;
   phone?: string | null;
   placeId?: string;
+  priceTier?: string;
   socialStats: {
     views: number;
     likes: number;

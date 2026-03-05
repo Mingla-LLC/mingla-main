@@ -1221,6 +1221,8 @@ export default function ExpandedCardModal({
                   distance={card.distance}
                   measurementSystem={accountPreferences?.measurementSystem}
                   priceRange={card.priceRange}
+                  priceTier={(card as any).priceTier}
+                  priceLevel={(card as any).priceLevel}
                   description={card.description}
                   currency={accountPreferences?.currency}
                 />

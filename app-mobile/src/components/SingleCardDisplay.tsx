@@ -23,6 +23,7 @@ import { formatToOneDecimal } from '../utils/numberFormatter';
 import { getReadableCategoryName } from '../utils/categoryUtils';
 import { useLocalePreferences } from '../hooks/useLocalePreferences';
 import { formatCurrency } from './utils/formatters';
+import { googleLevelToTierSlug, tierLabel, tierRangeLabel } from '../constants/priceTiers';
 
 interface SingleCardDisplayProps {
   card: RecommendationCard;
@@ -286,11 +287,9 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
     }
   };
 
-  // Price level indicators
-  const getPriceDisplay = (level: number) => {
-    const symbols = ['$', '$$', '$$$', '$$$$', '$$$$$'];
-    return symbols[level - 1] || '$';
-  };
+  // Price tier display
+  const priceTier = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
+  const priceDisplay = `${tierLabel(priceTier)} · ${tierRangeLabel(priceTier)}`;
 
 
   const formatDuration = (minutes: number) => {
@@ -478,7 +477,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
                 </View>
                 <View style={styles.metadataItem}>
                   <Ionicons name="cash-outline" size={16} color="#6B7280" />
-                  <Text style={styles.metadataText}>{formatCurrency(Number(card.estimatedCostPerPerson) || 0, currency)}/person</Text>
+                  <Text style={styles.metadataText}>{priceDisplay}</Text>
                 </View>
               </View>
 

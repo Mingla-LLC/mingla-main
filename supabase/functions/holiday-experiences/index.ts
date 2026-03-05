@@ -8,6 +8,7 @@ import {
   DISCOVER_EXCLUDED_PLACE_TYPES,
   ALL_CATEGORY_NAMES,
 } from '../_shared/categoryPlaceTypes.ts';
+import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -613,6 +614,7 @@ serve(async (req) => {
               priceMin: 0,
               priceMax: 0,
               openingHours: exp.openingHours,
+              priceTier: googleLevelToTierSlug(exp.priceLevel),
             });
           }
           console.log(`[pool-storage] Stored ${allExperiences.length} holiday experience cards in pool`);

@@ -11,11 +11,13 @@ import { useQuery } from '@tanstack/react-query';
 import { deckService, DeckResponse } from '../services/deckService';
 import { useAppStore } from '../store/appStore';
 import type { Recommendation } from '../types/recommendation';
+import type { PriceTierSlug } from '../constants/priceTiers';
 
 interface UseDeckCardsParams {
   location: { lat: number; lng: number } | null;
   categories: string[];
   intents?: string[];
+  priceTiers: PriceTierSlug[];
   budgetMin: number;
   budgetMax: number;
   travelMode: string;
@@ -55,6 +57,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       location?.lng,
       params.categories.sort().join(','),
       (params.intents ?? []).sort().join(','),
+      (params.priceTiers ?? []).sort().join(','),
       params.budgetMin,
       params.budgetMax,
       params.travelMode,

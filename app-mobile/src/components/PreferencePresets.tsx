@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { spacing, colors, typography, fontWeights, radius, shadows } from '../constants/designSystem';
 import { useHapticFeedback } from '../utils/hapticFeedback';
 import { ActivePreferences } from '../types';
+import { PriceTierSlug } from '../constants/priceTiers';
 
 interface PresetConfig {
   id: string;
@@ -24,7 +25,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
     preferences: {
       experienceTypes: ['Romantic', 'First Date'],
       groupSize: 2,
-      budgetRange: [50, 150] as [number, number],
+      priceTiers: ['comfy'] as PriceTierSlug[],
       categories: ['dining', 'sip', 'stroll'],
       travelTime: 30,
       travelDistance: 15,
@@ -39,7 +40,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
     preferences: {
       experienceTypes: ['Adventure', 'Outdoor'],
       groupSize: 4,
-      budgetRange: [25, 75] as [number, number],
+      priceTiers: ['chill', 'comfy'] as PriceTierSlug[],
       categories: ['play_move', 'creative', 'freestyle'],
       travelTime: 60,
       travelDistance: 25,
@@ -54,7 +55,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
     preferences: {
       experienceTypes: ['Relaxed', 'Casual'],
       groupSize: 3,
-      budgetRange: [20, 60] as [number, number],
+      priceTiers: ['chill'] as PriceTierSlug[],
       categories: ['screen_relax', 'sip', 'casual_eats'],
       travelTime: 20,
       travelDistance: 10,
@@ -69,7 +70,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
     preferences: {
       experienceTypes: ['Food & Drink', 'Cultural'],
       groupSize: 2,
-      budgetRange: [40, 120] as [number, number],
+      priceTiers: ['comfy', 'bougie'] as PriceTierSlug[],
       categories: ['dining', 'sip', 'casual_eats'],
       travelTime: 45,
       travelDistance: 20,
@@ -84,7 +85,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
     preferences: {
       experienceTypes: ['Family', 'Kid-Friendly'],
       groupSize: 4,
-      budgetRange: [30, 80] as [number, number],
+      priceTiers: ['chill', 'comfy'] as PriceTierSlug[],
       categories: ['play_move', 'creative', 'freestyle'],
       travelTime: 30,
       travelDistance: 15,
@@ -99,7 +100,7 @@ const PRESET_CONFIGS: PresetConfig[] = [
     preferences: {
       experienceTypes: ['Solo', 'Self-Care'],
       groupSize: 1,
-      budgetRange: [15, 50] as [number, number],
+      priceTiers: ['chill'] as PriceTierSlug[],
       categories: ['stroll', 'screen_relax', 'creative'],
       travelTime: 25,
       travelDistance: 12,
@@ -131,8 +132,7 @@ export const PreferencePresets: React.FC<PreferencePresetsProps> = ({
       const { preferences } = preset;
       if (
         preferences.groupSize === currentPreferences.groupSize &&
-        preferences.budgetRange?.[0] === currentPreferences.budgetRange[0] &&
-        preferences.budgetRange?.[1] === currentPreferences.budgetRange[1] &&
+        JSON.stringify([...(preferences.priceTiers ?? [])].sort()) === JSON.stringify([...(currentPreferences.priceTiers ?? [])].sort()) &&
         preferences.travelTime === currentPreferences.travelTime
       ) {
         return preset.id;

@@ -8,6 +8,7 @@ import {
   ALL_CATEGORY_NAMES,
   DISCOVER_EXCLUDED_PLACE_TYPES,
 } from '../_shared/categoryPlaceTypes.ts';
+import { priceLevelToRange, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 // resolveCategories no longer used — per-category selection handles this directly
 
 const corsHeaders = {
@@ -1099,14 +1100,9 @@ function transformPlaceToDiscoverPlace(
     )
     .filter((img: string | null): img is string => img !== null);
 
-  // Convert price level to min/max
-  const priceLevel = place.priceLevel || 0;
-  const priceLevelNum = typeof priceLevel === 'string' 
-    ? ['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE', 'PRICE_LEVEL_MODERATE', 'PRICE_LEVEL_EXPENSIVE', 'PRICE_LEVEL_VERY_EXPENSIVE'].indexOf(priceLevel)
-    : priceLevel;
-  
-  const price_min = priceLevelNum <= 0 ? 0 : priceLevelNum === 1 ? 0 : priceLevelNum === 2 ? 15 : priceLevelNum === 3 ? 50 : 100;
-  const price_max = priceLevelNum <= 0 ? 0 : priceLevelNum === 1 ? 25 : priceLevelNum === 2 ? 75 : priceLevelNum === 3 ? 150 : 500;
+  // Convert price level to min/max using shared tier system
+  const priceRange = priceLevelToRange(place.priceLevel);
+  const priceTier = googleLevelToTierSlug(place.priceLevel);
 
   return {
     id: place.id,
@@ -1128,9 +1124,10 @@ function transformPlaceToDiscoverPlace(
           weekday_text: place.regularOpeningHours.weekdayDescriptions || [],
         }
       : null,
-    priceLevel: priceLevelNum,
-    price_min,
-    price_max,
+    priceLevel: place.priceLevel,
+    price_min: priceRange.min,
+    price_max: priceRange.max,
+    priceTier,
     placeTypes: place.types || [],
     website: place.websiteUri || null,
   };

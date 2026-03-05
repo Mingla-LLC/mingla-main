@@ -1,7 +1,10 @@
 import type { RecommendationsRequest } from '../types';
+import { PriceTierSlug, TIER_BY_SLUG } from '../constants/priceTiers';
 
 interface PreferencesSheetState {
-  budgetRange: [number, number];
+  priceTiers: PriceTierSlug[];
+  /** @deprecated Use priceTiers instead */
+  budgetRange?: [number, number];
   categories: string[];
   experienceTypes?: string[];
   time: string;
@@ -53,11 +56,7 @@ export const convertPreferencesToRequest = (
   };
 
   return {
-    budget: {
-      min: preferences.budgetRange[0],
-      max: preferences.budgetRange[1],
-      perPerson: true
-    },
+    priceTiers: preferences.priceTiers,
     categories: preferences.categories,
     experienceTypes: preferences.experienceTypes || [],
     timeWindow,

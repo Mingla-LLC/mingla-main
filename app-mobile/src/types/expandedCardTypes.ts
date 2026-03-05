@@ -3,6 +3,7 @@
  */
 
 import { CuratedStop } from './curatedExperience';
+import { PriceTierSlug } from '../constants/priceTiers';
 
 export interface ExpandedCardData {
   id: string;
@@ -129,6 +130,7 @@ export interface ExpandedCardData {
   estimatedDurationMinutes?: number;
   pairingKey?: string;
   experienceType?: string;
+  priceTier?: PriceTierSlug;
   // Night Out-specific data
   nightOutData?: {
     eventName: string;

@@ -48,10 +48,10 @@ import {
   LoadingShimmer,
 } from "./PreferencesSheet/PreferencesSections";
 import {
-  BudgetSection,
   TravelLimitSection,
   LocationInputSection,
 } from "./PreferencesSheet/PreferencesSectionsAdvanced";
+import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
 
 interface PreferencesSheetProps {
   visible?: boolean;
@@ -77,13 +77,7 @@ const experienceTypes = [
   { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
-// Budget presets
-const budgetPresets = [
-  { label: "Up to $25",  max: 25  },
-  { label: "Up to $50",  max: 50  },
-  { label: "Up to $100", max: 100 },
-  { label: "Up to $150", max: 150 },
-];
+// Budget presets removed — using PRICE_TIERS from constants/priceTiers
 
 // Categories with exact icons from image
 const categories = [
@@ -157,9 +151,8 @@ export default function PreferencesSheet({
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
 
-  // Budget
-  const [budgetMin, setBudgetMin] = useState<number | "">(0);
-  const [budgetMax, setBudgetMax] = useState<number | "">(200);
+  // Price Tiers
+  const [selectedPriceTiers, setSelectedPriceTiers] = useState<PriceTierSlug[]>(['chill', 'comfy', 'bougie', 'lavish']);
 
   // Categories
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -267,6 +260,7 @@ export default function PreferencesSheet({
   // Default preferences
   const defaultPreferences = {
     selectedIntents: [],
+    selectedPriceTiers: ['chill', 'comfy', 'bougie', 'lavish'] as PriceTierSlug[],
     budgetMin: 0,
     budgetMax: 200,
     selectedCategories: [],
@@ -311,11 +305,8 @@ export default function PreferencesSheet({
         setSelectedIntents(loadedIntents);
         setSelectedCategories(loadedCats);
       }
-      if ((loadedPreferences as any).budget_min !== undefined) {
-        setBudgetMin((loadedPreferences as any).budget_min);
-      }
-      if ((loadedPreferences as any).budget_max !== undefined) {
-        setBudgetMax((loadedPreferences as any).budget_max);
+      if (Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0) {
+        setSelectedPriceTiers((loadedPreferences as any).price_tiers);
       }
       if ((loadedPreferences as any).travel_mode) {
         setTravelMode((loadedPreferences as any).travel_mode);
@@ -354,6 +345,9 @@ export default function PreferencesSheet({
           : (loadedPreferences.categories || []).filter((item: string) =>
               intentIds.has(item)
             ),
+        selectedPriceTiers: Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0
+          ? (loadedPreferences as any).price_tiers
+          : ['chill', 'comfy', 'bougie', 'lavish'],
         budgetMin: (loadedPreferences as any).budget_min || 0,
         budgetMax: (loadedPreferences as any).budget_max || 200,
         selectedCategories: collabHasIntents
@@ -408,10 +402,9 @@ export default function PreferencesSheet({
         setSelectedCategories(loadedCategories);
       }
 
-      if (loadedPreferences.budget_min !== undefined)
-        setBudgetMin(loadedPreferences.budget_min || 0);
-      if (loadedPreferences.budget_max !== undefined)
-        setBudgetMax(loadedPreferences.budget_max || 200);
+      if (Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0) {
+        setSelectedPriceTiers((loadedPreferences as any).price_tiers);
+      }
 
       if (loadedPreferences.travel_mode) {
         setTravelMode(loadedPreferences.travel_mode);
@@ -476,6 +469,9 @@ export default function PreferencesSheet({
         selectedIntents: hasIntentsField
           ? (loadedPreferences as any).intents
           : (loadedPreferences.categories || []).filter((item: string) => intentIdSet.has(item)),
+        selectedPriceTiers: Array.isArray((loadedPreferences as any).price_tiers) && (loadedPreferences as any).price_tiers.length > 0
+          ? (loadedPreferences as any).price_tiers
+          : ['chill', 'comfy', 'bougie', 'lavish'],
         budgetMin: loadedPreferences.budget_min || 0,
         budgetMax: loadedPreferences.budget_max || 200,
         selectedCategories: hasIntentsField
@@ -520,9 +516,14 @@ export default function PreferencesSheet({
     );
   }, []);
 
-  const setBudgetPreset = useCallback((max: number) => {
-    setBudgetMin(0);
-    setBudgetMax(max);
+  const handlePriceTierToggle = useCallback((slug: PriceTierSlug) => {
+    setSelectedPriceTiers((prev) => {
+      const next = prev.includes(slug)
+        ? prev.filter((s) => s !== slug)
+        : [...prev, slug];
+      // Enforce min 1
+      return next.length === 0 ? prev : next;
+    });
   }, []);
 
   const handleDateOptionSelect = useCallback((option: DateOption) => {
@@ -717,8 +718,8 @@ export default function PreferencesSheet({
 
     if (!arraysEqual(selectedIntents, initialPreferences.selectedIntents))
       changes++;
-    if (budgetMin !== initialPreferences.budgetMin) changes++;
-    if (budgetMax !== initialPreferences.budgetMax) changes++;
+    if (!arraysEqual([...selectedPriceTiers].sort(), [...(initialPreferences.selectedPriceTiers || [])].sort()))
+      changes++;
     if (
       !arraysEqual(selectedCategories, initialPreferences.selectedCategories)
     )
@@ -743,8 +744,7 @@ export default function PreferencesSheet({
   }, [
     initialPreferences,
     selectedIntents,
-    budgetMin,
-    budgetMax,
+    selectedPriceTiers,
     selectedCategories,
     selectedDateOption,
     selectedTimeSlot,
@@ -759,8 +759,7 @@ export default function PreferencesSheet({
   const handleReset = useCallback(() => {
     mixpanelService.trackPreferencesReset(isCollaborationMode);
     setSelectedIntents(defaultPreferences.selectedIntents);
-    setBudgetMin(defaultPreferences.budgetMin);
-    setBudgetMax(defaultPreferences.budgetMax);
+    setSelectedPriceTiers(defaultPreferences.selectedPriceTiers);
     setSelectedCategories(defaultPreferences.selectedCategories);
     setSelectedDateOption(defaultPreferences.selectedDateOption);
     setSelectedTimeSlot(defaultPreferences.selectedTimeSlot);
@@ -782,10 +781,15 @@ export default function PreferencesSheet({
         ? `${selectedCoords.lat},${selectedCoords.lng}`
         : searchLocation || null;
 
+    // Compute backward-compat budget from selected tiers
+    const highestTier = PRICE_TIERS.slice().reverse().find(t => selectedPriceTiers.includes(t.slug));
+    const backCompatBudgetMax = highestTier?.max ?? 1000;
+
     const preferences = {
       selectedIntents,
-      budgetMin,
-      budgetMax,
+      priceTiers: selectedPriceTiers,
+      budgetMin: 0,
+      budgetMax: backCompatBudgetMax,
       selectedCategories,
       dateOption: selectedDateOption,
       selectedDate: selectedDate?.toISOString(),
@@ -812,8 +816,9 @@ export default function PreferencesSheet({
           const dbPrefs: any = {
             categories: finalCategories,
             intents: selectedIntents,
-            budget_min: typeof budgetMin === "number" ? budgetMin : 0,
-            budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
+            price_tiers: selectedPriceTiers,
+            budget_min: 0,
+            budget_max: backCompatBudgetMax,
             travel_mode: travelMode,
             travel_constraint_type: constraintType,
             travel_constraint_value:
@@ -880,8 +885,7 @@ export default function PreferencesSheet({
     }
   }, [
     selectedIntents,
-    budgetMin,
-    budgetMax,
+    selectedPriceTiers,
     selectedCategories,
     selectedDateOption,
     selectedDate,
@@ -943,19 +947,33 @@ export default function PreferencesSheet({
             onCategoryToggle={handleCategoryToggle}
           />
 
-          {/* Budget Section */}
-          <BudgetSection
-            budgetMax={budgetMax}
-            budgetPresets={budgetPresets}
-            onBudgetChange={(text) => {
-              setBudgetMax(text ? Number(text) : "");
-              setBudgetMin(0);
-            }}
-            onBudgetPresetClick={setBudgetPreset}
-            onFocus={() => scrollToField(budgetInputContainerRef)}
-            accountPreferences={accountPreferences}
-            shouldHide={selectedCategories.length === 1 && selectedCategories[0] === "nature"}
-          />
+          {/* Price Tier Section */}
+          {!(selectedCategories.length === 1 && selectedCategories[0] === "nature") && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Price Range</Text>
+              <Text style={styles.sectionSubtitle}>Pick all the tiers that work for you</Text>
+              <View style={styles.tierGrid}>
+                {PRICE_TIERS.map((tier) => {
+                  const isActive = selectedPriceTiers.includes(tier.slug);
+                  return (
+                    <TouchableOpacity
+                      key={tier.slug}
+                      style={[
+                        styles.tierTile,
+                        isActive && { borderColor: tier.color, backgroundColor: `${tier.color}14` },
+                      ]}
+                      onPress={() => handlePriceTierToggle(tier.slug)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={tier.icon as any} size={20} color={isActive ? tier.color : '#9CA3AF'} />
+                      <Text style={[styles.tierLabel, isActive && { color: tier.color, fontWeight: '700' as const }]}>{tier.label}</Text>
+                      <Text style={[styles.tierRange, isActive && { color: tier.color }]}>{tier.rangeLabel}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
 
           {/* Date & Time Section */}
           <DateTimeSection
@@ -1413,6 +1431,31 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: "#374151",
     fontWeight: "500",
+  },
+  tierGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  tierTile: {
+    width: "47%" as any,
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#d1d5db",
+    backgroundColor: "#ffffff",
+    gap: 4,
+  },
+  tierLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+  },
+  tierRange: {
+    fontSize: 11,
+    color: "#9CA3AF",
   },
   categoriesContainer: {
     flexDirection: "row",

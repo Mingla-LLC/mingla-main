@@ -12,6 +12,7 @@ import { offlineService } from "../services/offlineService";
 import { inAppNotificationService } from "../services/inAppNotificationService";
 import { useAppStore } from "../store/appStore";
 import { computePrefsHash } from "../utils/cardConverters";
+import { TIER_BY_SLUG, PRICE_TIERS, PriceTierSlug } from '../constants/priceTiers';
 
 export function useAppHandlers(state: any) {
   const queryClient = useQueryClient();
@@ -140,15 +141,16 @@ export function useAppHandlers(state: any) {
     if (sessionId) {
       // Transform preferences to database format
       // Separate intents and categories — matches solo preferences table schema.
+      const collabTiers: PriceTierSlug[] = preferences.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
+      const collabHighest = PRICE_TIERS.slice().reverse().find(t => collabTiers.includes(t.slug));
+      const collabBudgetMax = collabHighest?.max ?? 150;
+
       const dbPreferences: any = {
         categories: preferences.selectedCategories || [],
         intents: preferences.selectedIntents || [],
-        budget_min:
-          typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
-        budget_max:
-          typeof preferences.budgetMax === "number"
-            ? preferences.budgetMax
-            : 1000,
+        price_tiers: collabTiers,
+        budget_min: 0,
+        budget_max: collabBudgetMax,
         travel_mode: preferences.travelMode || "walking",
         travel_constraint_type: preferences.constraintType || "time",
         travel_constraint_value:
@@ -188,8 +190,9 @@ export function useAppHandlers(state: any) {
       const soloDB: any = {
         mode: preferences.selectedIntents?.length > 0 ? "custom" : "explore",
         people_count: 1,
-        budget_min: typeof preferences.budgetMin === "number" ? preferences.budgetMin : 0,
-        budget_max: typeof preferences.budgetMax === "number" ? preferences.budgetMax : 1000,
+        price_tiers: collabTiers,
+        budget_min: 0,
+        budget_max: collabBudgetMax,
         categories: preferences.selectedCategories || [],
         intents: preferences.selectedIntents || [],
         travel_mode: preferences.travelMode || "walking",
@@ -592,21 +595,17 @@ export function useAppHandlers(state: any) {
         preferences.travelMode ||
         "walking";
 
+      // Compute backward-compat budget from price tiers
+      const userTiers: PriceTierSlug[] = preferences.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
+      const highestTier = PRICE_TIERS.slice().reverse().find(t => userTiers.includes(t.slug));
+      const backCompatBudgetMax = highestTier?.max ?? 1000;
+
       const dbPreferences: any = {
         mode: preferences.selectedIntents?.length > 0 ? "custom" : "explore",
         people_count: 1,
-        budget_min:
-          typeof preferences.budgetMin === "number"
-            ? preferences.budgetMin
-            : preferences.budgetMin !== ""
-            ? Number(preferences.budgetMin)
-            : 0,
-        budget_max:
-          typeof preferences.budgetMax === "number"
-            ? preferences.budgetMax
-            : preferences.budgetMax !== ""
-            ? Number(preferences.budgetMax)
-            : 1000,
+        price_tiers: userTiers,
+        budget_min: 0,
+        budget_max: backCompatBudgetMax,
         categories: preferences.selectedCategories || [],
         intents: preferences.selectedIntents || [],
         travel_mode: normalizedTravelMode,
@@ -662,6 +661,7 @@ export function useAppHandlers(state: any) {
           // Optimistic cache update
           queryClient.setQueryData(["userPreferences", user.id], {
             mode: dbPreferences.mode,
+            price_tiers: dbPreferences.price_tiers,
             budget_min: dbPreferences.budget_min,
             budget_max: dbPreferences.budget_max,
             people_count: dbPreferences.people_count,

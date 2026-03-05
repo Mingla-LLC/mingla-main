@@ -1,5 +1,6 @@
 import * as Calendar from 'expo-calendar';
 import { Platform, Alert } from 'react-native';
+import { googleLevelToTierSlug, tierLabel, tierRangeLabel } from '../constants/priceTiers';
 
 export interface DeviceCalendarEvent {
   title: string;
@@ -152,7 +153,10 @@ export class DeviceCalendarService {
     if (card.highlights && card.highlights.length > 0) {
       notesParts.push(`\n\nHighlights:\n${card.highlights.join('\n• ')}`);
     }
-    if (card.priceRange && card.priceRange !== 'TBD') {
+    if (card.priceTier || card.priceLevel != null) {
+      const tier = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
+      notesParts.push(`\n\nPrice: ${tierLabel(tier)} (${tierRangeLabel(tier)})`);
+    } else if (card.priceRange && card.priceRange !== 'TBD') {
       notesParts.push(`\n\nPrice: ${card.priceRange}`);
     }
     if (card.rating) {
@@ -190,7 +194,12 @@ export class DeviceCalendarService {
     const stops = card.stops || [];
     const stopNames = stops.map((s: any) => s.placeName).join(' → ');
     const stopDetails = stops
-      .map((s: any, i: number) => `Stop ${i + 1}: ${s.placeName}\nAddress: ${s.address}\nRating: ${s.rating}⭐`)
+      .map((s: any, i: number) => {
+        const priceLine = s.priceTier
+          ? `\nPrice: ${tierLabel(s.priceTier)} (${tierRangeLabel(s.priceTier)})`
+          : '';
+        return `Stop ${i + 1}: ${s.placeName}\nAddress: ${s.address}\nRating: ${s.rating}⭐${priceLine}`;
+      })
       .join('\n\n');
 
     return {

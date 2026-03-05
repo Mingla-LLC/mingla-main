@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
 import { resolveCategories, getPlaceTypesForCategory, getExcludedTypesForCategory, GLOBAL_EXCLUDED_PLACE_TYPES, ROMANTIC_EXCLUDED_PLACE_TYPES } from '../_shared/categoryPlaceTypes.ts';
+import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -282,6 +283,7 @@ serve(async (req) => {
               priceMax: 0,
               openingHours: card.openingHours,
               website: card.website || null,
+              priceTier: card.priceTier,
             });
             if (cardId) cardPoolIds.push(cardId);
           }
@@ -1211,6 +1213,7 @@ function convertToCard(place: any, preferences: UserPreferences): any {
     matchFactors: place.matchFactors || {},
     openingHours: place.openingHours || null,
     website: place.websiteUri || null,
+    priceTier: googleLevelToTierSlug(place.priceLevel),
   };
 }
 

@@ -8,6 +8,7 @@ import {
   recordImpressions,
 } from '../_shared/cardPoolService.ts';
 import { getPlaceTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
+import { priceLevelToLabel, priceLevelToRange, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-picnic-park  –  Standalone Picnic Park Card System
@@ -73,28 +74,6 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
 function estimateTravelMin(distKm: number, mode: string): number {
   const speed = SPEED_KMH[mode] || 4.5;
   return Math.max(1, Math.round((distKm / speed) * 60 * 1.3));
-}
-
-function priceLevelToLabel(level: string | undefined): string {
-  const map: Record<string, string> = {
-    PRICE_LEVEL_FREE: 'Free',
-    PRICE_LEVEL_INEXPENSIVE: '$',
-    PRICE_LEVEL_MODERATE: '$$',
-    PRICE_LEVEL_EXPENSIVE: '$$$',
-    PRICE_LEVEL_VERY_EXPENSIVE: '$$$$',
-  };
-  return map[level ?? ''] ?? 'Free';
-}
-
-function priceLevelToRange(level: string | undefined): { min: number; max: number } {
-  const ranges: Record<string, { min: number; max: number }> = {
-    PRICE_LEVEL_FREE: { min: 0, max: 0 },
-    PRICE_LEVEL_INEXPENSIVE: { min: 5, max: 15 },
-    PRICE_LEVEL_MODERATE: { min: 15, max: 35 },
-    PRICE_LEVEL_EXPENSIVE: { min: 35, max: 75 },
-    PRICE_LEVEL_VERY_EXPENSIVE: { min: 75, max: 150 },
-  };
-  return ranges[level ?? ''] ?? { min: 0, max: 0 };
 }
 
 function getPhotoUrl(place: any): string {
@@ -470,6 +449,7 @@ serve(async (req: Request) => {
         priceLevelLabel: priceLevelToLabel(p.priceLevel),
         priceMin: priceRange.min,
         priceMax: priceRange.max,
+        priceTier: googleLevelToTierSlug(p.priceLevel),
         address: p.formattedAddress || '',
         openingHours: hours,
         isOpenNow,
@@ -512,6 +492,7 @@ serve(async (req: Request) => {
               reviewCount: card.reviewCount,
               priceMin: card.priceMin,
               priceMax: card.priceMax,
+              priceTier: card.priceTier,
               openingHours: card.openingHours,
             });
           }

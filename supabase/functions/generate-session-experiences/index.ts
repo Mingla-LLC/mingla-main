@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
 import { resolveCategories, getPlaceTypesForCategory, getExcludedTypesForCategory } from '../_shared/categoryPlaceTypes.ts';
+import { priceLevelToRange, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -798,30 +799,9 @@ async function fetchGooglePlaces(
           : null,
         placeTypes: place.types || [],
         website: place.websiteUri || null,
-        price_min:
-          place.priceLevel === undefined || place.priceLevel === null
-            ? 0
-            : place.priceLevel === 0
-            ? 0
-            : place.priceLevel === 1
-            ? 0
-            : place.priceLevel === 2
-            ? 15
-            : place.priceLevel === 3
-            ? 50
-            : 100,
-        price_max:
-          place.priceLevel === undefined || place.priceLevel === null
-            ? 0
-            : place.priceLevel === 0
-            ? 0
-            : place.priceLevel === 1
-            ? 25
-            : place.priceLevel === 2
-            ? 75
-            : place.priceLevel === 3
-            ? 150
-            : 500,
+        price_min: priceLevelToRange(place.priceLevel).min,
+        price_max: priceLevelToRange(place.priceLevel).max,
+        priceTier: googleLevelToTierSlug(place.priceLevel),
       };
     });
 

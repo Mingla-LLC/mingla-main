@@ -1,3 +1,5 @@
+import { PriceTierSlug } from '../constants/priceTiers';
+
 export interface User {
   id: string;
   email: string;
@@ -28,11 +30,7 @@ export interface User {
 
 // Lovable recommendation types
 export interface RecommendationsRequest {
-  budget: {
-    min: number;
-    max: number;
-    perPerson: boolean;
-  };
+  priceTiers: PriceTierSlug[];
   categories: string[];
   experienceTypes?: string[];
   timeWindow: {
@@ -91,6 +89,7 @@ export interface RecommendationCard {
     save: boolean;
     share: boolean;
   };
+  priceTier?: string;
   rating?: number;
   reviewCount?: number;
   openingHours?: {
@@ -165,7 +164,7 @@ export interface SessionState {
 
 // Preferences types for Lovable compatibility
 export interface ActivePreferences {
-  budgetRange: [number, number];
+  priceTiers: PriceTierSlug[];
   categories: string[];
   experienceTypes: string[];
   time: string;
@@ -185,6 +184,7 @@ export interface Preferences {
   mode: string;
   budget_min: number;
   budget_max: number;
+  price_tiers: PriceTierSlug[];
   people_count: number;
   categories: string[];
   travel_mode: string;

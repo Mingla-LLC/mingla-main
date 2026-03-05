@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
+import { priceLevelToRange, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -94,15 +95,8 @@ serve(async (req) => {
         ? `https://places.googleapis.com/v1/${primaryPhoto.name}/media?maxWidthPx=400&key=${apiKey}`
         : `https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400`;
 
-      // Map priceLevel enum to numeric range
-      const priceLevelMap: Record<string, number> = {
-        'PRICE_LEVEL_FREE': 0,
-        'PRICE_LEVEL_INEXPENSIVE': 1,
-        'PRICE_LEVEL_MODERATE': 2,
-        'PRICE_LEVEL_EXPENSIVE': 3,
-        'PRICE_LEVEL_VERY_EXPENSIVE': 4,
-      };
-      const priceNum = priceLevelMap[place.priceLevel] ?? 0;
+      // Map priceLevel to range using shared tier system
+      const priceRange = priceLevelToRange(place.priceLevel);
 
       // Convert regularOpeningHours to our format
       const openingHours = place.regularOpeningHours?.periods ?
@@ -124,8 +118,9 @@ serve(async (req) => {
         place_id: place.id,
         lat: place.location?.latitude,
         lng: place.location?.longitude,
-        price_min: priceNum * 10,
-        price_max: (priceNum + 1) * 20,
+        price_min: priceRange.min,
+        price_max: priceRange.max,
+        price_tier: googleLevelToTierSlug(place.priceLevel),
         duration_min: category_slug === 'stroll' ? 60 : category_slug === 'dining' ? 120 : 90,
         image_url: imageUrl,
         opening_hours: openingHours,

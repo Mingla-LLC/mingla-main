@@ -18,12 +18,14 @@ import {
   roundRobinInterleave,
 } from '../utils/cardConverters';
 import { getCategoryIcon } from '../utils/categoryUtils';
+import { PriceTierSlug, googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
 import type { Recommendation } from '../types/recommendation';
 
 export interface DeckParams {
   location: { lat: number; lng: number };
   categories: string[];
   intents?: string[];
+  priceTiers: PriceTierSlug[];
   budgetMin: number;
   budgetMax: number;
   travelMode: string;
@@ -72,15 +74,11 @@ const PILL_TO_CATEGORY_NAME: Record<string, string> = {
  */
 function unifiedCardToRecommendation(card: any): Recommendation {
   // Defensive: ensure numeric fields are never undefined (edge fn may omit them)
-  const priceMin = card.priceMin ?? 0;
-  const priceMax = card.priceMax ?? 0;
   const distanceKm = card.distanceKm ?? 0;
   const travelTimeMin = card.travelTimeMin ?? 0;
 
-  const priceText =
-    priceMin === 0 && priceMax === 0
-      ? 'Free'
-      : `$${priceMin}–$${priceMax}`;
+  const priceTier: PriceTierSlug = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
+  const priceText = tierLabel(priceTier);
 
   const category = card.category || 'Nature';
   const experienceType = category.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_');
@@ -121,6 +119,7 @@ function unifiedCardToRecommendation(card: any): Recommendation {
     reviewCount: card.reviewCount ?? 0,
     website: card.website,
     placeId: card.placeId,
+    priceTier,
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
     matchFactors: {
       location: 0.5,
@@ -255,6 +254,7 @@ class DeckService {
               body: {
                 categories: categoryNames,
                 location: params.location,
+                priceTiers: params.priceTiers,
                 budgetMax: params.budgetMax,
                 travelMode: params.travelMode,
                 travelConstraintType: params.travelConstraintType,
@@ -303,6 +303,7 @@ class DeckService {
             const cards = await curatedExperiencesService.generateCuratedExperiences({
               experienceType: pill.id as any,
               location: params.location,
+              priceTiers: params.priceTiers,
               budgetMin: params.budgetMin,
               budgetMax: params.budgetMax,
               travelMode: params.travelMode,
@@ -401,6 +402,7 @@ class DeckService {
             body: {
               categories: categoryNames,
               location: params.location,
+              priceTiers: params.priceTiers,
               budgetMax: params.budgetMax,
               travelMode: params.travelMode,
               travelConstraintType: params.travelConstraintType,

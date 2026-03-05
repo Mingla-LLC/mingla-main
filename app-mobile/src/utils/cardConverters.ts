@@ -62,6 +62,7 @@ export function curatedToRecommendation(card: any): Recommendation {
     totalPriceMax: card.totalPriceMax,
     estimatedDurationMinutes: card.estimatedDurationMinutes,
     pairingKey: card.pairingKey,
+    priceTier: card.stops?.[0]?.priceTier ?? 'comfy',
     tagline: card.tagline,
     categoryLabel: card.categoryLabel || 'Experience',
     id: card.id,
@@ -133,6 +134,7 @@ export function computePrefsHash(prefs: any): string {
   if (!prefs) return '';
   const key = [
     Array.isArray(prefs.categories) ? [...prefs.categories].sort().join(',') : '',
+    Array.isArray(prefs.price_tiers) ? [...prefs.price_tiers].sort().join(',') : '',
     prefs.budget_min ?? '',
     prefs.budget_max ?? '',
     prefs.travel_mode ?? '',

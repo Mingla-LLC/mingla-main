@@ -16,6 +16,7 @@ import {
   ROMANTIC_EXCLUDED_PLACE_TYPES,
   filterExcludedPlaces,
 } from './categoryPlaceTypes.ts';
+import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ export interface PoolQueryParams {
   experienceType?: string;         // for curated: 'adventurous', 'romantic', etc.
   excludeCardIds?: string[];       // additional exclusions
   offset?: number;                 // skip this many unique cards before returning (for batch pagination)
+  priceTiers?: PriceTierSlug[];    // price tier filter (e.g., ['chill', 'comfy'])
 }
 
 export interface PoolQueryResult {
@@ -42,26 +44,6 @@ export interface PoolQueryResult {
   totalPoolSize: number;           // DEPRECATED — kept for backward compat; equals totalUnseenCount now
   totalUnseenCount: number;        // total UNSEEN cards remaining in pool after this batch
   hasMore: boolean;                // true if more unseen cards exist beyond this batch
-}
-
-// ── Price mapping (matches new-generate-experience- pattern) ────────────────
-
-const PRICE_LEVEL_TO_RANGE: Record<string, { min: number; max: number }> = {
-  'PRICE_LEVEL_FREE':            { min: 0,   max: 0 },
-  'PRICE_LEVEL_INEXPENSIVE':     { min: 0,   max: 25 },
-  'PRICE_LEVEL_MODERATE':        { min: 15,  max: 75 },
-  'PRICE_LEVEL_EXPENSIVE':       { min: 50,  max: 150 },
-  'PRICE_LEVEL_VERY_EXPENSIVE':  { min: 100, max: 500 },
-};
-
-function priceLevelToRange(priceLevel: string | number | null | undefined): { min: number; max: number } {
-  if (!priceLevel) return { min: 0, max: 0 };
-  // Handle numeric levels (0-4)
-  if (typeof priceLevel === 'number') {
-    const levels = ['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE', 'PRICE_LEVEL_MODERATE', 'PRICE_LEVEL_EXPENSIVE', 'PRICE_LEVEL_VERY_EXPENSIVE'];
-    return PRICE_LEVEL_TO_RANGE[levels[priceLevel] || 'PRICE_LEVEL_FREE'] || { min: 0, max: 0 };
-  }
-  return PRICE_LEVEL_TO_RANGE[priceLevel] || { min: 0, max: 0 };
 }
 
 // ── Helper: Google Places photo URL ─────────────────────────────────────────
@@ -122,6 +104,7 @@ async function queryPoolCards(
     p_experience_type: experienceType || null,
     p_pref_updated_at: prefUpdatedAt,
     p_exclude_card_ids: excludeCardIds || [],
+    p_price_tiers: params.priceTiers && params.priceTiers.length > 0 ? params.priceTiers : [],
     p_limit: limit,
     p_offset: offset,
   });
@@ -180,6 +163,7 @@ export async function upsertPlaceToPool(
     website: place.websiteUri || place.website || null,
     raw_google_data: place,
     fetched_via: fetchedVia,
+    price_tier: googleLevelToTierSlug(place.priceLevel),
     last_detail_refresh: new Date().toISOString(),
     refresh_failures: 0,
     is_active: true,
@@ -240,6 +224,8 @@ export async function insertCardToPool(
     estimatedDurationMinutes?: number;
     shoppingList?: string[] | null;
     website?: string | null;
+    priceTier?: PriceTierSlug;
+    priceLevel?: string;
   }
 ): Promise<string | null> {
   const popularityScore = (cardData.rating || 0) * Math.log10((cardData.reviewCount || 0) + 1);
@@ -264,6 +250,7 @@ export async function insertCardToPool(
     price_max: cardData.priceMax ?? 0,
     opening_hours: cardData.openingHours || null,
     website: cardData.website || null,
+    price_tier: cardData.priceTier ?? googleLevelToTierSlug(cardData.priceLevel),
     popularity_score: popularityScore,
     is_active: true,
   };
@@ -387,6 +374,7 @@ function buildSingleCardFromPlace(
     placeType: place.primary_type || 'place',
     placeTypeLabel: (place.primary_type || '').replace(/_/g, ' '),
     website: place.website || null,
+    priceTier: place.price_tier ?? googleLevelToTierSlug(place.price_level),
     matchFactors: {},
   };
 }
@@ -504,6 +492,7 @@ function poolCardToApiCard(
       experienceType: card.experience_type || '',
       openingHours: resolveOpeningHours(card.opening_hours).hours,
       website: card.website || null,
+      priceTier: card.price_tier ?? 'chill',
       _poolCardId: card.id,
     };
   }
@@ -543,6 +532,7 @@ function poolCardToApiCard(
     placeType: card.primary_type || 'place',
     placeTypeLabel: card.primary_type ? card.primary_type.replace(/_/g, ' ') : '',
     website: card.website || null,
+    priceTier: card.price_tier ?? 'chill',
     matchFactors: {},
     _poolCardId: card.id,
   };
@@ -769,6 +759,7 @@ export async function serveCardsFromPipeline(
         website: place.websiteUri || null,
         raw_google_data: place,
         fetched_via: 'nearby_search',
+        price_tier: googleLevelToTierSlug(place.priceLevel),
         last_detail_refresh: new Date().toISOString(),
         refresh_failures: 0,
         is_active: true,
@@ -826,6 +817,7 @@ export async function serveCardsFromPipeline(
         price_max: priceRange.max,
         opening_hours: parsedOH.hours ? { ...parsedOH.hours, _isOpenNow: parsedOH.isOpenNow } : null,
         website: place.websiteUri || null,
+        price_tier: googleLevelToTierSlug(place.priceLevel),
         popularity_score: popularityScore,
         is_active: true,
       };
@@ -895,8 +887,18 @@ export async function serveCardsFromPipeline(
         placeType: place.primaryType || place.types?.[0] || 'place',
         placeTypeLabel: (place.primaryType || place.types?.[0] || '').replace(/_/g, ' '),
         website: place.websiteUri || null,
+        priceTier: googleLevelToTierSlug(place.priceLevel),
         matchFactors: {},
         _poolCardId: cardPoolIdMap[googlePlaceId],
+      });
+    }
+
+    // ── Budget leak post-filter: exclude gap cards outside selected tiers ──
+    const priceTiers = params.priceTiers;
+    if (priceTiers && priceTiers.length > 0 && priceTiers.length < 4) {
+      gapCards = gapCards.filter(card => {
+        const cardTier = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
+        return priceTiers.includes(cardTier as PriceTierSlug);
       });
     }
   }

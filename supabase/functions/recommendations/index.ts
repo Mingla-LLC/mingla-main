@@ -5,6 +5,7 @@ import {
   getCategoryKeywords,
   resolveCategory,
 } from '../_shared/categoryPlaceTypes.ts';
+import { googleLevelToTierSlug, priceLevelToRange, PriceTierSlug, TIER_BY_SLUG } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,7 +27,7 @@ const EXPERIENCE_TYPE_ATTRIBUTES = {
     ambience: ["romantic", "casual", "upscale", "cozy", "energetic", "relaxed"],
   },
   practicalities: {
-    price_tier: ["budget", "moderate", "upscale", "luxury"],
+    price_tier: ["chill", "comfy", "bougie", "lavish"],
     parking: ["free", "paid", "valet", "street", "none"],
     wifi: ["free", "paid", "none"],
     reservation_required: ["required", "recommended", "not_needed"],
@@ -212,6 +213,7 @@ interface RecommendationsRequest {
   origin: { lat: number; lng: number };
   units: string;
   groupSize?: number; // New group size field
+  price_tiers?: PriceTierSlug[]; // Price tier filter
 }
 
 serve(async (req) => {
@@ -1156,23 +1158,24 @@ function filterByConstraints(
 
     // 4. Enhanced Budget Filter with Group Size Scaling
     const budget = preferences.budget;
+    const priceTiers = preferences.price_tiers;
     let estimatedCost = 0;
 
     if (candidate.source === "google_places") {
-      // Enhanced Google Maps price level mapping
-      const priceLevelMapping = {
-        1: { min: 10, max: 25, avg: 17 }, // $ = Budget
-        2: { min: 25, max: 50, avg: 37 }, // $$ = Moderate
-        3: { min: 50, max: 100, avg: 75 }, // $$$ = Expensive
-        4: { min: 100, max: 200, avg: 150 }, // $$$$ = Very Expensive
-      };
+      // Tier-based filtering when price_tiers provided
+      if (priceTiers && priceTiers.length > 0 && priceTiers.length < 4 && candidate.priceLevel) {
+        const tier = googleLevelToTierSlug(candidate.priceLevel);
+        if (!priceTiers.includes(tier)) {
+          return false;
+        }
+      }
 
-      const priceLevel = candidate.priceLevel || 2;
-      const priceInfo = priceLevelMapping[priceLevel] || priceLevelMapping[2];
-      estimatedCost = priceInfo.avg;
+      // Use shared price level mapping
+      const range = priceLevelToRange(candidate.priceLevel);
+      estimatedCost = (range.min + range.max) / 2;
 
       // Store price range for better filtering
-      candidate.priceRange = [priceInfo.min, priceInfo.max];
+      candidate.priceRange = [range.min, range.max];
     } else if (candidate.source === "eventbrite") {
       // Enhanced Eventbrite price handling
       if (candidate.price) {
@@ -1191,22 +1194,22 @@ function filterByConstraints(
     const groupSize = preferences.groupSize || 2;
     const totalCost = perPersonCost * groupSize;
 
-    // Enhanced budget filtering with fallback logic
-    if (perPersonCost < budget.min || perPersonCost > budget.max) {
-      // Check if we can expand the range slightly (±15%)
-      const expandedMin = budget.min * 0.85;
-      const expandedMax = budget.max * 1.15;
+    // Legacy budget filtering (fallback when no price_tiers)
+    if (!priceTiers || priceTiers.length === 0) {
+      if (perPersonCost < budget.min || perPersonCost > budget.max) {
+        const expandedMin = budget.min * 0.85;
+        const expandedMax = budget.max * 1.15;
 
-      if (perPersonCost < expandedMin || perPersonCost > expandedMax) {
-        return false;
+        if (perPersonCost < expandedMin || perPersonCost > expandedMax) {
+          return false;
+        }
+
+        candidate.budgetNearMiss = {
+          originalRange: [budget.min, budget.max],
+          actualCost: perPersonCost,
+          expansion: true,
+        };
       }
-
-      // Mark as near-miss for graceful handling
-      candidate.budgetNearMiss = {
-        originalRange: [budget.min, budget.max],
-        actualCost: perPersonCost,
-        expansion: true,
-      };
     }
 
     candidate.estimatedCost = Math.round(perPersonCost);
@@ -1720,9 +1723,10 @@ async function enrichWithLLM(
   const timeout = 4000; // 4 second timeout
 
   const enrichPromises = candidates.slice(0, 10).map(async (candidate) => {
+    const tierKey = preferences.price_tiers?.join(',') ?? `${preferences.budget.min}_${preferences.budget.max}`;
     const cacheKey = `${candidate.id}_${JSON.stringify(
       preferences.categories
-    )}_${preferences.budget.min}_${preferences.budget.max}`;
+    )}_${tierKey}`;
 
     // Check cache first
     const cached = llmCache.get(cacheKey);
@@ -1743,9 +1747,11 @@ ${candidate.rating ? `Rating: ${candidate.rating}/5` : ""}
 ${candidate.estimatedCost ? `Cost: $${candidate.estimatedCost}` : ""}
 ${candidate.source === "eventbrite" ? `Event Time: ${candidate.startTime}` : ""}
 
-User preferences: ${preferences.categories.join(", ")}, Budget: $${
-        preferences.budget.min
-      }-${preferences.budget.max}
+User preferences: ${preferences.categories.join(", ")}, Budget: ${
+        preferences.price_tiers && preferences.price_tiers.length > 0
+          ? preferences.price_tiers.map(s => TIER_BY_SLUG[s]?.label ?? s).join(', ')
+          : `$${preferences.budget.min}-${preferences.budget.max}`
+      }
 
 Respond with JSON only:
 {
@@ -1901,10 +1907,8 @@ async function convertToCards(
     const mapsDeepLink = `https://www.google.com/maps/dir/?api=1&origin=${preferences.origin.lat},${preferences.origin.lng}&destination=${candidate.location.lat},${candidate.location.lng}&travelmode=${mapsMode}`;
 
     // Generate subtitle
-    const priceSymbols = ["$", "$$", "$$$", "$$$$", "$$$$$"];
-    const priceDisplay = candidate.priceLevel
-      ? priceSymbols[candidate.priceLevel - 1]
-      : "$";
+    const tierSlug = googleLevelToTierSlug(candidate.priceLevel);
+    const priceDisplay = TIER_BY_SLUG[tierSlug]?.label ?? 'Chill';
     const categoryName =
       candidate.category.charAt(0).toUpperCase() +
       candidate.category.slice(1).replace("_", " & ");
@@ -1968,9 +1972,7 @@ async function convertToCards(
       subtitle,
       primary_category: candidate.category,
       distance_km: candidate.distanceKm || null,
-      price_tier: candidate.priceLevel
-        ? priceSymbols[candidate.priceLevel - 1]
-        : null,
+      price_tier: googleLevelToTierSlug(candidate.priceLevel),
       reason_codes: reasonCodes,
       category: candidate.category,
       priceLevel: candidate.priceLevel || 1,

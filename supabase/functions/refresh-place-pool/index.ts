@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -122,6 +123,7 @@ serve(async (req) => {
             rating,
             review_count: reviewCount,
             price_level: typeof priceLevel === 'string' ? priceLevel : null,
+            price_tier: googleLevelToTierSlug(priceLevel),
             opening_hours: data.regularOpeningHours || null,
             photos,
             website: data.websiteUri || null,

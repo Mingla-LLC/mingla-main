@@ -30,6 +30,7 @@ import {
 } from "../services/geocodingService";
 import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
 import { getRate } from "../services/currencyService";
+import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
 
 interface CollaborationPreferencesProps {
   isOpen: boolean;
@@ -55,13 +56,7 @@ const experienceTypes = [
   { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
-// Budget presets (USD base values)
-const budgetPresetsUSD = [
-  { min: 0, max: 25 },
-  { min: 0, max: 50 },
-  { min: 0, max: 100 },
-  { min: 0, max: 150 },
-];
+// Budget presets removed — using PRICE_TIERS from constants/priceTiers
 
 // Categories
 const categories = [
@@ -170,23 +165,11 @@ export default function CollaborationPreferences({
   const currencySymbol = getCurrencySymbol(accountPreferences?.currency);
   const currencyCode = accountPreferences?.currency || "USD";
 
-  // Dynamic budget presets with currency conversion
-  const budgetPresets = useMemo(() => {
-    const rate = getRate(currencyCode);
-    return budgetPresetsUSD.map((preset) => {
-      const convertedMin = Math.round(preset.min * rate);
-      const convertedMax = Math.round(preset.max * rate);
-      const label = `Up to ${currencySymbol}${formatNumberWithCommas(convertedMax)}`;
-      return { label, min: convertedMin, max: convertedMax };
-    });
-  }, [currencyCode, currencySymbol]);
-
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
 
-  // Budget
-  const [budgetMin, setBudgetMin] = useState<number | "">(0);
-  const [budgetMax, setBudgetMax] = useState<number | "">(200);
+  // Price Tiers
+  const [selectedPriceTiers, setSelectedPriceTiers] = useState<PriceTierSlug[]>(['chill', 'comfy', 'bougie', 'lavish']);
 
   // Categories
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -260,11 +243,8 @@ export default function CollaborationPreferences({
         // Fallback for older data that still uses experience_types column
         setSelectedIntents(dbPreferences.experience_types);
       }
-      if (dbPreferences.budget_min !== undefined) {
-        setBudgetMin(dbPreferences.budget_min);
-      }
-      if (dbPreferences.budget_max !== undefined) {
-        setBudgetMax(dbPreferences.budget_max);
+      if (Array.isArray(dbPreferences.price_tiers) && dbPreferences.price_tiers.length > 0) {
+        setSelectedPriceTiers(dbPreferences.price_tiers);
       }
       // Note: group_size column doesn't exist in board_session_preferences table
       // Group size is determined by the number of participants in the session
@@ -356,9 +336,13 @@ export default function CollaborationPreferences({
     );
   };
 
-  const setBudgetPreset = (min: number, max: number) => {
-    setBudgetMin(min);
-    setBudgetMax(max);
+  const handlePriceTierToggle = (slug: PriceTierSlug) => {
+    setSelectedPriceTiers((prev) => {
+      const next = prev.includes(slug)
+        ? prev.filter((s) => s !== slug)
+        : [...prev, slug];
+      return next.length === 0 ? prev : next;
+    });
   };
 
   const handleDateOptionSelect = (option: DateOption) => {
@@ -508,10 +492,14 @@ export default function CollaborationPreferences({
     try {
       // Transform preferences to database format
    
+      const highestTier = PRICE_TIERS.slice().reverse().find(t => selectedPriceTiers.includes(t.slug));
+      const backCompatBudgetMax = highestTier?.max ?? 1000;
+
       const dbPreferences: any = {
         categories: [...selectedIntents, ...selectedCategories],
-        budget_min: typeof budgetMin === "number" ? budgetMin : 0,
-        budget_max: typeof budgetMax === "number" ? budgetMax : 1000,
+        price_tiers: selectedPriceTiers,
+        budget_min: 0,
+        budget_max: backCompatBudgetMax,
         // Note: group_size column doesn't exist in board_session_preferences table
         // Group size is determined by the number of participants in the session
         travel_mode: travelMode,
@@ -557,8 +545,9 @@ export default function CollaborationPreferences({
       // Also call the onSave callback for backward compatibility
       const preferences = {
         selectedIntents,
-        budgetMin,
-        budgetMax,
+        priceTiers: selectedPriceTiers,
+        budgetMin: 0,
+        budgetMax: backCompatBudgetMax,
         selectedCategories,
         selectedDateOption,
         selectedTimeSlot,
@@ -681,55 +670,32 @@ export default function CollaborationPreferences({
             </View>
           </View>
 
-          {/* Budget per Person Section - Hide when only "Nature" is selected */}
+          {/* Price Tier Section - Hide when only "Nature" is selected */}
           {!(
             selectedCategories.length === 1 &&
             selectedCategories[0] === "nature"
           ) && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Budget per Person</Text>
-              <View style={styles.budgetInputsContainer}>
-                <View style={styles.budgetInputWrapper}>
-                  <Text style={styles.inputLabel}>Min</Text>
-                  <View style={styles.budgetInputContainer}>
-                    <Text style={styles.dollarSign}>{currencySymbol}</Text>
-                    <TextInput
-                      value={budgetMin?.toString() || ""}
-                      onChangeText={(text) =>
-                        setBudgetMin(text ? Number(text) : "")
-                      }
-                      keyboardType="numeric"
-                      style={styles.budgetInput}
-                      placeholder="0"
-                    />
-                  </View>
-                </View>
-                <View style={styles.budgetInputWrapper}>
-                  <Text style={styles.inputLabel}>Max</Text>
-                  <View style={styles.budgetInputContainer}>
-                    <Text style={styles.dollarSign}>{currencySymbol}</Text>
-                    <TextInput
-                      value={budgetMax?.toString() || ""}
-                      onChangeText={(text) =>
-                        setBudgetMax(text ? Number(text) : "")
-                      }
-                      keyboardType="numeric"
-                      style={styles.budgetInput}
-                      placeholder="200"
-                    />
-                  </View>
-                </View>
-              </View>
-              <View style={styles.budgetPresetsContainer}>
-                {budgetPresets.map((preset) => (
-                  <TouchableOpacity
-                    key={preset.label}
-                    onPress={() => setBudgetPreset(preset.min, preset.max)}
-                    style={styles.budgetPresetButton}
-                  >
-                    <Text style={styles.budgetPresetText}>{preset.label}</Text>
-                  </TouchableOpacity>
-                ))}
+              <Text style={styles.sectionTitle}>Price Range</Text>
+              <View style={styles.priceTierGrid}>
+                {PRICE_TIERS.map((tier) => {
+                  const isActive = selectedPriceTiers.includes(tier.slug);
+                  return (
+                    <TouchableOpacity
+                      key={tier.slug}
+                      onPress={() => handlePriceTierToggle(tier.slug)}
+                      style={[
+                        styles.priceTierTile,
+                        isActive && { borderColor: tier.color, backgroundColor: `${tier.color}14` },
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name={tier.icon as any} size={20} color={isActive ? tier.color : '#9CA3AF'} />
+                      <Text style={[styles.priceTierLabel, isActive && { color: tier.color }]}>{tier.label}</Text>
+                      <Text style={styles.priceTierRange}>{tier.rangeLabel}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           )}
@@ -1423,22 +1389,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: "white",
   },
-  budgetPresetsContainer: {
+  priceTierGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
-  budgetPresetButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
+  priceTierTile: {
+    width: "47%" as any,
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
     backgroundColor: "white",
+    gap: 4,
   },
-  budgetPresetText: {
+  priceTierLabel: {
     fontSize: 14,
+    fontWeight: "600" as const,
     color: "#374151",
+  },
+  priceTierRange: {
+    fontSize: 11,
+    color: "#9CA3AF",
   },
   categoriesContainer: {
     flexDirection: "column",

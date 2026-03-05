@@ -48,8 +48,7 @@ import {
   OnboardingData,
   OnboardingStep,
   ONBOARDING_INTENTS,
-  BUDGET_PRESETS,
-  DEFAULT_BUDGET,
+  DEFAULT_PRICE_TIERS,
   TRAVEL_TIME_PRESETS,
   DEFAULT_TRAVEL_TIME,
   TRANSPORT_MODES,
@@ -58,6 +57,7 @@ import {
   GENDER_OPTIONS,
   GENDER_DISPLAY_LABELS,
 } from '../types/onboarding'
+import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers'
 import { categories } from '../constants/categories'
 import { getDefaultCountryCode, getCountryByCode } from '../constants/countries'
 import {
@@ -89,7 +89,7 @@ const INITIAL_DATA: OnboardingData = {
   useGpsLocation: false,
   manualLocation: null,
   selectedCategories: [...DEFAULT_CATEGORIES],
-  budgetMax: DEFAULT_BUDGET,
+  selectedPriceTiers: DEFAULT_PRICE_TIERS,
   travelMode: DEFAULT_TRANSPORT,
   travelTimeMinutes: DEFAULT_TRAVEL_TIME,
   invitePath: null,
@@ -134,19 +134,6 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const [initialStep, setInitialStep] = useState<OnboardingStep>(1)
   const [phonePreVerified, setPhonePreVerified] = useState(false)
   const [isReady, setIsReady] = useState(false)
-  const [showCustomBudget, setShowCustomBudget] = useState(false)
-
-  // Sync showCustomBudget when budgetMax is restored from saved prefs on resume
-  useEffect(() => {
-    if (data.budgetMax !== null && data.budgetMax > 0) {
-      const code = profile?.currency || 'USD'
-      const r = getRate(code)
-      const presets = BUDGET_PRESETS.map(a => Math.round(a * r))
-      if (!presets.includes(data.budgetMax)) {
-        setShowCustomBudget(true)
-      }
-    }
-  }, [data.budgetMax, profile?.currency])
 
   // ─── State Machine ───
   const {
@@ -487,7 +474,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           setData((prev) => ({
             ...prev,
             selectedCategories: prefs.categories?.length ? prefs.categories : DEFAULT_CATEGORIES,
-            budgetMax: prefs.budget_max ?? DEFAULT_BUDGET,
+            selectedPriceTiers: (prefs as any).price_tiers?.length ? (prefs as any).price_tiers : DEFAULT_PRICE_TIERS,
             travelMode: (prefs.travel_mode as any) || DEFAULT_TRANSPORT,
             travelTimeMinutes: prefs.travel_constraint_value || DEFAULT_TRAVEL_TIME,
             selectedIntents: (prefs as any).intents || [],
@@ -843,14 +830,20 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   // ─── Save Preferences (Step 4 → 5 transition) ───
   const handleSavePreferences = useCallback(async () => {
     if (!user?.id) return
-    logger.action('Save preferences pressed', { categories: data.selectedCategories.length, budget: data.budgetMax, transport: data.travelMode })
+    const highestTier = data.selectedPriceTiers.length > 0
+      ? PRICE_TIERS.slice().reverse().find(t => data.selectedPriceTiers.includes(t.slug))
+      : undefined
+    const backCompatBudgetMax = highestTier?.max ?? 1000
+
+    logger.action('Save preferences pressed', { categories: data.selectedCategories.length, priceTiers: data.selectedPriceTiers, transport: data.travelMode })
     setSavingPrefs(true)
     try {
       await PreferencesService.updateUserPreferences(user.id, {
         intents: data.selectedIntents,
         categories: data.selectedCategories,
+        price_tiers: data.selectedPriceTiers,
         budget_min: 0,
-        budget_max: data.budgetMax ?? 50,
+        budget_max: backCompatBudgetMax,
         travel_mode: data.travelMode,
         travel_constraint_type: 'time',
         travel_constraint_value: data.travelTimeMinutes,
@@ -872,7 +865,8 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
               body: {
                 categories: data.selectedCategories,
                 location: coords,
-                budgetMax: data.budgetMax ?? 50,
+                priceTiers: data.selectedPriceTiers,
+                budgetMax: backCompatBudgetMax,
                 travelMode: data.travelMode,
                 travelConstraintType: 'time',
                 travelConstraintValue: data.travelTimeMinutes,
@@ -1122,7 +1116,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       case 'categories':
         return { label: 'Next', disabled: data.selectedCategories.length === 0, loading: false, onPress: handleGoNext, hide: false }
       case 'budget':
-        return { label: 'Next', disabled: data.budgetMax === null || data.budgetMax <= 0, loading: false, onPress: handleGoNext, hide: false }
+        return { label: 'Next', disabled: data.selectedPriceTiers.length === 0, loading: false, onPress: handleGoNext, hide: false }
       case 'transport':
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'travel_time':
@@ -1572,69 +1566,56 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     }
 
     if (subStep === 'budget') {
-      const currencyCode = profile?.currency || 'USD'
-      const symbol = getCurrencySymbol(currencyCode)
-      const rate = getRate(currencyCode)
-
       return (
         <View style={styles.budgetContainer}>
           <Text style={styles.headline}>What's your sweet spot?</Text>
-          <Text style={styles.body}>How much per outing, roughly?</Text>
+          <Text style={styles.body}>Pick all the price ranges that work for you.</Text>
           <View style={styles.tileGrid}>
-            {BUDGET_PRESETS.map((amount) => {
-              const converted = Math.round(amount * rate)
-              const isActive = !showCustomBudget && data.budgetMax === converted
+            {PRICE_TIERS.map((tier) => {
+              const isActive = data.selectedPriceTiers.includes(tier.slug)
               return (
                 <Pressable
-                  key={amount}
-                  style={[styles.selectionTile, isActive && styles.selectionTileActive]}
+                  key={tier.slug}
+                  style={[
+                    styles.selectionTile,
+                    styles.selectionTileTall,
+                    isActive && { borderColor: tier.color, backgroundColor: `${tier.color}14` },
+                  ]}
                   onPress={() => {
-                    logger.action(`Budget selected: ${symbol}${converted} (base $${amount})`)
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                    setShowCustomBudget(false)
-                    setData((p) => ({ ...p, budgetMax: converted }))
+                    setData((p) => {
+                      const current = p.selectedPriceTiers
+                      const next = current.includes(tier.slug)
+                        ? current.filter((s) => s !== tier.slug)
+                        : [...current, tier.slug]
+                      // Enforce min 1
+                      if (next.length === 0) return p
+                      return { ...p, selectedPriceTiers: next }
+                    })
                   }}
                 >
-                  <Text style={[styles.tileText, isActive && styles.tileTextActive]}>
-                    {symbol}{formatNumberWithCommas(converted)}
+                  <Ionicons
+                    name={tier.icon as any}
+                    size={22}
+                    color={isActive ? tier.color : colors.text.tertiary}
+                    style={styles.tierIcon}
+                  />
+                  <Text style={[
+                    styles.tileText,
+                    isActive && { color: tier.color, fontWeight: '700' as const },
+                  ]}>
+                    {tier.label}
+                  </Text>
+                  <Text style={[
+                    styles.tierRangeText,
+                    isActive && { color: tier.color },
+                  ]}>
+                    {tier.rangeLabel}
                   </Text>
                 </Pressable>
               )
             })}
           </View>
-
-          <View style={styles.customBudgetRow}>
-            <Text style={styles.customBudgetLabel}>Custom amount</Text>
-            <Switch
-              value={showCustomBudget}
-              onValueChange={(val) => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                setShowCustomBudget(val)
-                setData((p) => ({ ...p, budgetMax: null }))
-              }}
-              trackColor={{ false: colors.gray[300], true: '#fdba74' }}
-              thumbColor={showCustomBudget ? colors.primary[500] : colors.gray[100]}
-            />
-          </View>
-
-          {showCustomBudget && (
-            <View style={styles.customBudgetInputRow}>
-              <Text style={styles.customBudgetSymbol}>{symbol}</Text>
-              <TextInput
-                value={data.budgetMax !== null ? data.budgetMax.toString() : ''}
-                onChangeText={(text) => {
-                  const cleaned = text.replace(/[^0-9]/g, '')
-                  const parsed = cleaned ? parseInt(cleaned, 10) : null
-                  setData((p) => ({ ...p, budgetMax: parsed }))
-                }}
-                keyboardType="number-pad"
-                placeholder="Enter maximum amount"
-                placeholderTextColor={colors.text.tertiary}
-                style={styles.customBudgetInput}
-                maxLength={7}
-              />
-            </View>
-          )}
 
           <Text style={styles.captionCentered}>Free stuff always shows up too.</Text>
         </View>
@@ -2017,39 +1998,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
-  customBudgetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
+  tierIcon: {
+    marginBottom: spacing.xs,
   },
-  customBudgetLabel: {
-    ...typography.sm,
-    fontWeight: fontWeights.medium,
-    color: colors.text.secondary,
-  },
-  customBudgetInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    borderWidth: 1.5,
-    borderColor: colors.gray[200],
-    borderRadius: radius.md,
-    backgroundColor: colors.background.primary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  customBudgetSymbol: {
-    ...typography.md,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.secondary,
-    marginRight: spacing.xs,
-  },
-  customBudgetInput: {
-    flex: 1,
-    ...typography.md,
-    color: colors.text.primary,
-    padding: 0,
+  tierRangeText: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    marginTop: 2,
   },
   errorText: {
     ...typography.sm,

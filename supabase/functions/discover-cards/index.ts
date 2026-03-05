@@ -11,6 +11,7 @@ import {
   resolveCategories,
   getPlaceTypesForCategory,
 } from '../_shared/categoryPlaceTypes.ts';
+import { priceLevelToLabel, priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from '../_shared/priceTiers.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-cards  –  Unified Card Discovery Edge Function
@@ -110,28 +111,6 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
 function estimateTravelMin(distKm: number, mode: string): number {
   const speed = SPEED_KMH[mode] || 4.5;
   return Math.max(1, Math.round((distKm / speed) * 60 * 1.3));
-}
-
-function priceLevelToLabel(level: string | undefined): string {
-  const map: Record<string, string> = {
-    PRICE_LEVEL_FREE: 'Free',
-    PRICE_LEVEL_INEXPENSIVE: '$',
-    PRICE_LEVEL_MODERATE: '$$',
-    PRICE_LEVEL_EXPENSIVE: '$$$',
-    PRICE_LEVEL_VERY_EXPENSIVE: '$$$$',
-  };
-  return map[level ?? ''] ?? 'Free';
-}
-
-function priceLevelToRange(level: string | undefined): { min: number; max: number } {
-  const ranges: Record<string, { min: number; max: number }> = {
-    PRICE_LEVEL_FREE: { min: 0, max: 0 },
-    PRICE_LEVEL_INEXPENSIVE: { min: 5, max: 15 },
-    PRICE_LEVEL_MODERATE: { min: 15, max: 35 },
-    PRICE_LEVEL_EXPENSIVE: { min: 35, max: 75 },
-    PRICE_LEVEL_VERY_EXPENSIVE: { min: 75, max: 150 },
-  };
-  return ranges[level ?? ''] ?? { min: 0, max: 0 };
 }
 
 function getPhotoUrl(place: any): string {
@@ -371,6 +350,7 @@ async function expandPoolWithNewPlaces(
       reviewCount: place.userRatingCount || 0,
       priceMin: priceRange.min,
       priceMax: priceRange.max,
+      priceTier: googleLevelToTierSlug(place.priceLevel),
       website: place.websiteUri || null,
     });
   }
@@ -400,6 +380,7 @@ serve(async (req: Request) => {
       timeSlot = null,
       batchSeed = 0,
       limit = 20,
+      priceTiers,
     } = body;
 
     // ── Validate ──────────────────────────────────────────────────────────
@@ -488,6 +469,7 @@ serve(async (req: Request) => {
           limit,
           cardType: 'single' as const,
           offset: poolOffset,
+          priceTiers: priceTiers as PriceTierSlug[] | undefined,
         };
 
         const poolResult = await serveCardsFromPipeline(
@@ -662,11 +644,18 @@ serve(async (req: Request) => {
       return haversine(location.lat, location.lng, lat, lng) <= maxDistKm;
     });
 
-    // ── Filter by budget ──────────────────────────────────────────────────
-    allPlaces = allPlaces.filter(p => {
-      const range = priceLevelToRange(p.priceLevel);
-      return range.min <= budgetMax;
-    });
+    // ── Filter by budget / price tiers ──────────────────────────────────
+    if (priceTiers && priceTiers.length > 0 && priceTiers.length < 4) {
+      allPlaces = allPlaces.filter(p => {
+        const tier = googleLevelToTierSlug(p.priceLevel);
+        return priceTiers.includes(tier);
+      });
+    } else {
+      allPlaces = allPlaces.filter(p => {
+        const range = priceLevelToRange(p.priceLevel);
+        return range.min <= budgetMax;
+      });
+    }
 
     // ── Filter by datetime preference ─────────────────────────────────────
     allPlaces = filterByDateTime(allPlaces, datetimePref, dateOption, timeSlot);
@@ -710,7 +699,7 @@ serve(async (req: Request) => {
       const category = p._category;
 
       return {
-        id: `${category.toLowerCase().replace(/[^a-z0-9]/g, '_')}-${p.id}`,
+        id: p.id,
         placeId: p.id,
         title: p.displayName?.text || 'Unknown Place',
         description: getFallbackDescription(category, primaryType),
@@ -721,6 +710,7 @@ serve(async (req: Request) => {
         priceLevelLabel: priceLevelToLabel(p.priceLevel),
         priceMin: priceRange.min,
         priceMax: priceRange.max,
+        priceTier: googleLevelToTierSlug(p.priceLevel),
         address: p.formattedAddress || '',
         openingHours: hours,
         isOpenNow,
@@ -804,6 +794,7 @@ function storeResultsInPoolBatched(
           price_level: typeof p.priceLevel === 'string' ? p.priceLevel : null,
           price_min: priceRange.min,
           price_max: priceRange.max,
+          price_tier: googleLevelToTierSlug(p.priceLevel),
           opening_hours: p.regularOpeningHours || null,
           photos,
           website: p.websiteUri || null,
@@ -855,6 +846,7 @@ function storeResultsInPoolBatched(
           review_count: card.reviewCount,
           price_min: card.priceMin,
           price_max: card.priceMax,
+          price_tier: card.priceTier ?? googleLevelToTierSlug(card.priceLevel),
           opening_hours: card.openingHours
             ? { ...card.openingHours, _isOpenNow: card.isOpenNow ?? null }
             : null,

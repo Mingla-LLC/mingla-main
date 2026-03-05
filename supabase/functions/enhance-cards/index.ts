@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { TIER_BY_SLUG, PriceTierSlug } from '../_shared/priceTiers.ts';
 
 const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 
@@ -43,6 +44,7 @@ interface DetailedUserPreferences {
     lng?: number;
   };
   measurementSystem?: string;
+  price_tiers?: PriceTierSlug[];
 }
 
 serve(async (req) => {
@@ -129,8 +131,15 @@ serve(async (req) => {
       }
 
       // Budget context
-      const budgetRange = `$${prefs.budget.min}-$${prefs.budget.max}`;
-      context.push(`Budget: ${budgetRange} per person`);
+      if (prefs.price_tiers && prefs.price_tiers.length > 0) {
+        const tierLabels = prefs.price_tiers
+          .map(slug => TIER_BY_SLUG[slug]?.label ?? slug)
+          .join(', ');
+        context.push(`Budget tier: ${tierLabels}`);
+      } else {
+        const budgetRange = `$${prefs.budget.min}-$${prefs.budget.max}`;
+        context.push(`Budget: ${budgetRange} per person`);
+      }
 
       // Category interests
       if (prefs.categories && prefs.categories.length > 0) {

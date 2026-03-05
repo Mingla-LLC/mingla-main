@@ -38,6 +38,10 @@ export interface OnboardingNavState {
 
 // ─── Collected Data ───
 
+import { PriceTierSlug } from '../constants/priceTiers';
+
+export const DEFAULT_PRICE_TIERS: PriceTierSlug[] = ['chill', 'comfy'];
+
 export interface OnboardingData {
   // Step 1
   phoneNumber: string       // E.164 format
@@ -56,7 +60,7 @@ export interface OnboardingData {
   // Step 4
   manualLocation: string | null  // city name typed by user (when GPS denied)
   selectedCategories: string[]   // display names: 'Nature', 'Drink', etc.
-  budgetMax: number | null       // converted preset value or custom amount; null = not yet selected
+  selectedPriceTiers: PriceTierSlug[]  // selected price tier slugs
   travelMode: 'walking' | 'biking' | 'transit' | 'driving'
   travelTimeMinutes: number      // 15, 30, 45, or 60
 
@@ -116,10 +120,8 @@ export const ONBOARDING_INTENTS = [
   { id: 'take-a-stroll', label: 'Take a Stroll', icon: 'walk-outline', description: 'Wander with purpose', color: '#14B8A6' },
 ] as const
 
-// ─── Budget Presets ───
-
-export const BUDGET_PRESETS = [25, 50, 100, 150] as const
-export const DEFAULT_BUDGET = null
+// ─── Budget Presets (deprecated — kept for backward compat, use PRICE_TIERS) ───
+// BUDGET_PRESETS and DEFAULT_BUDGET removed — see constants/priceTiers.ts
 
 // ─── Travel Time Presets ───
 

@@ -8,6 +8,7 @@ import {
   upsertPlaceToPool,
   insertCardToPool,
 } from "../_shared/cardPoolService.ts";
+import { googleLevelToTierSlug } from "../_shared/priceTiers.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -582,6 +583,7 @@ async function fetchBestCard(
         lng: bestPlace.location?.longitude || 0,
         rating: bestPlace.rating || 0,
         reviewCount: bestPlace.userRatingCount || 0,
+        priceTier: googleLevelToTierSlug(bestPlace.priceLevel),
       }).catch((e: any) => console.warn("Pool insert error:", e));
     }
 

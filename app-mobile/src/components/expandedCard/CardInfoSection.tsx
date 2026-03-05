@@ -1,7 +1,8 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { formatPriceRange, parseAndFormatDistance } from "../utils/formatters";
+import { parseAndFormatDistance } from "../utils/formatters";
+import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG } from "../../constants/priceTiers";
 
 interface CardInfoSectionProps {
   title: string;
@@ -12,6 +13,8 @@ interface CardInfoSectionProps {
   distance?: string;
   measurementSystem?: "Metric" | "Imperial";
   priceRange?: string;
+  priceTier?: PriceTierSlug;
+  priceLevel?: string | number | null;
   description?: string;
   currency?: string;
 }
@@ -25,9 +28,15 @@ export default function CardInfoSection({
   distance,
   measurementSystem,
   priceRange,
+  priceTier,
+  priceLevel,
   description,
   currency = 'USD',
 }: CardInfoSectionProps) {
+  const resolvedTier = priceTier ?? googleLevelToTierSlug(priceLevel);
+  const tierData = TIER_BY_SLUG[resolvedTier];
+  const tierDisplayText = `${tierLabel(resolvedTier)} · ${tierRangeLabel(resolvedTier)}`;
+  const tierColor = tierData?.color ?? '#d97706';
   // Get category icon component
   const getCategoryIcon = () => {
     if (categoryIcon) {
@@ -111,12 +120,12 @@ export default function CardInfoSection({
             </View>
           </>
         )}
-        {priceRange && (
+        {resolvedTier && (
           <>
             {(rating !== undefined || distance) && (
               <View style={styles.metricDivider} />
             )}
-            <Text style={styles.priceText}>{formatPriceRange(priceRange, currency)}</Text>
+            <Text style={[styles.priceText, { color: tierColor }]}>{tierDisplayText}</Text>
           </>
         )}
       </View>

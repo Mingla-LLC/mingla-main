@@ -54,7 +54,8 @@ Mingla/
 │   │   │   ├── colors.ts                   # Brand color palette
 │   │   │   ├── countries.ts                # 240+ countries with dial codes and flag emojis
 │   │   │   ├── designSystem.ts             # Design tokens (spacing, radius, typography)
-│   │   │   └── holidays.ts                 # Holiday definitions + gender mappings
+│   │   │   ├── holidays.ts                 # Holiday definitions + gender mappings
+│   │   │   └── priceTiers.ts              # 4-tier price system (Chill/Comfy/Bougie/Lavish)
 │   │   ├── contexts/
 │   │   │   ├── CardsCacheContext.tsx        # Card caching (30min TTL, 10 entries)
 │   │   │   ├── NavigationContext.tsx        # Modal state + navigation helpers
@@ -103,6 +104,7 @@ Mingla/
 │   │   │   ├── cardPoolService.ts          # Pool-first serving engine
 │   │   │   ├── categoryPlaceTypes.ts       # Category-to-place-type mappings
 │   │   │   ├── placesCache.ts              # Google Places API caching
+│   │   │   ├── priceTiers.ts              # Canonical 4-tier price system (shared source of truth)
 │   │   │   └── textSearchHelper.ts         # Text search fallback
 │   │   ├── send-otp/                       # Twilio Verify: send OTP to phone number
 │   │   ├── verify-otp/                     # Twilio Verify: verify OTP + save phone to profile
@@ -139,7 +141,7 @@ Mingla/
   - **Step 1 — Welcome & Phone:** Country picker (240+ countries), phone input with E.164 formatting, 6-digit OTP verification with auto-submit
   - **Step 2 — Intents:** Value proposition beats with animated transitions, multi-select intent cards (Adventurous, First Dates, Romantic, Friendly, Group Fun, Picnic Dates, Take a Stroll)
   - **Step 3 — Location:** GPS permission request with fallback to manual city input. Back-navigation shows persisted "Locked in" state instead of re-prompting for GPS
-  - **Step 4 — Preferences:** Category grid (12 categories), budget presets in user's local currency with custom amount toggle (mandatory selection), transport mode (walking/biking/transit/driving), travel time (15–60 min). Background card generation fires at Step 4→5 transition
+  - **Step 4 — Preferences:** Category grid (12 categories), 4-tile price tier selector (Chill/Comfy/Bougie/Lavish) with currency-converted range labels, transport mode (walking/biking/transit/driving), travel time (15–60 min). Background card generation fires at Step 4→5 transition
   - **Step 5 — Add Someone:** Three paths — Invite (birthday→gender→audio→contact), Add (name→birthday→gender→audio), or Skip. Cards finish generating during this step
   - **Launch:** Grand reveal with rotating loading text, card deck animation
 - Intents stored separately from categories in `preferences.intents` column
@@ -233,10 +235,23 @@ Mingla/
 | `groceries_flowers` | Groceries & Flowers | `#22C55E` | `cart-outline` |
 | `work_business` | Work & Business | `#64748B` | `briefcase-outline` |
 
+### Price Tier System
+
+4-tier pricing model mapped directly to Google Places API price levels:
+
+| Tier | Label | Range | Google Levels | Color | Icon |
+|------|-------|-------|--------------|-------|------|
+| `chill` | Chill | $50 max | FREE + INEXPENSIVE | `#10B981` | `leaf-outline` |
+| `comfy` | Comfy | $50–$150 | MODERATE | `#3B82F6` | `cafe-outline` |
+| `bougie` | Bougie | $150–$300 | EXPENSIVE | `#8B5CF6` | `sparkles-outline` |
+| `lavish` | Lavish | $300+ | VERY_EXPENSIVE | `#F59E0B` | `diamond-outline` |
+
+Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTiers.ts` (mobile). All card display, filtering, onboarding, preferences, and pool storage use these canonical tiers. Currency conversion applies to range labels.
+
 ### Preferences System
 
 - 12 category pills with intent-based filtering (romantic, adventurous, group-fun, business, first-dates, solo-adventure, picnic-dates)
-- Budget: 4 preset tiers ($25/$50/$100/$150) displayed in user's detected currency with real-time exchange rate conversion, plus custom amount input with toggle switch. Budget selection is mandatory during onboarding
+- Price tiers: multi-select from 4 tiers (Chill, Comfy, Bougie, Lavish) displayed with currency-converted range labels. Stored as `price_tiers` text array in preferences
 - Travel mode: walking, driving, transit, cycling
 - Travel constraint: time-based or distance-based
 - Date/time: Now, Tonight, This Weekend, or exact date/time picker
@@ -252,7 +267,7 @@ Mingla/
 | Table | Purpose |
 |-------|---------|
 | `profiles` | User profiles: name, username, avatar, birthday, gender, phone, push_token, currency, measurement system, visibility, onboarding status |
-| `preferences` | Per-user settings: budget, categories, intents, date/time, travel mode, travel constraint, use_gps_location, updated_at |
+| `preferences` | Per-user settings: price_tiers (4-tier system), budget_min/budget_max (legacy), categories, intents, date/time, travel mode, travel constraint, use_gps_location, updated_at |
 | `experiences` | Seed/legacy experience catalog |
 | `saves` | User-experience save relationships |
 | `saved_cards` | Denormalized saved card data |
@@ -264,8 +279,8 @@ Mingla/
 
 | Table | Purpose |
 |-------|---------|
-| `place_pool` | Shared enriched Google Places data with analytics columns (impressions, saves, schedules, reviews) |
-| `card_pool` | Pre-built cards (single or curated type) linked to place_pool |
+| `place_pool` | Shared enriched Google Places data with analytics columns (impressions, saves, schedules, reviews), price_tier column |
+| `card_pool` | Pre-built cards (single or curated type) linked to place_pool, price_tier column for tier-based filtering |
 | `user_card_impressions` | Per-user card "seen" tracking, session-scoped to preference changes |
 | `google_places_cache` | Google Places API response cache (24h TTL) with next_page_token for pagination and automatic page draining |
 | `ticketmaster_events_cache` | Ticketmaster API response cache (2h TTL) |
@@ -502,6 +517,8 @@ The `oauth-redirect/` directory contains a static site deployed to Vercel/Netlif
 ---
 
 ## Recent Changes
+
+- **Price Tier System Overhaul + Bug Fixes (2026-03-05):** Replaced the entire fragmented price/budget system (5 conflicting mappings, arbitrary dollar presets, ignored budgetMin parameter) with a canonical 4-tier model (Chill/Comfy/Bougie/Lavish) mapped directly to Google Places API price levels. Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTiers.ts` (mobile). Updated 30+ files: all 12 discover-* edge functions, cardPoolService, 9 other edge functions, mobile types, pipeline (deckService, RecommendationsContext, useDeckCards), OnboardingFlow, PreferencesSheet, AppHandlers, card display components (CardInfoSection, SingleCardDisplay, CuratedExperienceSwipeCard, ExpandedCardModal), DiscoverScreen, CollaborationPreferences, PreferencePresets, experienceService, deviceCalendarService. Rewrote `query_pool_cards` SQL RPC with CTEs (fixes HF-001 triple filter). Fixed HF-006 (budgetMin ignored), CF-003 (card ID mismatch), budget leak in gap-fill cards. Post-QA fixes: SingleCardDisplay now reads `card.priceTier` instead of undefined `card.priceLevel` (CRIT-001), `expandPoolWithNewPlaces` in discover-cards passes `priceTier` to pool storage (CRIT-002), Lavish backward-compat `budget_max` corrected from $150 to $1000 (HIGH-001), `curatedToRecommendation` now sets `priceTier` from first stop (HIGH-002), `priceTier` field added to both `Recommendation` and `RecommendationCard` types. Migration: `20260305000001_price_tier_system.sql`. Backward compatible: old `budget_min`/`budget_max` columns retained, RPC accepts both old and new params.
 
 - **Nature Category Keywords Update (2026-03-04):** Replaced the Nature category's Google Place types across all surfaces — from a fragmented mix of 3-19 types (varying per file, with `zoo`, `tourist_attraction`, `city_park` polluting results) to a unified 17-type set focused on natural landscapes: `national_park`, `state_park`, `nature_preserve`, `wildlife_refuge`, `wildlife_park`, `scenic_spot`, `garden`, `botanical_garden`, `park`, `lake`, `river`, `island`, `mountain_peak`, `woods`, `hiking_area`, `campground`, `picnic_ground`. All 17 types confirmed Google Table A (Feb 2026 release). New 37-type exclude list blocks retail, sports, transit, and entertainment venues. Updated 13 files across 9 edge functions + 1 shared module + 1 mobile constant + 2 additional stale files found during verification. Added 4 entries to `STOP_DURATION_MINUTES` (`lake: 60`, `river: 45`, `woods: 60`, `wildlife_park: 90`). Expanded `ALWAYS_OPEN_TYPES` in 4 files. Zero risk to curated intents (STROLL_PLACE, ADVENTURE_GROUPS, PICNIC_FINISH all independent). Updated mobile metadata (descriptions, subcategories, contextual preview). Zero database changes required.
 

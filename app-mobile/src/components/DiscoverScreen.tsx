@@ -72,6 +72,7 @@ interface CustomHoliday {
 }
 
 import { SCREEN_WIDTH, s } from "../utils/responsive";
+import { PriceTierSlug, PRICE_TIERS, googleLevelToTierSlug, tierLabel, tierRangeLabel, TIER_BY_SLUG } from '../constants/priceTiers';
 
 const CARD_WIDTH = SCREEN_WIDTH - s(32); // 16px padding on each side
 const GRID_CARD_WIDTH = (SCREEN_WIDTH - s(48)) / 2; // 16px padding + 16px gap between cards
@@ -347,7 +348,7 @@ interface NightOutCardProps {
 
 // Filter types
 type DateFilter = "any" | "today" | "tomorrow" | "weekend" | "next-week" | "month";
-type PriceFilter = "any" | "free" | "under-25" | "25-50" | "50-100" | "over-100";
+type PriceFilter = "any" | "chill" | "comfy" | "bougie" | "lavish";
 type GenreFilter = "all" | "afrobeats" | "dancehall" | "hiphop-rnb" | "house" | "techno" | "jazz-blues" | "latin-salsa" | "reggae" | "kpop" | "acoustic-indie";
 
 interface NightOutFilters {
@@ -2483,11 +2484,7 @@ export default function DiscoverScreen({
 
   const priceFilterOptions: { id: PriceFilter; label: string }[] = [
     { id: "any", label: "Any Price" },
-    { id: "free", label: "Free" },
-    { id: "under-25", label: `Under ${currencySymbol}${cp(25)}` },
-    { id: "25-50", label: `${currencySymbol}${cp(25)} - ${currencySymbol}${cp(50)}` },
-    { id: "50-100", label: `${currencySymbol}${cp(50)} - ${currencySymbol}${cp(100)}` },
-    { id: "over-100", label: `Over ${currencySymbol}${cp(100)}` },
+    ...PRICE_TIERS.map(tier => ({ id: tier.slug as PriceFilter, label: `${tier.label} · ${tier.rangeLabel}` })),
   ];
 
   const genreFilterOptions: { id: GenreFilter; label: string }[] = [
@@ -2832,13 +2829,7 @@ export default function DiscoverScreen({
   // Transform HolidayExperience to GridCardData for display
   const transformHolidayExperienceToCard = useCallback((exp: HolidayExperience): GridCardData => {
     // Map priceLevel to actual dollar ranges (matches discover-experiences edge function)
-    const getPriceRange = (level: number): string => {
-      if (level <= 0) return "Free";
-      if (level === 1) return "$0-$25";
-      if (level === 2) return "$15-$75";
-      if (level === 3) return "$50-$150";
-      return "$100-$500";
-    };
+    const priceTier = googleLevelToTierSlug(exp.priceLevel);
 
     return {
       id: exp.id,
@@ -2847,7 +2838,7 @@ export default function DiscoverScreen({
       description: exp.address || "",
       image: exp.imageUrl || "",
       images: exp.images,
-      priceRange: getPriceRange(exp.priceLevel),
+      priceRange: `${tierLabel(priceTier)} · ${tierRangeLabel(priceTier)}`,
       rating: exp.rating,
       reviewCount: exp.reviewCount,
       address: exp.address,

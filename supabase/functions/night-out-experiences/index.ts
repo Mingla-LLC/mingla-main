@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
 import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
+import { googleLevelToTierSlug, priceLevelToRange } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -265,6 +266,7 @@ serve(async (req) => {
             reviewCount: card.reviewCount,
             priceMin: 0,
             priceMax: 0,
+            priceTier: googleLevelToTierSlug(card.priceLevel),
             openingHours: null,
           });
         }
@@ -365,20 +367,9 @@ function transformToNightOutPlace(
     )
     .filter((img: string | null): img is string => img !== null);
 
-  const priceLevel = place.priceLevel || 0;
-  const priceLevelNum =
-    typeof priceLevel === "string"
-      ? [
-          "PRICE_LEVEL_FREE",
-          "PRICE_LEVEL_INEXPENSIVE",
-          "PRICE_LEVEL_MODERATE",
-          "PRICE_LEVEL_EXPENSIVE",
-          "PRICE_LEVEL_VERY_EXPENSIVE",
-        ].indexOf(priceLevel)
-      : priceLevel;
-
-  const price_min = priceLevelNum <= 0 ? 0 : priceLevelNum === 1 ? 10 : priceLevelNum === 2 ? 20 : priceLevelNum === 3 ? 50 : 100;
-  const price_max = priceLevelNum <= 0 ? 0 : priceLevelNum === 1 ? 30 : priceLevelNum === 2 ? 60 : priceLevelNum === 3 ? 120 : 300;
+  const priceRange = priceLevelToRange(place.priceLevel);
+  const price_min = priceRange.min;
+  const price_max = priceRange.max;
 
   // Build Google Places types into tags
   const placeTypes = new Set(place.types || []);
@@ -406,9 +397,10 @@ function transformToNightOutPlace(
     imageUrl,
     images,
     placeId: place.id,
-    priceLevel: priceLevelNum,
+    priceLevel: place.priceLevel,
     price_min,
     price_max,
+    priceTier: googleLevelToTierSlug(place.priceLevel),
     tags: allTags,
     openingHours: place.regularOpeningHours
       ? {

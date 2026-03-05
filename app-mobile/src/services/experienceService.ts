@@ -1,8 +1,11 @@
 import { supabase } from './supabase';
 import { Experience } from '../types';
+import { PriceTierSlug, TIER_BY_SLUG } from '../constants/priceTiers';
 
 export interface ExperienceFilters {
   categories?: string[];
+  priceTiers?: PriceTierSlug[];
+  /** @deprecated Use priceTiers instead */
   budgetRange?: [number, number];
   groupSize?: number;
 }
@@ -30,7 +33,19 @@ class ExperienceService {
         query = query.in('category_slug', filters.categories);
       }
 
-      if (filters?.budgetRange && filters.budgetRange.length === 2) {
+      if (filters?.priceTiers && filters.priceTiers.length > 0) {
+        // Compute a budget range from the selected tiers for DB filtering
+        const mins = filters.priceTiers.map(s => TIER_BY_SLUG[s]?.min ?? 0);
+        const maxes = filters.priceTiers.map(s => TIER_BY_SLUG[s]?.max ?? 10000);
+        const minBudget = Math.min(...mins);
+        const maxBudget = Math.max(...maxes);
+        if (minBudget > 0 || maxBudget < 10000) {
+          query = query
+            .gte('price_min', minBudget)
+            .lte('price_max', maxBudget);
+        }
+      } else if (filters?.budgetRange && filters.budgetRange.length === 2) {
+        // Legacy fallback
         const [minBudget, maxBudget] = filters.budgetRange;
         if (minBudget > 0 || maxBudget < 10000) {
           query = query
@@ -84,7 +99,18 @@ class ExperienceService {
         supabaseQuery = supabaseQuery.in('category_slug', filters.categories);
       }
 
-      if (filters?.budgetRange && filters.budgetRange.length === 2) {
+      if (filters?.priceTiers && filters.priceTiers.length > 0) {
+        const mins = filters.priceTiers.map(s => TIER_BY_SLUG[s]?.min ?? 0);
+        const maxes = filters.priceTiers.map(s => TIER_BY_SLUG[s]?.max ?? 10000);
+        const minBudget = Math.min(...mins);
+        const maxBudget = Math.max(...maxes);
+        if (minBudget > 0 || maxBudget < 10000) {
+          supabaseQuery = supabaseQuery
+            .gte('price_min', minBudget)
+            .lte('price_max', maxBudget);
+        }
+      } else if (filters?.budgetRange && filters.budgetRange.length === 2) {
+        // Legacy fallback
         const [minBudget, maxBudget] = filters.budgetRange;
         if (minBudget > 0 || maxBudget < 10000) {
           supabaseQuery = supabaseQuery

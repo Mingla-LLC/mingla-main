@@ -8,6 +8,7 @@ import {
   GLOBAL_EXCLUDED_PLACE_TYPES,
   filterExcludedPlaces,
 } from '../_shared/categoryPlaceTypes.ts';
+import { priceLevelToRange, priceLevelToLabel, googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 
 
 const corsHeaders = {
@@ -882,28 +883,6 @@ const TEXT_SEARCH_TYPES = new Set([
   'board_game_cafe', 'virtual_reality_center', 'go_kart_track',
 ]);
 
-const PRICE_LEVEL_RANGES: Record<string, { min: number; max: number }> = {
-  PRICE_LEVEL_FREE:           { min: 0,  max: 0  },
-  PRICE_LEVEL_INEXPENSIVE:    { min: 5,  max: 15 },
-  PRICE_LEVEL_MODERATE:       { min: 15, max: 35 },
-  PRICE_LEVEL_EXPENSIVE:      { min: 35, max: 75 },
-  PRICE_LEVEL_VERY_EXPENSIVE: { min: 75, max: 150 },
-};
-
-function priceLevelToRange(level: string | undefined): { min: number; max: number } {
-  return PRICE_LEVEL_RANGES[level ?? ''] ?? { min: 0, max: 20 };
-}
-
-function priceLevelToLabel(level: string | undefined): string {
-  const map: Record<string, string> = {
-    PRICE_LEVEL_FREE:           'Free',
-    PRICE_LEVEL_INEXPENSIVE:    '$',
-    PRICE_LEVEL_MODERATE:       '$$',
-    PRICE_LEVEL_EXPENSIVE:      '$$$',
-    PRICE_LEVEL_VERY_EXPENSIVE: '$$$$',
-  };
-  return map[level ?? ''] ?? '$$';
-}
 
 function shuffle<T>(array: T[]): T[] {
   const arr = [...array];
@@ -2382,6 +2361,7 @@ function buildStopFromPlace(
     priceLevelLabel: priceLabel,
     priceMin: priceRange.min,
     priceMax: priceRange.max,
+    priceTier: googleLevelToTierSlug(place.priceLevel),
     openingHours: hours,
     isOpenNow: openNow,
     website: place.websiteUri || null,

@@ -1,3 +1,5 @@
+import { PriceTierSlug } from '../constants/priceTiers';
+
 export interface CuratedStop {
   stopNumber: number;
   stopLabel: 'Start Here' | 'Then' | 'End With' | 'Explore' | 'Optional';
@@ -9,6 +11,7 @@ export interface CuratedStop {
   reviewCount: number;
   imageUrl: string;
   priceLevelLabel: string;
+  priceTier: PriceTierSlug;
   priceMin: number;
   priceMax: number;
   openingHours: Record<string, string>;

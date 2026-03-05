@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
+import { googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
 
 const CURATED_ICON_MAP: Record<string, string> = {
   'Adventurous':   'compass-outline',
@@ -21,8 +22,11 @@ interface Props {
 export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
   const avgRating = (card.stops.reduce((s, st) => s + st.rating, 0) / card.stops.length).toFixed(1);
   const durationHrs = (card.estimatedDurationMinutes / 60).toFixed(1);
-  const priceText =
-    card.totalPriceMin === 0 && card.totalPriceMax === 0
+  // Show tier label from the first stop's priceTier, or fallback to price range
+  const firstStopTier = card.stops[0]?.priceTier;
+  const priceText = firstStopTier
+    ? tierLabel(firstStopTier)
+    : card.totalPriceMin === 0 && card.totalPriceMax === 0
       ? 'Free'
       : `$${card.totalPriceMin}–${card.totalPriceMax}`;
 
