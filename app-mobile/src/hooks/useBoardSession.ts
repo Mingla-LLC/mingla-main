@@ -17,21 +17,37 @@ export interface BoardSession {
   created_at: string;
   last_activity_at?: string;
   participants?: any[];
+  active_preference_owner_id?: string | null;
+  rotation_order?: string[];
 }
 
 export interface BoardSessionPreferences {
+  id?: string;
   session_id: string;
+  user_id?: string;
   categories?: string[];
+  intents?: string[];
+  price_tiers?: string[];
   budget_min?: number;
   budget_max?: number;
-  group_size?: number;
-  experience_types?: string[];
+  time_of_day?: string | null;
+  datetime_pref?: string | null;
+  date_option?: string | null;
+  location?: string | null;
+  custom_lat?: number | null;
+  custom_lng?: number | null;
+  travel_mode?: string;
+  travel_constraint_type?: string;
+  travel_constraint_value?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export const useBoardSession = (sessionId?: string) => {
   const [session, setSession] = useState<BoardSession | null>(null);
   const [preferences, setPreferences] =
     useState<BoardSessionPreferences | null>(null);
+  const [allParticipantPreferences, setAllParticipantPreferences] = useState<BoardSessionPreferences[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAppStore();
@@ -65,6 +81,17 @@ export const useBoardSession = (sessionId?: string) => {
         if (prefsError && prefsError.code !== "PGRST116") {
           console.error("Error loading preferences:", prefsError);
         }
+
+        // Load ALL participants' preferences (for aggregation)
+        const { data: allPrefsData, error: allPrefsError } = await supabase
+          .from("board_session_preferences")
+          .select("*")
+          .eq("session_id", id);
+
+        if (allPrefsError) {
+          console.warn("Error loading all participant preferences:", allPrefsError);
+        }
+        setAllParticipantPreferences(allPrefsData || []);
 
         // Load participants
         const { data: participantsData, error: participantsError } =
@@ -185,6 +212,13 @@ export const useBoardSession = (sessionId?: string) => {
           };
         });
       },
+      onPreferencesChanged: () => {
+        // Reload all participants' preferences
+        if (sessionId) loadSession(sessionId);
+      },
+      onRotationChanged: (newOwnerId: string, newOrder: string[]) => {
+        // Handled by loadSession refresh
+      },
     });
 
     return () => {
@@ -202,6 +236,7 @@ export const useBoardSession = (sessionId?: string) => {
   return {
     session,
     preferences,
+    allParticipantPreferences,
     loading,
     error,
     loadSession,

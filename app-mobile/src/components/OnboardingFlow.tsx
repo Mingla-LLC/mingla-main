@@ -36,6 +36,7 @@ import { startRecording, stopRecording, uploadAudioClip } from '../services/pers
 import { searchUsers, sendFriendLink } from '../services/friendLinkService'
 import { getCurrencySymbol, formatNumberWithCommas } from '../utils/currency'
 import { getRate } from '../services/currencyService'
+import { deckService } from '../services/deckService'
 
 import { OnboardingShell } from './onboarding/OnboardingShell'
 import { PhoneInput } from './onboarding/PhoneInput'
@@ -131,6 +132,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     phoneCountryCode: getDefaultCountryCode(),
   })
   const [hasGpsPermission, setHasGpsPermission] = useState(false)
+  const [categoryCapMessage, setCategoryCapMessage] = useState(false)
   const [initialStep, setInitialStep] = useState<OnboardingStep>(1)
   const [phonePreVerified, setPhonePreVerified] = useState(false)
   const [isReady, setIsReady] = useState(false)
@@ -189,6 +191,8 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const [launchState, setLaunchState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [launchLoadingText, setLaunchLoadingText] = useState('Finding your kind of places...')
   const [launchRetries, setLaunchRetries] = useState(0)
+
+  const warmPoolPromiseRef = useRef<Promise<void> | null>(null)
 
   // ─── Animations ───
   const fadeAnim = useRef(new Animated.Value(1)).current
@@ -855,33 +859,28 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
 
       persistStep(5).catch(() => {})
 
-      // Fire-and-forget card generation
+      // Warm the deck pool — both category cards and curated cards
       const coords = data.coordinates
       if (coords) {
-        queryClient.prefetchQuery({
-          queryKey: ['onboarding-cards'],
-          queryFn: async () => {
-            const { data: cards, error } = await supabase.functions.invoke('discover-cards', {
-              body: {
-                categories: data.selectedCategories,
-                location: coords,
-                priceTiers: data.selectedPriceTiers,
-                budgetMax: backCompatBudgetMax,
-                travelMode: data.travelMode,
-                travelConstraintType: 'time',
-                travelConstraintValue: data.travelTimeMinutes,
-                datetimePref: new Date().toISOString(),
-                dateOption: 'now',
-                timeSlot: null,
-                batchSeed: 0,
-                limit: 20,
-              },
-            })
-            if (error) throw error
-            return cards
-          },
-          staleTime: 10 * 60 * 1000,
-        })
+        const warmPoolPromise = deckService.warmDeckPool({
+          location: coords,
+          categories: data.selectedCategories,
+          intents: data.selectedIntents,
+          priceTiers: data.selectedPriceTiers ?? ['chill', 'comfy'],
+          budgetMin: 0,
+          budgetMax: backCompatBudgetMax,
+          travelMode: data.travelMode,
+          travelConstraintType: 'time',
+          travelConstraintValue: data.travelTimeMinutes,
+          datetimePref: new Date().toISOString(),
+          dateOption: 'now',
+          timeSlot: null,
+        }).catch((err) => {
+          console.warn('[Onboarding] Warm pool failed:', err);
+        });
+
+        // Store promise ref for readiness check in handleLaunch
+        warmPoolPromiseRef.current = warmPoolPromise;
       }
 
       goNext()
@@ -936,62 +935,34 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const handleLaunch = useCallback(async () => {
     if (!user?.id) return
     logger.onboarding('Launch sequence started')
-    // Mark complete
+
     try {
-      await supabase.from('profiles').update({ has_completed_onboarding: true, onboarding_step: 0 }).eq('id', user.id)
+      // Mark onboarding complete
+      await supabase.from('profiles').update({
+        has_completed_onboarding: true,
+        onboarding_step: 0,
+      }).eq('id', user.id)
+
       const currentProfile = useAppStore.getState().profile
       if (currentProfile) {
         useAppStore.getState().setProfile({ ...currentProfile, has_completed_onboarding: true, onboarding_step: 0 })
       }
-    } catch (e) {
-      console.error('Launch complete error:', e)
-    }
 
-    // Check for cards
-    const cachedCards = queryClient.getQueryData(['onboarding-cards'])
-    if (cachedCards) {
+      // Wait for warm pool (max 3 seconds)
+      if (warmPoolPromiseRef.current) {
+        const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+        await Promise.race([warmPoolPromiseRef.current, timeout]);
+      }
+
       setLaunchState('ready')
       playRevealAnimation()
-      return
+    } catch (err) {
+      console.warn('[Onboarding] Launch error:', err)
+      // Proceed anyway — useDeckCards will handle cold fetch
+      setLaunchState('ready')
+      playRevealAnimation()
     }
-
-    // Wait for cards with rotating text
-    const loadingTexts = ['Finding your kind of places...', 'Curating your city...', 'Almost there...']
-    let textIdx = 0
-    const textInterval = setInterval(() => {
-      textIdx = (textIdx + 1) % loadingTexts.length
-      setLaunchLoadingText(loadingTexts[textIdx])
-    }, 1500)
-
-    // Poll for cards (max 5s)
-    const startTime = Date.now()
-    const pollInterval = setInterval(() => {
-      const cards = queryClient.getQueryData(['onboarding-cards'])
-      if (cards) {
-        clearInterval(pollInterval)
-        clearInterval(textInterval)
-        setLaunchState('ready')
-        playRevealAnimation()
-        return
-      }
-      if (Date.now() - startTime > 5000) {
-        clearInterval(pollInterval)
-        clearInterval(textInterval)
-        if (launchRetries < 2) {
-          setLaunchState('error')
-        } else {
-          // After 2 retries, just proceed
-          setLaunchState('ready')
-          playRevealAnimation()
-        }
-      }
-    }, 500)
-
-    return () => {
-      clearInterval(pollInterval)
-      clearInterval(textInterval)
-    }
-  }, [user?.id, queryClient, launchRetries])
+  }, [user?.id, playRevealAnimation])
 
   const playRevealAnimation = useCallback(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
@@ -1314,9 +1285,9 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                       setData((p) => ({
                         ...p,
-                        selectedIntents: selected
-                          ? p.selectedIntents.filter((i) => i !== intent.id)
-                          : [...p.selectedIntents, intent.id],
+                        selectedIntents: p.selectedIntents.includes(intent.id)
+                          ? []  // Deselect (CTA enforces min 1)
+                          : [intent.id],  // Radio: replace with only this one
                       }))
                     }}
                   >
@@ -1332,7 +1303,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
               )
             })}
           </View>
-          <Text style={[styles.caption, styles.textCenter]}>Go overboard. We won't tell.</Text>
+          <Text style={[styles.caption, styles.textCenter]}>Pick the one that excites you most.</Text>
         </View>
       )
     }
@@ -1538,7 +1509,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       return (
         <View>
           <Text style={styles.headline}>What kind of places do you love?</Text>
-          <Text style={styles.body}>Pick as many as you want.</Text>
+          <Text style={styles.body}>Pick up to 3 that match your vibe.</Text>
           <View style={styles.categoryGrid}>
             {categories.map((cat) => (
               <CategoryTile
@@ -1549,18 +1520,29 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                 activeColor={cat.ux.activeColor}
                 selected={data.selectedCategories.includes(cat.name)}
                 onPress={() => {
-                  const selected = data.selectedCategories.includes(cat.name)
-                  logger.action(`Category ${selected ? 'deselected' : 'selected'}: ${cat.name}`)
-                  setData((p) => ({
-                    ...p,
-                    selectedCategories: p.selectedCategories.includes(cat.name)
-                      ? p.selectedCategories.filter((c) => c !== cat.name)
-                      : [...p.selectedCategories, cat.name],
-                  }))
+                  const isSelected = data.selectedCategories.includes(cat.name)
+                  logger.action(`Category ${isSelected ? 'deselected' : 'selected'}: ${cat.name}`)
+                  setData((p) => {
+                    const selected = p.selectedCategories.includes(cat.name);
+                    if (selected) {
+                      return { ...p, selectedCategories: p.selectedCategories.filter((c) => c !== cat.name) };
+                    }
+                    if (p.selectedCategories.length >= 3) {
+                      setCategoryCapMessage(true);
+                      setTimeout(() => setCategoryCapMessage(false), 2000);
+                      return p;
+                    }
+                    return { ...p, selectedCategories: [...p.selectedCategories, cat.name] };
+                  })
                 }}
               />
             ))}
           </View>
+          {categoryCapMessage && (
+            <Text style={styles.selectionCapMessage}>
+              Maximum 3 categories. Deselect one to choose another.
+            </Text>
+          )}
         </View>
       )
     }
@@ -1914,6 +1896,12 @@ function getCategoryIcon(slug: string): string {
 
 // ─── Styles ───
 const styles = StyleSheet.create({
+  selectionCapMessage: {
+    color: '#EF4444',
+    fontSize: 13,
+    textAlign: 'center' as const,
+    marginTop: 8,
+  },
   centerContent: {
     alignItems: 'center',
     justifyContent: 'center',

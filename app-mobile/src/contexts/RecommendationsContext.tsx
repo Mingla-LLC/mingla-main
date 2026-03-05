@@ -9,7 +9,6 @@ import React, {
 } from "react";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  ExperiencesService,
   UserPreferences,
 } from "../services/experiencesService";
 import { useAuthSimple } from "../hooks/useAuthSimple";
@@ -18,8 +17,6 @@ import { useBoardSession } from "../hooks/useBoardSession";
 import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
-import { useRecommendationsQuery } from "../hooks/useRecommendationsQuery";
-import { useCuratedExperiences } from "../hooks/useCuratedExperiences";
 import { useDeckCards } from "../hooks/useDeckCards";
 import { deckService } from "../services/deckService";
 import { computePrefsHash } from "../utils/cardConverters";
@@ -27,6 +24,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
 import type { DeckBatch } from "../store/appStore";
 import { Recommendation } from "../types/recommendation";
+import { aggregateNonRotatingPrefs } from '../utils/sessionPrefsUtils';
+import { rotateToNext, getRotationLabel, initializeRotationOrder } from '../utils/sessionRotation';
 
 // Re-export so all existing consumer imports keep working
 export type { Recommendation };
@@ -77,6 +76,9 @@ interface RecommendationsContextType {
   addCardToFront: (card: Recommendation) => void;
   isExhausted: boolean;
   isSlowBatchLoad: boolean;
+  activeRotationOwner: string | null;
+  rotationOrder: string[];
+  handleRotateNext: () => Promise<void>;
 }
 
 const RecommendationsContext = createContext<
@@ -107,6 +109,8 @@ export const RecommendationsProvider: React.FC<
   const [dismissedCards, setDismissedCards] = useState<Recommendation[]>([]);
   const [isExhausted, setIsExhausted] = useState(false);
   const [isSlowBatchLoad, setIsSlowBatchLoad] = useState(false);
+  const [activeRotationOwner, setActiveRotationOwner] = useState<string | null>(null);
+  const [rotationOrder, setRotationOrder] = useState<string[]>([]);
   const prefetchFiredRef = useRef(false);
   const previousBatchRef = useRef<Recommendation[]>([]);
   const currentMode = propCurrentMode;
@@ -134,8 +138,6 @@ export const RecommendationsProvider: React.FC<
     availableSessions,
     loading: sessionsLoading,
   } = useSessionManagement();
-
-  const shouldCheckCache = cardsCache.isCacheLoaded;
 
   // HF-003 fix: Load dismissed cards from AsyncStorage on mount
   useEffect(() => {
@@ -198,6 +200,59 @@ export const RecommendationsProvider: React.FC<
   );
   const boardPreferences = boardSessionResult?.preferences || null;
 
+  // Read rotation + all participants' prefs from board session
+  const allParticipantPrefs = boardSessionResult?.allParticipantPreferences ?? null;
+  const boardSession = boardSessionResult?.session;
+
+  // ── Collaboration mode flag (must be declared before rotation effects) ──
+  const isCollaborationMode: boolean = Boolean(
+    currentMode !== "solo" && resolvedSessionId
+  );
+  const isSoloMode = currentMode === "solo";
+
+  // Sync rotation state from session
+  useEffect(() => {
+    if (boardSession?.active_preference_owner_id) {
+      setActiveRotationOwner(boardSession.active_preference_owner_id);
+    }
+    if (boardSession?.rotation_order?.length && boardSession.rotation_order.length > 0) {
+      setRotationOrder(boardSession.rotation_order);
+    }
+  }, [boardSession?.active_preference_owner_id, boardSession?.rotation_order]);
+
+  // Initialize rotation order when session exists but rotation not yet set up
+  const rotationInitializedRef = useRef(false);
+  useEffect(() => {
+    if (
+      !isCollaborationMode ||
+      !boardSession?.id ||
+      !boardSession?.created_by ||
+      !boardSession?.participants?.length ||
+      rotationInitializedRef.current ||
+      (boardSession.rotation_order && boardSession.rotation_order.length > 0)
+    ) {
+      return;
+    }
+    // Only initialize if at least one participant has preferences
+    if (!allParticipantPrefs || allParticipantPrefs.length === 0) return;
+
+    rotationInitializedRef.current = true;
+    initializeRotationOrder(
+      boardSession.id,
+      boardSession.created_by,
+      boardSession.participants.map((p: any) => ({
+        user_id: p.user_id,
+        joined_at: p.joined_at || p.created_at,
+      }))
+    ).then((order) => {
+      setRotationOrder(order);
+      setActiveRotationOwner(order[0]);
+    }).catch((err) => {
+      console.warn('[RecommendationsContext] Rotation init failed:', err);
+      rotationInitializedRef.current = false;
+    });
+  }, [isCollaborationMode, boardSession, allParticipantPrefs]);
+
   // ── Location & Preferences ──────────────────────────────────────────────
   const {
     data: userLocationData,
@@ -211,12 +266,6 @@ export const RecommendationsProvider: React.FC<
 
   const { data: userPrefs, isLoading: isLoadingPreferences } =
     useUserPreferences(user?.id);
-
-  // ── Collaboration mode flag ─────────────────────────────────────────────
-  const isCollaborationMode: boolean = Boolean(
-    currentMode !== "solo" && resolvedSessionId
-  );
-  const isSoloMode = currentMode === "solo";
 
   // ── Unified Deck Pool Warming ───────────────────────────────────────────
   useEffect(() => {
@@ -259,7 +308,49 @@ export const RecommendationsProvider: React.FC<
     JSON.stringify(userPrefs?.intents ?? []),
   ]);
 
-  // ── Unified Deck Hook (replaces 7 independent hooks) ────────────────────
+  // ── Collaboration deck params (rotation-aware) ────────────────────────
+  const collabDeckParams = useMemo(() => {
+    if (!isCollaborationMode || !allParticipantPrefs || allParticipantPrefs.length === 0) {
+      return null;
+    }
+
+    // Categories and intents come from the ACTIVE rotation owner only
+    const activeOwnerPrefs = allParticipantPrefs.find(
+      (p) => p.user_id === activeRotationOwner
+    );
+    if (!activeOwnerPrefs) return null;
+
+    const categories = activeOwnerPrefs.categories ?? [];
+    const intents = activeOwnerPrefs.intents ?? [];
+    if (categories.length === 0 && intents.length === 0) return null;
+
+    // Non-rotating prefs aggregated across all participants
+    const aggregated = aggregateNonRotatingPrefs(allParticipantPrefs);
+
+    return {
+      categories,
+      intents,
+      priceTiers: aggregated.priceTiers,
+      budgetMin: aggregated.budgetMin,
+      budgetMax: aggregated.budgetMax,
+      travelMode: aggregated.travelMode,
+      travelConstraintType: aggregated.travelConstraintType,
+      travelConstraintValue: aggregated.travelConstraintValue,
+      datetimePref: aggregated.datetimePref,
+      location: aggregated.location,
+    };
+  }, [
+    isCollaborationMode,
+    allParticipantPrefs,
+    activeRotationOwner,
+  ]);
+
+  // ── Unified Deck Hook (replaces all independent hooks) ────────────────
+  const activeDeckParams = isSoloMode ? stableDeckParams : collabDeckParams;
+  const activeDeckLocation = isSoloMode
+    ? userLocation
+    : (collabDeckParams?.location ?? userLocation);
+
   const {
     cards: deckCards,
     deckMode,
@@ -269,63 +360,31 @@ export const RecommendationsProvider: React.FC<
     isFullBatchLoaded: isDeckBatchLoaded,
     hasMore: deckHasMore,
   } = useDeckCards({
-    location: userLocation,
-    categories: stableDeckParams?.categories ?? [],
-    intents: stableDeckParams?.intents ?? [],
-    priceTiers: userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'],
-    budgetMin: userPrefs?.budget_min ?? 0,
-    budgetMax: userPrefs?.budget_max ?? 1000,
-    travelMode: userPrefs?.travel_mode ?? 'walking',
-    travelConstraintType: (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
-    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
-    datetimePref: userPrefs?.datetime_pref,
-    dateOption: userPrefs?.date_option ?? 'now',
-    timeSlot: userPrefs?.time_slot ?? null,
+    location: activeDeckLocation,
+    categories: activeDeckParams?.categories ?? [],
+    intents: activeDeckParams?.intents ?? [],
+    priceTiers: isSoloMode
+      ? (userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'])
+      : (activeDeckParams?.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish']),
+    budgetMin: isSoloMode ? (userPrefs?.budget_min ?? 0) : (activeDeckParams?.budgetMin ?? 0),
+    budgetMax: isSoloMode ? (userPrefs?.budget_max ?? 1000) : (activeDeckParams?.budgetMax ?? 1000),
+    travelMode: isSoloMode
+      ? (userPrefs?.travel_mode ?? 'walking')
+      : (activeDeckParams?.travelMode ?? 'walking'),
+    travelConstraintType: isSoloMode
+      ? ((userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time')
+      : ((activeDeckParams?.travelConstraintType as 'time' | 'distance') ?? 'time'),
+    travelConstraintValue: isSoloMode
+      ? (userPrefs?.travel_constraint_value ?? 30)
+      : (activeDeckParams?.travelConstraintValue ?? 30),
+    datetimePref: isSoloMode ? userPrefs?.datetime_pref : activeDeckParams?.datetimePref ?? undefined,
+    dateOption: isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now',
+    timeSlot: isSoloMode ? (userPrefs?.time_slot ?? null) : null,
     batchSeed,
-    enabled: isSoloMode && !!userLocation && stableDeckParams !== null && !isWaitingForSessionResolution,
-  });
-
-  // ── Collaboration Mode: useRecommendationsQuery (fallback) ──────────────
-  const {
-    data: recommendationsData,
-    isLoading: isLoadingRecommendations,
-    error: recommendationsError,
-    isFetching: isFetchingRecommendations,
-  } = useRecommendationsQuery({
-    userId: user?.id,
-    currentMode,
-    userLocation,
-    userPreferences: userPrefs,
-    resolvedSessionId,
-    isBoardSession,
-    boardPreferences,
-    isCollaborationMode,
-    isWaitingForSessionResolution,
-    batchSeed,
-    enabled: Boolean(
-      isCollaborationMode &&
-        userLocation &&
-        !isWaitingForSessionResolution &&
-        !!resolvedSessionId &&
-        Boolean(cardsCache.isCacheLoaded)
-    ),
-  });
-
-  // ── Collaboration Mode: useCuratedExperiences (adventurous default) ─────
-  const curatedSessionId = isCollaborationMode ? resolvedSessionId : undefined;
-  const { cards: curatedSoloCards, isLoading: isLoadingCuratedSolo } = useCuratedExperiences({
-    experienceType: 'adventurous',
-    location: userLocation,
-    budgetMin: userPrefs?.budget_min ?? 0,
-    budgetMax: userPrefs?.budget_max ?? 1000,
-    travelMode: userPrefs?.travel_mode ?? 'walking',
-    travelConstraintType:
-      (userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time',
-    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
-    datetimePref: userPrefs?.datetime_pref ?? new Date().toISOString(),
-    batchSeed,
-    sessionId: curatedSessionId ?? undefined,
-    enabled: isCollaborationMode,
+    enabled: (isSoloMode || isCollaborationMode) &&
+      !!activeDeckLocation &&
+      activeDeckParams !== null &&
+      !isWaitingForSessionResolution,
   });
 
   // ── Generate Next Batch ─────────────────────────────────────────────────
@@ -335,26 +394,26 @@ export const RecommendationsProvider: React.FC<
     setBatchSeed(prev => prev + 1);
   }, [recommendations]);
 
-  // Soft timeout (10s): show "Still loading..." intermediate state
-  // Hard timeout (30s): mark exhausted only if batch truly never arrived
+  // Soft timeout (3s): show "Still loading..." intermediate state
+  // Hard timeout (5s): mark exhausted only if batch truly never arrived
   useEffect(() => {
     if (!isBatchTransitioning) return;
 
     const softTimer = setTimeout(() => {
       if (isBatchTransitioning) {
-        console.log('[RecommendationsContext] Batch transition slow (10s) — showing intermediate state');
+        console.log('[RecommendationsContext] Batch transition slow (3s) — showing intermediate state');
         setIsSlowBatchLoad(true);
       }
-    }, 10000);
+    }, 3000);
 
     const hardTimer = setTimeout(() => {
       if (isBatchTransitioning) {
-        console.warn('[RecommendationsContext] Batch transition timed out after 30s — marking exhausted');
+        console.warn('[RecommendationsContext] Batch transition timed out after 5s — marking exhausted');
         setIsBatchTransitioning(false);
         setIsExhausted(true);
         setIsSlowBatchLoad(false);
       }
-    }, 30000);
+    }, 5000);
 
     return () => {
       clearTimeout(softTimer);
@@ -493,60 +552,74 @@ export const RecommendationsProvider: React.FC<
     }
   }, [currentDeckBatchIndex, deckBatches]);
 
-  // ── Pre-fetch next batch when 5 or fewer cards remain ─────────────────
+  // ── Pre-fetch next batch when 8 or fewer cards remain ─────────────────
   const handleDeckCardProgress = useCallback((currentIndex: number, total: number) => {
-    if (!userLocation || !userPrefs) return;
+    if (!activeDeckLocation || !activeDeckParams) return;
     const remainingCards = total - currentIndex - 1;
 
-    // When 5 or fewer cards remain, prefetch next batch (once per batch)
-    if (remainingCards <= 5 && !prefetchFiredRef.current && hasMoreCards) {
+    // When 8 or fewer cards remain, prefetch next batch (once per batch)
+    if (remainingCards <= 8 && !prefetchFiredRef.current && hasMoreCards) {
       prefetchFiredRef.current = true;
       const nextSeed = batchSeed + 1;
+      const prefetchCategories = activeDeckParams.categories ?? [];
+      const prefetchIntents = activeDeckParams.intents ?? [];
+      const prefetchPriceTiers = isSoloMode
+        ? (userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'])
+        : (activeDeckParams.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish']);
+      const prefetchBudgetMin = isSoloMode ? (userPrefs?.budget_min ?? 0) : (activeDeckParams.budgetMin ?? 0);
+      const prefetchBudgetMax = isSoloMode ? (userPrefs?.budget_max ?? 1000) : (activeDeckParams.budgetMax ?? 1000);
+      const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (activeDeckParams.travelMode ?? 'walking');
+      const prefetchConstraintType = isSoloMode
+        ? ((userPrefs?.travel_constraint_type as 'time' | 'distance') ?? 'time')
+        : ((activeDeckParams.travelConstraintType as 'time' | 'distance') ?? 'time');
+      const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (activeDeckParams.travelConstraintValue ?? 30);
+      const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
+      const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;
+      const prefetchDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (activeDeckParams.datetimePref ?? undefined);
+
       queryClient.prefetchQuery({
         queryKey: [
           'deck-cards',
-          userLocation.lat, userLocation.lng,
-          (userPrefs.categories ?? []).sort().join(','),
-          (userPrefs.intents ?? []).sort().join(','),
-          (userPrefs.price_tiers ?? []).sort().join(','),
-          userPrefs.budget_min ?? 0,
-          userPrefs.budget_max ?? 1000,
-          userPrefs.travel_mode ?? 'walking',
-          userPrefs.travel_constraint_type ?? 'time',
-          userPrefs.travel_constraint_value ?? 30,
-          userPrefs.datetime_pref,
-          userPrefs.date_option ?? 'now',
-          userPrefs.time_slot ?? '',
+          activeDeckLocation.lat, activeDeckLocation.lng,
+          prefetchCategories.sort().join(','),
+          prefetchIntents.sort().join(','),
+          prefetchPriceTiers.sort().join(','),
+          prefetchBudgetMin,
+          prefetchBudgetMax,
+          prefetchTravelMode,
+          prefetchConstraintType,
+          prefetchConstraintValue,
+          prefetchDatetimePref,
+          prefetchDateOption,
+          prefetchTimeSlot ?? '',
           nextSeed,
         ],
         queryFn: () => deckService.fetchDeck({
-          location: userLocation,
-          categories: userPrefs.categories ?? [],
-          intents: userPrefs.intents ?? [],
-          priceTiers: userPrefs.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'],
-          budgetMin: userPrefs.budget_min ?? 0,
-          budgetMax: userPrefs.budget_max ?? 1000,
-          travelMode: userPrefs.travel_mode ?? 'walking',
-          travelConstraintType: (userPrefs.travel_constraint_type as 'time' | 'distance') ?? 'time',
-          travelConstraintValue: userPrefs.travel_constraint_value ?? 30,
-          datetimePref: userPrefs.datetime_pref,
-          dateOption: userPrefs.date_option ?? 'now',
-          timeSlot: userPrefs.time_slot ?? null,
+          location: activeDeckLocation,
+          categories: prefetchCategories,
+          intents: prefetchIntents,
+          priceTiers: prefetchPriceTiers,
+          budgetMin: prefetchBudgetMin,
+          budgetMax: prefetchBudgetMax,
+          travelMode: prefetchTravelMode,
+          travelConstraintType: prefetchConstraintType,
+          travelConstraintValue: prefetchConstraintValue,
+          datetimePref: prefetchDatetimePref,
+          dateOption: prefetchDateOption,
+          timeSlot: prefetchTimeSlot,
           batchSeed: nextSeed,
           limit: 20,
         }),
         staleTime: 5 * 60 * 1000,
       });
     }
-  }, [batchSeed, hasMoreCards, userLocation, userPrefs, queryClient]);
+  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, userPrefs, queryClient]);
 
-  // ── Sync deck cards to recommendations state ────────────────────────────
-  // This replaces the massive 130-line sync effect with a simple one.
-  // The deck hook already handles nature/curated routing, conversion, and dedup.
+  // ── Sync deck cards to recommendations state (unified for solo + collab) ──
   const previousDeckIdsRef = useRef<string>('');
 
   useEffect(() => {
-    if (isSoloMode) {
+    if (isSoloMode || isCollaborationMode) {
       if (deckCards.length > 0) {
         const deckIdsKey = deckCards.map(c => c.id).sort().join(',');
         if (previousDeckIdsRef.current !== deckIdsKey) {
@@ -573,67 +646,7 @@ export const RecommendationsProvider: React.FC<
       // During batch transition with 0 cards from new query,
       // keep previous recommendations visible (no else branch needed)
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSlowBatchLoad, isExhausted, isSoloMode, batchSeed]);
-
-  // ── Collaboration mode sync ─────────────────────────────────────────────
-  const previousRecommendationsRef = useRef<Recommendation[] | undefined>(undefined);
-
-  useEffect(() => {
-    if (!isCollaborationMode) return;
-    if (!recommendationsData && curatedSoloCards.length === 0) return;
-
-    const regularCards = recommendationsData ?? [];
-    const prevRecs = previousRecommendationsRef.current;
-    const hasChanged =
-      !prevRecs ||
-      prevRecs.length !== regularCards.length ||
-      prevRecs.some((prev, idx) => prev.id !== regularCards[idx]?.id);
-
-    if (!hasChanged) return;
-    previousRecommendationsRef.current = regularCards;
-
-    if (regularCards.length > 0) {
-      setRecommendations(regularCards);
-    }
-
-    // Cache for card state management
-    if (userLocation && userPrefs) {
-      const generateCacheKey = cardsCache.generateCacheKey;
-      const getCachedCards = cardsCache.getCachedCards;
-      const setCachedCards = cardsCache.setCachedCards;
-      const cacheKey = generateCacheKey(currentMode, userLocation, userPrefs, refreshKey);
-      const existingCache = getCachedCards(cacheKey);
-      const currentCardIds = new Set(regularCards.map((r: Recommendation) => r.id));
-      const cachedCardIds = existingCache
-        ? new Set(existingCache.cards.map((c: Recommendation) => c.id))
-        : null;
-
-      if (
-        existingCache && cachedCardIds &&
-        currentCardIds.size === cachedCardIds.size &&
-        Array.from(currentCardIds).every((id) => cachedCardIds.has(id))
-      ) {
-        setCachedCards(cacheKey, regularCards, existingCache.currentCardIndex, existingCache.removedCardIds || [], currentMode, userLocation);
-      } else {
-        setCachedCards(cacheKey, regularCards, 0, [], currentMode, userLocation);
-      }
-      currentCacheKeyRef.current = cacheKey;
-
-      if (user?.id && regularCards.length > 0) {
-        ExperiencesService.trackInteraction(user.id, regularCards[0].id, "view").catch(() => {});
-      }
-    }
-  }, [
-    recommendationsData,
-    curatedSoloCards,
-    isCollaborationMode,
-    userLocation,
-    userPrefs,
-    currentMode,
-    refreshKey,
-    user?.id,
-    cardsCache,
-  ]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isBatchTransitioning, isSlowBatchLoad, isExhausted, isSoloMode, isCollaborationMode, batchSeed]);
 
   // ── Mode Transition Handling ────────────────────────────────────────────
   const previousModeRef = useRef<string | undefined>(undefined);
@@ -653,7 +666,6 @@ export const RecommendationsProvider: React.FC<
       setIsModeTransitioning(true);
       setRecommendations([]);
       setHasCompletedFetchForCurrentMode(false);
-      previousRecommendationsRef.current = undefined;
       previousDeckIdsRef.current = '';
 
       completionTimeoutRef.current = setTimeout(() => {
@@ -662,7 +674,6 @@ export const RecommendationsProvider: React.FC<
         setIsModeTransitioning(false);
       }, 5000);
 
-      queryClient.invalidateQueries({ queryKey: ["recommendations"] });
       queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
       queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
     }
@@ -677,25 +688,14 @@ export const RecommendationsProvider: React.FC<
   }, [currentMode, queryClient]);
 
   // ── Loading & Fetching States ───────────────────────────────────────────
-  const loading = isSoloMode
-    ? isLoadingLocation || isLoadingPreferences || isDeckLoading
-    : isLoadingLocation || isLoadingPreferences || isLoadingRecommendations || isLoadingCuratedSolo;
+  const loading = isLoadingLocation || isLoadingPreferences || isDeckLoading;
 
   // isFetching covers ALL data pipelines — not just recommendations
-  const isFetching = isSoloMode
-    ? isDeckFetching || isRefreshingAfterPrefChange
-    : isFetchingRecommendations || isRefreshingAfterPrefChange;
+  const isFetching = isDeckFetching || isRefreshingAfterPrefChange;
 
   // ── Mark Fetch Complete ─────────────────────────────────────────────────
   useEffect(() => {
-    const queryEnabled = isSoloMode
-      ? Boolean(userLocation && !isWaitingForSessionResolution)
-      : Boolean(
-          userLocation &&
-          !isWaitingForSessionResolution &&
-          !!resolvedSessionId &&
-          Boolean(cardsCache.isCacheLoaded)
-        );
+    const queryEnabled = Boolean(userLocation && !isWaitingForSessionResolution);
 
     if (hasCompletedFetchForCurrentMode && completionTimeoutRef.current) {
       clearTimeout(completionTimeoutRef.current);
@@ -703,20 +703,14 @@ export const RecommendationsProvider: React.FC<
     }
 
     if (isModeTransitioning || !hasCompletedFetchForCurrentMode) {
-      const queryFinished = isSoloMode
-        ? isDeckBatchLoaded
-        : !isLoadingRecommendations && !isFetchingRecommendations;
-
-      const hasQueryResult = isSoloMode
-        ? deckCards.length > 0 || isDeckBatchLoaded
-        : recommendationsData !== undefined;
-
+      const queryFinished = isDeckBatchLoaded;
+      const hasQueryResult = deckCards.length > 0 || isDeckBatchLoaded;
       const hasRecommendationsInState = recommendations.length > 0;
 
       const shouldMarkComplete =
         (queryEnabled && queryFinished && hasQueryResult) ||
         (hasRecommendationsInState && !isModeTransitioning && !loading) ||
-        (!!recommendationsError && queryFinished);
+        (locationError && queryFinished);
 
       if (shouldMarkComplete) {
         setHasCompletedFetchForCurrentMode(true);
@@ -734,19 +728,12 @@ export const RecommendationsProvider: React.FC<
     hasCompletedFetchForCurrentMode,
     isDeckBatchLoaded,
     deckCards.length,
-    isLoadingRecommendations,
-    isFetchingRecommendations,
-    recommendationsData,
-    recommendationsError,
     recommendations.length,
     userLocation,
     isWaitingForSessionResolution,
     currentMode,
-    resolvedSessionId,
-    cardsCache.isCacheLoaded,
-    sessionsLoading,
     loading,
-    isSoloMode,
+    locationError,
   ]);
 
   // ── Update Card Stroll Data ─────────────────────────────────────────────
@@ -780,28 +767,23 @@ export const RecommendationsProvider: React.FC<
 
   // ── Error Computation ───────────────────────────────────────────────────
   // Solo mode: detect when deck has genuinely loaded 0 cards (not just loading)
-  const deckEmpty = isSoloMode && isDeckBatchLoaded && deckCards.length === 0
+  const deckEmpty = (isSoloMode || isCollaborationMode) && isDeckBatchLoaded && deckCards.length === 0
     && !isDeckFetching && !isDeckLoading;
 
   const error = deckEmpty
     ? "no_matches"
-    : recommendationsError
-      ? (recommendationsError as Error).message === "no_matches"
-        ? "no_matches"
-        : "Failed to load recommendations"
-      : locationError
-        ? "Failed to load location"
-        : null;
+    : locationError
+      ? "Failed to load location"
+      : null;
 
   const hasCompletedInitialFetch =
     !isModeTransitioning &&
     !isWaitingForSessionResolution &&
     hasCompletedFetchForCurrentMode &&
-    (isSoloMode ? !isDeckLoading : !isLoadingRecommendations);
+    !isDeckLoading;
 
   const refreshRecommendations = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
-    queryClient.invalidateQueries({ queryKey: ["recommendations"] });
     queryClient.invalidateQueries({ queryKey: ["userLocation"] });
     queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
   }, [queryClient]);
@@ -809,8 +791,43 @@ export const RecommendationsProvider: React.FC<
   const clearRecommendations = useCallback(() => {
     setRecommendations([]);
     queryClient.removeQueries({ queryKey: ["deck-cards"] });
-    queryClient.removeQueries({ queryKey: ["recommendations"] });
   }, [queryClient]);
+
+  // ── Rotation handler ──────────────────────────────────────────────────
+  const handleRotateNext = useCallback(async () => {
+    if (!resolvedSessionId || !allParticipantPrefs) return;
+
+    const withPrefs = new Set(
+      allParticipantPrefs
+        .filter((p) => (p.categories?.length ?? 0) > 0 || (p.intents?.length ?? 0) > 0)
+        .map((p) => p.user_id!)
+    );
+
+    const nextOwner = await rotateToNext(
+      resolvedSessionId,
+      activeRotationOwner,
+      rotationOrder,
+      withPrefs
+    );
+
+    if (nextOwner && nextOwner !== activeRotationOwner) {
+      setActiveRotationOwner(nextOwner);
+      setBatchSeed(0);
+    }
+  }, [resolvedSessionId, activeRotationOwner, rotationOrder, allParticipantPrefs]);
+
+  // ── Collab params change detector ─────────────────────────────────────
+  const prevCollabParamsRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isCollaborationMode || !collabDeckParams) return;
+    const paramsKey = JSON.stringify(collabDeckParams);
+    if (prevCollabParamsRef.current !== null && prevCollabParamsRef.current !== paramsKey) {
+      // Collab params changed (preference update or rotation) — invalidate deck
+      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
+      setBatchSeed(0);
+    }
+    prevCollabParamsRef.current = paramsKey;
+  }, [isCollaborationMode, collabDeckParams, queryClient]);
 
   // ── Context Value ───────────────────────────────────────────────────────
   const value: RecommendationsContextType = {
@@ -843,6 +860,9 @@ export const RecommendationsProvider: React.FC<
     addCardToFront,
     isExhausted,
     isSlowBatchLoad,
+    activeRotationOwner,
+    rotationOrder,
+    handleRotateNext,
   };
 
   return (

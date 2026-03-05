@@ -12,7 +12,7 @@ Mingla is a mobile app for discovering personalized date and experience recommen
 | Server State | TanStack React Query v5 |
 | Client State | Zustand (persisted to AsyncStorage) |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | Deno/TypeScript (32 serverless functions) |
+| Edge Functions | Deno/TypeScript (29 serverless functions) |
 | AI | OpenAI GPT-4o-mini |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -33,8 +33,7 @@ Mingla/
 │   │   └── index.tsx                        # Root component — navigation, auth, providers
 │   ├── assets/                              # Icons, images, splash screen, logo
 │   ├── src/
-│   │   ├── components/                      # 150+ UI components
-│   │   │   ├── activity/                    # Boards, saved, calendar tabs
+│   │   ├── components/                      # 147+ UI components
 │   │   │   ├── board/                       # Board view, settings, discussion, cards, invites
 │   │   │   ├── collaboration/               # Session creation, invites, cards
 │   │   │   ├── connections/                 # Chat list, pill filters, friend picker
@@ -46,7 +45,7 @@ Mingla/
 │   │   │   ├── signIn/                      # Welcome screen, OAuth buttons
 │   │   │   ├── ui/                          # 45+ shadcn-style primitives + PulseDotLoader, CategoryTile
 │   │   │   ├── OnboardingFlow.tsx           # V2 5-step onboarding orchestrator
-│   │   │   └── ... (90+ more root-level components)
+│   │   │   └── ... (87+ more root-level components)
 │   │   ├── config/
 │   │   │   └── queryClient.ts              # React Query config + AsyncStorage persister
 │   │   ├── constants/
@@ -60,20 +59,20 @@ Mingla/
 │   │   │   ├── CardsCacheContext.tsx        # Card caching (30min TTL, 10 entries)
 │   │   │   ├── NavigationContext.tsx        # Modal state + navigation helpers
 │   │   │   └── RecommendationsContext.tsx   # Dual-mode card pipeline (solo/collab)
-│   │   ├── hooks/                           # 37 custom React hooks
+│   │   ├── hooks/                           # 36 custom React hooks
 │   │   │   ├── useDeckCards.ts             # Unified solo deck (pool-first)
 │   │   │   ├── useFriendLinks.ts           # Friend link request lifecycle
 │   │   │   ├── useOnboardingStateMachine.ts # V2 onboarding {step, subStep} state machine
 │   │   │   ├── usePersonAudio.ts           # Audio clip CRUD for standard persons
 │   │   │   ├── usePersonalizedCards.ts     # Smart For You personalized cards
 │   │   │   ├── useSavedPeople.ts           # Saved people CRUD (standard + linked)
-│   │   │   └── ... (31 more)
+│   │   │   └── ... (30 more)
 │   │   ├── services/                        # 61 service modules
 │   │   │   ├── friendLinkService.ts        # Friend link API (send/respond/unlink)
 │   │   │   ├── otpService.ts               # Twilio Verify OTP send/verify via edge functions
 │   │   │   ├── personAudioService.ts       # Audio clip upload/delete via Storage
 │   │   │   ├── personalizedCardsService.ts # Smart For You edge function client
-│   │   │   ├── deckService.ts              # Unified deck pipeline
+│   │   │   ├── deckService.ts              # Unified deck pipeline (solo + collaboration)
 │   │   │   ├── supabase.ts                 # Supabase client singleton
 │   │   │   └── ... (55+ more)
 │   │   ├── store/
@@ -88,10 +87,12 @@ Mingla/
 │   │   │   ├── friendLink.ts              # Friend link request/response types
 │   │   │   ├── personAudio.ts             # Audio clip types
 │   │   │   └── holidayTypes.ts            # Holiday type definitions
-│   │   └── utils/                           # 17 utility modules
+│   │   └── utils/                           # 19 utility modules
 │   │       ├── categoryUtils.ts            # Category slug/icon/color lookups
 │   │       ├── cardConverters.ts           # Card type conversions + dedup
 │   │       ├── localeDetection.ts         # Auto currency/measurement from coordinates
+│   │       ├── sessionRotation.ts         # Collaboration preference rotation logic
+│   │       ├── sessionPrefsUtils.ts       # Session preference aggregation utilities
 │   │       ├── responsive.ts              # Proportional scaling (iPhone 14 base)
 │   │       └── ... (13 more)
 │   ├── app.json                             # Expo config (bundle ID, permissions, plugins)
@@ -99,11 +100,11 @@ Mingla/
 │   └── package.json                         # Dependencies
 │
 ├── supabase/                                # Supabase backend
-│   ├── functions/                           # 32 Edge Functions + shared utilities
+│   ├── functions/                           # 29 Edge Functions + shared utilities
 │   │   ├── _shared/                        # Shared modules
 │   │   │   ├── cardPoolService.ts          # Pool-first serving engine
 │   │   │   ├── categoryPlaceTypes.ts       # Category-to-place-type mappings
-│   │   │   ├── placesCache.ts              # Google Places API caching
+│   │   │   ├── placesCache.ts              # Google Places API caching (per-type + bundled category search)
 │   │   │   ├── priceTiers.ts              # Canonical 4-tier price system (shared source of truth)
 │   │   │   └── textSearchHelper.ts         # Text search fallback
 │   │   ├── send-otp/                       # Twilio Verify: send OTP to phone number
@@ -116,11 +117,11 @@ Mingla/
 │   │   ├── new-generate-experience-/       # Core pool-first card generation
 │   │   ├── discover-cards/                 # Unified card discovery with pagination
 │   │   ├── generate-curated-experiences/   # Multi-stop itinerary builder
-│   │   ├── generate-session-experiences/   # Collaboration mode generation
 │   │   ├── ticketmaster-events/            # Real Ticketmaster live events
 │   │   ├── process-voice-review/           # GPT audio transcription + sentiment
 │   │   ├── refresh-place-pool/             # Daily place data refresh
-│   │   └── ... (17 more)
+│   │   ├── warm-cache/                    # Pre-populate Places cache on app open
+│   │   └── ... (14 more)
 │   ├── migrations/                          # 120 SQL migration files
 │   └── config.toml                          # Supabase project config
 │
@@ -138,11 +139,11 @@ Mingla/
 
 - OAuth sign-in via Google and Apple Sign-In
 - 5-step guided onboarding with phone verification via Twilio Verify OTP:
-  - **Step 1 — Welcome & Phone:** Country picker (240+ countries), phone input with E.164 formatting, 6-digit OTP verification with auto-submit
-  - **Step 2 — Intents:** Value proposition beats with animated transitions, multi-select intent cards (Adventurous, First Dates, Romantic, Friendly, Group Fun, Picnic Dates, Take a Stroll)
-  - **Step 3 — Location:** GPS permission request with fallback to manual city input. Back-navigation shows persisted "Locked in" state instead of re-prompting for GPS
-  - **Step 4 — Preferences:** Category grid (12 categories), 4-tile price tier selector (Chill/Comfy/Bougie/Lavish) with currency-converted range labels, transport mode (walking/biking/transit/driving), travel time (15–60 min). Background card generation fires at Step 4→5 transition
-  - **Step 5 — Add Someone:** Three paths — Invite (birthday→gender→audio→contact), Add (name→birthday→gender→audio), or Skip. Cards finish generating during this step
+  - **Step 1 -- Welcome & Phone:** Country picker (240+ countries), phone input with E.164 formatting, 6-digit OTP verification with auto-submit
+  - **Step 2 -- Intents:** Value proposition beats with animated transitions, single-select intent cards with radio behavior (Adventurous, First Dates, Romantic, Friendly, Group Fun, Picnic Dates, Take a Stroll). Exactly 1 intent required. Hint text: "Pick the one that excites you most"
+  - **Step 3 -- Location:** GPS permission request with fallback to manual city input. Back-navigation shows persisted "Locked in" state instead of re-prompting for GPS
+  - **Step 4 -- Preferences:** Category grid (12 categories, pick 1-3), 4-tile price tier selector (Chill/Comfy/Bougie/Lavish) with currency-converted range labels, transport mode (walking/biking/transit/driving), travel time (15-60 min). Hint text: "Pick up to 3 that match your vibe". Background card generation fires at Step 4 to Step 5 transition
+  - **Step 5 -- Add Someone:** Three paths -- Invite (birthday, gender, audio, contact), Add (name, birthday, gender, audio), or Skip. Cards finish generating during this step
   - **Launch:** Grand reveal with rotating loading text, card deck animation
 - Intents stored separately from categories in `preferences.intents` column
 - Resume-aware: major step persists to DB, sub-steps are ephemeral. One-shot resume guard prevents auth re-initialization cycles from overwriting in-progress selections
@@ -152,8 +153,8 @@ Mingla/
 
 - AI-generated experience cards built from real Google Places data, enriched by GPT-4o-mini with descriptions, highlights, and match scores
 - Swipe right to save, left to skip, up to expand full details
-- Pool-first card pipeline with SQL-level pagination serves pre-built cards with zero API calls; falls back to Google Places only when the pool is exhausted. Synchronous impression recording prevents cross-batch duplicates
-- Curated multi-stop itinerary cards interleaved every 3rd regular card. Adventure intent uses 4 dedicated groups (Outdoor, Exotic Eats, Adrenaline, Culture) for 3-stop itineraries. First Date intent uses 3 dedicated groups (Fun Activity, Cultural, Fine Dining) for 2-stop itineraries with strict alternation between ice-breaker activities and cultural outings paired with upscale dining. Romantic intent uses 2 dedicated groups (Romance Start: galleries, museums, landmarks, theaters → Romance Finish: upscale restaurants, wine bars) for intimate 2-stop date itineraries with romantic-toned AI descriptions. Friendly intent uses 4 starting groups (Adrenaline, Entertainment, Outdoor, Cultural) → 1 Finish group (Casual Dining, 19 restaurant types) for 2-stop hangout itineraries with strict 4-way rotation for maximum diversity and cascading fallback when a group is exhausted. Group Fun intent uses 2 starting groups (Activity: bowling, arcades, go-karts, karaoke; Entertainment: movies, concerts, comedy clubs) → 1 Finish group (Casual Dining, 19 restaurant types) for 2-stop group activity itineraries with strict 2-way alternation and dedicated exclude list (water parks, libraries, coworking spaces, business centers). Picnic Dates intent uses dedicated type groups (Grocery: grocery_store, supermarket → Picnic Spot: park, picnic_ground, beach) for 2-stop picnic itineraries with parks searched near the grocery (3km radius), an AI-generated shopping checklist (8-12 emoji-prefixed items) rendered as a tickable checklist under the grocery stop, and a 4-type exclude list (department_store, electronics_store, furniture_store, warehouse_store). Take A Stroll intent uses 3 dedicated groups (Start Point: 11 cafe/coffee types → Stroll Place: 12 nature types as anchor → Finish: 11 restaurant types) for 3-stop itineraries with anchor-based search (nature found near user first, cafe found within 2km of nature, restaurant found within 3km of nature), stroll-toned AI descriptions, stop 3 labeled "Optional", and a 26-type exclude list filtering active/loud/retail/transit venues
+- Unified deck pipeline (`deckService.fetchDeck()`) serves both solo and collaboration modes. Pool-first card serving from card_pool with SQL-level pagination and impression exclusion; falls back to Google Places only when the pool is exhausted (bundled category search: 1 API call per category instead of 1 per type). Synchronous impression recording prevents cross-batch duplicates. Batch timeout of 5 seconds. Prefetch threshold at 8 cards remaining
+- Curated multi-stop itinerary cards interleaved at a 1:1 ratio with regular cards. Adventure intent uses 4 dedicated groups (Outdoor, Exotic Eats, Adrenaline, Culture) for 3-stop itineraries. First Date intent uses 3 dedicated groups (Fun Activity, Cultural, Fine Dining) for 2-stop itineraries with strict alternation between ice-breaker activities and cultural outings paired with upscale dining. Romantic intent uses 2 dedicated groups (Romance Start: galleries, museums, landmarks, theaters; Romance Finish: upscale restaurants, wine bars) for intimate 2-stop date itineraries with romantic-toned AI descriptions. Friendly intent uses 4 starting groups (Adrenaline, Entertainment, Outdoor, Cultural) then 1 Finish group (Casual Dining, 19 restaurant types) for 2-stop hangout itineraries with strict 4-way rotation for maximum diversity and cascading fallback when a group is exhausted. Group Fun intent uses 2 starting groups (Activity: bowling, arcades, go-karts, karaoke; Entertainment: movies, concerts, comedy clubs) then 1 Finish group (Casual Dining, 19 restaurant types) for 2-stop group activity itineraries with strict 2-way alternation and dedicated exclude list (water parks, libraries, coworking spaces, business centers). Picnic Dates intent uses dedicated type groups (Grocery: grocery_store, supermarket; Picnic Spot: park, picnic_ground, beach) for 2-stop picnic itineraries with parks searched near the grocery (3km radius), an AI-generated shopping checklist (8-12 emoji-prefixed items) rendered as a tickable checklist under the grocery stop, and a 4-type exclude list (department_store, electronics_store, furniture_store, warehouse_store). Take A Stroll intent uses 3 dedicated groups (Start Point: 11 cafe/coffee types; Stroll Place: 12 nature types as anchor; Finish: 11 restaurant types) for 3-stop itineraries with anchor-based search (nature found near user first, cafe found within 2km of nature, restaurant found within 3km of nature), stroll-toned AI descriptions, stop 3 labeled "Optional", and a 26-type exclude list filtering active/loud/retail/transit venues
 - Expanded card modal with image gallery, weather forecast, busyness predictions, match score breakdown, companion stops, and timeline
 - Deck batch navigation with forward/backward history persisted across sessions
 - Dismissed cards review sheet for reconsidering left-swiped cards (persisted across app restarts via AsyncStorage)
@@ -191,28 +192,26 @@ Mingla/
 
 ### Likes Tab
 
+- Saved/liked cards with category, type, and date filtering
+- Boards: collaborative boards/sessions with participant avatars, card voting, RSVP, threaded discussion, and @mentions
 - Calendar view of scheduled experiences with date grid and time slots
 - Device calendar export via Expo Calendar
 - Post-experience review modal with star rating and voice recording (up to 5 clips)
 - QR code display for in-store/mobile payments
 
-### Activity Tab
-
-- Boards: collaborative boards/sessions with participant avatars, card voting, RSVP, threaded discussion, and @mentions
-- Saved: all saved/liked cards with category, type, and date filtering
-- Calendar: scheduled experiences with archive, propose new dates, and date options grid
-
 ### Collaboration Sessions
 
 - Named sessions with multi-friend selection, real-time card swiping, voting, RSVP, and chat
-- Session-scoped cards generated from combined participant preferences (widest budget, union of categories, centroid location)
-- Real-time sync via Supabase Realtime for state, votes, messages, presence, and typing indicators
+- Sessions use the unified deck pipeline (`deckService.fetchDeck()`) for card generation, the same pipeline that powers solo mode
+- Preference rotation system: the session creator's preferences load first, then a "Next person's picks" button rotates through participants by join order, skipping participants who have not set preferences
+- Non-rotating preferences (price tiers, travel mode, budget) are aggregated across all participants: union of price tiers, widest budget range, median travel constraint, majority vote on travel mode
+- Realtime sync via Supabase Realtime: preference changes from any participant trigger a deck refresh for all participants within 10 seconds. State, votes, messages, presence, and typing indicators all sync in real time
 - Push notifications for session invites, accepts, and declines
 
 ### Profile and Settings
 
 - Uploadable avatar, display name, username, gamified stats (achievements, streaks, milestones)
-- Auto locale detection: currency and measurement system automatically set from GPS/manual location during onboarding and preference changes (reverse geocode → country → currency + Imperial/Metric)
+- Auto locale detection: currency and measurement system automatically set from GPS/manual location during onboarding and preference changes (reverse geocode, country, currency + Imperial/Metric)
 - Privacy controls for profile visibility, location sharing, budget sharing
 - Account deletion with full cascade across all tables
 
@@ -242,15 +241,17 @@ Mingla/
 | Tier | Label | Range | Google Levels | Color | Icon |
 |------|-------|-------|--------------|-------|------|
 | `chill` | Chill | $50 max | FREE + INEXPENSIVE | `#10B981` | `leaf-outline` |
-| `comfy` | Comfy | $50–$150 | MODERATE | `#3B82F6` | `cafe-outline` |
-| `bougie` | Bougie | $150–$300 | EXPENSIVE | `#8B5CF6` | `sparkles-outline` |
+| `comfy` | Comfy | $50-$150 | MODERATE | `#3B82F6` | `cafe-outline` |
+| `bougie` | Bougie | $150-$300 | EXPENSIVE | `#8B5CF6` | `sparkles-outline` |
 | `lavish` | Lavish | $300+ | VERY_EXPENSIVE | `#F59E0B` | `diamond-outline` |
 
 Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTiers.ts` (mobile). All card display, filtering, onboarding, preferences, and pool storage use these canonical tiers. Currency conversion applies to range labels.
 
 ### Preferences System
 
-- 12 category pills with intent-based filtering (romantic, adventurous, group-fun, business, first-dates, solo-adventure, picnic-dates)
+- Intents: single-select with radio button behavior (max 1 at a time). 7 options: Adventurous, First Dates, Romantic, Friendly, Group Fun, Picnic Dates, Take a Stroll
+- Categories: 12 category pills with intent-based filtering, capped at 3 selections
+- Minimum 1 total selection (intent or category) required in PreferencesSheet and CollaborationPreferences
 - Price tiers: multi-select from 4 tiers (Chill, Comfy, Bougie, Lavish) displayed with currency-converted range labels. Stored as `price_tiers` text array in preferences
 - Travel mode: walking, driving, transit, cycling
 - Travel constraint: time-based or distance-based
@@ -282,7 +283,7 @@ Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTie
 | `place_pool` | Shared enriched Google Places data with analytics columns (impressions, saves, schedules, reviews), price_tier column |
 | `card_pool` | Pre-built cards (single or curated type) linked to place_pool, price_tier column for tier-based filtering |
 | `user_card_impressions` | Per-user card "seen" tracking, session-scoped to preference changes |
-| `google_places_cache` | Google Places API response cache (24h TTL) with next_page_token for pagination and automatic page draining |
+| `google_places_cache` | Google Places API response cache (24h default TTL, 72h for popular entries with hit_count > 3) with next_page_token for pagination and automatic page draining. Category-level bundled searches use `cat:` prefix keys |
 | `ticketmaster_events_cache` | Ticketmaster API response cache (2h TTL) |
 | `discover_daily_cache` | Per-city daily discover feed cache (24h TTL) |
 
@@ -309,10 +310,10 @@ Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTie
 
 | Table | Purpose |
 |-------|---------|
-| `collaboration_sessions` | Named sessions with status lifecycle |
+| `collaboration_sessions` | Named sessions with status lifecycle, `active_preference_owner_id` (tracks whose preferences are currently active), `rotation_order` (JSON array of participant IDs in join order for preference rotation) |
 | `session_participants` | Session membership with admin flags |
 | `collaboration_invites` | Invite lifecycle tracking |
-| `board_session_preferences` | Per-session preference overrides (categories and intents) |
+| `board_session_preferences` | Per-session preference overrides (categories, intents, `price_tiers`, `date_option`) |
 | `board_saved_cards` | Cards added to boards |
 | `board_votes` | User votes on board cards |
 | `board_card_rsvps` | RSVP responses for scheduled board cards |
@@ -336,8 +337,7 @@ Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTie
 |----------|---------|
 | `new-generate-experience-` | Core pool-first card generation engine. Serves pre-built cards from card_pool, gap-fills from Google Places |
 | `discover-cards` | Unified card discovery with SQL-level pagination (`query_pool_cards` function), impression exclusion, and nextPageToken pool expansion |
-| `generate-curated-experiences` | Multi-stop itinerary builder with AI descriptions and travel time estimates. Adventure intent: 3-stop cards from 4 dedicated groups with round-robin combos. First Date intent: 2-stop cards (ice-breaker activity or cultural outing → upscale dinner) with strict alternation. Romantic intent: 2-stop cards (cultural/artistic venue → upscale restaurant) with romantic-toned AI descriptions. Friendly intent: 2-stop cards (activity → casual dining) with 4-way starting group rotation. Group Fun intent: 2-stop cards (activity/entertainment → casual dining) with 2-way alternation. Picnic Dates intent: 2-stop cards (grocery → park/picnic spot near grocery) with AI-generated shopping checklist. Take A Stroll intent: 3-stop cards (cafe → nature anchor → restaurant "Optional") with anchor-based search and stroll-toned AI descriptions |
-| `generate-session-experiences` | Collaboration mode: aggregates participant preferences for group card generation |
+| `generate-curated-experiences` | Multi-stop itinerary builder with AI descriptions and travel time estimates. Adventure intent: 3-stop cards from 4 dedicated groups with round-robin combos. First Date intent: 2-stop cards (ice-breaker activity or cultural outing, then upscale dinner) with strict alternation. Romantic intent: 2-stop cards (cultural/artistic venue, then upscale restaurant) with romantic-toned AI descriptions. Friendly intent: 2-stop cards (activity, then casual dining) with 4-way starting group rotation. Group Fun intent: 2-stop cards (activity/entertainment, then casual dining) with 2-way alternation. Picnic Dates intent: 2-stop cards (grocery, then park/picnic spot near grocery) with AI-generated shopping checklist. Take A Stroll intent: 3-stop cards (cafe, then nature anchor, then restaurant "Optional") with anchor-based search and stroll-toned AI descriptions |
 | `discover-experiences` | General discovery for all 12 categories with 24h daily cache |
 | `discover-casual-eats` | Category-specific discovery: Casual Eats |
 | `discover-creative-arts` | Category-specific discovery: Creative & Arts |
@@ -381,7 +381,6 @@ Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTie
 
 | Function | Purpose |
 |----------|---------|
-| `enhance-cards` | GPT-4o-mini card enrichment with personalization context |
 | `ai-reason` | Weather-aware recommendation reasoning |
 | `process-voice-review` | Background voice review processor: GPT audio transcription, sentiment analysis, theme extraction |
 
@@ -394,14 +393,8 @@ Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTie
 | `get-picnic-grocery` | Nearby groceries for picnic planning |
 | `get-google-maps-key` | Securely serve Google Maps API key (JWT required) |
 | `refresh-place-pool` | Daily refresh: update stale place_pool entries, propagate data to card_pool, deactivate removed places |
+| `warm-cache` | Pre-populate Google Places cache on app open. Bundles all categories into parallel `batchSearchByCategory()` calls so first swipe is instant |
 | `backfill-place-websites` | One-time admin function to populate website URLs for existing places |
-
-### Recommendations and Scoring
-
-| Function | Purpose |
-|----------|---------|
-| `recommendations-enhanced` | Personalized scoring: category match, budget fit, distance, ratings, interaction history |
-| `recommendations` | Legacy base recommendation engine |
 
 ### Social and Notifications
 
@@ -518,27 +511,13 @@ The `oauth-redirect/` directory contains a static site deployed to Vercel/Netlif
 
 ## Recent Changes
 
-- **Price Tier System Overhaul + Bug Fixes (2026-03-05):** Replaced the entire fragmented price/budget system (5 conflicting mappings, arbitrary dollar presets, ignored budgetMin parameter) with a canonical 4-tier model (Chill/Comfy/Bougie/Lavish) mapped directly to Google Places API price levels. Single source of truth in `_shared/priceTiers.ts` (edge) and `constants/priceTiers.ts` (mobile). Updated 30+ files: all 12 discover-* edge functions, cardPoolService, 9 other edge functions, mobile types, pipeline (deckService, RecommendationsContext, useDeckCards), OnboardingFlow, PreferencesSheet, AppHandlers, card display components (CardInfoSection, SingleCardDisplay, CuratedExperienceSwipeCard, ExpandedCardModal), DiscoverScreen, CollaborationPreferences, PreferencePresets, experienceService, deviceCalendarService. Rewrote `query_pool_cards` SQL RPC with CTEs (fixes HF-001 triple filter). Fixed HF-006 (budgetMin ignored), CF-003 (card ID mismatch), budget leak in gap-fill cards. Post-QA fixes: SingleCardDisplay now reads `card.priceTier` instead of undefined `card.priceLevel` (CRIT-001), `expandPoolWithNewPlaces` in discover-cards passes `priceTier` to pool storage (CRIT-002), Lavish backward-compat `budget_max` corrected from $150 to $1000 (HIGH-001), `curatedToRecommendation` now sets `priceTier` from first stop (HIGH-002), `priceTier` field added to both `Recommendation` and `RecommendationCard` types. Migration: `20260305000001_price_tier_system.sql`. Backward compatible: old `budget_min`/`budget_max` columns retained, RPC accepts both old and new params.
+- **Unified Card Delivery Pipeline Phase 1 (2026-03-05):** Merged solo and collaboration card delivery into a single pipeline powered by `deckService.fetchDeck()`. Deleted 4 edge functions (`generate-session-experiences`, `recommendations-enhanced`, `recommendations`, `enhance-cards`) and 3 components (`RecommendationsGrid`, `ActivityPage`, `BoardsTab`). Collaboration sessions now use preference rotation (creator first, "Next person's picks" rotates by join order) with non-rotating prefs aggregated across participants (union of price tiers, widest budget, median travel constraint, majority vote on travel mode). Realtime sync triggers deck refresh within 10 seconds of any participant's preference change.
 
-- **Nature Category Keywords Update (2026-03-04):** Replaced the Nature category's Google Place types across all surfaces — from a fragmented mix of 3-19 types (varying per file, with `zoo`, `tourist_attraction`, `city_park` polluting results) to a unified 17-type set focused on natural landscapes: `national_park`, `state_park`, `nature_preserve`, `wildlife_refuge`, `wildlife_park`, `scenic_spot`, `garden`, `botanical_garden`, `park`, `lake`, `river`, `island`, `mountain_peak`, `woods`, `hiking_area`, `campground`, `picnic_ground`. All 17 types confirmed Google Table A (Feb 2026 release). New 37-type exclude list blocks retail, sports, transit, and entertainment venues. Updated 13 files across 9 edge functions + 1 shared module + 1 mobile constant + 2 additional stale files found during verification. Added 4 entries to `STOP_DURATION_MINUTES` (`lake: 60`, `river: 45`, `woods: 60`, `wildlife_park: 90`). Expanded `ALWAYS_OPEN_TYPES` in 4 files. Zero risk to curated intents (STROLL_PLACE, ADVENTURE_GROUPS, PICNIC_FINISH all independent). Updated mobile metadata (descriptions, subcategories, contextual preview). Zero database changes required.
+- **Selection Limits (2026-03-05):** Intents changed from multi-select to radio button behavior (max 1). Categories capped at 3 selections. Minimum 1 total selection (intent or category) enforced in PreferencesSheet and CollaborationPreferences. Onboarding hint text updated accordingly.
 
-- **Take A Stroll Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the old `generateStrollCards()` (which cloned the same restaurant for stops 1 and 3) with a dedicated 3-stop anchor-based pipeline: Start Point (11 cafe/coffee types) → Stroll Place (12 nature types, anchor) → Finish (11 restaurant types, labeled "Optional"). Nature is found near the user first, then cafe within 2km of nature, then restaurant within 3km of nature. 34 hand-picked Google Place types across 3 groups, all verified Table A. Added `'Optional'` to `CuratedStop.stopLabel` TypeScript union (renders as plain text with zero mobile UI changes). Stroll-specific stop durations, excluded types, and AI description tone. 9 new entries added to global `STOP_DURATION_MINUTES` map. Updated taglines and `CURATED_TYPE_CATEGORIES` metadata.
+- **Curated Card Interleave (2026-03-05):** Changed curated card interleave ratio from 1 per 3 regular cards to 1:1. Batch timeout reduced from 30s to 5s. Prefetch threshold increased from 5 cards remaining to 8.
 
-- **Picnic Dates Intent — Dedicated Place Type Groups + AI Shopping List (2026-03-04):** Replaced the generic `generatePicnicCards()` with a dedicated `generatePicnicDatesCards()` pipeline using narrower place type groups (grocery_store/supermarket → park/picnic_ground/beach). Parks are searched near the grocery (3km radius), not near the user. Added AI-generated shopping checklist (8-12 emoji-prefixed items via GPT-4o-mini) with static fallback. New `PicnicShoppingList` mobile component renders a tickable checklist under the grocery stop with haptic feedback, progress counter, and strikethrough on checked items. Added `shopping_list` JSONB column to `card_pool` for pool round-trip preservation. 4-type exclude list (department_store, electronics_store, furniture_store, warehouse_store) filters non-grocery retail. Travel constraint validation added (was missing in old implementation).
-
-- **App-Wide Locale Persistence (2026-03-04):** Fixed 5 user-facing surfaces that hardcoded `$` or `km`. SwipeableCards budget filter now shows correct currency symbol. SingleCardDisplay cost/person now converts from USD. ExperienceCard fallback shows "Varies" instead of fabricated "$25-50". SavedTab curated prices convert from USD. BoardPreferencesForm budget presets display in user's currency. DiscoverScreen night-out distance respects Imperial/Metric. ShareModal fallback shows "Nearby" instead of hardcoded "3.8 km away". New `useLocalePreferences` hook for prop-drilling-free locale access. Deleted dead `costConverter.ts`.
-
-- **Group Fun Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic 3-stop category-pool pipeline for the `group-fun` intent with a dedicated 2-stop pipeline using 2 starting groups (Activity: 8 types, Entertainment: 5 types) → 1 Finish group (Casual Dining: 19 restaurant types). Starting groups alternate strictly (0→1→0→1) with fallback to the other group when one is exhausted. Dedicated exclude list (water_park, library, coworking_space, business_center). Group-fun-specific stop durations for all 32 place types. All 7 curated intents now have dedicated pipelines — the generic pool fallback is dead code for current intents.
-
-- **Custom Budget with Currency-Aware Onboarding (2026-03-04):** Budget presets in onboarding now display in the user's detected currency (same Math.round conversion as PreferencesSheet). Added custom budget toggle+input. Budget selection is mandatory. PreferencesSheet now auto-detects custom values on open. Fixes pre-existing bug where onboarding saved raw USD while PreferencesSheet saved converted values.
-
-- **Friendly Intent — Dedicated Place Type Groups (2026-03-04):** Replaced the generic 3-stop category-pool pipeline for the `friendly` intent with a dedicated 2-stop pipeline using 4 starting groups (Adrenaline, Entertainment, Outdoor, Cultural) → 1 Finish group (Casual Dining, 19 restaurant types). Starting groups rotate strictly (0→1→2→3→0) with cascading fallback when a group is exhausted. Minimal exclude list (indoor_playground, childrens_camp only). Added 8 new types to the global duration map and friendly-specific duration overrides for all 42 place types.
-
-- **Romantic Intent — Dedicated Place Type Groups (2026-03-04):** 2 dedicated Romantic Groups (Romance Start → Romance Finish) for intimate 2-stop date itineraries with romantic-toned AI descriptions.
-
-- **First Date Intent — Dedicated Place Type Groups (2026-03-04):** 3 dedicated First Date Groups for 2-stop cards with strict Fun Activity / Cultural alternation → upscale dinner.
-
-- **Adventure Intent — Dedicated Place Type Groups (2026-03-04):** 4 hand-picked Adventure Groups for 3-stop itineraries with round-robin rotation.
+- **Likes Tab Consolidation (2026-03-05):** Likes Tab now handles boards, saved cards, and calendar (previously split across a separate Activity Tab). `ActivityPage.tsx` deleted.
 
 ---
 

@@ -244,6 +244,8 @@ export class RealtimeService {
       onParticipantJoined?: (participant: any) => void;
       onParticipantLeft?: (participant: any) => void;
       onSessionUpdated?: (session: any) => void;
+      onPreferencesChanged?: (newPrefs: any, oldPrefs: any) => void;
+      onRotationChanged?: (newOwnerId: string, newOrder: string[]) => void;
     }
   ) {
     const channelName = `board_session:${sessionId}`;
@@ -412,6 +414,19 @@ export class RealtimeService {
           callbacks.onParticipantLeft?.(payload.old);
         }
       )
+      // Preference changes — triggers deck refresh for all participants
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'board_session_preferences',
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          callbacks.onPreferencesChanged?.(payload.new as any, payload.old as any);
+        }
+      )
       // Session updates
       .on(
         "postgres_changes",
@@ -422,7 +437,11 @@ export class RealtimeService {
           filter: `id=eq.${sessionId}`,
         },
         (payload) => {
-          callbacks.onSessionUpdated?.(payload.new);
+          const newSession = payload.new as any;
+          if (newSession.active_preference_owner_id !== (payload.old as any)?.active_preference_owner_id) {
+            callbacks.onRotationChanged?.(newSession.active_preference_owner_id, newSession.rotation_order);
+          }
+          callbacks.onSessionUpdated?.(newSession);
         }
       )
       .subscribe();

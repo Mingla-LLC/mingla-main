@@ -333,10 +333,9 @@ class DeckService {
       curatedPromise,
     ]);
 
-    const results: Recommendation[][] = [];
-
+    // Merge category groups into one "regular" stream via round-robin
+    const categoryArrays: Recommendation[][] = [];
     if (categoryResult.status === 'fulfilled' && categoryResult.value.length > 0) {
-      // Group by category for per-category round-robin
       const byCategory: Record<string, Recommendation[]> = {};
       for (const card of categoryResult.value) {
         const cat = card.category || 'Other';
@@ -344,14 +343,38 @@ class DeckService {
         byCategory[cat].push(card);
       }
       for (const group of Object.values(byCategory)) {
-        results.push(group);
+        categoryArrays.push(group);
       }
     }
-    if (curatedResult.status === 'fulfilled') {
-      results.push(...curatedResult.value);
-    }
+    const regularStream = roundRobinInterleave(categoryArrays);
 
-    const interleaved = roundRobinInterleave(results).slice(0, limit);
+    // Merge curated arrays into one "curated" stream via round-robin
+    const curatedArrays: Recommendation[][] = [];
+    if (curatedResult.status === 'fulfilled') {
+      curatedArrays.push(...curatedResult.value);
+    }
+    const curatedStream = roundRobinInterleave(curatedArrays);
+
+    // 1:1 interleave: alternate regular and curated
+    const interleaved: Recommendation[] = [];
+    const maxLen = Math.max(regularStream.length, curatedStream.length);
+    const seen = new Set<string>();
+    for (let i = 0; i < maxLen && interleaved.length < limit; i++) {
+      if (i < regularStream.length) {
+        const id = regularStream[i].placeId || regularStream[i].id;
+        if (!seen.has(id)) {
+          seen.add(id);
+          interleaved.push(regularStream[i]);
+        }
+      }
+      if (i < curatedStream.length && interleaved.length < limit) {
+        const id = curatedStream[i].id;
+        if (!seen.has(id)) {
+          seen.add(id);
+          interleaved.push(curatedStream[i]);
+        }
+      }
+    }
 
     if (__DEV__) {
       console.log(

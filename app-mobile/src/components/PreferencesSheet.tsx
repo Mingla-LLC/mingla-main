@@ -157,6 +157,10 @@ export default function PreferencesSheet({
   // Categories
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
+  // Selection limit messages
+  const [minSelectionMessage, setMinSelectionMessage] = useState(false);
+  const [categoryCapMessage, setCategoryCapMessage] = useState(false);
+
   // Date & Time
   const [selectedDateOption, setSelectedDateOption] =
     useState<DateOption | null>("Now");
@@ -505,16 +509,39 @@ export default function PreferencesSheet({
 
   // Memoized callbacks
   const handleIntentToggle = useCallback((id: string) => {
-    setSelectedIntents((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  }, []);
+    setSelectedIntents((prev) => {
+      if (prev.includes(id)) {
+        // Deselecting — check combined minimum
+        if (prev.length === 1 && selectedCategories.length === 0) {
+          setMinSelectionMessage(true);
+          setTimeout(() => setMinSelectionMessage(false), 2500);
+          return prev;
+        }
+        return [];  // Radio: goes to 0
+      }
+      return [id];  // Radio: replace with only this one
+    });
+  }, [selectedCategories.length]);
 
   const handleCategoryToggle = useCallback((id: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  }, []);
+    setSelectedCategories((prev) => {
+      if (prev.includes(id)) {
+        // Deselecting — check combined minimum
+        if (prev.length === 1 && selectedIntents.length === 0) {
+          setMinSelectionMessage(true);
+          setTimeout(() => setMinSelectionMessage(false), 2500);
+          return prev;
+        }
+        return prev.filter((c) => c !== id);
+      }
+      if (prev.length >= 3) {
+        setCategoryCapMessage(true);
+        setTimeout(() => setCategoryCapMessage(false), 2000);
+        return prev;
+      }
+      return [...prev, id];
+    });
+  }, [selectedIntents.length]);
 
   const handlePriceTierToggle = useCallback((slug: PriceTierSlug) => {
     setSelectedPriceTiers((prev) => {
@@ -856,9 +883,8 @@ export default function PreferencesSheet({
 
       // === THEN invalidate caches (deferred to next frame to not block close animation) ===
       requestAnimationFrame(() => {
-        queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+        queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
         queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
-        queryClient.invalidateQueries({ queryKey: ["nature-cards"] });
         queryClient.invalidateQueries({ queryKey: ["userPreferences"] });
         queryClient.invalidateQueries({ queryKey: ["userLocation"] });
       });
@@ -939,6 +965,11 @@ export default function PreferencesSheet({
             selectedIntents={selectedIntents}
             onIntentToggle={handleIntentToggle}
           />
+          {minSelectionMessage && (
+            <Text style={styles.selectionCapMessage}>
+              At least one intent or category must be selected.
+            </Text>
+          )}
 
           {/* Categories Section */}
           <CategoriesSection
@@ -946,6 +977,11 @@ export default function PreferencesSheet({
             selectedCategories={selectedCategories}
             onCategoryToggle={handleCategoryToggle}
           />
+          {categoryCapMessage && (
+            <Text style={styles.selectionCapMessage}>
+              Maximum 3 categories. Deselect one to choose another.
+            </Text>
+          )}
 
           {/* Price Tier Section */}
           {!(selectedCategories.length === 1 && selectedCategories[0] === "nature") && (
@@ -1202,6 +1238,12 @@ export default function PreferencesSheet({
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
 
 const styles = StyleSheet.create({
+  selectionCapMessage: {
+    color: '#EF4444',
+    fontSize: 13,
+    textAlign: 'center' as const,
+    marginTop: 8,
+  },
   // --- New bottom-sheet modal styles (used when `visible` prop is passed) ---
   sheetOverlay: {
     flex: 1,

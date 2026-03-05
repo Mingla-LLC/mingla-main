@@ -73,11 +73,6 @@ export interface ExperienceGenerationRequest {
   location?: { lat: number; lng: number };
 }
 
-export interface SessionExperienceGenerationRequest {
-  sessionId: string;
-  userId?: string; // Optional: for auth
-}
-
 export class ExperienceGenerationService {
   /**
    * Generate experiences using AI and Google Places
@@ -708,58 +703,6 @@ export class ExperienceGenerationService {
     }
 
     return { min: 0, max: 0 };
-  }
-
-  /**
-   * Generate experiences for a collaboration session
-   * Aggregates all user preferences in the session and generates unified cards
-   */
-  static async generateSessionExperiences(
-    request: SessionExperienceGenerationRequest
-  ): Promise<GeneratedExperience[]> {
-    try {
-      // Call Supabase edge function to generate session experiences
-      const { data, error } = await supabase.functions.invoke(
-        "generate-session-experiences",
-        {
-          body: {
-            session_id: request.sessionId,
-            user_id: request.userId,
-          },
-        }
-      );
-
-      if (error) {
-        console.error("Error generating session experiences:", error);
-        console.error("Error details:", JSON.stringify(error, null, 2));
-
-        if (error.message) {
-          throw new Error(
-            `Failed to generate session experiences: ${error.message}`
-          );
-        }
-        throw error;
-      }
-
-      // Check if response contains an error
-      if (data?.error) {
-        console.error("Function returned error:", data.error);
-        throw new Error(data.error);
-      }
-
-      if (!data || !data.cards || data.cards.length === 0) {
-        console.log("⚠️ No cards returned from session experience generation");
-        return [];
-      }
-
-      // Transform the response to our format
-      return data.cards.map((card: any) =>
-        this.transformToGeneratedExperience(card)
-      );
-    } catch (error) {
-      console.error("Failed to generate session experiences:", error);
-      throw error;
-    }
   }
 
   /**

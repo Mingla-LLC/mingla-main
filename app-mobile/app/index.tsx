@@ -30,7 +30,6 @@ import PrivacyPolicy from "../src/components/profile/PrivacyPolicy";
 import AccountSettings from "../src/components/profile/AccountSettings";
 import ProfileSettings from "../src/components/profile/ProfileSettings";
 import OnboardingFlow from "../src/components/OnboardingFlow";
-import ActivityPage from "../src/components/ActivityPage";
 import LikesPage from "../src/components/LikesPage";
 import SavedExperiencesPage from "../src/components/SavedExperiencesPage";
 import ConnectionsPage from "../src/components/ConnectionsPage";
@@ -412,10 +411,7 @@ function AppContent() {
         setCurrentPage("discover");
         break;
       case "activity":
-        setCurrentPage("activity");
-        if ((nav as any).tab) {
-          setActivityNavigation({ activeTab: (nav as any).tab });
-        }
+        setCurrentPage("likes");
         break;
       case "board-view":
         if ((nav as any).sessionId) {
@@ -1611,121 +1607,9 @@ function AppContent() {
           />
         );
       case "activity":
-        return (
-          <ActivityPage
-            boardsSessions={boardsSessions}
-            isLoadingBoards={isLoadingBoards}
-            isLoadingSavedCards={isLoadingSavedCards}
-            calendarEntries={calendarEntries}
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-            navigationData={activityNavigation}
-            onNavigationComplete={() => setActivityNavigation(null)}
-            onSendInvite={async (sessionId: string, users: any[]) => {
-              console.log(
-                "Sending invite to session:",
-                sessionId,
-                "users:",
-                users
-              );
-              
-              if (!user?.id) {
-                Alert.alert("Error", "You must be logged in to send invites");
-                return;
-              }
-              
-              // Extract friend IDs from the users array
-              const friendIds = users.map(u => u.id);
-              
-              // Send the invites using BoardInviteService
-              const result = await BoardInviteService.sendFriendInvites(
-                sessionId,
-                friendIds,
-                user.id
-              );
-              
-              if (result.success) {
-                Alert.alert(
-                  "Invites Sent",
-                  `Successfully sent ${users.length} invite${users.length > 1 ? 's' : ''}`
-                );
-              } else {
-                console.error("Failed to send invites:", result.errors);
-                Alert.alert(
-                  "Error",
-                  result.errors?.join('\n') || "Failed to send invites"
-                );
-              }
-            }}
-            onScheduleFromSaved={handlers.handleScheduleFromSaved}
-            onPurchaseFromSaved={(card: any, purchaseOption: any) => {
-              console.log("Purchasing from saved:", card, purchaseOption);
-              // Handle purchase logic here
-            }}
-            onRemoveFromCalendar={handlers.handleRemoveFromCalendar}
-            onShareCard={handlers.handleShareCard}
-            onUpdateBoardSession={(board: any) => {
-              console.log("Updating board session:", board);
-              // Handle board update logic here
-            }}
-            onPromoteToAdmin={(boardId: string, participantId: string) => {
-              console.log("Promoting to admin:", boardId, participantId);
-              // Handle promote logic here
-            }}
-            onDemoteFromAdmin={(boardId: string, participantId: string) => {
-              console.log("Demoting from admin:", boardId, participantId);
-              // Handle demote logic here
-            }}
-            onRemoveMember={(boardId: string, participantId: string) => {
-              console.log("Removing member:", boardId, participantId);
-              // Handle remove member logic here
-            }}
-            onLeaveBoard={(boardId: string) => {
-              console.log("Leaving board:", boardId);
-              // Handle leave board logic here
-            }}
-            onNavigateToBoard={(sessionId: string) => {
-              setBoardViewSessionId(sessionId);
-              setCurrentPage("board-view");
-            }}
-            onUnreadCountChange={setTotalUnreadBoardMessages}
-            activeBoardSessionId={boardViewSessionId}
-            onExitBoard={(exitedBoardId: string, exitedBoardName: string) => {
-              // OPTIMISTIC UPDATE: Remove board from list immediately
-              if (exitedBoardId && boardsSessions) {
-                const updatedBoards = boardsSessions.filter(
-                  (board: any) =>
-                    board.id !== exitedBoardId &&
-                    (board as any).session_id !== exitedBoardId
-                );
-                updateBoardsSessions(updatedBoards);
-              }
-
-              // Update mode if this was the active session
-              if (exitedBoardName && currentMode === exitedBoardName) {
-                state.setCurrentMode("solo");
-              }
-            }}
-            onDeleteBoard={(deletedBoardId: string, deletedBoardName: string) => {
-              // OPTIMISTIC UPDATE: Remove deleted board from list immediately
-              if (deletedBoardId && boardsSessions) {
-                const updatedBoards = boardsSessions.filter(
-                  (board: any) =>
-                    board.id !== deletedBoardId &&
-                    (board as any).session_id !== deletedBoardId
-                );
-                updateBoardsSessions(updatedBoards);
-              }
-
-              // Update mode if this was the active session
-              if (deletedBoardName && currentMode === deletedBoardName) {
-                state.setCurrentMode("solo");
-              }
-
-              toastManager.success(`"${deletedBoardName}" board deleted`);
-            }}
-          />
-        );
+        // Legacy — redirect to likes page
+        setCurrentPage("likes");
+        return null;
       case "board-view":
         return boardViewSessionId ? (
           <BoardViewScreen
@@ -1806,7 +1690,7 @@ function AppContent() {
             style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
           >
             <Text>No session selected</Text>
-            <TouchableOpacity onPress={() => setCurrentPage("activity")}>
+            <TouchableOpacity onPress={() => setCurrentPage("likes")}>
               <Text style={{ color: "#007AFF", marginTop: 16 }}>Go Back</Text>
             </TouchableOpacity>
           </View>

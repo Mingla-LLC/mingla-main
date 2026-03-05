@@ -211,6 +211,10 @@ export default function CollaborationPreferences({
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isSelectingSuggestion = useRef(false);
 
+  // Selection limit messages
+  const [minSelectionMessage, setMinSelectionMessage] = useState(false);
+  const [categoryCapMessage, setCategoryCapMessage] = useState(false);
+
   // Loading states
   const [isSaving, setIsSaving] = useState(false);
 
@@ -225,23 +229,28 @@ export default function CollaborationPreferences({
   useEffect(() => {
     if (isOpen && dbPreferences) {
       // Map database preferences to component state
-      if (dbPreferences.categories && Array.isArray(dbPreferences.categories)) {
-        // Split categories array into intents and pure categories
-        // (matches how PreferencesSheet saves: [...intents, ...categories])
-        const INTENT_IDS = new Set([
-          "adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll",
-        ]);
-        const loadedIntents: string[] = [];
-        const loadedCategories: string[] = [];
-        dbPreferences.categories.forEach((item: string) => {
-          if (INTENT_IDS.has(item)) loadedIntents.push(item);
-          else loadedCategories.push(item);
-        });
-        setSelectedIntents(loadedIntents);
-        setSelectedCategories(loadedCategories);
-      } else if (dbPreferences.experience_types) {
-        // Fallback for older data that still uses experience_types column
-        setSelectedIntents(dbPreferences.experience_types);
+      const INTENT_IDS = new Set([
+        "adventurous", "first-date", "romantic", "friendly", "group-fun", "picnic-dates", "take-a-stroll",
+      ]);
+      if (dbPreferences.categories || dbPreferences.intents) {
+        // New schema: intents in dedicated column
+        if (Array.isArray(dbPreferences.intents) && dbPreferences.intents.length > 0) {
+          setSelectedIntents(dbPreferences.intents);
+          setSelectedCategories(dbPreferences.categories || []);
+        } else {
+          // Backwards compat: split merged categories array
+          const loadedIntents: string[] = [];
+          const loadedCategories: string[] = [];
+          (dbPreferences.categories || []).forEach((item: string) => {
+            if (INTENT_IDS.has(item)) {
+              loadedIntents.push(item);
+            } else {
+              loadedCategories.push(item);
+            }
+          });
+          setSelectedIntents(loadedIntents);
+          setSelectedCategories(loadedCategories);
+        }
       }
       if (Array.isArray(dbPreferences.price_tiers) && dbPreferences.price_tiers.length > 0) {
         setSelectedPriceTiers(dbPreferences.price_tiers);
@@ -259,8 +268,15 @@ export default function CollaborationPreferences({
       if (dbPreferences.travel_constraint_value !== undefined) {
         setConstraintValue(dbPreferences.travel_constraint_value);
       }
+      if (dbPreferences.date_option) {
+        const optionMap: Record<string, DateOption> = {
+          'now': 'Now', 'today': 'Today', 'this-weekend': 'This Weekend',
+          'pick-a-date': 'Pick a Date',
+        };
+        setSelectedDateOption(optionMap[dbPreferences.date_option] || 'Now');
+      }
       if (dbPreferences.time_of_day) {
-        // Map time_of_day to selectedTimeSlot if needed
+        setSelectedTimeSlot(dbPreferences.time_of_day as TimeSlot);
       }
       if (dbPreferences.datetime_pref) {
         // Parse and set date/time preferences
@@ -321,19 +337,38 @@ export default function CollaborationPreferences({
   }
 
   const handleIntentToggle = (intentId: string) => {
-    setSelectedIntents((prev) =>
-      prev.includes(intentId)
-        ? prev.filter((id) => id !== intentId)
-        : [...prev, intentId]
-    );
+    setSelectedIntents((prev) => {
+      if (prev.includes(intentId)) {
+        // Deselecting — check combined minimum
+        if (prev.length === 1 && selectedCategories.length === 0) {
+          setMinSelectionMessage(true);
+          setTimeout(() => setMinSelectionMessage(false), 2500);
+          return prev;
+        }
+        return [];  // Radio: deselect
+      }
+      return [intentId];  // Radio: replace with only this one
+    });
   };
 
   const handleCategoryToggle = (categoryId: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(categoryId)
-        ? prev.filter((id) => id !== categoryId)
-        : [...prev, categoryId]
-    );
+    setSelectedCategories((prev) => {
+      if (prev.includes(categoryId)) {
+        // Deselecting — check combined minimum
+        if (prev.length === 1 && selectedIntents.length === 0) {
+          setMinSelectionMessage(true);
+          setTimeout(() => setMinSelectionMessage(false), 2500);
+          return prev;
+        }
+        return prev.filter((id) => id !== categoryId);
+      }
+      if (prev.length >= 3) {
+        setCategoryCapMessage(true);
+        setTimeout(() => setCategoryCapMessage(false), 2000);
+        return prev;
+      }
+      return [...prev, categoryId];
+    });
   };
 
   const handlePriceTierToggle = (slug: PriceTierSlug) => {
@@ -496,7 +531,8 @@ export default function CollaborationPreferences({
       const backCompatBudgetMax = highestTier?.max ?? 1000;
 
       const dbPreferences: any = {
-        categories: [...selectedIntents, ...selectedCategories],
+        categories: selectedCategories,
+        intents: selectedIntents,
         price_tiers: selectedPriceTiers,
         budget_min: 0,
         budget_max: backCompatBudgetMax,
@@ -508,6 +544,9 @@ export default function CollaborationPreferences({
           typeof constraintValue === "number" ? constraintValue : 20,
         time_of_day: selectedTimeSlot || null,
         datetime_pref: selectedDate ? selectedDate.toISOString() : null,
+        date_option: selectedDateOption
+          ? ({ 'Now': 'now', 'Today': 'today', 'This Weekend': 'this-weekend', 'Pick a Date': 'pick-a-date' }[selectedDateOption] ?? selectedDateOption)
+          : null,
       };
 
       // Add location if searchLocation is provided (for both GPS and search)
@@ -538,7 +577,7 @@ export default function CollaborationPreferences({
       }
 
       // Invalidate TanStack Query caches to trigger refetch
-      queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      queryClient.invalidateQueries({ queryKey: ["deck-cards"] });
       queryClient.invalidateQueries({ queryKey: ["userLocation"] });
       queryClient.invalidateQueries({ queryKey: ["curated-experiences"] });
 
@@ -634,6 +673,11 @@ export default function CollaborationPreferences({
                 );
               })}
             </View>
+            {minSelectionMessage && (
+              <Text style={styles.selectionCapMessage}>
+                At least one intent or category must be selected.
+              </Text>
+            )}
           </View>
 
           {/* Categories Section */}
@@ -668,6 +712,11 @@ export default function CollaborationPreferences({
                 );
               })}
             </View>
+            {categoryCapMessage && (
+              <Text style={styles.selectionCapMessage}>
+                Maximum 3 categories. Deselect one to choose another.
+              </Text>
+            )}
           </View>
 
           {/* Price Tier Section - Hide when only "Nature" is selected */}
@@ -1235,6 +1284,12 @@ export default function CollaborationPreferences({
 }
 
 const styles = StyleSheet.create({
+  selectionCapMessage: {
+    color: '#EF4444',
+    fontSize: 13,
+    textAlign: 'center' as const,
+    marginTop: 8,
+  },
   loadingContainer: {
     position: "absolute",
     top: 0,
