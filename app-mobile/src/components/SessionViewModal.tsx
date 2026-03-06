@@ -539,6 +539,7 @@ export default function SessionViewModal({
         estimatedDurationMinutes: cardData.estimatedDurationMinutes,
         pairingKey: cardData.pairingKey,
         experienceType: cardData.experienceType,
+        shoppingList: cardData.shoppingList,
       } : {}),
     };
 

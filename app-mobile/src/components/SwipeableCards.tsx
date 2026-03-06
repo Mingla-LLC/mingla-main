@@ -10,6 +10,7 @@ import {
   PanResponder,
   StatusBar,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -1230,17 +1231,23 @@ export default function SwipeableCards({
     const displayUseGps = currentPrefs.use_gps_location ?? false;
 
     return (
-      <View style={styles.noCardsContainer}>
+      <ScrollView
+        style={styles.noCardsScrollView}
+        contentContainerStyle={styles.noCardsScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.noCardsContent}>
-          <Text style={styles.noMatchesEmoji}>💡</Text>
-          <Text style={styles.noCardsTitle}>No matches found</Text>
+          <View style={styles.noMatchesIconCircle}>
+            <Ionicons name="search-outline" size={28} color="#eb7825" />
+          </View>
+          <Text style={styles.noCardsTitle}>We looked everywhere. Seriously.</Text>
           <Text style={styles.noCardsSubtitle}>
-            We couldn't find experiences matching your current filters.
+            Nothing quite fits your current filters — but a small tweak could change that.
           </Text>
 
           {/* Filter Summary */}
           <View style={styles.filterSummary}>
-            <Text style={styles.filterSummaryTitle}>Your Filters:</Text>
+            <Text style={styles.filterSummaryTitle}>Your current filters</Text>
 
             {/* Intent pills */}
             {displayIntents.length > 0 && (
@@ -1305,7 +1312,7 @@ export default function SwipeableCards({
             {/* GPS location */}
             {displayUseGps && userLocation && (
               <View style={styles.filterRow}>
-                <Text style={styles.filterLabel}>Location:</Text>
+                <Text style={styles.filterLabel}>Near:</Text>
                 <View style={styles.filterTag}>
                   <Text style={styles.filterTagText}>
                     {reverseGeocodedAddress ?? `${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`}
@@ -1315,16 +1322,13 @@ export default function SwipeableCards({
             )}
           </View>
 
-          <Text style={styles.suggestionsTitle}>Suggestions:</Text>
+          <Text style={styles.suggestionsTitle}>Worth a try</Text>
           <Text style={styles.suggestionsText}>
-            • Try expanding your budget range{"\n"}• Add more categories to your
-            preferences{"\n"}• Increase your travel time constraint{"\n"}• Check
-            back later for new experiences
+            • Expand your budget range{"\n"}• Add more categories{"\n"}• Increase travel time{"\n"}• Check back later for new spots
           </Text>
 
           <TouchableOpacity
             onPress={() => {
-              // Retry by refreshing recommendations
               refreshRecommendations(refreshKey);
             }}
             style={styles.startOverButton}
@@ -1333,7 +1337,7 @@ export default function SwipeableCards({
             <Text style={styles.startOverButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     );
   }
 
@@ -1343,9 +1347,9 @@ export default function SwipeableCards({
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
           <View style={styles.noCardsIcon}>
-            <Ionicons name="alert-circle" size={64} color="#ef4444" />
+            <Ionicons name="alert-circle" size={48} color="#ef4444" />
           </View>
-          <Text style={styles.noCardsTitle}>Oops! Something went wrong</Text>
+          <Text style={styles.noCardsTitle}>That didn't land</Text>
           <Text style={styles.noCardsSubtitle}>{error}</Text>
           <TouchableOpacity
             onPress={() => {
@@ -1392,11 +1396,11 @@ export default function SwipeableCards({
         <View style={styles.noCardsContainer}>
           <View style={styles.noCardsContent}>
             <View style={styles.sparklesContainer}>
-              <Ionicons name="layers-outline" size={48} color="#eb7825" />
+              <Ionicons name="layers-outline" size={28} color="#eb7825" />
             </View>
-            <Text style={styles.noCardsTitle}>You've seen all {deckBatches.length} decks</Text>
+            <Text style={styles.noCardsTitle}>All {deckBatches.length} decks explored</Text>
             <Text style={styles.noCardsSubtitle}>
-              Swipe through your decks and pick your favorites.
+              Revisit your favorites or save the ones that stood out.
             </Text>
 
             {deckBatches.map((batch, idx) => (
@@ -1438,11 +1442,11 @@ export default function SwipeableCards({
       <View style={styles.noCardsContainer}>
         <View style={styles.noCardsContent}>
           <View style={styles.sparklesContainer}>
-            <Ionicons name="earth-outline" size={48} color="#eb7825" />
+            <Ionicons name="earth-outline" size={28} color="#eb7825" />
           </View>
-          <Text style={styles.noCardsTitle}>You've explored everything nearby</Text>
+          <Text style={styles.noCardsTitle}>You've seen it all</Text>
           <Text style={styles.noCardsSubtitle}>
-            No more places match your current filters in this area.
+            No more places match your filters here. Tweak your preferences to unlock new spots.
           </Text>
 
           {dismissedCards.length > 0 && (
@@ -1578,7 +1582,7 @@ export default function SwipeableCards({
                         </View>
                         {nextCard.travelTime && nextCard.travelTime !== '0 min' ? (
                           <View style={styles.detailBadge}>
-                            <Ionicons name={getTravelModeIcon(userPreferences?.travel_mode)} size={12} color="white" />
+                            <Ionicons name={getTravelModeIcon(cachedPreferences?.travel_mode ?? userPreferences?.travelMode)} size={12} color="white" />
                             <Text style={styles.detailBadgeText}>
                               {nextCard.travelTime}
                             </Text>
@@ -1674,6 +1678,8 @@ export default function SwipeableCards({
                 <CuratedExperienceSwipeCard
                   card={currentRec as unknown as CuratedExperienceCard}
                   onSeePlan={handleCardExpand}
+                  travelMode={cachedPreferences?.travel_mode ?? userPreferences?.travelMode}
+                  measurementSystem={accountPreferences?.measurementSystem}
                 />
               ) : (
                 <>
@@ -1718,7 +1724,7 @@ export default function SwipeableCards({
                         </View>
                         {currentRec.travelTime && currentRec.travelTime !== '0 min' ? (
                           <View style={styles.detailBadge}>
-                            <Ionicons name={getTravelModeIcon(userPreferences?.travel_mode)} size={12} color="white" />
+                            <Ionicons name={getTravelModeIcon(cachedPreferences?.travel_mode ?? userPreferences?.travelMode)} size={12} color="white" />
                             <Text style={styles.detailBadgeText}>
                               {currentRec.travelTime}
                             </Text>
@@ -2212,45 +2218,67 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     backgroundColor: "rgba(235, 120, 37, 0.16)",
   },
+  noCardsScrollView: {
+    flex: 1,
+  },
+  noCardsScrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 40,
+  },
   noCardsContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
-    paddingBottom: 120,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 40,
   },
   noCardsContent: {
     alignItems: "center",
-    gap: 16,
+    gap: 12,
   },
   noCardsIcon: {
-    width: 80,
-    height: 80,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    backgroundColor: "#fef2f2",
+    borderRadius: 32,
     justifyContent: "center",
     alignItems: "center",
   },
-  sparklesContainer: {
-    width: 80,
-    height: 80,
+  noMatchesIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: "#fef3e2",
-    borderRadius: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  sparklesContainer: {
+    width: 56,
+    height: 56,
+    backgroundColor: "#fef3e2",
+    borderRadius: 28,
     justifyContent: "center",
     alignItems: "center",
   },
   noCardsTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "600",
     color: "#111827",
     textAlign: "center",
   },
   noCardsSubtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#6b7280",
     textAlign: "center",
-    lineHeight: 24,
-    marginBottom: 20,
+    lineHeight: 21,
+    marginBottom: 8,
+    paddingHorizontal: 8,
   },
   noMatchesEmoji: {
     fontSize: 48,
@@ -2260,14 +2288,14 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "#f9fafb",
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
+    padding: 14,
+    marginBottom: 12,
   },
   filterSummaryTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     color: "#374151",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   filterTags: {
     gap: 8,
@@ -2315,16 +2343,16 @@ const styles = StyleSheet.create({
     color: "#6b7280",
   },
   suggestionsTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     color: "#374151",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   suggestionsText: {
-    fontSize: 14,
-    color: "#6b7280",
-    lineHeight: 22,
-    marginBottom: 20,
+    fontSize: 13,
+    color: "#9ca3af",
+    lineHeight: 20,
+    marginBottom: 16,
   },
   actionButtonText: {
     color: "#eb7825",

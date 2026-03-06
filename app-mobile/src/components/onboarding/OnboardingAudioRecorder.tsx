@@ -24,14 +24,16 @@ type RecorderState = 'idle' | 'recording' | 'preview' | 'done';
 
 interface OnboardingAudioRecorderProps {
   onClipReady: (uri: string, duration: number) => void;
-  onSkip: () => void;
+  onSkip?: () => void;
   maxDuration?: number; // default 60
+  minDuration?: number; // minimum seconds required — hides skip, disables confirm if below
 }
 
 export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = ({
   onClipReady,
   onSkip,
   maxDuration = 60,
+  minDuration,
 }) => {
   const [state, setState] = useState<RecorderState>('idle');
   const [duration, setDuration] = useState(0);
@@ -192,15 +194,18 @@ export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = (
     setState('idle');
   }, []);
 
+  const meetsMinDuration = !minDuration || clipDuration >= minDuration;
+
   const handleConfirm = useCallback(() => {
-    if (clipUri && clipDuration > 0) {
+    if (clipUri && clipDuration > 0 && meetsMinDuration) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setState('done');
       onClipReady(clipUri, clipDuration);
     }
-  }, [clipUri, clipDuration, onClipReady]);
+  }, [clipUri, clipDuration, onClipReady, meetsMinDuration]);
 
   const handleSkip = useCallback(() => {
+    if (!onSkip) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onSkip();
   }, [onSkip]);
@@ -301,14 +306,20 @@ export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = (
 
                 <TouchableOpacity
                   onPress={handleConfirm}
-                  style={styles.confirmButton}
+                  style={[styles.confirmButton, !meetsMinDuration && styles.confirmButtonDisabled]}
                   activeOpacity={0.7}
+                  disabled={!meetsMinDuration}
                   accessibilityRole="button"
                   accessibilityLabel="Confirm recording"
                 >
-                  <Text style={styles.confirmText}>Use this clip</Text>
+                  <Text style={[styles.confirmText, !meetsMinDuration && styles.confirmTextDisabled]}>Use this clip</Text>
                 </TouchableOpacity>
               </View>
+            )}
+            {state === 'preview' && !meetsMinDuration && minDuration && (
+              <Text style={styles.minDurationHint}>
+                Keep going — we need at least {minDuration} seconds to get it right.
+              </Text>
             )}
           </View>
         );
@@ -321,14 +332,16 @@ export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = (
   return (
     <View style={styles.container}>
       {renderContent()}
-      <TouchableOpacity
-        onPress={handleSkip}
-        style={styles.skipButton}
-        accessibilityRole="button"
-        accessibilityLabel="Skip this step"
-      >
-        <Text style={styles.skipText}>Skip this step</Text>
-      </TouchableOpacity>
+      {onSkip && !minDuration && (
+        <TouchableOpacity
+          onPress={handleSkip}
+          style={styles.skipButton}
+          accessibilityRole="button"
+          accessibilityLabel="Skip this step"
+        >
+          <Text style={styles.skipText}>Skip this step</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -440,6 +453,19 @@ const styles = StyleSheet.create({
     ...typography.sm,
     fontWeight: fontWeights.semibold,
     color: colors.text.inverse,
+  },
+  confirmButtonDisabled: {
+    backgroundColor: colors.gray[200],
+  },
+  confirmTextDisabled: {
+    color: colors.text.tertiary,
+  },
+  minDurationHint: {
+    ...typography.sm,
+    fontWeight: fontWeights.regular,
+    color: colors.text.tertiary,
+    textAlign: 'center' as const,
+    marginTop: spacing.sm,
   },
   skipButton: {
     marginTop: spacing.lg,

@@ -1521,6 +1521,7 @@ const SavedTab = ({
         totalPriceMax: (card as any).totalPriceMax,
         estimatedDurationMinutes: (card as any).estimatedDurationMinutes,
         experienceType: (card as any).experienceType,
+        shoppingList: (card as any).shoppingList,
       }),
     };
 

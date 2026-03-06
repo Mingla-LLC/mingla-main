@@ -59,7 +59,8 @@ interface KeyboardAwareScrollViewProps extends ScrollViewProps {
  *  - Inputs inside nested Views
  *  - Modals on Android (where KeyboardAvoidingView breaks)
  *  - Already-visible inputs (no unnecessary scroll)
- *  - Keyboard already open when tapping between inputs
+ *  - Keyboard already open when tapping between inputs (re-fires on every
+ *    keyboardWillShow / keyboardDidShow event)
  *
  * Usage:
  *   Replace <ScrollView> with <KeyboardAwareScrollView>.
@@ -158,31 +159,14 @@ const KeyboardAwareScrollView = forwardRef<
       [bottomOffset, keyboardPadding]
     );
 
-    const kbHeightRef = useRef(0);
-
-    /**
-     * When the keyboard is already open and the user taps a different
-     * input, we need to re-scroll. We detect this via onFocus propagation
-     * on the ScrollView container (TextInput focus bubbles up).
-     */
-    const handleFocusCapture = useCallback(() => {
-      // If keyboard is already visible, scroll to the newly focused input
-      if (kbHeightRef.current > 0) {
-        // Slight delay so the new TextInput registers as focused
-        setTimeout(() => {
-          scrollToFocusedInput(kbHeightRef.current);
-        }, 100);
-      }
-    }, [scrollToFocusedInput]);
-
-    useKeyboard({
+    // Use the hook's returned STATE (not just a ref) so re-renders happen
+    // and extraPadding is computed correctly. Also disable LayoutAnimation
+    // so it doesn't fight our animated scrollTo.
+    const { keyboardHeight } = useKeyboard({
       onShow: (height) => {
-        kbHeightRef.current = height;
         scrollToFocusedInput(height);
       },
-      onHide: () => {
-        kbHeightRef.current = 0;
-      },
+      disableLayoutAnimation: true,
     });
 
     const handleScroll = useCallback(
@@ -193,10 +177,11 @@ const KeyboardAwareScrollView = forwardRef<
       [onScroll]
     );
 
-    // Add bottom padding so the last input can scroll above the keyboard
+    // Add bottom padding so the last input can scroll above the keyboard.
+    // Uses the hook's state value (triggers re-render), not a ref.
     const extraPadding =
-      kbHeightRef.current > 0
-        ? Math.max(kbHeightRef.current - bottomOffset, 0) + keyboardPadding
+      keyboardHeight > 0
+        ? Math.max(keyboardHeight - bottomOffset, 0) + keyboardPadding
         : 0;
 
     return (
@@ -205,7 +190,6 @@ const KeyboardAwareScrollView = forwardRef<
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         scrollEventThrottle={16}
-        onFocusCapture={handleFocusCapture}
         {...scrollViewProps}
         onScroll={handleScroll}
         contentContainerStyle={[

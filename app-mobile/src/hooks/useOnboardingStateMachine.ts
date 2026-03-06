@@ -17,11 +17,12 @@ const STEP_SUBSTEPS: Record<OnboardingStep, SubStep[]> = {
 }
 
 // Step 5 path sub-steps (appended after 'pitch' when path is chosen)
-const STEP5_PATH_A: SubStep[] = ['pathA_birthday', 'pathA_gender', 'pathA_audio', 'pathA_contact']
+const STEP5_PATH_A: SubStep[] = ['pathA_sync', 'pathA_audio']
 const STEP5_PATH_B: SubStep[] = ['pathB_name', 'pathB_birthday', 'pathB_gender', 'pathB_audio']
 
 interface UseOnboardingStateMachineProps {
   initialStep?: OnboardingStep
+  initialChosenPath?: 'invite' | 'add' | 'skip' | null  // restored from persisted onboarding data on crash resume
   hasGpsPermission: boolean  // determines whether 'manual_location' sub-step appears in Step 4
 }
 
@@ -38,13 +39,14 @@ interface UseOnboardingStateMachineReturn {
 
 export function useOnboardingStateMachine({
   initialStep = 1,
+  initialChosenPath = null,
   hasGpsPermission,
 }: UseOnboardingStateMachineProps): UseOnboardingStateMachineReturn {
   const [state, setState] = useState<OnboardingNavState>({
     step: initialStep,
     subStep: STEP_SUBSTEPS[initialStep][0],
   })
-  const [chosenPath, setChosenPath] = useState<'invite' | 'add' | 'skip' | null>(null)
+  const [chosenPath, setChosenPath] = useState<'invite' | 'add' | 'skip' | null>(initialChosenPath)
   const [skippedFriends, setSkippedFriends] = useState(false)
   const [isLaunch, setIsLaunch] = useState(false)
 
@@ -82,7 +84,6 @@ export function useOnboardingStateMachine({
     base.push('pitch')
     if (chosenPath === 'invite') base.push(...STEP5_PATH_A)
     if (chosenPath === 'add') base.push(...STEP5_PATH_B)
-    if (chosenPath === 'skip') base.push('skip')
 
     return base
   }, [chosenPath, skippedFriends])
@@ -99,6 +100,12 @@ export function useOnboardingStateMachine({
     setState((prev) => {
       const seq = getSequence(prev.step)
       const idx = seq.indexOf(prev.subStep)
+
+      // Guard: if subStep is not in the sequence, stay put (fixes indexOf -1 bug)
+      if (idx === -1) {
+        logger.onboarding(`ERROR: subStep '${prev.subStep}' not found in sequence [${seq.join(', ')}]. Staying put.`)
+        return prev
+      }
 
       // If not at end of current step's sub-steps, advance within step
       if (idx < seq.length - 1) {
@@ -137,6 +144,12 @@ export function useOnboardingStateMachine({
       const seq = getSequence(prev.step)
       const idx = seq.indexOf(prev.subStep)
 
+      // Guard: if subStep is not in the sequence, stay put (fixes indexOf -1 bug)
+      if (idx === -1) {
+        logger.onboarding(`ERROR: subStep '${prev.subStep}' not found in sequence [${seq.join(', ')}]. Staying put.`)
+        return prev
+      }
+
       // If not at start of current step, go back within step
       if (idx > 0) {
         const next = { step: prev.step, subStep: seq[idx - 1] }
@@ -167,10 +180,10 @@ export function useOnboardingStateMachine({
     logger.onboarding(`choosePath: ${path}`)
     setChosenPath(path)
     if (path === 'skip') {
-      // Skip path: show skip transition screen, then launch
-      setState({ step: 5, subStep: 'skip' })
+      // Skip goes straight to launch — no intermediate substep
+      setIsLaunch(true)
     } else if (path === 'invite') {
-      setState({ step: 5, subStep: 'pathA_birthday' })
+      setState({ step: 5, subStep: 'pathA_sync' })
     } else if (path === 'add') {
       setState({ step: 5, subStep: 'pathB_name' })
     }

@@ -16,15 +16,12 @@ export type Step5SubStep =
   | 'friends'
   | 'collaboration'
   | 'pitch'
-  | 'pathA_birthday'
-  | 'pathA_gender'
+  | 'pathA_sync'
   | 'pathA_audio'
-  | 'pathA_contact'
   | 'pathB_name'
   | 'pathB_birthday'
   | 'pathB_gender'
   | 'pathB_audio'
-  | 'skip'
 
 export type SubStep =
   | Step1SubStep
@@ -94,13 +91,14 @@ export interface OnboardingData {
   personGender: string | null
   audioClipUri: string | null
   audioClipDuration: number | null
-  contactMethod: 'phone' | 'username' | null
-  contactValue: string | null
 
   // Step 5 — Friends & Collaboration
   addedFriends: AddedFriend[]
   createdSessions: CreatedSession[]
   skippedFriends: boolean
+
+  // Step 5 — Sync & Audio Pipeline
+  selectedSyncFriends: AddedFriend[]
 }
 
 // ─── Country Data ───

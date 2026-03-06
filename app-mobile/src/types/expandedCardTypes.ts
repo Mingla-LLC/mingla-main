@@ -132,6 +132,7 @@ export interface ExpandedCardData {
   experienceType?: string;
   priceTier?: PriceTierSlug;
   tip?: string | null;
+  shoppingList?: string[];
   // Night Out-specific data
   nightOutData?: {
     eventName: string;

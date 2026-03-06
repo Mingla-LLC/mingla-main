@@ -58,6 +58,7 @@ export interface Recommendation {
   };
   oneLiner?: string | null;
   tip?: string | null;
+  shoppingList?: string[];
   strollData?: {
     anchor: {
       id: string;

@@ -44,6 +44,8 @@ export interface KeyboardState {
 export function useKeyboard(opts?: {
   onShow?: (height: number) => void;
   onHide?: () => void;
+  /** Skip LayoutAnimation on keyboard events (needed when using animated scrollTo). */
+  disableLayoutAnimation?: boolean;
 }): KeyboardState {
   const [isVisible, setIsVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -52,8 +54,10 @@ export function useKeyboard(opts?: {
   const heightRef = useRef(0);
   const onShowRef = useRef(opts?.onShow);
   const onHideRef = useRef(opts?.onHide);
+  const disableLayoutAnimRef = useRef(opts?.disableLayoutAnimation ?? false);
   onShowRef.current = opts?.onShow;
   onHideRef.current = opts?.onHide;
+  disableLayoutAnimRef.current = opts?.disableLayoutAnimation ?? false;
 
   useEffect(() => {
     // iOS fires "will" events before the animation begins (smoother).
@@ -68,7 +72,8 @@ export function useKeyboard(opts?: {
       heightRef.current = height;
 
       // Animate the layout change for a smooth transition
-      if (Platform.OS === "android") {
+      // (skipped when caller uses animated scrollTo — LayoutAnimation fights it)
+      if (Platform.OS === "android" && !disableLayoutAnimRef.current) {
         LayoutAnimation.configureNext(
           LayoutAnimation.create(
             e.duration || 220,
@@ -86,7 +91,7 @@ export function useKeyboard(opts?: {
     const onHide = (e: KeyboardEvent) => {
       heightRef.current = 0;
 
-      if (Platform.OS === "android") {
+      if (Platform.OS === "android" && !disableLayoutAnimRef.current) {
         LayoutAnimation.configureNext(
           LayoutAnimation.create(
             e?.duration || 220,

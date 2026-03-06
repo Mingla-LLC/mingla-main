@@ -33,16 +33,6 @@ export default function PracticalDetailsSection({
     }
   };
 
-  const handleWebsitePress = () => {
-    if (website) {
-      let url = website;
-      if (!url.startsWith("http://") && !url.startsWith("https://")) {
-        url = `https://${url}`;
-      }
-      Linking.openURL(url);
-    }
-  };
-
   const handleAddressPress = () => {
     if (address) {
       const encodedAddress = encodeURIComponent(address);
@@ -52,7 +42,7 @@ export default function PracticalDetailsSection({
     }
   };
 
-  const hasAnyDetails = address || phone || website;
+  const hasAnyDetails = address || phone;
 
   if (!hasAnyDetails) {
     return null;
@@ -75,31 +65,17 @@ export default function PracticalDetailsSection({
         </TouchableOpacity>
       )}
 
-      {/* Phone & Website inline row */}
-      {(phone || website) && (
+      {/* Phone row */}
+      {phone && (
         <View style={styles.contactRow}>
-          {phone && (
-            <TouchableOpacity
-              style={styles.contactChip}
-              onPress={handlePhonePress}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="call" size={13} color="#ea580c" />
-              <Text style={styles.contactText} numberOfLines={1}>{phone}</Text>
-            </TouchableOpacity>
-          )}
-          {website && (
-            <TouchableOpacity
-              style={[styles.contactChip, styles.websiteChip]}
-              onPress={handleWebsitePress}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="globe" size={13} color="#3b82f6" />
-              <Text style={[styles.contactText, styles.websiteText]} numberOfLines={1}>
-                {website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
-              </Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.contactChip}
+            onPress={handlePhonePress}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="call" size={13} color="#ea580c" />
+            <Text style={styles.contactText} numberOfLines={1}>{phone}</Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>
@@ -155,16 +131,9 @@ const styles = StyleSheet.create({
     borderColor: "#eb782533",
     gap: 6,
   },
-  websiteChip: {
-    borderColor: "#3b82f622",
-    backgroundColor: "#eff6ff",
-  },
   contactText: {
     flex: 1,
     fontSize: 12,
     color: "#374151",
-  },
-  websiteText: {
-    color: "#3b82f6",
   },
 });

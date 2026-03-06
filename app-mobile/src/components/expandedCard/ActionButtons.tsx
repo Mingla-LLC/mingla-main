@@ -570,38 +570,6 @@ export default function ActionButtons({
     }
   };
 
-  const handleBuyNow = () => {
-    if (bookingOptions.length > 0) {
-      const primaryOption = bookingOptions[0];
-      if (onPurchase) {
-        onPurchase(card, primaryOption);
-      } else if (primaryOption.url) {
-        // Open booking URL
-        Linking.openURL(primaryOption.url);
-      } else if (primaryOption.phone) {
-        // Open phone dialer
-        Linking.openURL(`tel:${primaryOption.phone.replace(/[^0-9+]/g, "")}`);
-      } else {
-        Alert.alert("Booking", primaryOption.message);
-      }
-    } else if (card.website) {
-      // Fallback to website
-      let url = card.website;
-      if (!url.startsWith("http://") && !url.startsWith("https://")) {
-        url = `https://${url}`;
-      }
-      Linking.openURL(url);
-    } else if (card.phone) {
-      // Fallback to phone
-      Linking.openURL(`tel:${card.phone.replace(/[^0-9+]/g, "")}`);
-    } else {
-      Alert.alert(
-        "Booking",
-        "Booking options are not available for this experience",
-      );
-    }
-  };
-
   const handleShare = () => {
     if (onShare) {
       onShare(card);
@@ -630,9 +598,6 @@ export default function ActionButtons({
   };
 
   const showPoliciesButton = !!(card.website || card.placeId);
-
-  const hasBookingOptions =
-    bookingOptions.length > 0 || card.website || card.phone;
 
   return (
     <View style={styles.container}>
@@ -843,30 +808,6 @@ export default function ActionButtons({
             </Text>
           </View>
         )}
-      {/* Buy Now Button - Full Width */}
-      {hasBookingOptions && (
-        <TouchableOpacity
-          style={styles.buyNowButton}
-          onPress={handleBuyNow}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="card" size={20} color="#ffffff" />
-          <Text style={styles.buyNowButtonText}>Buy Now</Text>
-          {bookingOptions.length > 0 && (
-            <View style={styles.bookingBadge}>
-              <Text style={styles.bookingBadgeText}>
-                {bookingOptions[0].provider === "opentable"
-                  ? "Reserve"
-                  : bookingOptions[0].provider === "eventbrite"
-                  ? "Get Tickets"
-                  : bookingOptions[0].provider === "viator"
-                  ? "Book"
-                  : "Book Now"}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      )}
     </View>
   );
 }
@@ -945,37 +886,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: "#ffffff",
-  },
-  buyNowButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#111827",
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
-    position: "relative",
-  },
-  buyNowButtonText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-  bookingBadge: {
-    position: "absolute",
-    top: 8,
-    right: 12,
-    backgroundColor: "#eb7825",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  bookingBadgeText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#ffffff",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
   shareButton: {
     flexDirection: "row",

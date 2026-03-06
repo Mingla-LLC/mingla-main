@@ -1166,6 +1166,7 @@ const CalendarTab = ({
         totalPriceMax: cardData.totalPriceMax,
         estimatedDurationMinutes: cardData.estimatedDurationMinutes,
         experienceType: cardData.experienceType,
+        shoppingList: cardData.shoppingList,
       }),
     };
 

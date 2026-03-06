@@ -12,8 +12,8 @@ Mingla is a mobile app for planning social outings. It combines AI-powered place
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 44 Deno serverless functions |
-| AI | OpenAI GPT-4o-mini |
+| Edge Functions | 45 Deno serverless functions |
+| AI | OpenAI GPT-4o-mini, Whisper (audio transcription) |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
 | Payments | Stripe Connect |
@@ -35,11 +35,12 @@ Mingla/
 │   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput,
 │   │   │   │                           # SegmentedProgressBar, LanguagePickerModal,
 │   │   │   │                           # CountryPickerModal, OnboardingFriendsStep,
-│   │   │   │                           # OnboardingCollaborationStep, etc.
+│   │   │   │                           # OnboardingCollaborationStep, OnboardingSyncStep,
+│   │   │   │                           # OnboardingAudioRecorder, etc.
 │   │   │   ├── board/                  # Board-related components
 │   │   │   └── ui/                     # Shared UI primitives
 │   │   ├── hooks/                      # ~30 React Query hooks
-│   │   ├── services/                   # ~55 service files
+│   │   ├── services/                   # ~56 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store
 │   │   ├── types/                      # TypeScript types (incl. onboarding.ts)
@@ -50,7 +51,7 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 44 Deno edge functions
+│   ├── functions/                      # 45 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   └── [function-name]/           # Individual edge functions
 │   ├── migrations/                    # 120+ SQL migration files
@@ -84,10 +85,16 @@ Resume logic handles partial Step 1 completion: if a user has verified their pho
 
 **Step 4 -- Preferences** -- manual location (if GPS denied), category selection, price tiers, transport mode, travel time
 
-**Step 5 -- Social** -- add friends by phone, create collaboration sessions, add saved people with audio clips
+**Step 5 -- Social** -- add friends by phone, create collaboration sessions, then choose a path:
+- **Path A (Sync):** Select friends to sync with from a pill-based selection screen, then record a 10-second minimum audio description for each selected friend. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards (fire-and-forget).
+- **Path B (Add person):** Name, birthday, gender, then a 10-second minimum audio recording. Creates a saved person with AI-generated experience recommendations.
+- **Skip:** Goes straight to the app. No intermediate screens.
+
+Audio recording is compulsory within committed paths (no skip button). The state machine prevents silent navigation bugs with indexOf guards.
 
 ### AI-Powered Recommendations
 - Experience cards built from real Google Places data, enriched by GPT-4o-mini with descriptions, highlights, and match scores
+- Audio-to-recommendations pipeline: voice notes are transcribed (Whisper), analyzed for interests/preferences (GPT-4o-mini), and used to generate personalized experience cards via Google Places
 - Card pool data pipeline: pool-first serving from pre-built card pool, falls back to Google Places API only when the pool is exhausted
 - 5-factor scoring algorithm ranks cards by category match, tag overlap, popularity, quality, and text relevance
 
@@ -165,7 +172,7 @@ Resume logic handles partial Step 1 completion: if a user has verified their pho
 
 ### Additional Features
 - GPS and manual location with travel time preferences
-- Audio clips for saved people
+- Audio clips for saved people with AI-powered transcription and interest extraction
 - Holiday planning and archiving
 - Post-experience reviews with star ratings and voice recordings
 - Device calendar export
@@ -189,10 +196,19 @@ Resume logic handles partial Step 1 completion: if a user has verified their pho
 |-------|---------|
 | `friend_requests` | Friend request lifecycle |
 | `friends` | Bidirectional friendship records |
+| `friend_links` | Friend link requests (pending/accepted) for synced friends |
 | `blocked_users` | User blocks |
 | `pending_invites` | Phone invites for non-app users |
 | `pending_session_invites` | Collaboration session invites for non-app users |
 | `referral_credits` | Referral credit audit log |
+
+### People & Experiences Tables
+
+| Table | Purpose |
+|-------|---------|
+| `saved_people` | Saved people with name, birthday, gender, AI-generated description |
+| `person_audio_clips` | Audio recordings describing saved people |
+| `person_experiences` | AI-generated experience cards per person per occasion |
 
 ### Collaboration Tables
 
@@ -228,6 +244,7 @@ Resume logic handles partial Step 1 completion: if a user has verified their pho
 | `new-generate-experience-` | Next-gen experience generation with card pool pipeline |
 | `generate-curated-experiences` | Multi-stop itinerary generation (7 types) |
 | `generate-person-experiences` | Person-specific experience recommendations |
+| `process-person-audio` | Audio transcription (Whisper) + GPT analysis + experience generation pipeline |
 | `discover-experiences` | Explore/discover tab |
 | `discover-cards` | Discover card generation |
 | `discover-[category]` | Per-category discover endpoints (nature, casual-eats, drink, fine-dining, first-meet, picnic-park, play, watch, creative-arts, wellness) |
@@ -360,14 +377,11 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
-- **Onboarding Identity and Details Screens** -- Gender Identity screen with 8 inclusive options and Personal Details screen collecting country, date of birth, and preferred language. New `profiles.country` and `profiles.preferred_language` DB columns. Language picker with 25 languages and device locale auto-detection. Resume logic handles partial Step 1 completion.
-- **Price Tier System Overhaul** -- Replaced fragmented budget system with 4-tier model (Chill/Comfy/Bougie/Lavish) mapped to Google Places API price levels
-- **Ticketmaster Night Out** -- Real Ticketmaster events with genre, date, and price filtering plus in-app ticket purchasing
-- **Card Pool Data Pipeline** -- Pool-first card serving from shared `card_pool` and `place_pool` tables, eliminating redundant Google API calls
-- **Curated Experiences** -- Multi-stop itinerary cards for Solo Adventure, First Date, Romantic, Friendly, Group Fun, Picnic, and Stroll
-- **Friends and Collaboration Onboarding** -- Phone-based friend adding and session creation during onboarding flow
-- **Subscription System** -- Free/Pro/Elite tiers with trial and referral rewards via Stripe Connect
-- **Universal Links** -- Deep linking via usemingla.com for invites and board URLs
+- **Onboarding Step 5 Overhaul** -- Replaced 3 redundant Path A screens (birthday, gender, contact) with a friend sync selection screen and per-friend audio recording loop. Audio is transcribed via Whisper, analyzed by GPT-4o-mini, and used to generate personalized experience cards fire-and-forget.
+- **Audio Pipeline** -- New `process-person-audio` edge function chains Whisper transcription, GPT-4o-mini interest extraction, and `generate-person-experiences` into a single fire-and-forget pipeline.
+- **Compulsory Audio** -- Audio recording is now mandatory (10s minimum) within committed paths. No skip button within Path A or Path B.
+- **State Machine Bug Fixes** -- Fixed `indexOf()` returning -1 for unknown substeps (silent navigation to first step), persisted `chosenPath` so crash-resume works, and added Path B save handler that was previously missing.
+- **OnboardingSyncStep Component** -- New pill-based friend selection screen with phone input for adding new friends during Path A.
 
 ---
 

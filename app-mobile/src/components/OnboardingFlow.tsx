@@ -32,10 +32,10 @@ import { geocodingService } from '../services/geocodingService'
 import { sendOtp, verifyOtp } from '../services/otpService'
 import { logger } from '../utils/logger'
 import { saveOnboardingData, loadOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
-import { createSavedPerson } from '../services/savedPeopleService'
+import { createSavedPerson, SavedPerson } from '../services/savedPeopleService'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
 import { startRecording, stopRecording, uploadAudioClip } from '../services/personAudioService'
-import { searchUsers, sendFriendLink } from '../services/friendLinkService'
+import { sendFriendLink } from '../services/friendLinkService'
 import { getCurrencySymbol, formatNumberWithCommas } from '../utils/currency'
 import { getRate } from '../services/currencyService'
 import { deckService } from '../services/deckService'
@@ -47,6 +47,8 @@ import { OnboardingFriendsStep } from './onboarding/OnboardingFriendsStep'
 import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaborationStep'
 import { CategoryTile } from './ui/CategoryTile'
 import { OnboardingAudioRecorder } from './onboarding/OnboardingAudioRecorder'
+import { OnboardingSyncStep } from './onboarding/OnboardingSyncStep'
+import { processPersonAudio } from '../services/personAudioProcessingService'
 import { PulseDotLoader } from './ui/PulseDotLoader'
 
 import {
@@ -90,6 +92,39 @@ function formatBirthdayDisplay(date: Date): string {
   return `${day}/${month}/${year}`
 }
 
+// Returns the Nth occurrence of a given weekday in a month (1-indexed)
+// weekday: 0=Sunday, 1=Monday, ... 6=Saturday
+function nthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): Date {
+  const first = new Date(year, month, 1)
+  const firstDay = first.getDay()
+  const offset = (weekday - firstDay + 7) % 7
+  const day = 1 + offset + (n - 1) * 7
+  return new Date(year, month, day)
+}
+
+function buildOccasions(birthday: Date | null): Array<{ name: string; date: string }> {
+  const occasions: Array<{ name: string; date: string }> = []
+  if (birthday) {
+    const thisYear = new Date().getFullYear()
+    const bday = new Date(birthday)
+    bday.setFullYear(thisYear)
+    if (bday < new Date()) bday.setFullYear(thisYear + 1)
+    occasions.push({ name: 'Birthday', date: bday.toISOString().split('T')[0] })
+  }
+  const year = new Date().getFullYear()
+  // Mother's Day: 2nd Sunday in May (month index 4)
+  const mothersDay = nthWeekdayOfMonth(year, 4, 0, 2)
+  // Father's Day: 3rd Sunday in June (month index 5)
+  const fathersDay = nthWeekdayOfMonth(year, 5, 0, 3)
+  occasions.push(
+    { name: "Valentine's Day", date: `${year}-02-14` },
+    { name: "Mother's Day", date: mothersDay.toISOString().split('T')[0] },
+    { name: "Father's Day", date: fathersDay.toISOString().split('T')[0] },
+    { name: "Christmas", date: `${year}-12-25` },
+  )
+  return occasions
+}
+
 interface OnboardingFlowProps {
   onComplete: () => void
 }
@@ -118,29 +153,10 @@ const INITIAL_DATA: OnboardingData = {
   personGender: null,
   audioClipUri: null,
   audioClipDuration: null,
-  contactMethod: null,
-  contactValue: null,
   addedFriends: [],
   createdSessions: [],
   skippedFriends: false,
-}
-
-// Extracted to its own component so the useEffect is scoped to mount/unmount
-const SkipAutoAdvance = ({ goNext }: { goNext: () => void }) => {
-  const hasFired = useRef(false)
-  useEffect(() => {
-    if (hasFired.current) return
-    hasFired.current = true
-    const timer = setTimeout(() => goNext(), 1000)
-    return () => clearTimeout(timer)
-  }, [goNext])
-
-  return (
-    <View style={styles.centerContent}>
-      <Ionicons name="flash-outline" size={48} color={colors.primary[500]} />
-      <Text style={styles.subheadline}>Now for the good part.</Text>
-    </View>
-  )
+  selectedSyncFriends: [],
 }
 
 const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
@@ -169,7 +185,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     setSkippedFriends,
     progress,
     isLaunch,
-  } = useOnboardingStateMachine({ initialStep, hasGpsPermission })
+  } = useOnboardingStateMachine({ initialStep, initialChosenPath: data.invitePath, hasGpsPermission })
 
   // isFirstScreen: computed locally based on whether the user's phone was
   // already verified from a previous session. This is separate from the
@@ -214,8 +230,6 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const locationSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
-  const [contactSearchResults, setContactSearchResults] = useState<any[]>([])
-  const [contactSearching, setContactSearching] = useState(false)
   const [saving, setSaving] = useState(false)
   const [launchState, setLaunchState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [launchLoadingText, setLaunchLoadingText] = useState('Finding your kind of places...')
@@ -225,6 +239,8 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const [resumeSubStep, setResumeSubStep] = useState<SubStep | null>(null)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
   const [customTravelInput, setCustomTravelInput] = useState('')
+  const [currentAudioFriendIndex, setCurrentAudioFriendIndex] = useState(0)
+  const [audioClipsByFriend, setAudioClipsByFriend] = useState<Record<string, { uri: string; duration: number }>>({})
 
   const warmPoolPromiseRef = useRef<Promise<void> | null>(null)
 
@@ -1148,46 +1164,103 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     goNext()
   }, [user?.id, data.userGender, data.userBirthday, data.userCountry, data.userPreferredLanguage, goNext, persistStep])
 
-  // ─── Step 5 Save Person ───
-  const handleSavePerson = useCallback(async () => {
+  // ─── Step 5 Save Person (Path B) ───
+  const handleSavePersonPathB = useCallback(async () => {
     if (!user?.id) return
-    logger.action('Save person pressed')
+    logger.action('Save person (Path B) pressed')
     setSaving(true)
     try {
-      const personData: any = {
+      const personData = {
         user_id: user.id,
         name: data.personName || 'Friend',
         initials: (data.personName || 'F').slice(0, 2).toUpperCase(),
         birthday: data.personBirthday?.toISOString().split('T')[0] || null,
-        gender: data.personGender,
+        gender: data.personGender as SavedPerson['gender'],
+        description: null as string | null,
       }
       const person = await createSavedPerson(personData)
 
       if (data.audioClipUri && person?.id) {
-        await uploadAudioClip(
-          user.id,
-          person.id,
-          data.audioClipUri,
-          `onboarding_${Date.now()}.m4a`,
-          data.audioClipDuration || 0,
-          0
-        )
-      }
+        const fileName = `onboarding_${Date.now()}.m4a`
+        const storagePath = `${user.id}/person-audio/${person.id}/${fileName}`
+        await uploadAudioClip(user.id, person.id, data.audioClipUri, fileName, data.audioClipDuration || 0, 0)
 
-      if (data.invitePath === 'invite' && data.contactValue) {
-        if (data.contactMethod === 'username') {
-          const results = await searchUsers(data.contactValue)
-          if (results.length > 0) {
-            await sendFriendLink(results[0].id)
+        // Fire-and-forget: process audio for recommendations
+        const coords = data.coordinates
+        if (coords) {
+          processPersonAudio({
+            personId: person.id,
+            audioStoragePath: storagePath,
+            location: { latitude: coords.lat, longitude: coords.lng },
+            occasions: buildOccasions(data.personBirthday),
+          }).catch((err) => console.warn('[Onboarding] Audio processing failed:', err?.message))
+        }
+      }
+      setSaving(false)
+      goNext()
+    } catch (e) {
+      console.error('Save person error:', e)
+      setSaving(false)
+    }
+  }, [user?.id, data, goNext])
+
+  // ─── Step 5 Save Sync Friends (Path A) ───
+  const handleSaveSyncFriends = useCallback(async () => {
+    if (!user?.id) return
+    logger.action('Save sync friends pressed')
+    setSaving(true)
+    try {
+      for (const friend of data.selectedSyncFriends) {
+        // 1. Send friend_link request for existing users
+        if (friend.type === 'existing' && friend.userId) {
+          try {
+            await sendFriendLink(friend.userId)
+          } catch (e) {
+            // Link may already exist — log and continue
+            console.warn(`[Onboarding] Friend link for ${friend.userId} failed:`, e)
+          }
+        }
+
+        // 2. Upload audio clip if recorded for this friend
+        const friendKey = friend.userId || friend.phoneE164
+        const clip = audioClipsByFriend[friendKey]
+        if (clip) {
+          // Create a saved_person for this friend (for audio-based recommendations)
+          const personData = {
+            user_id: user.id,
+            name: friend.displayName || 'Friend',
+            initials: (friend.displayName || 'F').slice(0, 2).toUpperCase(),
+            birthday: null as string | null,
+            gender: null as SavedPerson['gender'],
+            description: null as string | null,
+          }
+          const person = await createSavedPerson(personData)
+
+          if (person?.id) {
+            const fileName = `onboarding_sync_${Date.now()}.m4a`
+            const storagePath = `${user.id}/person-audio/${person.id}/${fileName}`
+            await uploadAudioClip(user.id, person.id, clip.uri, fileName, clip.duration, 0)
+
+            // Fire-and-forget: process audio
+            const coords = data.coordinates
+            if (coords) {
+              processPersonAudio({
+                personId: person.id,
+                audioStoragePath: storagePath,
+                location: { latitude: coords.lat, longitude: coords.lng },
+                occasions: buildOccasions(null),
+              }).catch((err) => console.warn('[Onboarding] Sync audio processing failed:', err?.message))
+            }
           }
         }
       }
+      setSaving(false)
+      goNext() // This triggers launch (end of Path A sequence)
     } catch (e) {
-      console.error('Save person error:', e)
+      console.error('Save sync friends error:', e)
+      setSaving(false)
     }
-    setSaving(false)
-    goNext()
-  }, [user?.id, data, goNext])
+  }, [user?.id, data, audioClipsByFriend, goNext])
 
   // ─── Launch Handler ───
   const handleLaunch = useCallback(async () => {
@@ -1336,8 +1409,14 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       return
     }
 
+    // Path A audio: navigate between friends before hitting the state machine
+    if (navState.subStep === 'pathA_audio' && currentAudioFriendIndex > 0) {
+      setCurrentAudioFriendIndex(i => i - 1)
+      return
+    }
+
     goBack()
-  }, [goBack, goToSubStep, data.phoneVerified, navState.subStep])
+  }, [goBack, goToSubStep, data.phoneVerified, navState.subStep, currentAudioFriendIndex])
 
   const handleBackToWelcome = useCallback(async () => {
     logger.action('Back to welcome — signing out')
@@ -1416,25 +1495,45 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       case 'pitch':
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
-      case 'pathA_birthday':
+      case 'pathA_sync':
+        // Continue button is internal to OnboardingSyncStep component
+        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
+      case 'pathA_audio': {
+        const friend = data.selectedSyncFriends[currentAudioFriendIndex]
+        const friendId = friend?.userId || friend?.phoneE164
+        const clip = friendId ? audioClipsByFriend[friendId] : null
+        const hasMinAudio = clip && clip.duration >= 10
+        const isLastFriend = currentAudioFriendIndex >= data.selectedSyncFriends.length - 1
+
+        if (isLastFriend) {
+          return { label: 'Finish', disabled: !hasMinAudio, loading: saving, onPress: handleSaveSyncFriends, hide: false }
+        }
+        return {
+          label: 'Next',
+          disabled: !hasMinAudio,
+          loading: false,
+          onPress: () => setCurrentAudioFriendIndex((i) => i + 1),
+          hide: false,
+        }
+      }
       case 'pathB_birthday':
         return { label: 'Next', disabled: !data.personBirthday, loading: false, onPress: handleGoNext, hide: false }
-      case 'pathA_gender':
       case 'pathB_gender':
         return { label: 'Next', disabled: !data.personGender, loading: false, onPress: handleGoNext, hide: false }
-      case 'pathA_audio':
       case 'pathB_audio':
-        return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
-      case 'pathA_contact':
-        return { label: 'Send invite', disabled: !data.contactValue, loading: saving, onPress: handleSavePerson, hide: false }
+        return {
+          label: 'Finish',
+          disabled: !data.audioClipUri || (data.audioClipDuration || 0) < 10,
+          loading: saving,
+          onPress: handleSavePersonPathB,
+          hide: false,
+        }
       case 'pathB_name':
         return { label: 'Next', disabled: !data.personName?.trim(), loading: false, onPress: handleGoNext, hide: false }
-      case 'skip':
-        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       default:
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, selectedLocation, savingPrefs, saving, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, handleSavePerson, persistStep, goToSubStep])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, selectedLocation, savingPrefs, saving, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, handleSavePersonPathB, handleSaveSyncFriends, persistStep, goToSubStep, currentAudioFriendIndex, audioClipsByFriend])
 
   // ─── Render Step Content ───
   const renderContent = () => {
@@ -2347,25 +2446,98 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     if (subStep === 'pitch') {
       return (
         <View>
-          <Text style={styles.headline}>Got someone in mind?</Text>
-          <Text style={styles.body}>Add a friend, partner, or date — we'll find places you'll both love.</Text>
+          <Text style={styles.headline}>Who do you have in mind?</Text>
+          <Text style={styles.body}>The people you care about deserve experiences that feel personal — not generic.</Text>
           <View style={styles.pathCards}>
-            <Pressable style={styles.pathCard} onPress={() => { logger.action('Path selected: invite'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'invite' })); choosePath('invite') }}>
-              <Ionicons name="paper-plane-outline" size={24} color={colors.primary[500]} />
-              <Text style={styles.pathCardTitle}>Invite them to Mingla</Text>
-              <Text style={styles.pathCardDesc}>They get their own account. Recs get smarter together.</Text>
+            <Pressable
+              style={styles.pathCard}
+              onPress={() => {
+                logger.action('Path selected: invite')
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                setData((p) => ({ ...p, invitePath: 'invite' }))
+                choosePath('invite')
+              }}
+            >
+              <Ionicons name="heart-outline" size={24} color={colors.primary[500]} />
+              <Text style={styles.pathCardTitle}>Sync with someone close</Text>
+              <Text style={styles.pathCardDesc}>Best friends remember their coffee order. You'll remember the rooftop bar they'd never find alone. Link up — your recommendations learn from each other.</Text>
             </Pressable>
-            <Pressable style={styles.pathCard} onPress={() => { logger.action('Path selected: add'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'add' })); choosePath('add') }}>
+            <Pressable
+              style={styles.pathCard}
+              onPress={() => {
+                logger.action('Path selected: add')
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                setData((p) => ({ ...p, invitePath: 'add' }))
+                choosePath('add')
+              }}
+            >
               <Ionicons name="person-add-outline" size={24} color={colors.primary[500]} />
-              <Text style={styles.pathCardTitle}>Just add them</Text>
-              <Text style={styles.pathCardDesc}>We'll factor them in. No invite needed.</Text>
+              <Text style={styles.pathCardTitle}>Add someone</Text>
+              <Text style={styles.pathCardDesc}>They don't need the app. Tell us about them and we'll handle the rest.</Text>
             </Pressable>
-            <Pressable style={styles.pathCard} onPress={() => { logger.action('Path selected: skip'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setData((p) => ({ ...p, invitePath: 'skip' })); choosePath('skip') }}>
+            <Pressable
+              style={styles.pathCard}
+              onPress={() => {
+                logger.action('Path selected: skip')
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                setData((p) => ({ ...p, invitePath: 'skip' }))
+                choosePath('skip')
+              }}
+            >
               <Ionicons name="arrow-forward-outline" size={24} color={colors.gray[400]} />
-              <Text style={styles.pathCardTitle}>Skip for now</Text>
-              <Text style={styles.pathCardDesc}>You can add people anytime.</Text>
+              <Text style={styles.pathCardTitle}>Take me to the app</Text>
+              <Text style={styles.pathCardDesc}>You can always add people later.</Text>
             </Pressable>
           </View>
+        </View>
+      )
+    }
+
+    if (subStep === 'pathA_sync') {
+      return (
+        <OnboardingSyncStep
+          userId={user!.id}
+          userPhoneE164={buildE164()}
+          addedFriends={data.addedFriends}
+          initialSelectedIds={data.selectedSyncFriends.map(f => f.userId || f.phoneE164)}
+          onContinue={(selectedFriends, newFriends) => {
+            setData(prev => ({
+              ...prev,
+              selectedSyncFriends: selectedFriends,
+              addedFriends: [...prev.addedFriends, ...newFriends],
+            }))
+            setCurrentAudioFriendIndex(0)
+            setAudioClipsByFriend({})
+            goNext()
+          }}
+        />
+      )
+    }
+
+    if (subStep === 'pathA_audio') {
+      const friend = data.selectedSyncFriends[currentAudioFriendIndex]
+      const friendKey = friend?.userId || friend?.phoneE164
+      const total = data.selectedSyncFriends.length
+      const current = currentAudioFriendIndex + 1
+
+      return (
+        <View>
+          <Text style={styles.headline}>Tell us about {friend?.displayName || 'them'}</Text>
+          <Text style={styles.body}>
+            What do they love? What makes them tick?{total > 1 ? ` (${current}/${total})` : ''}
+          </Text>
+          <Text style={styles.caption}>
+            Record at least 10 seconds. Talk like you would to a friend.
+          </Text>
+          <OnboardingAudioRecorder
+            key={friendKey}
+            onClipReady={(uri, duration) => {
+              if (friendKey) {
+                setAudioClipsByFriend(prev => ({ ...prev, [friendKey]: { uri, duration } }))
+              }
+            }}
+            minDuration={10}
+          />
         </View>
       )
     }
@@ -2389,7 +2561,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       )
     }
 
-    if (subStep === 'pathA_birthday' || subStep === 'pathB_birthday') {
+    if (subStep === 'pathB_birthday') {
       const defaultDate = new Date()
       defaultDate.setFullYear(defaultDate.getFullYear() - 25)
       const minDate = new Date()
@@ -2420,7 +2592,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       )
     }
 
-    if (subStep === 'pathA_gender' || subStep === 'pathB_gender') {
+    if (subStep === 'pathB_gender') {
       return (
         <View>
           <Text style={styles.headline}>How do they identify?</Text>
@@ -2445,64 +2617,20 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       )
     }
 
-    if (subStep === 'pathA_audio' || subStep === 'pathB_audio') {
+    if (subStep === 'pathB_audio') {
       return (
         <View>
-          <Text style={styles.headline}>Tell us about them</Text>
-          <Text style={styles.body}>Record a voice note — what do they love? What's their vibe?</Text>
-          <Text style={styles.caption}>Up to 60 seconds. Talk like you would to a friend.</Text>
+          <Text style={styles.headline}>Tell us about {data.personName || 'them'}</Text>
+          <Text style={styles.body}>What do they love? What's their vibe?</Text>
+          <Text style={styles.caption}>
+            Record at least 10 seconds. Talk like you would to a friend.
+          </Text>
           <OnboardingAudioRecorder
             onClipReady={(uri, duration) => setData((p) => ({ ...p, audioClipUri: uri, audioClipDuration: duration }))}
-            onSkip={handleGoNext}
+            minDuration={10}
           />
         </View>
       )
-    }
-
-    if (subStep === 'pathA_contact') {
-      return (
-        <View>
-          <Text style={styles.headline}>How should we reach them?</Text>
-          <View style={styles.segmentedControl}>
-            <Pressable
-              style={[styles.segmentTab, data.contactMethod === 'phone' && styles.segmentTabActive]}
-              onPress={() => { logger.action('Contact method toggled: phone'); setData((p) => ({ ...p, contactMethod: 'phone', contactValue: null })) }}
-            >
-              <Text style={[styles.segmentTabText, data.contactMethod === 'phone' && styles.segmentTabTextActive]}>Phone</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.segmentTab, data.contactMethod === 'username' && styles.segmentTabActive]}
-              onPress={() => { logger.action('Contact method toggled: username'); setData((p) => ({ ...p, contactMethod: 'username', contactValue: null })) }}
-            >
-              <Text style={[styles.segmentTabText, data.contactMethod === 'username' && styles.segmentTabTextActive]}>Username</Text>
-            </Pressable>
-          </View>
-          {data.contactMethod === 'phone' && (
-            <TextInput
-              style={[styles.textInput, styles.inputSpacing]}
-              keyboardType="phone-pad"
-              placeholder="Their phone number"
-              placeholderTextColor={colors.gray[400]}
-              value={data.contactValue || ''}
-              onChangeText={(t) => setData((p) => ({ ...p, contactValue: t }))}
-            />
-          )}
-          {data.contactMethod === 'username' && (
-            <TextInput
-              style={[styles.textInput, styles.inputSpacing]}
-              placeholder="Search Mingla"
-              placeholderTextColor={colors.gray[400]}
-              value={data.contactValue || ''}
-              onChangeText={(t) => setData((p) => ({ ...p, contactValue: t }))}
-              autoCapitalize="none"
-            />
-          )}
-        </View>
-      )
-    }
-
-    if (subStep === 'skip') {
-      return <SkipAutoAdvance goNext={goNext} />
     }
 
     return null

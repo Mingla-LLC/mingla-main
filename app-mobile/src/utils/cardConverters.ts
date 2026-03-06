@@ -90,6 +90,7 @@ export function curatedToRecommendation(card: any): Recommendation {
     reviewCount: stops.reduce((s: number, st: any) => s + (st.reviewCount ?? 0), 0),
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
     matchFactors: { location: 0.5, budget: 0.5, category: 0.5, time: 0.5, popularity: 0.5 },
+    shoppingList: card.shoppingList ?? undefined,
     // Preserve curated data for expanded view
     strollData: {
       anchor: {

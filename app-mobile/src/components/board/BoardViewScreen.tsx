@@ -727,6 +727,7 @@ export const BoardViewScreen: React.FC<BoardViewScreenProps> = ({
                     estimatedDurationMinutes: cardData.estimatedDurationMinutes,
                     pairingKey: cardData.pairingKey,
                     experienceType: cardData.experienceType,
+                    shoppingList: cardData.shoppingList,
                   } : {}),
                 };
                 

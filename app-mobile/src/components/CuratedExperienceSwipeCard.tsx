@@ -3,6 +3,7 @@ import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 import { googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
+import { parseAndFormatDistance } from './utils/formatters';
 
 const CURATED_ICON_MAP: Record<string, string> = {
   'Adventurous':   'compass-outline',
@@ -14,12 +15,25 @@ const CURATED_ICON_MAP: Record<string, string> = {
   'Take a Stroll': 'walk-outline',
 };
 
+function getTravelModeIcon(mode?: string): keyof typeof Ionicons.glyphMap {
+  switch (mode) {
+    case 'driving': return 'car';
+    case 'transit': return 'bus';
+    case 'bicycling':
+    case 'biking': return 'bicycle';
+    case 'walking':
+    default: return 'walk';
+  }
+}
+
 interface Props {
   card: CuratedExperienceCard;
   onSeePlan: () => void;
+  travelMode?: string;
+  measurementSystem?: 'Metric' | 'Imperial';
 }
 
-export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
+export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem }: Props) {
   const avgRating = (card.stops.reduce((s, st) => s + st.rating, 0) / card.stops.length).toFixed(1);
   const durationHrs = (card.estimatedDurationMinutes / 60).toFixed(1);
   // Show tier label from the first stop's priceTier, or fallback to price range
@@ -34,6 +48,17 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
   const categoryLabel = card.categoryLabel || 'Adventurous';
   const categoryIcon = CURATED_ICON_MAP[categoryLabel] || 'compass-outline';
   const ctaText = isSingleStop ? 'See Details' : 'See Full Plan';
+
+  // First stop distance & travel time (most relevant to the user)
+  const firstStop = card.stops[0];
+  const distanceKm = firstStop?.distanceFromUserKm;
+  const travelMin = firstStop?.travelTimeFromUserMin;
+  const formattedDistance = distanceKm != null && distanceKm > 0
+    ? parseAndFormatDistance(`${distanceKm.toFixed(1)} km`, measurementSystem)
+    : null;
+  const formattedTravelTime = travelMin != null && travelMin > 0
+    ? `${Math.round(travelMin)} min`
+    : null;
 
   return (
     <View style={styles.card}>
@@ -75,9 +100,21 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan }: Props) {
 
         {/* Meta row */}
         <View style={styles.metaRow}>
+          {formattedDistance ? (
+            <>
+              <Ionicons name="location" size={11} color="rgba(255,255,255,0.7)" />
+              <Text style={styles.metaText}> {formattedDistance}</Text>
+              <Text style={styles.metaDot}> · </Text>
+            </>
+          ) : null}
+          {formattedTravelTime ? (
+            <>
+              <Ionicons name={getTravelModeIcon(travelMode)} size={11} color="rgba(255,255,255,0.7)" />
+              <Text style={styles.metaText}> {formattedTravelTime}</Text>
+              <Text style={styles.metaDot}> · </Text>
+            </>
+          ) : null}
           <Text style={styles.metaText}>{priceText}</Text>
-          <Text style={styles.metaDot}> · </Text>
-          <Text style={styles.metaText}>~{isSingleStop ? `${card.estimatedDurationMinutes} min` : `${durationHrs} hrs`}</Text>
           <Text style={styles.metaDot}> · </Text>
           <Ionicons name="star" size={11} color="#F59E0B" />
           <Text style={styles.metaText}> {avgRating} avg</Text>
