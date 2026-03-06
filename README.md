@@ -12,7 +12,7 @@ Mingla is a mobile app for planning social outings. It combines AI-powered place
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge Functions | 27+ Deno serverless functions |
+| Edge Functions | 44 Deno serverless functions |
 | AI | OpenAI GPT-4o-mini |
 | Maps & Places | Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -33,7 +33,8 @@ Mingla/
 │   ├── src/
 │   │   ├── components/                  # ~85+ UI components
 │   │   │   ├── onboarding/             # OnboardingShell, PhoneInput, OTPInput,
-│   │   │   │                           # SegmentedProgressBar, OnboardingFriendsStep,
+│   │   │   │                           # SegmentedProgressBar, LanguagePickerModal,
+│   │   │   │                           # CountryPickerModal, OnboardingFriendsStep,
 │   │   │   │                           # OnboardingCollaborationStep, etc.
 │   │   │   ├── board/                  # Board-related components
 │   │   │   └── ui/                     # Shared UI primitives
@@ -41,18 +42,18 @@ Mingla/
 │   │   ├── services/                   # ~55 service files
 │   │   ├── contexts/                   # 3 React contexts
 │   │   ├── store/                      # Zustand store
-│   │   ├── types/                      # TypeScript types
-│   │   ├── constants/                  # Design tokens, config, categories, price tiers
+│   │   ├── types/                      # TypeScript types (incl. onboarding.ts)
+│   │   ├── constants/                  # Design tokens, config, categories, price tiers, languages
 │   │   └── utils/                      # 12 utility files
 │   ├── app.json
 │   ├── eas.json
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                      # 27+ Deno edge functions
+│   ├── functions/                      # 44 Deno edge functions
 │   │   ├── _shared/                   # Shared edge function utilities
 │   │   └── [function-name]/           # Individual edge functions
-│   ├── migrations/                    # 115+ SQL migration files
+│   ├── migrations/                    # 120+ SQL migration files
 │   └── config.toml
 │
 └── oauth-redirect/                    # Static OAuth callback page
@@ -61,6 +62,29 @@ Mingla/
 ---
 
 ## Features
+
+### Onboarding Flow
+
+The onboarding flow uses a 5-step state machine with sub-steps within each step.
+
+**Step 1 -- Account & Identity** has 5 sub-steps:
+1. **Welcome** -- app introduction screen
+2. **Phone** -- phone number entry with country picker
+3. **OTP** -- 6-digit verification code
+4. **Gender Identity** -- 8 inclusive gender options (Man, Woman, Non-binary, Transgender, Genderqueer, Genderfluid, Agender, Prefer not to say)
+5. **Personal Details** -- country (ISO 3166-1 alpha-2, defaults to phone country code), date of birth, and preferred language (ISO 639-1, defaults to device locale via `expo-localization`)
+
+The language picker (`LanguagePickerModal`) supports 25 languages with search, sorted by global usage (top 10 first, then alphabetical). Device locale auto-detection determines the default selection.
+
+Resume logic handles partial Step 1 completion: if a user has verified their phone but has not finished gender identity or personal details, the flow resumes at the appropriate sub-step rather than restarting from the beginning.
+
+**Step 2 -- Intents** -- value proposition and intent selection (Adventurous, First Dates, Romantic, Friendly, Group Fun, Picnic Dates, Take a Stroll)
+
+**Step 3 -- Location** -- GPS permission request
+
+**Step 4 -- Preferences** -- manual location (if GPS denied), category selection, price tiers, transport mode, travel time
+
+**Step 5 -- Social** -- add friends by phone, create collaboration sessions, add saved people with audio clips
 
 ### AI-Powered Recommendations
 - Experience cards built from real Google Places data, enriched by GPT-4o-mini with descriptions, highlights, and match scores
@@ -155,8 +179,8 @@ Mingla/
 
 | Table | Purpose |
 |-------|---------|
-| `profiles` | User profiles, phone, referral_code |
-| `preferences` | User preference settings (categories, price tiers, travel) |
+| `profiles` | User profiles: phone, referral_code, gender, birthday, country (ISO 3166-1 alpha-2), preferred_language (ISO 639-1, default `'en'`) |
+| `preferences` | User preference settings (categories, price tiers, intents, travel, use_gps_location) |
 | `subscriptions` | Subscription tier, trial, referral bonus months |
 
 ### Social Tables
@@ -187,7 +211,10 @@ Mingla/
 | `card_pool` | Enriched place cards shared across users |
 | `place_pool` | Place data pool from Google Places |
 | `user_card_impressions` | Tracks which cards users have seen |
-| `ticketmaster_events_cache` | Cached Ticketmaster events |
+| `ticketmaster_events_cache` | Cached Ticketmaster events (2-hour TTL) |
+| `google_places_cache` | Cached Google Places API responses |
+| `discover_daily_cache` | Cached discover feed results |
+| `curated_places_cache` | Cached curated experience places |
 
 ---
 
@@ -198,24 +225,60 @@ Mingla/
 | Function | Purpose |
 |----------|---------|
 | `generate-experiences` | AI-powered place recommendations |
-| `generate-curated-experiences` | Multi-stop itinerary generation |
-| `generate-session-experiences` | Collaboration session recommendations |
+| `new-generate-experience-` | Next-gen experience generation with card pool pipeline |
+| `generate-curated-experiences` | Multi-stop itinerary generation (7 types) |
+| `generate-person-experiences` | Person-specific experience recommendations |
 | `discover-experiences` | Explore/discover tab |
+| `discover-cards` | Discover card generation |
+| `discover-[category]` | Per-category discover endpoints (nature, casual-eats, drink, fine-dining, first-meet, picnic-park, play, watch, creative-arts, wellness) |
+| `get-personalized-cards` | Personalized card retrieval |
+| `holiday-experiences` | Holiday-specific experience generation |
 | `refresh-place-pool` | Daily card pool refresh |
+| `warm-cache` | Cache warming for frequently accessed data |
 
 ### Social and Notifications
 
 | Function | Purpose |
 |----------|---------|
 | `lookup-phone` | Phone number lookup for friend search |
-| `process-referral` | Manual referral credit reconciliation |
+| `search-users` | Username-based user search |
+| `send-friend-link` | Send friend link invitations |
+| `respond-friend-link` | Process friend link responses |
+| `unlink-friend` | Remove friend connections |
+| `send-friend-request-email` | Email notifications for friend requests |
 | `send-collaboration-invite` | Push notifications for session invites |
+| `notify-invite-response` | Push notifications for invite responses |
+| `send-message-email` | Email notifications for messages |
+| `process-referral` | Manual referral credit reconciliation |
 
-### Events
+### Authentication
+
+| Function | Purpose |
+|----------|---------|
+| `send-otp` | Send phone verification OTP |
+| `verify-otp` | Verify phone OTP code |
+
+### Events and Places
 
 | Function | Purpose |
 |----------|---------|
 | `ticketmaster-events` | Ticketmaster event proxy |
+| `events` | General event handling |
+| `places` | Place details proxy |
+| `get-google-maps-key` | Secure Google Maps key retrieval |
+| `get-companion-stops` | Companion stop suggestions for itineraries |
+| `get-picnic-grocery` | Picnic and grocery place suggestions |
+| `night-out-experiences` | Night out experience generation |
+
+### Utilities
+
+| Function | Purpose |
+|----------|---------|
+| `ai-reason` | AI reasoning endpoint |
+| `weather` | Weather forecast data |
+| `process-voice-review` | Voice review transcription |
+| `delete-user` | Account deletion |
+| `backfill-place-websites` | Backfill missing place websites in card pool |
 
 ---
 
@@ -297,11 +360,14 @@ npx eas build --platform ios --profile production
 
 ## Recent Changes
 
+- **Onboarding Identity and Details Screens** -- Gender Identity screen with 8 inclusive options and Personal Details screen collecting country, date of birth, and preferred language. New `profiles.country` and `profiles.preferred_language` DB columns. Language picker with 25 languages and device locale auto-detection. Resume logic handles partial Step 1 completion.
+- **Price Tier System Overhaul** -- Replaced fragmented budget system with 4-tier model (Chill/Comfy/Bougie/Lavish) mapped to Google Places API price levels
+- **Ticketmaster Night Out** -- Real Ticketmaster events with genre, date, and price filtering plus in-app ticket purchasing
+- **Card Pool Data Pipeline** -- Pool-first card serving from shared `card_pool` and `place_pool` tables, eliminating redundant Google API calls
+- **Curated Experiences** -- Multi-stop itinerary cards for Solo Adventure, First Date, Romantic, Friendly, Group Fun, Picnic, and Stroll
 - **Friends and Collaboration Onboarding** -- Phone-based friend adding and session creation during onboarding flow
 - **Subscription System** -- Free/Pro/Elite tiers with trial and referral rewards via Stripe Connect
 - **Universal Links** -- Deep linking via usemingla.com for invites and board URLs
-- **Phone-Based Invites** -- Invite non-app users by phone, auto-resolve on signup
-- **In-App Phone Invites** -- Send collaboration invites to any phone number
 
 ---
 
