@@ -91,6 +91,7 @@ export interface OnboardingData {
   personGender: string | null
   audioClipUri: string | null
   audioClipDuration: number | null
+  audioClipStoragePath: string | null  // Supabase Storage path (survives restart)
 
   // Step 5 — Friends & Collaboration
   addedFriends: AddedFriend[]
@@ -99,6 +100,8 @@ export interface OnboardingData {
 
   // Step 5 — Sync & Audio Pipeline
   selectedSyncFriends: AddedFriend[]
+  audioClipsByFriend: Record<string, { storagePath: string; duration: number }>
+  currentAudioFriendIndex: number
 }
 
 // ─── Country Data ───

@@ -181,6 +181,100 @@ export async function getAudioClips(
   return clips;
 }
 
+// ── Onboarding Staging (eager upload before saved_person exists) ─────────────
+
+/**
+ * Upload a recording to staging storage so it survives app restarts.
+ * Returns the storage path (not a URL — use getSignedAudioUrl to play).
+ */
+export async function uploadOnboardingAudio(
+  userId: string,
+  key: string,
+  localUri: string
+): Promise<string> {
+  const storagePath = `${userId}/onboarding-audio/${key}.m4a`;
+
+  const formData = new FormData();
+  formData.append("file", {
+    uri: localUri,
+    type: "audio/mp4",
+    name: `${key}.m4a`,
+  } as any);
+
+  const { error } = await supabase.storage
+    .from("voice-reviews")
+    .upload(storagePath, formData, {
+      contentType: "audio/mp4",
+      upsert: true,
+    });
+
+  if (error) {
+    throw new Error(`Failed to upload onboarding audio: ${error.message}`);
+  }
+
+  return storagePath;
+}
+
+/**
+ * Delete a file from the voice-reviews bucket (used when re-recording or clearing).
+ */
+export async function deleteFromStorage(storagePath: string): Promise<void> {
+  const { error } = await supabase.storage
+    .from("voice-reviews")
+    .remove([storagePath]);
+
+  if (error) {
+    console.error("[PersonAudio] Storage delete error:", error.message);
+  }
+}
+
+/**
+ * Create a person_audio_clips DB record pointing to an already-uploaded file.
+ * Used when the file was eagerly uploaded during onboarding.
+ */
+export async function createAudioClipRecord(
+  userId: string,
+  personId: string,
+  storagePath: string,
+  fileName: string,
+  durationSeconds: number,
+  sortOrder: number
+): Promise<PersonAudioClip> {
+  const { data, error } = await supabase
+    .from("person_audio_clips")
+    .insert({
+      person_id: personId,
+      user_id: userId,
+      storage_path: storagePath,
+      file_name: fileName,
+      duration_seconds: durationSeconds,
+      sort_order: sortOrder,
+    })
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error(
+      `Failed to save audio clip record: ${error?.message || "No data returned"}`
+    );
+  }
+
+  return mapAudioClip(data);
+}
+
+/**
+ * Get a signed URL for playback of a file already in storage.
+ */
+export async function getSignedAudioUrl(
+  storagePath: string
+): Promise<string | null> {
+  const { data } = await supabase.storage
+    .from("voice-reviews")
+    .createSignedUrl(storagePath, 3600);
+
+  return data?.signedUrl || null;
+}
+
 // ── File Picker ─────────────────────────────────────────────────────────────
 
 export async function pickAudioFile(): Promise<{

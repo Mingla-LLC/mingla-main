@@ -5,11 +5,12 @@ import {
   TouchableOpacity,
   Animated,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
-import { startRecording, stopRecording } from '../../services/personAudioService';
+import { startRecording, stopRecording, getSignedAudioUrl } from '../../services/personAudioService';
 import {
   colors,
   typography,
@@ -20,7 +21,7 @@ import {
   touchTargets,
 } from '../../constants/designSystem';
 
-type RecorderState = 'idle' | 'recording' | 'preview' | 'done';
+type RecorderState = 'idle' | 'recording' | 'preview' | 'done' | 'loading';
 
 interface OnboardingAudioRecorderProps {
   onClipReady: (uri: string, duration: number) => void;
@@ -28,6 +29,8 @@ interface OnboardingAudioRecorderProps {
   onSkip?: () => void;
   maxDuration?: number; // default 60
   minDuration?: number; // minimum seconds required — hides skip, disables confirm if below
+  /** When provided, component starts in "done" state and fetches a signed URL for playback. */
+  initialClip?: { storagePath: string; duration: number };
 }
 
 export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = ({
@@ -36,11 +39,12 @@ export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = (
   onSkip,
   maxDuration = 60,
   minDuration,
+  initialClip,
 }) => {
-  const [state, setState] = useState<RecorderState>('idle');
+  const [state, setState] = useState<RecorderState>(initialClip ? 'loading' : 'idle');
   const [duration, setDuration] = useState(0);
   const [clipUri, setClipUri] = useState<string | null>(null);
-  const [clipDuration, setClipDuration] = useState(0);
+  const [clipDuration, setClipDuration] = useState(initialClip?.duration ?? 0);
   const [playbackPosition, setPlaybackPosition] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -49,6 +53,37 @@ export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = (
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  // Restore from persisted clip on mount
+  useEffect(() => {
+    if (!initialClip) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const signedUrl = await getSignedAudioUrl(initialClip.storagePath);
+        if (cancelled) return;
+        if (signedUrl) {
+          setClipUri(signedUrl);
+          setClipDuration(initialClip.duration);
+          setState('done');
+        } else {
+          // File missing from storage — reset to idle
+          setState('idle');
+          onClipCleared?.();
+        }
+      } catch {
+        if (!cancelled) {
+          setState('idle');
+          onClipCleared?.();
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // Only run on mount — initialClip identity doesn't change within a key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Clean up on unmount
   useEffect(() => {
@@ -216,6 +251,14 @@ export const OnboardingAudioRecorder: React.FC<OnboardingAudioRecorderProps> = (
   // Render based on state
   const renderContent = () => {
     switch (state) {
+      case 'loading':
+        return (
+          <View style={styles.centerContent}>
+            <ActivityIndicator size="small" color={colors.primary[500]} />
+            <Text style={styles.instructionText}>Loading your recording...</Text>
+          </View>
+        );
+
       case 'idle':
         return (
           <View style={styles.centerContent}>

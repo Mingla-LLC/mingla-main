@@ -34,7 +34,7 @@ import { logger } from '../utils/logger'
 import { saveOnboardingData, loadOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
 import { createSavedPerson, SavedPerson } from '../services/savedPeopleService'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
-import { startRecording, stopRecording, uploadAudioClip } from '../services/personAudioService'
+import { uploadOnboardingAudio, deleteFromStorage, createAudioClipRecord } from '../services/personAudioService'
 import { sendFriendLink } from '../services/friendLinkService'
 import { getCurrencySymbol, formatNumberWithCommas } from '../utils/currency'
 import { getRate } from '../services/currencyService'
@@ -153,10 +153,13 @@ const INITIAL_DATA: OnboardingData = {
   personGender: null,
   audioClipUri: null,
   audioClipDuration: null,
+  audioClipStoragePath: null,
   addedFriends: [],
   createdSessions: [],
   skippedFriends: false,
   selectedSyncFriends: [],
+  audioClipsByFriend: {},
+  currentAudioFriendIndex: 0,
 }
 
 const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
@@ -239,8 +242,22 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
   const [resumeSubStep, setResumeSubStep] = useState<SubStep | null>(null)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
   const [customTravelInput, setCustomTravelInput] = useState('')
-  const [currentAudioFriendIndex, setCurrentAudioFriendIndex] = useState(0)
-  const [audioClipsByFriend, setAudioClipsByFriend] = useState<Record<string, { uri: string; duration: number }>>({})
+  // Audio state now lives in `data` for persistence (data.currentAudioFriendIndex, data.audioClipsByFriend)
+  // Helper setters for convenience:
+  const currentAudioFriendIndex = data.currentAudioFriendIndex
+  const audioClipsByFriend = data.audioClipsByFriend
+  const setCurrentAudioFriendIndex = useCallback((updater: number | ((i: number) => number)) => {
+    setData(prev => ({
+      ...prev,
+      currentAudioFriendIndex: typeof updater === 'function' ? updater(prev.currentAudioFriendIndex) : updater,
+    }))
+  }, [])
+  const setAudioClipsByFriend = useCallback((updater: Record<string, { storagePath: string; duration: number }> | ((prev: Record<string, { storagePath: string; duration: number }>) => Record<string, { storagePath: string; duration: number }>)) => {
+    setData(prev => ({
+      ...prev,
+      audioClipsByFriend: typeof updater === 'function' ? updater(prev.audioClipsByFriend) : updater,
+    }))
+  }, [])
 
   const warmPoolPromiseRef = useRef<Promise<void> | null>(null)
 
@@ -1180,27 +1197,20 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       }
       const person = await createSavedPerson(personData)
 
-      if (data.audioClipUri && person?.id) {
-        const fileName = `onboarding_${Date.now()}.m4a`
-        const storagePath = `${user.id}/person-audio/${person.id}/${fileName}`
-        await uploadAudioClip(user.id, person.id, data.audioClipUri, fileName, data.audioClipDuration || 0, 0)
+      if (data.audioClipStoragePath && person?.id) {
+        const fileName = data.audioClipStoragePath.split('/').pop() || `onboarding_${Date.now()}.m4a`
+        // Audio was eagerly uploaded to staging — just create the DB record
+        await createAudioClipRecord(user.id, person.id, data.audioClipStoragePath, fileName, data.audioClipDuration || 0, 0)
 
         // Fire-and-forget: process audio (edge function may not be deployed yet — safe to skip)
         const coords = data.coordinates
         if (coords) {
           processPersonAudio({
             personId: person.id,
-            audioStoragePath: storagePath,
+            audioStoragePath: data.audioClipStoragePath,
             location: { latitude: coords.lat, longitude: coords.lng },
             occasions: buildOccasions(data.personBirthday),
-          }).catch((err) => {
-            const msg = err?.message || ''
-            if (msg.includes('not found') || msg.includes('Not Found')) {
-              console.info('[Onboarding] process-person-audio not deployed yet — audio will be processed once deployed.')
-            } else {
-              console.warn('[Onboarding] Audio processing failed:', msg)
-            }
-          })
+          }).catch((err) => console.info('[Onboarding] Audio processing (fire-and-forget):', err?.message))
         }
       }
       setSaving(false)
@@ -1228,10 +1238,10 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           }
         }
 
-        // 2. Upload audio clip if recorded for this friend
+        // 2. Create saved_person + link audio clip if recorded for this friend
         const friendKey = friend.userId || friend.phoneE164
         const clip = audioClipsByFriend[friendKey]
-        if (clip) {
+        if (clip && clip.storagePath) {
           // Create a saved_person for this friend (for audio-based recommendations)
           const personData = {
             user_id: user.id,
@@ -1244,26 +1254,19 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           const person = await createSavedPerson(personData)
 
           if (person?.id) {
-            const fileName = `onboarding_sync_${Date.now()}.m4a`
-            const storagePath = `${user.id}/person-audio/${person.id}/${fileName}`
-            await uploadAudioClip(user.id, person.id, clip.uri, fileName, clip.duration, 0)
+            const fileName = clip.storagePath.split('/').pop() || `onboarding_sync_${Date.now()}.m4a`
+            // Audio was eagerly uploaded to staging — just create the DB record
+            await createAudioClipRecord(user.id, person.id, clip.storagePath, fileName, clip.duration, 0)
 
             // Fire-and-forget: process audio (edge function may not be deployed yet — safe to skip)
             const coords = data.coordinates
             if (coords) {
               processPersonAudio({
                 personId: person.id,
-                audioStoragePath: storagePath,
+                audioStoragePath: clip.storagePath,
                 location: { latitude: coords.lat, longitude: coords.lng },
                 occasions: buildOccasions(null),
-              }).catch((err) => {
-                const msg = err?.message || ''
-                if (msg.includes('not found') || msg.includes('Not Found')) {
-                  console.info('[Onboarding] process-person-audio not deployed yet — audio will be processed once deployed.')
-                } else {
-                  console.warn('[Onboarding] Sync audio processing failed:', msg)
-                }
-              })
+              }).catch((err) => console.info('[Onboarding] Sync audio processing (fire-and-forget):', err?.message))
             }
           }
         }
@@ -1537,7 +1540,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
       case 'pathB_audio':
         return {
           label: 'Finish',
-          disabled: !data.audioClipUri || (data.audioClipDuration || 0) < 10,
+          disabled: !data.audioClipStoragePath || (data.audioClipDuration || 0) < 10,
           loading: saving,
           onPress: handleSavePersonPathB,
           hide: false,
@@ -2515,6 +2518,13 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           addedFriends={data.addedFriends}
           initialSelectedIds={data.selectedSyncFriends.map(f => f.userId || f.phoneE164)}
           onContinue={(selectedFriends, newFriends) => {
+            // Clean up any previously uploaded staging audio for friends no longer selected
+            const prevClips = data.audioClipsByFriend
+            for (const key of Object.keys(prevClips)) {
+              if (prevClips[key]?.storagePath) {
+                deleteFromStorage(prevClips[key].storagePath).catch(() => {})
+              }
+            }
             setData(prev => ({
               ...prev,
               selectedSyncFriends: selectedFriends,
@@ -2545,19 +2555,30 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
           </Text>
           <OnboardingAudioRecorder
             key={friendKey}
+            initialClip={friendKey && audioClipsByFriend[friendKey] ? audioClipsByFriend[friendKey] : undefined}
             onClipReady={(uri, duration) => {
-              if (friendKey) {
-                setAudioClipsByFriend(prev => ({ ...prev, [friendKey]: { uri, duration } }))
-              }
+              if (!friendKey || !user?.id) return
+              // Eager upload to Supabase Storage so it survives app restart
+              uploadOnboardingAudio(user.id, friendKey, uri)
+                .then(storagePath => {
+                  setAudioClipsByFriend(prev => ({ ...prev, [friendKey]: { storagePath, duration } }))
+                })
+                .catch(err => {
+                  console.error('[Onboarding] Eager audio upload failed — clip not saved:', err?.message)
+                  // Do NOT store a clip with empty storagePath — leave button disabled so user re-records
+                })
             }}
             onClipCleared={() => {
-              if (friendKey) {
-                setAudioClipsByFriend(prev => {
-                  const next = { ...prev }
-                  delete next[friendKey]
-                  return next
-                })
+              if (!friendKey) return
+              const existing = audioClipsByFriend[friendKey]
+              if (existing?.storagePath) {
+                deleteFromStorage(existing.storagePath).catch(() => {})
               }
+              setAudioClipsByFriend(prev => {
+                const next = { ...prev }
+                delete next[friendKey]
+                return next
+              })
             }}
             minDuration={10}
           />
@@ -2649,8 +2670,25 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
             Record at least 10 seconds. Talk like you would to a friend.
           </Text>
           <OnboardingAudioRecorder
-            onClipReady={(uri, duration) => setData((p) => ({ ...p, audioClipUri: uri, audioClipDuration: duration }))}
-            onClipCleared={() => setData((p) => ({ ...p, audioClipUri: null, audioClipDuration: null }))}
+            initialClip={data.audioClipStoragePath ? { storagePath: data.audioClipStoragePath, duration: data.audioClipDuration || 0 } : undefined}
+            onClipReady={(uri, duration) => {
+              if (!user?.id) return
+              setData((p) => ({ ...p, audioClipUri: uri, audioClipDuration: duration }))
+              // Eager upload to Supabase Storage
+              uploadOnboardingAudio(user.id, 'pathB', uri)
+                .then(storagePath => {
+                  setData((p) => ({ ...p, audioClipStoragePath: storagePath }))
+                })
+                .catch(err => {
+                  console.error('[Onboarding] Eager pathB audio upload failed:', err?.message)
+                })
+            }}
+            onClipCleared={() => {
+              if (data.audioClipStoragePath) {
+                deleteFromStorage(data.audioClipStoragePath).catch(() => {})
+              }
+              setData((p) => ({ ...p, audioClipUri: null, audioClipDuration: null, audioClipStoragePath: null }))
+            }}
             minDuration={10}
           />
         </View>
